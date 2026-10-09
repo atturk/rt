@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { expect } from '@playwright/test'
-import { test, apiGet, loginViaLink, serverState } from './support'
+import { test, apiGet, authHeaders, loginViaLink, serverState } from './support'
 
 test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
   test.setTimeout(150_000)
@@ -76,7 +76,7 @@ test('le tacche di Verifica corrispondono all’API e l’icona apre il classifi
   } finally { writeFileSync(config, previous) }
 })
 
-test('la conferma predefinita non rilancia unità già verificate', async ({ page }) => {
+test('tutto verificato: nessuna unità mancante e la ri-verifica globale chiede conferma', async ({ page }) => {
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=PATOLOGIA')
   const units = await apiGet<{ state: string }[]>(page.request, `/lessons/${lesson.id}/review/units`)
@@ -85,13 +85,30 @@ test('la conferma predefinita non rilancia unità già verificate', async ({ pag
   const panel = page.getByTestId('lesson-review-panel')
   let launched = 0
   page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith(`/lessons/${lesson.id}/jobs`)) launched++ })
+  await expect(panel.getByRole('button', { name: /^Verifica le unità mancanti/ })).toHaveCount(0)
   await panel.getByRole('button', { name: 'Verifica di nuovo tutta la lezione', exact: true }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog.getByRole('radio', { name: 'Verifica le unità cambiate o mai verificate' })).toBeChecked()
-  await expect(dialog.getByRole('radio', { name: 'Verifica le unità cambiate o mai verificate' })).toBeDisabled()
-  await expect(dialog.getByRole('button', { name: 'Verifica', exact: true })).toBeDisabled()
+  await expect(dialog).toContainText('anche di quelle già verificate')
   await dialog.getByRole('button', { name: 'Annulla' }).click()
   expect(launched).toBe(0)
+})
+
+test('Per unità resta acceso dopo il ricaricamento e raggruppa le issue', async ({ page }) => {
+  await loginViaLink(page)
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=FARMACOLOGIA')
+  try {
+    await page.goto(`/lezioni/${lesson.id}?panel=verifica`)
+    const panel = page.getByTestId('lesson-review-panel')
+    const toggle = panel.getByRole('button', { name: 'Per unità', exact: true })
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(async () => (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['review.by-unit']).toBe(true)
+    await page.reload()
+    await expect(panel.getByRole('button', { name: 'Per unità', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(panel.getByTestId('review-issue-group').first()).toBeVisible()
+  } finally {
+    await page.request.delete('/api/v1/preferences/review.by-unit', { headers: authHeaders() })
+  }
 })
 
 test('una correzione dopo una modifica manuale cambia il testo nell’editor', async ({ page }) => {

@@ -85,7 +85,7 @@ it('sul telefono mostra testo e correzione, con elenco a richiesta', () => {
 
 it.each([
   ['MISSING', 'Mai verificata', 'Verifica tutta la lezione', { type: 'run_phase', phase: 'review' }],
-  ['PARTIAL', 'Verificate 2 unità su 5', 'Completa la verifica', { type: 'run_phase', phase: 'review' }],
+  ['PARTIAL', 'Verificate 2 unità su 5', 'Verifica le unità mancanti (3)', { type: 'run_phase', phase: 'review' }],
   ['STALE', 'Il testo è cambiato dopo la verifica', 'Aggiorna il documento', { type: 'run_pipeline', with_review: true }],
   ['VALID', 'Tutte decise', 'Ricostruisci il documento', { type: 'run_phase', phase: 'build' }],
 ])('stato %s: titolo, azione e payload', async (review, title, button, payload) => {
@@ -96,10 +96,22 @@ it.each([
   fireEvent.click(screen.getByRole('button', { name: button }))
   await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith(payload))
 })
-it('review completa con issue da decidere mostra il conteggio', () => {
+it('review completa con issue da decidere: conteggio e documento ricostruibile', () => {
   mount()
   expect(screen.getByRole('status')).toHaveTextContent('1 da decidere su 1')
-  expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ricostruisci il documento' })).toBeEnabled()
+})
+it('verifica parziale: unità mancanti dal registro e documento ricostruibile con conferma', async () => {
+  state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never'), unit('2.2', 'excluded')]
+  mount({ rewrite: 'VALID', review: 'PARTIAL', build: 'STALE' }, undefined, undefined, {
+    phase_report: [{ phase: 'build', status: 'STALE', reason: '', warnings: [{ code: 'review_partial', message: 'Revisione incompleta', count: null }] }],
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Ricostruisci il documento' }))
+  expect(screen.getByTestId('build-confirm-warnings')).toHaveTextContent('Revisione incompleta')
+  fireEvent.click(screen.getByRole('button', { name: 'Crea il documento comunque' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'build' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica le unità mancanti (2)' }))
+  await waitFor(() => expect(state.run).toHaveBeenLastCalledWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.1'] }))
 })
 it('build già valido disattiva il pulsante e mostra Documento aggiornato', () => {
   state.items = []
@@ -124,8 +136,7 @@ it('testo cambiato: conserva le correzioni per default e permette di rifare la v
   expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
   expect(state.run).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('radio', { name: 'Forza tutte le unità' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica tutte le unità' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true }))
 })
 
@@ -231,12 +242,13 @@ it('la ri-verifica di una unità chiede conferma e forza solo quella', async () 
   fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true }))
 })
-it('la conferma globale non rilancia con la scelta predefinita se tutto è verificato', () => {
+it('tutto verificato: niente unità mancanti, la ri-verifica globale chiede conferma', () => {
   state.units = [unit('1.1', 'ok')]
   mount()
+  expect(screen.queryByRole('button', { name: /^Verifica le unità mancanti/ })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
-  expect(screen.getByRole('radio', { name: 'Verifica le unità cambiate o mai verificate' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Verifica' })).toBeDisabled()
+  expect(screen.getByText('Rifà la verifica di tutte le unità, anche di quelle già verificate.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
   expect(state.run).not.toHaveBeenCalled()
 })
 it('il conto delle issue apre Da decidere con filtro togliibile', () => {
@@ -256,12 +268,22 @@ it('claim_changed mostra l’errore nella card e passa a Testo cambiato', async 
   expect(screen.getByTestId('issue-detail')).toHaveTextContent('Il testo è già cambiato')
 })
 
-it('verifica solo le unità cambiate con la scelta predefinita', async () => {
+it('verifica solo le unità cambiate o mai verificate', async () => {
   state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never')]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica le unità mancanti (2)' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.1'] }))
+})
+it('verifica solo le unità selezionate', async () => {
+  state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never'), unit('2.2', 'never')]
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: 'Unità 4' }))
+  expect(screen.getByRole('checkbox', { name: "Seleziona l'unità 1.1" })).toBeDisabled()
+  fireEvent.click(screen.getByRole('checkbox', { name: "Seleziona l'unità 1.2" }))
+  fireEvent.click(screen.getByRole('checkbox', { name: "Seleziona l'unità 2.2" }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica le selezionate (2)' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.2'] }))
+  expect(screen.queryByRole('button', { name: /^Verifica le selezionate/ })).not.toBeInTheDocument()
 })
 it.each(['review_unit', 'run_phase'])('il job singolo %s mostra Verifico solo nella sua riga; la riga porta al testo', type => {
   state.units = [unit('1.1', 'never'), unit('1.2', 'ok')]

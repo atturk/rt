@@ -32,12 +32,12 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const issues = useIssues(l.id)
   const reviewUnits = useReviewUnits(l.id)
   const units = reviewUnits.data ?? []
-  const [byUnit, setByUnit] = usePreference('review.byUnit', false)
+  const [byUnit, setByUnit] = usePreference('review.by-unit', false)
   const [savedOrder, setSavedOrder] = usePreference('review.order', 'cronologico')
   const [confirmReview, setConfirmReview] = useState(false)
   const [confirmUnit, setConfirmUnit] = useState<string | null>(null)
   const [queuedUnits, setQueuedUnits] = useState<string[]>([])
-  const [forceAll, setForceAll] = useState(false)
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([])
   const [changedIssues, setChangedIssues] = useState<string[]>([])
   const [cardFailure, setCardFailure] = useState<{ id: string; message: string } | null>(null)
   const decisions = useDecisions(l.id)
@@ -111,6 +111,16 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
     setQueuedUnits([unit])
     void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', unit, ...(force ? { force: true } : {}) })).finally(() => setQueuedUnits([]))
   }
+  const verifyUnits = (list: string[]) => {
+    if (list.length === 1) { verifyUnit(list[0]); return }
+    setQueuedUnits(list)
+    void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', units: list })).finally(() => setQueuedUnits([]))
+  }
+  // Le unità da verificare vengono dal registro; senza registro (lezioni vecchie) riprende la run parziale.
+  const missingCount = needsReview.length || (partial ? Math.max((l.review_progress?.total ?? 0) - (l.review_progress?.reviewed ?? 0), 0) : 0)
+  const verifyMissing = () => { if (needsReview.length) verifyUnits(needsReview.map(u => u.unit_id)); else verify(false) }
+  const selectable = needsReview.map(u => u.unit_id)
+  const chosen = selectedUnits.filter(id => selectable.includes(id))
   const filterUnit = (unit: string) => {
     setGroup('pending'); setShowList(true)
     const next = new URLSearchParams(params); next.set('review_unit', unit); next.delete('issue'); setParams(next, { replace: true })
@@ -139,7 +149,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       <span className="line-clamp-2 text-muted-foreground">{issue.claim}</span>
     </Button>
   </li> })
-  const buildButton = <Button disabled={busy || l.phases.build === 'VALID'} onClick={build}>{l.phases.build === 'VALID' ? 'Documento aggiornato' : 'Ricostruisci il documento'}</Button>
+  const buildButton = <Button variant={complete && allPending.length === 0 ? 'default' : 'outline'} disabled={busy || l.phases.build === 'VALID'} onClick={build}>{l.phases.build === 'VALID' ? 'Documento aggiornato' : 'Ricostruisci il documento'}</Button>
   if (issues.isPending) return <p className="text-meta text-muted-foreground">Carico la verifica…</p>
   if (issues.isError) return <Alert tone="danger">{errorMessage(issues.error)}</Alert>
   return <div className="flex flex-col gap-3 text-body" data-testid="lesson-review-panel">
@@ -150,15 +160,14 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       <p className="text-meta text-muted-foreground">{progress?.detail ? `${progress.detail} · ` : ''}{items.length} issue trovate finora</p>
       <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(active.id)}>Interrompi</Button>
     </>}
-    {!verifying && partial && <Button disabled={busy} onClick={() => verify(false)}>Completa la verifica</Button>}
+    {!verifying && !stale && done && missingCount > 0 && <Button disabled={busy} onClick={verifyMissing}>Verifica le unità mancanti ({missingCount})</Button>}
     {!verifying && stale && <>
       <p className="text-meta text-muted-foreground">Le correzioni fatte a mano non rifanno la verifica.</p>
       <Button disabled={busy} onClick={() => void action(() => run.mutateAsync({ type: 'run_pipeline', with_review: true }))}>Aggiorna il documento</Button>
     </>}
-    {!verifying && complete && allPending.length === 0 && <>
-      <p className="text-meta">{decided.length} issue decise: {['accepted', 'rejected', 'edited'].map((d) => `${decided.filter((i) => i.decision?.decision === d).length} ${decisionLabels[d] === 'accettata' ? 'accettate' : d === 'rejected' ? 'mantenute' : 'modificate'}`).join(', ')}.</p>
-      {buildButton}
-    </>}
+    {!verifying && complete && allPending.length === 0 && <p className="text-meta">{decided.length} issue decise: {['accepted', 'rejected', 'edited'].map((d) => `${decided.filter((i) => i.decision?.decision === d).length} ${decisionLabels[d] === 'accettata' ? 'accettate' : d === 'rejected' ? 'mantenute' : 'modificate'}`).join(', ')}.</p>}
+    {/* Il documento si ricostruisce anche con verifica parziale o issue aperte: lo dicono gli avvisi del dialogo. */}
+    {!verifying && !stale && done && buildButton}
     {waiting && <Badge tone="neutral">Pipeline in attesa</Badge>}
     {last && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void action(async () => { await undo.mutateAsync(last.issue_id); select(last.issue_id) })}><Undo2 />Annulla l'ultima</Button>}
     {group !== 'units' && selected && <IssueCard key={issueOf(selected).id} item={selected} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} failure={cardFailure?.id === issueOf(selected).id ? cardFailure.message : undefined} changed={changedIssues.includes(issueOf(selected).id) || markdown !== undefined && !selected.decision && !issueRange(EditorState.create({ doc: markdown }), selected)} onCloseIssue={() => onDecide(paragraphIssue(issueOf(selected)) ? 'accepted' : 'rejected')} onRecheck={() => setConfirmUnit(issueOf(selected).unit_id ?? null)} />}
@@ -169,7 +178,10 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
         <Button size="sm" variant={group === 'decided' ? 'default' : 'outline'} aria-pressed={group === 'decided'} onClick={() => setGroup('decided')}>Decise {allDecided.length}</Button>
         <Button size="sm" variant={group === 'units' ? 'default' : 'outline'} aria-pressed={group === 'units'} onClick={() => setGroup('units')}>Unità {units.length}</Button>
       </div>
-      {group === 'units' ? <ReviewUnits units={units} busy={busy} running={[...runningUnits, ...queuedUnits]} onVerify={verifyUnit} onReverify={setConfirmUnit} onFilter={filterUnit} /> : <>
+      {group === 'units' ? <>
+        {chosen.length > 0 && <Button size="sm" disabled={busy} onClick={() => { verifyUnits(chosen); setSelectedUnits([]) }}><ShieldCheck />Verifica le selezionate ({chosen.length})</Button>}
+        <ReviewUnits units={units} busy={busy} running={[...runningUnits, ...queuedUnits]} selected={chosen} onSelect={(id, on) => setSelectedUnits(old => on ? [...old, id] : old.filter(x => x !== id))} onVerify={verifyUnit} onReverify={setConfirmUnit} onFilter={filterUnit} />
+      </> : <>
         {unitFilter && <div data-testid="review-unit-filter" className="flex items-center justify-between rounded-lg bg-muted px-3 py-1 text-meta"><span>Unità {unitFilter}</span><IconButton label="Togli il filtro per unità" icon={X} onClick={() => { const next = new URLSearchParams(params); next.delete('review_unit'); setParams(next, { replace: true }) }} /></div>}
         <div className="flex gap-2"><Select aria-label="Ordine delle issue" value={order} onChange={(e) => { const next = new URLSearchParams(params); next.set('ordine', e.target.value); setSavedOrder(e.target.value); setParams(next, { replace: true }) }}>{ISSUE_ORDERS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select>
           <Button size="sm" variant={byUnit ? 'default' : 'outline'} aria-pressed={byUnit} onClick={() => setByUnit(!byUnit)}><ListTree />Per unità</Button>
@@ -181,16 +193,11 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
         </details>) : <ul aria-label={group === 'pending' ? 'Da decidere' : 'Decise'} className="flex flex-col gap-1">{issueList(visible)}</ul>}
       </>}
     </>}
-    <Button variant={done ? 'outline' : 'default'} size="sm" disabled={busy || l.phases.rewrite !== 'VALID'} onClick={() => { if (done) { setForceAll(false); setConfirmReview(true) } else verify(false) }}><ShieldCheck />{done ? 'Verifica di nuovo tutta la lezione' : 'Verifica tutta la lezione'}</Button>
-    <ConfirmDialog open={confirmReview} title="Verifica di nuovo tutta la lezione" confirmLabel="Verifica" confirmDisabled={busy || !forceAll && needsReview.length === 0} onCancel={() => setConfirmReview(false)} onConfirm={() => {
-      setConfirmReview(false)
-      if (forceAll) verify(true)
-      else if (needsReview.length) void action(() => run.mutateAsync({ type: 'run_phase', phase: 'review', units: needsReview.map(u => u.unit_id) }))
-    }}>
-      <div className="flex flex-col gap-3 text-body">
-        <label className="flex items-start gap-2"><input type="radio" name="review-mode" checked={!forceAll} disabled={!needsReview.length} onChange={() => setForceAll(false)} />Verifica le unità cambiate o mai verificate</label>
-        <label className="flex items-start gap-2"><input type="radio" name="review-mode" checked={forceAll} onChange={() => setForceAll(true)} />Forza tutte le unità</label>
-        {forceAll && <p className="text-meta text-muted-foreground">{allDecided.length} decisioni potrebbero sparire se le issue non si ritrovano</p>}
+    <Button variant={done ? 'outline' : 'default'} size="sm" disabled={busy || l.phases.rewrite !== 'VALID'} onClick={() => { if (done) setConfirmReview(true); else verify(false) }}><ShieldCheck />{done ? 'Verifica di nuovo tutta la lezione' : 'Verifica tutta la lezione'}</Button>
+    <ConfirmDialog open={confirmReview} title="Verifica di nuovo tutta la lezione" confirmLabel="Verifica tutte le unità" confirmDisabled={busy} onCancel={() => setConfirmReview(false)} onConfirm={() => { setConfirmReview(false); verify(true) }}>
+      <div className="flex flex-col gap-2 text-body">
+        <p>Rifà la verifica di tutte le unità, anche di quelle già verificate.</p>
+        {allDecided.length > 0 && <p className="text-meta text-muted-foreground">{allDecided.length} decisioni potrebbero sparire se le issue non si ritrovano</p>}
       </div>
     </ConfirmDialog>
     <ConfirmDialog open={confirmUnit !== null} title={`Verifica di nuovo l'unità ${confirmUnit ?? ''}`} confirmLabel="Verifica di nuovo" confirmDisabled={busy} onCancel={() => setConfirmUnit(null)} onConfirm={() => { if (confirmUnit) verifyUnit(confirmUnit, true); setConfirmUnit(null) }}>

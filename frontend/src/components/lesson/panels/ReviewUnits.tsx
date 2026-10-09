@@ -1,6 +1,7 @@
 import { Check, Circle, CircleAlert, CircleDashed, ShieldCheck, MoreHorizontal } from 'lucide-react'
 import type { Schemas } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
@@ -8,8 +9,8 @@ import { cn } from '@/lib/utils'
 export type ReviewUnit = Schemas['ReviewUnit']
 const labels: Record<ReviewUnit['state'], string> = { ok: 'Senza problemi', issues: 'Con issue', changed: 'Testo cambiato', never: 'Mai verificata', excluded: 'Esclusa', failed: 'Verifica fallita' }
 const icon = { ok: Check, issues: CircleAlert, changed: CircleDashed, never: Circle, excluded: Circle, failed: CircleAlert }
-export function ReviewUnits({ units, busy, running, onVerify, onReverify, onFilter }: {
-  units: ReviewUnit[]; busy: boolean; running: string[]
+export function ReviewUnits({ units, busy, running, selected = [], onSelect, onVerify, onReverify, onFilter }: {
+  units: ReviewUnit[]; busy: boolean; running: string[]; selected?: string[]; onSelect?: (unit: string, on: boolean) => void
   onVerify: (unit: string) => void; onReverify: (unit: string) => void; onFilter: (unit: string) => void
 }) {
   return <ul aria-label="Unità della verifica" className="flex flex-col">
@@ -18,6 +19,8 @@ export function ReviewUnits({ units, busy, running, onVerify, onReverify, onFilt
       const verifying = running.includes(unit.unit_id)
       const needsReview = ['never', 'changed', 'failed'].includes(unit.state)
       return <li key={unit.unit_id} data-testid={`review-unit-${unit.state}`} data-unit={unit.unit_id} className="flex items-center gap-2 border-t py-3">
+        {onSelect && <Checkbox className={cn((!needsReview || verifying) && 'invisible')} disabled={!needsReview || verifying || busy}
+          label={`Seleziona l'unità ${unit.unit_id}`} checked={selected.includes(unit.unit_id)} onChange={on => onSelect(unit.unit_id, on)} />}
         <Icon aria-label={labels[unit.state]} className={cn('size-4 shrink-0', unit.state === 'ok' ? 'text-success' : unit.state === 'issues' ? 'text-warning' : unit.state === 'failed' ? 'text-danger' : 'text-muted-foreground', unit.state === 'changed' && 'review-unit-changed')} />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => window.dispatchEvent(new CustomEvent(EDITOR_SCROLL_EVENT, { detail: { unitId: unit.unit_id } }))}>
           <span className="block truncate text-body"><b className="mr-2 tabular-nums">{unit.unit_id}</b>{unit.title}</span>

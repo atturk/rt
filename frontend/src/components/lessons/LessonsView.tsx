@@ -10,6 +10,7 @@ import { useSettings } from '@/api/settings'
 import { JobProgress } from '@/components/JobProgress'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { LinkMenuButton, MenuButton, type MenuSection } from '@/components/ui/menu'
@@ -202,32 +203,6 @@ function StatusDot({ status }: { status: LessonStatus }) {
   )
 }
 
-/** Casella del design (16 px, accento quando spuntata) con l'area da toccare più grande. */
-function Check({ label, checked, indeterminate = false, className, onChange }: { label: string; checked: boolean; indeterminate?: boolean; className?: string; onChange: (checked: boolean) => void }) {
-  const ref = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = indeterminate
-  }, [indeterminate])
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      aria-label={label}
-      checked={checked}
-      onChange={(event) => onChange(event.target.checked)}
-      className={cn(
-        'relative size-4 shrink-0 cursor-pointer appearance-none rounded-[4px] border border-muted-foreground bg-background',
-        'before:absolute before:-inset-2.5 before:content-[""] max-md:before:-inset-3.5',
-        'checked:border-accent-foreground checked:bg-accent indeterminate:border-accent-foreground indeterminate:bg-accent',
-        'after:absolute checked:after:left-[4px] checked:after:top-[1px] checked:after:h-[9px] checked:after:w-[5px] checked:after:rotate-45 checked:after:border-accent-foreground checked:after:border-b-2 checked:after:border-r-2 checked:after:content-[""]',
-        'indeterminate:after:inset-x-[3px] indeterminate:after:top-[6px] indeterminate:after:h-0.5 indeterminate:after:bg-accent-foreground indeterminate:after:content-[""]',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-        className,
-      )}
-    />
-  )
-}
-
 export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
   lesson: Lesson
   grouping: LessonsGrouping
@@ -256,7 +231,7 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
     <li data-testid="lesson-row" data-lesson-id={lesson.id}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
-          <Check className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
+          <Checkbox className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
@@ -315,7 +290,7 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
   return (
     <div className="flex items-center gap-3 px-2.5 pt-1 pb-0.5 max-md:gap-3 max-md:px-2">
       {selecting && (
-        <Check
+        <Checkbox
           label={`Seleziona il gruppo ${label}`}
           checked={selectedCount > 0 && selectedCount === group.lessons.length}
           indeterminate={selectedCount > 0 && selectedCount < group.lessons.length}
