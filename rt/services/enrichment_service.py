@@ -178,6 +178,10 @@ def analyze(lesson_dir, *, mock=False, ctx=None):
     from rt.llm.client import LLMClient
     cfg = load_config().enrichment
     rows = units(lesson_dir)
+    from types import SimpleNamespace
+    from rt.services.unit_relevance import included_ids
+    allowed = included_ids(lesson_dir, [SimpleNamespace(unit_id=u["id"], title=u["title"], content=u["content"]) for u in rows], view="resolved")
+    rows = [u for u in rows if u["id"] in allowed]
     policy = digest([cfg.decision_model, UTILITY, WRITER_SYSTEM,
                      (load_config().jobs["enrichment_writer"].model_dump() if "enrichment_writer" in load_config().jobs else {}), cfg.utility_threshold, mock])
     for index, unit in enumerate(rows):

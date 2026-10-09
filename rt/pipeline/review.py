@@ -196,6 +196,10 @@ class JevTaskBVerdict:
         self.is_high_confidence_drift = is_high_confidence_drift
 
 
+from rt.services.unit_prefilter import cached
+
+
+@cached("task_a")
 def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskAVerdict]:
     """
     Chiede a Jev la domanda configurata per il prefiltro errori (predefinita: gravità degli
@@ -238,6 +242,7 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
                            label=result.label, outcome=result.outcome, answer=result.answer)
 
 
+@cached("task_b")
 def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
     """
     Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
@@ -613,8 +618,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
-    from rt.services.unit_relevance import included
-    eligible_ids = {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+    from rt.services.unit_relevance import included, included_ids
+    eligible_ids = included_ids(lesson_dir, draft.units)
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,

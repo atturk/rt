@@ -232,12 +232,12 @@ def effective(row: dict, kind: str) -> Optional[str]:
     return row.get(kind)
 
 
-def labels(lesson_dir: str) -> Dict[str, dict]:
+def labels(lesson_dir: str, sections=None) -> Dict[str, dict]:
     """Etichette in vigore per le sezioni attuali (correzioni comprese); le sezioni il cui testo
     è cambiato dopo la classificazione restano senza etichette fino al prossimo refresh."""
     records = _load(lesson_dir)
     out = {}
-    for section in sections(lesson_dir):
+    for section in (globals()["sections"](lesson_dir) if sections is None else sections):
         row = records.get(section["id"], {})
         if row.get("text_hash") != _section_hash(lesson_dir, section):
             continue
@@ -245,11 +245,11 @@ def labels(lesson_dir: str) -> Dict[str, dict]:
     return out
 
 
-def view(lesson_dir: str) -> dict:
+def view(lesson_dir: str, sections=None) -> dict:
     """Per la pagina Classificatore: sezioni con etichette previste, correzioni ed errori."""
     records = _load(lesson_dir)
     rows = []
-    for section in sections(lesson_dir):
+    for section in (globals()["sections"](lesson_dir) if sections is None else sections):
         row = records.get(section["id"], {})
         fresh = row.get("text_hash") == _section_hash(lesson_dir, section)
         rows.append({"section_id": section["id"], "title": section["title"],

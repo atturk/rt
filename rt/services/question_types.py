@@ -11,6 +11,7 @@ from rt.storage import fs
 
 LOG = logging.getLogger(__name__)
 INSTRUCTIONS = "Valuta un'unità di una lezione universitaria riscritta e scegli il tipo di domanda più adatto per verificare se lo studente l'ha capita."
+QT_VERSION = 2
 CRITERIA = {
     "quiz": "Il contenuto è fatto soprattutto di fatti, definizioni, valori o classificazioni da riconoscere: si verifica bene con domande a risposta multipla.",
     "mirata": "Il contenuto spiega un meccanismo, un perché o un collegamento fra concetti: si verifica bene con una domanda aperta precisa, a cui rispondere in poche righe.",
@@ -34,7 +35,7 @@ def _text_hash(unit, lesson_dir):
 
 
 def _config_hash(cfg):
-    return _hash([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_mode, INSTRUCTIONS, CRITERIA])
+    return _hash([cfg.relevance_model, cfg.credential, cfg.base_url, cfg.relevance_mode, QT_VERSION, INSTRUCTIONS, CRITERIA])
 
 
 def _path(lesson_dir):
@@ -61,8 +62,9 @@ def _compatible(row, section, labels):
 
 def _sections(lesson_dir, units):
     from rt.services import section_labels
-    owner = {u.unit_id: s["id"] for s in section_labels.sections(lesson_dir, units) for u in s["units"]}
-    return owner, section_labels.labels(lesson_dir)
+    sections = section_labels.sections(lesson_dir, units)
+    owner = {u.unit_id: s["id"] for s in sections for u in s["units"]}
+    return owner, section_labels.labels(lesson_dir, sections=sections)
 
 
 def _mock(unit):
@@ -72,7 +74,7 @@ def _mock(unit):
             "probabilities": {k: .85 if k == kind else .05 for k in CRITERIA}}
 
 
-def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None):
+def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=None):
     from rt.pipeline.rewrite import load_draft
     from rt.services import section_labels
     from rt.services.events import Notice
@@ -85,6 +87,8 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None):
     mock = force_mock or cfg.mock_llm
     section_labels.refresh(lesson_dir, force_mock=mock)
     owner, labels = _sections(lesson_dir, units)
+    from rt.services.unit_relevance import included_ids
+    allowed = included_ids(lesson_dir, units)
     wanted = set(unit_ids) if unit_ids is not None else {u.unit_id for u in units}
     previous = _load(lesson_dir)
     result = {}
@@ -92,6 +96,8 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None):
     for unit in units:
         old = previous.get(unit.unit_id, {})
         digest = _text_hash(unit, lesson_dir)
+        if unit.unit_id not in allowed:
+            continue
         if unit.unit_id not in wanted:
             if old:
                 result[unit.unit_id] = old
@@ -105,12 +111,12 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None):
                 if mock:
                     row.update(_mock(unit))
                 else:
-                    response = jev_client.call_jev(
+                    response = (responses[unit.unit_id] if responses is not None and unit.unit_id in responses else jev_client.call_jev(
                         state=context_block(lesson_context(lesson_dir)) + f"\n\n[{unit.unit_id}] {unit.title}\n{unit.content}",
                         questions={"tipo_consigliato": jev_client.JevChoiceQuestion(instructions=INSTRUCTIONS, criteria=CRITERIA)},
                         job_name="question_types", unit_id=unit.unit_id, lesson_dir=lesson_dir,
                         model=cfg.jev.relevance_model, credential=cfg.jev.credential, base_url=cfg.jev.base_url,
-                        timeout_seconds=cfg.jev.timeout_seconds)
+                        timeout_seconds=cfg.jev.timeout_seconds))
                     answer = response.answers.get("tipo_consigliato")
                     if answer is None or answer.type != "choice" or answer.choice not in CRITERIA:
                         raise ValueError("Tipo consigliato non valido")

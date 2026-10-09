@@ -81,7 +81,7 @@ def ensure_can_run() -> None:
                        "Impostazioni > Modelli > Classificatore.")
 
 
-def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False, view: str = "draft") -> dict:
+def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False, view: str = "draft", responses=None) -> dict:
     """Classifica le unità cambiate (force: tutte). Un errore lascia passare l'unità e resta
     visibile; le correzioni dell'utente su un testo invariato restano."""
     cfg = load_config().jev
@@ -123,13 +123,13 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
                 mapped = jev_mapping.DecisionResult(label=decision.fallback_label, outcome="didactic", rule=None,
                                                     answer={"type": "mock"})
             else:
-                answer = jev_client.call_jev(
+                answer = (responses[unit.unit_id] if responses is not None and unit.unit_id in responses else jev_client.call_jev(
                     state=jev_mapping.state_for("relevance", unit.title, unit.content, context),
                     questions={jev_mapping.QUESTION_NAMES["relevance"]: jev_mapping.build_question(decision)},
                     job_name="relevance", unit_id=unit.unit_id, lesson_dir=lesson_dir,
                     model=cfg.relevance_model, credential=cfg.credential, base_url=cfg.base_url,
                     timeout_seconds=cfg.timeout_seconds,
-                ).answers[jev_mapping.QUESTION_NAMES["relevance"]]
+                )).answers[jev_mapping.QUESTION_NAMES["relevance"]]
                 if answer.type != decision.type:
                     raise ValueError("Risposta del classificatore di tipo inatteso")
                 mapped = jev_mapping.evaluate("relevance", decision, answer)
@@ -194,14 +194,21 @@ def _effective(row: dict, cfg) -> str:
     return "didactic"
 
 
-def included(lesson_dir: str, unit, *, view="draft") -> bool:
-    cfg = load_config().jev
+def included_ids(lesson_dir: str, units, *, view="draft", records=None, cfg=None) -> set:
+    """Carica configurazione e classificazioni una volta per l'intera vista."""
+    cfg = cfg if cfg is not None else load_config().jev
     if not cfg.relevance_model.strip() or cfg.relevance_mode != "active":
-        return True
-    row = _load(lesson_dir, view).get(unit.unit_id, {})
-    if row.get("text_hash") != _unit_hash(unit, lesson_dir) or row.get("config_hash") != _config_hash(cfg):
-        return True  # classificazione mancante/stale: fail-open
-    return _effective(row, cfg) == "didactic"
+        return {u.unit_id for u in units}
+    records = _load(lesson_dir, view) if records is None else records
+    configuration = _config_hash(cfg)
+    return {u.unit_id for u in units
+            if (records.get(u.unit_id, {}).get("text_hash") != _unit_hash(u, lesson_dir)
+                or records.get(u.unit_id, {}).get("config_hash") != configuration
+                or _effective(records[u.unit_id], cfg) == "didactic")}
+
+
+def included(lesson_dir: str, unit, *, view="draft") -> bool:
+    return unit.unit_id in included_ids(lesson_dir, [unit], view=view)
 
 
 def list_units(lesson_dir: str, *, view="draft") -> dict:
@@ -212,6 +219,8 @@ def list_units(lesson_dir: str, *, view="draft") -> dict:
         units = (load_resolved_draft(lesson_dir) if view == "resolved" else load_draft(lesson_dir)).units
     except FileNotFoundError:
         units = []
+    allowed = included_ids(lesson_dir, units, view=view, records=records, cfg=cfg)
+    configuration = _config_hash(cfg)
     rows = []
     from rt.pipeline.ledger import load_resolved_draft
     try:
@@ -220,7 +229,7 @@ def list_units(lesson_dir: str, *, view="draft") -> dict:
         resolved = {}
     for unit in units:
         row = records.get(unit.unit_id, {})
-        fresh = row.get("text_hash") == _unit_hash(unit, lesson_dir) and row.get("config_hash") == _config_hash(cfg)
+        fresh = row.get("text_hash") == _unit_hash(unit, lesson_dir) and row.get("config_hash") == configuration
         effective = _effective(row, cfg) if fresh else "didactic"
         rows.append({"unit_id": unit.unit_id, "title": unit.title, "content": unit.content,
                      "prediction": row.get("prediction") if fresh else None,
@@ -228,7 +237,7 @@ def list_units(lesson_dir: str, *, view="draft") -> dict:
                      "label": row.get("label") if fresh else None,
                      "answer": row.get("answer") if fresh else None,
                      "override": row.get("override") if fresh else None,
-                     "review_included": included(lesson_dir, unit, view=view),
+                     "review_included": unit.unit_id in allowed,
                      "effective": effective, "error": row.get("error") if fresh else None,
                      "stale": bool(row) and not fresh,
                      "corrected_at": row.get("corrected_at") if fresh else None,
