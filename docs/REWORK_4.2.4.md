@@ -376,3 +376,305 @@ Claude rivede le due PR, prova le parti toccate (anche nel browser), unisce prim
 Studio in `claude/rt-4.2.4-beta`, rigenera openapi e tipi se servono, porta `VERSION` a `4.2.4b1`, fa
 girare la suite completa in locale e pubblica la v4.2.4b1 con release.yml, seguendo il run fino alla
 fine.
+
+## 4.2.4b2 — verifica
+
+Lavora **solo Codex**, con **una PR** sul branch `rt424b2/codex` (creato da `claude/rt-4.2.4-beta` dopo
+la v4.2.4b1). I task vanno fatti **in quest'ordine**, con un commit per task: il backend viene prima
+perché pannello, VC2 e VC1 poggiano su di lui.
+
+| Id | Cosa |
+|---|---|
+| V1 | Ancore, testo risolto, decisioni che non si perdono |
+| V2 | Lock sistemati e verifica di 4 unità in parallelo, decisioni durante la verifica |
+| V3 | Cache del testo risolto e della configurazione, client che ricarica solo il necessario |
+| V4 | Schema di uscita piccolo, niente "suggerimenti", contesto della lezione in cache |
+| V5 | Documento finale automatico, via il build a mano |
+| V6 | Pannello Verifica nuovo |
+| VC2 | Verifica questa parte (menu contestuale) |
+| VC1 | Verifica e Chiedi nello Studio |
+
+Se il lavoro diventa troppo grosso, **VC1 si ferma** e passa alla b3: V1-V6 e VC2 devono uscire
+completi, VC1 no. In quel caso la PR lo dice.
+
+Wireframe: `RT-pannello-verifica.html` (V6; schede "Mai verificata", "In corso", "Da decidere", "Tutto
+deciso"), `RT-verifica-chiedi.html` v3 (VC1; la scheda 3 ha prompt, schema e note per il codice).
+Analisi di partenza: audit della verifica del 9 ottobre (riassunto nei task) e analisi di VC1.
+
+### Regole
+
+- Valgono le **Regole** della sezione 4.2.4b1 (stile, componenti, tooltip solo con `Tooltip` /
+  `IconButton`, test completi prima della PR, openapi e tipi rigenerati, `VERSION` non si tocca, una PR
+  verso `claude/rt-4.2.4-beta`, niente merge né tag).
+- **Nessuna perdita di dati.** Lezioni già verificate, issue (`science_issues.json`), decisioni (DB e
+  `review_decisions.json`), modifiche a mano (`document_edits.json`) e registro delle unità
+  (`review_units.json`) si leggono e si migrano da soli alla prima lettura, senza chiamate al modello. Il
+  testo risolto di una lezione vecchia dopo la migrazione deve essere **identico** a quello di prima:
+  serve un test che lo confronti su una lezione con decisioni accettate, modificate, rifiutate e unità
+  corrette a mano.
+- **Un solo modo di cambiare il testo** con la verifica: le decisioni. VC1 e VC2 ci passano, non
+  scrivono la bozza da soli.
+- Il **tipo consigliato del recaller**, il pannello Classificatore e la pipeline di riscrittura non si
+  toccano, salvo quanto scritto nei task.
+- **Telegram** è deprecato: il codice di cartella, `lessons_root` e notifica in `build.py` si toglie (V5),
+  non si sistema.
+
+### Decisioni (Attilio, 9 ottobre 2026)
+
+- Un solo pulsante Verifica; la forzatura solo nei menu ⋯, con conferma.
+- Un solo elenco per unità; issue aperte al loro posto; "Mostra decise" come interruttore.
+- Issue decise in **sola lettura**: l'unica azione è Annulla. Niente diff rosso/verde: solo sostituzione e
+  motivazione, con l'originale evidenziato nell'editor. Tooltip tutti scuri.
+- **Niente tipo "suggerimento"**: il modello scrive sempre il testo che sostituisce l'originale, anche
+  quando aggiunge un dato mancante. `sanitize_suggested_fix` si toglie.
+- Si decide mentre la verifica lavora sulle altre unità.
+- Niente "Ricostruisci il documento": `rielaborato.md` ed `Errori concettuali.md` si riscrivono da soli
+  dopo **ogni** cambio di testo (decisioni, modifiche a mano nell'editor, Applica di VC1).
+- Unità escluse in grigio con il rimando al pannello Classificatore; via `UnitStrip` e caselle dal
+  pannello Verifica.
+- VC1 come dal wireframe v3: pannello separato "Verifiche e domande", bottoni in Dettagli, voci mai
+  rifatte da sole, Applica che registra una decisione della verifica. Nel prompt "tag" = materia,
+  docente e argomenti.
+
+### V1 — Ancore, testo risolto, decisioni che non si perdono
+
+Oggi (`rt/pipeline/review.py`, `rt/pipeline/ledger.py`):
+- la verifica legge la bozza grezza (`load_draft`, `review.py:521` e `:619`), non il testo con le
+  decisioni, e segnala di nuovo errori già corretti;
+- un'issue si ritrova solo se il modello riscrive lo stesso claim nello stesso segmento (`_issue_key`,
+  `reconcile_unit_issues` `:416-451`); se lo riformula, la decisione vecchia si annulla in silenzio
+  (`revert_last_decision` a `:446-448`), anche se era accettata;
+- le correzioni si applicano con "trova la prima occorrenza" (`replace_claim`, `ledger.py:198`), con
+  l'allargamento a fine frase, e su qualsiasi unità che condivide il segmento (`ledger.py:251`).
+
+1. **Modulo `rt/pipeline/anchors.py`**, solo libreria standard (`difflib`):
+   - `Anchor`: `quote`, `prefix` e `suffix` (circa 40 caratteri ciascuno), `start`, `end` (posizioni nel
+     testo dell'unità in cui è stata creata). Modello Pydantic in `rt/core/models.py`.
+   - `make_anchor(text, start, end)`.
+   - `locate(anchor, text) -> Located | None` con `start`, `end` ed `exact: bool`. Prima le occorrenze
+     esatte di `quote` (più di una: vince quella con prefisso e suffisso più simili, poi la più vicina a
+     `start`); poi spazi normalizzati; poi un confronto approssimato sulla finestra intorno a
+     prefisso e suffisso, accettato solo sopra una soglia (costante, con test). Mai fuori dal `text`
+     passato.
+   - `find_quote(text, quote)`: per le citazioni nuove del modello, esatta e poi a spazi normalizzati.
+   - Test con citazioni ripetute, decimali ("7.4"), testo spostato, testo riscritto in parte, testo
+     sparito.
+2. **Issue e decisioni con ancora.** `ScienceIssue.anchor: Optional[Anchor]` e
+   `ScienceIssue.origin: 'verifica' | 'parte' | 'studio'` (default `verifica`). `ReviewDecision.anchor`
+   copia l'ancora al momento della decisione. I campi vecchi restano leggibili. Anche il DB delle
+   decisioni (`rt/db/ledger_store.py`) salva l'ancora (migrazione alembic).
+3. **La verifica legge il testo risolto**: `run_review`, `run_review_unit` e la verifica di una parte
+   (VC2) usano `load_resolved_draft` (con la cache di V3). Le ancore delle issue nuove si creano su quel
+   testo.
+4. **Applicare le decisioni** (`apply_decisions_to_draft`):
+   - in ordine di registro, ogni decisione accettata o modificata cerca la sua ancora con `locate`
+     **solo nel testo della sua unità** (`issue.unit_id`; via il controllo sul segmento a `:251`) e
+     sostituisce esattamente il tratto trovato, senza allargamenti (via `replace_claim`);
+   - le issue di paragrafo (ASR, deriva) con "modificata" sostituiscono il testo dell'unità come oggi;
+   - resta la regola delle unità corrette a mano (`edited_unit_dates`): le decisioni prima della modifica
+     sono già nel testo;
+   - una decisione la cui ancora non si ritrova **non** si applica e **non** si cancella: l'issue diventa
+     "da riconfermare" (campo calcolato, esposto dall'API e mostrato dal pannello di V6, dove si può
+     accettare di nuovo su un tratto ritrovato o rifiutare).
+5. **Ritrovare le issue a una nuova verifica** (sostituisce `_issue_key` e `reconcile_unit_issues`):
+   - le issue **decise** di un'unità restano sempre, con le loro decisioni; non si annullano mai da
+     sole;
+   - le issue **aperte** dell'unità vengono sostituite da quelle nuove;
+   - un'issue nuova che cade sullo stesso tratto (ancore sovrapposte) di un'issue **rifiutata** dello
+     stesso tipo non si mostra di nuovo: eredita il rifiuto;
+   - gli id restano `sci_NNNNNN` con il contatore di oggi (`issue_sequence`).
+   Si toglie `_drop_moved_decisions` (`review.py:454`), che non è più chiamata. Le unità sparite dalla
+   bozza (`review.py:668-677`) continuano a togliere le loro issue aperte; le decisioni restano nel
+   registro e le issue diventano "da riconfermare".
+6. **Migrazione**: alla prima lettura di una lezione senza ancore, per ogni issue si crea l'ancora
+   cercando il claim nel testo dell'unità come lo vedeva la logica vecchia (bozza con le decisioni
+   precedenti nell'ordine del registro), stessa cosa per le decisioni. Le decisioni accettate vecchie con
+   un testo "da suggerimento" si convertono una volta con la logica di `sanitize_suggested_fix`
+   spostata nella migrazione: testo letterale se c'è, altrimenti la decisione resta registrata ma senza
+   sostituzione (come oggi, il testo non cambiava). Dopo, `sanitize_suggested_fix` sparisce dal resto
+   del codice. Test di confronto del testo risolto prima e dopo (vedi Regole).
+
+### V2 — Lock e verifica in parallelo
+
+1. **Lock prima di tutto.**
+   - `rt/core/filelock.py`: oggi un lock è "scaduto" dopo 30 s anche se chi lo tiene sta lavorando. Il
+     file del lock contiene pid e host; chi lo tiene ne rinnova l'mtime ogni 10 s (thread nel context
+     manager); è scaduto solo se l'mtime è vecchio **e** (stesso host) il processo non esiste più.
+   - Tutte le scritture di `science_issues.json`, del registro delle decisioni (anche
+     `revert_last_decision` chiamato dalla verifica) e di `review_units.json` (`record_review_unit`,
+     `review_units.py:24`, lettura e scrittura insieme) avvengono sotto `lesson_lock`.
+   - Il salvataggio del manifest non risincronizza tutto il DB: solo la lezione toccata.
+   - Test: due thread che registrano unità e decisioni insieme senza perdite; lock tenuto oltre 30 s che
+     non viene rubato.
+2. **Unità in parallelo.** In `_run_review` (`review.py:693-748`) le chiamate al modello per unità
+   (`_review_unit`) girano in un `ThreadPoolExecutor` con `review.parallel_units` (config, default 4,
+   1 = come oggi). Riconciliazione, salvataggio, registro e checkpoint restano nel thread principale, uno
+   per volta, appena ogni unità finisce. Annullamento: si smette di mandare unità nuove e si aspettano
+   quelle partite. `UnitFailureTracker` conta le unità finite, nell'ordine in cui finiscono.
+3. **Issue subito.** Dopo ogni unità il job emette un evento (per esempio `ReviewUnitDone(unit_id,
+   issues)`) che arriva al client con gli eventi live (`/events`); il client ricarica issue e unità di
+   quella lezione (oggi arriva tutto solo alla fine).
+4. **Decisioni durante la verifica.** `decide_issue` e `undo_decision` (`rt/api/routers/review.py:47`,
+   `:66`) oggi rispondono 409 con qualsiasi job attivo (`ensure_no_running_job`). Diventa: se il job
+   attivo è una verifica (lezione, unità o parte) e l'unità dell'issue non è fra quelle ancora da fare in
+   quel job, la decisione passa; altrimenti 409 `unit_in_review`. La verifica, quando salva un'unità, non
+   tocca le decisioni prese nel frattempo (V1.5).
+5. Test: verifica di 6 unità in mock con `parallel_units=4` (risultato uguale a `parallel_units=1`),
+   evento per unità, decisione accettata su un'unità finita mentre un'altra è in corso (mock lento).
+
+### V3 — Cache del testo risolto
+
+Oggi ogni ✓ ricalcola il testo risolto 5-7 volte: ogni lettura (documento, issue, unità, lezione)
+riapplica tutto il registro e rilegge configurazione e classificazione da disco.
+
+1. `load_resolved_draft` tiene in memoria il risultato per lezione, con una chiave fatta di: impronta
+   (mtime e dimensione) di bozza, `science_issues.json` e `document_edits.json`, più una versione del
+   registro delle decisioni (`ledger_store` espone un numero che cresce a ogni scrittura o annullamento;
+   senza DB, mtime e dimensione del file). Copia difensiva o oggetti immutabili verso i chiamanti.
+2. `load_config()` in cache per mtime dei file di configurazione.
+3. Client (`frontend/src/api/`): dopo una decisione si aggiorna subito l'issue nella cache di React Query
+   (la decisione si vede senza aspettare), poi si ricaricano **solo** issue, unità della verifica e
+   documento della lezione, non tutta la lezione, la lista e i costi.
+4. Test: un test che conta le applicazioni del registro per una sequenza decisione + quattro letture
+   (una sola); vitest della decisione ottimistica, con ritorno indietro se il server risponde errore.
+
+### V4 — Schema, contesto della lezione, costi
+
+1. **Schema di uscita** nuovo, piccolo, solo per il modello: `ReviewFinding {tipo: concettuale |
+   asr_llm, gravita: bassa | media | alta, citazione, motivazione, sostituzione}`, tutti obbligatori.
+   Niente `id`, `status`, `segment_id`, `suggested_fix`, `diplomatic_question`. Il codice lo converte
+   in `ScienceIssue` (id, ancora con `find_quote` sul testo dell'unità, segmento con
+   `_localize_claim_segment`). Prompt (`SCIENCE_REVIEW_SYSTEM_PROMPT`) aggiornato: la sostituzione c'è
+   **sempre** e sostituisce esattamente la citazione, anche quando aggiunge un dato mancante.
+2. **Schema imposto dove il provider lo supporta** (`rt/llm/client.py`, `rt/llm/providers/`): JSON
+   Schema vincolato per OpenRouter (`response_format` di tipo `json_schema`) e Google
+   (`response_json_schema`, già usato nel generico); DeepSeek resta `json_object`, con validazione
+   Pydantic come oggi.
+3. **Niente chiamate di riparazione**: via il ciclo di `_validated_review_issues` (`review.py:118`). Una
+   citazione non ritrovata in locale diventa un'issue senza ancora ("non ancorata"): si vede nel pannello
+   e si può solo rifiutare.
+4. **Contesto della lezione**: un blocco fisso, uguale per tutte le unità della lezione, **prima** del
+   testo dell'unità: titolo, materia, docente, argomenti e scaletta (titoli delle unità), da
+   `lesson_context` (`rt/services/recall_context.py`, già in cache dalla b1). Ordine del prompt: sistema,
+   contesto della lezione, unità (con le sorelle se richiesto), extra dell'utente per ultimi. La stessa
+   funzione la usano VC2 e VC1.
+5. **Cache del prompt e costi**: dove il provider lo permette il prefisso fisso si marca per la cache
+   (DeepSeek la fa da solo; per OpenRouter con modelli Anthropic o Gemini `cache_control` sul blocco
+   della lezione). I token presi dalla cache (`prompt_cache_hit_tokens` di DeepSeek,
+   `prompt_tokens_details.cached_tokens` di OpenRouter) si salvano nelle chiamate (`rt/db/llm_calls.py`)
+   e il costo li conta al loro prezzo quando è noto. Test sul conteggio.
+
+### V5 — Documento finale automatico
+
+Oggi il build (`rt/pipeline/build.py`) non applica niente: scrive `rielaborato.md` ed `Errori
+concettuali.md` con il testo risolto e segna la lezione completata; in più rinomina la cartella e la
+sposta in `telegram.lessons_root`.
+
+1. Dopo **ogni** cambio di testo (decisione, annullamento, salvataggio dall'editor in
+   `save_document_edit`, Applica di VC1) si accoda un job leggero `documents` per la lezione, **uno
+   solo** per lezione: se ce n'è già uno in coda non se ne aggiunge un altro. Il job aspetta che siano
+   passati 3 s dall'ultimo cambio (data salvata nello stato della lezione) e poi scrive i due file con
+   `render_lesson_documents` (`build.py:291`) sotto `lesson_lock`, in modo atomico.
+2. La fase `build` si aggiorna da sola: VALID quando i file corrispondono al testo, e la lezione passa a
+   completata quando la verifica è finita e non restano issue da decidere (le stesse regole di oggi,
+   senza il clic). L'export usa i file finali quando ci sono, come oggi.
+3. Via il pulsante "Ricostruisci il documento" e `BuildConfirmDialog` da pannello Verifica e Dettagli;
+   via da `build.py` rinomina della cartella, `_move_to_lessons_root_if_configured` e notifica. Il
+   comando `rt build` resta e scrive i file subito.
+4. Test: decisione → dopo il debounce i due file contengono la correzione; tre decisioni ravvicinate →
+   un solo job; modifica a mano dall'editor → file aggiornati; e2e del pannello senza il pulsante.
+
+### V6 — Pannello Verifica nuovo
+
+Wireframe `RT-pannello-verifica.html`, quattro schede di stato. File:
+`components/lesson/panels/ReviewPanel.tsx`, `ReviewUnits.tsx`, `lessonReview.ts`, `reviewIssues.ts`,
+`lib/issueOrder.ts`. `UnitStrip` si toglie **solo** dal pannello Verifica (resta in Domande).
+
+1. **Testa**: una riga di stato ("8 da decidere · 11/13 unità verificate", "Documento aggiornato") e
+   quattro icone con tooltip: **Verifica** (scudo, con il numero di unità da fare: mai verificate,
+   cambiate o fallite; spento con "Tutte le unità sono verificate"), **ordine** (cronologico ⇄
+   gravità), **Mostra decise**, **⋯** (con "Riesegui tutta la lezione…", con conferma nel pannello).
+2. **Un solo elenco di unità**, sempre raggruppato: stato, puntini colorati per gravità delle issue
+   aperte; al passaggio del mouse (sul telefono sempre) Verifica dell'unità e ⋯ ("Riesegui l'unità",
+   con conferma). Le unità escluse dal classificatore sono in grigio, "Esclusa dal classificatore", con
+   un'icona che apre `?panel=classificatore`.
+3. **Issue** al loro posto dentro l'unità: sostituzione e motivazione, niente diff; il testo originale
+   evidenziato nell'editor (come oggi). ✓ accetta, ✗ mantiene, doppio clic sulla sostituzione per
+   modificarla. Dopo la decisione si apre la successiva e il messaggio in basso offre "Annulla". Le issue
+   decise (con "Mostra decise") sono in sola lettura, con la sola azione Annulla. Le issue "da
+   riconfermare" e "non ancorate" (V1, V4) hanno il loro stato e le loro azioni.
+4. **Durante la verifica** l'elenco si riempie unità per unità (V2) e le unità finite si possono già
+   decidere; le altre mostrano lo stato "in corso" o "in coda".
+5. **Lezione tutta decisa**: solo il riepilogo; le issue si rivedono con "Mostra decise".
+6. Si tolgono schede "Da decidere / Decise / Unità", caselle, "Verifica le selezionate",
+   "Verifica le unità mancanti", "Verifica di nuovo tutta la lezione" e il pulsante del build.
+7. Test: vitest per stato del pulsante Verifica e suo tooltip, unità escluse, Mostra decise, issue decisa
+   in sola lettura, Annulla; e2e: verifica in mock con decisione su un'unità finita mentre un'altra è in
+   corso, documento aggiornato senza clic.
+
+### VC2 — Verifica questa parte
+
+`components/lesson/DocumentMenu.tsx:104-108`: la voce oggi è spenta con "In arrivo".
+
+1. Attiva quando la selezione cade in unità rielaborate. Accoda un job `review_part` con lezione, unità e
+   ancora della selezione (`make_anchor` sul testo risolto).
+2. Il job usa lo stesso prompt di V4 (contesto della lezione, unità intera) con la selezione indicata
+   come tratto da controllare, e lo stesso schema. Le issue nuove hanno `origin: 'parte'`, finiscono nel
+   pannello sotto la loro unità con la stessa logica di V1.5 (non sostituiscono le issue aperte fuori
+   dalla selezione).
+3. Al termine un avviso dice quante issue ha trovato, con il link che apre il pannello su quell'unità (il
+   problema della 4.2.3: l'avviso in cima al documento non si vedeva).
+4. Test: pytest del job in mock; e2e dal menu contestuale.
+
+### VC1 — Verifica e Chiedi
+
+Wireframe `RT-verifica-chiedi.html` v3 (tre schede; la terza ha prompt, schema e note per il codice).
+
+1. **Dati**: tabella `study_notes` (migrazione alembic, modello vicino a `StudyHighlight` in
+   `rt/db/models.py`): lezione, `unit_id` (ultima unità in cui il passaggio è stato visto), tipo
+   (`verifica` | `chiedi`), ancora di V1, impronta del testo dell'unità, richiesta, risposta (JSON),
+   modello, costo, data, `applied_decision_id`.
+2. **Job** `study_note` nella coda esistente, modello della route `jobs.review`. Prompt nell'ordine:
+   istruzioni fisse per strumento, contesto della lezione (V4.4), unità intera, testo selezionato,
+   richiesta dello studente per ultima (vuota = richiesta predefinita). Schema vincolato:
+   - Verifica `{esito: corretto | impreciso | errato | non_verificabile, spiegazione, correzione?}`, con
+     `correzione` obbligatoria se l'esito è impreciso o errato e che sostituisce **esattamente** il
+     passaggio;
+   - Chiedi `{spiegazione}`.
+3. **API**: `POST /lessons/{id}/study-notes` (accoda il job), `GET /lessons/{id}/study-notes` (con lo
+   stato dell'ancora: trovata, cambiata, non ritrovata), `GET` singola, `DELETE`,
+   `POST /lessons/{id}/study-notes/{note}/apply`.
+4. **Ritrovare il passaggio**: `locate` di V1 sul testo risolto, prima nell'ultima unità e poi in tutta
+   la lezione; se si ritrova si aggiorna `unit_id`. Mai una chiamata nuova da sola, niente bottone Rifai.
+5. **Applica**: crea un'issue con `origin: 'studio'` e registra una decisione accettata con la correzione
+   e l'ancora, con la stessa API e lo stesso lock della verifica (V1); salva `applied_decision_id`.
+   Disponibile solo se il passaggio si ritrova uguale. Annulla dal toast (o dal pannello Verifica)
+   annulla la decisione. Eliminare la voce non tocca la correzione.
+6. **Studio** (`components/study/Study.tsx`, `highlights.ts`): `HighlightMode` diventa `'evidenzia' |
+   'gomma' | 'verifica' | 'chiedi' | null`; strumenti V e C nel gruppo di evidenziatore e gomma, anche in
+   zen, un tasto ciascuno (V, C), restano attivi dopo l'uso, si spengono con lo stesso tasto o con Esc a
+   popup chiuso; cursore con distintivo. Selezione → `StudyNotePopup` (testo, campo "Cosa vuoi
+   verificare?" / "Cosa vuoi chiedere?", invio con ⌘↵, attesa e risposta nel popup, ✓ Applica per le
+   verifiche con correzione). Su iPhone il popup è un pannello dal basso. Passaggi con una voce
+   sottolineati a puntini (verde verifica, rosso se ha trovato un errore, arancio chiedi;
+   tratteggiato se il testo è cambiato); un clic riapre la risposta.
+7. **Pagina lezione**: in Dettagli, accanto al bottone **Classificatore** della b1, il bottone
+   **Verifiche e domande** con il numero di voci e un puntino se qualcuna ha il testo cambiato.
+   `PanelView` aggiunge `note`; `StudyNotesPanel` elenca le voci per unità con filtro Tutte / Verifiche /
+   Chiedi; ogni voce tiene testo di partenza, richiesta, risposta, esito e correzione, "Vai all'unità"
+   (`/lezioni/ID#unit-X`) ed Elimina. Nell'editor i passaggi ritrovati sono sottolineati come nello
+   Studio; un clic apre la voce nel pannello.
+8. Test: pytest di job, API, ritrovamento e Applica (decisione registrata, testo cambiato, Annulla);
+   vitest di popup, tasti V/C/Esc e pannello; e2e: selezione nello Studio → risposta in mock → Applica →
+   testo cambiato nello Studio e nell'editor.
+
+### CHANGELOG
+
+Le righe di questa beta vanno nella sezione `## 4.2.4b2` di `CHANGELOG.md` (regola di CH1).
+
+### Revisione e merge (Claude)
+
+Claude rivede la PR, prova verifica, decisioni durante la verifica, documento automatico, VC2 e VC1 nel
+browser su una lezione con decisioni vecchie (migrazione), unisce in `claude/rt-4.2.4-beta`, porta
+`VERSION` a `4.2.4b2`, fa girare la suite completa in locale e pubblica la v4.2.4b2 con release.yml,
+seguendo il run fino alla fine.
