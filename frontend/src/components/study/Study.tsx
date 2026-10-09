@@ -1,6 +1,6 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
 import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import { studyNavigation } from './studyNavigation'
@@ -462,6 +462,19 @@ function LessonDetailsPopup({
   anchorRef: React.RefObject<HTMLButtonElement | null>
 }) {
   const popoverRef = useRef<HTMLDivElement>(null)
+  // Fisso sotto la ⓘ, che sta nell'intestazione sempre in vista: agganciato alla pagina
+  // restava in cima al documento e, scorso il testo, non si vedeva (4.2.3.1).
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const update = () => {
+      const r = anchorRef.current?.getBoundingClientRect()
+      if (r) setPlace({ top: r.bottom + 8, left: r.left })
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [open, anchorRef])
 
   useEffect(() => {
     if (!open) return
@@ -501,7 +514,8 @@ function LessonDetailsPopup({
       role="dialog"
       aria-label="Dettagli della lezione"
       data-testid="study-details-popup"
-      className="absolute left-14 top-[50px] z-30 grid w-[min(440px,calc(100%-24px))] gap-2.5 rounded-xl border bg-background p-4 text-body shadow-xl max-md:left-2 max-md:right-2 max-md:top-[54px] max-md:w-auto"
+      style={{ '--popup-top': `${place?.top ?? 0}px`, '--popup-left': `${place?.left ?? 0}px` } as React.CSSProperties}
+      className="fixed left-(--popup-left) top-(--popup-top) z-30 grid w-[min(440px,calc(100%-24px))] gap-2.5 rounded-xl border bg-background p-4 text-body shadow-xl max-md:left-2 max-md:right-2 max-md:w-auto"
     >
       <strong className="font-semibold text-foreground [overflow-wrap:anywhere]">{title}</strong>
       <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1 text-meta">

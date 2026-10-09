@@ -747,3 +747,33 @@ test('Vai all’unità dalla lezione continua a segnare il testo', async ({ page
   await expect(target).toBeInViewport()
   await expect(target).toHaveClass(/rt-claim-unit/)
 })
+
+test('4.2.3.1: in cima alla finestra i suggerimenti scendono sotto; le info della lezione si vedono anche col testo scorso', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 360 })
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toHaveText(/\S.{40,}/)
+  const inView = async (box: { y: number; height: number } | null) => {
+    expect(box).not.toBeNull()
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(360)
+  }
+  const tools = page.getByTestId('study-header-tools')
+  for (const control of [tools.getByRole('button', { name: /^Evidenziatore/ }), tools.getByRole('button', { name: 'Gomma' }), page.getByTestId('study-title-button')]) {
+    await page.mouse.move(0, 0)
+    await control.hover()
+    const tip = page.getByRole('tooltip').filter({ visible: true })
+    await expect(tip).toHaveCount(1)
+    await inView(await tip.boundingBox())
+  }
+  await page.mouse.move(0, 0)
+  // Il testo delle lezioni di prova è di una riga: lo si allunga per poterlo scorrere.
+  await page.getByTestId('study-reading-column').evaluate((column: HTMLElement) => { column.style.paddingBottom = '2000px' })
+  await page.evaluate(() => window.scrollTo(0, 600))
+  expect((await page.getByTestId('study-text').boundingBox())!.y).toBeLessThan(0)
+  await page.getByTestId('study-title-button').click()
+  const popup = page.getByTestId('study-details-popup')
+  await expect(popup).toBeVisible()
+  await inView(await popup.boundingBox())
+})
