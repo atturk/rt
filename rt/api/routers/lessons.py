@@ -304,7 +304,7 @@ def get_outline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             summary="Issue della review con contesto (unità, timecode, finestra audio)")
 def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                status: Literal["pending", "all"] = Query("pending", description="pending: solo da decidere")):
-    from rt.pipeline.ledger import load_ledger
+    from rt.pipeline.ledger import load_ledger, resolve_science_accept_text
     from rt.pipeline.review import load_science_issues
     from rt.services.review_service import issue_context, is_review_complete
     issues = load_science_issues(lesson_dir)
@@ -318,6 +318,7 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
             continue
         items.append({
             "issue": issue.model_dump(mode="json"),
+            "fix_text": resolve_science_accept_text(issue),
             "context": issue_context(lesson_dir, issue),
             "decision": decision.model_dump(mode="json") if decision else None,
         })

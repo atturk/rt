@@ -60,8 +60,12 @@ class ApiSide:
     def decide_pending(self, lesson_id, decide):
         for item in self.client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"]:
             issue = item["issue"]
-            self.post(f"/lessons/{lesson_id}/issues/{issue['id']}/decision",
-                      json={"decision": decide(issue)})
+            response = self.client.post(f"/api/v1/lessons/{lesson_id}/issues/{issue['id']}/decision",
+                                        json={"decision": decide(issue)})
+            if response.status_code == 409:
+                assert response.json()['error']['code'] in {'claim_changed', 'suggestion_only'}
+            else:
+                assert response.status_code == 200, response.text
 
 
 class CliSide:

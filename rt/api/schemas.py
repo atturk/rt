@@ -320,6 +320,7 @@ class Decision(BaseModel):
 
 
 class IssueItem(BaseModel):
+    fix_text: Optional[str] = Field(None, description="Correzione letterale applicabile; null per un suggerimento")
     issue: Dict[str, Any] = Field(description="ScienceIssue (science_issues.json)")
     context: Optional[IssueContext] = None
     decision: Optional[Decision] = None

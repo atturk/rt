@@ -197,11 +197,11 @@ def test_warnings_count_orphan_issues(root):
     claims = [i["claim"] for i in issues if i["claim"]]
     _edit_draft(lesson_dir, lambda text: text.replace(claims[0], "testo riscritto a mano"))
     orphans = orphan_issue_ids(lesson_dir)
-    assert len(orphans) == sum(1 for c in claims if c == claims[0])  # nel mock le issue condividono il claim
+    assert len(orphans) == sum(1 for c in claims if c == claims[0])  # le altre issue restano agganciate al proprio testo
     codes = {w["code"]: w for w in build_warnings(lesson_dir)}
     assert codes["orphan_issues"]["count"] == len(orphans)
-    assert codes["orphan_issues"]["message"].endswith("il loro testo non è più nella bozza.")
-    assert codes.get("pending_issues", {}).get("count", 0) == 10 - len(orphans)
+    assert codes["orphan_issues"]["message"].endswith("il suo testo non è più nella bozza." if len(orphans) == 1 else "il loro testo non è più nella bozza.")
+    assert codes.get("pending_issues", {}).get("count", 0) == len(issues) - len(orphans)
     assert "review_stale" in codes  # la bozza è cambiata dopo la review
 
     # una issue rifiutata non è orfana: il testo resta com'è

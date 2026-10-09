@@ -3793,6 +3793,11 @@ export interface components {
             context?: components["schemas"]["IssueContext"] | null;
             decision?: components["schemas"]["Decision"] | null;
             /**
+             * Fix Text
+             * @description Correzione letterale applicabile; null per un suggerimento
+             */
+            fix_text?: string | null;
+            /**
              * Issue
              * @description ScienceIssue (science_issues.json)
              */

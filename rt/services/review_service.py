@@ -145,6 +145,8 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
     if decision == "accepted":
         resolved = _unit_content(lesson_dir, issue) if is_asr else resolve_science_accept_text(issue)
+        if not is_asr and not resolved:
+            raise ReviewDecisionError("È un suggerimento, non una correzione: scrivi tu il testo", reason="suggestion_only")
         if is_asr and not resolved:
             raise ReviewDecisionError("Unità non disponibile: impossibile accettare questa verifica ASR.")
         return resolved
@@ -219,12 +221,16 @@ def auto_accept_pending(
     _, pending = get_pending_issues(lesson_dir)
     accepted, remaining = [], []
     for iss in pending:
-        (accepted if should_auto_accept_science(iss, auto_accept) else remaining).append(iss)
-    for iss in accepted:
-        record_review_decision(
-            lesson_dir, iss.id, "accepted", sanitize_suggested_fix(iss.suggested_fix),
-            channel=channel, actor="auto_accept", resolved_by="cli_auto",
-        )
+        if not should_auto_accept_science(iss, auto_accept) or not (_is_no_diff_issue_type(iss) or resolve_science_accept_text(iss)):
+            remaining.append(iss)
+            continue
+        try:
+            record_review_decision(lesson_dir, iss.id, "accepted", channel=channel,
+                                   actor="auto_accept", resolved_by="cli_auto", validate=True)
+        except ReviewDecisionError:
+            remaining.append(iss)
+        else:
+            accepted.append(iss)
     return accepted, remaining
 
 

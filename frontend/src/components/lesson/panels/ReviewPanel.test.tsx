@@ -182,3 +182,15 @@ it('in fondo a Verifica mostra le tacche, senza il vecchio footer di testo', () 
   expect(screen.queryByText(/^Unità per il recaller:/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette · classificatore aggiornato' }))
 })
+
+it('il suggerimento non letterale si modifica dal claim e non si accetta a vuoto', async () => {
+  state.items = [{ ...issue, fix_text: null, issue: { ...issue.issue, suggested_fix: 'Precisare che il valore normale è 7,4.' } }]
+  mount()
+  expect(screen.getByText('Suggerimento')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
+  fireEvent.doubleClick(screen.getByTestId('proposed-correction'))
+  expect(screen.getByRole('textbox', { name: 'Testo corretto' })).toHaveValue('Il pH è 6.')
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Il pH è 7,4.' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Applica la tua correzione' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,4.' }))
+})

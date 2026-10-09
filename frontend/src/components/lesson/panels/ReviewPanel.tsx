@@ -138,7 +138,8 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
 }) {
   const issue = issueOf(item)
   const paragraph = paragraphIssue(issue)
-  const proposed = paragraph ? item.context?.unit_content ?? issue.claim : issue.suggested_fix ?? issue.claim
+  const suggestion = !paragraph && item.fix_text === null
+  const proposed = paragraph ? item.context?.unit_content ?? issue.claim : suggestion ? issue.claim : item.fix_text ?? issue.suggested_fix ?? issue.claim
   const [text, setText] = useState(proposed)
   const box = useRef<HTMLDivElement>(null)
   const controls = useRef<HTMLDivElement>(null)
@@ -169,10 +170,10 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
     <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
     {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
     {!paragraph && !changed && <div ref={box}>
-      <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">Correzione proposta</h3>
+      <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{suggestion ? 'Suggerimento' : 'Correzione proposta'}</h3>
         {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
       </div>
-      {editing ? <Textarea id="review-edit" aria-label="Correzione proposta" autoFocus rows={1} value={text}
+      {editing ? <Textarea id="review-edit" aria-label={suggestion ? 'Testo corretto' : 'Correzione proposta'} autoFocus rows={1} value={text}
         ref={prepareInput}
         onChange={event => { setText(event.target.value); event.target.style.height = 'auto'; event.target.style.height = `${event.target.scrollHeight}px` }}
         onKeyDown={event => {
@@ -180,7 +181,7 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
           else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); apply() }
         }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
         <Tooltip content="Doppio clic per modificare" disabled={phone || !!item.decision || busy}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
-          onDoubleClick={() => { if (!busy && !item.decision) onEditing(true) }} onClick={() => { if (phone && !busy && !item.decision) onEditing(true) }}>{proposed}</p>}</Tooltip>}
+          onDoubleClick={() => { if (!busy && !item.decision) onEditing(true) }} onClick={() => { if (phone && !busy && !item.decision) onEditing(true) }}>{suggestion ? issue.suggested_fix : proposed}</p>}</Tooltip>}
     </div>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
@@ -197,7 +198,7 @@ function IssueCard({ item, busy, editing, onEditing, onDecide, onSeek, phone, ch
       <Button size="sm" disabled={busy} onClick={() => onDecide('accepted')}><Check />Accetta</Button>
       <Button size="sm" variant="outline" disabled={busy} onClick={() => onEditing(true)}><Pencil />Modifica</Button>
     </div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
-      <IconButton label={editing && modified ? 'Applica la tua correzione' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />
+      {(!suggestion || editing) && <IconButton label={suggestion || editing && modified ? 'Applica la tua correzione' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
       <IconButton label="Mantieni il testo attuale" icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />
     </div>}
 

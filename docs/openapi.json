@@ -2367,6 +2367,18 @@
               }
             ]
           },
+          "fix_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correzione letterale applicabile; null per un suggerimento",
+            "title": "Fix Text"
+          },
           "issue": {
             "additionalProperties": true,
             "description": "ScienceIssue (science_issues.json)",

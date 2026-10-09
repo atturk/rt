@@ -64,6 +64,31 @@ def test_api_returns_claim_changed(lesson, api_client):
     response = api_client.post(f'/api/v1/lessons/{lesson_id}/issues/{b.id}/decision', json={'decision':'accepted'})
     assert response.status_code == 409 and response.json()['error']['code'] == 'claim_changed'
 
+
+def test_advisory_acceptance_is_rejected(lesson):
+    advisory = issue('sci_000001', 'formando carbossiemoglobina', 'Precisare che la CO2 si lega alla globina')
+    save_science_issues([advisory], lesson)
+    with pytest.raises(rs.ReviewDecisionError, match='È un suggerimento, non una correzione'):
+        rs.record_review_decision(lesson, advisory.id, 'accepted', channel='web', validate=True)
+    assert not load_ledger(lesson).decisions
+
+
+def test_auto_accept_leaves_advisory_pending(lesson):
+    advisory = issue('sci_000001', 'formando carbossiemoglobina', 'Verificare il nome del composto')
+    save_science_issues([advisory], lesson)
+    accepted, remaining = rs.auto_accept_pending(lesson, 'all')
+    assert accepted == [] and [i.id for i in remaining] == [advisory.id]
+    assert not load_ledger(lesson).decisions
+
+
+def test_api_exposes_literal_fix_text(lesson, api_client):
+    a = issue('sci_000001', 'formando carbossiemoglobina', 'Verificare il nome del composto')
+    b = issue('sci_000002', 'CO2', 'Sostituire con: "anidride carbonica"')
+    save_science_issues([a,b], lesson)
+    lesson_id = api_client.get('/api/v1/lessons').json()[0]['id']
+    items = api_client.get(f'/api/v1/lessons/{lesson_id}/issues').json()['items']
+    assert [i['fix_text'] for i in items] == [None, 'anidride carbonica']
+
 def test_paragraph_preserves_correction_containing_original_claim(lesson):
     from rt.pipeline.rewrite import load_draft, save_draft
     draft = load_draft(lesson)
@@ -78,3 +103,11 @@ def test_paragraph_preserves_correction_containing_original_claim(lesson):
     assert load_resolved_draft(lesson).units[0].content == 'I saturi non hanno doppi legami. Nota.'
 
 
+def test_auto_accept_does_not_record_overlapping_corrections(lesson):
+    a = issue('sci_000001', 'formando carbossiemoglobina', 'formando carbaminoemoglobina')
+    b = issue('sci_000002', "all'emoglobina formando carbossiemoglobina nei globuli rossi", 'alla globina')
+    save_science_issues([a,b], lesson)
+    accepted, remaining = rs.auto_accept_pending(lesson, 'all')
+    assert [i.id for i in accepted] == [a.id]
+    assert [i.id for i in remaining] == [b.id]
+    assert [d.issue_id for d in load_ledger(lesson).decisions] == [a.id]
