@@ -271,7 +271,7 @@ def _review_units(args) -> None:
             results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
             print(f"⚠️  Unità {unit} non presente nella bozza: saltata.")
             continue
-        res = run_review_unit(args.lesson_dir, unit, force_mock=args.mock)
+        res = run_review_unit(args.lesson_dir, unit, force_mock=args.mock, force=args.force)
         results.append(res)
         if res.get("status") == "skipped":
             print(f"⚠️  Unità {unit} saltata: {res.get('reason')}.")

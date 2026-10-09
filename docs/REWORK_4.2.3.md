@@ -1188,3 +1188,264 @@ in `claude/rt-4.2.3-beta`, imposta VERSION `4.2.3`, lancia **tutti** i test in l
 frontend, build, entrambi i gruppi e2e). Poi apre la PR da `claude/rt-4.2.3-beta` verso `main` (la PR
 #63 con i fix urgenti va unita prima, o chiusa se è già tutto nella beta), e dopo il merge di Attilio
 lancia `release.yml` su `main` e segue il run fino alla fine.
+
+## 4.2.3.2b1 — rework della verifica
+
+Audit del 9 ottobre 2026 (thread "Rework verifica 4.2.3.2", lista completa con le cause in
+`/mnt/project-files/rt-4.2.3/audit-verifica-4.2.3.2.md`), approvato da Attilio. Lavora **solo Codex**,
+un giro solo. Esce come beta **4.2.3.2b1** (beta del fix 4.2.3.2 della stabile 4.2.3).
+
+Wireframe interattivo del pannello, da aprire nel browser: `docs/wireframes-4.2.3/RT-4.2.3.2-verifica.html`
+(tre schede: "Issue per unità", "Unità verificate", "Menu contestuale"). Dove piano e wireframe non
+coincidono vale il piano.
+
+### Regole
+
+- **Branch**: `rt4232/codex`, già creato da `claude/rt-4.2.3.2-beta` (v4.2.3 più questo piano). Un commit per task (messaggio `<id>: …`),
+  alla fine **una sola PR verso `claude/rt-4.2.3.2-beta`**. Mai merge su `main` o sul branch beta,
+  niente tag, `VERSION` non si tocca.
+- In parallelo esce la stabile 4.2.3.1 (PR #68: tooltip che restano nella finestra, pannello laterale
+  sopra la barra dell'editor, popup info dello Studio, versioni tipo 4.2.3.2b1). Non toccare quei punti:
+  `frontend/src/components/ui/tooltip.tsx`, lo z-index di `LessonPanel.tsx`, il popup info di
+  `Study.tsx`, `rt/core/version.py`. Claude porta la 4.2.3.1 nel branch beta prima del merge.
+- Ogni bug ha un test che fallisce sul codice di oggi e passa col fix (i casi sono scritti nei task).
+- Le lezioni esistenti devono continuare a funzionare: file vecchi (issue con id `sci_` numerati per
+  posizione, `document_edits.json` senza date, checkpoint senza registro) si leggono senza errori e
+  senza perdere decisioni.
+- Prima della PR si lanciano **tutti** i test: pytest completo, `npm run lint`, `npm run typecheck`,
+  `npx vitest run`, `npm run build`, poi gli e2e di **entrambi** i gruppi (`RT_E2E_GROUP=recall-images` e
+  `RT_E2E_GROUP=other`) dopo la build. Le preferenze stanno sul server: un e2e che ne cambia una la
+  rimette com'era. Rigenera `docs/openapi.json` (`python scripts/export_openapi.py`) e
+  `frontend/src/api/schema.d.ts` (`npm run gen:api`) dopo i cambi all'API.
+- Testi dell'interfaccia in italiano, nello stile dei pannelli di oggi.
+
+### Decisioni (Attilio, 8 e 9 ottobre 2026)
+
+- Una decisione presa deve **sempre** arrivare nel testo, o essere rifiutata con un motivo chiaro: mai
+  una decisione registrata che non cambia nulla.
+- Un'unità già verificata sul testo di adesso **non si verifica di nuovo** per sbaglio: serve una scelta
+  esplicita ("Verifica di nuovo", con conferma). Vale per la singola unità e per tutta la lezione.
+- Le decisioni restano agganciate alle issue ritrovate quando un'unità si verifica di nuovo.
+- Il pannello mostra anche le unità verificate **senza** issue (oggi non lasciano traccia).
+- Menu contestuale: "Domande su questa parte" diventa "Domande sull'unità X" (o "sulle unità X–Y");
+  "Verifica questa parte" resta visibile ma spenta con "In arrivo" (la verifica contestuale del solo
+  testo selezionato è per la 4.2.4).
+- Ordinamenti di oggi (cronologico, tipo e gravità) restano; in più il raggruppamento per unità.
+
+### Task
+
+| Id | Cosa |
+|---|---|
+| V1 | Decisioni applicate anche alle unità modificate a mano |
+| V2 | Sostituzione: fine frase corretta (decimali) |
+| V3 | Decisioni controllate sul testo che si vede; ordine di applicazione fisso |
+| V4 | Suggerimenti non letterali: niente "Accetta" a vuoto |
+| V5 | Id delle issue stabili, niente più rinumerazione |
+| V6 | Registro delle unità verificate |
+| V7 | Niente ri-verifica delle unità già verificate, salvo forzatura |
+| V8 | Pannello Verifica e menu contestuale |
+| V9 | Elenco issue senza letture ripetute |
+| V10 | Rifiniture: stato dopo una review saltata, avviso di decisione non applicata |
+
+Ordine: V1 → V2 → V3 → V4 → V5 → V6 → V7 → V9 → V10 → V8 (il pannello usa le API dei task prima).
+
+### V1 — Decisioni applicate anche alle unità modificate a mano
+
+Oggi: se un'unità è stata modificata a mano nell'anteprima (in `document_edits.json` ha `edited: true`),
+`apply_decisions_to_draft` (`rt/pipeline/ledger.py`) la salta per intero, anche per le decisioni prese
+**dopo** la modifica. Accetti, la decisione si salva, il testo non cambia.
+
+- `plan_document_edit` / `save_document_edit` (`rt/services/document_edit_service.py`): quando il
+  testo di un'unità cambia, la voce dell'unità prende anche `edited_at` (stesso formato di
+  `ReviewDecision.timestamp`, `datetime.now().isoformat()`); se l'unità era già modificata e il testo
+  non cambia, `edited_at` resta quello di prima.
+- `apply_decisions_to_draft`: per un'unità modificata si applicano le decisioni con timestamp **dopo**
+  `edited_at` (quelle prima sono già nel testo scritto a mano). Per le voci vecchie senza `edited_at` vale
+  la data di modifica di `document_edits.json`. Serve passare a `apply_decisions_to_draft` le date
+  invece del solo insieme degli id (aggiorna `load_resolved_draft`, `build.py` e gli altri chiamanti).
+- `orphan_issue_ids` e `_only_manual_edits` (`rt/pipeline/review.py`) continuano a funzionare.
+
+Test (pytest): lezione sintetica (come `_synthetic_lesson` in `tests/test_document_edit.py`) con
+l'unità 1.1 "Gli acidi grassi saturi hanno doppi legami. Sono lipidi."; issue su "hanno doppi
+legami" → "non hanno doppi legami"; modifica a mano di "Sono lipidi." in "Sono lipidi semplici." con
+`save_document_edit`; poi la decisione `accepted` dal canale web: l'anteprima
+(`render_lesson_documents`) contiene "non hanno doppi legami" **e** "lipidi semplici". Più: decisione
+presa prima della modifica non applicata due volte; file senza `edited_at` letto con la data del file.
+
+### V2 — Sostituzione: fine frase corretta
+
+Oggi in `apply_decisions_to_draft`, se la correzione finisce con "." la sostituzione si allarga dal
+claim fino al primo "." del testo; il punto di "7.4" conta come fine frase e il testo si rompe:
+"…7,35-7,45, mantenuto dai tamponi.4 circa, mantenuto dai tamponi."
+
+- Fine frase = `.`, `!` o `?` seguito da spazio, a capo o fine testo, nello stesso paragrafo (mai oltre
+  un a capo). Se non c'è una frase intera riconoscibile si sostituisce solo il claim.
+- Togli la logica di sostituzione da `apply_decisions_to_draft` in una funzione piccola e testata da sola.
+
+Test (pytest): unità "Il pH normale del sangue è 7.4 circa, mantenuto dai tamponi. Altro testo qui.",
+claim "Il pH normale del sangue è 7.4 circa", correzione "Il pH normale del sangue arterioso è
+7,35-7,45, mantenuto dai tamponi." → risultato "Il pH normale del sangue arterioso è 7,35-7,45,
+mantenuto dai tamponi. Altro testo qui."; più casi con "es." a metà frase, claim in fondo al testo senza
+punto, frase su due paragrafi.
+
+### V3 — Decisioni controllate sul testo che si vede
+
+Oggi `_validated_text` (`rt/services/review_service.py`) controlla il claim nella bozza **grezza**,
+mentre il testo mostrato ha già dentro le decisioni prese. Due issue sulla stessa frase: la seconda
+risulta accettata ma non entra mai. Inoltre il testo di partenza per modificare un'issue di paragrafo
+(`issue_context`, `unit_content`) viene dalla bozza grezza, e la decisione "modificata" sostituisce
+l'intera unità cancellando le correzioni già accettate.
+
+- Una funzione unica che dà il testo risolto di un'unità (quello che il documento mostra adesso) e che
+  usano `_validated_text`, `issue_context` e `orphan_issue_ids`.
+- `accepted`/`edited` su un'issue puntuale il cui claim non è più nel testo risolto → `ReviewDecisionError`
+  con un codice proprio (per esempio `claim_changed`) e il messaggio "Il testo è già cambiato: modificalo
+  a mano o chiudi l'issue". L'API lo restituisce come errore 409/422 con quel codice.
+- `apply_decisions_to_draft` applica prima le decisioni di paragrafo (ASR, deriva) e poi quelle puntuali,
+  ognuna nell'ordine del ledger; la modifica di paragrafo parte dal testo risolto (quindi contiene già
+  le correzioni puntuali prese prima).
+
+Test (pytest): unità "La CO2 si lega all'emoglobina formando carbossiemoglobina nei globuli rossi.",
+issue A su "formando carbossiemoglobina" e B su "all'emoglobina formando carbossiemoglobina nei globuli
+rossi"; accetti A, poi B → B rifiutata con `claim_changed` e il ledger ha solo A. Issue di paragrafo
+modificata dopo un'accettazione puntuale nella stessa unità: il testo finale contiene entrambe.
+
+### V4 — Suggerimenti non letterali
+
+Oggi `sanitize_suggested_fix` restituisce `None` per i suggerimenti discorsivi ("Precisare che…",
+"Verificare…"); "Accetta" salva lo stesso una decisione senza testo e il documento resta uguale.
+
+- `GET /lessons/{id}/issues`: ogni voce dice se la correzione si applica così com'è (per esempio
+  `fix_text`: il testo che entrerebbe nel documento, `null` se il suggerimento non è letterale).
+- Backend: `accepted` su un'issue puntuale senza testo applicabile → `ReviewDecisionError`
+  ("È un suggerimento, non una correzione: scrivi tu il testo"). L'auto-accept della CLI le lascia da
+  decidere.
+- Card dell'issue: con `fix_text` nullo il box si intitola "Suggerimento" (non "Correzione proposta"),
+  mostra il suggerimento, ✓ Accetta non c'è; il doppio clic (un tocco su iPhone) apre la modifica a
+  partire dal **claim**, e ✓ applica come `edited`. ✕ Mantieni resta.
+
+Test: pytest (accettazione rifiutata, auto-accept che salta), vitest della card (titolo, niente
+Accetta, modifica che parte dal claim).
+
+### V5 — Id delle issue stabili
+
+Oggi `_run_review` rinumera tutte le issue per posizione (`sci_000001`…) dopo ogni unità e alla fine;
+`run_review_unit` mette le issue dell'unità rifatta in fondo al file. Verificare di nuovo un'unità e poi
+"Completa la verifica" cambia gli id e `_drop_moved_decisions` toglie **tutte** le decisioni (riprodotto:
+3 decisioni → 0).
+
+- Un'issue tiene il suo id per sempre. Le issue nuove prendono il numero dopo il più alto mai usato
+  (nel file delle issue **e** nel ledger, così un id con decisioni passate non si riusa).
+- Quando un'unità si verifica di nuovo (singola, completamento, forzatura) le issue ritrovate (stessa
+  chiave `_issue_key`: tipo, segmento, claim) riprendono il loro id e la decisione resta; le issue non
+  ritrovate escono dal file e le loro decisioni dal ledger. Una sola funzione per questo, usata da
+  `_run_review` e `run_review_unit`. Vale anche per le issue ERR_ASR_ST aggiunte a fine review.
+- Il file delle issue resta ordinato per unità nell'ordine della bozza (l'ordine non dà più gli id).
+- `run_review_unit` non porta la fase a PARTIAL quando la verifica era completa: se dopo il giro tutte
+  le unità risultano verificate sul testo di adesso, la fase resta (o torna) VALID.
+- Niente più `purge_decisions_by_prefix(…, "sci_")` sull'intera lezione in `_run_review`.
+  `_drop_moved_decisions` resta solo per i file vecchi.
+
+Test (pytest, con `_validated_review_issues` sostituito da un finto revisore che dà un'issue per unità):
+lezione a tre unità verificata, tutte le issue decise; `run_review_unit` sulla 1.1; fase ancora VALID;
+`run_review` normale → nessuna chiamata al modello e le tre decisioni ci sono ancora. Forzatura su una
+lezione con issue decise: le issue ritrovate tengono id e decisione. Issue nuova in un'unità rifatta: id
+nuovo mai usato prima. Adatta `tests/test_review_restart_decisions.py` e
+`tests/test_force_review_ledger_purge.py` alle nuove regole (le decisioni sulle issue ritrovate restano),
+senza togliere i casi che proteggono dalle decisioni attaccate all'issue sbagliata.
+
+### V6 — Registro delle unità verificate
+
+Oggi il checkpoint sa solo quali unità sono state fatte e la loro impronta (`unit_hashes`): niente data,
+modello, numero di issue, e le unità verificate senza issue non lasciano traccia.
+
+- Nuovo file della lezione `review_units.json` (non è un input di nessuna fase, non cambia impronte):
+  per unità `reviewed_at`, `model` (il modello che ha risposto davvero, come nel log del worker; se il
+  client non lo espone, il primario configurato del job `review`), `issues` (trovate in quel giro),
+  `text_hash` (come `_unit_hashes`), `result` (`ok`, `issues`, `skipped_by_prefilter`, `failed` con il
+  messaggio). Lo scrivono `_run_review` dopo ogni unità e `run_review_unit`.
+- API `GET /lessons/{id}/review/units`: una riga per ogni unità della bozza, nell'ordine della lezione,
+  con `unit_id`, `title`, `state` (`ok` verificata senza issue, `issues` con issue, `changed` testo
+  cambiato dopo la verifica, `never` mai verificata, `excluded` esclusa dal revisore, `failed`),
+  `reviewed_at`, `model`, `issues_total`, `issues_pending`. Per le lezioni vecchie senza registro le
+  unità in `completed_items` con impronta uguale valgono verificate (data e modello vuoti).
+
+Test (pytest): registro scritto da review completa e singola; stati `ok`, `issues`, `changed` (dopo una
+modifica a mano), `never`, `excluded`, `failed`; lezione vecchia senza registro.
+
+### V7 — Niente ri-verifica delle unità già verificate
+
+Oggi "Verifica di nuovo tutta la lezione" forza la review e cancella tutte le decisioni senza chiedere;
+se la bozza cambia per una via diversa dalla modifica a mano (per esempio una rielaborazione di
+un'unità) la fase diventa STALE e "Aggiorna il documento" rifà **tutte** le unità e cancella tutte le
+decisioni, pagando di nuovo il modello sull'intera lezione.
+
+- `run_review` senza forzatura verifica solo le unità mai verificate, fallite o il cui testo è cambiato
+  per la pipeline; le altre tengono issue e decisioni. Le unità cambiate solo a mano non si rifanno da
+  sole (come oggi `_only_manual_edits`), ma il registro le mostra `changed`.
+- Con forzatura si rifanno tutte, con le regole di V5 (issue ritrovate tengono id e decisione).
+- `review_unit` (API con `unit`/`units`): un'unità già verificata sul testo di adesso si salta con
+  `status: "skipped"` e motivo "già verificata", a meno di `force: true`. Il risultato del job dice per
+  ogni unità quante issue ha trovato.
+
+Test (pytest, finto revisore che conta le chiamate): lezione verificata, una unità riscritta → `run_review`
+chiama il modello solo per quella e le decisioni delle altre restano; `review_unit` su unità già
+verificata senza forzatura → nessuna chiamata; con forzatura → una chiamata.
+
+### V9 — Elenco issue senza letture ripetute
+
+Oggi `GET /lessons/{id}/issues` chiama `issue_context` per ogni issue, e ognuna rilegge `segments.json` e
+`draft.json` (50 issue = 100 letture). Carica segmenti, bozza e testo risolto una volta per richiesta e
+passali a `issue_context`. Test (pytest): con 30 issue i caricamenti di segmenti e bozza avvengono una
+volta (monkeypatch dei loader che conta).
+
+### V10 — Rifiniture
+
+- In `_run_review`, quando la review si salta (fase valida, o modifiche solo a mano), lo stato successivo
+  (`HUMAN_REVIEW_REQUIRED` / `READY_TO_BUILD`) si calcola dal ledger, non da `issue.status == "pending"`
+  (campo che non cambia mai).
+- `build_warnings`: nuovo avviso `decision_not_applied` per le decisioni `accepted`/`edited` la cui
+  correzione non è nel testo risolto (dopo V1-V4 non dovrebbe succedere, ma se succede si vede prima
+  del documento finale).
+
+Test (pytest) per entrambi.
+
+### V8 — Pannello Verifica e menu contestuale
+
+Come il wireframe `docs/wireframes-4.2.3/RT-4.2.3.2-verifica.html`.
+
+- **Riassunto** sotto lo stato: "N unità verificate su M · K senza problemi".
+- **Per unità**: interruttore accanto al menu dell'ordine (scelta salvata come l'ordine). Acceso, le
+  issue di "Da decidere" e "Decise" stanno sotto l'intestazione della loro unità (numero, titolo, un
+  puntino per issue colorato per gravità, "2 da decidere · 1 decisa"), che si chiude e si apre con un
+  clic. Con "Tipo e gravità" i gruppi si ordinano per la issue più grave, con "Cronologico" seguono la
+  lezione; dentro il gruppo vale l'ordine scelto.
+- **Terza sezione "Unità"** accanto a "Da decidere" e "Decise", dai dati di V6: una riga per unità con
+  lo stato a sinistra (verde ok, ambra con issue e conto, vuoto mai verificata, a righe testo cambiato,
+  grigio esclusa, rosso fallita) e sotto il titolo data e modello. Unità mai verificate, cambiate o
+  fallite: pulsante "Verifica". Unità verificate sul testo di adesso: solo ⋯ con "Verifica di nuovo",
+  che chiede conferma ("Le decisioni prese restano agganciate alle issue ritrovate"). Mentre il job
+  gira la riga dice "Verifico…" e alla fine diventa verde o ambra. Clic sulla riga: porta all'unità nel
+  testo. Clic sul conto: apre "Da decidere" filtrato su quell'unità (filtro visibile e togliibile).
+- **"Verifica di nuovo tutta la lezione"**: apre una conferma con due scelte: "Verifica le unità
+  cambiate o mai verificate" (predefinita, disattivata se non ce ne sono) e "Forza tutte le unità" (dice
+  quante decisioni potrebbero sparire se le issue non si ritrovano). Mai più forzatura con un clic.
+- **Errori delle decisioni**: `claim_changed` e il suggerimento non letterale (V3, V4) si mostrano
+  nella card come gli errori di oggi; con `claim_changed` la card passa allo stato "Testo cambiato".
+- **Menu contestuale** (`DocumentMenu.tsx`): "Domande su questa parte" diventa "Domande sull'unità 1.2"
+  (o "sulle unità 1.2–1.3"); "Verifica questa parte" resta visibile e spenta con "In arrivo", come
+  "Leggi da qui"; via la riga "Questa parte: …" e l'avviso `PartReviewStatus` in cima al documento.
+- Su iPhone il pannello resta quello di oggi con le stesse aggiunte (la sezione Unità è una lista a
+  tutta larghezza).
+
+Test: vitest del pannello (riassunto, raggruppamento e ordine dei gruppi, sezione Unità con i sei
+stati, conferme, filtro per unità, errori delle decisioni) e del menu (etichette, voce spenta). E2e
+(mock): verifica di un'unità dalla sezione Unità, la riga passa da "Verifico…" a verde/ambra; "Verifica
+di nuovo tutta la lezione" con la scelta predefinita non lancia nessun giro se tutto è già verificato;
+accettazione di una correzione su un'unità modificata a mano nell'editor → il testo dell'editor cambia.
+
+### Revisione, merge e beta (Claude)
+
+Claude rivede il diff, prova le parti toccate, fa le correzioni brevi con commit "Revisione: …", unisce
+in `claude/rt-4.2.3.2-beta` (che a quel punto contiene anche la 4.2.3.1), imposta VERSION `4.2.3.2b1`,
+lancia tutti i test in locale e pubblica la beta con `release.yml`, seguendo il run fino alla fine.

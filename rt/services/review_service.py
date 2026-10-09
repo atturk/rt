@@ -25,6 +25,7 @@ from rt.pipeline.ledger import (
     resolve_science_reject_text,
     revert_last_decision,
     sanitize_suggested_fix,
+    load_resolved_draft, resolved_unit_content,
 )
 from rt.storage import fs
 
@@ -56,14 +57,16 @@ def lesson_lock(lesson_dir: str) -> Iterator[None]:
         yield
 
 
-def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
+def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=None,
+                  loaded: bool = False) -> Dict[str, Any]:
     """Contesto di un'issue: unità, timecode e finestra audio (secondi e segmenti)."""
     from rt.core.segments import load_segments_json
     from rt.pipeline.rewrite import get_draft_path, load_draft
 
-    seg_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    seg_by_id = {s.id: s for s in seg_data.segments} if seg_data else {}
-    draft = load_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    if not loaded:
+        segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+        draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    seg_by_id = {s.id: s for s in segments.segments} if segments else {}
     seg_to_unit, unit_by_id = {}, {}
     if draft:
         for u in draft.units:
@@ -93,7 +96,7 @@ def issue_context(lesson_dir: str, issue: ScienceIssue) -> Dict[str, Any]:
     return {
         "timecode": seg.start_formatted if seg else "N/D",
         "unit_info": f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else issue.unit_id,
-        "unit_content": sci_unit.content if sci_unit else None,
+        "unit_content": resolved_unit_content(lesson_dir, issue, draft) if draft else None,
         "start_segment_id": start_segment_id,
         "end_segment_id": end_segment_id,
         "start_s": start_s,
@@ -129,13 +132,7 @@ def mark_ready_to_build(lesson_dir: str) -> None:
 
 
 def _unit_content(lesson_dir: str, issue: ScienceIssue) -> Optional[str]:
-    from rt.pipeline.rewrite import load_draft
-
-    draft = load_draft(lesson_dir)
-    unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None)
-    if unit is None and issue.segment_id:
-        unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
-    return unit.content if unit else None
+    return resolved_unit_content(lesson_dir, issue)
 
 
 def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: Optional[str]) -> Optional[str]:
@@ -145,11 +142,13 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     if not is_asr and decision in {"accepted", "edited"}:
         unit_content = _unit_content(lesson_dir, issue)
         if not unit_content or not issue.claim.strip() or issue.claim.strip() not in unit_content:
-            raise ReviewDecisionError("Il claim non è presente nel draft: impossibile applicare la correzione. Apri il file delle issue per verificarla.")
+            raise ReviewDecisionError("Il testo è già cambiato: modificalo a mano o chiudi l'issue", reason="claim_changed")
     if decision == "rejected" and is_asr:
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
     if decision == "accepted":
         resolved = _unit_content(lesson_dir, issue) if is_asr else resolve_science_accept_text(issue)
+        if not is_asr and not resolved:
+            raise ReviewDecisionError("È un suggerimento, non una correzione: scrivi tu il testo", reason="suggestion_only")
         if is_asr and not resolved:
             raise ReviewDecisionError("Unità non disponibile: impossibile accettare questa verifica ASR.")
         return resolved
@@ -224,12 +223,16 @@ def auto_accept_pending(
     _, pending = get_pending_issues(lesson_dir)
     accepted, remaining = [], []
     for iss in pending:
-        (accepted if should_auto_accept_science(iss, auto_accept) else remaining).append(iss)
-    for iss in accepted:
-        record_review_decision(
-            lesson_dir, iss.id, "accepted", sanitize_suggested_fix(iss.suggested_fix),
-            channel=channel, actor="auto_accept", resolved_by="cli_auto",
-        )
+        if not should_auto_accept_science(iss, auto_accept) or not (_is_no_diff_issue_type(iss) or resolve_science_accept_text(iss)):
+            remaining.append(iss)
+            continue
+        try:
+            record_review_decision(lesson_dir, iss.id, "accepted", channel=channel,
+                                   actor="auto_accept", resolved_by="cli_auto", validate=True)
+        except ReviewDecisionError:
+            remaining.append(iss)
+        else:
+            accepted.append(iss)
     return accepted, remaining
 
 
@@ -243,23 +246,20 @@ def orphan_issue_ids(lesson_dir: str) -> List[str]:
     from rt.pipeline.rewrite import get_draft_path, load_draft
     if not fs.isfile(get_draft_path(lesson_dir)):
         return []
-    draft = load_draft(lesson_dir)
-    unit_by_id = {u.unit_id: u for u in draft.units}
+    draft = load_resolved_draft(lesson_dir)
     ledger = {d.issue_id: d for d in load_ledger(lesson_dir).decisions}
     out = []
     for issue in load_science_issues(lesson_dir):
         decision = ledger.get(issue.id)
         if _is_no_diff_issue_type(issue) or (decision and decision.decision == "rejected"):
             continue
-        unit = unit_by_id.get(issue.unit_id) if issue.unit_id else None
-        if unit is None and issue.segment_id:
-            unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
+        content = resolved_unit_content(lesson_dir, issue, draft)
         claim = (issue.claim or "").strip()
-        if unit is not None and claim and claim in unit.content:
+        if content is not None and claim and claim in content:
             continue
-        # testo riscritto a mano nell'anteprima con la correzione già dentro (RT4-FA3)
         fixed = (decision.resolved_text or "").strip() if decision and decision.decision in ("accepted", "edited") else ""
-        if unit is not None and fixed and sanitize_suggested_fix(fixed).strip() in unit.content:
+        literal = sanitize_suggested_fix(fixed) if fixed else None
+        if content is not None and literal and literal in content:
             continue
         out.append(issue.id)
     return out
@@ -295,6 +295,23 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
         warnings.append({"code": "review_invalid", "count": None,
                          "message": f"Issue della revisione non leggibili: {exc}."})
         return warnings
+    resolved = load_resolved_draft(lesson_dir)
+    latest = {d.issue_id: d for d in load_ledger(lesson_dir).decisions}
+    not_applied = []
+    for issue in load_science_issues(lesson_dir):
+        decision = latest.get(issue.id)
+        if not decision or decision.decision not in {"accepted", "edited"}:
+            continue
+        text = sanitize_suggested_fix(decision.resolved_text) if decision.decision == "accepted" else decision.resolved_text
+        content = resolved_unit_content(lesson_dir, issue, resolved)
+        if not text or content is None or text not in content:
+            # Accettare un avviso di paragrafo conferma il testo corrente.
+            if _is_no_diff_issue_type(issue) and decision.decision == "accepted" and content is not None:
+                continue
+            not_applied.append(issue.id)
+    if not_applied:
+        warnings.append({"code": "decision_not_applied", "count": len(not_applied),
+                         "message": f"{len(not_applied)} decisioni non applicate al testo del documento."})
     if pending:
         n = len(pending)
         warnings.append({"code": "pending_issues", "count": n,
@@ -305,3 +322,42 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
                 else f"{n} issue orfane: il loro testo non è più nella bozza")
         warnings.append({"code": "orphan_issues", "count": n, "message": text + "."})
     return warnings
+
+
+def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
+    """Stati della verifica in ordine di bozza, con compatibilità per i checkpoint storici."""
+    from rt.pipeline.review_units import load_review_units
+    from rt.pipeline.review import _unit_hashes, load_science_issues
+    from rt.pipeline.rewrite import load_draft
+    from rt.core.idempotency import get_phase_checkpoint
+    from rt.services.unit_relevance import included
+    draft = load_draft(lesson_dir)
+    current = _unit_hashes(draft.units)
+    registry = load_review_units(lesson_dir)
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    checkpoint = checkpoint or {}
+    hashes = checkpoint.get("unit_hashes") or {}
+    completed = set(checkpoint.get("completed_items") or [])
+    decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
+    issues = load_science_issues(lesson_dir)
+    rows = []
+    for unit in draft.units:
+        entry = registry.get(unit.unit_id) or {}
+        unit_issues = [i for i in issues if i.unit_id == unit.unit_id or
+                       (not i.unit_id and i.segment_id in unit.source_segment_ids)]
+        digest = entry.get("text_hash") or hashes.get(unit.unit_id)
+        known = bool(entry) or unit.unit_id in completed
+        if not included(lesson_dir, unit):
+            state = "excluded"
+        elif known and digest and digest != current[unit.unit_id]:
+            state = "changed"
+        elif entry.get("result") == "failed":
+            state = "failed"
+        elif known and digest == current[unit.unit_id]:
+            state = "issues" if unit_issues else "ok"
+        else:
+            state = "never"
+        rows.append({"unit_id": unit.unit_id, "title": unit.title, "state": state,
+                     "reviewed_at": entry.get("reviewed_at"), "model": entry.get("model"),
+                     "issues_total": len(unit_issues), "issues_pending": sum(i.id not in decided for i in unit_issues)})
+    return rows

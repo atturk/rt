@@ -71,7 +71,8 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 continue
             results.append(run_review_unit(job.lesson_path, unit,
                                            force_mock=bool((job.payload.get("options") or {}).get("mock")),
-                                           parent_context=bool(job.payload.get("parent_context"))))
+                                           parent_context=bool(job.payload.get("parent_context")),
+                                           force=bool(job.payload.get("force") or (job.payload.get("options") or {}).get("force"))))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 

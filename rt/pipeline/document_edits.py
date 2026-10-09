@@ -12,6 +12,7 @@ Formato:
      "units": {"1.1": {"title": "...", "start_segment_id": "seg_000012", "edited": true}}}
 """
 import json
+from datetime import datetime
 from typing import Any, Dict, Optional, Set
 
 from rt.core.idempotency import DOCUMENT_EDITS_FILE
@@ -61,6 +62,15 @@ def save_document_edits(lesson_dir: str, edits: Dict[str, Any]) -> bool:
         json.dump(clean, f, ensure_ascii=False, indent=2, sort_keys=True)
     fs.replace(tmp_path, path)
     return True
+
+
+def edited_unit_dates(lesson_dir: str) -> Dict[str, str]:
+    """Date delle modifiche manuali; i file storici usano la propria data."""
+    edits = load_document_edits(lesson_dir)
+    path = get_document_edits_path(lesson_dir)
+    fallback = datetime.fromtimestamp(fs.getmtime(path)).isoformat() if fs.isfile(path) else ""
+    return {uid: entry.get("edited_at") or fallback
+            for uid, entry in edits["units"].items() if entry.get("edited")}
 
 
 def edited_unit_ids(lesson_dir: str) -> Set[str]:

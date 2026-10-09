@@ -88,9 +88,9 @@ def test_review_of_a_part_asks_for_the_parent_unit_as_context(api_client, ready,
     seen = []
     original = review.run_review_unit
 
-    def spy(lesson_dir, unit_id, force_mock=False, parent_context=False):
+    def spy(lesson_dir, unit_id, force_mock=False, parent_context=False, force=False):
         seen.append((unit_id, parent_context))
-        return original(lesson_dir, unit_id, force_mock=force_mock, parent_context=parent_context)
+        return original(lesson_dir, unit_id, force_mock=force_mock, parent_context=parent_context, force=force)
     monkeypatch.setattr(review, "run_review_unit", spy)
     accepted = api_client.post(f"/api/v1/lessons/{lid}/jobs", json={
         "type": "run_phase", "phase": "review", "units": [unit], "parent_context": True, "mock": True}).json()

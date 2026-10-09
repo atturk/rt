@@ -195,30 +195,57 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     return removed_count
 
 
+def replace_claim(content: str, claim: str, resolved: str) -> str:
+    """Sostituisce il claim, allargando alla frase solo entro lo stesso paragrafo."""
+    start = content.find(claim)
+    if start < 0:
+        return content
+    end = start + len(claim)
+    paragraph_end = content.find("\n", start)
+    if paragraph_end < 0:
+        paragraph_end = len(content)
+    if end <= paragraph_end and resolved.strip().endswith((".", "!", "?")):
+        # La fine deve comprendere tutto il claim: un decimale o un'abbreviazione
+        # interna non possono troncarlo.
+        match = re.search(r"[.!?](?=\s|$)", content[max(start, end - 1):paragraph_end])
+        if match:
+            sentence_end = max(start, end - 1) + match.end()
+            sentence = content[start:sentence_end]
+            words = set(sentence.lower().split())
+            overlap = len(words & set(resolved.lower().split())) / max(1, len(words))
+            if overlap > 0.4:
+                end = sentence_end
+    return content[:start] + resolved + content[end:]
+
+
 def apply_decisions_to_draft(
     draft: Draft,
     ledger: DecisionLedger,
     science_issues: List[ScienceIssue],
-    edited_units: Optional[Set[str]] = None,
+    edited_units: Optional[Dict[str, str]] = None,
 ) -> Draft:
     """
     Applica deterministicamente al draft le decisioni convalidate dal ledger.
     Ogni sostituzione viene applicata una sola volta garantendo idempotenza e conformità UTF-8.
-    Le unità in edited_units hanno il testo scritto dall'utente nell'anteprima, con le
-    decisioni già dentro (rt.pipeline.document_edits): restano come sono.
+    Per le unità modificate a mano si applicano solo le decisioni successive alla modifica.
     """
     decisions_map: Dict[str, ReviewDecision] = {d.issue_id: d for d in ledger.decisions}
     sci_by_id = {iss.id: iss for iss in science_issues}
+    # Ultima decisione per issue, nell'ordine delle ultime voci del ledger.
+    ordered = [d for d in ledger.decisions if decisions_map[d.issue_id] is d]
+    paragraph_types = {ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT}
+    ordered.sort(key=lambda d: sci_by_id[d.issue_id].type not in paragraph_types
+                 if d.issue_id in sci_by_id else True)
     
     updated_units = []
     for unit in draft.units:
         content = fix_mojibake(unit.content)
-        if edited_units and unit.unit_id in edited_units:
-            updated_units.append(unit.model_copy(update={"title": fix_mojibake(unit.title), "content": content}))
-            continue
-        
+        paragraph_date = None
         # Applica decisioni su Science Issues
-        for iss_id, dec in decisions_map.items():
+        for dec in ordered:
+            iss_id = dec.issue_id
+            if edited_units and unit.unit_id in edited_units and dec.timestamp <= edited_units[unit.unit_id]:
+                continue
             if iss_id in sci_by_id:
                 s_iss = sci_by_id[iss_id]
                 if s_iss.unit_id == unit.unit_id or (s_iss.segment_id and s_iss.segment_id in unit.source_segment_ids):
@@ -231,6 +258,7 @@ def apply_decisions_to_draft(
                             continue
                         elif dec.decision == "edited" and dec.resolved_text:
                             content = fix_mojibake(dec.resolved_text)
+                            paragraph_date = dec.timestamp
                             continue
 
                     raw_resolved = dec.resolved_text
@@ -245,18 +273,14 @@ def apply_decisions_to_draft(
                             target = claim_raw
                             
                         if target:
-                            # Se la correzione è una frase completa e il claim era un frammento,
-                            # controlliamo se la sostituzione risolve l'intera frase per evitare duplicazioni sintattiche
-                            idx = content.find(target)
-                            end_sent = content.find(".", idx)
-                            if end_sent != -1 and resolved.strip().endswith("."):
-                                full_sent = content[idx : end_sent + 1].strip()
-                                w_clean = set(resolved.lower().split())
-                                w_sent = set(full_sent.lower().split())
-                                overlap = len(w_clean & w_sent) / max(1, len(w_sent))
-                                if overlap > 0.4:
-                                    target = full_sent
-                            content = content.replace(target, resolved, 1)
+                            # Una modifica di paragrafo parte dal testo risolto:
+                            # le correzioni precedenti già dentro quel testo non
+                            # vanno ripetute se contengono il proprio claim.
+                            fixed_at = content.find(resolved)
+                            claim_at = content.find(target)
+                            if paragraph_date and dec.timestamp <= paragraph_date and fixed_at >= 0 and fixed_at <= claim_at < fixed_at + len(resolved):
+                                continue
+                            content = replace_claim(content, target, resolved)
                             
         unit_copy = unit.model_copy(update={
             "title": fix_mojibake(unit.title),
@@ -279,12 +303,21 @@ def load_resolved_draft(lesson_dir: str) -> Draft:
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import load_science_issues
 
-    from rt.pipeline.document_edits import edited_unit_ids
+    from rt.pipeline.document_edits import edited_unit_dates
 
     draft = load_draft(lesson_dir)
     ledger = load_ledger(lesson_dir)
     science_issues = load_science_issues(lesson_dir)
-    return apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_ids(lesson_dir))
+    return apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir))
+
+
+def resolved_unit_content(lesson_dir: str, issue: ScienceIssue, draft: Optional[Draft] = None) -> Optional[str]:
+    """Testo dell'unità come appare nel documento, anche per issue agganciate al segmento."""
+    draft = draft if draft is not None else load_resolved_draft(lesson_dir)
+    unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None)
+    if unit is None and issue.segment_id:
+        unit = next((u for u in draft.units if issue.segment_id in u.source_segment_ids), None)
+    return unit.content if unit else None
 
 
 def extract_context_sentence(content: str, target: str, fallback_target: str = "", highlight: bool = True) -> str:

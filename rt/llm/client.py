@@ -1288,9 +1288,16 @@ class LLMClient:
             unit_id = u_match.group(1) if u_match else "1.1"
             draft_match = re.search(r"TESTO RIELABORATO:\s*\n(.*?)(?:\n\n(?:---|Individua)|\Z)", prompt, re.DOTALL)
             draft_text = draft_match.group(1).strip() if draft_match else ""
-            mock_claim = draft_text.split(". ", 1)[0].strip()
-            if mock_claim and not mock_claim.endswith(".") and mock_claim + "." in draft_text:
-                mock_claim += "."
+            # Il revisore finto genera correzioni indipendenti: dieci issue sullo
+            # stesso claim non sono tutte accettabili dopo la prima sostituzione.
+            words = list(re.finditer(r"\S+", draft_text))
+            claims = []
+            if words:
+                count = min(10, len(words))
+                for index in range(count):
+                    first = index * len(words) // count
+                    last = (index + 1) * len(words) // count - 1
+                    claims.append(draft_text[words[first].start():words[last].end()])
 
             seg_matches = re.findall(r"seg_\d{6}", prompt)
             if not seg_matches:
@@ -1320,7 +1327,7 @@ class LLMClient:
             ]
 
             mock_issues = []
-            for i, (sci_type, sev, quote, dq) in enumerate(sci_specs, start=1):
+            for i, (sci_type, sev, quote, dq) in enumerate(sci_specs[:len(claims)], start=1):
                 seg_id = seg_matches[(i - 1) % len(seg_matches)]
                 mock_issues.append(
                     ScienceIssue(
@@ -1329,10 +1336,10 @@ class LLMClient:
                         severity=sev,
                         unit_id=unit_id,
                         segment_id=seg_id,
-                        claim=mock_claim or "[MOCK] Affermazione scientifica analizzata",
+                        claim=claims[i - 1],
                         source_quote=quote,
                         reason=f"[MOCK] Critica scientifica #{i} di tipo {sci_type.value}",
-                        suggested_fix=f"[MOCK] Correzione scientifica proposta #{i}",
+                        suggested_fix=f"[MOCK] Correzione #{i}",
                         diplomatic_question=dq,
                         status="pending"
                     )

@@ -204,6 +204,7 @@ export function useCancelJob(lessonId: number) {
 // ---------------------------------------------------------------- review contestuale (RT4-F3)
 
 export const reviewKeys = {
+  units: (id: number) => ['lesson', id, 'review-units'] as const,
   issues: (id: number) => ['lesson', id, 'issues'] as const,
   decisions: (id: number) => ['lesson', id, 'decisions'] as const,
 }
@@ -214,6 +215,13 @@ export function useIssues(id: number, enabled = true) {
     enabled,
     queryFn: () =>
       unwrap(api.GET('/api/v1/lessons/{lesson_id}/issues', { params: { path: { lesson_id: id }, query: { status: 'all' } } })),
+  })
+}
+
+export function useReviewUnits(id: number) {
+  return useQuery({
+    queryKey: reviewKeys.units(id),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/review/units', { params: { path: { lesson_id: id } } })),
   })
 }
 

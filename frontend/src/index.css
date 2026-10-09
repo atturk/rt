@@ -794,3 +794,6 @@
 .rt-unit-strip-unclassified {
   background: repeating-linear-gradient(135deg, var(--accent-foreground) 0 1px, transparent 1px 3px);
 }
+
+/* Verifica: unità modificata dopo l'ultimo controllo. */
+.review-unit-changed { background: repeating-linear-gradient(135deg, var(--color-muted) 0 2px, transparent 2px 4px); border-radius: 50%; }

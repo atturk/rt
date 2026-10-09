@@ -98,5 +98,5 @@ def test_warning_markers_and_orphan_notice(tmp_path):
     assert "1 issue senza unità, segmento o claim" in sidebar
     assert 'data-open-issues-file="1"' in sidebar
     assert missing.id not in {value for _, value in issue_choices(selected)[0]}
-    with pytest.raises(ValueError, match="claim non è presente"):
+    with pytest.raises(ValueError, match="Il testo è già cambiato"):
         submit_review_decision(lesson, missing.id, "accepted")

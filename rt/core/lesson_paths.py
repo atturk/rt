@@ -37,6 +37,7 @@ _STATE_ENTRIES: Set[str] = {
     "outline_timer.json",
     "science_issues.json",
     "review_decisions.json",
+    "review_units.json",
     "web_review_events.jsonl",
     "recall_questions.json",
     "telegram_recall_session.json",

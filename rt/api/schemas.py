@@ -76,7 +76,7 @@ class LessonSummary(BaseModel):
 
 class PhaseWarning(BaseModel):
     code: str = Field(description="review_missing | review_stale | review_partial | review_invalid | "
-                                  "pending_issues | orphan_issues | check_failed")
+                                  "pending_issues | orphan_issues | decision_not_applied | check_failed")
     message: str = Field(description="Testo per l'utente (italiano)")
     count: Optional[int] = Field(None, description="Numero di issue, se l'avviso le conta")
 
@@ -320,6 +320,7 @@ class Decision(BaseModel):
 
 
 class IssueItem(BaseModel):
+    fix_text: Optional[str] = Field(None, description="Correzione letterale applicabile; null per un suggerimento")
     issue: Dict[str, Any] = Field(description="ScienceIssue (science_issues.json)")
     context: Optional[IssueContext] = None
     decision: Optional[Decision] = None
@@ -761,3 +762,13 @@ class SectionLabels(BaseModel):
 class SectionLabelOverride(BaseModel):
     kind: Literal["esercizio", "caso"]
     value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")
+
+
+class ReviewUnit(BaseModel):
+    unit_id: str
+    title: str
+    state: Literal["ok", "issues", "changed", "never", "excluded", "failed"]
+    reviewed_at: Optional[str] = None
+    model: Optional[str] = None
+    issues_total: int = 0
+    issues_pending: int = 0

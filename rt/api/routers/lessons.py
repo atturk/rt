@@ -304,13 +304,19 @@ def get_outline(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             summary="Issue della review con contesto (unità, timecode, finestra audio)")
 def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                status: Literal["pending", "all"] = Query("pending", description="pending: solo da decidere")):
-    from rt.pipeline.ledger import load_ledger
+    from rt.pipeline.ledger import load_ledger, resolve_science_accept_text
     from rt.pipeline.review import load_science_issues
     from rt.services.review_service import issue_context, is_review_complete
     issues = load_science_issues(lesson_dir)
     decisions = {}
     for d in load_ledger(lesson_dir).decisions:
         decisions[d.issue_id] = d
+    from rt.core.segments import load_segments_json
+    from rt.core.lesson_paths import lesson_path
+    from rt.pipeline.ledger import load_resolved_draft
+    from rt.pipeline.rewrite import get_draft_path
+    segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
+    draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
     items = []
     for issue in issues:
         decision = decisions.get(issue.id)
@@ -318,11 +324,12 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
             continue
         items.append({
             "issue": issue.model_dump(mode="json"),
-            "context": issue_context(lesson_dir, issue),
+            "fix_text": resolve_science_accept_text(issue),
+            "context": issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True),
             "decision": decision.model_dump(mode="json") if decision else None,
         })
     pending = sum(1 for i in issues if i.id not in decisions)
-    return {"pending": pending, "total": len(issues), "review_complete": is_review_complete(lesson_dir), "items": items}
+    return {"pending": pending, "total": len(issues), "review_complete": pending == 0, "items": items}
 
 
 @router.get("/lessons/{lesson_id}/decisions", response_model=List[schemas.Decision],
