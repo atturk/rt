@@ -60,8 +60,12 @@ class ApiSide:
     def decide_pending(self, lesson_id, decide):
         for item in self.client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"]:
             issue = item["issue"]
-            self.post(f"/lessons/{lesson_id}/issues/{issue['id']}/decision",
-                      json={"decision": decide(issue)})
+            response = self.client.post(f"/api/v1/lessons/{lesson_id}/issues/{issue['id']}/decision",
+                                        json={"decision": decide(issue)})
+            if response.status_code == 409:
+                assert response.json()['error']['code'] in {'claim_changed', 'suggestion_only'}
+            else:
+                assert response.status_code == 200, response.text
 
 
 class CliSide:
@@ -273,7 +277,7 @@ def test_row_review_single_unit(api, cli, pair):
     lesson_id = api.lesson_id()
     unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
     out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all", "--channel", "terminal")
-    assert f"Revisione dell'unità {unit} completata" in out
+    assert f"Unità {unit} saltata: già verificata" in out
     job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "review", "unit": unit,
                                                        "mock": True})
     assert job["state"] == "succeeded" and job["type"] == "review_unit", job

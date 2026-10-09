@@ -37,7 +37,7 @@ def _setup_test_lesson(lesson_dir: str):
             DraftUnit(
                 unit_id="1.1",
                 title="Introduzione alla glicolisi",
-                content="La biochimica cellulare analizza le reazioni enzimatiche.",
+                content="La biochimica cellulare analizza le reazioni enzimatiche dei processi metabolici fondamentali negli organismi viventi.",
                 start_segment_id="seg_000001",
                 end_segment_id="seg_000003",
                 source_segment_ids=["seg_000001", "seg_000002", "seg_000003"],

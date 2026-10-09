@@ -161,3 +161,30 @@ def test_apply_science_decision_clean_replacement(tmp_path):
     assert "che deve essere regolato" not in u_content
     assert "La regolazione avviene a livello di enzimi chiave." in u_content
 
+
+
+@pytest.mark.parametrize('content, claim, fix, expected', [
+    ('Il pH normale del sangue è 7.4 circa, mantenuto dai tamponi. Altro testo qui.',
+     'Il pH normale del sangue è 7.4 circa',
+     'Il pH normale del sangue arterioso è 7,35-7,45, mantenuto dai tamponi.',
+     'Il pH normale del sangue arterioso è 7,35-7,45, mantenuto dai tamponi. Altro testo qui.'),
+    ('Il tampone, per es. bicarbonato, mantiene il pH. Altro testo.',
+     'Il tampone, per es. bicarbonato', 'Il tampone bicarbonato mantiene il pH.',
+     'Il tampone bicarbonato mantiene il pH. Altro testo.'),
+    ('Il pH è errato', 'errato', 'corretto.', 'Il pH è corretto.'),
+    ('Il pH è errato\nIl pH cambia nel secondo paragrafo.', 'Il pH è errato',
+     'Il pH è corretto.', 'Il pH è corretto.\nIl pH cambia nel secondo paragrafo.'),
+    ('Il pH è errato! Altro testo.', 'Il pH è errato', 'Il pH è corretto!',
+     'Il pH è corretto! Altro testo.'),
+])
+def test_replacement_recognizes_sentence_end(content, claim, fix, expected):
+    """V2: decimali, abbreviazioni e paragrafi non spezzano la sostituzione."""
+    from rt.core.models import DecisionLedger, ReviewDecision
+    from rt.pipeline.ledger import replace_claim
+    assert replace_claim(content, claim, fix) == expected
+    unit = DraftUnit(unit_id='1.1', title='pH', start_segment_id='seg_000001',
+                     end_segment_id='seg_000001', source_segment_ids=['seg_000001'], content=content)
+    issue = ScienceIssue(id='sci_000001', unit_id='1.1', type=ScienceType.ERR_CONCETTUALE,
+                         severity=ScienceSeverity.LOW, claim=claim, reason='Errore')
+    ledger = DecisionLedger(decisions=[ReviewDecision(issue_id=issue.id, decision='accepted', resolved_text=fix)])
+    assert apply_decisions_to_draft(Draft(schema_version='1.0', units=[unit]), ledger, [issue]).units[0].content == expected

@@ -4,7 +4,7 @@
     {
       "issue_id": "sci_000001",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #1",
+      "resolved_text": "[MOCK] Correzione #1",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -15,7 +15,7 @@
     {
       "issue_id": "sci_000002",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #2",
+      "resolved_text": "[MOCK] Correzione #2",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -26,7 +26,7 @@
     {
       "issue_id": "sci_000003",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #3",
+      "resolved_text": "[MOCK] Correzione #3",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -37,7 +37,7 @@
     {
       "issue_id": "sci_000004",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #4",
+      "resolved_text": "[MOCK] Correzione #4",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -48,7 +48,7 @@
     {
       "issue_id": "sci_000005",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #5",
+      "resolved_text": "[MOCK] Correzione #5",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -59,7 +59,7 @@
     {
       "issue_id": "sci_000006",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #6",
+      "resolved_text": "[MOCK] Correzione #6",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -70,7 +70,7 @@
     {
       "issue_id": "sci_000007",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #7",
+      "resolved_text": "[MOCK] Correzione #7",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -81,7 +81,7 @@
     {
       "issue_id": "sci_000008",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #8",
+      "resolved_text": "[MOCK] Correzione #8",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -92,7 +92,7 @@
     {
       "issue_id": "sci_000009",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #9",
+      "resolved_text": "[MOCK] Correzione #9",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
@@ -103,7 +103,7 @@
     {
       "issue_id": "sci_000010",
       "decision": "accepted",
-      "resolved_text": "[MOCK] Correzione scientifica proposta #10",
+      "resolved_text": "[MOCK] Correzione #10",
       "resolved_by": "cli_auto",
       "timestamp": "<TS>",
       "notes": null,
