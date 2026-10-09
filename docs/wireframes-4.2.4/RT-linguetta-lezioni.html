@@ -1,0 +1,274 @@
+<title>Linguetta cambio lezione</title>
+<style>
+/* Layout: note in alto, cornice dello Studio classico al centro, elenco lezioni d'esempio sotto; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --danger:#d4382a;
+  --rail:#fafafa; --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c;
+  --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c;
+  --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul,.notes ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg);white-space:nowrap}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px;color:var(--mute)}
+.controls label{display:inline-flex;gap:6px;align-items:center}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.stage{overflow-x:auto;padding-bottom:4px}
+.app{width:1000px;height:600px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:14px;display:flex;overflow:hidden;position:relative}
+.app:focus{outline:none} .app:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0}
+.rail i{width:26px;height:26px;border-radius:8px;background:var(--soft);display:block}
+.rail i.on{background:var(--acc-soft)} .rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px 0 8px;flex:none}
+.hdr .title{flex:1;min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:6px}
+.ib{width:34px;height:34px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center}
+.ib svg{width:19px;height:19px}
+.idx{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:9px;padding:0 10px;height:34px;font-size:14px;white-space:nowrap}
+.scroll{flex:1;overflow:auto;padding:0 28px}
+.col{max-width:620px;margin:0 auto;padding:12px 0 40px;transition:transform .3s ease-out}
+.col.bl{animation:bl .3s ease-out} .col.br{animation:br .3s ease-out}
+@keyframes bl{35%{transform:translateX(-12px)}} @keyframes br{35%{transform:translateX(12px)}}
+.dots{display:flex;gap:4px;margin:4px 0 22px;align-items:center}
+.dots span{flex:1;height:3px;border-radius:3px;background:var(--track)}
+.dots span.l{background:var(--learned)} .dots span.a{background:var(--learning)} .dots span.cur{height:7px}
+.col h3{font-size:22px;line-height:1.3;margin:0 0 6px;text-wrap:balance}
+.col .sub{color:var(--mute);font-size:13px;margin:0 0 14px}
+.col p{margin:0 0 16px;line-height:1.75}
+.foot{flex:none;border-top:1px solid var(--border);padding:14px;display:flex;justify-content:center}
+.foot span{width:100%;max-width:620px;min-height:44px;border-radius:10px;background:var(--acc-soft);color:var(--acc);display:grid;place-items:center;font-weight:500}
+.edge{position:absolute;inset-block:0;width:28px;pointer-events:none;z-index:6;animation:edge 450ms ease-out both}
+.edge.l{left:0;background:linear-gradient(to right,color-mix(in oklch,var(--learned) 45%,transparent),transparent)}
+.edge.r{right:0;background:linear-gradient(to left,color-mix(in oklch,var(--learned) 45%,transparent),transparent)}
+@keyframes edge{0%,100%{opacity:0}30%{opacity:1}}
+
+/* Linguetta */
+.tab{position:absolute;top:50%;z-index:8;display:flex;align-items:stretch;gap:8px;padding:8px;background:var(--bg);border:1px solid var(--border);box-shadow:var(--shadow);transform:translateY(-50%)}
+.tab.r{right:0;border-right:0;border-radius:14px 0 0 14px;animation:inR .25s ease-out}
+.tab.l{left:0;border-left:0;border-radius:0 14px 14px 0;animation:inL .25s ease-out;flex-direction:row-reverse}
+.tab.out.r{animation:outR .2s ease-in forwards} .tab.out.l{animation:outL .2s ease-in forwards}
+@keyframes inR{from{transform:translate(100%,-50%)}} @keyframes inL{from{transform:translate(-100%,-50%)}}
+@keyframes outR{to{transform:translate(100%,-50%)}} @keyframes outL{to{transform:translate(-100%,-50%)}}
+.tab .btns{display:flex;flex-direction:column;gap:6px}
+.tb{position:relative;display:flex;align-items:center;gap:2px;justify-content:center;width:52px;height:44px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--fg);cursor:pointer}
+.tb:hover:not(:disabled){background:var(--soft)}
+.tb:disabled{color:var(--mute);opacity:.45;cursor:not-allowed}
+.tb svg{width:18px;height:18px}
+.tb svg.ar{width:14px;height:14px}
+.timer{width:4px;border-radius:3px;background:var(--soft);position:relative;overflow:hidden}
+.timer i{position:absolute;inset:0;background:var(--acc);transform-origin:top;animation:drain 5s linear forwards}
+.tab.paused .timer i{animation-play-state:paused}
+@keyframes drain{to{transform:scaleY(0)}}
+.tip{position:absolute;z-index:9;max-width:260px;background:var(--tip);color:var(--tip-fg);font-size:12.5px;line-height:1.4;padding:6px 9px;border-radius:7px;pointer-events:none;box-shadow:var(--shadow)}
+.tip b{display:block;font-weight:600}
+.loading{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in oklch,var(--bg) 70%,transparent);z-index:10;font-size:14px;color:var(--mute)}
+
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+th{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+td.t{white-space:normal}
+tr.cur td{background:var(--acc-soft)}
+tr.off td{color:var(--mute)}
+.tbl{overflow-x:auto}
+.pill{font-size:12px;border-radius:999px;padding:1px 8px;background:var(--soft)}
+@media (prefers-reduced-motion: reduce){.tab,.tab.out.r,.tab.out.l,.col.bl,.col.br,.edge{animation:none}.tab.out{display:none}.timer i{animation-duration:5s}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-cal"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></g>
+    <g id="i-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></g>
+    <g id="i-r"><path d="M5 12h14M12 5l7 7-7 7"/></g>
+    <g id="i-l"><path d="M19 12H5M12 19l-7-7 7-7"/></g>
+    <g id="i-back"><path d="m15 18-6-6 6-6"/></g>
+    <g id="i-list"><path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/></g>
+  </defs>
+</svg>
+
+<div class="top">
+  <h1>Linguetta per cambiare lezione</h1>
+  <span class="meta">RT 4.2.4b1 · wireframe · 8 ottobre 2026</span>
+</div>
+
+<div class="wrap">
+  <div class="notes">
+    <h2>Ai bordi dello Studio esce una linguetta per passare a un'altra lezione</h2>
+    <ul>
+      <li>Solo nello Studio classico, non in zen. Compare quando sei sull'<b>ultima unità e vai a destra</b> (<span class="kbd">→</span> o swipe) o sulla <b>prima e vai a sinistra</b>. Il bordo laterale di oggi resta.</li>
+      <li>Esce scorrendo dal lato verso cui ti muovi, a metà altezza. Dentro: <b>calendario + freccia</b> (lezione dopo o prima <i>dello stesso giorno</i>) e <b>materia + freccia</b> (lezione dopo o prima <i>della stessa materia</i>), con una barra verticale di 5 s.</li>
+      <li>Premere di nuovo la stessa freccia fa ripartire i 5 s. Sparisce allo scadere, subito se torni a un'unità che non è agli estremi, e subito se premi la freccia opposta.</li>
+      <li>Al passaggio del mouse ogni bottone ha un tooltip con cosa fa e quale lezione apre. Se quella lezione non c'è, il bottone è spento e il tooltip lo dice.</li>
+      <li>Prova: clicca nella cornice e usa <span class="kbd">←</span> <span class="kbd">→</span>. L'unità di partenza è l'ultima.</li>
+    </ul>
+    <div class="controls">
+      <label><input type="checkbox" id="pause" checked> Il mouse sopra la linguetta ferma il timer</label>
+      <button type="button" id="reset" class="tb" style="width:auto;height:auto;padding:4px 10px;font:inherit;font-size:13px">Ricomincia</button>
+    </div>
+  </div>
+
+  <div class="stage"><div class="app" id="app" tabindex="0" aria-label="Studio classico d'esempio, clicca e usa le frecce">
+    <div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>
+    <div class="main" id="main"></div>
+  </div></div>
+
+  <div class="notes">
+    <h2>Lezioni d'esempio e quale si apre</h2>
+    <p style="margin:0;font-size:14px;color:var(--mute)">Contano solo le lezioni pronte per lo Studio (rielaborazione valida). Ordine: data, poi ora, poi titolo. Riga evidenziata = lezione aperta.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Data</th><th>Ora</th><th>Materia</th><th>Lezione</th><th>Studio</th></tr></thead>
+      <tbody id="list"></tbody>
+    </table></div>
+  </div>
+
+  <div class="notes">
+    <h2>Domande aperte, con la mia proposta</h2>
+    <ol>
+      <li><b>Dove si apre la lezione nuova?</b> Proposta: andando avanti dalla prima unità, andando indietro dall'ultima, così continui a scorrere nella stessa direzione. Alternativa: dalla prima unità non appresa, come quando apri lo Studio.</li>
+      <li><b>Il mouse sopra la linguetta ferma il timer?</b> Proposta: sì, altrimenti sparisce mentre leggi il tooltip. Riparte da 5 s quando il mouse esce.</li>
+      <li><b>Lezioni non pronte</b> (senza rielaborazione): proposta saltarle e prendere la successiva pronta. Il tooltip dice comunque quale lezione apri.</li>
+      <li><b>Sull'iPhone</b> la linguetta esce anche con lo swipe; i tooltip non ci sono, quindi il nome della lezione va nell'etichetta accessibile e il tocco apre subito.</li>
+    </ol>
+  </div>
+
+  <div class="notes">
+    <h2>Come si farebbe (per il prompt a Codex)</h2>
+    <ul>
+      <li><span class="code">Study.tsx</span>, <span class="code">navigateReading</span>: oggi a <span class="code">'left-edge'</span>/<span class="code">'right-edge'</span> fa solo <span class="code">setEdge</span>. Lì si apre anche la linguetta (<span class="code">LessonJumpTab</span>, nuovo componente in <span class="code">components/study/</span>) con lato e un contatore che rimonta la barra a ogni pressione. Qualsiasi cambio di unità la chiude.</li>
+      <li>Vicini calcolati nel frontend con <span class="code">useLessons()</span> (già in cache dalla pagina Lezioni): filtro <span class="code">phases.rewrite === 'VALID'</span>, ordinamento per <span class="code">data</span>, <span class="code">ora</span>, titolo; stesso giorno = stessa <span class="code">data</span>; stessa materia = stessa <span class="code">materia</span>. Funzione pura <span class="code">lessonNeighbors(lessons, id)</span> con test.</li>
+      <li>Clic: <span class="code">navigate('/studio/lezione/' + id, { state: { enter: 'last' } })</span> andando indietro; <span class="code">StudyFlow</span> legge lo stato come già fa <span class="code">enterLast</span>.</li>
+      <li>Icone: <span class="code">Calendar</span> e <span class="code">Tag</span> (la materia in Lezioni usa già <span class="code">Tag</span>) con <span class="code">ArrowRight</span>/<span class="code">ArrowLeft</span>. Tooltip col componente <span class="code">Tooltip</span> dell'app.</li>
+      <li>Test: unit su <span class="code">lessonNeighbors</span> (stesso giorno, materia, lezioni non pronte, nessun vicino); e2e: → sull'ultima unità mostra la linguetta, ← la chiude, dopo 5 s sparisce, il clic apre la lezione giusta.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+const ic = (id, cls='') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const LESSONS = [
+  {id:1, data:'2026-10-05', ora:'09:00', materia:'Patologia generale', titolo:'Infiammazione acuta', ready:true},
+  {id:2, data:'2026-10-05', ora:'11:00', materia:'Fisiologia', titolo:'Ventilazione polmonare', ready:true},
+  {id:3, data:'2026-10-06', ora:'09:00', materia:'Fisiologia', titolo:'Scambi gassosi', ready:false},
+  {id:4, data:'2026-10-06', ora:'11:00', materia:'Patologia generale', titolo:'Fisiopatologia dell’equilibrio acido-base', ready:true},
+  {id:5, data:'2026-10-06', ora:'14:30', materia:'Biochimica', titolo:'Ciclo dell’urea', ready:true},
+  {id:6, data:'2026-10-07', ora:'09:00', materia:'Patologia generale', titolo:'Shock e insufficienza circolatoria', ready:true},
+  {id:7, data:'2026-10-07', ora:'11:00', materia:'Biochimica', titolo:'Metabolismo del glicogeno', ready:true},
+];
+const UNITS = 5;
+const fmt = d => new Date(d+'T12:00').toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+const sorted = () => LESSONS.filter(l=>l.ready).sort((a,b)=>a.data.localeCompare(b.data)||a.ora.localeCompare(b.ora)||a.titolo.localeCompare(b.titolo));
+function neighbors(id, dir){
+  const list = sorted(), cur = LESSONS.find(l=>l.id===id);
+  const pick = f => { const xs = list.filter(f); const i = xs.findIndex(l=>l.id===id); return xs[i+dir] || null; };
+  return { day: pick(l=>l.data===cur.data), subj: pick(l=>l.materia===cur.materia) };
+}
+const st = { lesson:4, unit:UNITS-1, tab:null, seq:0 };
+const main = document.getElementById('main'), app = document.getElementById('app');
+let timer=null, tipEl=null, bump=null, edge=null;
+
+function render(){
+  const L = LESSONS.find(l=>l.id===st.lesson);
+  main.innerHTML = `<div class="hdr"><button class="ib" type="button" aria-label="Esci">${ic('back')}</button><span class="title">${L.materia} · ${L.titolo}</span><span class="idx">${ic('list')} Unità ${st.unit+1} di ${UNITS}</span></div>
+    <div class="scroll"><div class="col ${bump||''}"><div class="dots" aria-hidden="true">${Array.from({length:UNITS},(_,i)=>`<span class="${i<2?'l':i===2?'a':''} ${i===st.unit?'cur':''}"></span>`).join('')}</div>
+    <h3>${st.unit+1}. ${['Introduzione','Concetti di base','Meccanismi','Quadri clinici','Riepilogo'][st.unit]}</h3><p class="sub">${fmt(L.data)}, ${L.ora} · ${L.materia}</p>
+    <p>Testo dell'unità ${st.unit+1} della lezione “${L.titolo}”. Con ← e → cambi unità; agli estremi compare il bordo verde e, nella 4.2.4b1, la linguetta per passare a un'altra lezione.</p>
+    <p>Il testo resta dove lo hai lasciato finché non cambi unità. La linguetta si sovrappone al bordo della pagina, non sposta il testo e non prende il fuoco della tastiera da sola.</p></div></div>
+    <div class="foot"><span>Mettimi alla prova · 6</span></div>${edge?`<div class="edge ${edge}" aria-hidden="true"></div>`:''}`;
+  bump=null; edge=null;
+  if(st.tab) main.appendChild(tabEl());
+  renderList();
+}
+function tabEl(){
+  const dir = st.tab==='r'?1:-1, n = neighbors(st.lesson, dir), arrow = ic(st.tab==='r'?'r':'l','ar');
+  const t = document.createElement('div');
+  t.className = 'tab '+st.tab; t.setAttribute('role','group'); t.setAttribute('aria-label', dir>0?'Passa alla lezione successiva':'Passa alla lezione precedente');
+  const btn = (kind, target) => {
+    const what = kind==='day' ? (dir>0?'Lezione successiva di oggi':'Lezione precedente di oggi') : (dir>0?'Lezione successiva di ':'Lezione precedente di ')+LESSONS.find(l=>l.id===st.lesson).materia;
+    const tip = target ? `<b>${what}</b>${target.titolo} · ${fmt(target.data)}, ${target.ora}` : `<b>${what}</b>${kind==='day'?'Non ci sono altre lezioni pronte in questo giorno':'Non ci sono altre lezioni pronte di questa materia'}`;
+    const icon = ic(kind==='day'?'cal':'tag');
+    return `<button type="button" class="tb" data-go="${target?target.id:''}" ${target?'':'disabled'} data-tip="${tip.replace(/"/g,'&quot;')}" aria-label="${what}${target?': '+target.titolo:', nessuna'}">${dir>0?icon+arrow:arrow+icon}</button>`;
+  };
+  t.innerHTML = `<div class="btns">${btn('day',n.day)}${btn('subj',n.subj)}</div><div class="timer" aria-hidden="true"><i data-seq="${st.seq}"></i></div>`;
+  return t;
+}
+function startTimer(){ clearTimeout(timer); timer=setTimeout(closeTab,5000); }
+function closeTab(instant){
+  clearTimeout(timer); hideTip();
+  const t = main.querySelector('.tab'); st.tab=null;
+  if(!t) return;
+  if(instant) t.remove(); else { t.classList.add('out'); setTimeout(()=>t.remove(),220); }
+}
+function openTab(side){
+  edge = side; bump = side==='r'?'br':'bl';
+  if(st.tab===side){
+    const t=main.querySelector('.tab'); const i=t.querySelector('.timer i'); i.replaceWith(i.cloneNode()); t.classList.remove('paused');
+    const col=main.querySelector('.col'); col.classList.remove('bl','br'); void col.offsetWidth; col.classList.add(bump);
+    main.querySelector('.edge')?.remove(); const ed=document.createElement('div'); ed.className='edge '+side; main.appendChild(ed);
+    edge=null; bump=null; startTimer(); return;
+  }
+  st.tab = side; st.seq++; render(); startTimer();
+}
+function move(dir){
+  if(dir>0 && st.unit===UNITS-1) return openTab('r');
+  if(dir<0 && st.unit===0) return openTab('l');
+  if(st.tab) closeTab(true);
+  st.unit += dir; render();
+}
+function showTip(b){
+  hideTip(); tipEl=document.createElement('div'); tipEl.className='tip'; tipEl.innerHTML=b.dataset.tip; main.appendChild(tipEl);
+  const r=b.getBoundingClientRect(), m=main.getBoundingClientRect();
+  const left = st.tab==='r' ? r.left-m.left-tipEl.offsetWidth-10 : r.right-m.left+18;
+  tipEl.style.left=left+'px'; tipEl.style.top=(r.top-m.top+r.height/2-tipEl.offsetHeight/2)+'px';
+}
+function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
+main.addEventListener('mouseover', e=>{
+  const b=e.target.closest('.tb'); if(b) showTip(b);
+  const t=e.target.closest('.tab'); if(t && document.getElementById('pause').checked && !t.classList.contains('paused')){ t.classList.add('paused'); clearTimeout(timer); }
+});
+main.addEventListener('mouseout', e=>{
+  const b=e.target.closest('.tb'); if(b && !b.contains(e.relatedTarget)) hideTip();
+  const t=e.target.closest('.tab'); if(t && !t.contains(e.relatedTarget) && t.classList.contains('paused')){ t.classList.remove('paused'); st.seq++; const i=t.querySelector('.timer i'); const n=i.cloneNode(); i.replaceWith(n); startTimer(); }
+});
+main.addEventListener('click', e=>{
+  const b=e.target.closest('.tb[data-go]'); if(!b || b.disabled) return;
+  const dir = st.tab==='r'?1:-1; closeTab(true);
+  const ld=document.createElement('div'); ld.className='loading'; ld.textContent='Apro la lezione…'; main.appendChild(ld);
+  setTimeout(()=>{ st.lesson=Number(b.dataset.go); st.unit = dir>0?0:UNITS-1; render(); app.focus({preventScroll:true}); },450);
+});
+app.addEventListener('keydown', e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  if(e.key==='ArrowRight'){ move(1); e.preventDefault(); }
+  else if(e.key==='ArrowLeft'){ move(-1); e.preventDefault(); }
+});
+function renderList(){
+  const n1 = st.tab ? neighbors(st.lesson, st.tab==='r'?1:-1) : null;
+  document.getElementById('list').innerHTML = [...LESSONS].sort((a,b)=>a.data.localeCompare(b.data)||a.ora.localeCompare(b.ora)).map(l=>{
+    const tags=[]; if(n1 && n1.day && n1.day.id===l.id) tags.push('calendario'); if(n1 && n1.subj && n1.subj.id===l.id) tags.push('materia');
+    return `<tr class="${l.id===st.lesson?'cur':''} ${l.ready?'':'off'}"><td>${fmt(l.data)}</td><td>${l.ora}</td><td>${l.materia}</td><td class="t">${l.titolo} ${tags.map(t=>`<span class="pill">${t}</span>`).join(' ')}</td><td>${l.ready?'pronta':'non pronta'}</td></tr>`;
+  }).join('');
+}
+document.getElementById('reset').addEventListener('click',()=>{ closeTab(true); st.lesson=4; st.unit=UNITS-1; render(); app.focus({preventScroll:true}); });
+render();
+})();
+</script>

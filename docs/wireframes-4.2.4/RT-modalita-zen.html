@@ -1,0 +1,466 @@
+<title>Modalità zen RT 4.2.4b1</title>
+<style>
+/* Layout: schede in alto, note, poi una cornice dell'app; token come in index.css di RT e nei wireframe 4.2.3 */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --hl:#fde68a; --danger:#d4382a;
+  --rail:#fafafa; --anki:#f4f4f4; --anki-field:#ffffff; --shadow:0 8px 28px rgb(0 0 0/.16);
+  --irlen-pesca:#f6dcc8; --irlen-menta:#d5eee2; --irlen-pergamena:#efe4c7;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --hl:#6b5a12; --danger:#ef6a5c;
+  --rail:#131313; --anki:#2a2a2a; --anki-field:#1e1e1e; --shadow:0 8px 28px rgb(0 0 0/.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --hl:#6b5a12; --danger:#ef6a5c;
+  --rail:#131313; --anki:#2a2a2a; --anki-field:#1e1e1e; --shadow:0 8px 28px rgb(0 0 0/.5); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.app:focus{outline:none} .app:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul,.notes ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg);white-space:nowrap}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--mute)}
+.controls label{display:inline-flex;gap:6px;align-items:center}
+.stage{overflow-x:auto;padding-bottom:4px}
+.split{display:flex;width:1000px;height:640px;margin:0 auto;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:var(--fg);gap:6px}
+
+/* Cornice dell'app */
+.app{background:var(--bg);color:var(--fg);position:relative;display:flex;overflow:hidden;height:640px;transition:background .3s}
+.app.desk{width:1000px;margin:0 auto;border:1px solid var(--border);border-radius:14px}
+.app.narrow{width:560px;flex:none}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0;transition:opacity .3s}
+.rail i{width:26px;height:26px;border-radius:8px;background:var(--soft);display:block}
+.rail i.on{background:var(--acc-soft)}
+.rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px 0 8px;flex:none;background:var(--bg);z-index:5;transition:transform .25s ease,opacity .25s ease,background .3s}
+.hdr .title{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;color:var(--mute)}
+.hdr .title b{font-size:15px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ib{width:34px;height:34px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;position:relative}
+.ib:hover{background:var(--soft)}
+.ib[aria-pressed="true"],.ib.on{background:var(--soft)}
+.ib svg{width:19px;height:19px}
+.ib.new{box-shadow:0 0 0 2px var(--danger)}
+.ib.new::after{content:"nuovo";position:absolute;top:38px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:var(--danger);white-space:nowrap}
+.grp{display:flex;gap:2px;background:var(--soft);border-radius:9px;padding:2px}
+.grp .ib{width:32px;height:30px}
+.grp .ib.sel{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.sep{width:1px;height:16px;background:var(--border);margin:0 2px;flex:none}
+.idx{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:9px;padding:0 10px;height:34px;font-size:14px;white-space:nowrap;flex:none}
+.idx svg{width:16px;height:16px}
+.scroll{flex:1;overflow:auto;padding:0 28px;position:relative}
+.col{max-width:620px;margin:0 auto;padding:12px 0 40px}
+.dots{display:flex;gap:4px;margin:4px 0 22px;align-items:center}
+.dots span{flex:1;height:3px;border-radius:3px;background:var(--track)}
+.dots span.l{background:var(--learned)} .dots span.i{background:var(--danger)} .dots span.a{background:var(--learning)}
+.dots span.cur{height:7px}
+.col h3{font-size:22px;line-height:1.3;margin:0 0 14px;text-wrap:balance}
+.col p{margin:0 0 16px;line-height:1.75}
+mark{background:var(--hl);color:inherit;border-radius:2px}
+.foot{flex:none;border-top:1px solid var(--border);padding:14px;display:flex;justify-content:center;background:var(--bg)}
+.foot button{width:100%;max-width:620px;min-height:44px;border:0;border-radius:10px;background:var(--acc-soft);color:var(--acc);font:inherit;font-weight:500;cursor:pointer}
+.tabbar{flex:none;height:56px;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center;background:var(--bg)}
+.tabbar i{width:26px;height:26px;border-radius:8px;background:var(--soft)} .tabbar i.on{background:var(--acc-soft)}
+
+/* Zen */
+.app.zen .rail{display:none}
+.app.zen .hdr{position:absolute;inset:0 0 auto 0;border-bottom-color:transparent}
+.app.zen .hdr.hide{transform:translateY(-100%);opacity:0}
+.app.zen .scroll{padding-top:52px}
+.app.zen .hdr .ztitle{flex:1;min-width:0;font-size:14px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:6px}
+.hot{position:absolute;inset:0 0 auto 0;height:40px;z-index:4}
+.app.trig .hot{background:repeating-linear-gradient(135deg,color-mix(in oklch,var(--acc) 16%,transparent) 0 6px,transparent 6px 12px);border-bottom:1px dashed var(--acc)}
+.edge{position:absolute;inset-block:0;width:28px;pointer-events:none;z-index:6;animation:edge 450ms ease-out both}
+.edge.l{left:0;background:linear-gradient(to right,color-mix(in oklch,var(--learned) 45%,transparent),transparent)}
+.edge.r{right:0;background:linear-gradient(to left,color-mix(in oklch,var(--learned) 45%,transparent),transparent)}
+@keyframes edge{0%,100%{opacity:0}30%{opacity:1}}
+.app[data-tint="pesca"]{--bg:var(--irlen-pesca)} .app[data-tint="menta"]{--bg:var(--irlen-menta)} .app[data-tint="pergamena"]{--bg:var(--irlen-pergamena)}
+.app[data-tint]{--fg:#2a241f;--mute:#5d544c;--soft:color-mix(in oklch,#2a241f 7%,var(--bg));--border:color-mix(in oklch,#2a241f 18%,var(--bg));--hl:color-mix(in oklch,#2a241f 14%,transparent);--acc:#155f52;--acc-soft:color-mix(in oklch,#155f52 14%,var(--bg));color-scheme:light}
+.toast{position:absolute;top:20px;left:50%;transform:translateX(-50%);background:var(--bg);color:var(--fg);border:1px solid var(--border);width:52px;height:52px;border-radius:14px;display:grid;place-items:center;z-index:8;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast svg{width:26px;height:26px}
+.toast .bar{position:absolute;left:14px;right:14px;bottom:9px;height:4px;border-radius:3px}
+.toast.show{opacity:1}
+.panel{position:absolute;inset:0 0 0 auto;width:320px;background:var(--bg);border-left:1px solid var(--border);z-index:9;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.app.narrow .panel{inset:auto 0 0 0;width:auto;border-left:0;border-top:1px solid var(--border);border-radius:14px 14px 0 0}
+.panel .ph{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;border-bottom:1px solid var(--border)}
+.panel h4{margin:0;padding:14px 14px 4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.panel .row{padding:10px 14px;display:grid;gap:8px;border-bottom:1px solid var(--border)}
+.tog{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sw{width:38px;height:22px;border-radius:999px;background:var(--border);border:0;position:relative;cursor:pointer;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.sw[aria-checked="true"]{background:var(--acc)} .sw[aria-checked="true"]::after{left:19px}
+.seg{display:flex;gap:2px;background:var(--soft);padding:2px;border-radius:8px}
+.seg button{flex:1;border:0;background:transparent;color:var(--fg);font:inherit;font-size:13px;padding:5px 6px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+.pnote{font-size:12.5px;color:var(--mute);padding:10px 14px}
+.overlay{position:absolute;inset:0;background:rgb(0 0 0/.25);display:grid;place-items:center;z-index:10}
+.modal{background:var(--bg);color:var(--fg);border-radius:14px;padding:18px;width:min(380px,90%);box-shadow:var(--shadow);display:grid;gap:10px}
+.modal .acts{display:flex;justify-content:flex-end;gap:8px}
+.btn{border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;cursor:pointer}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.quiz{display:grid;gap:14px}
+.quiz .card{border:1px solid var(--border);border-radius:12px;padding:16px;display:grid;gap:10px}
+.quiz .ans{min-height:70px;border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--mute);font-size:14px}
+
+/* Anki finto */
+.anki{flex:1;background:var(--anki);color:var(--fg);padding:14px;display:flex;flex-direction:column;gap:10px;font-size:14px;min-width:0}
+.anki .bar{display:flex;gap:8px;align-items:center}
+.anki .fld{background:var(--anki-field);border:1px solid var(--border);border-radius:6px;padding:4px 10px;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.anki .tb{display:flex;gap:5px;flex-wrap:wrap}
+.anki .tb i{width:24px;height:24px;border-radius:5px;background:var(--anki-field);border:1px solid var(--border)}
+.anki .box{background:var(--anki-field);border:1px solid var(--border);border-radius:6px;height:56px}
+.anki .box.f{border:2px solid #3b82f6}
+.anki .sp{flex:1}
+.anki .btns{display:flex;gap:8px}
+.anki .btns span{border:1px solid var(--border);background:var(--anki-field);border-radius:6px;padding:3px 12px}
+
+.legend{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px;align-items:baseline}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.tbl{overflow-x:auto}
+@media (prefers-reduced-motion: reduce){.hdr,.toast,.app,.rail{transition:none}.edge{animation:none;opacity:.6}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-back"><path d="m15 18-6-6 6-6"/></g>
+    <g id="i-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></g>
+    <g id="i-hl"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></g>
+    <g id="i-er"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></g>
+    <g id="i-trash"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></g>
+    <g id="i-gauge"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></g>
+    <g id="i-play"><polygon points="6 3 20 12 6 21 6 3"/></g>
+    <g id="i-list"><path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/></g>
+    <g id="i-zen"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></g>
+    <g id="i-exit"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></g>
+    <g id="i-sliders"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></g>
+    <g id="i-x"><path d="M18 6 6 18M6 6l12 12"/></g>
+    <g id="i-st-"><path d="M10.1 2.2a10 10 0 0 1 3.8 0"/><path d="M17.6 3.7a10 10 0 0 1 2.7 2.7"/><path d="M21.8 10.1a10 10 0 0 1 0 3.8"/><path d="M20.3 17.6a10 10 0 0 1-2.7 2.7"/><path d="M13.9 21.8a10 10 0 0 1-3.8 0"/><path d="M6.4 20.3a10 10 0 0 1-2.7-2.7"/><path d="M2.2 13.9a10 10 0 0 1 0-3.8"/><path d="M3.7 6.4a10 10 0 0 1 2.7-2.7"/></g>
+    <g id="i-st-a"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></g>
+    <g id="i-st-l"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></g>
+    <g id="i-st-i"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></g>
+    <g id="i-down"><path d="m6 9 6 6 6-6"/></g>
+  </defs>
+</svg>
+
+<div class="top">
+  <h1>Modalità zen</h1>
+  <span class="meta">RT 4.2.4b1 · wireframe · 8 ottobre 2026</span>
+  <div class="tabs" role="group" aria-label="Schermate">
+    <button type="button" data-tab="studio" aria-pressed="true">1 · Bottone nello Studio</button>
+    <button type="button" data-tab="zen" aria-pressed="false">2 · Zen</button>
+    <button type="button" data-tab="split" aria-pressed="false">3 · Split screen con Anki</button>
+    <button type="button" data-tab="tasti" aria-pressed="false">4 · Scorciatoie e domande aperte</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- 1 Studio -->
+  <section data-panel="studio" class="wrap">
+    <div class="notes">
+      <h2>Il bottone va tra ⓘ e il gruppo evidenziatore/gomma</h2>
+      <ul>
+        <li>È il primo elemento di <span class="code">headerActions</span> in <span class="code">Study.tsx</span>, quindi sta nel gruppo che non si restringe: il titolo (già <span class="code">truncate</span> dentro un contenitore <span class="code">flex-1 min-w-0</span>) perde i 34 px che servono e prende i puntini come oggi. Il bottone non può essere coperto dal titolo.</li>
+        <li>Icona proposta: riquadro con gli angoli e il punto al centro (lucide <span class="code">Focus</span>). Tooltip “Modalità zen <span class="kbd">Z</span>”.</li>
+        <li>Prova a stringere la finestra: il titolo si accorcia, i bottoni restano. Sotto i 768 px il titolo sparisce già oggi e resta solo ⓘ.</li>
+      </ul>
+      <div class="controls"><label for="w1">Larghezza della finestra <input id="w1" type="range" min="620" max="1000" value="1000"> <span id="w1v">1000 px</span></label></div>
+    </div>
+    <div class="stage"><div class="app desk" id="studioApp"></div></div>
+  </section>
+
+  <!-- 2 Zen -->
+  <section data-panel="zen" class="wrap" hidden>
+    <div class="notes">
+      <h2>Zen: solo il testo, la barra scende quando la cerchi col mouse</h2>
+      <ul>
+        <li>Spariscono barra laterale, indice delle unità, contesto, barrette di stato, audio, pulsante in basso e tab bar. In alto a destra restano solo <b>Impostazioni</b> (solo Irlen) ed <b>Esci dalla modalità zen</b>; a sinistra il nome dell'unità, attenuato.</li>
+        <li><b>Barra:</b> scende solo quando il mouse entra nei primi 40 px della finestra (la barra aperta è alta 52). Finché il mouse è sulla barra resta giù. Quando il mouse esce dalla barra partono 2 s, poi risale; se torni sulla barra prima, resta. Una volta risalita, per riaprirla devi rientrare nella zona in alto. Scorrere il testo non la apre né la chiude. Resta giù mentre le impostazioni sono aperte, e scende anche quando ci arrivi con <span class="kbd">Tab</span>.</li>
+        <li><b>Avvisi a icone</b>, solo in zen e solo per <span class="kbd">S</span> (icona dello stato nuovo, coi colori dello Studio), <span class="kbd">E</span> e <span class="kbd">⇧E</span> (evidenziatore col colore attivo, barrato quando lo togli) e <span class="kbd">G</span> (gomma, barrata quando la togli). Niente avvisi per frecce, <span class="kbd">D</span> e <span class="kbd">Z</span>. Per gli screen reader lo stesso testo va in <span class="code">aria-live</span>.</li>
+        <li><b>Posizione nel testo:</b> nessuna scorciatoia sposta il testo. S, E, ⇧E, G, l'apertura della barra e l'entrata/uscita dalla zen lasciano il testo dov'è; solo il cambio di unità riparte dall'inizio, come oggi. Tornando dal ripasso ritrovi il punto in cui eri.</li>
+        <li><b>Inizio e fine:</b> con <span class="kbd">←</span> sulla prima unità o <span class="kbd">→</span> sull'ultima compare il bordo laterale, identico allo Studio classico.</li>
+        <li><b>D (domande):</b> apre il ripasso classico (la pagina che esiste già). “Torna allo Studio” ti riporta in zen, perché la zen resta accesa finché non esci tu. Senza domande si apre il popup Genera.</li>
+        <li>Prova: clicca nella cornice e scorri un po' e premi <span class="kbd">S</span> <span class="kbd">E</span> <span class="kbd">⇧E</span> <span class="kbd">G</span> <span class="kbd">←</span> <span class="kbd">→</span> <span class="kbd">D</span> <span class="kbd">Z</span> <span class="kbd">Esc</span>, oppure porta il mouse in cima e apri le impostazioni.</li>
+      </ul>
+      <div class="controls">
+        <label><input type="checkbox" id="hasQ" checked> L'unità ha già domande</label>
+        <label><input type="checkbox" id="showTrig"> Mostra la zona che fa scendere la barra</label>
+        <button type="button" class="btn" id="resetZen">Rientra in zen</button>
+      </div>
+    </div>
+    <div class="stage"><div class="app desk" id="zenApp" tabindex="0" aria-label="Wireframe della modalità zen, clicca per usare i tasti"></div></div>
+  </section>
+
+  <!-- 3 Split -->
+  <section data-panel="split" class="wrap" hidden>
+    <div class="notes">
+      <h2>Mezzo schermo accanto ad Anki</h2>
+      <ul>
+        <li>A metà schermo la finestra di RT è sotto i 768 px, quindi oggi usa il layout del telefono con la tab bar in basso (screenshot 2). In zen tab bar e pulsante “Mettimi alla prova” spariscono e il testo arriva fino in fondo.</li>
+        <li>Le impostazioni si aprono dal basso, come nella lettura veloce sul telefono.</li>
+        <li>Sull'iPhone non c'è il mouse: lì, e solo sui dispositivi touch (<span class="code">@media (hover: none)</span>), un tocco sul bordo alto fa scendere la barra e un tocco nel testo la richiude. Sul Mac il bordo non c'è.</li>
+        <li>Anki ha il fuoco quando scrivi la carta: le scorciatoie di RT funzionano solo dopo aver cliccato nel testo. Il clic per tornare non deve fare niente di diverso (niente evidenziazione o cambio di barra).</li>
+      </ul>
+    </div>
+    <div class="stage"><div class="split">
+      <div class="app narrow" id="splitApp" tabindex="0" aria-label="RT in modalità zen a metà schermo"></div>
+      <div class="anki" aria-label="Anki, finestra di esempio">
+        <div class="bar"><span>Tipo</span><span class="fld">!AA Nord Cloze</span><span>Mazzo</span><span class="fld">Medicina::Patologia Generale</span></div>
+        <div class="tb"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span>Text</span><div class="box"></div>
+        <span>Back Extra</span><div class="box f"></div>
+        <div class="sp"></div>
+        <span>Etichette</span><div class="box" style="height:36px"></div>
+        <div class="btns"><span>Aiuto</span><span>Aggiungi</span><span>Cronologia</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- 4 Tasti e domande -->
+  <section data-panel="tasti" class="wrap" hidden>
+    <div class="notes">
+      <h2>Scorciatoie dello Studio</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Tasto</th><th>Studio classico</th><th>Zen</th><th>Avviso in zen</th></tr></thead>
+        <tbody>
+          <tr><td><span class="kbd">Z</span></td><td>entra in zen</td><td>esce da zen</td><td>no</td></tr>
+          <tr><td><span class="kbd">D</span></td><td colspan="2">come “Mettimi alla prova”: ripasso classico, o popup Genera se non ci sono domande</td><td>no</td></tr>
+          <tr><td><span class="kbd">S</span></td><td colspan="2">stato successivo dell'unità</td><td>icona dello stato</td></tr>
+          <tr><td><span class="kbd">E</span></td><td colspan="2">attiva / toglie l'evidenziatore</td><td>evidenziatore col colore, barrato se tolto</td></tr>
+          <tr><td><span class="kbd">G</span></td><td colspan="2">attiva / toglie la gomma</td><td>gomma, barrata se tolta</tr>
+          <tr><td><span class="kbd">⇧E</span></td><td colspan="2">colore successivo dell'evidenziatore (oggi solo col clic); se l'evidenziatore era spento lo accende</td><td>icona evidenziatore col colore nuovo</td></tr>
+          <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td colspan="2">unità precedente / successiva, bordo laterale all'inizio e alla fine</td><td>no</td></tr>
+          <tr><td><span class="kbd">Esc</span></td><td>niente</td><td>chiude le impostazioni, poi esce da zen</td><td>no</td></tr>
+        </tbody>
+      </table></div>
+      <p style="margin:0;font-size:14px;color:var(--mute)">Come oggi, i tasti non valgono mentre scrivi in un campo, con ⌘/Ctrl/Alt premuti o con un popup aperto. Nella lettura veloce restano i suoi tasti e Z/D non fanno niente. Sull'iPhone niente tasti.</p>
+    </div>
+    <div class="notes">
+      <h2>Decisioni dell'8 ottobre</h2>
+      <ol>
+        <li>Irlen è un'impostazione sola, condivisa con la lettura veloce (<span class="code">study.rsvp.irlen</span>).</li>
+        <li>Nessun ripasso “in zen”: <span class="kbd">D</span> apre il ripasso classico, o il popup Genera se non ci sono domande.</li>
+        <li>Nessun bottone per le domande in zen.</li>
+        <li>La zen resta accesa cambiando unità e lezione finché non esci; all'inizio e alla fine compare il bordo laterale come nello Studio classico.</li>
+        <li>Dalla zen non si va nella lettura veloce: prima si esce.</li>
+        <li>Zen anche sull'iPhone, senza tasti e senza complicarsi la vita.</li>
+        <li>Niente audio in zen: entrando, l'audio dell'unità si ferma (come fa la lettura veloce).</li>
+      </ol>
+      <p style="margin:0;font-size:14px">Aggiornato alle 07:30: <span class="kbd">D</span> per le domande al posto di Q, <span class="kbd">E</span> attiva/toglie l'evidenziatore, <span class="kbd">G</span> attiva/toglie la gomma, <span class="kbd">⇧E</span> cambia colore, e nessuna scorciatoia sposta il testo.</p>
+    </div>
+    <div class="notes">
+      <h2>Come si farebbe (per il prompt a Codex)</h2>
+      <ul>
+        <li><span class="code">Study.tsx</span>: nuovo stato <span class="code">zenMode</span> accanto a <span class="code">speedReading</span>; <span class="code">setZen({ active: speedReading || zenMode, tint })</span> nasconde già barra laterale e tab bar in <span class="code">Layout.tsx</span>. Il tint in zen viene da <span class="code">useRsvpPrefs().irlen</span>, perché <span class="code">SpeedReader</span> non è montato.</li>
+        <li><span class="code">StudyShell</span>: oggi la prop <span class="code">zen</span> vuol dire “lettura veloce” e nasconde il testo (<span class="code">[data-zen] .rt-study-text</span> in <span class="code">index.css</span>). Va divisa in <span class="code">mode: 'classico' | 'zen' | 'veloce'</span> con <span class="code">data-zen="lettura"</span> / <span class="code">"veloce"</span>, così il CSS della lettura veloce non tocca la zen. In zen niente <span class="code">Dots</span>, niente footer.</li>
+        <li><span class="code">PageHeader</span> in zen: posizione fissa, <span class="code">translateY(-100%)</span> quando nascosta. Logica in un piccolo hook (<span class="code">useZenHeader</span>): un div trasparente alto 40 px in cima apre la barra al <span class="code">pointerenter</span> (solo <span class="code">pointerType === 'mouse'</span>); <span class="code">pointerleave</span> della barra avvia 2 s; rientrare li annulla; aperta anche con focus dentro o pannello aperto. Sul touch il div diventa un'area da toccare.</li>
+        <li>Impostazioni zen: si riusa il pannello della lettura veloce (barra a destra, dal basso sul telefono) estraendo <span class="code">Row</span>/<span class="code">Toggle</span>/<span class="code">Segments</span> in un file comune; dentro solo la riga “Modalità Irlen”.</li>
+        <li>Evidenziatore: <span class="code">HighlightMode</span> diventa <span class="code">'evidenzia' | 'gomma' | null</span> (null = nessuno strumento, la selezione non evidenzia). Nell'intestazione classica con null nessuno dei due segmenti è premuto; il clic sui bottoni resta com'è oggi.</li>
+        <li>Posizione: S/E/G/⇧E non devono rimontare il testo né chiamare <span class="code">scrollTo</span>. Entrando e uscendo dalla zen la colonna cambia larghezza e la barra cambia posizione: prima del cambio si salva il primo paragrafo visibile e il suo scarto dal bordo, dopo si riporta lì (<span class="code">scrollIntoView</span> più lo scarto). Il ripasso oggi smonta la lettura: salvare <span class="code">scrollY</span> per unità e ripristinarlo al ritorno.</li>
+        <li>Tasti: <span class="kbd">Z</span>, <span class="kbd">D</span>, <span class="kbd">G</span> e <span class="kbd">⇧E</span> nello stesso <span class="code">useEffect</span> di S/E/frecce, con <span class="code">blocked</span> se è aperto un popup (Genera, indice, dettagli). Entrando in zen si mette in pausa l'<span class="code">audio</span>, come già fa il pulsante Lettura veloce.</li>
+        <li><span class="code">zenMode</span> resta vero durante il ripasso (<span class="code">phase === 'domande'</span>), ma <span class="code">setZen</span> riceve <span class="code">active</span> solo in lettura, così il ripasso ha barra laterale e tab bar.</li>
+        <li>Test: unit su tasti e visibilità dei pezzi in zen; e2e che entra con il bottone, preme S/E/G/→/D/Z, controlla che lo scroll resti dov'era e controlla che la tab bar non ci sia a 560 px.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+const ic = (id, extra='') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}><use href="#i-${id}"/></svg>`;
+const UNITS = [
+  ['1.1','Introduzione all’equilibrio acido-base','l'],['1.2','Il pH e la sua scala','l'],['1.3','Acidi volatili e fissi','l'],
+  ['2.1','Regolazione omeostatica del pH e significato delle variazioni degli idrogenioni','a'],['2.2','Sistemi tampone del sangue','a'],['2.3','Il tampone bicarbonato','l'],
+  ['3.1','Compenso respiratorio',''],['3.2','Compenso renale',''],['4.1','Acidosi metabolica',''],['4.2','Alcalosi metabolica',''],
+  ['5.1','Acidosi respiratoria',''],['5.2','Alcalosi respiratoria',''],['6.1','Emogasanalisi',''],['6.2','Casi clinici','']];
+const STATUS = {'':['Da imparare','var(--mute)'],'a':['In apprendimento','var(--learning)'],'l':['Appresa','var(--learned)'],'i':['Ignorata','var(--danger)']};
+const NEXT = {'':'a','a':'l','l':'i','i':''};
+const HL = [['giallo','#fde68a'],['verde','#bbf7d0'],['azzurro','#bae6fd'],['rosa','#fbcfe8'],['arancio','#fed7aa']];
+const TITLE = 'Fisiopatologia dell’equilibrio acido-base: sistemi tampone, meccanismi di compenso e interpretazione dell’emogasanalisi';
+const TEXT = `<p>L’equilibrio acido-base dell’organismo è regolato in modo particolarmente raffinato, poiché la concentrazione di alcuni soluti nei liquidi biologici deve essere mantenuta costantemente sotto controllo. In particolare, la concentrazione degli ioni idrogeno, H<sup>+</sup>, richiede una regolazione accurata: <mark>alterazioni della loro concentrazione possono determinare conseguenze cliniche rilevanti</mark>.</p>
+<p>Numerose patologie possono alterare significativamente l’equilibrio acido-base e portare il paziente in condizioni critiche. Un aumento marcato della concentrazione degli ioni H<sup>+</sup> determina un aumento dell’acidità dell’organismo e, di conseguenza, una riduzione del pH. Poiché il pH è definito come il logaritmo negativo in base 10 dell’attività degli ioni H<sup>+</sup>, una variazione di quest’ultima si riflette inversamente sul valore del pH.</p>
+<p>Il pH normale dell’organismo è indicato, in modo particolare per il sangue, da un valore di circa 7,4. Il pH ematico si mantiene fisiologicamente entro un intervallo piuttosto ristretto, considerato normale tra 7,36 e 7,45. Un pH inferiore a questo intervallo indica una condizione di acidemia, mentre un pH superiore indica una condizione di alcalemia.</p>
+<p>Queste alterazioni possono essere sufficientemente gravi da mettere in pericolo la vita del paziente, soprattutto quando le modificazioni dell’equilibrio acido-base avvengono rapidamente e superano la capacità dei sistemi tampone e dei meccanismi di compenso respiratorio e renale.</p>`;
+
+function dots(cur){ return `<div class="dots" aria-hidden="true">${UNITS.map((u,i)=>`<span class="${u[2]} ${i===cur?'cur':''}"></span>`).join('')}</div>`; }
+
+/* 1 · Studio classico */
+function renderStudio(){
+  const el = document.getElementById('studioApp');
+  const u = UNITS[3];
+  el.innerHTML = `<div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>
+  <div class="main">
+    <div class="hdr">
+      <button class="ib" type="button" aria-label="Esci">${ic('back')}</button>
+      <div class="title"><b>${TITLE}</b>${ic('info','width="16" height="16" style="flex:none"')}</div>
+      <button class="ib new" type="button" aria-label="Modalità zen" title="Modalità zen (Z)">${ic('zen')}</button>
+      <div class="grp"><button class="ib sel" type="button" aria-label="Evidenzia">${ic('hl')}</button><button class="ib" type="button" aria-label="Gomma">${ic('er')}</button></div>
+      <button class="ib" type="button" aria-label="Cancella tutto">${ic('trash')}</button>
+      <span class="sep"></span>
+      <button class="ib" type="button" aria-label="Stato: in apprendimento"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--learning)" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="var(--learning)"/></svg></button>
+      <button class="ib" type="button" aria-label="Lettura veloce">${ic('gauge')}</button>
+      <button class="ib" type="button" aria-label="Audio">${ic('play')}</button>
+      <span class="idx">${ic('list')} Unità 4 di 14 ${ic('down')}</span>
+    </div>
+    <div class="scroll"><div class="col">${dots(3)}<h3>${u[0]} ${u[1]}</h3>${TEXT}</div></div>
+    <div class="foot"><button type="button">Mettimi alla prova · 6</button></div>
+  </div>`;
+}
+const w1 = document.getElementById('w1');
+w1.addEventListener('input', () => { document.getElementById('studioApp').style.width = w1.value + 'px'; document.getElementById('w1v').textContent = w1.value + ' px'; });
+
+/* 2 e 3 · Zen interattivo */
+function statusIcon(k, size=19){ return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${STATUS[k][1]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-st-${k}"/></svg>`; }
+function makeZen(el, narrow){
+  const st = { zen:true, unit:3, mode:'evidenzia', color:0, panel:false, tint:null, view:'lettura', modal:false, hdr:false, edge:null };
+  let hideTimer=null, toastTimer=null;
+  const showTrig = () => document.getElementById('showTrig').checked;
+  el.classList.toggle('trig', showTrig());
+  /* Barra: scende solo col mouse nella zona in alto (40 px, la barra è 52); i 2 s partono quando il mouse la lascia. */
+  function syncHdr(){ const h=el.querySelector('.hdr'); if(h) h.classList.toggle('hide', st.zen && !st.hdr && !st.panel); }
+  let show=function(){ clearTimeout(hideTimer); st.hdr=true; syncHdr(); }
+  let leave=function(){ clearTimeout(hideTimer); if(!st.zen||st.panel) return; hideTimer=setTimeout(()=>{ st.hdr=false; syncHdr(); },2000); }
+  function toast(svg, label){ const t=el.querySelector('.toast'); if(!t) return; t.innerHTML=svg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),1200); el.querySelector('.live').textContent=label; }
+  const slash = '<svg viewBox="0 0 24 24" style="position:absolute;width:30px;height:30px" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20 20 4"/></svg>';
+  const hlToast = (off) => toast(ic('hl')+`<span class="bar" style="background:${HL[st.color][1]}"></span>`+(off?slash:''), off?'Evidenziatore tolto':'Evidenziatore '+HL[st.color][0]);
+  const erToast = (off) => toast(ic('er')+(off?slash:''), off?'Gomma tolta':'Gomma');
+  let lastUnit=null, saved={};
+  function render(){
+    const old=el.querySelector('.scroll'); if(old && lastUnit!==null && st.lastView==='lettura') saved[lastUnit]=old.scrollTop;
+    const u = UNITS[st.unit];
+    const zenView = st.zen && st.view==='lettura';
+    el.classList.toggle('zen', zenView);
+    if(zenView && st.tint) el.dataset.tint = st.tint; else delete el.dataset.tint;
+    const hasQ = document.getElementById('hasQ').checked;
+    let hdr, body;
+    if(zenView){
+      hdr = `<div class="hdr">
+        <span class="ztitle">${u[0]} ${u[1]}</span>
+        <button class="ib ${st.panel?'on':''}" type="button" data-act="panel" aria-label="Impostazioni della modalità zen" aria-expanded="${st.panel}">${ic('sliders')}</button>
+        <button class="ib" type="button" data-act="exit" aria-label="Esci dalla modalità zen" title="Esci dalla modalità zen (Z)">${ic('exit')}</button>
+      </div><div class="hot" data-hot></div>`;
+    } else if(st.view==='domande'){
+      hdr = `<div class="hdr"><button class="ib" type="button" data-act="back" aria-label="Torna allo Studio">${ic('back')}</button><div class="title"><b>Domande · ${u[0]} ${u[1]}</b></div></div>`;
+    } else {
+      hdr = `<div class="hdr">
+        <button class="ib" type="button" aria-label="Esci">${ic('back')}</button>
+        <div class="title">${narrow?'':`<b>${TITLE}</b>`}${ic('info','width="16" height="16" style="flex:none"')}</div>
+        <button class="ib new" type="button" data-act="enter" aria-label="Modalità zen" title="Modalità zen (Z)">${ic('zen')}</button>
+        <div class="grp"><button class="ib ${st.mode==='evidenzia'?'sel':''}" type="button" aria-label="Evidenzia">${ic('hl')}</button><button class="ib ${st.mode==='gomma'?'sel':''}" type="button" aria-label="Gomma">${ic('er')}</button></div>
+        ${narrow?'':`<button class="ib" type="button" aria-label="Cancella tutto">${ic('trash')}</button><span class="sep"></span>`}
+        <button class="ib" type="button" aria-label="Stato">${statusIcon(u[2])}</button>
+        <button class="ib" type="button" aria-label="Lettura veloce">${ic('gauge')}</button>
+        ${narrow?'':`<button class="ib" type="button" aria-label="Audio">${ic('play')}</button>`}
+        <span class="idx">${ic('list')} ${narrow?'':'Unità '}${st.unit+1} di 14</span>
+      </div>`;
+    }
+    if(st.view==='domande'){
+      body = `<div class="scroll"><div class="col quiz"><div style="color:var(--mute);font-size:14px">Ripasso classico (la pagina che esiste già), con barra laterale e tab bar</div>
+        <div class="card"><b>Qual è l'intervallo normale del pH ematico e come si chiamano le condizioni al di fuori di esso?</b><div class="ans">Scrivi la risposta…</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button">Non lo so</button><button class="btn pri" type="button">Verifica</button></div></div>
+        <button class="btn" type="button" data-act="back" style="justify-self:start">Torna allo Studio</button></div></div>`;
+    } else {
+      body = `<div class="scroll"><div class="col">${zenView?'':dots(st.unit)}<h3>${u[0]} ${u[1]}</h3>${TEXT}</div></div>`;
+    }
+    const foot = (zenView || st.view==='domande') ? '' : `<div class="foot"><button type="button" data-act="q">${hasQ?'Mettimi alla prova · 6':'Nessuna domanda · genera ora'}</button></div>`;
+    const tab = (narrow && !zenView) ? `<div class="tabbar" aria-hidden="true"><i class="on"></i><i></i><i></i></div>` : '';
+    const rail = (narrow || zenView) ? '' : `<div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>`;
+    const panel = (zenView && st.panel) ? `<section class="panel" role="dialog" aria-label="Impostazioni della modalità zen">
+        <div class="ph"><b>Impostazioni</b><button class="ib" type="button" data-act="panel" aria-label="Chiudi le impostazioni">${ic('x')}</button></div>
+        <h4>Aspetto</h4>
+        <div class="row"><div class="tog"><span>Modalità Irlen</span><button class="sw" type="button" role="switch" aria-checked="${!!st.tint}" aria-label="Modalità Irlen" data-act="irlen"></button></div>
+        ${st.tint?`<div class="seg" role="group" aria-label="Sfondo">${['pesca','menta','pergamena'].map(t=>`<button type="button" data-tint="${t}" aria-pressed="${st.tint===t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>`:''}</div>
+        <p class="pnote">Stessa impostazione della lettura veloce: se la accendi qui la ritrovi là.</p>
+      </section>` : '';
+    const modal = st.modal ? `<div class="overlay"><div class="modal" role="dialog" aria-label="Genera domande"><b>Genera domande · unità ${u[0]}</b><span style="font-size:14px;color:var(--mute)">Lo stesso popup di “Nessuna domanda · genera ora”, aperto sopra il testo.</span><div class="acts"><button class="btn" type="button" data-act="closemodal">Annulla</button><button class="btn pri" type="button" data-act="closemodal">Genera</button></div></div></div>` : '';
+    const edge = st.edge ? `<div class="edge ${st.edge}" aria-hidden="true"></div>` : '';
+    el.innerHTML = `${rail}<div class="main">${hdr}${body}${foot}${tab}${panel}${modal}${edge}<div class="toast" aria-hidden="true"></div><div class="live" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div></div>`;
+    syncHdr();
+    const sc=el.querySelector('.scroll'); if(st.view==='lettura' && st.unit===lastUnit) sc.scrollTop=saved[st.unit]||0; else if(st.view==='lettura') saved[st.unit]=0;
+    lastUnit=st.unit; st.lastView=st.view;
+    const h = el.querySelector('.hdr'), hot = el.querySelector('[data-hot]');
+    if(zenView){
+      hot.addEventListener('mouseenter', show);
+      h.addEventListener('mouseenter', () => { if(st.hdr) show(); });
+      h.addEventListener('mouseleave', e => { if(!hot.contains(e.relatedTarget)) leave(); });
+      h.addEventListener('focusin', show);
+      h.addEventListener('focusout', e => { if(!h.contains(e.relatedTarget)) leave(); });
+    }
+    st.edge = null;
+  }
+  let leaving=false;
+  const _leave=leave; leave=function(){ leaving=true; _leave(); };
+  const _show=show; show=function(){ leaving=false; _show(); };
+  /* Anche col mouse che esce mentre la barra sta ancora scendendo: conta la posizione, non solo enter/leave. */
+  el.addEventListener('mousemove', e => { if(!el.classList.contains('zen')||!st.hdr||st.panel) return; const y=e.clientY-el.getBoundingClientRect().top; if(y>52 && !leaving) leave(); else if(y<=52 && leaving) show(); });
+  function q(){ if(document.getElementById('hasQ').checked){ st.view='domande'; render(); } else { st.modal=true; render(); } }
+  function enter(){ st.zen=true; st.view='lettura'; st.hdr=false; render(); }
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-act],[data-tint]'); if(!b) return;
+    if(b.dataset.tint && b.tagName==='BUTTON'){ st.tint=b.dataset.tint; render(); return; }
+    const a=b.dataset.act;
+    if(a==='enter') enter();
+    else if(a==='exit'){ st.zen=false; st.panel=false; render(); }
+    else if(a==='panel'){ st.panel=!st.panel; render(); if(!st.panel) leave(); }
+    else if(a==='irlen'){ st.tint = st.tint?null:'pesca'; render(); }
+    else if(a==='q') q();
+    else if(a==='back'){ st.view='lettura'; st.hdr=false; render(); }
+    else if(a==='closemodal'){ st.modal=false; render(); }
+    if(!el.contains(document.activeElement)) el.focus({preventScroll:true});
+  });
+  el.addEventListener('keydown', e => {
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    if(st.modal){ if(e.key==='Escape'){ st.modal=false; render(); } return; }
+    if(st.view!=='lettura') return;
+    const k=e.key.length===1?e.key.toLowerCase():e.key;
+    if(k==='Escape'){ if(st.panel){ st.panel=false; render(); leave(); } else if(st.zen){ st.zen=false; render(); } e.preventDefault(); return; }
+    if(k==='z'){ if(st.zen){ st.zen=false; st.panel=false; render(); } else enter(); e.preventDefault(); return; }
+    if(k==='d'){ q(); e.preventDefault(); return; }
+    if(k==='s'){ const u=UNITS[st.unit]; u[2]=NEXT[u[2]]; render(); if(st.zen) toast(statusIcon(u[2],26),'Stato: '+STATUS[u[2]][0]); e.preventDefault(); }
+    else if(k==='e' && e.shiftKey){ st.mode='evidenzia'; st.color=(st.color+1)%HL.length; render(); if(st.zen) hlToast(false); e.preventDefault(); }
+    else if(k==='e'){ st.mode = st.mode==='evidenzia'?null:'evidenzia'; render(); if(st.zen) hlToast(st.mode===null); e.preventDefault(); }
+    else if(k==='g'){ st.mode = st.mode==='gomma'?null:'gomma'; render(); if(st.zen) erToast(st.mode===null); e.preventDefault(); }
+    else if(k==='ArrowRight'||k==='ArrowLeft'){
+      const n = st.unit + (k==='ArrowRight'?1:-1);
+      if(n<0||n>=UNITS.length) st.edge = n<0?'l':'r'; else st.unit=n;
+      render(); e.preventDefault();
+    }
+  });
+  render();
+  return () => { st.zen=true; st.view='lettura'; st.panel=false; st.modal=false; st.hdr=false; el.classList.toggle('trig', showTrig()); render(); };
+}
+renderStudio();
+const resetZen = makeZen(document.getElementById('zenApp'), false);
+const resetSplit = makeZen(document.getElementById('splitApp'), true);
+document.getElementById('resetZen').addEventListener('click', resetZen);
+document.getElementById('hasQ').addEventListener('change', resetZen);
+document.getElementById('showTrig').addEventListener('change', () => { resetZen(); resetSplit(); });
+
+/* schede */
+const tabs=[...document.querySelectorAll('[data-tab]')];
+function show(name){ tabs.forEach(t=>t.setAttribute('aria-pressed', String(t.dataset.tab===name))); document.querySelectorAll('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==name); }
+tabs.forEach(t=>t.addEventListener('click',()=>{ show(t.dataset.tab); try{ localStorage.setItem('rt-zen-tab', t.dataset.tab); }catch(_){} }));
+const h=(location.hash||'').slice(1); let saved=null; try{ saved=localStorage.getItem('rt-zen-tab'); }catch(_){}
+if(['studio','zen','split','tasti'].includes(h)) show(h); else if(saved && ['studio','zen','split','tasti'].includes(saved)) show(saved);
+})();
+</script>
