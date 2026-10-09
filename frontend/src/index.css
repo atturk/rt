@@ -808,12 +808,14 @@
 
 /* Classificatore: griglie allineate e scheda dal basso. */
 .rt-cls-grid-scroll { overflow-x: auto; }
-.rt-cls-grid { display: grid; gap: 3px; padding: 4px 0; min-width: 260px; }
+.rt-cls-grid { display: grid; gap: 3px; padding: 4px; min-width: 260px;
+  --cls-ok: oklch(0.82 0.1 165); --cls-warn: oklch(0.86 0.11 80); --cls-alt: oklch(0.82 0.09 250); --cls-bad: oklch(0.78 0.12 30); }
+.dark .rt-cls-grid { --cls-ok: oklch(0.48 0.09 165); --cls-warn: oklch(0.52 0.09 75); --cls-alt: oklch(0.47 0.1 255); --cls-bad: oklch(0.48 0.12 28); }
 .rt-cls-cell { position: relative; height: 32px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); cursor: pointer; }
-.rt-cls-cell[data-value="didactic"], .rt-cls-cell[data-value="skip_review"], .rt-cls-cell[data-value="coherent"] { background: var(--success-soft); }
-.rt-cls-cell[data-value="organizational"], .rt-cls-cell[data-value="mirata"], .rt-cls-cell[data-value="adattabile"] { background: var(--warning-soft); }
-.rt-cls-cell[data-value="quiz"], .rt-cls-cell[data-value="svolto"], .rt-cls-cell[data-value="visualization"] { background: var(--accent); }
-.rt-cls-cell[data-value="drift"], .rt-cls-cell[data-value="no_content"] { background: var(--danger-soft); }
+.rt-cls-cell[data-value="didactic"], .rt-cls-cell[data-value="skip_review"], .rt-cls-cell[data-value="coherent"] { background: var(--cls-ok); border-color: transparent; }
+.rt-cls-cell[data-value="organizational"], .rt-cls-cell[data-value="mirata"], .rt-cls-cell[data-value="adattabile"] { background: var(--cls-warn); border-color: transparent; }
+.rt-cls-cell[data-value="quiz"], .rt-cls-cell[data-value="svolto"], .rt-cls-cell[data-value="visualization"], .rt-cls-cell[data-value="esplicito"], .rt-cls-cell[data-value="caso"], .rt-cls-cell[data-value="esercizio"] { background: var(--cls-alt); border-color: transparent; }
+.rt-cls-cell[data-value="drift"], .rt-cls-cell[data-value="no_content"] { background: var(--cls-bad); border-color: transparent; }
 .rt-cls-cell[data-state="missing"], .rt-cls-cell[data-state="stale"], .rt-cls-cell[data-state="skipped"] { border-style: dashed; }
 .rt-cls-cell[data-state="skipped"] { background: transparent; }
 .rt-cls-cell[data-state="error"] { border-color: var(--danger); }
