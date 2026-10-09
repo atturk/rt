@@ -67,8 +67,9 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     version = subprocess.check_output(['git', 'show', 'HEAD:VERSION'], cwd=root, text=True).strip()
     # stabile (4.0.1) o prerelease PEP 440 (4.1.0b1, 4.1.0rc1): la pubblica come beta release.yml;
-    # la quarta cifra è un fix urgente della versione precedente (4.2.2.1, 4.2.3b1.1)
-    if not re.fullmatch(r'\d+\.\d+\.\d+((a|b|rc)\d+)?(\.\d+)?', version):
+    # la quarta cifra è un fix urgente della versione precedente (4.2.2.1, 4.2.3b1.1), anche in beta
+    # (4.2.3.2b1)
+    if not re.fullmatch(r'\d+\.\d+\.\d+(((a|b|rc)\d+)?(\.\d+)?|\.\d+(a|b|rc)\d+)', version):
         raise SystemExit('VERSION deve contenere major.minor.patch, con eventuale aN/bN/rcN e .N di fix')
     if args.tag and args.tag != f'v{version}':
         raise SystemExit(f'Tag {args.tag} diverso da VERSION ({version})')
