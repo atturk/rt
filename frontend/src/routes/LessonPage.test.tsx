@@ -9,6 +9,7 @@ import { LessonPage } from './lessons'
 const workflow = vi.hoisted(() => ({ outline: undefined as Schemas['Outline'] | undefined, document: undefined as Schemas['LessonDocument'] | undefined, jobs: [] as Schemas['Job'][], ready: false }))
 
 vi.mock('@/api/hooks', () => ({
+  useLessons: () => ({ data: [] }),
   useLesson: () => ({ data: { id: 1, titolo: 'Acidosi', materia: 'FISIOLOGIA', data: '2026-10-02', docente: 'Rossi', unit_count: 9, duration_seconds: 4800, phases: { rewrite: workflow.ready ? 'VALID' : 'MISSING' }, has_audio: false, actions: { recall: { available: false, preview: false }, images: { available: false, preview: false }, export_markdown: { available: true, preview: false }, export_zip: { available: true, preview: false } } } }),
   useLessonDocument: () => ({ data: workflow.document }),
 }))

@@ -2638,6 +2638,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Novità delle versioni installate */
+        get: operations["system_changelog_api_v1_system_changelog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/choose-folder": {
         parameters: {
             query?: never;
@@ -3025,6 +3042,22 @@ export interface components {
              * @default 5
              */
             number: number;
+        };
+        /** ChangelogGroup */
+        ChangelogGroup: {
+            /** Items */
+            items: string[];
+            /** Title */
+            title: string;
+        };
+        /** ChangelogSection */
+        ChangelogSection: {
+            /** Date */
+            date: string;
+            /** Groups */
+            groups: components["schemas"]["ChangelogGroup"][];
+            /** Version */
+            version: string;
         };
         /** ChooseFolderIn */
         ChooseFolderIn: {
@@ -17976,6 +18009,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CacheInfo"];
+                };
+            };
+        };
+    };
+    system_changelog_api_v1_system_changelog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangelogSection"][];
                 };
             };
         };

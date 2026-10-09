@@ -6,15 +6,19 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tarfile
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rt.core.changelog import release_notes
 
 
 REQUIRED = {
-    'VERSION', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
+    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', 'bin/rt', 'rt/cli.py', '.env.example',
     'config.example/general.yaml',
 }
 ALLOWED_ROOT_FILES = {
-    'VERSION', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
+    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', '.env.example',
 }
 ALLOWED_DIRS = {'rt', 'bin', 'config.example', 'docs'}
@@ -24,7 +28,7 @@ FORBIDDEN_PARTS = {
 }
 
 
-def check_archive(payload: bytes, expected_version: str) -> None:
+def check_archive(payload: bytes, expected_version: str) -> str:
     """Rifiuta contenuti privati, file di sviluppo e distribuzioni incomplete."""
     with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as archive:
         names = set()
@@ -54,9 +58,13 @@ def check_archive(payload: bytes, expected_version: str) -> None:
         version_file = archive.extractfile(f'{prefix}/VERSION')
         if version_file.read().decode().strip() != expected_version:
             raise ValueError('VERSION non corrisponde alla release')
+        changelog = archive.extractfile(f'{prefix}/CHANGELOG.md').read().decode('utf-8')
+        notes = release_notes(changelog, expected_version)
         for name in ('bin/rt', 'install.sh', 'bootstrap.sh'):
             if not archive.getmember(f'{prefix}/{name}').mode & 0o111:
                 raise ValueError(f'Permesso eseguibile mancante: {name}')
+
+        return notes
 
 
 def main() -> None:
@@ -76,9 +84,13 @@ def main() -> None:
     archive = subprocess.check_output(
         ['git', 'archive', '--format=tar.gz', f'--prefix=rt-{version}/', 'HEAD'], cwd=root,
     )
-    check_archive(archive, version)
+    try:
+        notes = check_archive(archive, version)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / 'release-notes.md').write_text(notes, encoding='utf-8')
         filename = f'rt-{version}.tar.gz'
         (args.output / filename).write_bytes(archive)
         checksum = hashlib.sha256(archive).hexdigest()
