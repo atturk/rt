@@ -73,9 +73,12 @@ def get_ledger_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "review_decisions.json")
 
 
-def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
+def load_ledger(lesson_dir: str, strict: bool = False, *, _migrate: bool = True) -> DecisionLedger:
     """Carica il ledger. Un file illeggibile vale come ledger vuoto, oppure (strict=True)
     solleva l'errore: chi sta per scrivere non deve sovrascrivere dati che non sa leggere."""
+    if _migrate:
+        from rt.pipeline.review_migration import migrate_review_anchors
+        migrate_review_anchors(lesson_dir)
     path = get_ledger_path(lesson_dir)
     if not fs.isfile(path):
         return DecisionLedger(schema_version="1.0", decisions=[])
@@ -139,6 +142,22 @@ def record_decision(
             clean_resolved = sanitized
     
     issue = find_science_issue_by_id(lesson_dir, issue_id)
+    # Una decisione nuova si ancora al testo che l'utente sta vedendo, anche
+    # quando l'issue proviene da un produttore storico privo di ancore.
+    if issue and issue.anchor is None:
+        from rt.pipeline.anchors import find_quote, make_anchor
+        try:
+            draft = load_resolved_draft(lesson_dir)
+        except FileNotFoundError:
+            draft = None
+        unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None) if draft else None
+        if unit:
+            if issue.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT):
+                issue.anchor = make_anchor(unit.content, 0, len(unit.content))
+            else:
+                found = find_quote(unit.content, issue.claim)
+                if found:
+                    issue.anchor = make_anchor(unit.content, found.start, found.end)
     dec_obj = ReviewDecision(
         anchor=issue.anchor.model_copy(deep=True) if issue and issue.anchor else None,
         issue_id=issue_id,
@@ -231,6 +250,9 @@ def apply_decisions_to_draft(
     Ogni sostituzione viene applicata una sola volta garantendo idempotenza e conformità UTF-8.
     Per le unità modificate a mano si applicano solo le decisioni successive alla modifica.
     """
+    if ledger.schema_version == "2.0":
+        from rt.pipeline.review_migration import apply_anchored_decisions
+        return apply_anchored_decisions(draft, ledger, science_issues, edited_units)
     decisions_map: Dict[str, ReviewDecision] = {d.issue_id: d for d in ledger.decisions}
     sci_by_id = {iss.id: iss for iss in science_issues}
     # Ultima decisione per issue, nell'ordine delle ultime voci del ledger.

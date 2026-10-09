@@ -1,7 +1,14 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "decisions": [
     {
+      "anchor": {
+        "quote": "La",
+        "prefix": "",
+        "suffix": " trattazione scientifica si apre con l'a",
+        "start": 0,
+        "end": 2
+      },
       "issue_id": "sci_000001",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #1",
@@ -13,6 +20,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "trattazione",
+        "prefix": "[MOCK] Correzione #1 ",
+        "suffix": " scientifica si apre con l'analisi siste",
+        "start": 21,
+        "end": 32
+      },
       "issue_id": "sci_000002",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #2",
@@ -24,6 +38,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "scientifica",
+        "prefix": "OCK] Correzione #1 [MOCK] Correzione #2 ",
+        "suffix": " si apre con l'analisi sistematica dei m",
+        "start": 42,
+        "end": 53
+      },
       "issue_id": "sci_000003",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #3",
@@ -35,6 +56,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "si",
+        "prefix": "OCK] Correzione #2 [MOCK] Correzione #3 ",
+        "suffix": " apre con l'analisi sistematica dei mecc",
+        "start": 63,
+        "end": 65
+      },
       "issue_id": "sci_000004",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #4",
@@ -46,6 +74,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "apre con",
+        "prefix": "OCK] Correzione #3 [MOCK] Correzione #4 ",
+        "suffix": " l'analisi sistematica dei meccanismi bi",
+        "start": 84,
+        "end": 92
+      },
       "issue_id": "sci_000005",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #5",
@@ -57,6 +92,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "l'analisi",
+        "prefix": "OCK] Correzione #4 [MOCK] Correzione #5 ",
+        "suffix": " sistematica dei meccanismi biochimici f",
+        "start": 105,
+        "end": 114
+      },
       "issue_id": "sci_000006",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #6",
@@ -68,6 +110,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "sistematica",
+        "prefix": "OCK] Correzione #5 [MOCK] Correzione #6 ",
+        "suffix": " dei meccanismi biochimici fondamentali.",
+        "start": 126,
+        "end": 137
+      },
       "issue_id": "sci_000007",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #7",
@@ -79,6 +128,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "dei",
+        "prefix": "OCK] Correzione #6 [MOCK] Correzione #7 ",
+        "suffix": " meccanismi biochimici fondamentali.",
+        "start": 147,
+        "end": 150
+      },
       "issue_id": "sci_000008",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #8",
@@ -90,6 +146,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "meccanismi",
+        "prefix": "OCK] Correzione #7 [MOCK] Correzione #8 ",
+        "suffix": " biochimici fondamentali.",
+        "start": 168,
+        "end": 178
+      },
       "issue_id": "sci_000009",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #9",
@@ -101,6 +164,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "biochimici fondamentali.",
+        "prefix": "OCK] Correzione #8 [MOCK] Correzione #9 ",
+        "suffix": "",
+        "start": 189,
+        "end": 213
+      },
       "issue_id": "sci_000010",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #10",

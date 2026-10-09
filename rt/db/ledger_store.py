@@ -26,7 +26,7 @@ def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any])
     if db is None:
         return NO_DATABASE
     from rt.core.models import DecisionLedger, ReviewDecision
-    from rt.pipeline.ledger import get_ledger_path, write_ledger_file
+    from rt.pipeline.ledger import get_ledger_path, write_ledger_file, load_ledger
 
     with db_sync.suspend_dual_write(), session_scope(db) as session:
         lesson = db_sync.sync_lesson(session, lesson_dir)
@@ -37,7 +37,7 @@ def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any])
         result = op(repo, lesson)
         if not result:  # niente da annullare: il file resta com'è (o assente)
             return result
-        ledger = DecisionLedger(schema_version="1.0", decisions=[
+        ledger = DecisionLedger(schema_version=load_ledger(lesson_dir, _migrate=False).schema_version, decisions=[
             ReviewDecision(**{k: getattr(row, k) for k in db_sync.DECISION_FIELDS if getattr(row, k) is not None})
             for row in repo.active(lesson)
         ])

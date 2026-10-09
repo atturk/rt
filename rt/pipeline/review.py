@@ -61,7 +61,10 @@ LEGACY_TYPE_MAP = {
 }
 
 
-def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
+def load_science_issues(lesson_dir: str, *, _migrate: bool = True) -> List[ScienceIssue]:
+    if _migrate:
+        from rt.pipeline.review_migration import migrate_review_anchors
+        migrate_review_anchors(lesson_dir)
     path = get_science_issues_path(lesson_dir)
     if not fs.isfile(path):
         return []

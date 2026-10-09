@@ -45,13 +45,17 @@ def test_paragraph_edit_starts_from_resolved_text(lesson):
     assert b.id not in rs.orphan_issue_ids(lesson)
 
 
-def test_paragraph_decisions_apply_before_punctual_ones(lesson):
-    from rt.pipeline.ledger import record_decision
+def test_legacy_paragraph_order_survives_migration(lesson):
+    from rt.pipeline.ledger import write_ledger_file
+    from rt.core.models import DecisionLedger, ReviewDecision
     a = issue('sci_000001', 'formando carbossiemoglobina', 'formando carbaminoemoglobina')
     b = issue('sci_000002', 'Testo ASR', None, ScienceType.ERR_ASR_LLM)
     save_science_issues([a,b], lesson)
-    record_decision(lesson, a.id, 'accepted', a.suggested_fix)
-    record_decision(lesson, b.id, 'edited', "La CO2 si lega all'emoglobina formando carbossiemoglobina. Aggiunta.")
+    write_ledger_file(DecisionLedger(decisions=[
+        ReviewDecision(issue_id=a.id, decision='accepted', resolved_text=a.suggested_fix),
+        ReviewDecision(issue_id=b.id, decision='edited',
+                       resolved_text="La CO2 si lega all'emoglobina formando carbossiemoglobina. Aggiunta."),
+    ]), lesson)
     assert load_resolved_draft(lesson).units[0].content == "La CO2 si lega all'emoglobina formando carbaminoemoglobina. Aggiunta."
 
 
