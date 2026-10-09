@@ -45,7 +45,7 @@ from rt.services.context import RunContext, phase_scope
 from rt.services.events import Notice
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
-from rt.pipeline.review_units import record_review_unit
+from rt.pipeline.review_units import record_review_unit, load_review_units
 
 LOG = logging.getLogger(__name__)
 
@@ -455,6 +455,16 @@ def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: Lis
             purge_decisions_by_prefix(lesson_dir, prefix=issue_id)
 
 
+def manual_review_units(lesson_dir: str, units) -> set:
+    """Una riscrittura successiva non eredita l'esenzione delle modifiche manuali."""
+    import hashlib
+    from rt.pipeline.document_edits import load_document_edits
+    entries = load_document_edits(lesson_dir)["units"]
+    return {u.unit_id for u in units if entries.get(u.unit_id, {}).get("edited") and
+            (not entries[u.unit_id].get("edited_hash") or entries[u.unit_id]["edited_hash"] ==
+             hashlib.sha256(u.content.encode("utf-8")).hexdigest())}
+
+
 def _only_manual_edits(lesson_dir: str, units, eligible_ids) -> bool:
     """True se dopo la revisione sono cambiate solo unità corrette a mano nell'anteprima (il
     testo scritto dall'utente, decisioni comprese): segmenti, versione della fase e unità da
@@ -476,7 +486,7 @@ def _only_manual_edits(lesson_dir: str, units, eligible_ids) -> bool:
     if set(current) != set(reviewed):
         return False
     changed = {uid for uid, digest in current.items() if reviewed.get(uid) != digest}
-    if not changed or not changed <= edited_unit_ids(lesson_dir):
+    if not changed or not changed <= manual_review_units(lesson_dir, units):
         return False
     eligible_before = record.get("eligible_units")
     if isinstance(eligible_before, list) and set(eligible_before) - changed != set(eligible_ids) - changed:
@@ -495,7 +505,7 @@ def parent_unit_context(units, unit_id: str) -> Optional[str]:
     return "\n\n".join(f"{u.unit_id} {(u.title or '').strip()}\n{u.content}" for u in siblings)
 
 
-def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False) -> Dict[str, Any]:
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False, force: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions. Con
     parent_context il revisore riceve anche le altre subunità della stessa unità."""
     from rt.services.unit_relevance import refresh, included
@@ -506,6 +516,13 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
     if not included(lesson_dir, unit):
         return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
+    registry = load_review_units(lesson_dir)
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    entry = registry.get(unit_id) or {}
+    digest = entry.get("text_hash") or ((checkpoint or {}).get("unit_hashes") or {}).get(unit_id)
+    known = bool(entry) or unit_id in ((checkpoint or {}).get("completed_items") or [])
+    if not force and known and entry.get("result") != "failed" and digest == _unit_hashes([unit])[unit_id]:
+        return {"status": "skipped", "unit": unit_id, "reason": "già verificata", "issues": entry.get("issues", 0)}
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments.segments}
     cfg = load_config()
@@ -568,7 +585,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "review")
-    if phase_status == PhaseStatus.VALID and not force:
+    registry = load_review_units(lesson_dir)
+    if phase_status == PhaseStatus.VALID and not force and not any(e.get("result") == "failed" for e in registry.values()):
         all_science_issues = load_science_issues(lesson_dir)
         pending_sci = [s for s in all_science_issues if s.status == "pending"]
         next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
@@ -637,9 +655,20 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     if not fs.isfile(get_science_issues_path(lesson_dir)):
         save_science_issues(all_science_issues, lesson_dir)
     ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")
-    reviewed_unit_ids = list((ckpt or {}).get("completed_items") or [])
-    if force or phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
-        reviewed_unit_ids = []
+    from rt.pipeline.document_edits import edited_unit_ids
+    current_hashes = _unit_hashes(draft.units)
+    prior_hashes = (ckpt or {}).get("unit_hashes") or {}
+    completed = set((ckpt or {}).get("completed_items") or [])
+    manual = manual_review_units(lesson_dir, draft.units)
+    reviewed_unit_ids = []
+    for unit in draft.units:
+        entry = registry.get(unit.unit_id) or {}
+        digest = entry.get("text_hash") or prior_hashes.get(unit.unit_id)
+        known = bool(entry) or unit.unit_id in completed
+        failed = entry.get("result") == "failed"
+        newly_included = entry.get("result") == "excluded" and unit.unit_id in eligible_ids
+        if not force and known and not failed and not newly_included and (digest == current_hashes[unit.unit_id] or unit.unit_id in manual):
+            reviewed_unit_ids.append(unit.unit_id)
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
     unit_hashes = _unit_hashes(draft.units)

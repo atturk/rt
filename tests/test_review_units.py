@@ -16,7 +16,7 @@ def test_full_and_single_review_write_registry(reviewed):
     assert all(entry['reviewed_at'] and entry['model'] and entry['result'] == 'issues' for entry in units.values())
     assert all(entry['issues'] == 1 and entry['text_hash'] for entry in units.values())
     previous = units['1.1']['reviewed_at']
-    review.run_review_unit(lesson, '1.1', force_mock=True)
+    review.run_review_unit(lesson, '1.1', force_mock=True, force=True)
     with open(path, encoding='utf8') as f:
         assert json.load(f)['units']['1.1']['reviewed_at'] > previous
 
@@ -67,16 +67,16 @@ def test_empty_prefilter_and_failed_runs_leave_a_trace(reviewed, monkeypatch):
     from rt.llm.errors import TimeoutFailure
     lesson, _ = reviewed
     monkeypatch.setattr(review, '_validated_review_issues', lambda *a, **kw: [])
-    review.run_review_unit(lesson, '1.1', force_mock=True)
+    review.run_review_unit(lesson, '1.1', force_mock=True, force=True)
     assert load_review_units(lesson)['1.1']['result'] == 'ok'
     monkeypatch.setattr(review, '_review_unit', lambda *a, **kw: 'skipped_by_prefilter')
-    review.run_review_unit(lesson, '1.1', force_mock=True)
+    review.run_review_unit(lesson, '1.1', force_mock=True, force=True)
     assert load_review_units(lesson)['1.1']['result'] == 'skipped_by_prefilter'
     def fail(*a, **kw):
         raise TimeoutFailure('Tempo esaurito')
     monkeypatch.setattr(review, '_review_unit', fail)
     with pytest.raises(TimeoutFailure):
-        review.run_review_unit(lesson, '1.1', force_mock=True)
+        review.run_review_unit(lesson, '1.1', force_mock=True, force=True)
     assert load_review_units(lesson)['1.1']['result'] == 'failed'
     assert 'Tempo esaurito' in load_review_units(lesson)['1.1']['message']
     review.run_review(lesson, force=True, force_mock=True)

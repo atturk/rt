@@ -10,7 +10,7 @@ def test_refresh_one_unit_preserves_other_unit_issues(tmp_path):
     save_science_issues(before + [saved_other], lesson)
     others = [saved_other]
     assert others
-    result = run_review_unit(lesson, "1.1", force_mock=True)
+    result = run_review_unit(lesson, "1.1", force_mock=True, force=True)
     after = load_science_issues(lesson)
     assert result["other_issues_preserved"] >= 1
     assert all(any(issue.id == old.id and issue.claim == old.claim for issue in after) for old in others)
@@ -31,7 +31,7 @@ def test_reviewing_one_rewritten_unit_leaves_other_rewritten_units_to_review(tmp
         unit.content += " Testo riscritto dopo la revisione."
     save_draft(draft, lesson)
 
-    run_review_unit(lesson, "1.1", force_mock=True)
+    run_review_unit(lesson, "1.1", force_mock=True, force=True)
     checkpoint, _, _ = get_phase_checkpoint(lesson, "review")
     assert sorted(checkpoint["completed_items"]) == ["1.1", "1.3"]
 
@@ -53,7 +53,7 @@ def test_rereviewing_a_unit_keeps_decisions_on_issues_found_again(tmp_path):
     record_decision(lesson, found_again.id, "rejected", actor="test")
     record_decision(lesson, vanished.id, "accepted", resolved_text="x", actor="test")
 
-    result = run_review_unit(lesson, "1.1", force_mock=True)
+    result = run_review_unit(lesson, "1.1", force_mock=True, force=True)
 
     after = {issue.id: issue for issue in load_science_issues(lesson)}
     assert after[found_again.id].claim == found_again.claim

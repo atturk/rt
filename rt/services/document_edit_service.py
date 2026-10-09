@@ -24,6 +24,7 @@ Sezioni e unità restano quelle della scaletta, nello stesso ordine. Il salvatag
 Gli errori tornano con la riga e il motivo; con un errore non si salva nulla.
 """
 import re
+import hashlib
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -270,8 +271,11 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
                 content_changes[uid] = text
                 unit_edit["edited"] = True
                 unit_edit["edited_at"] = datetime.now().isoformat()
+                unit_edit["edited_hash"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
             elif was_edited:
                 unit_edit["edited"] = True
+                if edits["units"][uid].get("edited_hash"):
+                    unit_edit["edited_hash"] = edits["units"][uid]["edited_hash"]
                 from rt.pipeline.document_edits import edited_unit_dates
                 unit_edit["edited_at"] = edited_unit_dates(lesson_dir)[uid]
             if unit_edit:
