@@ -129,8 +129,8 @@ def test_legacy_decision_not_applied_has_a_build_warning(reviewed):
     assert any(w['code'] == 'decision_not_applied' and w['count'] == 1 for w in warnings)
 
 
-def test_issues_of_units_gone_from_the_draft_are_dropped(reviewed):
-    """Scaletta rifatta: le issue (e le decisioni) di un'unità che non c'è più non restano nel file."""
+def test_decided_issues_of_gone_units_remain_for_reconfirmation(reviewed):
+    """Scaletta rifatta: le decise restano, senza decisioni annullate automaticamente."""
     from rt.pipeline.rewrite import load_draft, save_draft
     lesson, calls = reviewed
     ids = decide_all(lesson)
@@ -140,5 +140,11 @@ def test_issues_of_units_gone_from_the_draft_are_dropped(reviewed):
     calls.clear()
     review.run_review(lesson, force_mock=True)
     assert calls == []
-    assert {i.unit_id for i in review.load_science_issues(lesson)} == {'1.1', '1.2'}
-    assert {d.issue_id for d in load_ledger(lesson).decisions} == {ids['1.1'], ids['1.2']}
+    assert {i.unit_id for i in review.load_science_issues(lesson)} == {'1.1', '1.2', '2.1'}
+    assert {d.issue_id for d in load_ledger(lesson).decisions} == set(ids.values())
+    from rt.pipeline.ledger import reconfirmation_issue_ids
+    assert reconfirmation_issue_ids(lesson) == {ids['2.1']}
+    # La scaletta della fixture conserva l'unità rimossa: rewrite resta PARTIAL,
+    # ma la review non deve richiamare il critic per le unità già verificate.
+    review.run_review(lesson, force_mock=True)
+    assert calls == []

@@ -135,3 +135,12 @@ def test_rejecting_a_disappeared_quote_closes_it_in_an_existing_unit():
     apply_decisions_to_draft(Draft(units=[unit('1.1', 'Testo completamente diverso.')]),
                              ledger, [iss], missing_decisions=missing)
     assert missing == set()
+
+
+def test_missing_timestamp_does_not_inherit_another_units_manual_edit():
+    text = 'Il valore è errato.'
+    iss = issue('sci_000001', '1.1', make_anchor(text, 12, 18))
+    ledger = DecisionLedger(schema_version='2.0', decisions=[decision(iss, 'corretto', timestamp='')])
+    result = apply_decisions_to_draft(Draft(units=[unit('1.1', text)]), ledger, [iss],
+                                      {'2.1':'2026-10-09T10:00:00'})
+    assert result.units[0].content == 'Il valore è corretto.'

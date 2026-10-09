@@ -9,7 +9,7 @@ Salva science_issues.json.
 import os
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, Literal
 
 from pydantic import ValidationError
 from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
@@ -24,7 +24,7 @@ from rt.llm.prompts import (
     build_science_review_user_prompt,
     ScienceIssueList
 )
-from rt.pipeline.rewrite import load_draft
+from rt.pipeline.ledger import load_resolved_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
 from rt.llm.jev_client import call_jev, JevNoulQuestion, JevError
@@ -421,54 +421,73 @@ def _unit_hashes(units) -> Dict[str, str]:
     return {unit.unit_id: hashlib.sha256(unit.model_dump_json(exclude={"generated_at"}).encode("utf-8")).hexdigest() for unit in units}
 
 
-def _issue_key(issue) -> tuple:
-    return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
+def anchor_findings(findings: List[ScienceIssue], unit: DraftUnit, *, origin: Literal["verifica", "parte", "studio"] = "verifica") -> None:
+    """Le ancore vengono dal testo esaminato, mai dalle posizioni inventate dal modello."""
+    from rt.pipeline.anchors import make_anchor, find_quote
+    paragraph_types = {ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT}
+    for issue in findings:
+        issue.unit_id = unit.unit_id
+        issue.origin = origin
+        issue.status = "pending"
+        if issue.type in paragraph_types:
+            issue.anchor = make_anchor(unit.content, 0, len(unit.content))
+        else:
+            found = find_quote(unit.content, issue.claim)
+            issue.anchor = make_anchor(unit.content, found.start, found.end) if found else None
 
 
-def reconcile_unit_issues(lesson_dir: str, prior: List[ScienceIssue], generated: List[ScienceIssue],
-                          units, replaced_units: set) -> tuple:
-    """Ritrova le issue per identità, assegna id nuovi e rimuove solo le decisioni sparite."""
-    from rt.pipeline.ledger import load_ledger, revert_last_decision
+def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: List[ScienceIssue],
+                        units, replaced_units: set, *,
+                        replace_open: Optional[Callable[[ScienceIssue], bool]] = None) -> tuple:
+    """Conserva le decise, sostituisce le aperte, eredita i rifiuti sullo stesso tratto.
+
+    replace_open permette ai chiamanti di limitare la sostituzione delle aperte
+    a un tratto, conservando quelle della stessa unità fuori dal tratto.
+    """
+    from rt.pipeline.ledger import load_ledger
+    from rt.pipeline.anchors import locate
     ledger = load_ledger(lesson_dir)
+    decisions = {d.issue_id:d for d in ledger.decisions}
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     sequence = max([int(value[4:]) for value in
                     [i.id for i in prior] + [d.issue_id for d in ledger.decisions]
                     if value.startswith("sci_") and value[4:].isdigit()] +
                    [int((checkpoint or {}).get("issue_sequence", 0))])
-    previous = {}
+    kept = [i for i in prior if i.unit_id not in replaced_units or i.id in decisions
+            or (replace_open is not None and not replace_open(i))]
+    unit_by_id = {u.unit_id:u for u in units}
+    rejections = []
     for old in prior:
-        if old.unit_id in replaced_units:
-            previous.setdefault((old.unit_id, *_issue_key(old)), []).append(old.id)
-    kept = [i for i in prior if i.unit_id not in replaced_units]
-    used = {i.id for i in kept}
+        decision = decisions.get(old.id)
+        unit = unit_by_id.get(old.unit_id)
+        if decision and decision.decision == "rejected" and unit:
+            anchor = decision.anchor or old.anchor
+            found = locate(anchor, unit.content) if anchor else None
+            if found:
+                rejections.append((old, found))
+    fresh_issues = []
     for fresh in generated:
-        candidates = previous.get((fresh.unit_id, *_issue_key(fresh))) or []
-        if candidates:
-            fresh.id = candidates.pop(0)
-        else:
-            sequence += 1
-            fresh.id = f"sci_{sequence:06d}"
-        used.add(fresh.id)
-    removed = {i.id for i in prior if i.unit_id in replaced_units} - used
-    orphaned = sorted(removed & {d.issue_id for d in ledger.decisions})
-    for decision in ledger.decisions:
-        if decision.issue_id in removed:
-            revert_last_decision(lesson_dir, decision.issue_id)
-    rank = {u.unit_id: index for index, u in enumerate(units)}
-    combined = sorted(kept + generated, key=lambda i: rank.get(i.unit_id, len(rank)))
-    return combined, orphaned, sequence
+        # Il rifiuto mantiene l'issue originale come rappresentante di quel tratto:
+        # né la motivazione storica né la decisione vengono riscritte dal modello.
+        if fresh.anchor and any(old.unit_id == fresh.unit_id and old.type == fresh.type and
+                max(found.start, fresh.anchor.start) < min(found.end, fresh.anchor.end)
+                for old, found in rejections):
+            continue
+        sequence += 1
+        fresh.id = f"sci_{sequence:06d}"
+        fresh_issues.append(fresh)
+    rank = {u.unit_id:index for index, u in enumerate(units)}
+    combined = sorted(kept + fresh_issues, key=lambda i:rank.get(i.unit_id, len(rank)))
+    return combined, [], sequence
 
 
-def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: List[ScienceIssue]) -> None:
-    """Le issue si rinumerano per posizione (sci_000001...): se un id ora indica un'issue diversa
-    da quella decisa, la decisione va tolta. Altrimenti il build la applicherebbe all'issue nuova,
-    e una "modificata" su un'issue di tutta l'unità ne sostituirebbe l'intero testo."""
-    from rt.pipeline.ledger import load_ledger, purge_decisions_by_prefix
-    now = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in issues}
-    for decision in load_ledger(lesson_dir).decisions:
-        issue_id = decision.issue_id
-        if issue_id in before and now.get(issue_id) != before[issue_id]:
-            purge_decisions_by_prefix(lesson_dir, prefix=issue_id)
+def _initialize_anchor_ledger(lesson_dir: str) -> None:
+    """Le verifiche nuove producono già dati ancorati, non suggerimenti da migrare."""
+    from rt.pipeline.ledger import load_ledger, save_ledger
+    ledger = load_ledger(lesson_dir)
+    if ledger.schema_version != "2.0":
+        ledger.schema_version = "2.0"
+        save_ledger(ledger, lesson_dir)
 
 
 def manual_review_units(lesson_dir: str, units) -> set:
@@ -526,7 +545,7 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     parent_context il revisore riceve anche le altre subunità della stessa unità."""
     from rt.services.unit_relevance import refresh, included
     refresh(lesson_dir, force_mock=force_mock)
-    draft = load_draft(lesson_dir)
+    draft = load_resolved_draft(lesson_dir)
     unit = next((item for item in draft.units if item.unit_id == unit_id), None)
     if unit is None:
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
@@ -545,6 +564,7 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
     prior = load_science_issues(lesson_dir)
+    _initialize_anchor_ledger(lesson_dir)
     generated = []
     client = LLMClient(force_mock=force_mock)
     try:
@@ -556,7 +576,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc))
         raise
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
-    combined, orphaned, sequence = reconcile_unit_issues(lesson_dir, prior, generated, draft.units, {unit_id})
+    anchor_findings(generated, unit)
+    combined, orphaned, sequence = merge_unit_findings(lesson_dir, prior, generated, draft.units, {unit_id})
     save_science_issues(combined, lesson_dir)
     record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result)
     checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
@@ -600,13 +621,21 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     )
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
+    draft = load_resolved_draft(lesson_dir)
     phase_status, reason = check_phase_status(lesson_dir, "review")
     registry = load_review_units(lesson_dir)
-    if phase_status == PhaseStatus.VALID and not force and not any(e.get("result") == "failed" for e in registry.values()):
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    prior_hashes = (checkpoint or {}).get("unit_hashes") or {}
+    current_hashes = _unit_hashes(draft.units)
+    current_text = all((registry.get(uid, {}).get("text_hash") or prior_hashes.get(uid)) == digest
+                       for uid, digest in current_hashes.items())
+    # Anche le unità sparite devono attraversare la conservazione delle decise.
+    old_ids = set(prior_hashes)
+    if (phase_status == PhaseStatus.VALID and not force and current_text and old_ids <= set(current_hashes)
+            and not any(e.get("result") == "failed" for e in registry.values())):
         all_science_issues = load_science_issues(lesson_dir)
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
         next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
         return {
             "status": "review_completed",
@@ -623,8 +652,6 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     action = "FORCE" if force else "RUN"
-    
-    draft = load_draft(lesson_dir)
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
 
@@ -655,9 +682,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if ctx is not None:
             ctx.emit(Notice(level="info", message="Revisione già fatta: il testo è cambiato solo nelle unità "
                                                   "corrette a mano, issue e decisioni restano."))
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
         return {
             "status": "review_completed", "action": "SKIP", "skipped": True,
             "reason": "testo modificato solo a mano dopo la revisione",
@@ -672,16 +698,16 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     all_science_issues = load_science_issues(lesson_dir)
-    # Unità sparite dalla bozza (scaletta rifatta): le loro issue e decisioni non valgono più.
+    # Una scaletta nuova elimina soltanto le issue aperte delle unità sparite.
+    # Le decisioni e le relative issue restano leggibili e da riconfermare.
+    from rt.pipeline.ledger import load_ledger
+    decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     draft_ids = {u.unit_id for u in draft.units}
-    gone = {i.id for i in all_science_issues if i.unit_id and i.unit_id not in draft_ids}
-    if gone:
-        from rt.pipeline.ledger import load_ledger, revert_last_decision
-        all_science_issues = [i for i in all_science_issues if i.id not in gone]
+    retained = [i for i in all_science_issues if not i.unit_id or i.unit_id in draft_ids or i.id in decided_ids]
+    if len(retained) != len(all_science_issues):
+        all_science_issues = retained
         save_science_issues(all_science_issues, lesson_dir)
-        for decision in load_ledger(lesson_dir).decisions:
-            if decision.issue_id in gone:
-                revert_last_decision(lesson_dir, decision.issue_id)
+    _initialize_anchor_ledger(lesson_dir)
     if not fs.isfile(get_science_issues_path(lesson_dir)):
         save_science_issues(all_science_issues, lesson_dir)
     ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")
@@ -741,7 +767,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
         if not asr_llm:
             generated.extend(st_issues_by_unit.get(unit.unit_id, []))
-        all_science_issues, _, sequence = reconcile_unit_issues(
+        anchor_findings(generated, unit)
+        all_science_issues, _, sequence = merge_unit_findings(
             lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
         save_science_issues(all_science_issues, lesson_dir)
         record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result)
@@ -799,9 +826,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
             mark_downstream_stale(lesson_dir, "review")
 
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
         
         allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
         if pending_sci:

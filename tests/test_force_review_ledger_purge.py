@@ -117,7 +117,7 @@ def test_force_review_keeps_found_issues_and_decisions(tmp_path):
 
     # 2. Decidi tutte le issue Science pendenti
     for iss in pending_sci:
-        record_decision(lesson_dir, iss.id, "accepted", resolved_text=iss.suggested_fix)
+        record_decision(lesson_dir, iss.id, "rejected", resolved_text=iss.claim)
 
     # Aggiungi anche una decisione custom con prefisso diverso
     record_decision(lesson_dir, "custom_000001", "accepted", resolved_text="cand1")
@@ -132,7 +132,7 @@ def test_force_review_keeps_found_issues_and_decisions(tmp_path):
     _, pending_sci_skip = get_pending_issues(lesson_dir)
     assert len(pending_sci_skip) == 0
 
-    # V5: la forzatura conserva le decisioni sulle issue ritrovate.
+    # V1: una nuova verifica dello stesso tratto eredita il rifiuto.
     res_force = run_review(lesson_dir, force=True, force_mock=True)
     assert res_force["action"] == "FORCE"
 

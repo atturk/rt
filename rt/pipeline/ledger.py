@@ -189,7 +189,7 @@ def apply_decisions_to_draft(
             if missing_decisions is not None:
                 missing_decisions.add(issue.id)
             continue
-        if edited_units and decision.timestamp <= edited_units.get(unit.unit_id, ''):
+        if edited_units and unit.unit_id in edited_units and decision.timestamp <= edited_units[unit.unit_id]:
             continue
         if decision.decision == 'rejected':
             continue

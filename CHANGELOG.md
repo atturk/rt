@@ -4,6 +4,7 @@
 
 ### Novità
 
+- La verifica controlla il testo risolto, conserva tutte le decisioni e riconosce i rifiuti sullo stesso passaggio anche con citazioni diverse.
 - Le correzioni si applicano solo al passaggio ancorato della propria unità; le decisioni non ritrovate restano da riconfermare.
 - Le lezioni esistenti ricevono le ancore alla prima lettura, senza chiamate al modello e con testo risolto identico.
 - Issue e decisioni conservano l’ancora e la provenienza; registro DB aggiornato senza perdere i campi storici.

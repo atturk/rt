@@ -70,8 +70,15 @@ def test_historical_resolved_text_before_and_after_first_read(tmp_path, request,
     draft, ledger, issues, edits = historical_lesson(tmp_path)
     before = [u.content for u in legacy_apply_decisions(draft, ledger, issues, edits).units]
     assert before == EXPECTED
+    paths = [get_ledger_path(str(tmp_path)), get_science_issues_path(str(tmp_path))]
+    originals = {path:open(path, 'rb').read() for path in paths}
     after = [u.content for u in load_resolved_draft(str(tmp_path)).units]
     assert after == before
+    from rt.storage import fs
+    for source, name in ((paths[0], 'review_decisions.pre_anchors.json'),
+                         (paths[1], 'science_issues.pre_anchors.json')):
+        with fs.open(lesson_path(str(tmp_path), name), 'rb') as file:
+            assert file.read() == originals[source]
 
     migrated = load_ledger(str(tmp_path))
     assert migrated.schema_version == '2.0'
@@ -119,3 +126,27 @@ def test_invalid_ledger_is_not_overwritten(tmp_path):
         load_resolved_draft(str(tmp_path))
     assert open(path).read() == '{invalid'
     assert open(get_science_issues_path(str(tmp_path)), 'rb').read() == original
+
+
+def test_undo_after_migration_recovers_earlier_decision_context(tmp_path):
+    from rt.pipeline.ledger import revert_last_decision
+    draft = Draft(units=[DraftUnit(unit_id='1.1', title='Test', start_segment_id='seg_000001',
+                    end_segment_id='seg_000001', source_segment_ids=['seg_000001'], content='Il valore è errato.')])
+    issues = [ScienceIssue(id=id, unit_id='1.1', type='ERR_CONCETTUALE', severity='low', claim=claim, reason='Errore')
+              for id, claim in [('sci_000001', 'errato'), ('sci_000002', 'intermedio')]]
+    ledger = DecisionLedger(decisions=[
+        ReviewDecision(issue_id=issues[0].id, decision='accepted', resolved_text='intermedio'),
+        ReviewDecision(issue_id=issues[1].id, decision='accepted', resolved_text='preciso'),
+        ReviewDecision(issue_id=issues[0].id, decision='edited', resolved_text='corretto'),
+    ])
+    save_draft(draft, str(tmp_path))
+    from rt.pipeline.review import save_science_issues
+    from rt.pipeline.ledger import write_ledger_file
+    save_science_issues(issues, str(tmp_path))
+    write_ledger_file(ledger, str(tmp_path))
+    assert load_resolved_draft(str(tmp_path)).units[0].content == 'Il valore è corretto.'
+    assert revert_last_decision(str(tmp_path), issues[0].id)
+    old_after_undo = ledger.model_copy(update={'decisions':ledger.decisions[:-1]})
+    expected = legacy_apply_decisions(draft, old_after_undo, issues).units[0].content
+    assert expected == 'Il valore è preciso.'
+    assert load_resolved_draft(str(tmp_path)).units[0].content == expected

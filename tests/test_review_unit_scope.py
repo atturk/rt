@@ -48,7 +48,7 @@ def test_rereviewing_a_unit_keeps_decisions_on_issues_found_again(tmp_path):
     issues = [issue for issue in load_science_issues(lesson) if issue.unit_id == "1.1"]
     assert issues
     found_again = issues[0]
-    vanished = issues[0].model_copy(update={"id": "sci_900000", "claim": "Affermazione che la revisione non ritrova."})
+    vanished = issues[0].model_copy(update={"id": "sci_900000", "claim": "Affermazione che la revisione non ritrova.", "anchor": None})
     save_science_issues(load_science_issues(lesson) + [vanished], lesson)
     record_decision(lesson, found_again.id, "rejected", actor="test")
     record_decision(lesson, vanished.id, "accepted", resolved_text="x", actor="test")
@@ -58,7 +58,10 @@ def test_rereviewing_a_unit_keeps_decisions_on_issues_found_again(tmp_path):
     after = {issue.id: issue for issue in load_science_issues(lesson)}
     assert after[found_again.id].claim == found_again.claim
     assert found_again.id in {decision.issue_id for decision in load_ledger(lesson).decisions}
-    assert result["orphaned_decisions"] == [vanished.id]
+    assert result["orphaned_decisions"] == []
+    assert vanished.id in after
+    from rt.pipeline.ledger import reconfirmation_issue_ids
+    assert vanished.id in reconfirmation_issue_ids(lesson)
 
 
-    assert vanished.id not in {decision.issue_id for decision in load_ledger(lesson).decisions}
+    assert vanished.id in {decision.issue_id for decision in load_ledger(lesson).decisions}

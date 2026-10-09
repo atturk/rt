@@ -84,7 +84,7 @@ def test_parent_unit_context_is_the_other_subunits_of_the_same_unit():
 def test_review_of_a_part_asks_for_the_parent_unit_as_context(api_client, ready, monkeypatch):
     path, lid, worker = ready
     from rt.pipeline import review
-    unit = review.load_draft(path).units[0].unit_id
+    unit = review.load_resolved_draft(path).units[0].unit_id
     seen = []
     original = review.run_review_unit
 

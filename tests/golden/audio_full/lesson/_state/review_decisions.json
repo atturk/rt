@@ -22,10 +22,10 @@
     {
       "anchor": {
         "quote": "trattazione",
-        "prefix": "[MOCK] Correzione #1 ",
+        "prefix": "La ",
         "suffix": " scientifica si apre con l'analisi siste",
-        "start": 21,
-        "end": 32
+        "start": 3,
+        "end": 14
       },
       "issue_id": "sci_000002",
       "decision": "accepted",
@@ -40,10 +40,10 @@
     {
       "anchor": {
         "quote": "scientifica",
-        "prefix": "OCK] Correzione #1 [MOCK] Correzione #2 ",
+        "prefix": "La trattazione ",
         "suffix": " si apre con l'analisi sistematica dei m",
-        "start": 42,
-        "end": 53
+        "start": 15,
+        "end": 26
       },
       "issue_id": "sci_000003",
       "decision": "accepted",
@@ -58,10 +58,10 @@
     {
       "anchor": {
         "quote": "si",
-        "prefix": "OCK] Correzione #2 [MOCK] Correzione #3 ",
+        "prefix": "La trattazione scientifica ",
         "suffix": " apre con l'analisi sistematica dei mecc",
-        "start": 63,
-        "end": 65
+        "start": 27,
+        "end": 29
       },
       "issue_id": "sci_000004",
       "decision": "accepted",
@@ -76,10 +76,10 @@
     {
       "anchor": {
         "quote": "apre con",
-        "prefix": "OCK] Correzione #3 [MOCK] Correzione #4 ",
+        "prefix": "La trattazione scientifica si ",
         "suffix": " l'analisi sistematica dei meccanismi bi",
-        "start": 84,
-        "end": 92
+        "start": 30,
+        "end": 38
       },
       "issue_id": "sci_000005",
       "decision": "accepted",
@@ -94,10 +94,10 @@
     {
       "anchor": {
         "quote": "l'analisi",
-        "prefix": "OCK] Correzione #4 [MOCK] Correzione #5 ",
+        "prefix": "La trattazione scientifica si apre con ",
         "suffix": " sistematica dei meccanismi biochimici f",
-        "start": 105,
-        "end": 114
+        "start": 39,
+        "end": 48
       },
       "issue_id": "sci_000006",
       "decision": "accepted",
@@ -112,10 +112,10 @@
     {
       "anchor": {
         "quote": "sistematica",
-        "prefix": "OCK] Correzione #5 [MOCK] Correzione #6 ",
+        "prefix": "zione scientifica si apre con l'analisi ",
         "suffix": " dei meccanismi biochimici fondamentali.",
-        "start": 126,
-        "end": 137
+        "start": 49,
+        "end": 60
       },
       "issue_id": "sci_000007",
       "decision": "accepted",
@@ -130,10 +130,10 @@
     {
       "anchor": {
         "quote": "dei",
-        "prefix": "OCK] Correzione #6 [MOCK] Correzione #7 ",
+        "prefix": "ifica si apre con l'analisi sistematica ",
         "suffix": " meccanismi biochimici fondamentali.",
-        "start": 147,
-        "end": 150
+        "start": 61,
+        "end": 64
       },
       "issue_id": "sci_000008",
       "decision": "accepted",
@@ -148,10 +148,10 @@
     {
       "anchor": {
         "quote": "meccanismi",
-        "prefix": "OCK] Correzione #7 [MOCK] Correzione #8 ",
+        "prefix": "a si apre con l'analisi sistematica dei ",
         "suffix": " biochimici fondamentali.",
-        "start": 168,
-        "end": 178
+        "start": 65,
+        "end": 75
       },
       "issue_id": "sci_000009",
       "decision": "accepted",
@@ -166,12 +166,192 @@
     {
       "anchor": {
         "quote": "biochimici fondamentali.",
+        "prefix": "on l'analisi sistematica dei meccanismi ",
+        "suffix": "",
+        "start": 76,
+        "end": 100
+      },
+      "issue_id": "sci_000010",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #10",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #1",
+        "prefix": "",
+        "suffix": " [MOCK] Correzione #2 [MOCK] Correzione ",
+        "start": 0,
+        "end": 20
+      },
+      "issue_id": "sci_000011",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #1",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #2",
+        "prefix": "[MOCK] Correzione #1 ",
+        "suffix": " [MOCK] Correzione #3 [MOCK] Correzione ",
+        "start": 21,
+        "end": 41
+      },
+      "issue_id": "sci_000012",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #2",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #3",
+        "prefix": "OCK] Correzione #1 [MOCK] Correzione #2 ",
+        "suffix": " [MOCK] Correzione #4 [MOCK] Correzione ",
+        "start": 42,
+        "end": 62
+      },
+      "issue_id": "sci_000013",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #3",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #4",
+        "prefix": "OCK] Correzione #2 [MOCK] Correzione #3 ",
+        "suffix": " [MOCK] Correzione #5 [MOCK] Correzione ",
+        "start": 63,
+        "end": 83
+      },
+      "issue_id": "sci_000014",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #4",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #5",
+        "prefix": "OCK] Correzione #3 [MOCK] Correzione #4 ",
+        "suffix": " [MOCK] Correzione #6 [MOCK] Correzione ",
+        "start": 84,
+        "end": 104
+      },
+      "issue_id": "sci_000015",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #5",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #6",
+        "prefix": "OCK] Correzione #4 [MOCK] Correzione #5 ",
+        "suffix": " [MOCK] Correzione #7 [MOCK] Correzione ",
+        "start": 105,
+        "end": 125
+      },
+      "issue_id": "sci_000016",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #6",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #7",
+        "prefix": "OCK] Correzione #5 [MOCK] Correzione #6 ",
+        "suffix": " [MOCK] Correzione #8 [MOCK] Correzione ",
+        "start": 126,
+        "end": 146
+      },
+      "issue_id": "sci_000017",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #7",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #8",
+        "prefix": "OCK] Correzione #6 [MOCK] Correzione #7 ",
+        "suffix": " [MOCK] Correzione #9 [MOCK] Correzione ",
+        "start": 147,
+        "end": 167
+      },
+      "issue_id": "sci_000018",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #8",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #9",
+        "prefix": "OCK] Correzione #7 [MOCK] Correzione #8 ",
+        "suffix": " [MOCK] Correzione #10",
+        "start": 168,
+        "end": 188
+      },
+      "issue_id": "sci_000019",
+      "decision": "accepted",
+      "resolved_text": "[MOCK] Correzione #9",
+      "resolved_by": "cli_auto",
+      "timestamp": "<TS>",
+      "notes": null,
+      "original_context": null,
+      "channel": "cli",
+      "actor": "auto_accept"
+    },
+    {
+      "anchor": {
+        "quote": "[MOCK] Correzione #10",
         "prefix": "OCK] Correzione #8 [MOCK] Correzione #9 ",
         "suffix": "",
         "start": 189,
-        "end": 213
+        "end": 210
       },
-      "issue_id": "sci_000010",
+      "issue_id": "sci_000020",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #10",
       "resolved_by": "cli_auto",

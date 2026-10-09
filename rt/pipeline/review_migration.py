@@ -271,17 +271,39 @@ def migrate_objects(draft, ledger, issues, edited_units, sequence_floor=0):
                 current.resolved_text = replacement
             current_issue.anchor = current.anchor.model_copy(deep=True)
         replacements[old.issue_id] = [converted] + extras
-    # Mantiene anche le decisioni superate e i loro campi storici, nella stessa posizione.
+    # Le versioni superate e i riferimenti a una correzione precedente usano
+    # il contesto storico del momento, così Annulla può ritrovarli di nuovo.
+    historical_prefix = []
     for old in ledger.decisions:
+        issue = by_id.get(old.issue_id)
+        current = replacements[old.issue_id][0] if latest[old.issue_id] is old else old.model_copy(deep=True)
+        if issue and (latest[old.issue_id] is not old or current.anchor is None):
+            prefix = [d for d in historical_prefix if d.issue_id != old.issue_id]
+            before = legacy_apply_decisions(draft, DecisionLedger(decisions=prefix), issues, edited_units)
+            after = legacy_apply_decisions(draft, DecisionLedger(decisions=prefix+[old]), issues, edited_units)
+            unit = next((u for u in before.units if u.unit_id == issue.unit_id), None)
+            if unit:
+                found = find_quote(unit.content, fix_mojibake(issue.claim))
+                if issue.type in PARAGRAPH_TYPES:
+                    current.anchor = make_anchor(unit.content, 0, len(unit.content))
+                    if old.decision == 'edited':
+                        current.resolved_text = next(u.content for u in after.units if u.unit_id == unit.unit_id)
+                elif found:
+                    literal = (sanitize_suggested_fix(old.resolved_text) if old.decision == 'accepted'
+                               else fix_mojibake(old.resolved_text) if old.resolved_text else None)
+                    resolved = next(u.content for u in after.units if u.unit_id == unit.unit_id)
+                    start, end = found.start, found.end
+                    if literal and replace_claim(unit.content, fix_mojibake(issue.claim), literal) == resolved:
+                        end = len(unit.content) - (len(resolved)-start-len(literal))
+                    current.anchor = make_anchor(unit.content, start, end)
+                    current.resolved_text = literal
         if latest[old.issue_id] is old:
             output.extend(replacements[old.issue_id])
         else:
-            previous = old.model_copy(deep=True)
-            issue = by_id.get(old.issue_id)
-            previous.anchor = issue.anchor.model_copy(deep=True) if issue and issue.anchor else None
             if old.decision == 'accepted' and issue and issue.type not in PARAGRAPH_TYPES:
-                previous.resolved_text = sanitize_suggested_fix(old.resolved_text)
-            output.append(previous)
+                current.resolved_text = sanitize_suggested_fix(old.resolved_text)
+            output.append(current)
+        historical_prefix.append(old)
     migrated.decisions = output
     from rt.pipeline.ledger import apply_decisions_to_draft
     replayed = apply_decisions_to_draft(draft, migrated, new_issues, edited_units)
@@ -317,6 +339,20 @@ def migrate_review_anchors(lesson_dir):
         migrated, anchored = migrate_objects(load_draft(lesson_dir), ledger, issues,
                                               edited_unit_dates(lesson_dir),
                                               int((checkpoint or {}).get('issue_sequence', 0)))
+        # Conserva anche il JSON originale: suggerimenti discorsivi e campi
+        # extra storici restano recuperabili, oltre al testo risolto invariato.
+        from rt.core.lesson_paths import lesson_path
+        from rt.pipeline.ledger import get_ledger_path
+        for source, name in ((get_science_issues_path(lesson_dir), 'science_issues.pre_anchors.json'),
+                             (get_ledger_path(lesson_dir), 'review_decisions.pre_anchors.json')):
+            if fs.isfile(source):
+                archive = lesson_path(lesson_dir, name)
+                if not fs.isfile(archive):
+                    with fs.open(source, 'rb') as original:
+                        raw = original.read()
+                    with fs.open(archive + '.tmp', 'wb') as backup:
+                        backup.write(raw)
+                    fs.replace(archive + '.tmp', archive)
         save_science_issues(anchored, lesson_dir)
         save_ledger(migrated, lesson_dir)
     finally:
