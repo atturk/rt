@@ -640,14 +640,14 @@
 [data-hl-mode="erase"] .rt-hl { cursor: pointer; }
 [data-hl-mode="erase"] .rt-hl:hover { outline: 1.5px dashed var(--muted-foreground); outline-offset: 1px; }
 
-/* Zen: dissolvenza nella pagina e colori Irlen estesi a tutta la finestra. */
+/* Lettura veloce: dissolvenza nella pagina e colori Irlen estesi a tutta la finestra. */
 .rt-layout nav, .rt-study-text, .rt-study-footer, .rt-rsvp { transition: opacity 300ms, visibility 300ms; }
-.rt-layout[data-zen] nav { opacity: 0; visibility: hidden; pointer-events: none; }
-.rt-layout[data-zen] nav.md\:flex { position: fixed; }
-.rt-layout[data-zen] > div { padding-bottom: 0; }
-[data-testid="study"][data-zen] { min-height: 100dvh; height: 100dvh; }
-[data-testid="study"][data-zen] .rt-study-text { opacity: 0; visibility: hidden; position: absolute; inset: 0; overflow: hidden; }
-[data-testid="study"][data-zen] .rt-study-footer { opacity: 0; visibility: hidden; position: absolute; bottom: 0; pointer-events: none; }
+.rt-layout:is([data-rsvp], [data-zen]) nav { opacity: 0; visibility: hidden; pointer-events: none; }
+.rt-layout:is([data-rsvp], [data-zen]) nav.md\:flex { position: fixed; }
+.rt-layout:is([data-rsvp], [data-zen]) > div { padding-bottom: 0; }
+[data-testid="study"][data-rsvp] { min-height: 100dvh; height: 100dvh; }
+[data-testid="study"][data-rsvp] .rt-study-text { opacity: 0; visibility: hidden; position: absolute; inset: 0; overflow: hidden; }
+[data-testid="study"][data-rsvp] .rt-study-footer { opacity: 0; visibility: hidden; position: absolute; bottom: 0; pointer-events: none; }
 .rt-rsvp { opacity: 0; visibility: hidden; }
 .rt-rsvp[data-active] { opacity: 1; visibility: visible; }
 @starting-style { .rt-rsvp[data-active] { opacity: 0; } }
@@ -668,6 +668,14 @@
 @media (prefers-reduced-motion: reduce) {
   .rt-layout nav, .rt-study-text, .rt-study-footer, .rt-rsvp { transition: none; }
 }
+/* Zen dello Studio: la barra si sovrappone al testo senza cambiarne la posizione. */
+[data-testid="study"][data-zen] .rt-study-classic-header { visibility: hidden; pointer-events: none; }
+[data-testid="study"][data-zen] .rt-study-footer { display: none; }
+.rt-zen-bar { position: fixed; inset: 0 0 auto; height: 52px; z-index: 40; transform: translateY(-100%); transition: transform 200ms; }
+.rt-zen-bar[data-open], .rt-zen-bar:focus-within { transform: translateY(0); }
+.rt-zen-hot { position: fixed; inset: 0 0 auto; height: 40px; z-index: 39; }
+@media (hover: hover) { .rt-zen-hot { pointer-events: none; } }
+@media (prefers-reduced-motion: reduce) { .rt-zen-bar { transition: none; } }
 @font-face {
   font-family: 'OpenDyslexic';
   src: url('/fonts/OpenDyslexic-Regular.woff2') format('woff2');

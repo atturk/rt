@@ -319,3 +319,13 @@ it.each([true, false])('popup Genera: consigliato presente e selezionato solo co
   fireEvent.click(screen.getByTestId('study-generate-start'))
   expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'mirata' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })
+
+it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () => {
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'z' })
+  fireEvent.keyDown(window, { key: 'd' })
+  expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Torna allo studio' })[0])
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.1')
+})

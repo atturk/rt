@@ -3,7 +3,7 @@ import Highlighter from 'web-highlighter'
 
 import { highlightsApi } from '@/api/highlights'
 
-export type HighlightMode = 'evidenzia' | 'gomma'
+export type HighlightMode = 'evidenzia' | 'gomma' | null
 export const HIGHLIGHT_COLORS = ['giallo', 'verde', 'azzurro', 'rosa', 'arancio'] as const
 
 type Stored = { startMeta: Parameters<Highlighter['fromStore']>[0]; endMeta: Parameters<Highlighter['fromStore']>[1]; text: string; id: string }

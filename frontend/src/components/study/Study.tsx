@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
@@ -26,10 +26,11 @@ import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
 import { useIsPhone } from '@/lib/phone'
-import { useHighlighterPrefs, type RsvpPreference } from '@/lib/studyPrefs'
-import { useZen } from '@/lib/zen'
+import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { useRsvpLayout, useZenLayout, useStudyZen } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
+import { ZenHeader } from './ZenHeader'
 import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
 import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
@@ -47,6 +48,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   onlyUnits?: string[] | null
   back: { to: string; label: string }
 }) {
+  const [zenMinHeight, setZenMinHeight] = useState(0)
+  const readingScroll = useRef(0)
+  const anchor = useRef<{ node: Element; top: number } | null>(null)
   const enterLast = useRef(false)
   const [edge, setEdge] = useState<{ side: 'left' | 'right'; sequence: number } | null>(null)
   const edgeSequence = useRef(0)
@@ -96,6 +100,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }, [lesson?.id, unit?.id, phase, rereading, finished, markRead]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   const goToUnit = (idx: number) => {
+    anchor.current = null
+    readingScroll.current = 0
+    setZenMinHeight(0)
     setUnitIndex(idx)
     setPhase('lettura')
     setRereading(false)
@@ -103,6 +110,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
 
   const advance = useCallback(() => {
+    anchor.current = null
+    readingScroll.current = 0
+    setZenMinHeight(0)
     setRereading(false)
     if (units && unitIndex + 1 < units.length) {
       setUnitIndex(unitIndex + 1)
@@ -125,6 +135,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       goToUnit(unitIndex + direction)
     } else if (target === 'next-lesson') advance()
     else {
+      anchor.current = null
+      readingScroll.current = 0
+      setZenMinHeight(0)
       enterLast.current = true
       setLessonIndex(lessonIndex - 1)
       setUnits(null)
@@ -144,17 +157,61 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [readerSettings, setReaderSettings] = useState(false)
   const [tint, setTint] = useState<RsvpPreference['irlen']>(null)
   const settingsButton = useRef<HTMLDivElement>(null)
-  const setZen = useZen()
+  const setRsvpLayout = useRsvpLayout()
+  const setZenLayout = useZenLayout()
+  const [zenMode, setZenMode] = useStudyZen()
+  const [zenSettings, setZenSettings] = useState(false)
+  const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
+  const savePosition = () => {
+    readingScroll.current = window.scrollY
+    const node = Array.from(textRoot?.querySelectorAll('p, h2, h3, li') ?? []).find(el => el.getBoundingClientRect().bottom > 52)
+    anchor.current = node ? { node, top: node.getBoundingClientRect().top } : null
+  }
+  const toggleZen = () => {
+    savePosition()
+    if (!zenMode) setZenMinHeight(document.documentElement.scrollHeight)
+    textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    setZenMode(current => !current)
+    setZenSettings(false)
+    setIndexOpen(false)
+    setDetailsOpen(false)
+  }
+  const review = () => {
+    savePosition()
+    if (live?.questions) setPhase('domande')
+    else setGenerateOpen(true)
+  }
+  useLayoutEffect(() => {
+    if (phase !== 'lettura' && !rereading) return
+    const restore = () => {
+      const saved = anchor.current
+      if (saved?.node.isConnected) window.scrollBy?.(0, saved.node.getBoundingClientRect().top - saved.top)
+      else if (readingScroll.current) window.scrollTo?.({ top: readingScroll.current })
+    }
+    restore()
+    const frame = requestAnimationFrame(restore)
+    return () => cancelAnimationFrame(frame)
+  }, [zenMode, phase, rereading])
+  const [notice, setNotice] = useState<{ kind: 'status' | 'pen' | 'eraser'; label: string; off?: boolean; color?: number; status?: StudyUnit['status'] } | null>(null)
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 1200)
+    return () => clearTimeout(timer)
+  }, [notice])
   const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [])
   useEffect(() => {
-    setZen({ active: speedReading, tint })
-    return () => setZen({ active: false, tint: null })
-  }, [speedReading, tint, setZen])
+    setRsvpLayout({ active: speedReading, tint })
+    return () => setRsvpLayout({ active: false, tint: null })
+  }, [speedReading, tint, setRsvpLayout])
   useEffect(() => {
     if (speedReading || !readerMounted) return
     const timer = setTimeout(() => setReaderMounted(false), globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 300)
     return () => clearTimeout(timer)
   }, [speedReading, readerMounted])
+  useEffect(() => {
+    setZenLayout({ active: zenMode && (phase === 'lettura' || rereading), tint: rsvpPrefs.irlen })
+    return () => setZenLayout({ active: false, tint: null })
+  }, [zenMode, phase, rereading, rsvpPrefs.irlen, setZenLayout])
   const highlights = useStudyHighlighter({
     root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
     mode: hlMode, color: highlighterPrefs.color,
@@ -167,27 +224,39 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
-      const isStatusKey = e.key.toLowerCase() === 's'
-      const isHighlightKey = e.key.toLowerCase() === 'e'
-      if (!isStatusKey && !isHighlightKey && (!arrows || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight'))) return
+      const key = e.key.toLowerCase()
       const target = e.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.tagName === 'SELECT')) {
+      if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      if (zenSettings) {
+        if (e.key === 'Escape') { e.preventDefault(); setZenSettings(false) }
         return
       }
-      if (isHighlightKey) {
+      if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
+      if (e.shiftKey && key !== 'e') return
+      if (key === 'z') { e.preventDefault(); toggleZen() }
+      else if (key === 'd') { e.preventDefault(); review() }
+      else if (key === 'e' || key === 'g') {
         e.preventDefault()
-        setHlMode(current => current === 'evidenzia' ? 'gomma' : 'evidenzia')
-      } else if (isStatusKey) {
+        const mode = key === 'g' ? 'gomma' : 'evidenzia'
+        const next = e.shiftKey ? 'evidenzia' : hlMode === mode ? null : mode
+        const color = e.shiftKey ? (highlighterPrefs.color + 1) % HIGHLIGHT_COLORS.length : highlighterPrefs.color
+        setHlMode(next)
+        if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
+        if (zenMode) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
+          label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
+      } else if (key === 's') {
         e.preventDefault()
         changeStatus()
-      } else {
+        if (zenMode) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
+      } else if (e.key === 'Escape' && zenMode) { e.preventDefault(); toggleZen() }
+      else if (arrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -298,6 +367,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const headerActions = (
     <div className="flex items-center gap-1.5 max-md:gap-0" data-testid="study-header-tools">
+      <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
       <HighlightTools
         mode={hlMode}
         color={highlighterPrefs.color}
@@ -332,6 +402,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
+          compact
           units={liveUnits}
           unitIndex={unitIndex}
           open={indexOpen}
@@ -342,7 +413,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </div>
   )
 
-  const zenActions = <div className="flex items-center gap-1">
+  const rsvpActions = <div className="flex items-center gap-1">
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
     <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
@@ -351,12 +422,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   return (
     <>
-      {reading && (
+      <div hidden={!reading}>
         <StudyShell
           title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
           back={speedReading ? undefined : studyBack}
-          actions={speedReading ? zenActions : headerActions}
-          zen={speedReading}
+          actions={speedReading ? rsvpActions : headerActions}
+          rsvp={speedReading}
+          zen={zenMode}
+          zenMinHeight={zenMinHeight}
+          zenBar={zenMode ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
+            irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
+          notice={zenMode && notice ? <div className="fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel" data-testid="zen-notice" aria-hidden>
+            {notice.kind === 'status' ? <StudyStatusIcon status={notice.status} /> : <div className="relative">
+              {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : <Eraser className="size-6" />}
+              {notice.off && <Slash className="absolute inset-0 size-6" />}
+              {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
+            </div>}
+          </div> : undefined}
           edge={edge}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
           readingProps={{
@@ -391,7 +473,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
               <Button className="w-full max-w-(--reading-width) justify-center" onClick={() => setRereading(false)}>Torna alle domande</Button>
             ) : live.questions > 0 ? (
               <div className="flex w-full max-w-(--reading-width) items-center gap-2">
-                <Button className="flex-1 justify-center" onClick={() => setPhase('domande')} data-testid="study-quiz">
+                <Button className="flex-1 justify-center" onClick={review} data-testid="study-quiz">
                   Mettimi alla prova · {live.questions}
                 </Button>
                 <Button
@@ -415,10 +497,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         >
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
-          <Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} />
+          <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
+          <span className="sr-only" aria-live="polite">{zenMode ? notice?.label : null}</span>
           <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
         </StudyShell>
-      )}
+      </div>
       {phase === 'domande' && (
         <div hidden={rereading}>
           {/* Ripasso dell'unità appena letta: la sessione di ripasso vera e propria, con
@@ -569,10 +652,18 @@ function StudyShell({
   readingProps,
   edge,
   children,
+  rsvp = false,
   zen = false,
+  zenMinHeight,
+  zenBar,
+  notice,
   reader,
 }: {
+  rsvp?: boolean
   zen?: boolean
+  zenMinHeight?: number
+  zenBar?: ReactNode
+  notice?: ReactNode
   reader?: ReactNode
   title: ReactNode
   back?: { to: string; label: string }
@@ -584,12 +675,14 @@ function StudyShell({
   children: ReactNode
 }) {
   return (
-    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-zen={zen || undefined}>
-      <PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" />
+    <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-rsvp={rsvp || undefined} data-zen={zen || undefined} style={zen && zenMinHeight ? { minHeight: zenMinHeight } : undefined}>
+      <div className="rt-study-classic-header sticky top-0 z-20" aria-hidden={zen || undefined} inert={zen || undefined}><PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" /></div>
+      {zenBar}
+      {notice}
       {popup}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={zen || undefined} inert={zen || undefined} {...readingProps}>
-          <div key={edge?.sequence ?? 0} className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
+        <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={rsvp || undefined} inert={rsvp || undefined} {...readingProps}>
+          <div className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
             {children}
           </div>
         </div>
@@ -598,7 +691,7 @@ function StudyShell({
         {reader}
       </div>
       {footer && (
-        <div aria-hidden={zen || undefined} inert={zen || undefined} className="rt-study-footer sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
+        <div aria-hidden={rsvp || zen || undefined} inert={rsvp || zen || undefined} className="rt-study-footer sticky bottom-0 z-10 flex justify-center border-t bg-background p-4 max-md:bottom-[calc(64px+env(safe-area-inset-bottom))] max-md:border-t-0 max-md:px-[18px] max-md:pt-0 [&_button]:min-h-12">
           {footer}
         </div>
       )}
@@ -835,8 +928,10 @@ function UnitIndexMenu({
   open,
   onOpenChange,
   onSelectUnit,
+  compact = false,
 }: {
   units: StudyUnit[]
+  compact?: boolean
   unitIndex: number
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -913,14 +1008,15 @@ function UnitIndexMenu({
       <Button
         variant="outline"
         size="sm"
-        className="h-8 gap-1.5 px-2.5 text-meta text-foreground"
+        className={cn("h-8 gap-1.5 px-2.5 text-meta text-foreground", compact && "max-md:px-2")}
+        aria-label={compact ? `Unità ${unitIndex + 1} di ${units.length}` : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
         data-testid="unit-index-toggle"
       >
-        <List className="size-3.5 shrink-0" aria-hidden />
-        <span>{phone ? `${unitIndex + 1} di ${units.length}` : `Unità ${unitIndex + 1} di ${units.length}`}</span>
+        <List className={cn("size-3.5 shrink-0", compact && "max-md:hidden")} aria-hidden />
+        <span>{phone && compact ? `${unitIndex + 1}/${units.length}` : phone ? `${unitIndex + 1} di ${units.length}` : `Unità ${unitIndex + 1} di ${units.length}`}</span>
         {!phone && <ChevronDown className="size-3.5 shrink-0" aria-hidden />}
       </Button>
 
@@ -1004,8 +1100,8 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
         </button>}</Tooltip>
-        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · E">{(trigger) => <button {...trigger} type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma"
-          data-testid="highlight-eraser" className={segment} onClick={() => onMode('gomma')}>
+        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · G">{(trigger) => <button {...trigger} type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma"
+          data-testid="highlight-eraser" className={segment} onClick={() => onMode(mode === 'gomma' ? null : 'gomma')}>
           <Eraser className="size-4" aria-hidden />
         </button>}</Tooltip>
       </div>

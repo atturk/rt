@@ -60,7 +60,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/)
     for (const [name, url] of await pages(page)) {
       await page.goto(url)
-      await expect(page.locator('main')).toBeVisible()
+      await expect(page.locator('main').first()).toBeVisible()
       await expect(page.getByText(/^Carico/)).toHaveCount(0)
       await expectNoViolations(page, name)
     }

@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, serverState } from './support'
 
 // Studio del design 4.2 (schermate 05, 05b e 06): lettura dell'unità, poi le sue domande una
 // alla volta, poi l'unità dopo. Si entra dalle righe e dai gruppi di Lezioni e dall'intestazione
@@ -121,7 +121,8 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await page.getByRole('button', { name: 'Torna allo studio' }).first().click()
   await expect(page.getByTestId('study-text')).toBeVisible()
   await page.getByTestId('study-quiz').click()
-  await expect(page.getByTestId('recall-question')).toBeVisible()
+  // Il caricamento attende anche le riletture del pool: sul server e2e possono superare 10 s.
+  await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
   // Due risposte, poi "Termina" riporta al testo dell'unità con le domande rimaste.
   const answers = Math.min(2, total)
   const answered: string[] = []
@@ -601,7 +602,7 @@ test('ai limiti le frecce lasciano l’unità aperta e mostrano la fascia', asyn
   await expect(page.getByTestId('study-edge-right')).toBeVisible()
   await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units.at(-1)!.title)
   await expect(page.getByTestId('study-done')).toHaveCount(0)
-  await expect(page.locator('[aria-live="polite"]')).toContainText('Ultima unità')
+  await expect(page.locator('[aria-live="polite"]', { hasText: 'Ultima unità' })).toHaveText('Ultima unità')
 })
 
 test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) => {
@@ -776,4 +777,58 @@ test('4.2.3.1: in cima alla finestra i suggerimenti scendono sotto; le info dell
   const popup = page.getByTestId('study-details-popup')
   await expect(popup).toBeVisible()
   await inView(await popup.boundingBox())
+})
+
+test('zen: Z, barra col mouse, posizione e ritorno dal ripasso', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await page.evaluate(() => window.scrollTo(0, 120))
+  const position = await page.evaluate(() => window.scrollY)
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByRole('navigation')).toBeHidden()
+  await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open')
+  const text = page.getByTestId('study-text')
+  const top = await text.evaluate(el => el.getBoundingClientRect().top)
+  for (const key of ['e', 'g', 'Shift+E', 's']) {
+    await page.keyboard.press(key)
+    await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
+  }
+  await page.mouse.move(300, 8)
+  await expect(page.getByTestId('zen-bar')).toHaveAttribute('data-open', 'true')
+  await page.mouse.move(300, 250)
+  await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open', { timeout: 4000 })
+  await page.keyboard.press('d')
+  if (await page.getByTestId('recall-session-page').isVisible()) {
+    await page.getByRole('button', { name: 'Torna allo studio', exact: true }).first().click()
+    await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
+  } else {
+    await expect(page.getByTestId('study-generate-modal')).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(position)
+})
+
+test('zen su iPhone: il bordo alto apre la barra e il testo la richiude', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: serverState().base_url, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  try {
+    await loginViaLink(page)
+    const l = await lesson(page, 'PATOLOGIA')
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-zen-btn').tap()
+    await expect(page.getByRole('navigation')).toBeHidden()
+    await page.touchscreen.tap(190, 8)
+    await expect(page.getByTestId('zen-bar')).toHaveAttribute('data-open', 'true')
+    await page.touchscreen.tap(190, 250)
+    await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open')
+    await page.touchscreen.tap(190, 8)
+    await page.getByRole('button', { name: 'Esci dalla modalità zen · Z' }).tap()
+    await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  } finally { await context.close() }
 })
