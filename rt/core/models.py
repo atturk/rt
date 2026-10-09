@@ -129,6 +129,21 @@ class ScienceSeverity(str, Enum):
     HIGH = "high"
 
 
+class Anchor(BaseModel):
+    """Citazione e contesto nel testo di una singola unità."""
+    quote: str
+    prefix: str = ""
+    suffix: str = ""
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "Anchor":
+        if self.end < self.start or self.end - self.start != len(self.quote):
+            raise ValueError("Posizioni incoerenti con la citazione")
+        return self
+
+
 class ScienceIssue(BaseModel):
     id: str = Field(..., description="ID univoco (es. sci_000001)")
     type: ScienceType = Field(..., description="Tipo di problematica scientifica")

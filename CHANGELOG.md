@@ -2,6 +2,10 @@
 
 ## 4.2.4b2 — 2026-10-09
 
+### Novità
+
+- Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
+
 ### Correzioni
 
 - Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
