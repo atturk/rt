@@ -299,7 +299,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import load_science_issues
     from rt.pipeline.ledger import load_ledger, apply_decisions_to_draft
-    from rt.pipeline.document_edits import load_document_edits
+    from rt.pipeline.document_edits import load_document_edits, edited_unit_dates
 
     info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     date_val = info.get("data", "0000-00-00")
@@ -325,7 +325,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     science_issues = load_science_issues(lesson_dir)
     # Applicazione deterministica del decision ledger
     edits = load_document_edits(lesson_dir)
-    edited = {uid for uid, v in edits["units"].items() if v.get("edited")}
+    edited = edited_unit_dates(lesson_dir)
     resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues, edited)
     images_by_macro, _carousel = images_for_document(lesson_dir, outline)
     from rt.services.enrichment_service import document_blocks

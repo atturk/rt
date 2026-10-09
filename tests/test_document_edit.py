@@ -148,7 +148,8 @@ def test_text_title_and_timecode_are_saved_and_the_build_goes_stale(root):
     draft = {u.unit_id: u for u in load_draft(lesson_dir).units}
     assert draft[first_id].content == "Paragrafo scritto a mano.\n\nSecondo paragrafo scritto a mano."
     edits = load_document_edits(lesson_dir)["units"]
-    assert edits[first_id] == {"title": "Titolo riscritto a mano", "edited": True}
+    assert edits[first_id]["title"] == "Titolo riscritto a mano"
+    assert edits[first_id]["edited"] is True and edits[first_id]["edited_at"]
 
     after = _preview(lesson_dir)
     assert f"### {first_id} Titolo riscritto a mano" in after
@@ -301,3 +302,67 @@ def test_api_notices_dismissed_server_side(root, api_client):
     api_client.put("/api/v1/settings/notices", json={"notice": "preview_edit_beta", "dismissed": False})
     assert api_client.get("/api/v1/settings").json()["notices"]["dismissed"] == ["preview_edit_issues"]
     assert api_client.put("/api/v1/settings/notices", json={"notice": "altro"}).status_code == 422
+
+
+def test_decision_after_manual_edit_changes_preview(root):
+    """V1: l'accettazione successiva alla modifica a mano entra nel documento."""
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+    from rt.pipeline.review import save_science_issues
+    from rt.services.review_service import record_review_decision
+    lesson_dir = _synthetic_lesson(root, {"1.1": "Gli acidi grassi saturi hanno doppi legami. Sono lipidi."})
+    issue = ScienceIssue(id="sci_000001", type=ScienceType.ERR_CONCETTUALE,
+                         severity=ScienceSeverity.HIGH, unit_id="1.1", claim="hanno doppi legami",
+                         reason="I saturi non hanno doppi legami", suggested_fix="non hanno doppi legami")
+    save_science_issues([issue], lesson_dir)
+    save_document_edit(lesson_dir, _preview(lesson_dir).replace("Sono lipidi.", "Sono lipidi semplici."))
+    record_review_decision(lesson_dir, issue.id, "accepted", channel="web", validate=True)
+    after = _preview(lesson_dir)
+    assert "non hanno doppi legami" in after and "lipidi semplici" in after
+    edited_at = load_document_edits(lesson_dir)["units"]["1.1"]["edited_at"]
+    assert save_document_edit(lesson_dir, after)["changed"] is False
+    assert load_document_edits(lesson_dir)["units"]["1.1"]["edited_at"] == edited_at
+
+
+def test_legacy_manual_edit_uses_file_date(root):
+    """V1: le vecchie modifiche senza data usano la data del file."""
+    import os
+    from datetime import datetime
+    from rt.pipeline.document_edits import get_document_edits_path, save_document_edits
+    from rt.pipeline.ledger import record_decision, load_resolved_draft
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+    from rt.pipeline.review import save_science_issues
+    lesson_dir = _synthetic_lesson(root, {"1.1": "Testo già corretto. Altra frase errata."})
+    issues = [ScienceIssue(id=f"sci_{n:06d}", type=ScienceType.ERR_CONCETTUALE,
+                          severity=ScienceSeverity.LOW, unit_id="1.1", claim=claim,
+                          reason="Errore", suggested_fix=fix)
+              for n, claim, fix in [(1, "Testo già corretto", "Testo già già corretto"),
+                                    (2, "Altra frase errata", "Altra frase corretta")]]
+    save_science_issues(issues, lesson_dir)
+    record_decision(lesson_dir, issues[0].id, "accepted", issues[0].suggested_fix)
+    save_document_edits(lesson_dir, {"units": {"1.1": {"edited": True}}})
+    path = get_document_edits_path(lesson_dir)
+    os.utime(path, (datetime.now().timestamp(), datetime.now().timestamp()))
+    record_decision(lesson_dir, issues[1].id, "accepted", issues[1].suggested_fix)
+    assert load_resolved_draft(lesson_dir).units[0].content == "Testo già corretto. Altra frase corretta."
+
+
+def test_legacy_edit_date_survives_title_only_save(root):
+    from rt.pipeline.document_edits import save_document_edits, edited_unit_dates
+    from rt.pipeline.ledger import record_decision
+    from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity
+    from rt.pipeline.review import save_science_issues
+    lesson_dir = _synthetic_lesson(root, {'1.1': 'Testo errato.'})
+    issue = ScienceIssue(id='sci_000001', type=ScienceType.ERR_CONCETTUALE,
+                         severity=ScienceSeverity.LOW, unit_id='1.1', claim='errato',
+                         reason='Errore', suggested_fix='corretto')
+    save_science_issues([issue], lesson_dir)
+    save_document_edits(lesson_dir, {'units': {'1.1': {'edited': True}}})
+    date = edited_unit_dates(lesson_dir)['1.1']
+    record_decision(lesson_dir, issue.id, 'accepted', 'corretto')
+    before = _preview(lesson_dir)
+    lines = before.splitlines()
+    title = next(i for i, line in enumerate(lines) if line.startswith('### '))
+    lines[title] += ' rinominata'
+    save_document_edit(lesson_dir, '\n'.join(lines))
+    assert edited_unit_dates(lesson_dir)['1.1'] == date
+    assert 'Testo corretto.' in _preview(lesson_dir)
