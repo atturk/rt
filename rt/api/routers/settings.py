@@ -339,7 +339,7 @@ def put_notice(body: NoticeIn, _actor: Actor):
 @router.put("/settings/preferences", response_model=Settings, summary="Salva le preferenze generali")
 def put_preferences(body: PreferencesSettings, _actor: Actor):
     from rt.services.settings_service import save_preferences, snapshot
-    _call(save_preferences, _project_root(), body.model_dump())
+    _call(save_preferences, _project_root(), body.model_dump(exclude_unset=True))
     return snapshot(_project_root())
 
 
@@ -722,7 +722,14 @@ def _playground_call(fn, *args, **kwargs):
 @router.get("/settings/decision-model", response_model=DecisionModelOut)
 def get_decision_model(_actor: Actor):
     from rt.core.config import load_config
-    return _decision_out(load_config().jev)
+    from rt.core.config import classifier_jev
+    cfg = load_config()
+    from rt.core.config import classifier_job
+    result = _decision_out(classifier_jev(cfg, "relevance"))
+    result.model = classifier_job(cfg, "prefilter").model
+    result.enabled = classifier_job(cfg, "prefilter").mode in ("observe", "pipeline")
+    result.shadow = classifier_job(cfg, "prefilter").mode == "observe"
+    return result
 
 
 @router.post("/settings/decision-model/test", response_model=DecisionTestOut,
@@ -787,26 +794,13 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
         relevance = None
     if prefilter and jev_mapping.is_default("prefilter", prefilter, legacy):
         prefilter = None
-    relevance_type = relevance.type if relevance else jev_mapping.effective_decision("relevance", legacy).type
-    if body.enabled and not body.model.strip():
-        raise ApiError(422, "decision_model_required", "Indica il modello del prefiltro errori.")
-    checks = ([(body.credential, body.model.strip(), prefilter_type)] if body.enabled else []) + (
-        [(body.credential, body.relevance_model.strip(), relevance_type)]
-        if body.relevance_mode != "disabled" and body.relevance_model.strip() else [])
-    missing = probe_missing(checks) if checks else None
-    if missing:
-        raise ApiError(422, "decision_probe_required", missing)
     path = general_config_path(_project_root())
     data = config_service.read_yaml(path)
-    jev = {**data.get("jev", {}), "enabled": body.enabled, "shadow": body.shadow,
-           "model": body.model or "typesafe/jev-1.13", "credential": body.credential,
-           "task_a_skip_confidence_threshold": body.threshold,
-           "relevance_mode": body.relevance_mode,
-           "relevance_model": body.relevance_model.strip(),
-           "relevance_prompt": body.relevance_prompt,
-           "relevance_threshold": body.relevance_threshold,
-           "prefilter_type": prefilter_type,
-           "prefilter_prompt": body.prefilter_prompt}
+    from rt.services.classifier_settings import write_classifier
+    write_classifier(data, load_config().classifier)
+    jev = {**data.get("jev", {}), "task_a_skip_confidence_threshold": body.threshold,
+           "relevance_prompt": body.relevance_prompt, "relevance_threshold": body.relevance_threshold,
+           "prefilter_type": prefilter_type, "prefilter_prompt": body.prefilter_prompt}
     for key, decision in (("relevance_decision", relevance), ("prefilter_decision", prefilter)):
         if decision is None:
             jev.pop(key, None)
@@ -814,7 +808,7 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
             jev[key] = decision.model_dump()
     data["jev"] = jev
     config_service.write_yaml_atomic(path, data)
-    return _decision_out(JevConfig.model_validate(jev))
+    return get_decision_model(_actor)
 
 
 @router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")
@@ -923,3 +917,64 @@ def daemon_stop(_actor: Actor):
             pass
     stop_daemon()
     return daemon_status(_actor)
+
+
+from rt.core.config import ClassifierConfig, ClassifierJob
+
+
+class ClassifierProbeIn(ClassifierJob):
+    mode: Literal["off", "manual", "observe", "pipeline"] = "manual"
+    request_type: Literal["choice", "noul", "score"] = "choice"
+
+
+@router.get("/settings/classifier", response_model=ClassifierConfig)
+def get_classifier_settings(actor: Actor):
+    from rt.core.config import load_config
+    return load_config().classifier
+
+
+@router.post("/settings/classifier/probe", response_model=DecisionProbeOut)
+def probe_classifier_settings(body: ClassifierProbeIn, actor: Actor):
+    from rt.llm.jev_client import call_jev, JevChoiceQuestion, JevNoulQuestion, JevScoreQuestion, JevError
+    from rt.services.jev_playground import record_probe
+    questions = {
+        "choice": JevChoiceQuestion(instructions="Classifica il frutto", criteria={"banana": "Banana", "altro": "Altro"}),
+        "noul": JevNoulQuestion(instructions="La banana è un frutto"),
+        "score": JevScoreQuestion(instructions="Valuta la banana", criteria=["È un frutto"]),
+    }
+    try:
+        answer = call_jev("Una banana", {"categoria": questions[body.request_type]},
+            model=body.model, credential=body.credential, base_url=body.base_url,
+            timeout_seconds=body.timeout_seconds, job_name="classifier_probe").answers.get("categoria")
+        if answer is None or answer.type != body.request_type:
+            raise ValueError("Risposta del classificatore non valida")
+    except (JevError, ValueError) as exc:
+        raise ApiError(422, "decision_protocol_failed", str(exc)) from exc
+    record_probe(body.credential, body.model, body.request_type)
+    return {"ok": True, "choice": getattr(answer, "choice", body.request_type),
+            "confidence": getattr(answer, "confidence", getattr(answer, "noul", 0)), "request_type": body.request_type}
+
+
+@router.put("/settings/classifier", response_model=ClassifierConfig)
+def put_classifier_settings(body: ClassifierConfig, actor: Actor):
+    from rt.core.config import load_config, classifier_job
+    from rt.services import config_service
+    from rt.services.jev_playground import probe_missing
+    from rt.services.classifier_settings import write_classifier
+    cfg = load_config()
+    incoming = cfg.model_copy(update={"classifier": body})
+    checks = []
+    for name in body.jobs:
+        job, old = classifier_job(incoming, name), classifier_job(cfg, name)
+        if job.mode != "off" and (job.model, job.credential, job.base_url) != (old.model, old.credential, old.base_url):
+            from rt.services.jev_mapping import effective_decision
+            request_type = effective_decision(name, cfg.jev).type if name in ("relevance", "prefilter") else "noul" if name in ("drift", "enrichment") else "choice"
+            checks.append((job.credential, job.model, request_type))
+    missing = probe_missing(checks) if checks else None
+    if missing:
+        raise ApiError(422, "decision_probe_required", missing)
+    path = config_service.general_config_path(_project_root())
+    data = config_service.read_yaml(path)
+    write_classifier(data, body)
+    config_service.write_yaml_atomic(path, data)
+    return body

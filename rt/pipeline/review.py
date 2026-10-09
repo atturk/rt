@@ -335,9 +335,12 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
     # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
     skip_expensive_llm = False
-    if _cfg.jev.enabled:
-        verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
-        verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+    from rt.core.config import classifier_job, classifier_jev
+    prefilter = classifier_job(_cfg, "prefilter")
+    drift = classifier_job(_cfg, "drift")
+    if prefilter.mode in ("observe", "pipeline") or drift.mode in ("observe", "pipeline"):
+        verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if prefilter.mode in ("observe", "pipeline") else None
+        verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir) if drift.mode in ("observe", "pipeline") else None
         if verdict_a is not None:
             # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
             if jev_log is not None:
@@ -347,10 +350,10 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                 ctx.emit(Notice(message=f"Classificatore prefiltro {unit.unit_id}: " + describe(DecisionResult(
                     label=verdict_a.label, outcome=verdict_a.outcome, rule=None, answer=verdict_a.answer))))
 
-        if not (shadow_jev or _cfg.jev.shadow):
-            if verdict_b is not None and verdict_b.is_high_confidence_drift:
+        if not shadow_jev:
+            if drift.mode == "pipeline" and verdict_b is not None and verdict_b.is_high_confidence_drift:
                 all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
-            if verdict_a is not None and verdict_a.should_skip_expensive_llm:
+            if prefilter.mode == "pipeline" and verdict_a is not None and verdict_a.should_skip_expensive_llm:
                 skip_expensive_llm = True
 
     if not skip_expensive_llm:

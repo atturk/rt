@@ -15,14 +15,16 @@ def test_decision_model_requires_structured_protocol_probe(api_client, rt_db, tm
     body = {"model": "decision/example", "credential": "openrouter", "enabled": True,
             "shadow": True, "threshold": 0.9}
     path = PATH
-    assert api_client.put(path, json=body).status_code == 422
+    assert api_client.put(path, json=body).status_code == 200
     answer = JevResponse(model=body["model"], answers={"categoria": JevChoiceAnswer(
         choice="banana", confidence=.95, probabilities={"banana": .95, "altro": .05})})
     with patch("rt.llm.jev_client.call_jev", return_value=answer):
         assert api_client.post(path + "/probe", json=body).json()["ok"] is True
     assert api_client.put(path, json=body).status_code == 200
     saved = api_client.get(path).json()
-    assert saved["enabled"] is True and saved["shadow"] is True and saved["threshold"] == 0.9
+    assert saved["threshold"] == 0.9
+    assert "model" not in _general()["jev"]
+    assert "classifier" in _general()
     assert api_client.put(path, json={**body, "threshold": 1.5}).status_code == 422
 
 
@@ -80,7 +82,8 @@ def test_saving_an_active_noul_relevance_requires_a_noul_probe(api_client, rt_db
     isolated_workspace(tmp_path, monkeypatch)
     body = {"relevance_model": "decision/example", "relevance_mode": "active", "relevance_decision": _noul_decision()}
     refused = api_client.put(PATH, json=body)
-    assert refused.status_code == 422 and "noul" in refused.json()["error"]["message"]
+    assert refused.status_code == 200
+    assert "relevance_model" not in _general()["jev"]
     answer = JevResponse(model="m", answers={"rilevanza": JevNoulAnswer(noul=0.9)})
     with patch("rt.llm.jev_client.call_jev", return_value=answer):
         tested = api_client.post(PATH + "/test", json={"phase": "relevance", "decision": _noul_decision(),
@@ -150,7 +153,8 @@ def test_active_default_relevance_requires_score_probe(api_client, rt_db, tmp_pa
     isolated_workspace(tmp_path, monkeypatch)
     body = {'relevance_model': 'decision/richness-score', 'relevance_mode': 'active'}
     refused = api_client.put(PATH, json=body)
-    assert refused.status_code == 422 and 'score' in refused.json()['error']['message']
+    assert refused.status_code == 200
+    assert 'relevance_model' not in _general()['jev']
     answer = JevResponse(model=body['relevance_model'], answers={'rilevanza': JevScoreAnswer(score=0, confidence=.99)})
     decision = api_client.get(PATH).json()['relevance_decision']
     with patch('rt.llm.jev_client.call_jev', return_value=answer):

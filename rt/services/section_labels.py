@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from rt.core.config import load_config
+from rt.core.config import load_config, classifier_jev, classifier_job
 from rt.core.filelock import file_lock
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
@@ -147,7 +147,7 @@ def mode(force_mock: bool = False) -> str:
     cfg = load_config()
     if force_mock or cfg.mock_llm:
         return "mock"
-    return "active" if cfg.jev.relevance_model.strip() and cfg.jev.relevance_mode != "disabled" else "disabled"
+    return "active" if classifier_jev(cfg, "section_labels").relevance_model.strip() and classifier_jev(cfg, "section_labels").relevance_mode != "disabled" else "disabled"
 
 
 def _mock_labels(section: dict) -> dict:
@@ -169,8 +169,8 @@ def _classify(lesson_dir: str, section: dict, cfg) -> dict:
                    QUESTION_NAMES["caso"]: jev_client.JevChoiceQuestion(instructions=CASO_INSTRUCTIONS,
                                                                           criteria=CASO_CRITERIA)},
         job_name="section_labels", unit_id=section["id"], lesson_dir=lesson_dir,
-        model=cfg.jev.relevance_model, credential=cfg.jev.credential, base_url=cfg.jev.base_url,
-        timeout_seconds=cfg.jev.timeout_seconds)
+        model=classifier_jev(cfg, "section_labels").relevance_model, credential=classifier_jev(cfg, "section_labels").credential, base_url=classifier_jev(cfg, "section_labels").base_url,
+        timeout_seconds=classifier_jev(cfg, "section_labels").timeout_seconds)
     out = {}
     for kind, criteria in (("esercizio", ESERCIZIO_CRITERIA), ("caso", CASO_CRITERIA)):
         answer = response.answers.get(QUESTION_NAMES[kind])
@@ -188,7 +188,7 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, force: bool = False, p
     if current == "disabled":
         return _load(lesson_dir)
     cfg = load_config()
-    configuration = "mock" if current == "mock" else _config_hash(cfg.jev)
+    configuration = "mock" if current == "mock" else _config_hash(classifier_jev(cfg, "section_labels"))
     previous = _load(lesson_dir)
     result = {}
     for section in sections(lesson_dir):

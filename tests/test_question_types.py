@@ -47,7 +47,7 @@ def test_choice_instructions_endpoint_and_cache(path):
         save_draft(draft, path)
         question_types.refresh(path)
         assert call.call_count == 6
-        with patch.object(question_types, "load_config", return_value=ACTIVE.model_copy(update={"jev": ACTIVE.jev.model_copy(update={"relevance_model": "nuovo"})})):
+        with patch.object(question_types, "load_config", return_value=ACTIVE.model_copy(update={"classifier": ACTIVE.classifier.model_copy(update={"model": "nuovo"})})):
             question_types.refresh(path)
         assert call.call_count == 11
 

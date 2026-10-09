@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from rt.core.config import JobRoutingConfig, KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, load_config
+from rt.core.config import JobRoutingConfig, KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, load_config, classifier_job
 from rt.llm.credentials import CredentialRef, GLOBAL_CREDENTIALS
 from rt.services import config_service
 
@@ -457,7 +457,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "preferences": {
             "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
-            "modalita_arricchimento": {"disabled": "disattivata", "manual": "manuale", "automatic": "automatica"}.get(cfg.enrichment.mode, cfg.enrichment.mode),
+            "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
         },
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
@@ -544,18 +544,22 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
     path = general_config_path(project_root)
     data = _read_yaml(path)
     ui_data = data.setdefault("ui", {})
-    bg_val = preferences.get("sfondo_gruppi", "colori")
+    bg_val = preferences.get("sfondo_gruppi", {"none":"niente", "gray":"grigi", "colors":"colori"}.get(ui_data.get("group_background", "colors"), "colori"))
     bg_canonical = {"niente": "none", "grigi": "gray", "colori": "colors"}.get(bg_val, bg_val)
     ui_data["group_background"] = bg_canonical
 
-    secs = int(preferences.get("secondi_approvazione", 10))
+    secs = int(preferences.get("secondi_approvazione", ui_data.get("outline_auto_approval_seconds", 10)))
     ui_data["outline_auto_approval_seconds"] = secs
 
-    enr_val = preferences.get("modalita_arricchimento", "manuale")
-    enr_canonical = {"disattivata": "disabled", "manuale": "manual", "automatica": "automatic"}.get(enr_val, enr_val)
-    enr_data = data.setdefault("enrichment", {})
-    enr_data["mode"] = enr_canonical
-    enr_data["automatic"] = (enr_canonical == "automatic")
+    from rt.core.config import RTConfig, ClassifierJobConfig
+    from rt.services.classifier_settings import write_classifier
+    cfg = RTConfig.model_validate(data)
+    classifier = cfg.classifier
+    current_mode = classifier_job(cfg, "enrichment").mode
+    enr_val = preferences.get("modalita_arricchimento", {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[current_mode])
+    if "modalita_arricchimento" in preferences:
+        classifier.jobs.setdefault("enrichment", ClassifierJobConfig()).mode = {"disattivata": "off", "manuale": "manual", "automatica": "pipeline", "disabled":"off", "automatic":"pipeline"}.get(enr_val, enr_val)
+    write_classifier(data, classifier)
 
     _atomic_yaml(path, data)
     return {

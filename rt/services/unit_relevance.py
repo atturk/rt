@@ -7,7 +7,7 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from rt.core.config import load_config
+from rt.core.config import load_config, classifier_jev, classifier_job
 from rt.core.filelock import file_lock
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.rewrite import load_draft
@@ -69,7 +69,7 @@ def _lock(lesson_dir: str, view="draft"):
 
 
 def mode() -> str:
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     return cfg.relevance_mode if cfg.relevance_model.strip() else "disabled"
 
 
@@ -84,7 +84,7 @@ def ensure_can_run() -> None:
 def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool = False, view: str = "draft", responses=None) -> dict:
     """Classifica le unità cambiate (force: tutte). Un errore lascia passare l'unità e resta
     visibile; le correzioni dell'utente su un testo invariato restano."""
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
         return _load(lesson_dir, view)
     from rt.llm import jev_client
@@ -196,7 +196,7 @@ def _effective(row: dict, cfg) -> str:
 
 def included_ids(lesson_dir: str, units, *, view="draft", records=None, cfg=None) -> set:
     """Carica configurazione e classificazioni una volta per l'intera vista."""
-    cfg = cfg if cfg is not None else load_config().jev
+    cfg = cfg if cfg is not None else classifier_jev(load_config(), "relevance")
     if not cfg.relevance_model.strip() or cfg.relevance_mode != "active":
         return {u.unit_id for u in units}
     records = _load(lesson_dir, view) if records is None else records
@@ -212,7 +212,7 @@ def included(lesson_dir: str, unit, *, view="draft") -> bool:
 
 
 def list_units(lesson_dir: str, *, view="draft") -> dict:
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     records = _load(lesson_dir, view)
     try:
         from rt.pipeline.ledger import load_resolved_draft
@@ -257,7 +257,7 @@ def classification_status(lesson_dir: str) -> dict:
         units = load_draft(lesson_dir).units
     except (FileNotFoundError, ValueError):
         return {"state": "unavailable", "classified": 0, "total": 0}
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     config_hash = _config_hash(cfg)
     records = _load(lesson_dir)
     classified = errors = stale = 0
@@ -313,7 +313,7 @@ def set_override(lesson_dir: str, unit_id: str, category: Optional[str], actor: 
     unit = next((u for u in load_draft(lesson_dir).units if u.unit_id == unit_id), None)
     if unit is None:
         raise KeyError(unit_id)
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     with _lock(lesson_dir):
         records = _load(lesson_dir)
         row = records.get(unit_id, {})
@@ -341,7 +341,7 @@ def set_override(lesson_dir: str, unit_id: str, category: Optional[str], actor: 
 
 def recall_assessment(lesson_dir: str, unit) -> dict:
     """Score indicativo, mai una quota; shadow, errori e scale estranee restano neutri."""
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     decision = jev_mapping.effective_decision("relevance", cfg)
     row = _load(lesson_dir, "resolved").get(unit.unit_id, {})
     neutral = {"state": "unavailable", "level": None}
@@ -355,7 +355,7 @@ def recall_assessment(lesson_dir: str, unit) -> dict:
 def recall_signal(lesson_dir: str, unit, records: Optional[dict] = None) -> dict:
     """Quello che il classificatore dice di un'unità della bozza risolta, anche col gate in
     ombra: categoria, score e livello (0/1/2) per il selettore delle unità del recall."""
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "relevance")
     empty = {"category": None, "score": None, "level": None, "confidence": None, "error": None}
     if not cfg.relevance_model.strip() or cfg.relevance_mode == "disabled":
         return empty

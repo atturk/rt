@@ -20,9 +20,6 @@ review:
 # OpenRouter, se il nome non corrisponde a una credenziale): senza, Jev resta inattivo.
 # Soglie provvisorie: valuta con 'rt review --shadow-jev' prima di fidartene.
 jev:
-  enabled: false
-  model: "typesafe/jev-1.13"
-  credential: "openrouter"
   task_a_skip_confidence_threshold: 0.85
   task_b_fabrication_threshold: 0.80
 
@@ -58,11 +55,21 @@ searxng_base_url: null  # es. "http://localhost:8088"
 
 # L'analisi prepara idee; la generazione richiede sempre un'azione dell'utente.
 enrichment:
-  automatic: false  # true: analizza anche dentro la pipeline
   cap_mode: proportional  # off | fixed | proportional (numero di subunità)
   cap_number: 5
   utility_threshold: 0.65
-  decision_model: typesafe/jev-1.13
-  decision_credential: openrouter
-  decision_base_url: https://openrouter.ai/api/alpha/decisions
-  decision_timeout: 30
+
+# Classificatore condiviso; ogni job può sostituire modello e connessione.
+classifier:
+  model: typesafe/jev-1.13
+  credential: openrouter
+  base_url: null
+  timeout_seconds: 30
+  jobs:
+    relevance: {mode: observe}
+    question_types: {mode: pipeline}
+    section_labels: {mode: pipeline}
+    prefilter: {mode: "off"}
+    drift: {mode: "off"}
+    enrichment: {mode: manual}
+    images: {mode: manual}

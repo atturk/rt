@@ -63,17 +63,19 @@ def cached(task):
     return decorate
 
 
-def refresh_prefilter(lesson_dir, unit_ids=None, force=False):
-    from rt.core.config import load_config
+def refresh_prefilter(lesson_dir, unit_ids=None, force=False, jobs=("prefilter", "drift")):
+    from rt.core.config import load_config, classifier_job, classifier_jev
     from rt.core.segments import load_segments_json
     from rt.pipeline.rewrite import load_draft
     from rt.pipeline.review import run_jev_task_a, run_jev_task_b
-    cfg = load_config().jev
+    cfg = load_config()
     segments = {s.id: s for s in load_segments_json(lesson_path(lesson_dir, "segments.json")).segments}
     for unit in load_draft(lesson_dir).units:
         if unit_ids is not None and unit.unit_id not in unit_ids:
             continue
         source = "\n".join(f"[{sid}] {segments[sid].text_raw}" for sid in unit.source_segment_ids if sid in segments)
-        run_jev_task_a(unit, cfg, lesson_dir, force=force)
-        run_jev_task_b(unit, source, cfg, lesson_dir, force=force)
+        if "prefilter" in jobs and classifier_job(cfg, "prefilter").mode != "off":
+            run_jev_task_a(unit, classifier_jev(cfg, "prefilter"), lesson_dir, force=force)
+        if "drift" in jobs and classifier_job(cfg, "drift").mode != "off":
+            run_jev_task_b(unit, source, classifier_jev(cfg, "drift"), lesson_dir, force=force)
     return load(lesson_dir)

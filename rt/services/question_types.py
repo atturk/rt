@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from rt.core.config import load_config
+from rt.core.config import load_config, classifier_jev, classifier_job
 from rt.core.filelock import file_lock
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
@@ -21,7 +21,7 @@ CRITERIA = {
 
 
 def enabled() -> bool:
-    cfg = load_config().jev
+    cfg = classifier_jev(load_config(), "question_types")
     return bool(cfg.relevance_model.strip()) and cfg.relevance_mode != "disabled"
 
 
@@ -92,7 +92,7 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
     wanted = set(unit_ids) if unit_ids is not None else {u.unit_id for u in units}
     previous = _load(lesson_dir)
     result = {}
-    configuration = _config_hash(cfg.jev)
+    configuration = _config_hash(classifier_jev(cfg, "question_types"))
     for unit in units:
         old = previous.get(unit.unit_id, {})
         digest = _text_hash(unit, lesson_dir)
@@ -115,8 +115,8 @@ def refresh(lesson_dir, *, force_mock=False, unit_ids=None, ctx=None, responses=
                         state=context_block(lesson_context(lesson_dir)) + f"\n\n[{unit.unit_id}] {unit.title}\n{unit.content}",
                         questions={"tipo_consigliato": jev_client.JevChoiceQuestion(instructions=INSTRUCTIONS, criteria=CRITERIA)},
                         job_name="question_types", unit_id=unit.unit_id, lesson_dir=lesson_dir,
-                        model=cfg.jev.relevance_model, credential=cfg.jev.credential, base_url=cfg.jev.base_url,
-                        timeout_seconds=cfg.jev.timeout_seconds))
+                        model=classifier_jev(cfg, "question_types").relevance_model, credential=classifier_jev(cfg, "question_types").credential, base_url=classifier_jev(cfg, "question_types").base_url,
+                        timeout_seconds=classifier_jev(cfg, "question_types").timeout_seconds))
                     answer = response.answers.get("tipo_consigliato")
                     if answer is None or answer.type != "choice" or answer.choice not in CRITERIA:
                         raise ValueError("Tipo consigliato non valido")
@@ -154,7 +154,7 @@ def suggestions(lesson_dir):
     except (OSError, ValueError):
         return {}
     owner, labels = _sections(lesson_dir, units)
-    records, cfg_hash = _load(lesson_dir), _config_hash(load_config().jev)
+    records, cfg_hash = _load(lesson_dir), _config_hash(classifier_jev(load_config(), "question_types"))
     return {u.unit_id: _compatible(records[u.unit_id], owner.get(u.unit_id), labels) for u in units
             if u.unit_id in records and records[u.unit_id].get("text_hash") == _text_hash(u, lesson_dir)
             and records[u.unit_id].get("config_hash") == cfg_hash}

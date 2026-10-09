@@ -11,7 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from rt.core.config import EnrichmentConfig, load_config
+from rt.core.config import EnrichmentConfig, load_config, classifier_job
 from rt.core.lesson_paths import lesson_path
 from rt.llm.cancel import raise_if_cancelled
 from rt.storage import fs
@@ -149,11 +149,13 @@ def set_cap(lesson_dir, cap):
 
 def decision(state, questions, *, lesson_dir, job_name, unit_id=None):
     from rt.llm.jev_client import call_jev
-    cfg = load_config().enrichment
+    cfg = classifier_job(load_config(), "images" if job_name == "image_unit_judge" else "enrichment")
+    if cfg.mode == "off":
+        raise ValueError("Job del classificatore spento")
     # No silent trimming: the Decision API is responsible for the model's context limit.
     raise_if_cancelled()
-    response = call_jev(state, questions, model=cfg.decision_model, credential=cfg.decision_credential,
-                    base_url=cfg.decision_base_url, timeout_seconds=cfg.decision_timeout,
+    response = call_jev(state, questions, model=cfg.model, credential=cfg.credential,
+                    base_url=cfg.base_url, timeout_seconds=cfg.timeout_seconds,
                     lesson_dir=lesson_dir, job_name=job_name, unit_id=unit_id)
     raise_if_cancelled()
     return response
@@ -182,7 +184,7 @@ def analyze(lesson_dir, *, mock=False, ctx=None):
     from rt.services.unit_relevance import included_ids
     allowed = included_ids(lesson_dir, [SimpleNamespace(unit_id=u["id"], title=u["title"], content=u["content"]) for u in rows], view="resolved")
     rows = [u for u in rows if u["id"] in allowed]
-    policy = digest([cfg.decision_model, UTILITY, WRITER_SYSTEM,
+    policy = digest([classifier_job(load_config(), "enrichment").model_dump(), UTILITY, WRITER_SYSTEM,
                      (load_config().jobs["enrichment_writer"].model_dump() if "enrichment_writer" in load_config().jobs else {}), cfg.utility_threshold, mock])
     for index, unit in enumerate(rows):
         raise_if_cancelled()
