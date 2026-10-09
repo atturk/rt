@@ -25,7 +25,7 @@ from rt.pipeline.issue_review import (
     _is_no_diff_issue_type,
     should_auto_accept_science,
 )
-from rt.pipeline.ledger import load_ledger, sanitize_suggested_fix
+from rt.pipeline.ledger import load_ledger, resolve_science_accept_text
 from rt.services import review_service
 from rt.telegram.review_channel import start_review_via_telegram
 from rt.storage import fs
@@ -408,7 +408,7 @@ class IssueReviewApp(App):
             self.decided_this_session.add(iss.id)
             self.last_status = "✔ Testo dell'unità accettato."
         else:
-            clean_fix = sanitize_suggested_fix(iss.suggested_fix)
+            clean_fix = resolve_science_accept_text(iss)
             record_decision(self.lesson_dir, iss.id, "accepted", resolved_text=clean_fix)
             self.decided_this_session.add(iss.id)
             self.last_status = "✔ Correzione scientifica applicata."

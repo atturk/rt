@@ -320,19 +320,23 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.rewrite import get_draft_path
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    missing = set()
+    draft = load_resolved_draft(lesson_dir, missing_decisions=missing) if fs.isfile(get_draft_path(lesson_dir)) else None
+    if draft is None:
+        missing.update(decisions)
     items = []
     for issue in issues:
         decision = decisions.get(issue.id)
-        if status == "pending" and decision is not None:
+        if status == "pending" and decision is not None and issue.id not in missing:
             continue
         items.append({
             "issue": issue.model_dump(mode="json"),
             "fix_text": resolve_science_accept_text(issue),
+            "needs_reconfirmation": issue.id in missing,
             "context": issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True),
             "decision": decision.model_dump(mode="json") if decision else None,
         })
-    pending = sum(1 for i in issues if i.id not in decisions)
+    pending = sum(1 for i in issues if i.id not in decisions or i.id in missing)
     return {"pending": pending, "total": len(issues), "review_complete": pending == 0, "items": items}
 
 

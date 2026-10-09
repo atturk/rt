@@ -30,6 +30,42 @@
         "title": "AnalyzeIn",
         "type": "object"
       },
+      "Anchor": {
+        "description": "Citazione e contesto nel testo di una singola unità.",
+        "properties": {
+          "end": {
+            "minimum": 0.0,
+            "title": "End",
+            "type": "integer"
+          },
+          "prefix": {
+            "default": "",
+            "title": "Prefix",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "suffix": {
+            "default": "",
+            "title": "Suffix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote",
+          "start",
+          "end"
+        ],
+        "title": "Anchor",
+        "type": "object"
+      },
       "Answer": {
         "properties": {
           "answer": {
@@ -1134,6 +1170,16 @@
               }
             ],
             "title": "Actor"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Anchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "channel": {
             "anyOf": [
@@ -2798,7 +2844,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correzione letterale applicabile; null per un suggerimento",
+            "description": "Sostituzione letterale; null se assente",
             "title": "Fix Text"
           },
           "issue": {
@@ -2806,6 +2852,12 @@
             "description": "ScienceIssue (science_issues.json)",
             "title": "Issue",
             "type": "object"
+          },
+          "needs_reconfirmation": {
+            "default": false,
+            "description": "La decisione resta registrata ma il tratto non si ritrova",
+            "title": "Needs Reconfirmation",
+            "type": "boolean"
           }
         },
         "required": [

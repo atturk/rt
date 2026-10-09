@@ -6,6 +6,7 @@ client generato della SPA).
 from datetime import datetime
 from typing import Union, Any, Dict, List, Literal, Optional
 from rt.services.study_progress_service import StudyStatus
+from rt.core.models import Anchor
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
@@ -309,6 +310,7 @@ class IssueContext(BaseModel):
 
 
 class Decision(BaseModel):
+    anchor: Optional[Anchor] = None
     issue_id: str
     decision: str
     resolved_text: Optional[str] = None
@@ -320,7 +322,8 @@ class Decision(BaseModel):
 
 
 class IssueItem(BaseModel):
-    fix_text: Optional[str] = Field(None, description="Correzione letterale applicabile; null per un suggerimento")
+    needs_reconfirmation: bool = Field(False, description="La decisione resta registrata ma il tratto non si ritrova")
+    fix_text: Optional[str] = Field(None, description="Sostituzione letterale; null se assente")
     issue: Dict[str, Any] = Field(description="ScienceIssue (science_issues.json)")
     context: Optional[IssueContext] = None
     decision: Optional[Decision] = None

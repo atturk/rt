@@ -259,7 +259,7 @@ async def test_history_mode_terminal_and_telegram(tmp_path, capsys):
     _create_sample_lesson(lesson_dir)
 
     sci_issues = [
-        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="claim 1", reason="r1", suggested_fix="fix 1"),
+        ScienceIssue(id="sci_1", type=ScienceType.ERR_CONCETTUALE, severity=ScienceSeverity.HIGH, unit_id="U1", claim="affermazione scientifica", reason="r1", suggested_fix="fix 1"),
     ]
     with open(os.path.join(lesson_dir, "science_issues.json"), "w", encoding="utf-8") as f:
         json.dump([iss.model_dump(mode="json") for iss in sci_issues], f)

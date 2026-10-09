@@ -2862,6 +2862,28 @@ export interface components {
              */
             mock: boolean;
         };
+        /**
+         * Anchor
+         * @description Citazione e contesto nel testo di una singola unità.
+         */
+        Anchor: {
+            /** End */
+            end: number;
+            /**
+             * Prefix
+             * @default
+             */
+            prefix: string;
+            /** Quote */
+            quote: string;
+            /** Start */
+            start: number;
+            /**
+             * Suffix
+             * @default
+             */
+            suffix: string;
+        };
         /** Answer */
         Answer: {
             /** Answer */
@@ -3326,6 +3348,7 @@ export interface components {
         Decision: {
             /** Actor */
             actor?: string | null;
+            anchor?: components["schemas"]["Anchor"] | null;
             /** Channel */
             channel?: string | null;
             /** Decision */
@@ -4093,7 +4116,7 @@ export interface components {
             decision?: components["schemas"]["Decision"] | null;
             /**
              * Fix Text
-             * @description Correzione letterale applicabile; null per un suggerimento
+             * @description Sostituzione letterale; null se assente
              */
             fix_text?: string | null;
             /**
@@ -4103,6 +4126,12 @@ export interface components {
             issue: {
                 [key: string]: unknown;
             };
+            /**
+             * Needs Reconfirmation
+             * @description La decisione resta registrata ma il tratto non si ritrova
+             * @default false
+             */
+            needs_reconfirmation: boolean;
         };
         /** IssueList */
         IssueList: {

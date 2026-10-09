@@ -24,7 +24,6 @@ from rt.pipeline.ledger import (
     resolve_science_accept_text,
     resolve_science_reject_text,
     revert_last_decision,
-    sanitize_suggested_fix,
     load_resolved_draft, resolved_unit_content,
 )
 from rt.storage import fs
@@ -258,7 +257,7 @@ def orphan_issue_ids(lesson_dir: str) -> List[str]:
         if content is not None and claim and claim in content:
             continue
         fixed = (decision.resolved_text or "").strip() if decision and decision.decision in ("accepted", "edited") else ""
-        literal = sanitize_suggested_fix(fixed) if fixed else None
+        literal = fixed or None
         if content is not None and literal and literal in content:
             continue
         out.append(issue.id)
@@ -302,7 +301,7 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
         decision = latest.get(issue.id)
         if not decision or decision.decision not in {"accepted", "edited"}:
             continue
-        text = sanitize_suggested_fix(decision.resolved_text) if decision.decision == "accepted" else decision.resolved_text
+        text = decision.resolved_text
         content = resolved_unit_content(lesson_dir, issue, resolved)
         if not text or content is None or text not in content:
             # Accettare un avviso di paragrafo conferma il testo corrente.

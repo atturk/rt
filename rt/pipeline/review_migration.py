@@ -8,7 +8,7 @@ import threading
 from typing import Dict, List, Optional
 from rt.core.models import Draft, DecisionLedger, ReviewDecision, ScienceIssue, ScienceType
 from rt.core.encoding import fix_mojibake
-from rt.pipeline.anchors import make_anchor, find_quote, locate
+from rt.pipeline.anchors import make_anchor, find_quote
 
 def sanitize_suggested_fix(text: Optional[str]) -> Optional[str]:
     """
@@ -160,44 +160,6 @@ def legacy_apply_decisions(
 PARAGRAPH_TYPES = {ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT}
 
 
-def apply_anchored_decisions(draft, ledger, issues, edited_units=None, *, missing=None):
-    """Riproduce una migrazione usando solo i tratti che essa ha registrato."""
-    latest = {d.issue_id: d for d in ledger.decisions}
-    ordered = [d for d in ledger.decisions if latest[d.issue_id] is d]
-    by_id = {i.id:i for i in issues}
-    by_unit = {u.unit_id:u.model_copy(deep=True) for u in draft.units}
-    for unit in by_unit.values():
-        unit.content = fix_mojibake(unit.content)
-        unit.title = fix_mojibake(unit.title)
-    for decision in ordered:
-        issue = by_id.get(decision.issue_id)
-        if issue is None:
-            if missing is not None:
-                missing.add(decision.issue_id)
-            continue
-        unit = by_unit.get(issue.unit_id)
-        if unit is None:
-            if missing is not None:
-                missing.add(issue.id)
-            continue
-        if edited_units and decision.timestamp <= edited_units.get(unit.unit_id, ''):
-            continue
-        if decision.decision == 'rejected':
-            continue
-        if issue.type in PARAGRAPH_TYPES:
-            if decision.decision == 'edited' and decision.resolved_text:
-                unit.content = fix_mojibake(decision.resolved_text)
-            continue
-        found = locate(decision.anchor, unit.content) if decision.anchor else None
-        if found is None:
-            if missing is not None:
-                missing.add(issue.id)
-            continue
-        if decision.decision in ('accepted', 'edited') and decision.resolved_text:
-            unit.content = (unit.content[:found.start] + fix_mojibake(decision.resolved_text)
-                            + unit.content[found.end:])
-    return draft.model_copy(update={'units':[by_unit[u.unit_id] for u in draft.units]})
-
 
 def _changed_span(before, after, claim):
     """Comprende la citazione e l'eventuale allargamento fatto dalla logica storica."""
@@ -321,7 +283,8 @@ def migrate_objects(draft, ledger, issues, edited_units, sequence_floor=0):
                 previous.resolved_text = sanitize_suggested_fix(old.resolved_text)
             output.append(previous)
     migrated.decisions = output
-    replayed = apply_anchored_decisions(draft, migrated, new_issues, edited_units)
+    from rt.pipeline.ledger import apply_decisions_to_draft
+    replayed = apply_decisions_to_draft(draft, migrated, new_issues, edited_units)
     if [u.content for u in replayed.units] != [u.content for u in final.units]:
         raise ValueError('Migrazione ancore: il testo risolto non coincide con quello storico')
     return migrated, new_issues

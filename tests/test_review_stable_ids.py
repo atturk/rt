@@ -120,7 +120,11 @@ def test_legacy_decision_not_applied_has_a_build_warning(reviewed):
     from rt.services.review_service import build_warnings
     lesson, _ = reviewed
     first = review.load_science_issues(lesson)[0]
-    record_decision(lesson, first.id, 'accepted', 'Precisare che il contenuto va corretto')
+    from rt.pipeline.ledger import write_ledger_file
+    from rt.core.models import DecisionLedger, ReviewDecision
+    write_ledger_file(DecisionLedger(decisions=[ReviewDecision(
+        issue_id=first.id, decision='accepted', resolved_text='Precisare che il contenuto va corretto',
+    )]), lesson)
     warnings = build_warnings(lesson)
     assert any(w['code'] == 'decision_not_applied' and w['count'] == 1 for w in warnings)
 

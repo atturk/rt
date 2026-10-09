@@ -7,6 +7,7 @@ from rt.pipeline.ledger import apply_decisions_to_draft, load_resolved_draft, lo
 from rt.pipeline.review import load_science_issues, get_science_issues_path
 from rt.pipeline.rewrite import save_draft
 from rt.pipeline.document_edits import save_document_edits
+from rt.pipeline.review_migration import legacy_apply_decisions
 
 
 def historical_lesson(tmp_path):
@@ -67,7 +68,7 @@ def test_historical_resolved_text_before_and_after_first_read(tmp_path, request,
         raise AssertionError("La migrazione non deve chiamare il modello")
     monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", forbidden)
     draft, ledger, issues, edits = historical_lesson(tmp_path)
-    before = [u.content for u in apply_decisions_to_draft(draft, ledger, issues, edits).units]
+    before = [u.content for u in legacy_apply_decisions(draft, ledger, issues, edits).units]
     assert before == EXPECTED
     after = [u.content for u in load_resolved_draft(str(tmp_path)).units]
     assert after == before
@@ -101,7 +102,7 @@ def test_shared_segment_effects_are_migrated_per_unit(tmp_path):
                          unit_id='1.1', segment_id='seg_000001', claim='hanno doppi legami', reason='Errore')
     ledger = DecisionLedger(decisions=[ReviewDecision(issue_id=issue.id, decision='accepted',
                                                      resolved_text='non hanno doppi legami')])
-    before = [u.content for u in apply_decisions_to_draft(draft, ledger, [issue]).units]
+    before = [u.content for u in legacy_apply_decisions(draft, ledger, [issue]).units]
     migrated, anchored = migrate_objects(draft, ledger, [issue], {})
     assert [u.content for u in apply_decisions_to_draft(draft, migrated, anchored).units] == before
     assert [i.unit_id for i in anchored] == ['1.1', '1.2']
