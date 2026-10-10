@@ -98,7 +98,9 @@ def test_new_finding_anchor_is_on_resolved_text(tmp_path, monkeypatch):
     assert [d.issue_id for d in load_ledger(lesson).decisions] == [old.id]
 
 
-def test_full_review_rechecks_changed_resolved_unit_without_force(tmp_path, monkeypatch):
+def test_decisions_do_not_trigger_a_new_review_but_a_forced_one_reads_resolved_text(tmp_path, monkeypatch):
+    """Una decisione cambia il testo risolto, non la bozza: niente nuova chiamata da sola.
+    Quando la verifica riparte (forzata) legge il testo già corretto."""
     from rt.pipeline.ledger import record_decision
     root = isolated_workspace(tmp_path, monkeypatch)
     lesson = _synthetic_lesson(root, {'1.1':'Il valore è errato.'})
@@ -115,12 +117,11 @@ def test_full_review_rechecks_changed_resolved_unit_without_force(tmp_path, monk
     old = review.load_science_issues(lesson)[0]
     record_decision(lesson, old.id, 'accepted', 'corretto')
     seen.clear()
-    review.run_review(lesson, force_mock=True)
-    assert seen == [('1.1', 'Il valore è corretto.')]
-    assert [i.id for i in review.load_science_issues(lesson)] == [old.id]
-    seen.clear()
     assert review.run_review(lesson, force_mock=True)['action'] == 'SKIP'
     assert seen == []
+    review.run_review(lesson, force_mock=True, force=True)
+    assert ('1.1', 'Il valore è corretto.') in seen
+    assert [i.id for i in review.load_science_issues(lesson)] == [old.id]
 
 
 def test_merge_can_preserve_open_findings_outside_a_selected_span(tmp_path):
