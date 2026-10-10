@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from rt.core.idempotency import DOCUMENT_EDITS_FILE, IMAGE_PLACEMENT_FILE, check_phase_status, compute_source_fingerprint
 from rt.core.lesson_paths import lesson_path
+from rt.core.lesson_lock import lesson_locked
 from rt.core.process_lock import LessonBusy, lesson_work_lock
 from rt.db.engine import get_database
 from rt.db.models import Job
@@ -83,10 +84,14 @@ def pipeline_version(lesson_dir):
             'modified_units': len(_modified_units(lesson_dir, snapshot)) if snapshot else 0}
 
 
+@lesson_locked
 def restore_pipeline_version(lesson_id, lesson_dir, lease_token=None):
     try:
         with lesson_work_lock(lesson_dir):
-            return _restore_locked(lesson_id, lesson_dir, lease_token)
+            result = _restore_locked(lesson_id, lesson_dir, lease_token)
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
+        return result
     except LessonBusy:
         raise Conflict('lesson_busy', 'La lezione è in lavorazione.') from None
 
@@ -98,7 +103,7 @@ def _restore_locked(lesson_id, lesson_dir, lease_token):
         with session_scope(db) if db else nullcontext() as session, suspend_dual_write():
             if session is not None:
                 busy = session.scalar(select(Job.id).where(Job.lesson_path == lesson_dir,
-                    Job.state.in_(['queued', 'running', 'waiting_for_decision'])).limit(1))
+                    Job.state.in_(['queued', 'running', 'waiting_for_decision']), Job.type != 'documents').limit(1))
                 if busy:
                     raise Conflict('lesson_busy', 'La lezione ha un job attivo o in attesa.')
                 # read_scope riusa questa transazione anche per il lease.

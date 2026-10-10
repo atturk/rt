@@ -393,7 +393,11 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
     with phase_scope(ctx, "review") as scope:
         # Dentro lo scope: le chiamate JEV della rilevanza sono parte della fase (lock, errori, annullamento).
         refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-        return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
+        result = _run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx)
+        if result.get("action") != "SKIP":
+            from rt.services.documents_service import request_documents
+            request_documents(lesson_dir)
+        return scope.complete(result)
 
 
 def _draft_hashes(lesson_dir: str) -> Dict[str, str]:
@@ -594,6 +598,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
             record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
                 {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
                 metadata={"unit_hashes": current})
+    from rt.services.documents_service import request_documents
+    request_documents(lesson_dir)
     return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(prior) - sum(i.unit_id == unit_id for i in prior),
             "orphaned_decisions": orphaned}
 

@@ -204,7 +204,7 @@ class DbJobQueue:
                 from rt.db.models import Lesson
                 from rt.services.document_edit_lease import DocumentBeingEdited, is_being_edited
                 lesson = s.scalar(select(Lesson).where(Lesson.path == lesson_path))
-                if lesson and is_being_edited(s, lesson.id):
+                if job_type != "documents" and lesson and is_being_edited(s, lesson.id):
                     raise DocumentBeingEdited()
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
                       lesson_path=lesson_path, payload=json_safe(payload or {}),
@@ -491,6 +491,19 @@ class DbJobQueue:
             s.add(JobEvent(job_id=job_id, type="job_finished" if state in TERMINAL_STATES else "job_waiting",
                            payload=payload))
             return True
+
+    def complete_queued_documents(self, lesson_path: str) -> None:
+        """La build sincrona ha scritto lo stesso snapshot: nessuna seconda esecuzione."""
+        with session_scope(self.db) as s:
+            stmt = select(Job).where(Job.lesson_path == normalize_lesson_path(lesson_path),
+                                     Job.type == "documents", Job.state == JobState.QUEUED.value)
+            if s.get_bind().dialect.name == "postgresql":
+                stmt = stmt.with_for_update()
+            for row in s.scalars(stmt):
+                row.state = JobState.SUCCEEDED.value
+                row.finished_at = utcnow()
+                row.result = {"skipped": True, "reason": "documents_already_written"}
+                s.add(JobEvent(job_id=row.id, type="job_finished", payload={"state": row.state}))
 
     def release(self, job_id: str, worker_id: str, reason: str) -> bool:
         """Rimette in coda un job preso ma non eseguito (lezione occupata, worker che si

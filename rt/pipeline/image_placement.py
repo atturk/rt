@@ -6,6 +6,8 @@ bozza; lo leggono l'anteprima, l'export e il build, che così includono le stess
 Il file è un input del build (rt.core.idempotency.BUILD_INPUT_FILES): aggiungere immagini a
 una lezione con il documento già creato lo rende non aggiornato.
 """
+from rt.core.lesson_lock import lesson_locked
+
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -36,6 +38,7 @@ def load_image_placement(lesson_dir: str) -> Optional[Dict[str, Any]]:
             "carousel": bool(data.get("carousel"))}
 
 
+@lesson_locked
 def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel: bool) -> bool:
     """Scrive il posizionamento (atomico). True se è cambiato rispetto a prima."""
     data = {"macros": {str(k): list(v) for k, v in macros.items() if v}, "carousel": bool(carousel)}
@@ -48,6 +51,8 @@ def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
     fs.replace(tmp_path, path)
+    from rt.services.documents_service import request_documents
+    request_documents(lesson_dir)
     return True
 
 

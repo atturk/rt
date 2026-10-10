@@ -31,6 +31,12 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
   // Stato e avanzamento del job: elenchi, dettaglio (jobs.ts, jobStatus.ts e settings.ts) e job della lezione.
   const keys: QueryKey[] = [['jobs'], ['job', event.job_id]]
   if (lesson != null) keys.push(lessonKeys.jobs(lesson))
+  if (event.job_type === 'documents') {
+    if (lesson != null && LESSON_EVENTS.has(event.type)) {
+      keys.push(queryKeys.allLessons, queryKeys.lesson(lesson), lessonKeys.phases(lesson), lessonKeys.document(lesson))
+    }
+    return keys
+  }
   if (lesson != null && event.type === 'review_unit_done') {
     keys.push(reviewKeys.issues(lesson), reviewKeys.units(lesson))
     return keys

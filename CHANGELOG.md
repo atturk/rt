@@ -4,6 +4,8 @@
 
 ### Novità
 
+- Documento finale e registro degli errori aggiornati automaticamente dopo decisioni, annullamenti e salvataggi, con un solo job per lezione e tre secondi dall’ultimo cambio.
+
 - La verifica riceve un contesto fisso della lezione prima delle unità: titolo, materia, docente, argomenti e scaletta.
 
 - Schema vincolato della verifica su OpenRouter e Google; DeepSeek mantiene JSON con validazione locale obbligatoria.

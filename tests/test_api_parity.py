@@ -239,6 +239,7 @@ def test_row_single_phases(api, cli, pair):
         job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": phase, "mock": True})
         assert job["state"] == "succeeded", job
     api.decide_pending(lesson_id, lambda issue: "accepted")  # come --auto-accept all
+    api.drain()  # V5: aspetta i documenti automatici di entrambe le copie prima del confronto.
     assert_same_lesson(cli_dir, api_dir)
 
     cli.rt("build", cli_dir, "--no-rename")
@@ -282,6 +283,7 @@ def test_row_review_single_unit(api, cli, pair):
                                                        "mock": True})
     assert job["state"] == "succeeded" and job["type"] == "review_unit", job
     api.decide_pending(lesson_id, lambda issue: "accepted")  # come --auto-accept all
+    api.drain()  # V5: aspetta i documenti automatici di entrambe le copie prima del confronto.
     assert_same_lesson(cli_dir, api_dir)
 
 

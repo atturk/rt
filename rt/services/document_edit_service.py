@@ -19,10 +19,12 @@ Sezioni e unità restano quelle della scaletta, nello stesso ordine. Il salvatag
   segmento audio in cui cade, deve stare nella durata dell'audio e venire dopo quello
   dell'unità precedente;
 - le immagini sotto i titoli di sezione aggiornano il posizionamento;
-- il documento finale diventa da ricreare (le impronte del build cambiano) e le issue il cui
+- il documento finale viene aggiornato automaticamente (le impronte del build cambiano) e le issue il cui
   testo non c'è più risultano orfane (rt.services.review_service.orphan_issue_ids).
 Gli errori tornano con la riga e il motivo; con un errore non si salva nulla.
 """
+from rt.core.lesson_lock import lesson_locked
+
 import re
 import hashlib
 from datetime import datetime
@@ -312,6 +314,7 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     }
 
 
+@lesson_locked
 def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     """Salva il Markdown modificato (vedi il docstring del modulo). Restituisce cosa è cambiato,
     lo stato del documento finale e le issue orfane."""
@@ -335,6 +338,9 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     if plan["placement_changed"]:
         save_image_placement(lesson_dir, plan["placement"], plan["carousel"])
     changed = bool(changed_units or edits_changed or plan["placement_changed"])
+    if changed:
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
     build_status, build_reason = check_phase_status(lesson_dir, "build")
     return {
         "changed": changed,

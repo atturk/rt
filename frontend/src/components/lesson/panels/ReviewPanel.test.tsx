@@ -325,3 +325,12 @@ it('una citazione non ancorata si può soltanto rifiutare', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Rifiuta' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
+
+it('il job documenti non blocca decisioni ravvicinate', async () => {
+  state.jobs = [{ id: 'doc', state: 'running', type: 'documents', payload: {} } as Schemas['Job']]
+  mount()
+  const accept = screen.getByRole('button', { name: 'Accetta la correzione' })
+  expect(accept).toBeEnabled()
+  fireEvent.click(accept)
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+})

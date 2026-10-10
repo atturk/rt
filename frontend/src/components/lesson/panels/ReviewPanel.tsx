@@ -68,7 +68,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
 
   const selected = items.find((i) => issueOf(i).id === params.get('issue') && (!unitFilter || issueOf(i).unit_id === unitFilter)) ?? pending[0]
   const last = [...(decisions.data ?? [])].filter((d) => items.some((i) => issueOf(i).id === d.issue_id)).sort((a, b) => a.timestamp.localeCompare(b.timestamp)).pop()
-  const active = jobs.data?.find((j) => isActive(j.state))
+  const active = jobs.data?.find((j) => j.type !== 'documents' && isActive(j.state))
   const verifying = active && (active.type === 'run_pipeline' || active.type === 'run_phase') && (active.progress?.phase === 'review' || (active.payload as { phase?: string })?.phase === 'review')
   const progress = verifying ? phaseProgress(active) : null
   const waiting = jobs.data?.some((j) => j.state === 'waiting_for_decision' && j.decision?.kind === 'science_issue')

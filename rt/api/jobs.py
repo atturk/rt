@@ -59,7 +59,8 @@ def job_accepted(job_id: str) -> Dict[str, Any]:
 
 def running_jobs(lesson_dir: str):
     from rt.services.jobs import JobState
-    return queue().list(state=[JobState.RUNNING.value], lesson_id=lesson_dir)
+    return [job for job in queue().list(state=[JobState.RUNNING.value], lesson_id=lesson_dir)
+            if job.type != "documents"]
 
 
 def ensure_no_running_job(lesson_dir: str) -> None:

@@ -273,15 +273,21 @@ def test_close_job_waiting_for_review_keeps_issues_for_later(api_client, lesson,
     detail = api_client.get(f"/api/v1/lessons/{lesson_id}").json()
     assert detail["pending_issues"] == pending_before
     assert detail["state"] == "in_attesa_revisione_umana"
-    assert detail["phases"]["review"] == "VALID" and detail["phases"]["build"] == "MISSING"
+    assert detail["phases"]["review"] == "VALID" and detail["phases"]["build"] == "VALID"
 
-    # Decidere dopo dalla Revisione non riprende il job chiuso: il build si avvia a mano.
+    # Decidere dalla Revisione non riprende il job chiuso; aggiorna i documenti automaticamente.
     for item in api_client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"]:
         api_client.post(f"/api/v1/lessons/{lesson_id}/issues/{item['issue']['id']}/decision",
                         json={"decision": "rejected" if not item["issue"]["type"].startswith("ERR_ASR") else "accepted"})
     assert job(api_client, run_id)["state"] == "succeeded"
-    assert drain(worker) == 0
-    assert api_client.get(f"/api/v1/lessons/{lesson_id}").json()["state"] == "pronto_per_build"
+    queued = worker.queue.list(lesson_id=lesson[1], state="queued")
+    assert len(queued) == 1 and queued[0].type == "documents"
+    assert drain(worker) == 1
+    assert job(api_client, run_id)["state"] == "succeeded"
+    assert api_client.get(f"/api/v1/lessons/{lesson_id}").json()["state"] == "completato"
+    from rt.core.lesson_paths import lesson_path
+    assert os.path.isfile(lesson_path(lesson[1], "rielaborato.md"))
+    assert os.path.isfile(lesson_path(lesson[1], "Errori concettuali.md"))
 
     # Chiuso una volta, non si chiude di nuovo.
     res = api_client.post(f"/api/v1/jobs/{run_id}/close")

@@ -344,9 +344,9 @@ def test_api_images_job_works_without_build(api_client, api_lesson, rt_db, tmp_p
     images = api_client.get(f"/api/v1/lessons/{lesson_id}/images").json()["images"]
     assert len(images) == 1 and images[0]["in_document"] is True  # nell'anteprima
     doc = api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()
-    assert doc["final"] is False and f"assets/images/{images[0]['name']}" in doc["markdown"]
-    assert check_phase_status(api_lesson, "build")[0] == PhaseStatus.MISSING
-    # il build successivo le include nel documento finale
+    assert doc["final"] is True and f"assets/images/{images[0]['name']}" in doc["markdown"]
+    assert check_phase_status(api_lesson, "build")[0] == PhaseStatus.VALID
+    # Il job automatico le ha già incluse; rt build resta disponibile.
     run_build(api_lesson)
     doc = api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()
     assert doc["final"] is True and f"assets/images/{images[0]['name']}" in doc["markdown"]

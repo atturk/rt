@@ -45,7 +45,7 @@ def upload_image(lesson_id: int, lesson_dir: str, content: bytes, filename: str,
             if lesson is None or os.path.realpath(lesson_dir) != lesson.path:
                 raise NotFound('lesson_not_found', 'Lezione non trovata.')
             busy = session.scalar(select(Job.id).where(Job.lesson_path == lesson.path,
-                Job.state.in_(['queued', 'running'])).limit(1))
+                Job.state.in_(['queued', 'running']), Job.type != 'documents').limit(1))
             if busy:
                 raise Conflict('lesson_busy', 'Un job sta lavorando sulla lezione.', {'job_id': busy})
             lease = session.get(Setting, _key(lesson_id))

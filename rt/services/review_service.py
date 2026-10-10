@@ -191,6 +191,8 @@ def record_review_decision(
             resolved_by=resolved_by or "user",
             notes=notes, channel=channel, actor=actor,
         )
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
     # Con l'ultima issue decisa, il job della coda fermo sulla review riparte verso il build.
     from rt.services.jobs import resume_waiting_jobs
     resume_waiting_jobs(lesson_dir, "science_issue", condition=lambda: is_review_complete(lesson_dir))
@@ -207,6 +209,8 @@ def undo_last_decision(lesson_dir: str, issue_id: str, only_channel: Optional[st
             raise ReviewDecisionError("Puoi riaprire da qui solo una decisione presa da questo canale.", reason="not_allowed")
         if last is None or not revert_last_decision(lesson_dir, issue_id):
             raise ReviewDecisionError("La decisione non è più presente nel ledger.", reason="missing")
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
         return last
 
 

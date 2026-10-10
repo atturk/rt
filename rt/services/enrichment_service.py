@@ -94,6 +94,8 @@ def _publish_manifest(lesson_dir, state):
     assets = [{"id": e.id, "unit_id": e.unit_id, "image": e.asset_image, "html": e.asset_html}
               for e in state.elements if e.asset_image and e.status != "deleted"]
     _write_json(os.path.join(lesson_dir, MANIFEST), assets)
+    from rt.services.documents_service import request_documents
+    request_documents(lesson_dir)
 
 
 def units(lesson_dir: str) -> list[dict]:

@@ -223,7 +223,7 @@ export function LessonPage() {
   const document = useLessonDocument(id)
   const outline = useOutline(id)
   const jobs = useJobs({ lesson_id: id, limit: 20 })
-  const job = jobs.data?.find((j) => isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
+  const job = jobs.data?.find((j) => j.type !== 'documents' && isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
   const back = { to: '/', label: 'Lezioni' }
   if (lesson.isPending || lesson.isError) {
     return (

@@ -7,6 +7,8 @@ ma derivati matematicamente ed esclusivamente dal segmento ASR corrispondente:
 segments[unit.start_segment_id].start_seconds -> format_timestamp().
 """
 
+from rt.core.lesson_lock import lesson_locked
+
 import os
 import re
 import shutil
@@ -349,6 +351,47 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     }
 
 
+def _write_rendered_documents(lesson_dir: str, docs: Dict[str, Any]) -> str:
+    """Il chiamante tiene il lock per l'intero snapshot e tutte le sostituzioni atomiche."""
+    named_path = os.path.join(lesson_dir, docs["named_filename"])
+    for name, value in (("pre-elaborato.md", "pre_elaborato"), ("rielaborato.md", "rielaborato"),
+                        ("Errori concettuali.md", "errori_concettuali")):
+        _atomic_write_text(lesson_path(lesson_dir, name), docs[value])
+    _atomic_write_text(named_path, docs["rielaborato"])
+    return named_path
+
+
+@lesson_locked
+def write_automatic_documents(lesson_dir: str) -> Dict[str, Any]:
+    """Aggiorna il build senza finalizzare una verifica incompleta o ancora da decidere."""
+    from rt.core.idempotency import (compute_source_fingerprint, compute_file_sha256,
+                                    record_phase_fingerprint, upstream_acknowledgement)
+    from rt.core.manifest import init_or_update_manifest
+    from rt.core.state import update_info_yaml, compute_effective_workflow_state
+    docs = render_lesson_documents(lesson_dir)
+    named_path = _write_rendered_documents(lesson_dir, docs)
+    info_updates = {"titolo": docs["outline"].lesson_title}
+    if docs["topics_replaced"]:
+        info_updates["argomenti"] = docs["topics"]
+    yaml_path = lesson_path(lesson_dir, "info.yaml")
+    update_info_yaml(yaml_path, info_updates)
+    acknowledged = upstream_acknowledgement(lesson_dir, "build")
+    metadata = {"automatic_documents": True}
+    if acknowledged:
+        metadata["upstream_acknowledged"] = acknowledged
+    record_phase_fingerprint(lesson_dir, "build", compute_source_fingerprint(lesson_dir, "build"),
+        {name: compute_file_sha256(lesson_path(lesson_dir, name))
+         for name in ("pre-elaborato.md", "rielaborato.md", "Errori concettuali.md")}, metadata=metadata)
+    state = compute_effective_workflow_state(lesson_dir)
+    if state:
+        update_info_yaml(yaml_path, {"fase_corrente": state.value, "stato": state.value})
+        init_or_update_manifest(lesson_dir=lesson_dir, lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
+            date=docs["date"], subject=docs["subject"], topics=docs["topics"], current_state=state.value)
+    return {"status": "updated", "skipped": False, "lesson_dir": lesson_dir,
+            "rielaborato": lesson_path(lesson_dir, "rielaborato.md"),
+            "errori_concettuali": lesson_path(lesson_dir, "Errori concettuali.md"), "named_file": named_path}
+
+
 def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Finalizzazione deterministica della lezione (eventi su ctx, se dato)."""
     with phase_scope(ctx, "build") as scope:
@@ -381,7 +424,11 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     phase_status, reason = check_phase_status(lesson_dir, "build")
-    if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath):
+    from rt.services.documents_service import documents_pending
+    from rt.core.manifest import load_manifest, save_manifest
+    current_manifest = load_manifest(lesson_dir)
+    previous_automatic = bool(current_manifest and current_manifest.phase_records.get("build", {}).get("automatic_documents"))
+    if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath) and not documents_pending(lesson_dir) and not previous_automatic:
         current_dir = _move_to_lessons_root_if_configured(lesson_dir)
         if os.path.abspath(current_dir) != os.path.abspath(lesson_dir):
             from rt.db.sync import relocate_lesson
@@ -404,10 +451,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
 
     # Scrittura atomica di pre-elaborato.md, rielaborato.md (con le immagini posizionate),
     # Errori concettuali.md e della copia intitolata di rielaborato.md
-    _atomic_write_text(lesson_path(lesson_dir, "pre-elaborato.md"), docs["pre_elaborato"])
-    _atomic_write_text(lesson_path(lesson_dir, "rielaborato.md"), docs["rielaborato"])
-    _atomic_write_text(lesson_path(lesson_dir, "Errori concettuali.md"), docs["errori_concettuali"])
-    _atomic_write_text(named_filepath, docs["rielaborato"])
+    named_filepath = _write_rendered_documents(lesson_dir, docs)
 
     current_dir = lesson_dir
     if rename_folder:
@@ -446,6 +490,14 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     # scritto riflette i file attuali e resta valido finché quelle fasi non cambiano ancora.
     source_fp = compute_source_fingerprint(current_dir, "build")
     acknowledged = upstream_acknowledgement(current_dir, "build")
+    metadata = {"upstream_acknowledged": acknowledged} if acknowledged else {}
+    # rt build ripristina lo stesso registro storico anche dopo un job automatico.
+    current_manifest = load_manifest(current_dir)
+    if current_manifest and current_manifest.phase_records.get("build", {}).get("automatic_documents"):
+        build_record = current_manifest.phase_records["build"]
+        build_record.pop("automatic_documents", None)
+        build_record["artifact_fingerprints"] = {}
+        save_manifest(current_manifest, current_dir)
     record_phase_fingerprint(
         lesson_dir=current_dir,
         phase_name="build",
@@ -453,7 +505,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         artifact_fingerprints={
             "rielaborato.md": compute_file_sha256(lesson_path(current_dir, "rielaborato.md"))
         },
-        metadata={"upstream_acknowledged": acknowledged} if acknowledged else None,
+        metadata=metadata or None,
     )
 
     # 8. Aggiornamento stato e manifest
@@ -480,6 +532,8 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     from rt.llm.telemetry import current_telemetry
     telemetry_file = lesson_path(current_dir, "telemetry_summary.json")
     current_telemetry().export_to_file(telemetry_file)
+    from rt.services.documents_service import mark_documents_written
+    mark_documents_written(current_dir)
 
     return {
         "status": "completed",

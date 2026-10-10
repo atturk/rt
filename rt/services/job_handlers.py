@@ -196,3 +196,11 @@ def enrichment_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 register_handler("enrichment_analyze", enrichment_analyze_job)
 register_handler("enrichment_generate", enrichment_generate_job)
+
+
+def documents_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.documents_service import run_documents
+    return JobOutcome(state=JobState.SUCCEEDED, result=run_documents(_lesson_dir(job), ctx))
+
+
+register_handler("documents", documents_job)

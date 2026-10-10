@@ -170,7 +170,8 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     
     Invariante fondamentale:
     WorkflowState.COMPLETED è vero SOLO se prepare, outline e rewrite sono VALID e build è
-    VALID. Il build è la conferma dell'utente ("l'anteprima diventa il documento finale"):
+    VALID. Per i documenti automatici occorrono inoltre verifica VALID e nessuna issue
+    pendente. Il build esplicito da CLI è la conferma dell'utente ("l'anteprima diventa il documento finale"):
     una review STALE/PARTIAL o con issue pendenti non lo blocca e, una volta confermato,
     non fa retrocedere lo stato (resta un avviso, vedi build_warnings).
 
@@ -217,7 +218,16 @@ def compute_effective_workflow_state(lesson_dir: str) -> Optional[WorkflowState]
     # 4. Documento confermato: completato anche con avvisi della revisione.
     st_bld, _ = check_phase_status(lesson_dir, "build")
     if st_bld == PhaseStatus.VALID:
-        return WorkflowState.COMPLETED
+        from rt.core.manifest import load_manifest
+        manifest = load_manifest(lesson_dir)
+        automatic = bool(manifest and manifest.phase_records.get("build", {}).get("automatic_documents"))
+        if not automatic:
+            return WorkflowState.COMPLETED
+        # Il documento automatico riflette il testo anche durante una verifica incompleta.
+        st_rev, _ = check_phase_status(lesson_dir, "review")
+        from rt.services.review_service import is_review_complete
+        if st_rev == PhaseStatus.VALID and is_review_complete(lesson_dir):
+            return WorkflowState.COMPLETED
 
     # 5. Review — opzionale: MISSING non blocca il completamento; solo STALE/INVALID retrocede lo stato.
     st_rev, _ = check_phase_status(lesson_dir, "review")

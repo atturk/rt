@@ -255,7 +255,7 @@ class Worker:
             self.queue.finish(job.id, self.worker_id, JobState.FAILED, error=f"Tipo di job sconosciuto: {job.type}")
             return
         lock = None
-        if job.lesson_path and fs.isdir(job.lesson_path):
+        if job.type != "documents" and job.lesson_path and fs.isdir(job.lesson_path):
             from rt.core.process_lock import LessonBusy, lesson_work_lock
             lock = lesson_work_lock(job.lesson_path)
             try:
@@ -295,6 +295,9 @@ class Worker:
             return
         self.queue.finish(job.id, self.worker_id, outcome.state, result=outcome.result, error=outcome.error,
                           decision=outcome.decision, lesson_path=outcome.lesson_path)
+        if job.type == "documents" and outcome.state == JobState.SUCCEEDED and job.lesson_path:
+            from rt.services.documents_service import ensure_documents_queued
+            ensure_documents_queued(job.lesson_path, self.queue)
         self.on_message(f"■ job {job.id[:8]} {outcome.state.value}" + (f": {outcome.error}" if outcome.error else ""))
 
 

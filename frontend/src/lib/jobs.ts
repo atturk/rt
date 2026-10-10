@@ -5,6 +5,7 @@ export type Job = Schemas['Job']
 export type JobEvent = Schemas['JobEvent']
 
 export const JOB_TYPE_LABELS: Record<string, string> = {
+  documents: 'Aggiornamento documento',
   run_pipeline: 'Pipeline completa',
   ingest_audio: 'Importazione audio',
   run_phase: 'Fase singola',

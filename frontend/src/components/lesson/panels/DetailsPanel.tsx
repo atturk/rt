@@ -202,7 +202,7 @@ export function DetailsPanel({
     return () => document.removeEventListener('pointerdown', onPointer)
   }, [openPhaseMenu])
 
-  const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending || validate.isPending
+  const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
   const buildPhase = phases.data?.phases.find((p) => p.phase === 'build')
   const isBuildStale = buildPhase?.status === 'STALE' || l.phases.build === 'STALE'
@@ -301,9 +301,9 @@ export function DetailsPanel({
   const runningJob = (jobs.data ?? []).find((j) => isActiveJob(j.state))
   const lastFinishedJob = (jobs.data ?? []).find((j) => !isActiveJob(j.state))
   const jobSummary = runningJob
-    ? `In corso: ${PHASE_LABELS[runningJob.payload?.phase as string] ?? runningJob.type}`
+    ? `In corso: ${PHASE_LABELS[runningJob.payload?.phase as string] ?? (runningJob.type === 'documents' ? 'Aggiornamento documento' : runningJob.type)}`
     : lastFinishedJob
-      ? `Nessun job in corso. L'ultimo: ${PHASE_LABELS[lastFinishedJob.payload?.phase as string] ?? lastFinishedJob.type} (${lastFinishedJob.state})`
+      ? `Nessun job in corso. L'ultimo: ${PHASE_LABELS[lastFinishedJob.payload?.phase as string] ?? (lastFinishedJob.type === 'documents' ? 'Aggiornamento documento' : lastFinishedJob.type)} (${lastFinishedJob.state})`
       : 'Nessun job registrato.'
 
   return (
