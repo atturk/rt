@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { ApiError } from '@/api/client'
 import { MemoryRouter } from 'react-router'
@@ -55,8 +55,8 @@ it('mostra mai verificata, in corso e tutte decise', () => {
   mount()
   expect(screen.getByRole('status')).toHaveTextContent('Tutte decise')
   expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Decise 1' }))
-  expect(screen.getByRole('list', { name: 'Decise' })).toHaveTextContent('Il pH è 6.')
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  expect(screen.getByRole('list', { name: 'Issue dell’unità 1.1' })).toHaveTextContent('Il pH è 7.')
 })
 it('modifica una correzione e permette di annullare l’ultima decisione', async () => {
   mount()
@@ -67,37 +67,37 @@ it('modifica una correzione e permette di annullare l’ultima decisione', async
 })
 it('passaggio cambiato: chiude l\'issue, ma le decisioni restano possibili', async () => {
   mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nIl pH è 7.')
-  expect(screen.getByText('Testo cambiato')).toBeInTheDocument()
+  expect(within(screen.getByTestId('issue-detail')).getByText('Testo cambiato')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeEnabled()
   fireEvent.click(screen.getByRole('button', { name: "Chiudi l'issue" }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
 
-it('sul telefono mostra testo e correzione, con elenco a richiesta', () => {
+it('sul telefono mostra testo, correzione ed elenco sempre visibile', () => {
   state.phone = true
   mount()
   expect(screen.getByText('Nel testo')).toBeInTheDocument()
   expect(screen.getByText('Correzione proposta')).toBeInTheDocument()
-  expect(screen.queryByRole('list')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'Elenco (1)' }))
-  expect(screen.getByRole('list', { name: 'Da decidere' })).toBeInTheDocument()
+  expect(screen.getByRole('list', { name: 'Unità della verifica' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Elenco/ })).not.toBeInTheDocument()
 })
 
 it.each([
-  ['MISSING', 'Mai verificata', 'Verifica tutta la lezione', { type: 'run_phase', phase: 'review' }],
-  ['PARTIAL', 'Verificate 2 unità su 5', 'Verifica le unità mancanti (3)', { type: 'run_phase', phase: 'review' }],
-  ['STALE', 'Il testo è cambiato dopo la verifica', 'Aggiorna il documento', { type: 'run_pipeline', with_review: true }],
-])('stato %s: titolo, azione e payload', async (review, title, button, payload) => {
+  ['MISSING', 'Mai verificata', ['never', 'never', 'never'], ['1.1', '1.2', '1.3']],
+  ['PARTIAL', 'Mai verificata', ['ok', 'changed', 'never'], ['1.2', '1.3']],
+  ['STALE', 'Mai verificata', ['ok', 'changed', 'failed'], ['1.2', '1.3']],
+])('stato %s: titolo, azione e payload dalle sole unità da fare', async (review, title, states, ids) => {
   state.items = []
-  mount({ rewrite: 'VALID', review, build: 'STALE' }, undefined, undefined, { review_progress: { reviewed: 2, total: 5 } })
+  state.units = states.map((status, i) => unit(`1.${i + 1}`, status as Schemas['ReviewUnit']['state']))
+  mount({ rewrite: 'VALID', review, build: 'STALE' })
   expect(screen.getByRole('status')).toHaveTextContent(title)
   expect(screen.queryByRole('button', { name: 'Riprendi la pipeline' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: button }))
-  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith(payload))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', units: ids }))
 })
 it('review completa con issue da decidere: conteggio e documento automatico', () => {
   mount()
-  expect(screen.getByRole('status')).toHaveTextContent('1 da decidere su 1')
+  expect(screen.getByRole('status')).toHaveTextContent('1 da decidere')
   expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
 })
 it('verifica parziale: unità mancanti dal registro e documento automatico senza conferma', async () => {
@@ -107,7 +107,7 @@ it('verifica parziale: unità mancanti dal registro e documento automatico senza
   })
   expect(screen.queryByTestId('build-confirm-warnings')).not.toBeInTheDocument()
   expect(state.run).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica le unità mancanti (2)' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica' }))
   await waitFor(() => expect(state.run).toHaveBeenLastCalledWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.1'] }))
 })
 it('build già valido e mostra Documento aggiornato', () => {
@@ -125,13 +125,13 @@ it('gli avvisi non richiedono conferma per i documenti automatici', async () => 
   expect(state.run).not.toHaveBeenCalled()
 })
 
-it('testo cambiato: conserva le correzioni per default e permette di rifare la verifica in fondo', async () => {
+it('testo cambiato: verifica globale solo dal menu con conferma nel pannello', async () => {
   mount({ rewrite: 'VALID', review: 'STALE', build: 'STALE' })
-  expect(screen.getByText('Le correzioni fatte a mano non rifanno la verifica.')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione…' }))
   expect(state.run).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica tutte le unità' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui tutte le unità' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true }))
 })
 
@@ -189,11 +189,12 @@ it('il testo vuoto non si applica; Ctrl+Invio applica il testo scritto', async (
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,4.' }))
 })
 
-it('in fondo a Verifica mostra le tacche, senza il vecchio footer di testo', () => {
+it('le unità escluse aprono il Classificatore, senza striscia nel pannello', () => {
+  state.units = [unit('1.1', 'excluded')]
   mount()
-  expect(screen.getByTestId('unit-strip-revisore')).toHaveTextContent('1/1')
-  expect(screen.queryByText(/^Unità per il recaller:/)).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Rivedi le etichette · classificatore aggiornato' }))
+  expect(screen.queryByTestId('unit-strip-revisore')).not.toBeInTheDocument()
+  expect(screen.getByText('Esclusa dal classificatore')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Apri il Classificatore' }))
 })
 
 it('il suggerimento non letterale si modifica dal claim e non si accetta a vuoto', async () => {
@@ -212,48 +213,47 @@ const unit = (unit_id: string, state: Schemas['ReviewUnit']['state'], issues_tot
 it('mostra il riassunto e tutti i sei stati delle unità', () => {
   state.units = [unit('1.1', 'ok'), unit('1.2', 'issues', 2), unit('2.1', 'changed'), unit('2.2', 'never'), unit('3.1', 'excluded'), unit('3.2', 'failed')]
   mount()
-  expect(screen.getByText('2 unità verificate su 6 · 1 senza problemi')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 6' }))
+  expect(screen.getByRole('status')).toHaveTextContent('2/5 unità verificate')
   for (const status of ['ok', 'issues', 'changed', 'never', 'excluded', 'failed']) expect(screen.getByTestId(`review-unit-${status}`)).toBeInTheDocument()
-  expect(screen.getAllByRole('button', { name: /^Verifica l'unità/ })).toHaveLength(3)
+  expect(screen.getAllByRole('button', { name: /^Verifica l'unità/ }).filter(button => button.getAttribute('aria-disabled') !== 'true')).toHaveLength(3)
 })
 it('raggruppa per unità: cronologico e poi gravità', () => {
   state.units = [unit('1.1', 'issues', 1), unit('1.2', 'issues', 1)]
   state.items = [{ ...issue, issue: { ...issue.issue, severity: 'low' } }, { ...issue, issue: { ...issue.issue, id: 'b', unit_id: '1.2' } }]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Per unità' }))
-  expect(screen.getAllByTestId('review-issue-group').map(el => el.getAttribute('data-unit'))).toEqual(['1.1', '1.2'])
-  fireEvent.change(screen.getByRole('combobox', { name: 'Ordine delle issue' }), { target: { value: 'gravita' } })
-  expect(screen.getAllByTestId('review-issue-group').map(el => el.getAttribute('data-unit'))).toEqual(['1.2', '1.1'])
+  fireEvent.click(screen.getByRole('button', { name: 'Apri le issue dell’unità 1.2' }))
+  expect(screen.getAllByTestId('review-issue-group').map(el => el.closest('[data-unit]')?.getAttribute('data-unit'))).toEqual(['1.1', '1.2'])
+  fireEvent.click(screen.getByRole('button', { name: 'Ordine delle issue' }))
+  expect(screen.getAllByTestId('review-issue-group').map(el => el.closest('[data-unit]')?.getAttribute('data-unit'))).toEqual(['1.2', '1.1'])
 })
 it('la ri-verifica di una unità chiede conferma e forza solo quella', async () => {
   state.units = [unit('1.1', 'ok')]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 1' }))
   fireEvent.click(screen.getByRole('button', { name: 'Azioni sull’unità 1.1' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Verifica di nuovo' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui l’unità' }))
   expect(state.run).not.toHaveBeenCalled()
-  expect(screen.getByText('Le decisioni prese restano agganciate alle issue ritrovate')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo' }))
+  expect(screen.getByRole('group', { name: 'Riesegui l’unità 1.1' })).toHaveTextContent('Le decisioni restano registrate')
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui l’unità' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true }))
 })
 it('tutto verificato: niente unità mancanti, la ri-verifica globale chiede conferma', () => {
   state.units = [unit('1.1', 'ok')]
   mount()
   expect(screen.queryByRole('button', { name: /^Verifica le unità mancanti/ })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica di nuovo tutta la lezione' }))
-  expect(screen.getByText('Rifà la verifica di tutte le unità, anche di quelle già verificate.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione…' }))
+  expect(screen.getByRole('group', { name: 'Riesegui tutta la lezione' })).toHaveTextContent('comprese quelle già verificate')
   fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
   expect(state.run).not.toHaveBeenCalled()
 })
-it('il conto delle issue apre Da decidere con filtro togliibile', () => {
+it('le issue si aprono e si chiudono nella propria unità', () => {
   state.units = [unit('1.1', 'issues', 1)]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 1' }))
-  fireEvent.click(screen.getByRole('button', { name: '1 issue nell’unità 1.1' }))
-  expect(screen.getByTestId('review-unit-filter')).toHaveTextContent('Unità 1.1')
-  fireEvent.click(screen.getByRole('button', { name: 'Togli il filtro per unità' }))
-  expect(screen.queryByTestId('review-unit-filter')).not.toBeInTheDocument()
+  expect(screen.getByRole('list', { name: 'Issue dell’unità 1.1' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi le issue dell’unità 1.1' }))
+  expect(screen.queryByRole('list', { name: 'Issue dell’unità 1.1' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Apri le issue dell’unità 1.1' }))
+  expect(screen.getByRole('list', { name: 'Issue dell’unità 1.1' })).toBeInTheDocument()
 })
 it('claim_changed mostra l’errore nella card e passa a Testo cambiato', async () => {
   state.decide.mockRejectedValueOnce(new ApiError(409, 'claim_changed', 'Il testo è già cambiato: modificalo a mano o chiudi l’issue'))
@@ -266,18 +266,15 @@ it('claim_changed mostra l’errore nella card e passa a Testo cambiato', async 
 it('verifica solo le unità cambiate o mai verificate', async () => {
   state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never')]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica le unità mancanti (2)' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Verifica' }))
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.1'] }))
 })
-it('verifica solo le unità selezionate', async () => {
+it('la verifica dell’unità sostituisce la selezione a caselle', async () => {
   state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never'), unit('2.2', 'never')]
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 4' }))
-  expect(screen.getByRole('checkbox', { name: "Seleziona l'unità 1.1" })).toBeDisabled()
-  fireEvent.click(screen.getByRole('checkbox', { name: "Seleziona l'unità 1.2" }))
-  fireEvent.click(screen.getByRole('checkbox', { name: "Seleziona l'unità 2.2" }))
-  fireEvent.click(screen.getByRole('button', { name: 'Verifica le selezionate (2)' }))
-  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.2'] }))
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: "Verifica l'unità 1.2" }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', unit: '1.2' }))
   expect(screen.queryByRole('button', { name: /^Verifica le selezionate/ })).not.toBeInTheDocument()
 })
 it.each(['review_unit', 'run_phase'])('il job singolo %s mostra Verifico solo nella sua riga; la riga porta al testo', type => {
@@ -286,7 +283,6 @@ it.each(['review_unit', 'run_phase'])('il job singolo %s mostra Verifico solo ne
   const scroll = vi.fn()
   window.addEventListener('rt-editor-scroll', scroll)
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 2' }))
   expect(screen.getAllByText('Verifico…')).toHaveLength(1)
   fireEvent.click(screen.getByRole('button', { name: /Titolo 1.1/ }))
   expect(scroll).toHaveBeenCalled()
@@ -305,7 +301,6 @@ it('la riga mostra Verifico già mentre si accoda il job', async () => {
   let finish!: () => void
   state.run.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
   mount()
-  fireEvent.click(screen.getByRole('button', { name: 'Unità 1' }))
   fireEvent.click(screen.getByRole('button', { name: "Verifica l'unità 1.1" }))
   try { await waitFor(() => expect(screen.getByText('Verifico…')).toBeInTheDocument()) }
   finally { finish() }
@@ -328,4 +323,34 @@ it('il job documenti non blocca decisioni ravvicinate', async () => {
   expect(accept).toBeEnabled()
   fireEvent.click(accept)
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+})
+
+
+it('Verifica conta mai verificate, cambiate e fallite; tooltip e badge coincidono', async () => {
+  state.units = [unit('1.1', 'never'), unit('1.2', 'changed'), unit('1.3', 'failed'), unit('2.1', 'excluded'), unit('2.2', 'ok')]
+  mount()
+  const button = screen.getByRole('button', { name: 'Verifica' })
+  expect(button).toHaveTextContent('3')
+  fireEvent.mouseEnter(button)
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Verifica: 3 unità da verificare')
+  fireEvent.mouseLeave(button)
+  fireEvent.click(button)
+  await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', units: ['1.1', '1.2', '1.3'] }))
+})
+it('Verifica senza unità da fare è spenta e spiega il motivo col tooltip', async () => {
+  state.units = [unit('1.1', 'ok'), unit('1.2', 'excluded')]
+  mount()
+  const button = screen.getByRole('button', { name: 'Verifica' })
+  expect(button).toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(button)
+  expect(state.run).not.toHaveBeenCalled()
+  fireEvent.mouseEnter(button)
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Tutte le unità sono verificate')
+})
+it('i puntini di gravità contano soltanto le issue aperte', () => {
+  state.units = [unit('1.1', 'issues', 2)]
+  state.items = [issue, { ...issue, issue: { ...issue.issue, id: 'b', severity: 'low' }, decision: { issue_id: 'b', decision: 'rejected', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount()
+  expect(screen.getByLabelText('Gravità alta')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Gravità bassa')).not.toBeInTheDocument()
 })

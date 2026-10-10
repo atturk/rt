@@ -11,6 +11,7 @@ from typing import List, Optional
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Footer, Input, ListItem, ListView, MarkdownViewer, Static
 
 from rt.core.idempotency import PhaseStatus
@@ -288,13 +289,16 @@ class RTApp(App):
             query = ""
 
         list_view = self.query_one("#lesson-list", ListView)
-        await list_view.clear()
-
         filtered = [
             l for l in self.lessons
             if not query or query in (l.title or "").lower() or query in (l.subject or "").lower()
         ]
 
+        # La selezione segue subito il filtro, prima dei mount asincroni delle righe.
+        self.selected_lesson = next((lesson for lesson in filtered if self.selected_lesson
+                                     and lesson.dir_path == self.selected_lesson.dir_path),
+                                    filtered[0] if filtered else None)
+        await list_view.clear()
         for lesson in filtered:
             await list_view.append(LessonRow(lesson))
 
@@ -365,8 +369,12 @@ class RTApp(App):
             event.stop()
 
     async def _show_lesson(self, lesson: LessonSummary) -> None:
+        try:
+            header = self.query_one("#detail-header", Static)
+        except NoMatches:
+            return  # Il pannello può essere già smontato mentre finiscono i mount delle righe.
         self.selected_lesson = lesson
-        self.query_one("#detail-header", Static).update(build_header(lesson))
+        header.update(build_header(lesson))
         self.query_one("#phase-stepper").display = True
 
         for p in PHASES:

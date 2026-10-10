@@ -7,7 +7,7 @@ export type IssueOrder = 'cronologico' | 'gravita'
 
 export const ISSUE_ORDERS: { value: IssueOrder; label: string }[] = [
   { value: 'cronologico', label: 'Cronologico' },
-  { value: 'gravita', label: 'Tipo e gravità' },
+  { value: 'gravita', label: 'Gravità' },
 ]
 
 /** Tipi di issue dal più importante: prima gli errori concettuali, poi gli avvisi sull'unità. */
@@ -32,8 +32,6 @@ const time = (s: number | null | undefined) => (s == null || !Number.isFinite(s)
 
 function compare(order: IssueOrder, a: SortableIssue, b: SortableIssue): number {
   if (order === 'gravita') {
-    const byType = rank(TYPE_RANK, a.type) - rank(TYPE_RANK, b.type)
-    if (byType) return byType
     const bySeverity = rank(SEVERITY_RANK, a.severity) - rank(SEVERITY_RANK, b.severity)
     if (bySeverity) return bySeverity
   }

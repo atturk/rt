@@ -5,6 +5,7 @@ const sources = import.meta.glob<string>(['/src/**/*.{ts,tsx}', '!/src/**/*.test
 
 it('ogni preferenza usata nello SPA ha un nome che il server accetta', () => {
   const names = Object.values(sources).flatMap(code => [...code.matchAll(/(?:usePreference|readPreference)(?:<[^>]*>)?\(\s*'([^']+)'/g)].map(m => m[1]))
-  expect(names).toContain('review.by-unit')
+  // Il raggruppamento per unità è sempre attivo; resta configurabile l'ordine.
+  expect(names).toContain('review.order')
   expect(names.filter(name => !SERVER_NAME.test(name))).toEqual([])
 })

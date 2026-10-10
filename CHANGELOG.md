@@ -4,6 +4,8 @@
 
 ### Novità
 
+- V6a: testa della Verifica con conteggio delle unità da fare, ordine e Mostra decise; elenco unico con gravità, menu per unità e rimando al Classificatore per le escluse.
+
 - V5b: documento automatico senza pulsanti di ricostruzione; la build conserva cartella e percorso, senza notifica Telegram.
 
 - Documento finale e registro degli errori aggiornati automaticamente dopo decisioni, annullamenti e salvataggi, con un solo job per lezione e tre secondi dall’ultimo cambio.
@@ -23,6 +25,8 @@
 - Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
 
 ### Correzioni
+
+- V6a: il filtro della TUI mantiene subito la selezione durante il rimontaggio asincrono delle righe e ignora gli aggiornamenti di un pannello già chiuso.
 
 - I token del prompt letti dalla cache sono salvati nelle chiamate e conteggiati al prezzo della cache quando noto; il contesto fisso è marcato per OpenRouter con Anthropic e Gemini.
 
