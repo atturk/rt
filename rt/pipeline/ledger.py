@@ -12,6 +12,7 @@ import threading
 from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional, Set
+from rt.pipeline.issue_review import _is_no_diff_issue_type
 from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
@@ -99,7 +100,7 @@ def record_decision(
             draft = None
         unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None) if draft else None
         if unit:
-            if issue.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT):
+            if _is_no_diff_issue_type(issue):
                 issue.anchor = make_anchor(unit.content, 0, len(unit.content))
             else:
                 found = find_quote(unit.content, issue.claim)
@@ -175,7 +176,6 @@ def apply_decisions_to_draft(
     calcolato per l'API. I contratti storici in memoria passano dalla migrazione.
     """
     from rt.pipeline.anchors import locate
-    from rt.pipeline.review_migration import PARAGRAPH_TYPES
     if ledger.schema_version != "2.0":
         from rt.pipeline.review_migration import migrate_objects
         ledger, science_issues = migrate_objects(draft, ledger, science_issues, edited_units or {})
@@ -201,7 +201,7 @@ def apply_decisions_to_draft(
             continue
         if decision.decision == 'rejected':
             continue
-        if issue.type in PARAGRAPH_TYPES:
+        if _is_no_diff_issue_type(issue):
             if decision.decision == 'edited' and decision.resolved_text:
                 unit.content = fix_mojibake(decision.resolved_text)
             continue

@@ -17,7 +17,7 @@ from rt.core.models import (
     ReviewDecision,
     DecisionLedger,
 )
-from rt.llm.prompts import ScienceIssueList, build_science_review_user_prompt
+from rt.llm.prompts import ReviewFinding, ReviewFindingList, build_science_review_user_prompt
 from rt.pipeline.review import run_review
 from rt.pipeline.ledger import apply_decisions_to_draft
 from rt.cli import main
@@ -115,17 +115,12 @@ def test_run_review_default_vs_asr_llm(tmp_path):
         prompts_received.append((unit_id, prompt))
         # For unit 1.1, return an ERR_ASR_LLM issue
         if "(1.1:" in unit_id:
-            iss = ScienceIssue(
-                id="sci_temp",
-                type=ScienceType.ERR_ASR_LLM,
-                severity=ScienceSeverity.HIGH,
-                unit_id="1.1",
-                claim="Raw seg 1",
-                reason="Confermato fabbricato dall'LLM",
-                status="pending"
+            iss = ReviewFinding(
+                tipo="asr_llm", gravita="alta", citazione="Contenuto unità 1.",
+                motivazione="Confermato fabbricato dall'LLM", sostituzione="Contenuto corretto unità 1.",
             )
-            return ScienceIssueList(issues=[iss])
-        return ScienceIssueList(issues=[])
+            return ReviewFindingList(issues=[iss])
+        return ReviewFindingList(issues=[])
 
     with patch("rt.llm.client.LLMClient.call_structured", side_effect=mock_call_structured):
         res_llm = run_review(lesson_dir, force=True, force_mock=False, asr_llm=True)
@@ -147,7 +142,7 @@ def test_run_review_asr_llm_discarded_candidate(tmp_path):
 
     # Mock LLM returns NO issues for unit 1.1 (candidate is discarded by LLM)
     def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
-        return ScienceIssueList(issues=[])
+        return ReviewFindingList(issues=[])
 
     with patch("rt.llm.client.LLMClient.call_structured", side_effect=mock_call_structured):
         res = run_review(lesson_dir, force=True, force_mock=False, asr_llm=True)

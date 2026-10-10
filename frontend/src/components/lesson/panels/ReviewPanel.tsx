@@ -254,7 +254,7 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
     <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
     {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
-    {!paragraph && !changed && <div ref={box}>
+    {!paragraph && !changed && !issue.unanchored && <div ref={box}>
       <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{suggestion ? 'Suggerimento' : 'Correzione proposta'}</h3>
         {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
       </div>
@@ -271,12 +271,13 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     {failure && <Alert tone="danger">{failure}</Alert>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
-    {changed && <>
+    {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. Puoi solo rifiutare questa issue.</p></>}
+    {changed && !issue.unanchored && <>
       <Badge tone="warning">Testo cambiato</Badge>
       <p className="text-meta text-muted-foreground line-through">{issue.claim}</p>
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={onCloseIssue}>Chiudi l'issue</Button><Button size="sm" variant="outline" disabled={busy || !issue.unit_id} onClick={onRecheck}>Verifica di nuovo l'unità {issue.unit_id}</Button></div>
     </>}
-    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : paragraph && editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
+    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : issue.unanchored ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('rejected')}>Rifiuta</Button> : paragraph && editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
       <label htmlFor="review-edit" className="text-meta">{paragraph ? 'Testo del paragrafo' : 'Testo corretto'}</label>
       <Textarea id="review-edit" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !text.trim()}>Salva modifica</Button><Button size="sm" variant="ghost" onClick={() => onEditing(false)}>Annulla</Button></div>

@@ -315,3 +315,13 @@ it('la riga mostra Verifico già mentre si accoda il job', async () => {
   try { await waitFor(() => expect(screen.getByText('Verifico…')).toBeInTheDocument()) }
   finally { finish() }
 })
+
+it('una citazione non ancorata si può soltanto rifiutare', async () => {
+  state.items = [{ ...issue, issue: { ...issue.issue, unanchored: true } }]
+  mount(undefined, undefined, 'testo senza la citazione')
+  expect(screen.getByText('Non ancorata')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Correzione proposta')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Rifiuta' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
+})

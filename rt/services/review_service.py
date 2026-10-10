@@ -131,6 +131,8 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     """Regole di validazione delle interfacce non interattive (web/API): stesso testo
     risolto che producono CLI e Telegram."""
     is_asr = _is_no_diff_issue_type(issue)
+    if issue.unanchored and decision != "rejected":
+        raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
     if not is_asr and decision in {"accepted", "edited"}:
         unit_content = _unit_content(lesson_dir, issue)
         if not unit_content or not issue.claim.strip() or issue.claim.strip() not in unit_content:
@@ -175,8 +177,10 @@ def record_review_decision(
     if decision not in {"accepted", "rejected", "edited"}:
         raise ReviewDecisionError("Decisione non riconosciuta.")
     with lesson_lock(lesson_dir):
+        issue = find_science_issue_by_id(lesson_dir, issue_id)
+        if issue and issue.unanchored and decision != "rejected":
+            raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
         if validate:
-            issue = find_science_issue_by_id(lesson_dir, issue_id)
             if issue is None:
                 raise ReviewDecisionError("La questione non esiste più: aggiorna l'elenco.")
             if any(d.issue_id == issue_id for d in load_ledger(lesson_dir, strict=True).decisions):

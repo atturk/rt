@@ -1281,14 +1281,14 @@ class LLMClient:
             )
             return unit_data  # type: ignore
 
-        elif model_name == "ScienceIssueList" or "ScienceIssue" in model_name:
+        elif model_name in ("ReviewFindingList", "ScienceIssueList") or "ScienceIssue" in model_name:
             from rt.core.models import ScienceType, ScienceSeverity
             class ScienceIssueList(BaseModel):
                 issues: list[ScienceIssue] = []
 
             self._mock_issue_calls["review_science"] = self._mock_issue_calls.get("review_science", 0) + 1
             if self._mock_issue_calls["review_science"] > 1:
-                return ScienceIssueList(issues=[])  # type: ignore
+                return response_model(issues=[])  # type: ignore
 
             u_match = re.search(r"UNITÀ:\s*([0-9.]+)", prompt)
             unit_id = u_match.group(1) if u_match else "1.1"
@@ -1350,6 +1350,11 @@ class LLMClient:
                         status="pending"
                     )
                 )
+            if model_name == "ReviewFindingList":
+                return response_model(issues=[{
+                    "tipo": "concettuale", "gravita": {"high": "alta", "medium": "media", "low": "bassa"}[issue.severity.value],
+                    "citazione": issue.claim, "motivazione": issue.reason, "sostituzione": issue.suggested_fix,
+                } for issue in mock_issues])
             return ScienceIssueList(issues=mock_issues)  # type: ignore
 
         elif model_name == "RecallQuestion":

@@ -7,12 +7,28 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 """
 
 import json
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Literal
+from pydantic import BaseModel, Field, ConfigDict
 from rt.core.models import ScienceIssue, RecallOutcome
 
 
+class ReviewFinding(BaseModel):
+    """Contratto piccolo del revisore; identificativi e ancore spettano al codice."""
+    model_config = ConfigDict(extra="forbid")
+    tipo: Literal["concettuale", "asr_llm"]
+    gravita: Literal["bassa", "media", "alta"]
+    citazione: str = Field(min_length=1)
+    motivazione: str = Field(min_length=1)
+    sostituzione: str = Field(min_length=1)
+
+
+class ReviewFindingList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    issues: List[ReviewFinding]
+
+
 class ScienceIssueList(BaseModel):
+    """Contenitore storico, solo per i chiamanti che gestiscono issue già convertite."""
     issues: List[ScienceIssue] = []
 
 
@@ -158,18 +174,15 @@ Il tuo ruolo NON è riscrivere il testo, ma agire da CRITIC per individuare erro
 
 Non hai accesso alla trascrizione grezza originale né all'audio della lezione: valuti esclusivamente il testo rielaborato così com'è, in base alla tua conoscenza scientifica. Questo è intenzionale: non farti mai confondere da singole parole isolate che sembrano fuori posto o senza senso nel contesto della frase — potrebbero essere un artefatto di trascrizione automatica (ASR) non ancora corretto (un termine tecnico graficamente simile ma sbagliato, una parola spezzata o unita male), non un errore concettuale. La correzione di questo tipo di artefatti è compito esclusivo della review ASR (fase separata, facoltativa, potrebbe non essere mai stata eseguita) — NON è compito tuo, e non devi provare a indovinare cosa "avrebbe dovuto dire" un frammento privo di senso. Se un'affermazione contiene SOLO un'anomalia isolata di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase.
 
-Verifica la correttezza scientifica del testo rielaborato. Se individui un errore concettuale, una contraddizione o un'incongruenza fattuale (es. invertire muscolo liscio e striato, confondere mutasi e racemasi, scambiare carotide e coronaria o bastoncelli e coni, inventare reazioni o meccanismi biochimici inesistenti), indipendentemente dal fatto che possa trattarsi di un lapsus orale del docente o di un'allucinazione introdotta durante la rielaborazione, restituisci una issue di tipo "ERR_CONCETTUALE".
+Verifica la correttezza scientifica del testo rielaborato. Se individui un errore concettuale, una contraddizione o un'incongruenza fattuale (es. invertire muscolo liscio e striato, confondere mutasi e racemasi, scambiare carotide e coronaria o bastoncelli e coni, inventare reazioni o meccanismi biochimici inesistenti), indipendentemente dal fatto che possa trattarsi di un lapsus orale del docente o di un'allucinazione introdotta durante la rielaborazione, restituisci un problema di tipo "concettuale".
 
-Per ogni problema riscontrato restituisci:
-- "id": "sci_000001"
-- "type": "ERR_CONCETTUALE"
-- "severity": "low" | "medium" | "high"
-- "unit_id": ID unità
-- "segment_id": ID segmento correlato se identificabile (es. seg_000049, seg_002314)
-- "claim": frase esatta del rielaborato in discussione (deve corrispondere letteralmente a una frase intera o proposizione autonoma del testo)
-- "reason": spiegazione scientifica dettagliata dell'errore
-- "suggested_fix": testo letterale esatto di sostituzione per "claim". ATTENZIONE: DEVE ESSERE UNICAMENTE IL TESTO CORRETTO pronto per la sostituzione diretta, SENZA formule introduttive (NON scrivere 'Sostituire con:', 'Correggere con:', 'Riformulare in:'), SENZA opzioni multiple ('oppure...') e SENZA virgolette esterne di contorno. Se si tratta di una raccomandazione non applicabile come stringa diretta, mantieni il testo sostitutivo comunque pulito ed esplicativo.
-- "diplomatic_question": (opzionale) formulazione diplomatica per il docente, riferita al testo rielaborato, se ha senso chiedere un chiarimento diretto — indipendentemente dalla probabile origine dell'errore."""
+Restituisci un oggetto JSON con la lista "issues" (vuota se non trovi errori).
+Ogni problema deve avere ESATTAMENTE questi cinque campi, tutti obbligatori:
+- "tipo": "concettuale" oppure "asr_llm" solo per il punto ASR esplicitamente richiesto
+- "gravita": "bassa" | "media" | "alta"
+- "citazione": testo esatto, contiguo, presente nell'unità rielaborata da controllare
+- "motivazione": spiegazione scientifica dell'errore
+- "sostituzione": SEMPRE il testo letterale pronto a sostituire ESATTAMENTE la citazione, senza allargare il passaggio. Anche per aggiungere un dato mancante, cita un passaggio esistente e restituiscilo completo del dato. Niente suggerimenti, istruzioni, formule introduttive, alternative o virgolette esterne. Non aggiungere altri campi."""
 
 
 def build_science_review_user_prompt(
@@ -193,7 +206,7 @@ UNITÀ: {unit_id}
 TESTO RIELABORATO:
 {rewritten_content}{asr_block}{parent_block}
 
-Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ScienceIssueList."""
+Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ReviewFindingList."""
 
 
 # ----------------------------------------------------------------------

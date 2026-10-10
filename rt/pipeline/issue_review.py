@@ -25,7 +25,7 @@ def _is_no_diff_issue_type(iss: ScienceIssue) -> bool:
     vengono renderizzati con una descrizione piatta (stesso trattamento già riservato
     alle issue ASR)."""
     iss_type_str = iss.type.value if hasattr(iss.type, "value") else str(iss.type)
-    return iss.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_REWRITE_DRIFT) or iss_type_str in ("ERR_ASR_LLM", "ERR_REWRITE_DRIFT")
+    return iss.type in (ScienceType.ERR_ASR_ST, ScienceType.ERR_REWRITE_DRIFT) or (iss_type_str == "ERR_ASR_LLM" and not iss.suggested_fix)
 
 
 def _build_diff_strings(sci_unit: Any, iss: ScienceIssue) -> Tuple[str, str]:

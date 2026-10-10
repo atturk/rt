@@ -4,6 +4,8 @@
 
 ### Novità
 
+- La verifica restituisce citazioni e sostituzioni esatte con uno schema piccolo; i passaggi non ritrovati restano non ancorati, senza chiamate di riparazione.
+
 - Le unità già finite si possono decidere e riaprire mentre la verifica prosegue sulle altre.
 - Verifica fino a quattro unità in parallelo, con issue disponibili appena ciascuna unità termina.
 - La verifica controlla il testo risolto, conserva tutte le decisioni e riconosce i rifiuti sullo stesso passaggio anche con citazioni diverse.
