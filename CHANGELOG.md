@@ -5,9 +5,7 @@
 ### Novità
 
 - Le unità già finite si possono decidere e riaprire mentre la verifica prosegue sulle altre.
-
 - Verifica fino a quattro unità in parallelo, con issue disponibili appena ciascuna unità termina.
-
 - La verifica controlla il testo risolto, conserva tutte le decisioni e riconosce i rifiuti sullo stesso passaggio anche con citazioni diverse.
 - Le correzioni si applicano solo al passaggio ancorato della propria unità; le decisioni non ritrovate restano da riconfermare.
 - Le lezioni esistenti ricevono le ancore alla prima lettura, senza chiamate al modello e con testo risolto identico.
@@ -16,10 +14,9 @@
 
 ### Correzioni
 
+- Le decisioni si vedono subito nel pannello; si ricaricano solo issue, unità della verifica e documento, con ripristino in caso di errore.
 - Testo risolto e configurazione in cache, aggiornati quando cambiano bozza, issue, modifiche a mano o decisioni.
-
 - Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.
-
 - Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
 
 ## 4.2.4b1 — 2026-10-09
