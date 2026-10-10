@@ -105,12 +105,15 @@ def mock_failure_once(job_name: str):
 def _consume_mock_failure(job_name: str, lesson_dir: Optional[str]) -> bool:
     if _MOCK_FAILURE.get() != job_name or not lesson_dir:
         return False
-    marker = lesson_path(lesson_dir, f"mock_failure_{job_name}.done")
-    if fs.isfile(marker):
-        return False
-    with fs.open(marker, "w", encoding="utf-8") as f:
-        f.write("1\n")
-    return True
+    from rt.core.lesson_lock import lesson_lock
+    with lesson_lock(lesson_dir):
+        marker = lesson_path(lesson_dir, f"mock_failure_{job_name}.done")
+        if fs.isfile(marker):
+            return False
+        with fs.open(marker, "w", encoding="utf-8") as f:
+            f.write("1\n")
+        return True
+
 
 
 JSON_REMINDER = (
@@ -256,6 +259,9 @@ class LLMClient:
                 timeout_seconds_configured=primary_cfg.timeout_seconds
             )
             current_telemetry().add(mock_rec)
+            wait = getattr(self, "_mock_review_wait", None)
+            if job_name == "review" and wait is not None:
+                wait()
             if _consume_mock_failure(job_name, lesson_dir):
                 failure = SchemaFailure("JSON non valido in 'content' (mock)", provider="mock", model="mock-deterministic")
                 failure.response_excerpt = response_excerpt(MOCK_OFF_SCHEMA_RESPONSE)

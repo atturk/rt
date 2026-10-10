@@ -263,7 +263,7 @@ export function useJobEvents(
     }
     const types = [
       'job_queued', 'job_started', 'job_requeued', 'job_resumed', 'job_cancel_requested', 'job_waiting', 'job_finished',
-      'phase_started', 'phase_progress', 'phase_completed', 'phase_failed', 'cost_updated', 'decision_required', 'notice',
+      'review_unit_done', 'phase_started', 'phase_progress', 'phase_completed', 'phase_failed', 'cost_updated', 'decision_required', 'notice',
     ]
     for (const type of types) source.addEventListener(type, onEvent)
     source.addEventListener('end', () => {

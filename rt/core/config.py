@@ -291,6 +291,7 @@ class TranscriptionConfig(BaseModel):
 
 
 class ReviewConfig(BaseModel):
+    parallel_units: int = Field(default=4, ge=1, le=32, description="Unità verificate in parallelo")
     asr_statistical_k: float = Field(default=3.0, description="Fattore k per z-score robusto su mediana e MAD")
     asr_statistical_floor: float = Field(default=0.35, description="Soglia assoluta di sicurezza per confidenza ASR")
 

@@ -36,6 +36,13 @@ class PhaseProgress(_Event):
     failed: Optional[int] = None
 
 
+class ReviewUnitDone(_Event):
+    """L'unità e le sue issue sono già salvate, anche quando la verifica fallisce."""
+    type: Literal["review_unit_done"] = "review_unit_done"
+    unit_id: str
+    issues: int
+
+
 class PhaseCompleted(_Event):
     type: Literal["phase_completed"] = "phase_completed"
     phase: str
@@ -77,7 +84,7 @@ class Notice(_Event):
     level: Literal["info", "warning", "error"] = "info"
 
 
-Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice]
+Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice, ReviewUnitDone]
 
 
 class Reporter(Protocol):

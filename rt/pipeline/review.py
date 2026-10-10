@@ -44,7 +44,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
-from rt.services.events import Notice
+from rt.services.events import Notice, ListReporter, ReviewUnitDone
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 from rt.pipeline.review_units import record_review_unit, load_review_units
@@ -618,6 +618,59 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
             "orphaned_decisions": orphaned}
 
 
+class _MockReviewOrder:
+    """Il mock conserva il budget storico e l'ordine delle risposte della lezione.
+
+    La sincronizzazione riguarda solo la generazione finta, mai il modello reale.
+    Le unità escluse o fallite liberano comunque quelle successive.
+    """
+    def __init__(self, units):
+        import threading
+        self.units = units
+        self.finished = set()
+        self.condition = threading.Condition()
+
+    def wait(self, unit_id):
+        before = self.units[:self.units.index(unit_id)]
+        with self.condition:
+            self.condition.wait_for(lambda: all(uid in self.finished for uid in before))
+
+    def complete(self, unit_id):
+        with self.condition:
+            self.finished.add(unit_id)
+            self.condition.notify_all()
+
+
+def _parallel_units(work, run, parallel, stop):
+    """Al massimo parallel chiamate avviate; le risposte passano al thread chiamante.
+
+    La coda conserva l'ordine di completamento. Quando stop diventa vero non
+    partono nuove unità, ma si aspettano e si raccolgono quelle già avviate.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+    from queue import Queue
+    finished = Queue()
+    remaining = iter(work)
+    pending = set()
+    exhausted = False
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        while pending or not exhausted:
+            while not exhausted and len(pending) < parallel and not stop():
+                item = next(remaining, None)
+                if item is None:
+                    exhausted = True
+                    break
+                future = pool.submit(copy_context().run, run, *item)
+                pending.add(future)
+                future.add_done_callback(finished.put)
+            if not pending:
+                break
+            future = finished.get()
+            pending.remove(future)
+            yield future.result()
+
+
 def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
@@ -743,66 +796,112 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     total_units = len(draft.units)
     failures = UnitFailureTracker()
     stopped_early = False
+    fatal_error = None
     jev_prefilter: Dict[str, Any] = {}
 
-    for idx, unit in enumerate(draft.units, start=1):
-        if not force and unit.unit_id in reviewed_set:
-            continue
-        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
-        if ctx is not None:
-            ctx.check_cancelled()
-            ctx.progress("review", current=idx, total=total_units, message=f"{unit.unit_id} {unit_title}".strip(),
-                         unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
-        generated = []
-        unit_result = "excluded"
+    work = [(idx, unit) for idx, unit in enumerate(draft.units, start=1)
+            if force or unit.unit_id not in reviewed_set]
+
+    mock_order = _MockReviewOrder([unit.unit_id for _, unit in work])
+    mock_calls = {}
+
+    def examine(idx, unit):
+        # Client separati; soltanto il budget del mock resta quello della lezione.
+        client = None
+        reporter = ListReporter()
+        child = RunContext(lesson_dir=lesson_dir, reporter=reporter,
+                           telemetry=ctx.telemetry, cancel_token=ctx.cancel_token) if ctx else None
+        generated, prefilter = [], {}
+        result, error = "excluded", None
         try:
-            if unit.unit_id in eligible_ids:
-                unit_result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
-                             _cfg, lesson_dir, asr_llm, shadow_jev, ctx=ctx, jev_log=jev_prefilter)
-            elif ctx is not None:
-                ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
+            client = LLMClient(force_mock=force_mock)
+            client._mock_issue_calls = mock_calls
+            client._mock_review_wait = lambda: mock_order.wait(unit.unit_id)
+            from contextlib import nullcontext
+            with child.activate() if child else nullcontext():
+                if unit.unit_id in eligible_ids:
+                    result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
+                                          _cfg, lesson_dir, asr_llm, shadow_jev, ctx=child, jev_log=prefilter)
+                elif child:
+                    child.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:
+            error = exc
+        finally:
+            mock_order.complete(unit.unit_id)
+        return idx, unit, client, generated, result, reporter.events, prefilter, error
+
+    if ctx:
+        ctx.check_cancelled()
+    for idx, unit, client, generated, unit_result, events, prefilter, exc in _parallel_units(
+            work, examine, _cfg.review.parallel_units,
+            lambda: stopped_early or fatal_error is not None or bool(ctx and ctx.cancel_token.cancelled)):
+        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
+        jev_prefilter.update(prefilter)
+        if ctx:
+            for event in events:
+                ctx.emit(event)
+            ctx.progress("review", current=len(reviewed_set) + len(failures.failures) + 1, total=total_units,
+                         message=f"{unit.unit_id} {unit_title}".strip(), unit_id=unit.unit_id,
+                         unit_title=unit_title or None, failed=len(failures.failures))
+        if exc is not None:
+            from rt.services.context import RunCancelled
+            if isinstance(exc, RunCancelled) and ctx and ctx.cancel_token.cancelled:
+                continue
             if not is_unit_failure(exc):
-                raise
-            # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
-            # una nuova run la rifà, le altre proseguono.
+                # Ferma gli invii, ma salva anche le altre unità già partite.
+                fatal_error = fatal_error or exc
+                if client is not None:
+                    record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", str(exc),
+                                       text_hash=unit_hashes.get(unit.unit_id))
+                continue
             failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
             record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message,
                                text_hash=unit_hashes.get(unit.unit_id))
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
-            if ctx is not None:
+            if ctx:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
+                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0))
             if failures.too_many():
                 stopped_early = True
-                break
             continue
         failures.succeeded()
 
         if not asr_llm:
             generated.extend(st_issues_by_unit.get(unit.unit_id, []))
         anchor_findings(generated, unit)
-        all_science_issues, _, sequence = merge_unit_findings(
-            lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
-        save_science_issues(all_science_issues, lesson_dir)
-        record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result,
-                           text_hash=unit_hashes.get(unit.unit_id))
+        from rt.core.lesson_lock import lesson_lock
+        with lesson_lock(lesson_dir):
+            all_science_issues, _, sequence = merge_unit_findings(
+                lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit.unit_id})
+            save_science_issues(all_science_issues, lesson_dir)
+            record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result,
+                               text_hash=unit_hashes.get(unit.unit_id))
 
-        # Commit atomico nel checkpoint
-        if unit.unit_id not in reviewed_set:
-            reviewed_unit_ids.append(unit.unit_id)
-            reviewed_set.add(unit.unit_id)
+            # Commit atomico nel checkpoint
+            if unit.unit_id not in reviewed_set:
+                reviewed_unit_ids.append(unit.unit_id)
+                reviewed_set.add(unit.unit_id)
+            reviewed_unit_ids = [u.unit_id for u in draft.units if u.unit_id in reviewed_set]
 
-        source_fp = compute_source_fingerprint(lesson_dir, "review")
-        sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
-        record_phase_checkpoint(
-            lesson_dir=lesson_dir,
-            phase_name="review",
-            source_fingerprint=source_fp,
-            artifact_fingerprints={"science_issues.json": sci_hash},
-            completed_items=reviewed_unit_ids,
-            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes},
-                      "issue_sequence": sequence},
-        )
+            source_fp = compute_source_fingerprint(lesson_dir, "review")
+            sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
+            record_phase_checkpoint(
+                lesson_dir=lesson_dir,
+                phase_name="review",
+                source_fingerprint=source_fp,
+                artifact_fingerprints={"science_issues.json": sci_hash},
+                completed_items=reviewed_unit_ids,
+                metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes},
+                          "issue_sequence": sequence},
+            )
+        if ctx:
+            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated)))
+
+    if ctx:
+        ctx.check_cancelled()
+
+    if fatal_error is not None:
+        raise fatal_error
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
     all_draft_unit_ids = [u.unit_id for u in draft.units]
@@ -842,7 +941,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
         from rt.pipeline.ledger import get_pending_issues
         _, pending_sci = get_pending_issues(lesson_dir)
-        
+
         allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
         if pending_sci:
             transition_to(yaml_path, WorkflowState.HUMAN_REVIEW_REQUIRED, allow_force=allow_t)

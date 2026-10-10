@@ -231,6 +231,11 @@ def test_rewrite_unit_failure_is_partial_and_resume_is_idempotent(lesson, monkey
 
 
 def test_consecutive_failures_stop_the_phase_early(lesson, monkeypatch):
+    # La modalità sequenziale conserva il limite di tre chiamate del contratto storico.
+    from rt.core.config import load_config
+    cfg = load_config()
+    cfg.review.parallel_units = 1
+    monkeypatch.setattr("rt.pipeline.review.load_config", lambda: cfg)
     from rt.pipeline.review import run_review
     from rt.pipeline.unit_failures import MAX_CONSECUTIVE_FAILURES
     units = _unit_ids(lesson)

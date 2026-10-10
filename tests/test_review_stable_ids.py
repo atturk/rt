@@ -44,7 +44,7 @@ def test_force_keeps_found_ids_and_decisions(reviewed):
     lesson, calls = reviewed
     ids = decide_all(lesson)
     review.run_review(lesson, force=True, force_mock=True)
-    assert calls == ['1.1','1.2','2.1'] * 2
+    assert sorted(calls) == sorted(['1.1','1.2','2.1'] * 2)
     assert {i.unit_id:i.id for i in review.load_science_issues(lesson)} == ids
     assert {d.issue_id for d in load_ledger(lesson).decisions} == set(ids.values())
 
