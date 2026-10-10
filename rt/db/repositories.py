@@ -153,14 +153,14 @@ class LlmCallRepository:
         self.session = session
 
     COLUMNS = ("execution_id", "request_id", "job", "unit_id", "route_role", "provider", "model",
-               "input_tokens", "output_tokens", "reasoning_tokens", "total_tokens",
+               "input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens",
                "estimated_cost", "status", "failure_class", "timestamp")
 
     def add(self, lesson: Optional[Lesson], entry: Dict[str, Any]) -> LlmCall:
         fields = {}
         for key in self.COLUMNS:
             value = entry.get(key)
-            if key in ("input_tokens", "output_tokens", "reasoning_tokens", "total_tokens"):
+            if key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens"):
                 value = value if isinstance(value, int) and not isinstance(value, bool) else None
             elif key == "estimated_cost":
                 value = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None

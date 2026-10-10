@@ -135,6 +135,7 @@ class LlmCall(Base):
     route_role: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cached_input_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     input_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reasoning_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

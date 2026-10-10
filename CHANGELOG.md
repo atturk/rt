@@ -20,6 +20,8 @@
 
 ### Correzioni
 
+- I token del prompt letti dalla cache sono salvati nelle chiamate e conteggiati al prezzo della cache quando noto; il contesto fisso è marcato per OpenRouter con Anthropic e Gemini.
+
 - Le decisioni si vedono subito nel pannello; si ricaricano solo issue, unità della verifica e documento, con ripristino in caso di errore.
 - Testo risolto e configurazione in cache, aggiornati quando cambiano bozza, issue, modifiche a mano o decisioni.
 - Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.

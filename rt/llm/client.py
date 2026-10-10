@@ -24,6 +24,7 @@ from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
+from rt.llm.usage import cached_prompt_tokens
 from rt.llm.cancel import RunCancelled, current_cancel_token, raise_if_cancelled
 from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 from rt.llm.monitor import LiveTerminalMonitor
@@ -135,6 +136,17 @@ def _with_json_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         elif isinstance(content, list):
             msg["content"] = list(content) + [{"type": "text", "text": JSON_REMINDER}]
         break
+    return out
+
+
+def _cache_lesson_prefix(messages, provider, model, enabled):
+    """Marca solo il contesto fisso, senza alterare i messaggi dei fallback."""
+    clean_model = model.lower().strip().lstrip("~")
+    if not enabled or provider != "openrouter" or not (
+        clean_model.startswith("anthropic/") or clean_model.startswith("google/gemini")):
+        return messages
+    out = [dict(message) for message in messages]
+    out[1]["content"] = [{"type": "text", "text": out[1]["content"], "cache_control": {"type": "ephemeral"}}]
     return out
 
 
@@ -483,7 +495,9 @@ class LLMClient:
 
                 payload = provider.build_payload(
                     model=model_name,
-                    messages=_with_json_reminder(messages) if schema_reminder else list(messages),
+                    messages=_cache_lesson_prefix(
+                        _with_json_reminder(messages) if schema_reminder else list(messages),
+                        provider_name, model_name, bool(prompt_prefix)),
                     max_tokens=route.max_tokens,
                     thinking=(True if force_thinking_override else route.thinking),
                     reasoning_effort=route.reasoning_effort,
@@ -515,6 +529,7 @@ class LLMClient:
                     raw_content = ""
                     reasoning_content = ""
                     final_usage = None
+                    in_t = out_t = reas_t = cached_t = cost_est = None
                     finish_reason = None
                     req_id = None
 
@@ -673,6 +688,7 @@ class LLMClient:
 
                                     if chunk.usage:
                                         final_usage = chunk.usage
+                                        cached_t = cached_prompt_tokens(final_usage)
                                         in_t = final_usage.get("prompt_tokens")
                                         out_t = final_usage.get("completion_tokens")
                                         det = final_usage.get("completion_tokens_details") or {}
@@ -683,6 +699,7 @@ class LLMClient:
                                             input_tokens=in_t,
                                             output_tokens=out_t,
                                             reasoning_tokens=reas_t,
+                                            cached_input_tokens=cached_t,
                                             custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                                         )
                                         monitor.on_usage(final_usage, cost_est)
@@ -896,6 +913,7 @@ class LLMClient:
                         t_attempt_end = time.time()
                         elapsed_att = t_attempt_end - t_attempt_start
 
+                        cached_t = cached_prompt_tokens(final_usage)
                         in_t = final_usage.get("prompt_tokens") if final_usage else None
                         out_t = final_usage.get("completion_tokens") if final_usage else None
                         det = final_usage.get("completion_tokens_details") or {} if final_usage else {}
@@ -910,6 +928,7 @@ class LLMClient:
                             input_tokens=in_t,
                             output_tokens=out_t,
                             reasoning_tokens=reas_t,
+                            cached_input_tokens=cached_t,
                             custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                         )
 
@@ -937,6 +956,7 @@ class LLMClient:
                             retry_count=route_timeout_attempt - 1,
                             fallback_reason=current_fallback_reason,
                             input_tokens=in_t,
+                            cached_input_tokens=cached_t,
                             reasoning_tokens=reas_t,
                             output_tokens=out_t,
                             total_tokens=tot_t,
@@ -971,6 +991,7 @@ class LLMClient:
                                 "status": "success",
                                 "elapsed_seconds": round(elapsed_att, 4),
                                 "input_tokens": in_t,
+                                "cached_input_tokens": cached_t,
                                 "output_tokens": out_t,
                                 "reasoning_tokens": reas_t,
                                 "estimated_cost": cost_est,
@@ -1049,6 +1070,16 @@ class LLMClient:
                         else:
                             break
 
+                # Anche una risposta rifiutata dal validatore ha consumato token.
+                if final_usage:
+                    cached_t = cached_prompt_tokens(final_usage)
+                    in_t = final_usage.get("prompt_tokens")
+                    out_t = final_usage.get("completion_tokens")
+                    reas_t = (final_usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+                    cost_est = calculate_cost(provider_name, resolved_model or model_name, in_t, out_t,
+                        reasoning_tokens=reas_t, cached_input_tokens=cached_t,
+                        custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name))
+
                 # Attempt fallita: classificazione formale
                 t_attempt_end = time.time()
                 elapsed_att = t_attempt_end - t_attempt_start
@@ -1092,6 +1123,12 @@ class LLMClient:
                     output_chars=len(raw_content),
                     latency_ms=round(elapsed_att * 1000.0, 2),
                     finish_reason=finish_reason,
+                    input_tokens=in_t,
+                    cached_input_tokens=cached_t,
+                    output_tokens=out_t,
+                    reasoning_tokens=reas_t,
+                    total_tokens=final_usage.get("total_tokens") if final_usage else None,
+                    estimated_cost=cost_est,
                     status=err_status,
                     error_class=classified_failure.failure_class,
                     failure_class=classified_failure.failure_class,
@@ -1119,6 +1156,7 @@ class LLMClient:
                         "status": err_status,
                         "failure_class": classified_failure.failure_class,
                         "elapsed_seconds": round(elapsed_att, 4),
+                        "cached_input_tokens": cached_t,
                         "input_tokens": in_t if ('in_t' in locals()) else None,
                         "output_tokens": out_t if ('out_t' in locals()) else None,
                         "reasoning_tokens": reas_t if ('reas_t' in locals()) else None,

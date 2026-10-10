@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 class ModelPricing(BaseModel):
     input_per_million: float = Field(description="Costo in USD per 1M token di input")
     output_per_million: float = Field(description="Costo in USD per 1M token di output")
+    cached_input_per_million: Optional[float] = Field(
+        default=None, ge=0, description="Costo in USD per 1M token di input letti dalla cache")
     reasoning_per_million: Optional[float] = Field(
         default=None,
         description="Costo in USD per 1M token di reasoning (se diverso da output standard)"
@@ -24,7 +26,7 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
     "deepseek": {
         "deepseek-v4-flash": ModelPricing(input_per_million=0.14, output_per_million=0.28),
         "deepseek-v4-flash-latest": ModelPricing(input_per_million=0.14, output_per_million=0.28),
-        "deepseek-chat": ModelPricing(input_per_million=0.14, output_per_million=0.28),
+        "deepseek-chat": ModelPricing(input_per_million=0.14, output_per_million=0.28, cached_input_per_million=0.014),
         "deepseek-reasoner": ModelPricing(input_per_million=0.55, output_per_million=2.19),
         "deepseek-v4-pro": ModelPricing(input_per_million=0.55, output_per_million=2.19),
     },
@@ -37,7 +39,7 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         "deepseek/deepseek-chat": ModelPricing(input_per_million=0.14, output_per_million=0.28),
         "deepseek/deepseek-r1": ModelPricing(input_per_million=0.55, output_per_million=2.19),
         "deepseek/deepseek-v4-pro": ModelPricing(input_per_million=0.55, output_per_million=2.19),
-        "anthropic/claude-3.5-sonnet": ModelPricing(input_per_million=3.00, output_per_million=15.00),
+        "anthropic/claude-3.5-sonnet": ModelPricing(input_per_million=3.00, output_per_million=15.00, cached_input_per_million=0.30),
         "openai/gpt-4o-mini": ModelPricing(input_per_million=0.15, output_per_million=0.60),
     },
     "google": {
@@ -96,7 +98,9 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
                                 p_out = float(p_info.get("completion", 0)) * 1_000_000.0
                                 _OPENROUTER_DYNAMIC_CACHE[mid] = ModelPricing(
                                     input_per_million=round(p_in, 6),
-                                    output_per_million=round(p_out, 6)
+                                    output_per_million=round(p_out, 6),
+                                    cached_input_per_million=(round(float(p_info["input_cache_read"]) * 1_000_000, 6)
+                                                              if p_info.get("input_cache_read") is not None else None),
                                 )
                             except (ValueError, TypeError):
                                 pass
@@ -112,7 +116,8 @@ def calculate_cost(
     input_tokens: Optional[int],
     output_tokens: Optional[int],
     reasoning_tokens: Optional[int] = 0,
-    custom_pricing: Optional[Dict[str, Any]] = None
+    custom_pricing: Optional[Dict[str, Any]] = None,
+    cached_input_tokens: Optional[int] = None,
 ) -> Optional[float]:
     """
     Calcola la stima di costo per una singola richiesta LLM.
@@ -168,7 +173,11 @@ def calculate_cost(
         else:
             return None
 
-    cost_in = (in_tok / 1_000_000.0) * pricing.input_per_million
+    cached_tok = min(max(0, cached_input_tokens or 0), max(0, in_tok))
+    cache_rate = pricing.cached_input_per_million
+    if cache_rate is None:
+        cache_rate = pricing.input_per_million
+    cost_in = ((in_tok - cached_tok) * pricing.input_per_million + cached_tok * cache_rate) / 1_000_000.0
     cost_out = (out_tok / 1_000_000.0) * pricing.output_per_million
 
     # Se c'è un pricing specifico per reasoning_tokens, usalo

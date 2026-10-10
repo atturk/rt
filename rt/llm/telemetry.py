@@ -45,6 +45,7 @@ class LLMTelemetryRecord(BaseModel):
 
     # Conteggi token e caratteri
     input_tokens: Optional[int] = Field(default=None, description="Token di input/prompt")
+    cached_input_tokens: Optional[int] = Field(default=None, description="Token di input letti dalla cache del prompt")
     reasoning_tokens: Optional[int] = Field(default=None, description="Token generati durante il reasoning")
     output_tokens: Optional[int] = Field(default=None, description="Token di output/completion")
     total_tokens: Optional[int] = Field(default=None, description="Token complessivi consumati")
