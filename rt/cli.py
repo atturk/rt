@@ -440,10 +440,6 @@ def cmd_build(args):
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
 
-    final_dir = res.get("lesson_dir") or args.lesson_dir
-    from rt.telegram.notify import notify_build_completed
-    notify_build_completed(final_dir, res, lesson_title=_get_lesson_title_for_notify(final_dir))
-    _prompt_and_launch_daemon_if_needed()
 
 
 

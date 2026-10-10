@@ -1,7 +1,6 @@
 """
 tests/test_build_lessons_root.py
-Test per il Task 69: spostamento automatico della cartella lezione in lessons_root
-alla fine della fase di build.
+V5b: la build conserva la cartella anche con la configurazione Telegram storica.
 """
 
 import os
@@ -61,7 +60,7 @@ stato: setup_completato
     return lesson_dir
 
 
-def test_build_moves_to_lessons_root(tmp_path):
+def test_build_ignores_lessons_root(tmp_path):
     audio_dir = str(tmp_path / "audio_source")
     lessons_root = str(tmp_path / "final_lessons")
     os.makedirs(audio_dir, exist_ok=True)
@@ -77,12 +76,11 @@ def test_build_moves_to_lessons_root(tmp_path):
     with patch("rt.core.config.load_config", return_value=mock_cfg):
         res = run_build(lesson_dir, rename_folder=False)
 
-    expected_path = os.path.join(lessons_root, "lesson_1")
-    assert not os.path.exists(lesson_dir)
-    assert os.path.isdir(expected_path)
-    assert res["lesson_dir"] == expected_path
+    assert os.path.isdir(lesson_dir)
+    assert not os.path.exists(os.path.join(lessons_root, "lesson_1"))
+    assert res["lesson_dir"] == lesson_dir
     assert os.path.isfile(res["rielaborato"])
-    assert res["rielaborato"] == lesson_path(expected_path, "rielaborato.md")
+    assert res["rielaborato"] == lesson_path(lesson_dir, "rielaborato.md")
 
 
 def test_build_without_lessons_root(tmp_path):
@@ -99,7 +97,7 @@ def test_build_without_lessons_root(tmp_path):
     assert res["lesson_dir"] == lesson_dir
 
 
-def test_build_rename_and_move_to_lessons_root(tmp_path):
+def test_build_ignores_rename_and_lessons_root(tmp_path):
     audio_dir = str(tmp_path / "audio_source")
     lessons_root = str(tmp_path / "final_lessons")
     os.makedirs(audio_dir, exist_ok=True)
@@ -110,13 +108,10 @@ def test_build_rename_and_move_to_lessons_root(tmp_path):
     with patch("rt.core.config.load_config", return_value=mock_cfg):
         res = run_build(lesson_dir, rename_folder=True)
 
-    # Il nome della cartella rinominata riflette data, materia, titolo outline mock
-    final_dir = res["lesson_dir"]
-    assert os.path.dirname(os.path.abspath(final_dir)) == os.path.abspath(lessons_root)
-    assert not os.path.exists(lesson_dir)
-    assert os.path.isdir(final_dir)
-    assert "[" in os.path.basename(final_dir)
-    assert "BIOCHIMICA" in os.path.basename(final_dir)
+    assert res["lesson_dir"] == lesson_dir
+    assert os.path.isdir(lesson_dir)
+    assert not os.path.exists(lessons_root)
+    assert os.path.isfile(res["named_file"])
 
 
 def test_build_collision_in_lessons_root(tmp_path, capsys):
@@ -139,7 +134,8 @@ def test_build_collision_in_lessons_root(tmp_path, capsys):
     assert os.path.isdir(lesson_dir)
     assert res["lesson_dir"] == lesson_dir
     captured = capsys.readouterr()
-    assert "Impossibile spostare la cartella" in captured.out
+    assert "spostare la cartella" not in captured.out
+    assert os.listdir(existing_dest) == []
 
 
 def test_build_already_in_lessons_root(tmp_path):
@@ -161,7 +157,7 @@ def test_build_already_in_lessons_root(tmp_path):
         assert os.path.isdir(lesson_dir)
 
 
-def test_build_skip_moves_if_not_in_lessons_root(tmp_path):
+def test_build_skip_preserves_original_folder(tmp_path):
     audio_dir = str(tmp_path / "audio_source")
     lessons_root = str(tmp_path / "final_lessons")
     os.makedirs(audio_dir, exist_ok=True)
@@ -182,6 +178,6 @@ def test_build_skip_moves_if_not_in_lessons_root(tmp_path):
         res2 = run_build(lesson_dir, force=False, rename_folder=False)
         assert res2["action"] == "SKIP"
         expected_path = os.path.join(lessons_root, "skip_lesson")
-        assert res2["lesson_dir"] == expected_path
-        assert not os.path.exists(lesson_dir)
-        assert os.path.isdir(expected_path)
+        assert res2["lesson_dir"] == lesson_dir
+        assert os.path.isdir(lesson_dir)
+        assert not os.path.exists(expected_path)

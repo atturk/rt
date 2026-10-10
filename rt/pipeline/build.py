@@ -11,7 +11,6 @@ from rt.core.lesson_lock import lesson_locked
 
 import os
 import re
-import shutil
 from typing import Dict, List, Optional, Any
 from rt.core.models import (
     Outline, Draft, SegmentsData, Segment,
@@ -244,52 +243,6 @@ def _atomic_write_text(filepath: str, content: str) -> None:
     fs.replace(tmp_path, filepath)
 
 
-def _move_to_lessons_root_if_configured(current_dir: str) -> str:
-    """
-    Se lessons_root è configurato in general.yaml, sposta la cartella lezione
-    in lessons_root (se non vi si trova già e se non vi sono collisioni).
-    """
-    from rt.core.config import load_config
-    try:
-        cfg = load_config()
-        lessons_root = cfg.telegram.lessons_root if cfg and cfg.telegram else None
-    except Exception:
-        lessons_root = None
-
-    if not lessons_root or not str(lessons_root).strip():
-        return current_dir
-
-    lessons_root_path = os.path.abspath(str(lessons_root).strip())
-    abs_current = os.path.abspath(current_dir)
-    dest_path = os.path.join(lessons_root_path, os.path.basename(abs_current))
-    abs_dest = os.path.abspath(dest_path)
-
-    if abs_current == abs_dest or os.path.dirname(abs_current) == lessons_root_path:
-        return current_dir
-
-    if fs.exists(abs_dest):
-        print(
-            f"⚠️  Impossibile spostare la cartella in '{dest_path}': "
-            f"esiste già un'altra cartella con quel nome in '{lessons_root_path}'. "
-            f"La lezione resta in '{abs_current}'."
-        )
-        return current_dir
-
-    fs.makedirs(lessons_root_path, exist_ok=True)
-    fs.move(abs_current, dest_path)
-    print(f"📦 Cartella spostata in: '{dest_path}'")
-
-    try:
-        from rt.core.manifest import load_manifest, save_manifest
-        m = load_manifest(dest_path)
-        if m:
-            save_manifest(m, lesson_dir=dest_path)
-    except Exception:
-        pass
-
-    return dest_path
-
-
 def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     """Documenti della lezione come li scrive il build, calcolati dai file attuali (bozza,
     decisioni della revisione, immagini posizionate) senza scrivere nulla. È anche
@@ -393,7 +346,7 @@ def write_automatic_documents(lesson_dir: str) -> Dict[str, Any]:
 
 
 def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
-    """Finalizzazione deterministica della lezione (eventi su ctx, se dato)."""
+    """Scrive subito i documenti. rename_folder resta leggibile ma non sposta più la lezione."""
     with phase_scope(ctx, "build") as scope:
         return scope.complete(_run_build(lesson_dir, force=force, rename_folder=rename_folder))
 
@@ -418,7 +371,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     docs = render_lesson_documents(lesson_dir)
     outline = docs["outline"]
     date_val, subject_val, topics_val = docs["date"], docs["subject"], docs["topics"]
-    topics_replaced, safe_title = docs["topics_replaced"], docs["safe_title"]
+    topics_replaced = docs["topics_replaced"]
     named_filename = docs["named_filename"]
     named_filepath = os.path.join(lesson_dir, named_filename)
 
@@ -429,11 +382,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     current_manifest = load_manifest(lesson_dir)
     previous_automatic = bool(current_manifest and current_manifest.phase_records.get("build", {}).get("automatic_documents"))
     if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath) and not documents_pending(lesson_dir) and not previous_automatic:
-        current_dir = _move_to_lessons_root_if_configured(lesson_dir)
-        if os.path.abspath(current_dir) != os.path.abspath(lesson_dir):
-            from rt.db.sync import relocate_lesson
-            relocate_lesson(lesson_dir, current_dir)
-        named_filepath = os.path.join(current_dir, named_filename)
+        current_dir = lesson_dir
         return {
             "status": "completed",
             "action": "SKIP",
@@ -454,37 +403,6 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     named_filepath = _write_rendered_documents(lesson_dir, docs)
 
     current_dir = lesson_dir
-    if rename_folder:
-        folder_target_name = f"[{date_val}] {subject_val.upper()} - {safe_title}"
-        parent = os.path.dirname(os.path.abspath(lesson_dir))
-        target_dir = os.path.join(parent, folder_target_name)
-        abs_lesson_dir = os.path.abspath(lesson_dir)
-        if abs_lesson_dir == target_dir:
-            pass
-        elif fs.exists(target_dir):
-            print(
-                f"⚠️  Impossibile rinominare la cartella in '{folder_target_name}': "
-                f"esiste già un'altra cartella con quel nome in '{parent}'. "
-                f"La lezione resta in '{os.path.basename(abs_lesson_dir)}'."
-            )
-        else:
-            fs.rename(lesson_dir, target_dir)
-            current_dir = target_dir
-            print(f"📁 Cartella rinominata: '{os.path.basename(abs_lesson_dir)}' -> '{folder_target_name}'")
-            yaml_path = lesson_path(current_dir, "info.yaml")
-            named_filepath = os.path.join(current_dir, named_filename)
-
-    # Spostamento in lessons_root se configurato
-    old_current_dir = current_dir
-    current_dir = _move_to_lessons_root_if_configured(current_dir)
-    if current_dir != old_current_dir:
-        yaml_path = lesson_path(current_dir, "info.yaml")
-        named_filepath = os.path.join(current_dir, named_filename)
-
-    if os.path.abspath(current_dir) != os.path.abspath(lesson_dir):
-        from rt.db.sync import relocate_lesson
-        relocate_lesson(lesson_dir, current_dir)
-
     # 7. Registrazione fingerprint build. Le fasi a monte non aggiornate in questo momento
     # (es. scaletta STALE dopo un cambio di materia) sono "confermate": il documento appena
     # scritto riflette i file attuali e resta valido finché quelle fasi non cambiano ancora.

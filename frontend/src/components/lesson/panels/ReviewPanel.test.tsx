@@ -54,7 +54,7 @@ it('mostra mai verificata, in corso e tutte decise', () => {
   state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-03' } }]
   mount()
   expect(screen.getByRole('status')).toHaveTextContent('Tutte decise')
-  expect(screen.getByRole('button', { name: 'Ricostruisci il documento' })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Decise 1' }))
   expect(screen.getByRole('list', { name: 'Decise' })).toHaveTextContent('Il pH è 6.')
 })
@@ -87,7 +87,6 @@ it.each([
   ['MISSING', 'Mai verificata', 'Verifica tutta la lezione', { type: 'run_phase', phase: 'review' }],
   ['PARTIAL', 'Verificate 2 unità su 5', 'Verifica le unità mancanti (3)', { type: 'run_phase', phase: 'review' }],
   ['STALE', 'Il testo è cambiato dopo la verifica', 'Aggiorna il documento', { type: 'run_pipeline', with_review: true }],
-  ['VALID', 'Tutte decise', 'Ricostruisci il documento', { type: 'run_phase', phase: 'build' }],
 ])('stato %s: titolo, azione e payload', async (review, title, button, payload) => {
   state.items = []
   mount({ rewrite: 'VALID', review, build: 'STALE' }, undefined, undefined, { review_progress: { reviewed: 2, total: 5 } })
@@ -96,38 +95,34 @@ it.each([
   fireEvent.click(screen.getByRole('button', { name: button }))
   await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith(payload))
 })
-it('review completa con issue da decidere: conteggio e documento ricostruibile', () => {
+it('review completa con issue da decidere: conteggio e documento automatico', () => {
   mount()
   expect(screen.getByRole('status')).toHaveTextContent('1 da decidere su 1')
-  expect(screen.getByRole('button', { name: 'Ricostruisci il documento' })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
 })
-it('verifica parziale: unità mancanti dal registro e documento ricostruibile con conferma', async () => {
+it('verifica parziale: unità mancanti dal registro e documento automatico senza conferma', async () => {
   state.units = [unit('1.1', 'ok'), unit('1.2', 'changed'), unit('2.1', 'never'), unit('2.2', 'excluded')]
   mount({ rewrite: 'VALID', review: 'PARTIAL', build: 'STALE' }, undefined, undefined, {
     phase_report: [{ phase: 'build', status: 'STALE', reason: '', warnings: [{ code: 'review_partial', message: 'Revisione incompleta', count: null }] }],
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Ricostruisci il documento' }))
-  expect(screen.getByTestId('build-confirm-warnings')).toHaveTextContent('Revisione incompleta')
-  fireEvent.click(screen.getByRole('button', { name: 'Crea il documento comunque' }))
-  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'build' }))
+  expect(screen.queryByTestId('build-confirm-warnings')).not.toBeInTheDocument()
+  expect(state.run).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Verifica le unità mancanti (2)' }))
   await waitFor(() => expect(state.run).toHaveBeenLastCalledWith({ type: 'run_phase', phase: 'review', units: ['1.2', '2.1'] }))
 })
-it('build già valido disattiva il pulsante e mostra Documento aggiornato', () => {
+it('build già valido e mostra Documento aggiornato', () => {
   state.items = []
   mount({ rewrite: 'VALID', review: 'VALID', build: 'VALID' })
-  expect(screen.getByRole('button', { name: 'Documento aggiornato' })).toBeDisabled()
+  expect(screen.getByTestId('documents-status')).toHaveTextContent('Documento aggiornato')
 })
-it('la ricostruzione richiede la conferma quando ci sono avvisi', async () => {
+it('gli avvisi non richiedono conferma per i documenti automatici', async () => {
   state.items = []
   mount({ rewrite: 'VALID', review: 'VALID', build: 'STALE' }, undefined, undefined, {
     phase_report: [{ phase: 'build', status: 'STALE', reason: '', warnings: [{ code: 'pending', message: 'Avviso di prova', count: 1 }] }],
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Ricostruisci il documento' }))
+  expect(screen.getByTestId('documents-status')).toHaveTextContent('Documento in aggiornamento')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(state.run).not.toHaveBeenCalled()
-  expect(screen.getByTestId('build-confirm-warnings')).toHaveTextContent('Avviso di prova')
-  fireEvent.click(screen.getByRole('button', { name: 'Crea il documento comunque' }))
-  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'build' }))
 })
 
 it('testo cambiato: conserva le correzioni per default e permette di rifare la verifica in fondo', async () => {

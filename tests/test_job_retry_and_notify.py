@@ -173,7 +173,7 @@ def _real_run_with_mock_llm(ws):
         f.write("mock_llm: true\n")
 
 
-def test_worker_pipeline_sends_telegram_notification(api_client, ws, worker, rt_db, telegram):
+def test_worker_pipeline_and_build_do_not_notify_telegram(api_client, ws, worker, rt_db, telegram):
     server, prepare_worker_process = telegram
     prepare_worker_process(DbJobQueue(rt_db))
     _real_run_with_mock_llm(ws)
@@ -183,17 +183,14 @@ def test_worker_pipeline_sends_telegram_notification(api_client, ws, worker, rt_
     done = job(api_client, res.json()["job_id"])
     assert done["state"] == "succeeded", done
     messages = [body for method, body in server.sent if method == "sendMessage"]
-    assert len(messages) == 1 and "Lezione pronta" in messages[0]["text"] and messages[0]["chat_id"] == "-100123"
+    assert messages == []
     events = api_client.get(f"/api/v1/jobs/{res.json()['job_id']}/events/list").json()
-    assert any(e["type"] == "notice" and "Telegram" in e["payload"]["message"] for e in events)
+    assert not any(e["type"] == "notice" and "Notifica di fine lavorazione" in e["payload"]["message"] for e in events)
 
-    # build singolo: il messaggio della lezione viene aggiornato, non duplicato
     res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "build", "rename": False})
     drain(worker)
     assert job(api_client, res.json()["job_id"])["state"] == "succeeded"
-    assert len([m for m, _ in server.sent if m == "sendMessage"]) == 1
-    edits = [body for method, body in server.sent if method == "editMessageText"]
-    assert len(edits) == 1 and "Aggiornata" in edits[0]["text"]
+    assert server.sent == []
 
 
 def test_notification_error_does_not_fail_job(api_client, ws, worker, rt_db, telegram, monkeypatch):
@@ -208,7 +205,8 @@ def test_notification_error_does_not_fail_job(api_client, ws, worker, rt_db, tel
     assert done["state"] == "succeeded", done
     events = api_client.get(f"/api/v1/jobs/{res.json()['job_id']}/events/list").json()
     warning = [e for e in events if e["type"] == "notice" and e["payload"].get("level") == "warning"]
-    assert warning and "non inviata" in warning[-1]["payload"]["message"] and "rifiutato" not in str(warning)
+    assert not any("Notifica di fine lavorazione" in e["payload"]["message"] for e in warning)
+    assert server.sent == []
 
 
 def test_telegram_network_error_hides_token(monkeypatch):

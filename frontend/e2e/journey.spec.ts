@@ -72,11 +72,12 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
     await panel.getByTestId('issue-detail').getByRole('button', { name: 'Accetta' }).click()
     await expect(counter).toHaveText(left ? `${left} da decidere su ${total}` : 'Tutte decise')
   }
+  // La pipeline può essere già ripartita: aspetta il suo esito prima dello stato finale.
+  await waitJob(page, jobId, (j) => j.state === 'succeeded')
   await page.reload()
   await expect(page.getByTestId('lesson-review-panel').getByRole('status').first()).toHaveText('Tutte decise')
   const decisions = await apiGet<Decision[]>(page.request, `/lessons/${lessonId}/decisions`)
   expect(decisions.map((d) => d.decision)).toEqual(Array(total).fill('accepted'))
-  await waitJob(page, jobId, (j) => j.state === 'succeeded')
 
   // 5. Documento finale con l'audio: build valido, unità con timecode, player.
   await page.goto(`/lezioni/${lessonId}`)
@@ -106,7 +107,7 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   expect(answered.status).toBe('answered')
   expect(history.answers.some((a) => a.question_id === answered.id)).toBe(true)
 
-  // 7. Immagini dopo il documento: entrano nell'anteprima e il documento diventa da ricreare.
+  // V5: le immagini entrano nel testo e aggiornano anche i file finali.
   await page.goto(`/lezioni/${lessonId}?panel=arricchimento`)
   const enrichment = page.getByTestId('enrichment-panel')
   await enrichment.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
@@ -117,18 +118,14 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const images = (await apiGet<{ images: { url: string; in_document: boolean }[] }>(page.request, `/lessons/${lessonId}/images`)).images
   const placed = images.filter((i) => i.in_document)
   expect(placed.length).toBeGreaterThan(0)
-  expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).phases.build).toBe('STALE')
+  expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).phases.build).toBe('VALID')
 
-  // 8. Documento come conferma finale: Esegui Documento (con il dialogo, se ci sono avvisi) e
-  //    documento aggiornato con le immagini dopo la ricarica.
+  // V5: il job immagini aggiorna il documento senza ricostruzione manuale.
   await page.goto(`/lezioni/${lessonId}`)
   await openLessonDetails(page)
   const build = page.locator('[data-phase-row="build"]')
-  await expect(build).toHaveAttribute('data-status', 'STALE')
-  await page.getByTestId('details-panel').getByRole('button', { name: 'Ricrea' }).click()
-  const confirm = page.getByRole('dialog', { name: 'Creare il documento finale?' })
-  if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Crea il documento comunque' }).click()
   await expect(build).toHaveAttribute('data-status', 'VALID', { timeout: LONG })
+  await expect(page.getByTestId('details-panel').getByRole('button', { name: 'Ricrea' })).toHaveCount(0)
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)

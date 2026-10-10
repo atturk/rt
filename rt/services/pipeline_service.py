@@ -222,8 +222,6 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     result.lesson_dir = final_dir
     result.status = PipelineStatus.COMPLETED
 
-    if not mock:
-        notify_build_completed(final_dir, bld_res, ctx, notifiers)
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: RunContext,
@@ -393,6 +391,4 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
     if phase in ("rewrite", "review"):
         with ctx.activate():
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
-    if phase == "build" and not mock:
-        notify_build_completed(result.lesson_dir, res, ctx, notifiers)
     return result

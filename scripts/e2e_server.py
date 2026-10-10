@@ -115,6 +115,10 @@ def _lessons(root: str) -> None:
                                       severity=ScienceSeverity.MEDIUM, unit_id=issues[0].unit_id,
                                       claim="Qualità dell’intera unità", reason="Issue ASR di prova"))
             save_science_issues(issues, lesson)
+            # V5: soddisfa il job derivato prima della validazione della fixture.
+            from rt.services.documents_service import run_documents, mark_documents_written
+            run_documents(lesson)
+            mark_documents_written(lesson)
             validate_phase(lesson, "review", channel="api")
     anatomia = _plain_lesson(root, "2026-09-21", "ANATOMIA", "Cuore")
     run_mock_pipeline(anatomia, with_review=True, auto_accept=False)

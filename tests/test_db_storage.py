@@ -115,10 +115,8 @@ def test_rename_moves_the_lesson_jobs(db_lesson, rt_db):
 @pytest.mark.parametrize("outside_root", [False, True])
 def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypatch, rt_db, api_client,
                                                               outside_root):
-    """4.1.0b2: dopo la build la lezione compariva due volte nell'elenco. Il worker (un altro
-    processo) rinomina/sposta la lezione "db"; la cache di rt.storage.fs del processo API
-    ricorda ancora il vecchio percorso, e la vista del job (lesson_path = vecchio percorso)
-    lo indicizzava come seconda lezione che legge gli stessi file."""
+    """V5b: la build con rename storico mantiene id e percorso, senza duplicare la lezione.
+    Il controllo resta valido anche per le lezioni fuori dal lessons_root di Telegram."""
     from rt.services.context import RunContext
     from rt.services.lesson_service import lesson_id_for_dir
     from rt.services.pipeline_service import PipelineOptions, run_pipeline
@@ -135,10 +133,10 @@ def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypa
     # Come nel processo API: la cache di fs ricorda il percorso di prima della build.
     with fs._lock:
         fs._known[rt_db.url][lesson] = lesson_id
-    assert lesson_id_for_dir(lesson) is None
+    assert lesson_id_for_dir(lesson) == lesson_id
     items = api_client.get("/api/v1/lessons").json()
     assert [i["id"] for i in items] == [lesson_id]
-    assert os.path.dirname(items[0]["path"]) == root
+    assert items[0]["path"] == os.path.realpath(lesson)
     with session_scope(rt_db) as s:
         assert s.query(Lesson).count() == 1
 

@@ -126,7 +126,7 @@ test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', a
 type Warning = { code: string; message: string }
 type Phases = { phases: { phase: string; status: string; warnings?: Warning[] }[] }
 
-test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e documento valido dopo la ricarica', async ({ page }) => {
+test('Documento con revisione non aggiornata: gli avvisi restano e il documento si aggiorna da solo', async ({ page }) => {
   await loginViaLink(page)
   const id = await lessonId(page, 'ANATOMIA')
   const before = await apiGet<Phases>(page.request, `/lessons/${id}/phases`)
@@ -137,27 +137,16 @@ test('Documento con revisione non aggiornata: dialogo con gli avvisi, conferma e
   await page.goto(`/lezioni/${id}`)
   await openLessonDetails(page)
   const build = page.locator('[data-phase-row="build"]')
-  await expect(build).toHaveAttribute('data-status', 'MISSING')
+  await expect(build).toHaveAttribute('data-status', 'VALID')
   await expect(build.getByTestId('build-warnings')).toContainText('10 issue ancora da valutare')
 
-  // Annulla: nessun job parte
-  await runPhase(page, 'Documento')
-  const dialog = page.getByRole('dialog', { name: 'Creare il documento finale?' })
-  await expect(dialog).toBeVisible()
-  for (const w of warnings) await expect(dialog.getByTestId('build-confirm-warnings')).toContainText(w.message)
-  await expect(dialog).toContainText('Revisione non aggiornata')
-  await dialog.getByRole('button', { name: 'Annulla' }).click()
-  await expect(dialog).toBeHidden()
-  expect((await apiGet<unknown[]>(page.request, `/jobs?lesson_id=${id}`)).length).toBe(0)
-
-  // Conferma: il documento finale viene creato anche con la revisione non aggiornata
-  await runPhase(page, 'Documento')
-  await dialog.getByRole('button', { name: 'Crea il documento comunque' }).click()
-  await expect((await lessonJobs(page)).locator('[data-job-state]').first()).toHaveAttribute('data-job-state', 'succeeded', {
-    timeout: 45_000,
-  })
-  await expect(build).toHaveAttribute('data-status', 'VALID')
-
+  await expect(build.getByRole('button', { name: 'Azioni su Documento' })).toHaveCount(0)
+  // V5: una decisione accoda i documenti anche con revisione STALE; gli avvisi restano.
+  const issues = await apiGet<{ items: { issue: { id: string }; decision: unknown }[] }>(page.request, `/lessons/${id}/issues?status=all`)
+  const item = issues.items.find(i => !i.decision)!
+  const decision = await page.request.post(`/api/v1/lessons/${id}/issues/${item.issue.id}/decision`, { headers: authHeaders(), data: { decision: 'rejected' } })
+  expect(decision.ok()).toBeTruthy()
+  await expect.poll(async () => (await apiGet<Phases>(page.request, `/lessons/${id}/phases`)).phases.find(p => p.phase === 'build')?.status, { timeout: 30_000 }).toBe('VALID')
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   await expect(page.locator('[data-phase-row="review"]')).toHaveAttribute('data-status', 'STALE')
@@ -207,16 +196,16 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('lesson-panel')).toHaveCount(0)
 
-  // Dopo il rewrite, senza documento finale: tutto disponibile; il Markdown è l'anteprima
+  // V5: dopo il rewrite i documenti sono automatici, anche con issue pendenti.
   const reviewed = await lessonId(page, 'FARMACOLOGIA')
   const phases = await apiGet<Phases>(page.request, `/lessons/${reviewed}/phases`)
-  expect(phases.phases.find((p) => p.phase === 'build')?.status).toBe('MISSING')
+  expect(phases.phases.find((p) => p.phase === 'build')?.status).toBe('VALID')
   await page.goto(`/lezioni/${reviewed}`)
   await expect(page.getByTestId('lesson-meta')).toContainText(/unità · /)
-  await expect(page.getByTestId('document-preview-note')).toHaveText('Bozza')
+  await expect(page.getByTestId('document-preview-note')).toHaveCount(0)
   const download = page.waitForEvent('download')
   await (await exportItem(page, 'Markdown')).click()
-  expect((await download).suggestedFilename()).toMatch(/\(anteprima\)\.md$/)
+  expect((await download).suggestedFilename()).not.toMatch(/\(anteprima\)\.md$/)
 
   // Domande apre il pannello (riempito nel giro 2, G5).
   await actions.getByRole('button', { name: 'Domande' }).click()

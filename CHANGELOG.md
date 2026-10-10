@@ -4,6 +4,8 @@
 
 ### Novità
 
+- V5b: documento automatico senza pulsanti di ricostruzione; la build conserva cartella e percorso, senza notifica Telegram.
+
 - Documento finale e registro degli errori aggiornati automaticamente dopo decisioni, annullamenti e salvataggi, con un solo job per lezione e tre secondi dall’ultimo cambio.
 
 - La verifica riceve un contesto fisso della lezione prima delle unità: titolo, materia, docente, argomenti e scaletta.

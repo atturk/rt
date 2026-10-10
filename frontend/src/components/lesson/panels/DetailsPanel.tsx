@@ -1,4 +1,3 @@
-import { BuildConfirmDialog } from '../BuildConfirmDialog'
 import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useClassifier } from '@/api/classifier'
@@ -185,7 +184,6 @@ export function DetailsPanel({
   const [selectedUnits, setSelectedUnits] = useState<Record<string, string[]>>({})
   const [extraPrompts, setExtraPrompts] = useState<Record<string, string>>({})
   const [forcePhase, setForcePhase] = useState<Record<string, boolean>>({})
-  const [confirmBuild, setConfirmBuild] = useState(false)
   const [confirmValidate, setConfirmValidate] = useState<Phase | null>(null)
 
   const [openPhaseMenu, setOpenPhaseMenu] = useState<Phase | null>(null)
@@ -204,8 +202,6 @@ export function DetailsPanel({
 
   const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
-  const buildPhase = phases.data?.phases.find((p) => p.phase === 'build')
-  const isBuildStale = buildPhase?.status === 'STALE' || l.phases.build === 'STALE'
 
   const start = (
     body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; units?: string[]; extra_prompt?: string; force?: boolean },
@@ -218,16 +214,11 @@ export function DetailsPanel({
         mock: false,
         with_review: body.type === 'run_pipeline' && withReview,
         auto_accept: false,
-        rename: true,
       },
       { onSuccess: onQueued },
     )
 
   const runPhase = (phase: Phase, force = false) => {
-    if (phase === 'build' && buildWarnings.length > 0) {
-      setConfirmBuild(true)
-      return
-    }
     const chosen = selectedUnits[phase] ?? []
     start(
       {
@@ -383,18 +374,6 @@ export function DetailsPanel({
 
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
 
-      {/* Avviso "Documento da ricreare › Ricrea" */}
-      {isBuildStale && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-soft p-3">
-          <p className="min-w-0 flex-1 text-meta font-medium text-warning">
-            Il documento finale non è aggiornato: il testo è cambiato.
-          </p>
-          <Button size="sm" variant="default" disabled={busy} onClick={() => runPhase('build')}>
-            Ricrea
-          </Button>
-        </div>
-      )}
-
       {/* Riepilogo */}
       <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body" data-testid="lesson-details">
         <dt className="self-center text-meta text-muted-foreground">Stato</dt>
@@ -481,8 +460,8 @@ export function DetailsPanel({
               else if (p.status === 'VALID') statusLabel = 'completata'
             }
             if (p.phase === 'build') {
-              if (p.status === 'STALE') statusLabel = 'da ricreare: il testo è cambiato'
-              else if (p.status === 'VALID') statusLabel = 'valido'
+              if (p.status !== 'VALID') statusLabel = 'in aggiornamento'
+              else statusLabel = 'aggiornato'
             }
 
             const isMenuOpen = openPhaseMenu === phase
@@ -496,7 +475,7 @@ export function DetailsPanel({
                   <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" title={statusLabel}>
                     {statusLabel}
                   </span>
-                  <div className="relative">
+                  {phase !== 'build' && <div className="relative">
                     <IconButton
                       label={`Azioni su ${PHASE_LABELS[phase] ?? phase}`}
                       icon={MoreHorizontal}
@@ -550,7 +529,7 @@ export function DetailsPanel({
                         </button>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
 
                 {/* Scheda opzioni avanzate in linea */}
@@ -787,10 +766,6 @@ export function DetailsPanel({
         {validate.isError && <Alert tone="danger" className="mt-3">{errorMessage(validate.error)}</Alert>}
       </ConfirmDialog>
 
-      <BuildConfirmDialog open={confirmBuild} warnings={buildWarnings} onCancel={() => setConfirmBuild(false)} onConfirm={() => {
-        setConfirmBuild(false)
-        start({ type: 'run_phase', phase: 'build' })
-      }} />
     </div>
   )
 }

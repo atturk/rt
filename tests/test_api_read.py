@@ -159,7 +159,7 @@ def test_response_schemas_in_openapi(api_client):
         assert "schema" in content and content["schema"]
 
 
-def test_lesson_id_survives_build_rename(api_client, lesson):
+def test_lesson_id_and_path_survive_build_with_legacy_rename(api_client, lesson):
     from rt.services.context import RunContext
     from rt.services.outline_service import approve_outline
     from rt.services.pipeline_service import PipelineOptions, run_pipeline
@@ -167,6 +167,6 @@ def test_lesson_id_survives_build_rename(api_client, lesson):
     approve_outline(lesson, channel="api")
     result = run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True,
                                                     rename=True, channel="terminal"), RunContext())
-    assert result.status.value == "completed" and result.lesson_dir != lesson
+    assert result.status.value == "completed" and result.lesson_dir == lesson
     item = _only_lesson(api_client)
     assert item["id"] == lesson_id and item["path"] == os.path.realpath(result.lesson_dir)

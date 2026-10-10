@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test'
 import { test, apiGet, authHeaders, loginViaLink } from './support'
 
-test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
+test('revisione decisa: documento aggiornato automaticamente', async ({ page }) => {
   test.setTimeout(150_000)
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=REVISIONE')
@@ -25,10 +25,9 @@ test('revisione decisa: ricostruisce con run_phase build', async ({ page }) => {
   }
   await expect(panel.getByRole('status').first()).toHaveText('Tutte decise')
   await expect(panel.getByRole('button', { name: 'Riprendi la pipeline' })).toHaveCount(0)
-  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${lesson.id}/jobs`))
-  await panel.getByRole('button', { name: 'Ricostruisci il documento', exact: true }).click()
-  if (await page.getByRole('button', { name: 'Crea il documento comunque' }).count()) await page.getByRole('button', { name: 'Crea il documento comunque' }).click()
-  expect((await request).postDataJSON()).toMatchObject({ type: 'run_phase', phase: 'build' })
+  await expect(panel.getByRole('button', { name: 'Ricostruisci il documento', exact: true })).toHaveCount(0)
+  await expect.poll(async () => (await apiGet<{ final: boolean }>(page.request, `/lessons/${lesson.id}/document`)).final, { timeout: 30_000 }).toBe(true)
+  await expect(panel.getByTestId('documents-status')).toHaveText('Documento aggiornato')
 })
 
 
