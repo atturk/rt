@@ -111,7 +111,7 @@ def test_run_review_default_vs_asr_llm(tmp_path):
     # 2. asr_llm=True: prompt for unit 1.1 should have asr context
     prompts_received = []
 
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         prompts_received.append((unit_id, prompt))
         # For unit 1.1, return an ERR_ASR_LLM issue
         if "(1.1:" in unit_id:
@@ -141,7 +141,7 @@ def test_run_review_asr_llm_discarded_candidate(tmp_path):
     lesson_dir = setup_mock_lesson(tmp_path)
 
     # Mock LLM returns NO issues for unit 1.1 (candidate is discarded by LLM)
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         return ReviewFindingList(issues=[])
 
     with patch("rt.llm.client.LLMClient.call_structured", side_effect=mock_call_structured):

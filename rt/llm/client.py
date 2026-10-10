@@ -214,6 +214,7 @@ class LLMClient:
         history: Optional[List[Dict[str, str]]] = None,
         image_data_url: Optional[str] = None,
         constrained_schema: bool = False,
+        prompt_prefix: Optional[str] = None,
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -350,6 +351,8 @@ class LLMClient:
             f"Nessun commento prima o dopo il JSON."
         )
         messages = [{"role": "system", "content": full_system}]
+        if prompt_prefix:
+            messages.append({"role": "user", "content": prompt_prefix})
         if history:
             messages.extend(history)
         if image_data_url:
@@ -364,7 +367,7 @@ class LLMClient:
             messages.append({"role": "user", "content": prompt})
 
         history_len = sum(len(m.get("content", "")) if isinstance(m.get("content"), str) else 0 for m in history) if history else 0
-        approx_in_tok = max(1, (len(full_system) + len(prompt) + history_len) // 4)
+        approx_in_tok = max(1, (len(full_system) + len(prompt_prefix or "") + len(prompt) + history_len) // 4)
         prev_session_cost = current_telemetry().get_summary().get("total_estimated_cost_usd", 0.0)
 
         # Retry config locale per timeout sulla stessa route

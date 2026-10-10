@@ -94,6 +94,8 @@ def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding([iss.model_dump(mode="json") for iss in issues])
     for item in data:
+        if not item.get("literal_replacement"):
+            item.pop("literal_replacement", None)
         if not item.get("unanchored"):
             item.pop("unanchored", None)
         if item.get("anchor") is None:
@@ -141,6 +143,7 @@ def finding_to_issue(finding, unit: DraftUnit, seg_by_id: dict, *,
         severity={"bassa": ScienceSeverity.LOW, "media": ScienceSeverity.MEDIUM,
                   "alta": ScienceSeverity.HIGH}[finding.gravita],
         claim=claim, reason=finding.motivazione, suggested_fix=finding.sostituzione,
+        literal_replacement=finding.tipo == "asr_llm",
         unanchored=anchor is None, anchor=anchor, segment_id=_localize_claim_segment(claim, unit, seg_by_id),
     )
 
@@ -149,10 +152,12 @@ def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                              lesson_dir: str, unit_label: str,
                              seg_by_id: Optional[dict] = None) -> List[ScienceIssue]:
     """Una sola verifica: le citazioni assenti restano non ancorate, senza riparazioni."""
+    from rt.llm.lesson_context import lesson_context_prompt
     result = client.call_structured(
         prompt=prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
         response_model=ReviewFindingList, job_name="review", unit_id=unit_label,
         min_elapsed_seconds=5.0, lesson_dir=lesson_dir,
+        prompt_prefix=lesson_context_prompt(lesson_dir),
     )
     return [finding_to_issue(finding, unit, seg_by_id or {}) for finding in result.issues]
 
@@ -411,7 +416,7 @@ def anchor_findings(findings: List[ScienceIssue], unit: DraftUnit, *, origin: Li
         issue.unit_id = unit.unit_id
         issue.origin = origin
         issue.status = "pending"
-        if issue.type in paragraph_types and not (issue.type == ScienceType.ERR_ASR_LLM and issue.suggested_fix):
+        if issue.type in paragraph_types and not (issue.type == ScienceType.ERR_ASR_LLM and issue.literal_replacement):
             issue.anchor = make_anchor(unit.content, 0, len(unit.content))
         else:
             found = find_quote(unit.content, issue.claim)

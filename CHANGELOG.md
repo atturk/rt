@@ -4,6 +4,8 @@
 
 ### Novità
 
+- La verifica riceve un contesto fisso della lezione prima delle unità: titolo, materia, docente, argomenti e scaletta.
+
 - Schema vincolato della verifica su OpenRouter e Google; DeepSeek mantiene JSON con validazione locale obbligatoria.
 
 - La verifica restituisce citazioni e sostituzioni esatte con uno schema piccolo; i passaggi non ritrovati restano non ancorati, senza chiamate di riparazione.

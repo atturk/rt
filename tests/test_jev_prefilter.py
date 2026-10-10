@@ -145,7 +145,7 @@ def _never_called_expensive_llm(*args, **kwargs):
     raise AssertionError("La chiamata LLM costosa (call_structured) non doveva avvenire per questa unità.")
 
 
-def _empty_expensive_llm(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+def _empty_expensive_llm(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
     return ScienceIssueList(issues=[])
 
 
@@ -197,7 +197,7 @@ def test_task_a_confident_errore_grave_escalates(tmp_path):
             return _choice_response("errore_grave", 0.95)
         return _noul_response(0.1)
 
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         called["count"] += 1
         return ScienceIssueList(issues=[])
 
@@ -221,7 +221,7 @@ def test_task_a_low_confidence_falls_through_conservatively(tmp_path):
             return _choice_response("corretta", 0.5)  # sotto soglia
         return _noul_response(0.1)
 
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         called["count"] += 1
         return ScienceIssueList(issues=[])
 
@@ -243,7 +243,7 @@ def test_task_a_low_confidence_errore_grave_still_escalates(tmp_path):
             return _choice_response("errore_grave", 0.3)
         return _noul_response(0.1)
 
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         called["count"] += 1
         return ScienceIssueList(issues=[])
 
@@ -315,7 +315,7 @@ def test_shadow_jev_leaves_behavior_unchanged_but_calls_jev(tmp_path):
             return _choice_response("corretta", 0.99)  # confidentemente skip-abile, se non fosse ombra
         return _noul_response(0.99)  # confidentemente drift, se non fosse ombra
 
-    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None):
+    def mock_call_structured(prompt, system_prompt, response_model, job_name, unit_id, min_elapsed_seconds=5.0, lesson_dir=None, **kwargs):
         expensive_calls["count"] += 1
         return ScienceIssueList(issues=[])
 

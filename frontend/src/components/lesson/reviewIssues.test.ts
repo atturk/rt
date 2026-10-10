@@ -4,5 +4,6 @@ import { paragraphIssue } from './reviewIssues'
 it('le nuove verifiche ASR con sostituzione letterale riguardano solo la citazione', () => {
   const issue = { id: 'sci_1', type: 'ERR_ASR_LLM', severity: 'high', claim: 'citazione', reason: 'motivazione' }
   expect(paragraphIssue(issue)).toBe(true)
-  expect(paragraphIssue({ ...issue, suggested_fix: 'sostituzione esatta' })).toBe(false)
+  expect(paragraphIssue({ ...issue, suggested_fix: 'proposta storica' })).toBe(true)
+  expect(paragraphIssue({ ...issue, suggested_fix: 'sostituzione esatta', literal_replacement: true })).toBe(false)
 })

@@ -145,6 +145,7 @@ class Anchor(BaseModel):
 
 
 class ScienceIssue(BaseModel):
+    literal_replacement: bool = False
     unanchored: bool = False
     anchor: Optional[Anchor] = None
     origin: Literal["verifica", "parte", "studio"] = "verifica"
