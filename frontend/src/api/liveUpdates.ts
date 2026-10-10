@@ -17,7 +17,7 @@ const EVENTS_PATH = '/api/v1/events' satisfies keyof paths
 export type LiveJobEvent = { id: number; job_id: string; job_type: string; lesson_id: number | null; type: string }
 
 /** Eventi frequenti: il documento si rilegge solo per i job che scrivono checkpoint. */
-const PROGRESS_EVENTS = new Set(['phase_progress', 'cost_updated', 'notice', 'job_cancel_requested'])
+const PROGRESS_EVENTS = new Set(['phase_progress', 'cost_updated', 'notice', 'job_cancel_requested', 'review_units_queued'])
 /** Eventi dopo cui documento, fasi e issue della lezione possono essere cambiati. */
 const LESSON_EVENTS = new Set(['phase_completed', 'phase_failed', 'job_waiting', 'job_finished', 'decision_required'])
 const RECALL_JOBS = new Set(['recall_generate', 'recall_batch', 'recall_refill', 'recall_evaluate', 'unit_relevance'])

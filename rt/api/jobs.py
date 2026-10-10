@@ -68,3 +68,37 @@ def ensure_no_running_job(lesson_dir: str) -> None:
     if busy:
         raise ApiError(409, "lesson_busy", "Un job sta lavorando su questa lezione: riprova quando ha finito.",
                        {"job_id": busy[0].id, "type": busy[0].type})
+
+
+def ensure_issue_decidable(lesson_dir: str, issue_id: str) -> None:
+    """Durante la verifica blocca solo le unità ancora da fare nel job."""
+    from rt.pipeline.ledger import find_science_issue_by_id
+    from rt.pipeline.rewrite import load_draft
+    busy = running_jobs(lesson_dir)
+    if not busy:
+        return
+    issue = find_science_issue_by_id(lesson_dir, issue_id)
+    for job in busy:
+        progress = job.progress or {}
+        is_review = (job.type in {"review_unit", "review_part"} or
+                     (job.type == "run_phase" and job.payload.get("phase") == "review") or
+                     (job.type == "run_pipeline" and progress.get("phase") == "review"))
+        if not is_review:
+            raise ApiError(409, "lesson_busy", "Un job sta lavorando su questa lezione: riprova quando ha finito.",
+                           {"job_id": job.id, "type": job.type})
+        pending = progress.get("pending_units")
+        if pending is None:
+            if job.type == "review_unit":
+                pending = job.payload.get("units") or [job.payload.get("unit")]
+            elif progress.get("phase") == "review" and progress.get("completed"):
+                pending = []
+            else:
+                # Prima dell'evento iniziale, tutte le unità del job sono ancora da fare.
+                pending = [u.unit_id for u in load_draft(lesson_dir).units]
+        uid = issue.unit_id if issue else None
+        if issue and not uid:
+            uid = next((u.unit_id for u in load_draft(lesson_dir).units
+                        if issue.segment_id in u.source_segment_ids), None)
+        if uid in pending:
+            raise ApiError(409, "unit_in_review", "Questa unità deve ancora finire la verifica.",
+                           {"job_id": job.id, "unit_id": uid})

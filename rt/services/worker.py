@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Sequence
 
 from rt.services.context import CancelToken, RunCancelled, RunContext
-from rt.services.events import Event, PhaseCompleted, PhaseProgress, PhaseStarted
+from rt.services.events import Event, PhaseCompleted, PhaseProgress, PhaseStarted, ReviewUnitDone, ReviewUnitsQueued
 from rt.services.jobs import DEFAULT_LEASE_SECONDS, DbJobQueue, JobInfo, JobState
 from rt.storage import fs
 
@@ -72,10 +72,17 @@ class JobEventReporter:
         self.job_id = job_id
         self.cancel_token = cancel_token
         self._warned = False
+        self._review_pending = None
 
     def emit(self, event: Event) -> None:
         progress = None
-        if isinstance(event, PhaseStarted):
+        if isinstance(event, (ReviewUnitsQueued, ReviewUnitDone)):
+            self._review_pending = event.pending_units
+            progress = {"phase": "review", "pending_units": event.pending_units}
+            if isinstance(event, ReviewUnitDone):
+                progress.update(unit_id=event.unit_id, issues=event.issues)
+        elif isinstance(event, PhaseStarted):
+            self._review_pending = None
             progress = {"phase": event.phase, "step": event.step, "total_steps": event.total_steps}
         elif isinstance(event, PhaseProgress):
             progress = {"phase": event.phase, "current": event.current, "total": event.total, "message": event.message,
@@ -83,6 +90,8 @@ class JobEventReporter:
         elif isinstance(event, PhaseCompleted):
             progress = {"phase": event.phase, "completed": True, "partial": event.partial, "step": event.step,
                         "total_steps": event.total_steps}
+        if isinstance(event, PhaseProgress) and event.phase == "review" and self._review_pending is not None:
+            progress["pending_units"] = self._review_pending
         try:
             lesson_dir = getattr(event, "lesson_dir", None)
             if lesson_dir:

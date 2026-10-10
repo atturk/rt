@@ -36,11 +36,18 @@ class PhaseProgress(_Event):
     failed: Optional[int] = None
 
 
+class ReviewUnitsQueued(_Event):
+    """Unità ancora da fare, comprese quelle in esecuzione."""
+    type: Literal["review_units_queued"] = "review_units_queued"
+    pending_units: List[str]
+
+
 class ReviewUnitDone(_Event):
     """L'unità e le sue issue sono già salvate, anche quando la verifica fallisce."""
     type: Literal["review_unit_done"] = "review_unit_done"
     unit_id: str
     issues: int
+    pending_units: List[str] = Field(default_factory=list)
 
 
 class PhaseCompleted(_Event):
@@ -84,7 +91,7 @@ class Notice(_Event):
     level: Literal["info", "warning", "error"] = "info"
 
 
-Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice, ReviewUnitDone]
+Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice, ReviewUnitDone, ReviewUnitsQueued]
 
 
 class Reporter(Protocol):

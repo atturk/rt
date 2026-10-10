@@ -44,7 +44,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
-from rt.services.events import Notice, ListReporter, ReviewUnitDone
+from rt.services.events import Notice, ListReporter, ReviewUnitDone, ReviewUnitsQueued
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 from rt.pipeline.review_units import record_review_unit, load_review_units
@@ -587,33 +587,35 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         raise
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
     anchor_findings(generated, unit)
-    combined, orphaned, sequence = merge_unit_findings(lesson_dir, prior, generated, draft.units, {unit_id})
-    save_science_issues(combined, lesson_dir)
-    record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
-                       text_hash=raw_hashes.get(unit_id))
-    checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
-    current = raw_hashes
-    reviewed = (checkpoint or {}).get("unit_hashes")
-    completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
-    # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
-    # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
-    # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
-    if isinstance(reviewed, dict):
-        completed = [item for item in completed if reviewed.get(item) == current.get(item)]
-    elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
-        completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
-    if unit_id not in completed:
-        completed.append(unit_id)
-    record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
-        source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
-        artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-        completed_items=completed,
-        metadata={"unit_hashes": {item: current[item] for item in completed if item in current},
-                  "issue_sequence": sequence})
-    if set(completed) >= set(current):
-        record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
-            {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-            metadata={"unit_hashes": current})
+    from rt.core.lesson_lock import lesson_lock
+    with lesson_lock(lesson_dir):
+        combined, orphaned, sequence = merge_unit_findings(lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit_id})
+        save_science_issues(combined, lesson_dir)
+        record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
+                           text_hash=raw_hashes.get(unit_id))
+        checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
+        current = raw_hashes
+        reviewed = (checkpoint or {}).get("unit_hashes")
+        completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
+        # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
+        # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
+        # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
+        if isinstance(reviewed, dict):
+            completed = [item for item in completed if reviewed.get(item) == current.get(item)]
+        elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
+            completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
+        if unit_id not in completed:
+            completed.append(unit_id)
+        record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
+            source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+            artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+            completed_items=completed,
+            metadata={"unit_hashes": {item: current[item] for item in completed if item in current},
+                      "issue_sequence": sequence})
+        if set(completed) >= set(current):
+            record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
+                {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+                metadata={"unit_hashes": current})
     return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(prior) - sum(i.unit_id == unit_id for i in prior),
             "orphaned_decisions": orphaned}
 
@@ -805,6 +807,10 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     mock_order = _MockReviewOrder([unit.unit_id for _, unit in work])
     mock_calls = {}
 
+    pending_units = {unit.unit_id for _, unit in work}
+    if ctx:
+        ctx.emit(ReviewUnitsQueued(pending_units=sorted(pending_units)))
+
     def examine(idx, unit):
         # Client separati; soltanto il budget del mock resta quello della lezione.
         client = None
@@ -860,7 +866,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
             if ctx:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
-                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0))
+                pending_units.discard(unit.unit_id)
+                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0, pending_units=sorted(pending_units)))
             if failures.too_many():
                 stopped_early = True
             continue
@@ -895,7 +902,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                           "issue_sequence": sequence},
             )
         if ctx:
-            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated)))
+            pending_units.discard(unit.unit_id)
+            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated), pending_units=sorted(pending_units)))
 
     if ctx:
         ctx.check_cancelled()
