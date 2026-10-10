@@ -22,7 +22,7 @@ def save_review_units(lesson_dir: str, units: dict) -> None:
 
 
 def record_review_unit(lesson_dir: str, unit, cfg, client, issues: int, result: str,
-                       message: str = None) -> None:
+                       message: str = None, text_hash: str = None) -> None:
     from rt.pipeline.review import _unit_hashes
     units = load_review_units(lesson_dir)
     job_cfg = cfg.jobs.get('review') or cfg.llm.get('review')
@@ -30,6 +30,6 @@ def record_review_unit(lesson_dir: str, unit, cfg, client, issues: int, result: 
     if not isinstance(model, str):
         model = 'mock-deterministic' if client.force_mock else job_cfg.primary.model if job_cfg and job_cfg.primary else None
     units[unit.unit_id] = {'reviewed_at': datetime.now().isoformat(), 'model': model,
-                          'issues': issues, 'text_hash': _unit_hashes([unit])[unit.unit_id],
+                          'issues': issues, 'text_hash': text_hash or _unit_hashes([unit])[unit.unit_id],
                           'result': result, **({'message': message} if message else {})}
     save_review_units(lesson_dir, units)

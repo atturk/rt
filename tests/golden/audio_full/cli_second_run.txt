@@ -15,24 +15,12 @@ exit_code: 0
 ⏩ [SKIP] Draft già valido (1 unità verificate, 0 chiamate LLM)
 
 [4/5] REVIEW (Critic indipendente su correttezza scientifica)...
-✔ Issue scientifiche: 20 (Concettuali: 20)
-
-⚡ Auto-approvati 10 casi in base ai filtri CLI.
+⏩ [SKIP] Review scientifica già completata (10 issue note, 0 chiamate LLM)
 
 ✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).
 
 [5/5] BUILD (Finalizzazione deterministica Markdown)...
-✔ File finali generati con successo:
-  - Rielaborato: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/_state/rielaborato.md
-  - Pre-elaborato: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/_state/pre-elaborato.md
-  - Errori concettuali: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi/Errori concettuali.md
+⏩ [SKIP] Documenti finali già generati e aggiornati.
 
 ✨ PIPELINE COMPLETATA CON SUCCESSO!
-
-============================================================
-💰 RIEPILOGO COSTI SESSIONE
-============================================================
-  review             1 richieste  $0.000000
-  TOTALE               $0.000000
-============================================================
 --- stderr ---

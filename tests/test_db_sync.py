@@ -185,17 +185,16 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     actual = scenario_audio_full(str(work))
     expected = load_golden("audio_full")
     folder = f"<ROOT>/out/{LESSON_NAME}"
-    for cli in ("cli_first_run.txt", "cli_second_run.txt"):
-        expected[cli] = expected[cli].replace(
-            f"✔ Cartella lezione: {folder}", f"✔ Lezione nel database: {LESSON_NAME}").replace(
-            "✔ File finali generati con successo:\n"
-            f"  - Rielaborato: {folder}/_state/rielaborato.md\n"
-            f"  - Pre-elaborato: {folder}/_state/pre-elaborato.md\n"
-            f"  - Errori concettuali: {folder}/Errori concettuali.md\n",
-            "✔ File finali generati con successo (salvati nel database):\n"
-            "  - Rielaborato: [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata.md\n"
-            "  - Errori concettuali: Errori concettuali.md\n"
-            f"  Per scaricarli: rt export \"{LESSON_NAME}\" -o <cartella>\n")
+    expected["cli_first_run.txt"] = expected["cli_first_run.txt"].replace(
+        f"✔ Cartella lezione: {folder}", f"✔ Lezione nel database: {LESSON_NAME}").replace(
+        "✔ File finali generati con successo:\n"
+        f"  - Rielaborato: {folder}/_state/rielaborato.md\n"
+        f"  - Pre-elaborato: {folder}/_state/pre-elaborato.md\n"
+        f"  - Errori concettuali: {folder}/Errori concettuali.md\n",
+        "✔ File finali generati con successo (salvati nel database):\n"
+        "  - Rielaborato: [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata.md\n"
+        "  - Errori concettuali: Errori concettuali.md\n"
+        f"  Per scaricarli: rt export \"{LESSON_NAME}\" -o <cartella>\n")
     for rel in sorted(expected):
         assert actual[rel] == expected[rel], rel
     out_dir = str(work / "out")
@@ -207,7 +206,7 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     assert check_all(rt_db, out_dir) == []
     with session_scope(rt_db) as s:
         lesson = LessonRepository(s).get_by_path(os.path.join(out_dir, LESSON_NAME))
-        assert lesson.workflow_state == "completato"  # la seconda run ricostruisce dopo la verifica del testo risolto
+        assert lesson.workflow_state == "pronto_per_build"  # come info.yaml nel golden
         assert PhaseRunRepository(s).for_lesson(lesson)["build"].status == "VALID"
         assert DecisionRepository(s).active(lesson)
 

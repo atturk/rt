@@ -25,6 +25,7 @@ from rt.llm.prompts import (
     ScienceIssueList
 )
 from rt.pipeline.ledger import load_resolved_draft
+from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
 from rt.llm.jev_client import call_jev, JevNoulQuestion, JevError
@@ -415,6 +416,12 @@ def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, a
         return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
 
 
+def _draft_hashes(lesson_dir: str) -> Dict[str, str]:
+    """Impronte della bozza grezza: le decisioni cambiano il testo risolto ma non rendono
+    un'unità da rivedere; solo riscrittura e modifiche a mano lo fanno."""
+    return _unit_hashes(load_draft(lesson_dir).units)
+
+
 def _unit_hashes(units) -> Dict[str, str]:
     """Impronta del testo di ogni unità revisionata: dice quali unità sono cambiate dopo la revisione."""
     import hashlib
@@ -556,7 +563,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     entry = registry.get(unit_id) or {}
     digest = entry.get("text_hash") or ((checkpoint or {}).get("unit_hashes") or {}).get(unit_id)
     known = bool(entry) or unit_id in ((checkpoint or {}).get("completed_items") or [])
-    if not force and known and entry.get("result") != "failed" and digest == _unit_hashes([unit])[unit_id]:
+    raw_hashes = _draft_hashes(lesson_dir)
+    if not force and known and entry.get("result") != "failed" and digest == raw_hashes.get(unit_id):
         return {"status": "skipped", "unit": unit_id, "reason": "già verificata", "issues": entry.get("issues", 0)}
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments.segments}
@@ -573,15 +581,16 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
                      generated, cfg, lesson_dir, False, cfg.jev.shadow,
                      parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
     except Exception as exc:
-        record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc))
+        record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc), text_hash=raw_hashes.get(unit_id))
         raise
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
     anchor_findings(generated, unit)
     combined, orphaned, sequence = merge_unit_findings(lesson_dir, prior, generated, draft.units, {unit_id})
     save_science_issues(combined, lesson_dir)
-    record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result)
+    record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
+                       text_hash=raw_hashes.get(unit_id))
     checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
-    current = _unit_hashes(draft.units)
+    current = raw_hashes
     reviewed = (checkpoint or {}).get("unit_hashes")
     completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
     # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
@@ -622,11 +631,12 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     draft = load_resolved_draft(lesson_dir)
+    raw_draft = load_draft(lesson_dir)
     phase_status, reason = check_phase_status(lesson_dir, "review")
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     prior_hashes = (checkpoint or {}).get("unit_hashes") or {}
-    current_hashes = _unit_hashes(draft.units)
+    current_hashes = _unit_hashes(raw_draft.units)
     current_text = all((registry.get(uid, {}).get("text_hash") or prior_hashes.get(uid)) == digest
                        for uid, digest in current_hashes.items())
     # Anche le unità sparite devono attraversare la conservazione delle decise.
@@ -671,13 +681,13 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     # Testo corretto a mano nell'anteprima dopo la revisione (per esempio per chiudere un'issue):
     # la review resta valida con le sue issue e decisioni, invece di ripartire da zero (4.2.3b3.2).
-    if not force and phase_status == PhaseStatus.STALE and _only_manual_edits(lesson_dir, draft.units, eligible_ids):
+    if not force and phase_status == PhaseStatus.STALE and _only_manual_edits(lesson_dir, raw_draft.units, eligible_ids):
         all_science_issues = load_science_issues(lesson_dir)
         record_phase_fingerprint(
             lesson_dir=lesson_dir, phase_name="review",
             source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
             artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-            metadata={"unit_hashes": _unit_hashes(draft.units), "eligible_units": sorted(eligible_ids)},
+            metadata={"unit_hashes": _unit_hashes(raw_draft.units), "eligible_units": sorted(eligible_ids)},
         )
         if ctx is not None:
             ctx.emit(Notice(level="info", message="Revisione già fatta: il testo è cambiato solo nelle unità "
@@ -712,10 +722,10 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         save_science_issues(all_science_issues, lesson_dir)
     ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")
     from rt.pipeline.document_edits import edited_unit_ids
-    current_hashes = _unit_hashes(draft.units)
+    current_hashes = _unit_hashes(raw_draft.units)
     prior_hashes = (ckpt or {}).get("unit_hashes") or {}
     completed = set((ckpt or {}).get("completed_items") or [])
-    manual = manual_review_units(lesson_dir, draft.units)
+    manual = manual_review_units(lesson_dir, raw_draft.units)
     reviewed_unit_ids = []
     for unit in draft.units:
         entry = registry.get(unit.unit_id) or {}
@@ -727,7 +737,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             reviewed_unit_ids.append(unit.unit_id)
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
-    unit_hashes = _unit_hashes(draft.units)
+    unit_hashes = current_hashes
     total_units = len(draft.units)
     failures = UnitFailureTracker()
     stopped_early = False
@@ -755,7 +765,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
             # una nuova run la rifà, le altre proseguono.
             failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
-            record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message)
+            record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message,
+                               text_hash=unit_hashes.get(unit.unit_id))
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
             if ctx is not None:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
@@ -771,7 +782,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         all_science_issues, _, sequence = merge_unit_findings(
             lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
         save_science_issues(all_science_issues, lesson_dir)
-        record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result)
+        record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result,
+                           text_hash=unit_hashes.get(unit.unit_id))
 
         # Commit atomico nel checkpoint
         if unit.unit_id not in reviewed_set:

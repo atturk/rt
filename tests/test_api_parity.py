@@ -293,11 +293,6 @@ def test_review_single_unit_force_from_api(api, pair):
     lesson_id = api.lesson_id()
     unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
     body = {"type": "run_phase", "phase": "review", "unit": unit, "mock": True}
-    # Le auto-approvazioni della pipeline cambiano il testo risolto: va
-    # verificato una volta prima che una richiesta identica possa saltarlo.
-    refreshed = api.run(f"/lessons/{lesson_id}/jobs", json=body)
-    assert refreshed["state"] == "succeeded"
-    assert refreshed["result"]["units"][0].get("status") != "skipped"
     skipped = api.run(f"/lessons/{lesson_id}/jobs", json=body)
     assert skipped["result"]["units"][0]["status"] == "skipped", skipped
     forced = api.run(f"/lessons/{lesson_id}/jobs", json={**body, "force": True})

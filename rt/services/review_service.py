@@ -331,7 +331,8 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.core.idempotency import get_phase_checkpoint
     from rt.services.unit_relevance import included_ids
     draft = load_resolved_draft(lesson_dir)
-    current = _unit_hashes(draft.units)
+    # Le impronte seguono la bozza grezza: una decisione non rende l'unità "cambiata".
+    current = _unit_hashes(load_draft(lesson_dir).units)
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     checkpoint = checkpoint or {}

@@ -61,33 +61,22 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
 
   // 4. Verifica di tutte le issue nel pannello: la pipeline riparte da sola e arriva al build.
   await waitJob(page, jobId, (j) => j.decision?.kind === 'science_issue')
-  let { total } = await apiGet<IssueList>(page.request, `/lessons/${lessonId}/issues?status=all`)
+  const { total } = await apiGet<IssueList>(page.request, `/lessons/${lessonId}/issues?status=all`)
   expect(total).toBeGreaterThan(0)
   await page.goto(`/lezioni/${lessonId}`)
   await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Vai alla decisione' }).click()
   const panel = page.getByTestId('lesson-review-panel')
   const counter = panel.getByRole('status').first()
-  const acceptPending = async (pending: number) => {
-    await expect(counter).toHaveText(`${pending} da decidere su ${total}`)
-    for (let left = pending - 1; left >= 0; left--) {
-      await panel.getByTestId('issue-detail').getByRole('button', { name: 'Accetta' }).click()
-      await expect(counter).toHaveText(left ? `${left} da decidere su ${total}` : 'Tutte decise')
-    }
+  await expect(counter).toHaveText(`${total} da decidere su ${total}`)
+  for (let left = total - 1; left >= 0; left--) {
+    await panel.getByTestId('issue-detail').getByRole('button', { name: 'Accetta' }).click()
+    await expect(counter).toHaveText(left ? `${left} da decidere su ${total}` : 'Tutte decise')
   }
-  await acceptPending(total)
-  // V1: alla ripresa la verifica legge le correzioni approvate. Il critic mock
-  // produce un secondo gruppo su quel testo; le decisioni del primo restano.
-  await expect.poll(async () => (await apiGet<IssueList>(page.request,
-    `/lessons/${lessonId}/issues?status=all`)).total, { timeout: LONG }).toBeGreaterThan(total)
-  const previousTotal = total
-  total = (await apiGet<IssueList>(page.request, `/lessons/${lessonId}/issues?status=all`)).total
   await page.reload()
-  await acceptPending(total - previousTotal)
-  await waitJob(page, jobId, (j) => j.state === 'succeeded')
-  await page.reload()
-  await expect(counter).toHaveText('Tutte decise')
+  await expect(page.getByTestId('lesson-review-panel').getByRole('status').first()).toHaveText('Tutte decise')
   const decisions = await apiGet<Decision[]>(page.request, `/lessons/${lessonId}/decisions`)
   expect(decisions.map((d) => d.decision)).toEqual(Array(total).fill('accepted'))
+  await waitJob(page, jobId, (j) => j.state === 'succeeded')
 
   // 5. Documento finale con l'audio: build valido, unità con timecode, player.
   await page.goto(`/lezioni/${lessonId}`)
