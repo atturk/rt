@@ -4,6 +4,8 @@
 
 ### Novità
 
+- Schema vincolato della verifica su OpenRouter e Google; DeepSeek mantiene JSON con validazione locale obbligatoria.
+
 - La verifica restituisce citazioni e sostituzioni esatte con uno schema piccolo; i passaggi non ritrovati restano non ancorati, senza chiamate di riparazione.
 
 - Le unità già finite si possono decidere e riaprire mentre la verifica prosegue sulle altre.

@@ -212,7 +212,8 @@ class LLMClient:
         min_elapsed_seconds: Optional[float] = None,
         lesson_dir: Optional[str] = None,
         history: Optional[List[Dict[str, str]]] = None,
-        image_data_url: Optional[str] = None
+        image_data_url: Optional[str] = None,
+        constrained_schema: bool = False,
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -488,7 +489,9 @@ class LLMClient:
                     stream=use_stream,
                     max_thinking_tokens=route.max_thinking_tokens,
                     provider_routing=self._resolve_provider_routing(route, provider_name),
-                    response_json_schema=response_model.model_json_schema()
+                    response_json_schema=(response_model.model_json_schema()
+                                          if constrained_schema or getattr(response_model, "constrained_schema", False)
+                                          or provider_name not in {"openrouter", "google"} else None)
                 )
 
                 raw_content = ""

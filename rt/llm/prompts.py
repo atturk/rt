@@ -7,7 +7,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 """
 
 import json
-from typing import List, Optional, Dict, Any, Literal
+from typing import ClassVar, List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from rt.core.models import ScienceIssue, RecallOutcome
 
@@ -23,6 +23,7 @@ class ReviewFinding(BaseModel):
 
 
 class ReviewFindingList(BaseModel):
+    constrained_schema: ClassVar[bool] = True
     model_config = ConfigDict(extra="forbid")
     issues: List[ReviewFinding]
 

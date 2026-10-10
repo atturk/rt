@@ -41,9 +41,6 @@ class OpenRouterProvider(BaseLLMProvider):
         provider_routing: Optional[Dict[str, Any]] = None,
         response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        # 'response_json_schema' non è usato qui: OpenRouter normalizza 'response_format' di tipo
-        # 'json_object' verso i vari modelli sottostanti, comportamento già verificato funzionante.
-        # OpenRouter supporta alias di modelli con tilde (es. '~deepseek/deepseek-v4-flash-latest')
         clean_model = model.strip()
         if "/" not in clean_model and not clean_model.startswith("~") and clean_model.startswith("deepseek"):
             clean_model = f"deepseek/{clean_model}"
@@ -59,7 +56,12 @@ class OpenRouterProvider(BaseLLMProvider):
         if stream:
             payload["stream_options"] = {"include_usage": True}
 
-        if response_format:
+        if response_json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "structured_response", "schema": response_json_schema, "strict": True},
+            }
+        elif response_format:
             payload["response_format"] = response_format
 
         if temperature is not None:

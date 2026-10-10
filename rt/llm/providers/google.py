@@ -43,8 +43,6 @@ class GoogleProvider(BaseLLMProvider):
         provider_routing: Optional[Dict[str, Any]] = None,
         response_json_schema: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        # 'provider_routing'/'response_json_schema' sono specifici di altri provider, non hanno
-        # equivalente/necessità qui: 'response_format' generico (json_object) già funziona.
         clean_model = model.strip()
         if clean_model.startswith("google/"):
             clean_model = clean_model[len("google/"):]
@@ -64,7 +62,12 @@ class GoogleProvider(BaseLLMProvider):
         if temperature is not None:
             payload["temperature"] = temperature
 
-        if response_format:
+        if response_json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "structured_response", "schema": response_json_schema, "strict": True},
+            }
+        elif response_format:
             payload["response_format"] = response_format
 
         return payload
