@@ -21,9 +21,22 @@ export function issueRange(state: EditorState, item: IssueItem): { from: number;
   const from = line <= unit.endLine ? state.doc.line(line).from : unit.to
   const content = state.sliceDoc(from, unit.to)
   if (paragraphIssue(issue)) return content.trim() ? { from, to: unit.to } : null
-  const claim = issue.claim.trim()
-  const at = claim ? content.indexOf(claim) : -1
-  return at < 0 ? null : { from: from + at, to: from + at + claim.length }
+  const claim = (issue.anchor?.quote ?? issue.claim).trim()
+  if (!claim || issue.unanchored) return null
+  const escaped = claim.split(/\s+/).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')
+  const matches = [...content.matchAll(new RegExp(escaped, 'g'))]
+  const anchor = issue.anchor
+  // Le citazioni ripetute seguono il contesto dell'ancora, poi la sua posizione.
+  const score = (at: number, length: number) => {
+    if (!anchor) return 0
+    let same = 0
+    for (let i = 1; i <= anchor.prefix.length; i++) { if (content[at - i] !== anchor.prefix.at(-i)) break; same++ }
+    for (let i = 0; i < anchor.suffix.length; i++) { if (content[at + length + i] !== anchor.suffix[i]) break; same++ }
+    return same
+  }
+  matches.sort((a, b) => score(b.index, b[0].length) - score(a.index, a[0].length) || Math.abs(a.index - (anchor?.start ?? 0)) - Math.abs(b.index - (anchor?.start ?? 0)))
+  const match = matches[0]
+  return match ? { from: from + match.index, to: from + match.index + match[0].length } : null
 }
 
 /** Le issue d’unità si raggiungono dal timestamp, senza segnare tutto il testo. */
@@ -70,7 +83,7 @@ class UnitIssueWidget extends WidgetType {
 function decorations(state: EditorState, review: Review): DecorationSet {
   const ranges: Range<Decoration>[] = []
   for (const item of review.items) {
-    if (item.decision) continue
+    if (item.decision && !item.needs_reconfirmation) continue
     if (paragraphIssue(issueOf(item))) {
       const position = issuePosition(state, item)
       if (position !== null) ranges.push(Decoration.widget({ widget: new UnitIssueWidget(item, issueOf(item).id === review.selected), side: 1 }).range(position))

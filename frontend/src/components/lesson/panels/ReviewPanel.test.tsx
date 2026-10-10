@@ -65,11 +65,11 @@ it('modifica una correzione e permette di annullare l’ultima decisione', async
   fireEvent.click(screen.getByRole('button', { name: 'Applica la tua correzione' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,35.' }))
 })
-it('passaggio cambiato: chiude l\'issue, ma le decisioni restano possibili', async () => {
+it('passaggio cambiato: mantiene il testo e chiude l\'issue', async () => {
   mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nIl pH è 7.')
   expect(within(screen.getByTestId('issue-detail')).getByText('Testo cambiato')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeEnabled()
-  fireEvent.click(screen.getByRole('button', { name: "Chiudi l'issue" }))
+  expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
 
@@ -200,7 +200,8 @@ it('le unità escluse aprono il Classificatore, senza striscia nel pannello', ()
 it('il suggerimento non letterale si modifica dal claim e non si accetta a vuoto', async () => {
   state.items = [{ ...issue, fix_text: null, issue: { ...issue.issue, suggested_fix: 'Precisare che il valore normale è 7,4.' } }]
   mount()
-  expect(screen.getByText('Suggerimento')).toBeInTheDocument()
+  expect(screen.queryByText('Suggerimento')).not.toBeInTheDocument()
+  expect(screen.getByText('Correzione proposta')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
   fireEvent.doubleClick(screen.getByTestId('proposed-correction'))
   expect(screen.getByRole('textbox', { name: 'Testo corretto' })).toHaveValue('Il pH è 6.')
@@ -353,4 +354,60 @@ it('i puntini di gravità contano soltanto le issue aperte', () => {
   mount()
   expect(screen.getByLabelText('Gravità alta')).toBeInTheDocument()
   expect(screen.queryByLabelText('Gravità bassa')).not.toBeInTheDocument()
+})
+
+
+it('la card dell’issue è dentro la sua unità e apre la successiva dopo una decisione', async () => {
+  state.units = [unit('1.1', 'issues', 1), unit('1.2', 'issues', 1)]
+  state.items = [issue, { ...issue, issue: { ...issue.issue, id: 'b', unit_id: '1.2', suggested_fix: 'Seconda correzione.' } }]
+  mount()
+  expect(screen.getByTestId('issue-detail').closest('[data-unit]')).toHaveAttribute('data-unit', '1.1')
+  fireEvent.click(screen.getByRole('button', { name: 'Accetta la correzione' }))
+  await waitFor(() => expect(screen.getByTestId('issue-detail').closest('[data-unit]')).toHaveAttribute('data-unit', '1.2'))
+  expect(screen.getByTestId('proposed-correction')).toHaveTextContent('Seconda correzione.')
+  expect(screen.getByTestId('review-decision-message')).toHaveTextContent('Correzione accettata.')
+  expect(screen.queryByRole('button', { name: "Annulla l'ultima" })).not.toBeInTheDocument()
+  fireEvent.click(within(screen.getByTestId('review-decision-message')).getByRole('button', { name: 'Annulla' }))
+  await waitFor(() => expect(screen.getByTestId('issue-detail').closest('[data-unit]')).toHaveAttribute('data-unit', '1.1'))
+  expect(state.undo).toHaveBeenCalledWith('a')
+  expect(screen.queryByTestId('review-decision-message')).not.toBeInTheDocument()
+})
+it('Mostra decise apre una card in sola lettura con la sola azione Annulla', async () => {
+  state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'edited', resolved_text: 'Correzione personale.', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount()
+  expect(screen.queryByTestId('issue-detail')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  const card = screen.getByTestId('issue-detail')
+  expect(card).toHaveTextContent('Correzione personale.')
+  expect(within(card).getAllByRole('button')).toHaveLength(1)
+  expect(within(card).getByRole('button', { name: 'Annulla' })).toBeInTheDocument()
+  fireEvent.doubleClick(within(card).getByTestId('proposed-correction'))
+  expect(within(card).queryByRole('textbox')).not.toBeInTheDocument()
+  fireEvent.click(within(card).getByRole('button', { name: 'Annulla' }))
+  await waitFor(() => expect(state.undo).toHaveBeenCalledWith('a'))
+})
+it('da riconfermare resta aperta senza Mostra decise e permette una nuova scelta', async () => {
+  state.items = [{ ...issue, fix_text: null, needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_text: 'Correzione precedente.', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount()
+  expect(screen.getByRole('status')).toHaveTextContent('1 da decidere')
+  expect(screen.getByTestId('issue-detail')).toHaveTextContent('Da riconfermare')
+  expect(screen.getByTestId('proposed-correction')).toHaveTextContent('Correzione precedente.')
+  fireEvent.click(screen.getByRole('button', { name: 'Riconferma la correzione' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+})
+it('da riconfermare senza passaggio ritrovato permette solo di mantenere il testo', async () => {
+  state.items = [{ ...issue, needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto diverso.')
+  expect(screen.queryByRole('button', { name: 'Riconferma la correzione' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
+})
+it('un avviso di paragrafo usa le icone e conserva conferma e modifica', async () => {
+  state.items = [{ ...issue, issue: { ...issue.issue, type: 'ERR_ASR_ST' } }]
+  mount()
+  expect(screen.getByRole('button', { name: 'Accetta il testo' })).toHaveTextContent('')
+  fireEvent.click(screen.getByRole('button', { name: 'Modifica il paragrafo' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'Testo del paragrafo' }), { target: { value: 'Paragrafo corretto.' } })
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Paragrafo corretto.' }))
 })

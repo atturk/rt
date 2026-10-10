@@ -4,6 +4,8 @@
 
 ### Novità
 
+- V6b: issue aperte dentro l’unità, decisioni in sola lettura e Annulla nel messaggio; le decisioni da riconfermare ricevono una nuova scelta senza perdere la precedente.
+
 - V6a: testa della Verifica con conteggio delle unità da fare, ordine e Mostra decise; elenco unico con gravità, menu per unità e rimando al Classificatore per le escluse.
 
 - V5b: documento automatico senza pulsanti di ricostruzione; la build conserva cartella e percorso, senza notifica Telegram.
@@ -25,6 +27,8 @@
 - Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
 
 ### Correzioni
+
+- V6b: la verifica registra le risposte già pronte prima di avviare altre unità, rispettando il limite dei fallimenti anche sotto carico.
 
 - V6a: il filtro della TUI mantiene subito la selezione durante il rimontaggio asincrono delle righe e ignora gli aggiornamenti di un pannello già chiuso.
 

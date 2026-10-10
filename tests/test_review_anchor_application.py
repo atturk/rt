@@ -144,3 +144,62 @@ def test_missing_timestamp_does_not_inherit_another_units_manual_edit():
     result = apply_decisions_to_draft(Draft(units=[unit('1.1', text)]), ledger, [iss],
                                       {'2.1':'2026-10-09T10:00:00'})
     assert result.units[0].content == 'Il valore è corretto.'
+
+
+@pytest.mark.parametrize('gone_unit', [False, True])
+def test_reconfirmation_reject_and_undo_keep_previous_decision(tmp_path, monkeypatch, api_client, gone_unit):
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson = _synthetic_lesson(root)
+    draft = load_draft(lesson)
+    original = draft.units[0]
+    iss = issue('sci_000001', original.unit_id, make_anchor(original.content, 0, len(original.content)))
+    save_science_issues([iss], lesson)
+    prior = decision(iss, 'Correzione personale', 'edited')
+    write_ledger_file(DecisionLedger(schema_version='2.0', decisions=[prior]), lesson)
+    if gone_unit:
+        draft.units = draft.units[1:]
+    else:
+        original.content = 'Una riscrittura completamente diversa.'
+    save_draft(draft, lesson)
+    lesson_id = api_client.get('/api/v1/lessons').json()[0]['id']
+    base = f'/api/v1/lessons/{lesson_id}'
+    response = api_client.post(f'{base}/issues/{iss.id}/decision', json={'decision': 'rejected'})
+    assert response.status_code == 200, response.text
+    ledger = load_ledger(lesson)
+    assert [d.decision for d in ledger.decisions] == ['edited', 'rejected']
+    assert ledger.decisions[0] == prior
+    assert api_client.get(f'{base}/issues').json()['pending'] == 0
+    assert api_client.post(f'{base}/decisions/undo', json={'issue_id': iss.id}).status_code == 200
+    assert load_ledger(lesson).decisions == [prior]
+    assert api_client.get(f'{base}/issues').json()['pending'] == 1
+
+
+@pytest.mark.parametrize('suggested_fix', ['corretto', None])
+def test_reconfirmation_accept_uses_new_anchor_and_previous_custom_text(tmp_path, monkeypatch, api_client, suggested_fix):
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson = _synthetic_lesson(root)
+    draft = load_draft(lesson)
+    original = draft.units[0]
+    old = issue('sci_000001', original.unit_id, make_anchor('Valore errato.', 7, 13))
+    prior = decision(old, 'personalizzato', 'edited')
+    original.content = 'Valore sbagliato.'
+    current = issue(old.id, old.unit_id, make_anchor(original.content, 7, 16))
+    current.suggested_fix = suggested_fix
+    save_draft(draft, lesson)
+    save_science_issues([current], lesson)
+    write_ledger_file(DecisionLedger(schema_version='2.0', decisions=[prior]), lesson)
+    lesson_id = api_client.get('/api/v1/lessons').json()[0]['id']
+    base = f'/api/v1/lessons/{lesson_id}'
+    assert api_client.get(f'{base}/issues').json()['items'][0]['needs_reconfirmation']
+    response = api_client.post(f'{base}/issues/{current.id}/decision', json={'decision': 'accepted'})
+    assert response.status_code == 200, response.text
+    ledger = load_ledger(lesson)
+    assert len(ledger.decisions) == 2 and ledger.decisions[0] == prior
+    assert ledger.decisions[-1].anchor.quote == 'sbagliato'
+    assert ledger.decisions[-1].resolved_text == 'personalizzato'
+    assert load_resolved_draft(lesson).units[0].content == 'Valore personalizzato.'
+    # Una decisione valida non può essere sovrascritta dal pannello in sola lettura.
+    assert api_client.post(f'{base}/issues/{current.id}/decision', json={'decision': 'rejected'}).status_code == 409
+    assert api_client.post(f'{base}/decisions/undo', json={'issue_id': current.id}).status_code == 200
+    assert load_ledger(lesson).decisions == [prior]
+    assert load_resolved_draft(lesson).units[0].content == 'Valore sbagliato.'

@@ -13,7 +13,7 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional, Set
 from rt.pipeline.issue_review import _is_no_diff_issue_type
-from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
+from rt.core.models import Anchor, DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
@@ -81,13 +81,14 @@ def record_decision(
     original_context: Optional[str] = None,
     channel: Optional[str] = None,
     actor: Optional[str] = None,
+    anchor: Optional[Anchor] = None,
 ) -> ReviewDecision:
     """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8.
     Le interfacce passano da rt.services.review_service, che prende il lock per lezione."""
     ledger = load_ledger(lesson_dir)
     clean_resolved = fix_mojibake(resolved_text) if resolved_text else None
     clean_notes = fix_mojibake(notes) if notes else None
-    clean_context = fix_mojibake(original_context) if original_context else None
+    clean_context = fix_mojibake(original_context) if original_context is not None else None
     
     issue = find_science_issue_by_id(lesson_dir, issue_id)
     # Una decisione nuova si ancora al testo che l'utente sta vedendo, anche
@@ -107,7 +108,7 @@ def record_decision(
                 if found:
                     issue.anchor = make_anchor(unit.content, found.start, found.end)
     dec_obj = ReviewDecision(
-        anchor=issue.anchor.model_copy(deep=True) if issue and issue.anchor else None,
+        anchor=anchor.model_copy(deep=True) if anchor else issue.anchor.model_copy(deep=True) if issue and issue.anchor else None,
         issue_id=issue_id,
         decision=decision.lower().strip(),
         resolved_text=clean_resolved,
@@ -194,6 +195,10 @@ def apply_decisions_to_draft(
             continue
         unit = by_unit.get(issue.unit_id)
         if unit is None:
+            # Un contesto vuoto registra la scelta umana fatta *dopo* la scomparsa.
+            # I rifiuti precedenti restano da riconfermare come le altre decisioni.
+            if decision.decision == 'rejected' and decision.original_context == '':
+                continue
             if missing_decisions is not None:
                 missing_decisions.add(issue.id)
             continue

@@ -50,3 +50,22 @@ it('issue d’unità: widget al timestamp, nessun mark, selezione con clic; deci
   expect(parent.querySelector('[data-review-issue]')).toBeNull()
   view.destroy()
 })
+
+it('l’originale evidenziato segue il contesto dell’ancora fra citazioni ripetute', () => {
+  const content = 'Prima: 7.4. Seconda: 7.4 circa.'
+  const quote = '7.4'
+  const at = content.lastIndexOf(quote)
+  const anchored = { ...item('a', '1.1'), issue: { ...item('a', '1.1').issue, anchor: { quote, prefix: content.slice(0, at), suffix: content.slice(at + quote.length), start: at, end: at + quote.length } } }
+  const state = EditorState.create({ doc: `## 1. Sezione\n### 1.1 Unità\n00:00\n${content}` })
+  const range = issueRange(state, anchored)!
+  expect(state.sliceDoc(range.from, range.to)).toBe('7.4')
+  expect(state.sliceDoc(range.to)).toBe(' circa.')
+})
+it('una decisione da riconfermare conserva il passaggio evidenziato quando ritrovato', () => {
+  const parent = document.createElement('div')
+  const view = new EditorView({ parent, state: EditorState.create({ doc: markdown, extensions: lessonReview }) })
+  const reconfirm = { ...item('a', '1.1'), needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '' } }
+  view.dispatch({ effects: setReview.of({ items: [reconfirm], selected: 'a' }) })
+  expect(parent.querySelector('.rt-issue-selected')?.textContent).toBe('Il pH è 6.')
+  view.destroy()
+})

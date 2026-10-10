@@ -8,7 +8,7 @@ import { ArrowDownWideNarrow, Check, Eye, MoreHorizontal, RotateCcw, Pencil, Shi
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
-import { useDecideIssue, useDecisions, useIssues, useRunJob, useUndoDecision, useReviewUnits } from '@/api/hooks'
+import { useDecideIssue, useIssues, useRunJob, useUndoDecision, useReviewUnits } from '@/api/hooks'
 import { useCancelJob, useJobs } from '@/api/jobs'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +25,6 @@ import { decisionLabels, issueLabels, issueOf, paragraphIssue, type IssueItem } 
 export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, markdown }: { markdown?: string; lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
   const issues = useIssues(l.id)
   const reviewUnits = useReviewUnits(l.id)
-  const decisions = useDecisions(l.id)
   const jobs = useJobs({ lesson_id: l.id, limit: 20 })
   const run = useRunJob(l.id)
   const cancel = useCancelJob()
@@ -38,6 +37,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const [queuedUnits, setQueuedUnits] = useState<string[]>([])
   const [changedIssues, setChangedIssues] = useState<string[]>([])
   const [cardFailure, setCardFailure] = useState<{ id: string; message: string } | null>(null)
+  const [message, setMessage] = useState<{ id: string; label: string } | null>(null)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -57,14 +57,20 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const included = units.filter(unit => unit.state !== 'excluded')
   const reviewedCount = included.filter(unit => ['ok', 'issues'].includes(unit.state)).length
   const focusedUnit = params.get('review_unit')
-  const selected = ordered.find(item => issueOf(item).id === params.get('issue')) ?? pending.find(item => !focusedUnit || issueOf(item).unit_id === focusedUnit) ?? (showDecided ? ordered.find(item => !focusedUnit || issueOf(item).unit_id === focusedUnit) : undefined)
-  const last = [...(decisions.data ?? [])].filter(d => items.some(item => issueOf(item).id === d.issue_id)).sort((a, b) => a.timestamp.localeCompare(b.timestamp)).pop()
+  const selected = ordered.find(item => issueOf(item).id === params.get('issue') && (!item.decision || item.needs_reconfirmation || showDecided)) ?? pending.find(item => !focusedUnit || issueOf(item).unit_id === focusedUnit) ?? (showDecided ? ordered.find(item => !focusedUnit || issueOf(item).unit_id === focusedUnit) : undefined)
+  const selectedId = selected ? issueOf(selected).id : null
+  useEffect(() => {
+    if (!selectedId || params.get('issue') === selectedId) return
+    const next = new URLSearchParams(params)
+    next.set('issue', selectedId)
+    setParams(next, { replace: true })
+  }, [selectedId, params, setParams])
   const active = jobs.data?.find(job => job.type !== 'documents' && isActive(job.state))
   const verifying = !!active && (['review_unit', 'review_part'].includes(active.type) || active.type === 'run_phase' && (active.payload as { phase?: string })?.phase === 'review' || active.type === 'run_pipeline' && active.progress?.phase === 'review')
   const payload = active?.payload as { units?: string[]; unit?: string } | undefined
   const runningUnits = verifying ? payload?.units ?? (payload?.unit ? [payload.unit] : included.map(unit => unit.unit_id)) : []
   const busy = saving || decide.isPending || undo.isPending || run.isPending || !!active
-  const select = (id: string) => { setEditing(false); const next = new URLSearchParams(params); next.set('issue', id); setParams(next, { replace: true }) }
+  const select = (id: string) => { setEditing(false); const next = new URLSearchParams(params); next.set('issue', id); next.delete('review_unit'); setParams(next, { replace: true }) }
   const action = async (fn: () => Promise<unknown>) => {
     setSaving(true); setFailure(null)
     try { await beforeAction(); await fn() } catch (error) { setFailure(errorMessage(error)) } finally { setSaving(false) }
@@ -75,6 +81,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       try {
         await decide.mutateAsync({ issueId: issueOf(selected).id, decision, text })
         setCardFailure(null)
+        setMessage({ id: issueOf(selected).id, label: `Correzione ${decisionLabels[decision]}.` })
       } catch (error) {
         const id = issueOf(selected).id
         setCardFailure({ id, message: errorMessage(error) })
@@ -84,6 +91,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       setEditing(false)
       const next = pending.find(item => issueOf(item).id !== issueOf(selected).id)
       const query = new URLSearchParams(params)
+      query.delete('review_unit')
       if (next) query.set('issue', issueOf(next).id); else query.delete('issue')
       setParams(query, { replace: true })
     })
@@ -118,24 +126,25 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => { verify(confirmation === 'all' ? undefined : confirmation, true); setConfirmation(null) }}>Riesegui {confirmation === 'all' ? 'tutte le unità' : 'l’unità'}</Button><Button variant="ghost" size="sm" onClick={() => setConfirmation(null)}>Annulla</Button></div>
     </Card>}
     {reviewUnits.isError && <Alert tone="danger">{errorMessage(reviewUnits.error)}</Alert>}
-    {last && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void action(async () => { await undo.mutateAsync(last.issue_id); select(last.issue_id) })}><Undo2 />Annulla l'ultima</Button>}
-    {selected && (!selected.decision || showDecided || selected.needs_reconfirmation) && <IssueCard key={issueOf(selected).id} item={selected} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} failure={cardFailure?.id === issueOf(selected).id ? cardFailure.message : undefined} changed={changedIssues.includes(issueOf(selected).id) || markdown !== undefined && !selected.decision && !issueRange(EditorState.create({ doc: markdown }), selected)} onCloseIssue={() => onDecide(paragraphIssue(issueOf(selected)) ? 'accepted' : 'rejected')} onRecheck={() => setConfirmation(issueOf(selected).unit_id ?? null)} />}
     <ReviewUnits units={orderedUnits} busy={busy} running={[...runningUnits, ...queuedUnits]} selectedUnit={(selected ? issueOf(selected).unit_id : null) ?? params.get('review_unit')} items={ordered.filter(item => !item.decision || item.needs_reconfirmation || showDecided)} onVerify={unit => verify(unit)} onReverify={setConfirmation} onClassifier={() => { const next = new URLSearchParams(params); next.set('panel', 'classificatore'); next.delete('issue'); next.delete('review_unit'); setParams(next) }} renderIssues={unit => <ul aria-label={`Issue dell’unità ${unit}`} className="flex flex-col gap-1">
-      {ordered.filter(item => issueOf(item).unit_id === unit && (!item.decision || item.needs_reconfirmation || showDecided)).map(item => <li key={issueOf(item).id}><Button variant="ghost" className="h-auto w-full flex-col items-start whitespace-normal py-2 text-left text-meta" aria-current={selected === item ? 'true' : undefined} onClick={() => select(issueOf(item).id)}><span>{issueLabels[issueOf(item).type]} · {item.context?.timecode}</span><span className="line-clamp-2 text-muted-foreground">{issueOf(item).suggested_fix ?? issueOf(item).claim}</span>{item.decision && <span>{decisionLabels[item.decision.decision]}</span>}</Button></li>)}
+      {ordered.filter(item => issueOf(item).unit_id === unit && (!item.decision || item.needs_reconfirmation || showDecided)).map(item => <li key={issueOf(item).id}>{selected === item ? <IssueCard key={`${issueOf(item).id}:${item.decision?.timestamp}:${item.needs_reconfirmation}`} item={item} busy={busy} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} failure={cardFailure?.id === issueOf(item).id ? cardFailure.message : undefined} changed={changedIssues.includes(issueOf(item).id) || markdown !== undefined && (!item.decision || item.needs_reconfirmation) && !issueRange(EditorState.create({ doc: markdown }), item)} onUndo={() => void action(async () => { await undo.mutateAsync(issueOf(item).id); setMessage(null); select(issueOf(item).id) })} /> : <Button variant="ghost" className="h-auto w-full flex-col items-start whitespace-normal py-2 text-left text-meta" aria-current={selected === item ? 'true' : undefined} onClick={() => select(issueOf(item).id)}><span>{issueLabels[issueOf(item).type]} · {item.context?.timecode}</span><span className="line-clamp-2 text-muted-foreground">{issueOf(item).suggested_fix ?? issueOf(item).claim}</span>{item.decision && <span>{item.needs_reconfirmation ? 'Da riconfermare' : decisionLabels[item.decision.decision]}</span>}</Button>}</li>)}
     </ul>} />
+    {message && <Card role="log" aria-live="polite" data-testid="review-decision-message" className="sticky bottom-0 flex items-center justify-between gap-2 bg-card p-3 text-meta"><span>{message.label}</span><Button variant="ghost" size="sm" disabled={busy} onClick={() => void action(async () => { await undo.mutateAsync(message.id); select(message.id); setMessage(null) })}><Undo2 />Annulla</Button></Card>}
     {(failure || cancel.isError) && <Alert tone="danger">{failure ?? errorMessage(cancel.error)}</Alert>}
   </div>
 }
 
-function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onCloseIssue, onRecheck }: {
-  failure?: string; phone: boolean; changed: boolean; onCloseIssue: () => void; onRecheck: () => void
+function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onUndo }: {
+  failure?: string; phone: boolean; changed: boolean; onUndo: () => void
   item: IssueItem; busy: boolean; editing: boolean; onEditing: (value: boolean) => void
   onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void; onSeek?: (seconds: number) => void
 }) {
   const issue = issueOf(item)
   const paragraph = paragraphIssue(issue)
-  const suggestion = !paragraph && item.fix_text === null
-  const proposed = paragraph ? item.context?.unit_content ?? issue.claim : suggestion ? issue.claim : item.fix_text ?? issue.suggested_fix ?? issue.claim
+  const suggestion = !paragraph && item.fix_text === null && !item.decision?.resolved_text
+  const readOnly = !!item.decision && !item.needs_reconfirmation
+  const proposed = item.decision?.resolved_text ?? (paragraph ? item.context?.unit_content ?? issue.claim : suggestion ? issue.claim : item.fix_text ?? issue.suggested_fix ?? issue.claim)
+  const cannotApply = changed || !!issue.unanchored
   const [text, setText] = useState(proposed)
   const box = useRef<HTMLDivElement>(null)
   const controls = useRef<HTMLDivElement>(null)
@@ -154,51 +163,40 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     onDecide('edited', text)
   }
   useEffect(() => {
-    if (!editing || paragraph) return
+    if (!editing || readOnly) return
     const outside = (event: MouseEvent) => {
       if (!box.current?.contains(event.target as Node) && !controls.current?.contains(event.target as Node)) apply()
     }
     document.addEventListener('mousedown', outside)
     return () => document.removeEventListener('mousedown', outside)
-  }, [editing, paragraph, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [editing, readOnly, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
   return <Card className="flex flex-col gap-3 p-3" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
-    <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
+    <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{!readOnly && onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
     {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
-    {!paragraph && !changed && !issue.unanchored && <div ref={box}>
-      <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{suggestion ? 'Suggerimento' : 'Correzione proposta'}</h3>
+    <div ref={box}>
+      <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{paragraph ? 'Testo del paragrafo' : 'Correzione proposta'}</h3>
         {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
       </div>
-      {editing ? <Textarea id="review-edit" aria-label={suggestion ? 'Testo corretto' : 'Correzione proposta'} autoFocus rows={1} value={text}
+      {editing && !readOnly ? <Textarea id="review-edit" aria-label={paragraph ? 'Testo del paragrafo' : suggestion ? 'Testo corretto' : 'Correzione proposta'} autoFocus rows={1} value={text}
         ref={prepareInput}
         onChange={event => { setText(event.target.value); event.target.style.height = 'auto'; event.target.style.height = `${event.target.scrollHeight}px` }}
         onKeyDown={event => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelEdit() }
           else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); apply() }
         }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
-        <Tooltip content="Doppio clic per modificare" disabled={phone || !!item.decision || busy}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
-          onDoubleClick={() => { if (!busy && !item.decision) onEditing(true) }} onClick={() => { if (phone && !busy && !item.decision) onEditing(true) }}>{suggestion ? issue.suggested_fix : proposed}</p>}</Tooltip>}
-    </div>}
+        <Tooltip content="Doppio clic per modificare" disabled={phone || readOnly || busy || cannotApply}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
+          onDoubleClick={() => { if (!busy && !readOnly && !cannotApply) onEditing(true) }} onClick={() => { if (phone && !busy && !readOnly && !cannotApply) onEditing(true) }}>{suggestion && !item.decision ? issue.suggested_fix : proposed}</p>}</Tooltip>}
+    </div>
     {failure && <Alert tone="danger">{failure}</Alert>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
     {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. Puoi solo rifiutare questa issue.</p></>}
-    {changed && !issue.unanchored && <>
-      <Badge tone="warning">Testo cambiato</Badge>
-      <p className="text-meta text-muted-foreground line-through">{issue.claim}</p>
-      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={onCloseIssue}>Chiudi l'issue</Button><Button size="sm" variant="outline" disabled={busy || !issue.unit_id} onClick={onRecheck}>Verifica di nuovo l'unità {issue.unit_id}</Button></div>
-    </>}
-    {item.decision ? <Badge tone="success">{decisionLabels[item.decision.decision]}</Badge> : issue.unanchored ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('rejected')}>Rifiuta</Button> : paragraph && editing ? <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); onDecide('edited', text) }}>
-      <label htmlFor="review-edit" className="text-meta">{paragraph ? 'Testo del paragrafo' : 'Testo corretto'}</label>
-      <Textarea id="review-edit" autoFocus rows={5} value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="flex gap-2"><Button type="submit" size="sm" disabled={busy || !text.trim()}>Salva modifica</Button><Button size="sm" variant="ghost" onClick={() => onEditing(false)}>Annulla</Button></div>
-    </form> : paragraph ? <div className="flex flex-wrap gap-2 max-md:[&_button]:h-12">
-      <Button size="sm" disabled={busy} onClick={() => onDecide('accepted')}><Check />Accetta</Button>
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => onEditing(true)}><Pencil />Modifica</Button>
-    </div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
-      {(!suggestion || editing) && <IconButton label={suggestion || editing && modified ? 'Applica la tua correzione' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
-      <IconButton label="Mantieni il testo attuale" icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />
+    {item.needs_reconfirmation && <><Badge tone="warning">Da riconfermare</Badge><p className="text-meta">La decisione precedente resta registrata. Puoi riconfermare la correzione se il passaggio è ritrovato oppure mantenere il testo attuale.</p></>}
+    {changed && !issue.unanchored && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
+    {readOnly ? <div className="flex items-center justify-between gap-2"><Badge tone="success">{decisionLabels[item.decision!.decision]}</Badge><Button variant="ghost" size="sm" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button></div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
+      {!cannotApply && (!suggestion || editing) && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
+      {paragraph && !cannotApply ? <IconButton label="Modifica il paragrafo" icon={Pencil} disabled={busy} onClick={() => onEditing(true)} /> : <IconButton label={issue.unanchored ? 'Rifiuta' : 'Mantieni il testo attuale'} icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />}
     </div>}
-
   </Card>
 }

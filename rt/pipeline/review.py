@@ -642,7 +642,9 @@ def _parallel_units(work, run, parallel, stop):
     exhausted = False
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         while pending or not exhausted:
-            while not exhausted and len(pending) < parallel and not stop():
+            # Prima registra tutte le risposte già pronte: possono raggiungere il
+            # limite dei fallimenti e fermare l'avvio delle unità ancora in coda.
+            while not exhausted and len(pending) < parallel and not stop() and finished.empty():
                 item = next(remaining, None)
                 if item is None:
                     exhausted = True
