@@ -16,6 +16,8 @@
 
 ### Correzioni
 
+- Testo risolto e configurazione in cache, aggiornati quando cambiano bozza, issue, modifiche a mano o decisioni.
+
 - Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.
 
 - Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.

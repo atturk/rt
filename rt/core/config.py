@@ -8,6 +8,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import os
+from functools import lru_cache
 from typing import Dict, Any, Optional, List, Literal
 import yaml
 from pydantic import BaseModel, Field, AliasChoices, field_validator, model_validator
@@ -718,7 +719,7 @@ def _load_config_dir(config_dir: str) -> RTConfig:
     return RTConfig.model_validate(merged_data)
 
 
-def load_config(config_path: Optional[str] = None) -> RTConfig:
+def _load_config_uncached(config_path: Optional[str] = None) -> RTConfig:
     """Carica la configurazione. Se config_path è esplicito, comportamento invariato.
     Altrimenti (RT4-G1: prima di tutto RT_DATA_DIR/config): usa 'config/' nella cwd se presente (comportamento invariato per chi
     lancia 'rt' da dentro la project root); se non c'è, prova 'config/' nella project
@@ -739,3 +740,28 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
         return _resolve_telegram_state_dir(_load_config_dir(home_config_dir), home)
 
     return _resolve_telegram_state_dir(RTConfig(), home)
+
+
+@lru_cache(maxsize=64)
+def _cached_config(key):
+    config_path = key[0]
+    return _load_config_uncached(config_path)
+
+
+def load_config(config_path: Optional[str] = None) -> RTConfig:
+    """Cache dei YAML, invalidata anche per aggiunta/rimozione di file e cambio di sorgente."""
+    from rt.core.paths import config_home
+    explicit = os.path.abspath(config_path) if config_path is not None else None
+    home = config_home(_default_project_root()) if explicit is None else os.path.dirname(explicit)
+    directory = os.path.join(home, 'config')
+    files = ([explicit] if explicit else
+             [os.path.join(directory, 'general.yaml'), *find_job_yaml_paths(directory).values()])
+    stamps = []
+    for path in sorted(set(files)):
+        try:
+            info = os.stat(path)
+            stamps.append((path, info.st_mtime_ns, info.st_size))
+        except FileNotFoundError:
+            stamps.append((path, None, None))
+    key = explicit, home, tuple(stamps), os.environ.get('RT_TELEGRAM_ENABLED')
+    return _cached_config(key).model_copy(deep=True)

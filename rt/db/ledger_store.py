@@ -68,3 +68,25 @@ def active_decision_count(lesson_dir: str) -> Optional[int]:
     with session_scope(db) as session:
         lesson = LessonRepository(session).get_by_path(lesson_dir)
         return len(DecisionRepository(session).active(lesson)) if lesson else 0
+
+
+def ledger_version(lesson_dir: str) -> Optional[int]:
+    """Versione durevole fra processi: ogni append e ogni annullamento la fa crescere.
+
+    Gli id non si riutilizzano; le righe annullate restano nel DB. Anche un import
+    da file passa dalle stesse operazioni del repository.
+    """
+    from sqlalchemy import select, func, case
+    from rt.db.models import ReviewDecision as Row
+    from rt.db.session import read_scope
+    db = get_database()
+    if db is None:
+        return None
+    with read_scope(db) as session:
+        lesson = LessonRepository(session).get_by_path(lesson_dir)
+        if lesson is None:
+            return 0
+        return int(session.scalar(select(
+            func.coalesce(func.max(Row.id), 0) +
+            func.coalesce(func.sum(case((Row.reverted_at.is_not(None), 1), else_=0)), 0)
+        ).where(Row.lesson_id == lesson.id)) or 0)

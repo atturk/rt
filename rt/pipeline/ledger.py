@@ -8,6 +8,8 @@ from rt.core.lesson_lock import lesson_locked
 import os
 import re
 import json
+import threading
+from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional, Set
 from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
@@ -214,6 +216,27 @@ def apply_decisions_to_draft(
     return draft.model_copy(update={'units':[by_unit[u.unit_id] for u in draft.units]})
 
 
+_resolved_cache = OrderedDict()
+_resolved_cache_lock = threading.RLock()
+
+
+def _resolved_key(lesson_dir):
+    from rt.pipeline.rewrite import get_draft_path
+    from rt.pipeline.review import get_science_issues_path
+    from rt.db.ledger_store import ledger_version
+    from rt.db.engine import get_database
+    database = get_database()
+    def stamp(path):
+        try:
+            return fs.getmtime(path), fs.getsize(path)
+        except FileNotFoundError:
+            return None
+    return (tuple(stamp(path) for path in (
+        get_draft_path(lesson_dir), get_science_issues_path(lesson_dir),
+        lesson_path(lesson_dir, 'document_edits.json'), get_ledger_path(lesson_dir))),
+        ledger_version(lesson_dir), database.url if database else None)
+
+
 def load_resolved_draft(lesson_dir: str, *, missing_decisions: Optional[Set[str]] = None) -> Draft:
     """Carica il draft con le decisioni del ledger scientifiche già applicate —
     la stessa vista che build.py usa per generare i documenti finali.
@@ -228,11 +251,36 @@ def load_resolved_draft(lesson_dir: str, *, missing_decisions: Optional[Set[str]
 
     from rt.pipeline.document_edits import edited_unit_dates
 
-    draft = load_draft(lesson_dir)
-    ledger = load_ledger(lesson_dir)
-    science_issues = load_science_issues(lesson_dir)
-    return apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir),
-                                    missing_decisions=missing_decisions)
+    from rt.pipeline.review_migration import migrate_review_anchors
+    # La migrazione scrive e prende il lock della lezione: fuori dal lock della
+    # cache, così una decisione che legge il testo non può creare un deadlock.
+    migrate_review_anchors(lesson_dir)
+    path = os.path.realpath(lesson_dir)
+    with _resolved_cache_lock:
+        while True:
+            key = _resolved_key(lesson_dir)
+            cached = _resolved_cache.get(path)
+            if cached is not None and cached[0] == key:
+                _, result, missing = cached
+                _resolved_cache.move_to_end(path)
+                break
+            draft = load_draft(lesson_dir)
+            ledger = load_ledger(lesson_dir, _migrate=False)
+            science_issues = load_science_issues(lesson_dir, _migrate=False)
+            missing = set()
+            result = apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir),
+                                              missing_decisions=missing)
+            # Se una scrittura è arrivata durante la lettura, ricalcola sul nuovo stato.
+            if _resolved_key(lesson_dir) != key:
+                continue
+            _resolved_cache[path] = key, result, missing
+            _resolved_cache.move_to_end(path)
+            while len(_resolved_cache) > 128:
+                _resolved_cache.popitem(last=False)
+            break
+        if missing_decisions is not None:
+            missing_decisions.update(missing)
+        return result.model_copy(deep=True)
 
 
 def resolved_unit_content(lesson_dir: str, issue: ScienceIssue, draft: Optional[Draft] = None) -> Optional[str]:
