@@ -5,6 +5,7 @@ Analizza il draft rielaborato identificando:
 - ERR_CONCETTUALE (incongruenze scientifiche ed errori concettuali nel rielaborato)
 Salva science_issues.json.
 """
+from rt.core.lesson_lock import lesson_locked
 
 import os
 import json
@@ -87,6 +88,7 @@ def load_science_issues(lesson_dir: str, *, _migrate: bool = True) -> List[Scien
     return []
 
 
+@lesson_locked
 def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     path = get_science_issues_path(lesson_dir)
     tmp_path = path + ".tmp"

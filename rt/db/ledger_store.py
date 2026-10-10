@@ -7,6 +7,7 @@ prima si reimporta review_decisions.json se è cambiato fuori da RT (hash divers
 Lesson.ledger_sha), poi si modifica il DB, poi si riesporta il file nello stesso formato di
 sempre. Le decisioni annullate restano nel DB con reverted_at, non nel file.
 """
+from rt.core.lesson_lock import lesson_locked
 import hashlib
 from typing import Any, Callable, Optional
 
@@ -19,6 +20,7 @@ from rt.storage import fs
 NO_DATABASE = object()
 
 
+@lesson_locked
 def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any]) -> Any:
     """Esegue op(repo, lesson) sul DB e, se il risultato è vero (qualcosa è cambiato),
     riesporta il file. NO_DATABASE se il DB non c'è (il chiamante scrive il file come prima)."""

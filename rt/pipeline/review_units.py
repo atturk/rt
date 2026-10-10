@@ -1,4 +1,5 @@
 """Registro delle verifiche per unità; non partecipa alle impronte della pipeline."""
+from rt.core.lesson_lock import lesson_locked
 import json
 from datetime import datetime
 from rt.core.lesson_paths import lesson_path
@@ -14,6 +15,7 @@ def load_review_units(lesson_dir: str) -> dict:
     return data.get('units', {})
 
 
+@lesson_locked
 def save_review_units(lesson_dir: str, units: dict) -> None:
     path = lesson_path(lesson_dir, 'review_units.json')
     with fs.open(path + '.tmp', 'w', encoding='utf-8') as file:
@@ -21,6 +23,7 @@ def save_review_units(lesson_dir: str, units: dict) -> None:
     fs.replace(path + '.tmp', path)
 
 
+@lesson_locked
 def record_review_unit(lesson_dir: str, unit, cfg, client, issues: int, result: str,
                        message: str = None, text_hash: str = None) -> None:
     from rt.pipeline.review import _unit_hashes

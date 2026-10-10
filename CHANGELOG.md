@@ -12,6 +12,8 @@
 
 ### Correzioni
 
+- Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.
+
 - Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
 
 ## 4.2.4b1 — 2026-10-09

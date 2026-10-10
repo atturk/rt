@@ -9,10 +9,9 @@ un lock a file per lezione (.rt.lock), così due processi (CLI, daemon Telegram,
 decidono sulla stessa lezione non si perdono decisioni a vicenda.
 """
 import os
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
-from rt.core.filelock import file_lock
+from rt.core.lesson_lock import lesson_lock
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import ReviewDecision, ScienceIssue
 from rt.pipeline.issue_review import _is_no_diff_issue_type, should_auto_accept_science
@@ -48,12 +47,6 @@ class ReviewDecisionError(ValueError):
         super().__init__(message)
         self.reason = reason
 
-
-@contextmanager
-def lesson_lock(lesson_dir: str) -> Iterator[None]:
-    """Lock esclusivo per lezione, valido tra processi e thread."""
-    with file_lock(fs.lock_path(os.path.join(lesson_dir, LOCK_FILE)), retries=100, backoff=0.05):
-        yield
 
 
 def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=None,

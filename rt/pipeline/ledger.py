@@ -3,6 +3,7 @@ rt.pipeline.ledger
 Gestione deterministica del Decision Ledger (review_decisions.json) e interfaccia Human-in-the-Loop.
 Registra ogni decisione in modo riproducibile e non ri-chiede decisioni già convalidate.
 """
+from rt.core.lesson_lock import lesson_locked
 
 import os
 import re
@@ -41,6 +42,7 @@ def load_ledger(lesson_dir: str, strict: bool = False, *, _migrate: bool = True)
         return DecisionLedger(schema_version="1.0", decisions=[])
 
 
+@lesson_locked
 def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
     """Scrive review_decisions.json (formato storico), senza toccare il DB."""
     path = get_ledger_path(lesson_dir)
@@ -56,6 +58,7 @@ def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
     fs.replace(tmp_path, path)
 
 
+@lesson_locked
 def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     """Sovrascrive il ledger con `ledger` e allinea il DB (che lo reimporta)."""
     write_ledger_file(ledger, lesson_dir)
@@ -64,6 +67,7 @@ def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     dual_write_lesson(lesson_dir)
 
 
+@lesson_locked
 def record_decision(
     lesson_dir: str,
     issue_id: str,
@@ -122,6 +126,7 @@ def record_decision(
 
 
 
+@lesson_locked
 def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
     """Rimuove l'ultima voce per issue_id dal ledger (append-only). Ritorna False se non trovata.
     Con il DB attivo la voce resta nel DB marcata come annullata."""
@@ -142,6 +147,7 @@ def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
     return True
 
 
+@lesson_locked
 def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     """Rimuove dal ledger (append-only) tutte le voci il cui issue_id inizia con prefix. Salva e ritorna il numero di voci rimosse."""
     from rt.db.ledger_store import NO_DATABASE, revert_prefix

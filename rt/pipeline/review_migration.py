@@ -3,6 +3,7 @@
 La logica precedente resta qui esclusivamente per ricostruire le ancore e
 confrontare il testo durante la migrazione, senza alterare la bozza.
 """
+from rt.core.lesson_lock import lesson_locked
 import re
 import threading
 from typing import Dict, List, Optional
@@ -316,6 +317,25 @@ _local = threading.local()
 
 
 def migrate_review_anchors(lesson_dir):
+    """Le letture già migrate non prendono il lock e non creano cartelle."""
+    from rt.pipeline.ledger import load_ledger
+    from rt.pipeline.review import get_science_issues_path
+    from rt.pipeline.rewrite import get_draft_path
+    from rt.storage import fs
+    if lesson_dir in getattr(_local, 'busy', set()):
+        return
+    if not fs.isfile(get_draft_path(lesson_dir)):
+        return
+    ledger = load_ledger(lesson_dir, strict=True, _migrate=False)
+    if ledger.schema_version == '2.0':
+        return
+    if not fs.isfile(get_science_issues_path(lesson_dir)) and not ledger.decisions:
+        return
+    _migrate_review_anchors(lesson_dir)
+
+
+@lesson_locked
+def _migrate_review_anchors(lesson_dir):
     """Alla prima lettura converte file e DB; rientri della sincronizzazione esclusi."""
     from rt.storage import fs
     from rt.pipeline.ledger import load_ledger, save_ledger
