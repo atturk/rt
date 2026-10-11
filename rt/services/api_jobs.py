@@ -497,6 +497,7 @@ for _type in UPLOAD_JOB_TYPES:
 
 def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.classifier_view import run
+    ctx.force_mock = bool(job.payload.get("force_mock") or job.payload.get("mock"))
     with ctx.activate():
         result = run(job.lesson_path,job.payload.get("job"),force=bool(job.payload.get("force")),
                      unit_ids=job.payload.get("unit_ids"),ctx=ctx)

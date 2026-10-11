@@ -17,6 +17,8 @@ router = APIRouter(tags=["impostazioni"])
 # Il router personale entra nello stesso punto di registrazione delle impostazioni.
 from rt.api.routers.preferences import router as preferences_router
 router.include_router(preferences_router)
+from rt.api.routers.question_settings import router as questions_router
+router.include_router(questions_router)
 
 
 class PromptOverrideIn(BaseModel):

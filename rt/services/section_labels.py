@@ -92,7 +92,7 @@ def _config_hash(cfg, types=None, threshold=None):
     from rt.services.custom_question_types import active_types
     types = load_config().recall.custom_types if types is None else types
     return _hash([cfg.relevance_model, cfg.credential, cfg.base_url, LABEL_VERSION,
-                  [(t.id, t.cerca, t.anche_adatti) for t in types],
+                  [(t.id, t.nome, t.cerca, t.anche_adatti) for t in types],
                   load_config().recall.custom_type_threshold if threshold is None else threshold])
 
 
@@ -118,7 +118,7 @@ def _mock_labels(section, types):
             else "nessuno" for t in types}
 
 
-def _classify(lesson_dir, section, cfg, types):
+def _classify(lesson_dir, section, cfg, types, *, persist_cost=True):
     from rt.llm import jev_client
     from rt.services.recall_context import context_block, lesson_context
     criteria = {t.id: t.cerca + (" Sono inclusi contenuti adatti senza un esempio esplicito." if t.anche_adatti
@@ -129,7 +129,7 @@ def _classify(lesson_dir, section, cfg, types):
         state=context_block(lesson_context(lesson_dir)) + "\n\n" + section_text(section),
         questions={'tipo': jev_client.JevChoiceQuestion(
             instructions="Valuta quali tipi di domanda sono presenti o adatti nella sezione. Distribuisci la probabilità fra le etichette.",
-            criteria=criteria)}, job_name='section_labels', unit_id=section['id'], lesson_dir=lesson_dir,
+            criteria=criteria)}, job_name='section_labels', unit_id=section['id'], lesson_dir=lesson_dir if persist_cost else None,
         model=routing.relevance_model, credential=routing.credential, base_url=routing.base_url,
         timeout_seconds=routing.timeout_seconds)
     answer = response.answers.get('tipo')

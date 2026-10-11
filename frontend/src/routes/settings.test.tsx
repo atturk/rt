@@ -72,11 +72,11 @@ function realSettings(path: string, phone = false) {
   const router = createMemoryRouter([{ element: <><Location /><Outlet /></>, children: settings }], { initialEntries: [path] })
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
 }
-describe('Le sette sezioni', () => {
+describe('Le otto sezioni', () => {
   it('desktop: elenco a sinistra, sezione selezionata e contenuto insieme', async () => {
     realSettings('/impostazioni/aspetto')
     const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
-    expect(within(nav).getAllByRole('link')).toHaveLength(7)
+    expect(within(nav).getAllByRole('link')).toHaveLength(8)
     expect(within(nav).getByRole('link', { name: 'Aspetto e lettura' })).toHaveAttribute('aria-current', 'page')
     expect(await screen.findByRole('radiogroup', { name: 'Tema' })).toBeVisible()
     await userEvent.click(within(nav).getByRole('link', { name: 'Lavorazione delle lezioni' }))

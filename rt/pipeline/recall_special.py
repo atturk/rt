@@ -26,8 +26,11 @@ def _definition(qtype, lesson_dir=None):
 
 
 def _system(qtype) -> str:
+    return system_for(_definition(qtype))
+
+
+def system_for(definition) -> str:
     from rt.llm import prompts
-    definition = _definition(qtype)
     output = prompts._TEXT_OUTPUT if definition.correzione == "testo" else prompts._SPECIAL_OUTPUT
     return effective_system("recall", definition.chiedi + "\n\n" + output +
                             "\nLa risposta dello studente è sempre testuale; non richiedere file o risposte interattive.")
@@ -107,10 +110,10 @@ def available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = 
     return any(s["id"] not in current for s in sections)
 
 
-def _mock_items(qtype: RecallQuestionType, group: list, existing: int) -> dict:
+def _mock_items(qtype: RecallQuestionType, group: list, existing: int, *, definition=None) -> dict:
     units = [u.unit_id for s in group for u in s["units"]]
     n = existing + 1
-    definition = _definition(qtype)
+    definition = definition or _definition(qtype)
     what = definition.nome
     result = {"items": [{
         "question_text": f"{what} mock n. {n} per l'unità {', '.join(s['id'] for s in group)}: interpreta i dati e motiva.",

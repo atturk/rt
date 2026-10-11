@@ -30,6 +30,7 @@ async function pages(page: Page): Promise<[string, string][]> {
     ['bot', '/impostazioni/bot'],
     ['dettaglio di un job (inesistente)', '/job/non-esiste'],
     ['impostazioni', '/impostazioni'],
+    ['domande personalizzate', '/impostazioni/domande'],
     ['modelli', '/impostazioni/modelli'],
     ['chiavi', '/impostazioni/chiavi'],
     ['costi', '/impostazioni/costi'],

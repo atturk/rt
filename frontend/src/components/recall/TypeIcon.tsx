@@ -1,6 +1,5 @@
-import { BookOpen, Brain, Calculator, Code, Database, History, ListChecks, ListTree, MessageSquare, Sigma, Stethoscope } from 'lucide-react'
-
-const icons = { BookOpen, Brain, Calculator, Code, Database, History, ListChecks, ListTree, MessageSquare, Sigma, Stethoscope }
+import { MessageSquare } from 'lucide-react'
+import { icons } from '@/lib/typeIcons'
 
 /** Il nome dell'icona arriva dal registro; i nomi sconosciuti usano l'icona di domanda. */
 export function TypeIcon({ name, className = 'size-4 shrink-0' }: { name?: string | null; className?: string }) {

@@ -30,10 +30,12 @@ def overview(lesson_dir):
     sections = sl.sections(lesson_dir, units)
     owner = {u.unit_id: s["id"] for s in sections for u in s["units"]}
     relevance, types, labels, prefilter = rel._load(lesson_dir, view), qt._load(lesson_dir), sl._load(lesson_dir), pf.load(lesson_dir)
-    section_hashes = {s["id"]: sl._section_hash(lesson_dir, s) for s in sections}
-    effective_labels = sl.labels(lesson_dir, sections=sections)
     from rt.services.custom_question_types import active_types
     custom = {'custom:' + t.id: t for t in active_types(lesson_dir=lesson_dir, cfg=cfg)}
+    # Le etichette sono calcolate sul testo risolto, anche se la rilevanza è ancora sulla bozza.
+    custom_sections = sl.sections(lesson_dir) if custom else []
+    section_hashes = {s["id"]: sl._section_hash(lesson_dir, s) for s in custom_sections}
+    effective_labels = sl.labels(lesson_dir, sections=custom_sections)
     allowed = rel.included_ids(lesson_dir, units, view=view, records=relevance, cfg=classifier_jev(cfg,"relevance"))
     from rt.services import enrichment_service as es
     enrichment = es.load(lesson_dir)
@@ -42,7 +44,7 @@ def overview(lesson_dir):
     for name, config_name in jobs_for(lesson_dir, cfg).items():
         job = classifier_job(cfg, config_name)
         cells, stamps = [], []
-        for item in sections if name in custom else units:
+        for item in custom_sections if name in custom else units:
             sid = item["id"] if isinstance(item, dict) else None
             uid = None if sid else item.unit_id
             row, value, manual, fresh, skipped, options, confidence = {}, None, False, False, False, [], None

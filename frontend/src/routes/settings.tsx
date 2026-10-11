@@ -14,6 +14,7 @@ import { AppearanceSection, OutlineSettingsSection } from '@/components/settings
 import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
+import { QuestionsSettingsSection } from '@/components/settings/questions'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
 import { TelegramBotPanel } from '@/components/TelegramBotPanel'
@@ -92,6 +93,7 @@ export function SettingsIndexPage() {
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
+export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
   return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /><WorkerSection settings={s} /></>)

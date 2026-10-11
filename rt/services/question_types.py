@@ -69,7 +69,7 @@ def _sections(lesson_dir, units):
 
 def _mock(unit, criteria):
     custom = [kind for kind in criteria if kind not in CRITERIA]
-    kind = custom[0] if custom else ("quiz" if int(hashlib.sha256(unit.unit_id.encode()).hexdigest(), 16) % 2 else "mirata")
+    kind = custom[0] if custom else "quiz"
     return {"candidate": kind, "confidence": .9,
             "probabilities": {k: .85 if k == kind else .05 for k in criteria}}
 

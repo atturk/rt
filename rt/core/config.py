@@ -497,12 +497,20 @@ class CustomQuestionType(BaseModel):
             for key in ("nome", "icona", "cerca", "chiedi"):
                 if isinstance(data.get(key), str):
                     data[key] = data[key].strip()
-            if not data.get("id"):
+            if not data.get("id") and isinstance(data.get("nome"), str):
                 import re
                 import unicodedata
                 name = unicodedata.normalize("NFKD", data.get("nome", "")).encode("ascii", "ignore").decode().lower()
                 data["id"] = re.sub(r"[^a-z0-9]+", "-", name).strip("-")
-            data["materie"] = list(dict.fromkeys(m.strip() for m in data.get("materie", []) if m.strip()))
+            if isinstance(data.get("materie"), list):
+                cleaned = []
+                for materia in data["materie"]:
+                    if isinstance(materia, str):
+                        materia = materia.strip()
+                        if not materia or materia in cleaned:
+                            continue
+                    cleaned.append(materia)
+                data["materie"] = cleaned
         return data
 
     @field_validator("id")

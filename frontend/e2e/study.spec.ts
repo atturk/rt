@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, serverState } from './support'
+import { test, apiGet, authHeaders, answerAndSee, loginViaLink, serverState } from './support'
 
 // Studio del design 4.2 (schermate 05, 05b e 06): lettura dell'unità, poi le sue domande una
 // alla volta, poi l'unità dopo. Si entra dalle righe e dai gruppi di Lezioni e dall'intestazione
@@ -649,9 +649,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
   try {
     const history = await apiGet<{ questions: { id: string; unit_ids: string[] }[] }>(page.request, `/lessons/${l.id}/recall/history`)
     for (const question of history.questions.filter(q => q.unit_ids.includes(unit.id))) {
-      expect((await page.request.post(`/api/v1/lessons/${l.id}/recall/questions/${question.id}/status`, {
-        headers: authHeaders(), data: { status: 'asked' },
-      })).ok()).toBeTruthy()
+      await answerAndSee(page.request, l.id, question.id)
     }
     const accepted = await page.request.post(`/api/v1/lessons/${l.id}/recall/generate`, {
       headers: authHeaders(), data: { qtype: 'consigliato', unit_ids: [unit.id], count: 1 },

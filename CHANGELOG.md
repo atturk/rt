@@ -4,6 +4,8 @@
 
 ### Novità
 
+- Impostazioni › Domande permette di creare e modificare tipi per materia, copiarli dalla galleria, provarli su un’unità senza salvare l’esempio e scambiarli come file JSON.
+
 - Il tipo consigliato, i controlli Genera e il ripasso includono i tipi personalizzati della materia. I tipi senza unità marcate restano spenti; si possono comunque usare sulle unità scelte a mano.
 - Le domande dei tipi eliminati restano consultabili nello storico sotto “Tipo eliminato”.
 
