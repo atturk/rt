@@ -698,11 +698,19 @@ seguendo il run fino alla fine.
 ## 4.2.4b3 — domande personalizzate e Verifica e Chiedi
 
 Lavora **solo Codex**, con **una PR** sul branch `rt424b3/codex` (creato da `claude/rt-4.2.4-beta` dopo
-la v4.2.4b2). Ordine: prima DP1 (il tema della beta), poi VC1, che è già descritto nella sezione b2 e
-non cambia.
+la v4.2.4b2). Ordine: prima le correzioni R1-R8 dal riscontro di Attilio sulla b2 (11 ottobre), poi
+DP1 (il tema della beta), poi VC1, che è già descritto nella sezione b2 e non cambia.
 
 | Id | Cosa |
 |---|---|
+| R1 | Menu a icona che escono dal pannello e restano nello schermo |
+| R2 | Voce Qualità ASR con i tratti da ascoltare, solo "Ho controllato" |
+| R3 | "Testo cambiato" deciso dal server |
+| R4 | Riesegui senza conferma, Esegui senza classificatore |
+| R5 | Icona dell'ordine che cambia |
+| R6 | Domande poste e domande risposte nel recall |
+| R7 | Novità con le caselle da spuntare |
+| R8 | Motivazione in frasi complete nel prompt della verifica |
 | DP1a | Registro dei tipi personalizzati, via caso ed esercizio dal codice |
 | DP1b | Classificatore a etichette per materia, pannello Classificatore con una riga per tipo |
 | DP1c | Tipo consigliato che sceglie fra quiz, mirata e i tipi trovati nell'unità |
@@ -742,6 +750,73 @@ vale questo piano).
 - Le domande `caso`/`esercizio` esistenti si tolgono alla migrazione, come l'eliminazione di una domanda
   di oggi. Le etichette di `section_labels.json` vecchie si scartano: le lezioni si riclassificano alla
   prima occasione (generazione o bottone del pannello).
+
+### R1-R8 — Correzioni dal riscontro della b2
+
+Wireframe `RT-verifica-asr.html` (tre pannelli: voce ASR, testo cambiato, menu e ordine). Risposte di
+Attilio dell'11 ottobre: il testo grezzo dei tratti ASR resta; le unità senza contenuto didattico restano
+escluse dalle esecuzioni sulla lezione; per il recall restano i pulsanti di oggi, cambia il comportamento
+(e qualche tooltip). Niente stati o controlli nuovi oltre a quelli scritti qui.
+
+**R1 — Menu.** `MenuButton` e `LinkMenuButton` (`components/ui/menu.tsx`) si aprono in un portale sopra la
+pagina, allineati al pulsante, e si spostano (sopra/sotto, sinistra/destra) per restare dentro lo schermo,
+come il `Tooltip`. Vale per tutti i menu a icona (Verifica, unità, Esporta, Ordina, impostazioni). Tastiera e
+chiusura come oggi. e2e: i menu ⋯ del pannello Verifica e il menu Esporta interamente visibili a 1280 e 390 px.
+
+**R2 — Voce Qualità ASR.**
+1. `detect_statistical_asr_risks` (`rt/core/asr_risk.py`) salva nell'issue tutti i segmenti degradati
+   dell'unità, non solo il peggiore: per ognuno inizio e fine, confidenza, soglia, testo grezzo e, se il
+   file della trascrizione ha la confidenza per parola, gli intervalli delle parole sotto soglia. Campo
+   nuovo e facoltativo su `ScienceIssue`; le issue vecchie mostrano il solo segmento che hanno.
+2. Nel pannello: un tratto per segmento, in ordine di tempo, con orario, barra della confidenza rispetto alla
+   soglia, testo grezzo con le parole incerte sottolineate e "Ascolta il tratto", che suona dall'inizio alla
+   fine del segmento e si ferma.
+3. Via il box con il testo dell'unità e la matita per le issue senza sostituzione (`_is_no_diff_issue_type`:
+   ASR statistica e deriva della riscrittura). Unica azione "Ho controllato": registra `accepted` **senza**
+   testo e non cambia la bozza. Le modifiche si fanno nell'editor. Le decisioni `edited` vecchie con il testo
+   dell'unità restano valide e si applicano come oggi.
+
+**R3 — Testo cambiato.** La risposta delle issue (`GET /lessons/{id}/issues`) riporta per ogni issue aperta
+o da riconfermare `quote_status: found | changed`, calcolato con lo stesso `locate` che applica le
+decisioni sul testo risolto. Il pannello usa solo quello (via il confronto esatto nel browser,
+`issueRange` in `ReviewPanel.tsx`). Una voce `changed` mostra "Testo cambiato", "Chiudi" (rifiuta) e
+"Verifica di nuovo l'unità". Dopo un salvataggio dall'editor si ricaricano issue e unità. Test: modifica a
+mano del passaggio di un errore aperto → `changed`; modifica altrove nella stessa unità → `found`.
+
+**R4 — Riesecuzione.**
+1. Menu ⋯ dell'unità: "Riesegui l'unità" (con il classificatore preventivo, come oggi) parte subito, senza
+   conferma, ed è spenta con tooltip se l'unità non è mai stata verificata. "Esegui senza classificatore"
+   salta il prefiltro (`classifier_job(cfg, "prefilter")`): l'unità va al revisore come se fosse marcata da
+   rivedere.
+2. Le unità escluse perché senza contenuto didattico ricevono anche loro il menu ⋯ con il solo "Esegui senza
+   classificatore", che per quella esecuzione ignora anche l'esclusione (Attilio: un'unità esclusa si deve
+   poter rivedere da sola). L'icona del Classificatore resta.
+3. Menu ⋯ in alto: "Riesegui tutta la lezione" parte subito, senza conferma, ed è spenta finché una verifica
+   completa non è mai finita. "Esegui senza classificatore" rifà tutte le unità saltando il prefiltro; le
+   unità escluse restano escluse.
+4. Opzioni nel payload del job (`skip_prefilter`, `include_excluded` solo per l'unità singola), lette da
+   `run_review_unit` e `_run_review`. Le decisioni restano registrate come oggi. Via i dialoghi di conferma.
+
+**R5 — Ordine.** L'icona del pulsante dice l'ordine attuale: orologio (`Clock`) per cronologico, triangolo
+(`TriangleAlert`) per gravità. Tooltip come oggi.
+
+**R6 — Domande poste e risposte.**
+1. Una domanda posta e non risposta resta nel pool attivo: rientrando nel ripasso torna per prima, prima di
+   quelle mai poste.
+2. Diventa risposta nel momento in cui lo studente vede la soluzione o la valutazione (quiz: alla scelta;
+   mirata, vasta e personalizzate: quando compare la valutazione o la soluzione), senza aspettare
+   "Prossima". Uscire, saltare o terminare dopo averla vista non la lascia posta.
+3. In fondo al pannello Domande restano i due pulsanti di oggi: quello di `RotateCcw` rimette in gioco
+   tutte le **risposte** (tooltip "Riproponi le risposte"), quello di `CircleX` solo le sbagliate. I contatori
+   seguono. Telegram (deprecato) non cambia.
+4. Test: posta, esci, rientra → stessa domanda; valutazione vista e uscita → risposta; i due ripristini.
+
+**R7 — Novità con le caselle.** In Impostazioni › Info ogni voce del changelog ha una casella al posto del
+punto; spuntata, la voce è barrata. Lo stato resta nel browser (`localStorage`, chiave per versione e testo
+della voce), con try/catch. Nessun testo in più.
+
+**R8 — Motivazione.** In `SCIENCE_REVIEW_SYSTEM_PROMPT` la motivazione è "una o due frasi complete". Nessun
+controllo nel codice.
 
 ### DP1a — Registro dei tipi
 
@@ -831,6 +906,6 @@ Le righe di questa beta vanno nella sezione `## 4.2.4b3` di `CHANGELOG.md`, scri
 
 ### Revisione e merge (Claude)
 
-Claude rivede la PR, prova nel browser la creazione di un tipo, il pannello Classificatore, Genera e VC1,
+Claude rivede la PR, prova nel browser R1-R7, la creazione di un tipo, il pannello Classificatore, Genera e VC1,
 unisce in `claude/rt-4.2.4-beta`, porta `VERSION` a `4.2.4b3`, fa girare la suite completa in locale e
 pubblica con release.yml seguendo il run fino alla fine.
