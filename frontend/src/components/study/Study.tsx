@@ -349,10 +349,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         changeStatus()
         if (zenMode) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
       } else if (e.key === 'Escape') {
-        if (hlMode !== null) {
+        if (popupState?.open) {
           e.preventDefault()
+          setPopupState(null)
+        } else if (hlMode === 'verifica' || hlMode === 'chiedi') {
+          e.preventDefault()
+          const currentMode = hlMode
           setHlMode(null)
-          if (zenMode) setNotice({ kind: 'pen', off: true, label: 'Strumento spento' })
+          if (zenMode) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
         } else if (zenMode) {
           e.preventDefault()
           toggleZen()
