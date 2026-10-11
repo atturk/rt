@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, Eraser, Gauge, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons } from '@/api/hooks'
@@ -10,13 +10,15 @@ import { useLessonJump } from '@/lib/useLessonJump'
 import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage, unwrap } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import {
   recallKeys, useGenerateForUnits, useStudyLesson,
   type RecallType, type StudyUnit,
 } from '@/api/recall'
 import { useQueryClient } from '@tanstack/react-query'
+import { useStudyNotes, useApplyStudyNote, useUndoStudyNote, studyNotesApi, studyNotesKeys, type StudyNote } from '@/api/studyNotes'
+import { StudyNotePopup } from './StudyNotePopup'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { LightweightSession } from '@/components/recall/LightweightSession'
 import { Alert } from '@/components/ui/alert'
@@ -208,7 +210,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const frame = requestAnimationFrame(restore)
     return () => cancelAnimationFrame(frame)
   }, [zenMode, phase, rereading])
-  const [notice, setNotice] = useState<{ kind: 'status' | 'pen' | 'eraser'; label: string; off?: boolean; color?: number; status?: StudyUnit['status'] } | null>(null)
+  const [notice, setNotice] = useState<{ kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi'; label: string; off?: boolean; color?: number; status?: StudyUnit['status'] } | null>(null)
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(null), 1200)
@@ -233,6 +235,83 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     mode: hlMode, color: highlighterPrefs.color,
   })
   const arrows = highlighterPrefs.arrows
+
+  const queryClient = useQueryClient()
+  const studyNotesQuery = useStudyNotes(lesson?.id)
+  const applyNoteMutation = useApplyStudyNote(lesson?.id ?? 0)
+  const undoNoteMutation = useUndoStudyNote(lesson?.id ?? 0)
+  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const [popupState, setPopupState] = useState<{
+    open: boolean
+    kind: 'verifica' | 'chiedi'
+    unitId: string
+    quote: string
+    anchor?: { quote: string; prefix: string; suffix: string; start: number; end: number }
+    anchorRect?: DOMRect | null
+    note?: StudyNote | null
+    isWaiting?: boolean
+  } | null>(null)
+
+  const handleSendNote = async (request: string) => {
+    if (!lesson || !popupState || !popupState.anchor) return
+    setPopupState((prev) => (prev ? { ...prev, isWaiting: true } : null))
+    try {
+      const accepted = await studyNotesApi.create(lesson.id, {
+        unit_id: popupState.unitId,
+        kind: popupState.kind,
+        anchor: popupState.anchor,
+        request,
+      })
+      const jobId = accepted.job_id
+      const pollStart = Date.now()
+      while (Date.now() - pollStart < 60000) {
+        await new Promise((r) => setTimeout(r, 600))
+        const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } }))
+        if (job.state === 'succeeded' || job.state === 'done') {
+          await queryClient.invalidateQueries({ queryKey: studyNotesKeys.all(lesson.id) })
+          const notes = await studyNotesApi.list(lesson.id)
+          const resObj = job.result as { note_id?: number; id?: number; note?: StudyNote } | undefined
+          const noteResultId = resObj?.note_id ?? resObj?.id ?? resObj?.note?.id
+          const found = (noteResultId ? notes.find((n) => n.id === noteResultId) : undefined) ?? resObj?.note ?? notes[0]
+          if (found) {
+            setPopupState((prev) => (prev ? { ...prev, isWaiting: false, note: found } : null))
+          }
+          break
+        } else if (job.state === 'failed' || job.state === 'cancelled') {
+          throw new Error(job.error || 'Operazione non riuscita')
+        }
+      }
+    } catch (error) {
+      setPopupState((prev) => (prev ? { ...prev, isWaiting: false } : null))
+      setToast({ message: errorMessage(error) })
+    }
+  }
+
+  const handleApplyNote = async (noteId: number) => {
+    if (!lesson) return
+    try {
+      const applied = await applyNoteMutation.mutateAsync(noteId)
+      setPopupState((prev) => {
+        if (!prev || !prev.note || prev.note.id !== noteId) return prev
+        return { ...prev, note: applied.note }
+      })
+      setToast({
+        message: 'Correzione applicata · decisione nella Verifica con LLM',
+        actionLabel: 'Annulla',
+        onAction: () => {
+          undoNoteMutation.mutate(noteId)
+        },
+      })
+    } catch (error) {
+      setToast({ message: errorMessage(error) })
+    }
+  }
 
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
@@ -260,12 +339,31 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
         if (zenMode) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
           label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
+      } else if (key === 'v' || key === 'c') {
+        e.preventDefault()
+        const mode = key === 'v' ? 'verifica' : 'chiedi'
+        const next = hlMode === mode ? null : mode
+        setHlMode(next)
+        if (zenMode) setNotice({ kind: mode, off: next === null,
+          label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
         changeStatus()
         if (zenMode) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
-      } else if (e.key === 'Escape' && zenMode) { e.preventDefault(); toggleZen() }
-      else if (arrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      } else if (e.key === 'Escape') {
+        if (popupState?.open) {
+          e.preventDefault()
+          setPopupState(null)
+        } else if (hlMode === 'verifica' || hlMode === 'chiedi') {
+          e.preventDefault()
+          const currentMode = hlMode
+          setHlMode(null)
+          if (zenMode) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
+        } else if (zenMode) {
+          e.preventDefault()
+          toggleZen()
+        }
+      } else if (arrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
       }
@@ -382,7 +480,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const headerActions = (
-    <div className="flex items-center gap-1.5 max-md:gap-0" data-testid="study-header-tools">
+    <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
       <HighlightTools
         mode={hlMode}
@@ -453,8 +551,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
           notice={zenMode && notice ? <div className="fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel" data-testid="zen-notice" aria-hidden>
             {notice.kind === 'status' ? <StudyStatusIcon status={notice.status} /> : <div className="relative">
-              {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : <Eraser className="size-6" />}
-              {notice.off && <Slash className="absolute inset-0 size-6" />}
+              {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
+              {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
               {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
             </div>}
           </div> : undefined}
@@ -484,6 +582,38 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                 onClose={() => setDetailsOpen(false)}
                 anchorRef={titleButtonRef}
               />
+              )}
+              {popupState?.open && (
+                <StudyNotePopup
+                  open={popupState.open}
+                  onClose={() => setPopupState(null)}
+                  kind={popupState.kind}
+                  unitId={popupState.unitId}
+                  quote={popupState.quote}
+                  note={popupState.note}
+                  anchorRect={popupState.anchorRect}
+                  isWaiting={popupState.isWaiting}
+                  isApplying={applyNoteMutation.isPending}
+                  onSend={handleSendNote}
+                  onApply={handleApplyNote}
+                />
+              )}
+              {toast && (
+                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2">
+                  <span>{toast.message}</span>
+                  {toast.actionLabel && toast.onAction && (
+                    <button
+                      type="button"
+                      className="font-semibold underline underline-offset-2 hover:opacity-80"
+                      onClick={() => {
+                        toast.onAction?.()
+                        setToast(null)
+                      }}
+                    >
+                      {toast.actionLabel}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           }
@@ -518,7 +648,37 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
           <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
           <span className="sr-only" aria-live="polite">{zenMode ? notice?.label : null}</span>
-          <UnitText key={`${lesson!.id}-${unit.id}`} lessonId={lesson!.id} unit={live} highlightMode={hlMode} onReady={setTextRoot} />
+          <UnitText
+            key={`${lesson!.id}-${unit.id}`}
+            lessonId={lesson!.id}
+            unit={live}
+            highlightMode={hlMode}
+            onReady={setTextRoot}
+            notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
+            onNoteClick={(note, rect) => {
+              setPopupState({
+                open: true,
+                kind: note.kind,
+                unitId: note.unit_id,
+                quote: String(note.current_quote || (note.anchor as { quote?: string } | undefined)?.quote || ''),
+                note,
+                anchorRect: rect,
+              })
+            }}
+            onSelection={(quote, anchor, rect) => {
+              if (hlMode === 'verifica' || hlMode === 'chiedi') {
+                setPopupState({
+                  open: true,
+                  kind: hlMode,
+                  unitId: unit.id,
+                  quote,
+                  anchor,
+                  anchorRect: rect,
+                  note: null,
+                })
+              }
+            }}
+          />
         </StudyShell>
       </div>
       {phase === 'domande' && (
@@ -695,7 +855,7 @@ function StudyShell({
 }) {
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-rsvp={rsvp || undefined} data-zen={zen || undefined} style={zen && zenMinHeight ? { minHeight: zenMinHeight } : undefined}>
-      <div className="rt-study-classic-header sticky top-0 z-20" aria-hidden={zen || undefined} inert={zen || undefined}><PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" /></div>
+      <div className="rt-study-classic-header sticky top-0 z-20" aria-hidden={zen || undefined} inert={zen || undefined}><PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:px-2 max-md:[--control-size:32px] [&_h1]:max-md:min-w-0 [&_h1]:max-md:text-meta" /></div>
       {zenBar}
       {notice}
       {popup}
@@ -746,12 +906,15 @@ function ReadingSkeleton() {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-function UnitText({ lessonId, unit, highlightMode, onReady }: {
+function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, onSelection }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
   /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
   onReady: (root: HTMLElement | null) => void
+  notes?: StudyNote[]
+  onNoteClick?: (note: StudyNote, rect: DOMRect) => void
+  onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -764,11 +927,130 @@ function UnitText({ lessonId, unit, highlightMode, onReady }: {
       onReady(null)
     }
   }, [unit.html, onReady])
+
+  useEffect(() => {
+    const root = ref.current
+    if (!root || !notes || !notes.length) return
+
+    const existing = root.querySelectorAll('.rt-sn')
+    existing.forEach((span) => {
+      const parent = span.parentNode
+      if (!parent) return
+      while (span.firstChild) {
+        parent.insertBefore(span.firstChild, span)
+      }
+      span.remove()
+    })
+    root.normalize()
+
+    for (const n of notes) {
+      if (n.anchor_state === 'non_ritrovata') continue
+      // L'ancora è sul markdown: nel testo reso grassetto, corsivo e codice non hanno i segni.
+      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
+      if (!targetQuote) continue
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let node = walker.nextNode() as Text | null
+      let found = false
+      while (node && !found) {
+        const idx = node.textContent?.indexOf(targetQuote) ?? -1
+        if (idx !== -1) {
+          try {
+            const range = document.createRange()
+            range.setStart(node, idx)
+            range.setEnd(node, idx + targetQuote.length)
+            const span = document.createElement('span')
+            let cls = 'rt-sn ' + (n.kind === 'verifica' ? 'rt-sn-v' : 'rt-sn-c')
+            if (n.kind === 'verifica' && n.response?.esito === 'errato') cls += ' rt-sn-bad'
+            if (n.anchor_state === 'cambiata') cls += ' rt-sn-changed'
+            span.className = cls
+            span.dataset.noteId = String(n.id)
+            range.surroundContents(span)
+            found = true
+          } catch {
+            //
+          }
+          break
+        }
+        node = walker.nextNode() as Text | null
+      }
+    }
+  }, [notes, unit.html])
+
+  const handleMouseUp = () => {
+    if (highlightMode !== 'verifica' && highlightMode !== 'chiedi') return
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return
+    const text = sel.toString().trim()
+    if (!text) return
+
+    const range = sel.getRangeAt(0)
+    const root = ref.current
+    if (!root || !root.contains(range.commonAncestorContainer)) return
+
+    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let offset = 0
+    let startOffset = -1
+    let endOffset = -1
+    let curr = treeWalker.nextNode()
+    while (curr) {
+      if (curr === range.startContainer) {
+        startOffset = offset + range.startOffset
+      }
+      if (curr === range.endContainer) {
+        endOffset = offset + range.endOffset
+        break
+      }
+      offset += curr.textContent?.length || 0
+      curr = treeWalker.nextNode()
+    }
+
+    if (startOffset === -1 || endOffset === -1 || startOffset >= endOffset) return
+    const fullText = root.textContent || ''
+    const quote = fullText.slice(startOffset, endOffset).trim()
+    if (!quote) return
+
+    const prefix = fullText.slice(Math.max(0, startOffset - 40), startOffset)
+    const suffix = fullText.slice(endOffset, endOffset + 40)
+    const rect = range.getBoundingClientRect()
+    sel.removeAllRanges()
+
+    onSelection?.(quote, {
+      quote,
+      prefix,
+      suffix,
+      start: startOffset,
+      end: endOffset,
+    }, rect)
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('.rt-sn')
+    if (target && target.dataset.noteId && notes) {
+      const noteId = Number(target.dataset.noteId)
+      const found = notes.find((n) => n.id === noteId)
+      if (found) {
+        e.preventDefault()
+        e.stopPropagation()
+        onNoteClick?.(found, target.getBoundingClientRect())
+      }
+    }
+  }
+
   return (
     <section aria-labelledby="study-unit-title">
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
-      <div ref={ref} className="rt-document rt-reading" data-testid="study-text" data-unit-id={unit.id} data-hl-mode={highlightMode === 'gomma' ? 'erase' : undefined}
-        dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }} />
+      <div
+        ref={ref}
+        className="rt-document rt-reading"
+        data-testid="study-text"
+        data-unit-id={unit.id}
+        data-hl-mode={highlightMode === 'gomma' ? 'erase' : highlightMode === 'verifica' ? 'verifica' : highlightMode === 'chiedi' ? 'chiedi' : undefined}
+        onMouseUp={handleMouseUp}
+        onTouchEnd={handleMouseUp}
+        onClick={handleClick}
+        dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }}
+      />
     </section>
   )
 }
@@ -1102,10 +1384,10 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
       window.removeEventListener('mousedown', onClick)
     }
   }, [confirm])
-  const segment = 'relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+  const segment = 'relative inline-flex size-8 max-md:size-7 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
   return (
-    <div className="relative flex items-center gap-1" ref={ref}>
-      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5" data-testid="highlight-tools">
+    <div className="relative flex items-center gap-1 max-md:gap-0.5" ref={ref}>
+      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5 max-md:p-0" data-testid="highlight-tools">
         <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo · E`}>{(trigger) => <button
           {...trigger}
           type="button"
@@ -1123,8 +1405,31 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           data-testid="highlight-eraser" className={segment} onClick={() => onMode(mode === 'gomma' ? null : 'gomma')}>
           <Eraser className="size-4" aria-hidden />
         </button>}</Tooltip>
+        <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
+        <Tooltip content="Verifica · V · seleziona il testo da verificare">{(trigger) => <button
+          {...trigger}
+          type="button"
+          aria-pressed={mode === 'verifica'}
+          aria-label="Verifica"
+          data-testid="highlight-verifica"
+          className={segment}
+          onClick={() => onMode(mode === 'verifica' ? null : 'verifica')}
+        >
+          <CheckCircle2 className="size-4" aria-hidden />
+        </button>}</Tooltip>
+        <Tooltip content="Chiedi · C · seleziona il testo da farti spiegare">{(trigger) => <button
+          {...trigger}
+          type="button"
+          aria-pressed={mode === 'chiedi'}
+          aria-label="Chiedi"
+          data-testid="highlight-chiedi"
+          className={segment}
+          onClick={() => onMode(mode === 'chiedi' ? null : 'chiedi')}
+        >
+          <HelpCircle className="size-4" aria-hidden />
+        </button>}</Tooltip>
       </div>
-      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" />
+      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" className="max-md:size-7 max-md:min-w-7" />
       {confirm && (
         <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
           <p>Togli tutte le evidenziazioni di questa unità?</p>

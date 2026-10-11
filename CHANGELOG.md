@@ -1,31 +1,29 @@
 # Novità di RT
 
-## 4.2.4b3 — 2026-10-11
+## 4.2.4b3 — 2026-10-12
 
 ### Novità
 
-- Impostazioni › Domande permette di creare e modificare tipi per materia, copiarli dalla galleria, provarli su un’unità senza salvare l’esempio e scambiarli come file JSON.
-
-- Il tipo consigliato, i controlli Genera e il ripasso includono i tipi personalizzati della materia. I tipi senza unità marcate restano spenti; si possono comunque usare sulle unità scelte a mano.
-- Le domande dei tipi eliminati restano consultabili nello storico sotto “Tipo eliminato”.
-
-- Il Classificatore mostra una riga per ogni tipo di domanda della materia, con nome, icona e correzioni “Presente” o “Nessuno”.
-
-- Registro di tipi di domanda personalizzati per materia, con modelli pronti da copiare e criteri di generazione e correzione modificabili.
+- Nello Studio arrivano Verifica (V) e Chiedi (C): selezioni un passaggio e chiedi se è corretto o di spiegartelo. Se la verifica trova un errore puoi applicare la correzione con un clic e annullarla dal messaggio in basso.
+- I passaggi verificati o chiesti restano sottolineati nello Studio e nell'editor. In Dettagli il pannello "Verifiche e domande" li raccoglie per unità, con le risposte, "Vai all'unità" ed Elimina.
+- Tipi di domanda personalizzati: in Impostazioni › Domande crei tipi per materia (o li copi dalla galleria, per esempio Caso clinico, Esercizio, Query SQL), li provi su un'unità senza salvare niente e li scambi come file JSON.
+- Il Classificatore mostra una riga per ogni tipo della materia, con "Presente" o "Nessuno". Il tipo consigliato, Genera e il ripasso propongono i tipi personalizzati trovati nell'unità.
 
 ### Cambiamenti
 
-- Le vecchie domande caso ed esercizio vengono rimosse e le vecchie etichette saranno ricalcolate. I tipi trovati nelle lezioni esistenti vengono copiati nel registro delle loro materie.
+- Caso ed esercizio non sono più tipi fissi: le vecchie domande di questi tipi vengono tolte e, nelle materie dove c'erano, Caso clinico ed Esercizio diventano tipi personalizzati modificabili.
+- Le domande dei tipi eliminati restano consultabili nello storico sotto "Tipo eliminato".
 
 ### Correzioni
 
-- Il ripasso riprende per prime le domande lasciate senza risposta. La soluzione o la valutazione le segna subito come risposte; puoi rimettere in gioco tutte le risposte oppure solo quelle sbagliate.
-
-- L’icona dell’ordine della verifica mostra un orologio per l’ordine cronologico e un triangolo per la gravità. Nelle Novità puoi spuntare e barrare le voci già lette, con memoria nel browser. Le motivazioni delle correzioni sono richieste in frasi complete.
-- Riesegui subito la verifica dal menu, oppure invia le unità al revisore senza il classificatore preventivo. Puoi verificare anche una singola unità esclusa; le verifiche della lezione continuano a escluderla.
-- Le issue indicano “Testo cambiato” dal passaggio effettivamente salvato sul server: puoi chiuderle o verificare di nuovo l’unità. Le modifiche altrove nell’unità lasciano applicabile la correzione.
-- Qualità ASR mostra tutti i tratti incerti, con confidenza, parole sottolineate e ascolto limitato al tratto. “Ho controllato” chiude l’avviso senza cambiare il testo.
-- I menu a icona escono dai pannelli e restano interamente nello schermo, anche sul telefono.
+- Il ripasso riprende per prime le domande lasciate senza risposta; una domanda conta come risposta quando vedi la soluzione o la valutazione. I due pulsanti in fondo rimettono in gioco tutte le risposte oppure solo le sbagliate.
+- I menu a icona escono dai pannelli e restano interi nello schermo, anche sul telefono.
+- Qualità ASR mostra tutti i tratti incerti, con confidenza, parole sottolineate e ascolto del solo tratto; "Ho controllato" chiude l'avviso senza cambiare il testo.
+- "Testo cambiato" ora lo decide il server sul testo salvato: puoi chiudere l'issue o verificare di nuovo l'unità.
+- "Riesegui" parte subito, senza conferma. "Esegui senza classificatore" verifica una lezione o un'unità, anche esclusa.
+- L'icona dell'ordine della verifica cambia: orologio per l'ordine cronologico, triangolo per la gravità.
+- Nelle Novità puoi spuntare le voci già lette.
+- Le motivazioni delle correzioni sono chieste in frasi complete.
 
 ## 4.2.4b2 — 2026-10-11
 

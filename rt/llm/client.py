@@ -1469,6 +1469,30 @@ class LLMClient:
                 ]
             )  # type: ignore
 
+        elif model_name == "StudyNoteVerificaResponse":
+            from rt.llm.prompts import StudyNoteVerificaResponse
+            wrong = any(w in prompt.lower() for w in ("errat", "imprecis", "sbagliat", "wrong", "errore"))
+            quote_match = re.search(r"TESTO SELEZIONATO:\s*\n(.*?)(?:\n\nRICHIESTA|\Z)", prompt, re.DOTALL)
+            quote = quote_match.group(1).strip() if quote_match else ""
+            if wrong:
+                fix = f"{quote} [corretto]" if quote else "[MOCK] Correzione proposta"
+                return StudyNoteVerificaResponse(
+                    esito="errato",
+                    spiegazione="[MOCK] Il passaggio selezionato contiene un errore concettuale.",
+                    correzione=fix,
+                )  # type: ignore
+            return StudyNoteVerificaResponse(
+                esito="corretto",
+                spiegazione="[MOCK] Il passaggio selezionato è corretto nel contesto dell'unità.",
+                correzione=None,
+            )  # type: ignore
+
+        elif model_name == "StudyNoteChiediResponse":
+            from rt.llm.prompts import StudyNoteChiediResponse
+            return StudyNoteChiediResponse(
+                spiegazione="[MOCK] Spiegazione didattica del passaggio selezionato nel contesto dell'unità e della lezione.",
+            )  # type: ignore
+
         # Fallback generico per qualsiasi altro modello
         try:
             return response_model.model_validate({})

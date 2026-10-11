@@ -640,6 +640,48 @@
 [data-hl-mode="erase"] .rt-hl { cursor: pointer; }
 [data-hl-mode="erase"] .rt-hl:hover { outline: 1.5px dashed var(--muted-foreground); outline-offset: 1px; }
 
+/* Cursori e sottolineature di Verifica e Chiedi nello Studio (VC1) */
+.rt-sn {
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.rt-sn-v {
+  text-decoration-color: #155f52;
+}
+.dark .rt-sn-v {
+  text-decoration-color: #6fd3b3;
+}
+.rt-sn-v.rt-sn-bad {
+  text-decoration-color: var(--destructive);
+}
+.rt-sn-c {
+  text-decoration-color: #c7761a;
+}
+.dark .rt-sn-c {
+  text-decoration-color: #f0a050;
+}
+.rt-sn.rt-sn-changed {
+  text-decoration-style: dashed;
+  text-decoration-color: #c7761a;
+}
+.rt-sn:hover, .rt-sn:focus {
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+}
+.rt-sn-selected {
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+[data-hl-mode="verifica"] {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><path d='M4 2h6M7 2v16M4 18h6' stroke='white' stroke-width='3.4' stroke-linecap='round'/><path d='M4 2h6M7 2v16M4 18h6' stroke='black' stroke-width='1.4' stroke-linecap='round'/><circle cx='17' cy='17' r='6' fill='%23155f52' stroke='white' stroke-width='1.5'/><path d='m14.5 17 1.8 1.8 3.2-3.4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>") 7 10, text;
+}
+[data-hl-mode="chiedi"] {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><path d='M4 2h6M7 2v16M4 18h6' stroke='white' stroke-width='3.4' stroke-linecap='round'/><path d='M4 2h6M7 2v16M4 18h6' stroke='black' stroke-width='1.4' stroke-linecap='round'/><circle cx='17' cy='17' r='6' fill='%23c7761a' stroke='white' stroke-width='1.5'/><path d='M17 13.6v6.8M13.6 17h6.8' stroke='white' stroke-width='1.6' stroke-linecap='round'/></svg>") 7 10, text;
+}
+
 /* Lettura veloce: dissolvenza nella pagina e colori Irlen estesi a tutta la finestra. */
 .rt-layout nav, .rt-study-text, .rt-study-footer, .rt-rsvp { transition: opacity 300ms, visibility 300ms; }
 .rt-layout:is([data-rsvp], [data-zen]) nav { opacity: 0; visibility: hidden; pointer-events: none; }

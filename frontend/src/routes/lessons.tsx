@@ -198,16 +198,18 @@ export function LessonPage() {
   const setPanel = (next: PanelView | null) => {
     storePanel(next)
     if (next !== 'domande') setSelectionContext(null)
-    if (params.has('panel') || params.has('issue') || params.has('unita')) {
+    if (params.has('panel') || params.has('issue') || params.has('unita') || params.has('note')) {
       const query = new URLSearchParams(params)
       query.delete('panel')
       query.delete('issue')
       query.delete('unita')
+      query.delete('note')
       setParams(query, { replace: true })
     }
   }
   const openQuestions = useRef(setPanel)
   useEffect(() => { openQuestions.current = setPanel })
+  const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ units: string[]; text: string }>).detail
@@ -275,6 +277,16 @@ export function LessonPage() {
           onSwitchView={(next) => setPanel(next)}
           selectionContext={selectionContext}
           onClearSelection={() => setSelectionContext(null)}
+          selectedNoteId={selectedNoteId}
+          onSelectNote={(noteId) => {
+            const query = new URLSearchParams(params)
+            if (noteId) {
+              query.set('note', String(noteId))
+            } else {
+              query.delete('note')
+            }
+            setParams(query, { replace: true })
+          }}
         />
       )}
     </AudioProvider>

@@ -842,3 +842,36 @@ class RecallTypeInfo(BaseModel):
     icona: str
     custom: bool = False
     available: bool = True
+
+
+class StudyNoteCreate(BaseModel):
+    unit_id: str = Field(min_length=1, max_length=64)
+    kind: Literal["verifica", "chiedi"]
+    anchor: Anchor
+    request: str = ""
+    mock: bool = False
+
+
+class StudyNoteView(BaseModel):
+    id: int
+    lesson_id: int
+    unit_id: str
+    kind: Literal["verifica", "chiedi"]
+    anchor: Dict[str, Any]
+    unit_fingerprint: str
+    request: str
+    response: Dict[str, Any]
+    model: Optional[str] = None
+    cost: Optional[float] = None
+    created_at: Optional[str] = None
+    applied_decision_id: Optional[int] = None
+    issue_id: Optional[str] = None
+    anchor_state: Literal["trovata", "cambiata", "non_ritrovata"]
+    current_quote: Optional[str] = None
+
+
+class StudyNoteApplyResponse(BaseModel):
+    ok: bool = True
+    applied_decision_id: int
+    issue_id: str
+    note: StudyNoteView

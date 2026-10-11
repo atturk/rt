@@ -102,7 +102,7 @@ def test_alembic_0013_migrates_database_documents(tmp_path, monkeypatch):
         session.add(StateDocument(key=str(tmp_path / 'recall_questions.json'), payload=bank))
         session.commit()
     upgrade_database(url, engine)
-    assert current_revision(engine) == '0013'
+    assert current_revision(engine) >= '0013'  # le migrazioni successive non cambiano i documenti
     with Session(engine) as session:
         document = session.get(StateDocument, str(tmp_path / 'recall_questions.json'))
         assert document.payload['last_question_number'] == 99

@@ -276,6 +276,25 @@ class StudyHighlight(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class StudyNote(Base):
+    """Nota dello Studio (Verifica o Chiedi) su un passaggio di un'unità (4.2.4)."""
+    __tablename__ = "study_notes"
+    __table_args__ = (Index("ix_study_notes_lesson_unit", "lesson_id", "unit_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
+    unit_id: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi"
+    anchor: Mapped[dict[str, Any]] = mapped_column(JSON)
+    unit_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    request: Mapped[str] = mapped_column(Text, default="")
+    response: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    applied_decision_id: Mapped[Optional[int]] = mapped_column(ForeignKey("review_decisions.id", ondelete="SET NULL"), nullable=True)
+
+
 class StudyUnit(Base):
     """Stato e ultime letture di un'unità: le righe restano anche se la scaletta cambia."""
     __tablename__ = "study_units"
