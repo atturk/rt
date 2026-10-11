@@ -28,6 +28,8 @@ import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitR
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issuePosition, lessonReview, setReview } from './lessonReview'
+import { lessonStudyNotes, setStudyNotes, STUDY_NOTE_EVENT, noteRange } from './lessonStudyNotes'
+import { useStudyNotes } from '@/api/studyNotes'
 import { issueOf } from './reviewIssues'
 import { EditorToolbar } from './EditorToolbar'
 import { lessonFolding } from './lessonFolding'
@@ -106,7 +108,8 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash, state: routerState } = useLocation()
-
+  const studyNotes = useStudyNotes(lessonId)
+  const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
   // cambia sul server per altre vie (un job), non per i nostri salvataggi.
@@ -173,6 +176,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     timecodeLock,
     lessonUnits,
     lessonReview,
+    lessonStudyNotes,
     lessonClassifier,
     lessonMath,
     lessonImages(lessonId),
@@ -337,6 +341,34 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   useEffect(() => {
     viewOf(handle.current)?.dispatch({ effects: setClassifier.of(classifierUnits ?? []) })
   }, [classifierUnits, source.key])
+
+  useEffect(() => {
+    const view = viewOf(handle.current)
+    if (!view) return
+    const notes = studyNotes.data ?? []
+    view.dispatch({ effects: setStudyNotes.of({ notes, selected: selectedNoteId }) })
+    if (selectedNoteId) {
+      const selectedNote = notes.find((n) => n.id === selectedNoteId)
+      if (selectedNote) {
+        const range = noteRange(view.state, selectedNote)
+        if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
+      }
+    }
+  }, [studyNotes.data, selectedNoteId, source.key])
+
+  useEffect(() => {
+    const node = surface.current
+    if (!node) return
+    const select = (event: Event) => {
+      const noteId = (event as CustomEvent<number>).detail
+      const next = new URLSearchParams(params)
+      next.set('panel', 'note')
+      next.set('note', String(noteId))
+      setParams(next, { replace: true })
+    }
+    node.addEventListener(STUDY_NOTE_EVENT, select)
+    return () => node.removeEventListener(STUDY_NOTE_EVENT, select)
+  }, [params, setParams])
 
   // Clic su un timecode: l'audio parte da lì.
   useEffect(() => {

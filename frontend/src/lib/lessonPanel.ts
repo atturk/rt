@@ -1,11 +1,11 @@
 import { useState } from 'react'
 
 /** Pannelli laterali della pagina della lezione (components/lesson/LessonPanel.tsx). */
-export type PanelView = 'dettagli' | 'verifica' | 'domande' | 'classificatore' | 'arricchimento'
+export type PanelView = 'dettagli' | 'verifica' | 'domande' | 'classificatore' | 'arricchimento' | 'note'
 
 export const PANEL_ID = 'lesson-side-panel'
 const PANEL_KEY = 'rt-lesson-side-panel'
-const VIEWS: readonly string[] = ['dettagli', 'verifica', 'domande', 'classificatore', 'arricchimento'] satisfies PanelView[]
+const VIEWS: readonly string[] = ['dettagli', 'verifica', 'domande', 'classificatore', 'arricchimento', 'note'] satisfies PanelView[]
 
 /** Evento del menu contestuale "Domande su questa parte": { units, text }. */
 export const OPEN_QUESTIONS_EVENT = 'rt-open-domande'

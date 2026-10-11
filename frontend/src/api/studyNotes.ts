@@ -1,5 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientContext, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useContext } from 'react'
 import { api, unwrap, type Schemas } from './client'
+
+const fallbackClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false, gcTime: 0 },
+  },
+})
 
 export type StudyNote = Schemas['StudyNoteView']
 export type StudyNoteCreate = Schemas['StudyNoteCreate']
@@ -60,11 +67,15 @@ export const studyNotesApi = {
 }
 
 export function useStudyNotes(lessonId: number | null | undefined, unitId?: string) {
-  return useQuery({
-    queryKey: lessonId ? studyNotesKeys.unit(lessonId, unitId) : ['study-notes', 'empty'],
-    queryFn: () => (lessonId ? studyNotesApi.list(lessonId, unitId) : Promise.resolve([])),
-    enabled: !!lessonId,
-  })
+  const hasContext = Boolean(useContext(QueryClientContext))
+  return useQuery(
+    {
+      queryKey: lessonId ? studyNotesKeys.unit(lessonId, unitId) : ['study-notes', 'empty'],
+      queryFn: () => (lessonId ? studyNotesApi.list(lessonId, unitId) : Promise.resolve([])),
+      enabled: Boolean(lessonId && hasContext),
+    },
+    hasContext ? undefined : fallbackClient,
+  )
 }
 
 export function useApplyStudyNote(lessonId: number) {

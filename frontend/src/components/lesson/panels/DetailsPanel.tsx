@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useClassifier } from '@/api/classifier'
+import { useStudyNotes } from '@/api/studyNotes'
 import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -175,6 +176,9 @@ export function DetailsPanel({
   const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)
 
   const classifier = useClassifier(l.id)
+  const studyNotes = useStudyNotes(l.id)
+  const notesCount = studyNotes.data?.length ?? 0
+  const changedCount = studyNotes.data?.filter((n) => n.anchor_state === 'cambiata').length ?? 0
   const jobs = useLessonJobs(l.id)
   const run = useRunJob(l.id)
   const validate = useValidatePhase(l.id)
@@ -398,9 +402,46 @@ export function DetailsPanel({
         </dd>
       </dl>
 
-      <Button variant="outline" className="h-auto w-full justify-start gap-3 py-4" onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}>
-        <Tags size={18} aria-hidden /><span className="flex flex-col items-start"><span className="text-body">Classificatore</span><span className="text-meta text-muted-foreground">{classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}</span></span>
-      </Button>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Button
+          variant="outline"
+          className="h-auto w-full justify-start gap-3 py-3"
+          onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}
+          data-testid="open-classifier-panel"
+        >
+          <Tags size={18} aria-hidden />
+          <span className="flex flex-col items-start min-w-0">
+            <span className="text-body font-medium">Classificatore</span>
+            <span className="text-meta text-muted-foreground truncate">
+              {classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}
+            </span>
+          </span>
+        </Button>
+        <Button
+          variant="outline"
+          className="relative h-auto w-full justify-start gap-3 py-3"
+          onClick={() => navigate(`/lezioni/${l.id}?panel=note`)}
+          data-testid="open-study-notes-panel"
+        >
+          <MessageSquare size={18} aria-hidden />
+          <span className="flex flex-col items-start min-w-0">
+            <span className="text-body font-medium flex items-center gap-1.5">
+              Verifiche e domande
+              {changedCount > 0 && (
+                <span
+                  className="size-2 rounded-full bg-warning inline-block"
+                  title="Testo cambiato"
+                  data-testid="notes-changed-dot"
+                />
+              )}
+            </span>
+            <span className="text-meta text-muted-foreground truncate">
+              {notesCount} {notesCount === 1 ? 'voce' : 'voci'}
+              {changedCount > 0 ? ` · ${changedCount} da guardare` : ''}
+            </span>
+          </span>
+        </Button>
+      </div>
       {showCostDetail && <CostPanel lesson={l} />}
 
       <hr className="border-border" />

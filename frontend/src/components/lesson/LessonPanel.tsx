@@ -8,11 +8,19 @@ import { ReviewPanel } from './panels/ReviewPanel'
 import { QuestionsPanel } from './panels/QuestionsPanel'
 import { ClassifierPanel } from './panels/ClassifierPanel'
 import { EnrichmentPanel } from './panels/EnrichmentPanel'
+import { StudyNotesPanel } from './panels/StudyNotesPanel'
 import { PANEL_ID, type PanelView } from '@/lib/lessonPanel'
 
 type Section = Schemas['DocumentSection']
 
-const TITLES: Record<PanelView, string> = { dettagli: 'Dettagli', verifica: 'Verifica con LLM', domande: 'Domande', classificatore: 'Classificatore', arricchimento: 'Arricchimento' }
+const TITLES: Record<PanelView, string> = {
+  dettagli: 'Dettagli',
+  verifica: 'Verifica con LLM',
+  domande: 'Domande',
+  classificatore: 'Classificatore',
+  arricchimento: 'Arricchimento',
+  note: 'Verifiche e domande',
+}
 
 /** Contenitore comune: un pannello per volta, chiusura con X o Esc. */
 export function LessonPanel({
@@ -25,6 +33,8 @@ export function LessonPanel({
   onSwitchView,
   selectionContext,
   onClearSelection,
+  selectedNoteId,
+  onSelectNote,
 }: {
   view: PanelView
   lesson: Schemas['LessonDetail']
@@ -35,6 +45,8 @@ export function LessonPanel({
   onSwitchView?: (view: PanelView) => void
   selectionContext?: { units?: string[]; text?: string } | null
   onClearSelection?: () => void
+  selectedNoteId?: number | null
+  onSelectNote?: (noteId: number | null) => void
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -77,6 +89,13 @@ export function LessonPanel({
       )}
       {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
       {view === 'arricchimento' && <EnrichmentPanel lessonId={lesson.id} />}
+      {view === 'note' && (
+        <StudyNotesPanel
+          lessonId={lesson.id}
+          selectedNoteId={selectedNoteId}
+          onSelectNote={onSelectNote}
+        />
+      )}
     </aside>
   )
 }
