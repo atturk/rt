@@ -605,6 +605,91 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
             "orphaned_decisions": orphaned}
 
 
+def prepare_review_parts(lesson_dir: str, parts: list) -> list:
+    """Ritrova la selezione nel testo risolto e ne crea l'ancora sul server."""
+    from rt.core.models import Anchor
+    from rt.pipeline.anchors import locate, make_anchor
+    units = {u.unit_id: u for u in load_resolved_draft(lesson_dir).units}
+    if not parts or len({p['unit_id'] for p in parts}) != len(parts):
+        raise ValueError("Seleziona un tratto di testo per ogni unità da verificare.")
+    prepared = []
+    for part in parts:
+        unit = units.get(part['unit_id'])
+        if unit is None:
+            raise KeyError(part['unit_id'])
+        anchor = Anchor.model_validate(part['anchor'])
+        found = locate(anchor, unit.content)
+        if not found or ' '.join(unit.content[found.start:found.end].split()) != ' '.join(anchor.quote.split()):
+            raise ValueError("Il testo selezionato è cambiato o non si ritrova. Selezionalo di nuovo.")
+        prepared.append({'unit_id': unit.unit_id, 'anchor': make_anchor(unit.content, found.start, found.end).model_dump()})
+    return prepared
+
+
+def run_review_part(lesson_dir: str, part: dict, force_mock: bool = False) -> dict:
+    """V4 sulla selezione: conserva le decisioni e le aperte fuori dal tratto.
+
+    Non aggiorna impronte, stato o registro della verifica dell'intera unità.
+    """
+    from rt.core.models import Anchor
+    from rt.core.lesson_lock import lesson_lock
+    from rt.core.manifest import save_manifest
+    from rt.pipeline.anchors import find_quote, locate, make_anchor
+    from rt.services.documents_service import request_documents
+    part = prepare_review_parts(lesson_dir, [part])[0]
+    draft = load_resolved_draft(lesson_dir)
+    unit = next(u for u in draft.units if u.unit_id == part['unit_id'])
+    selection = Anchor.model_validate(part['anchor'])
+    segments = load_segments_json(lesson_path(lesson_dir, 'segments.json'))
+    prompt = build_science_review_user_prompt(unit_id=unit.unit_id, rewritten_content=unit.content)
+    prompt += ("\n\nTRATTO DA CONTROLLARE (il resto dell'unità è solo contesto):\n"
+               + json.dumps(selection.quote, ensure_ascii=False)
+               + "\nSegnala soltanto problemi la cui citazione si trova dentro questo tratto.")
+    generated = _validated_review_issues(LLMClient(force_mock=force_mock), unit,
+        append_extra(lesson_dir, 'review', prompt), lesson_dir, f'parte ({unit.unit_id})',
+        {s.id: s for s in segments.segments})
+
+    with lesson_lock(lesson_dir):
+        # Anche un cambio esterno durante la chiamata deve rispettare il tratto scelto.
+        part = prepare_review_parts(lesson_dir, [part])[0]
+        selection = Anchor.model_validate(part['anchor'])
+        draft = load_resolved_draft(lesson_dir)
+        unit = next(u for u in draft.units if u.unit_id == part['unit_id'])
+        scoped = []
+        for issue in generated:
+            local = find_quote(selection.quote, issue.claim)
+            if local:
+                issue.anchor = make_anchor(unit.content, selection.start + local.start, selection.start + local.end)
+                issue.claim = issue.anchor.quote
+                issue.unanchored = False
+            elif find_quote(unit.content, issue.claim):
+                continue  # il modello ha citato un punto fuori dalla selezione
+            else:
+                issue.anchor, issue.unanchored = None, True
+            issue.origin = 'parte'
+            scoped.append(issue)
+
+        def inside(issue):
+            found = locate(issue.anchor, unit.content) if issue.anchor else None
+            return bool(found and selection.start <= found.start < found.end <= selection.end)
+
+        prior = load_science_issues(lesson_dir)
+        _initialize_anchor_ledger(lesson_dir)
+        combined, _, sequence = merge_unit_findings(lesson_dir, prior, scoped, draft.units,
+                                                   {unit.unit_id}, replace_open=inside)
+        old_ids = {issue.id for issue in prior}
+        inserted = [issue for issue in combined if issue.id not in old_ids]
+        save_science_issues(combined, lesson_dir)
+        manifest = load_manifest(lesson_dir)
+        record = (manifest.phase_records or {}).get('review') if manifest else None
+        if record:
+            # Un checkpoint parziale riconosce il nuovo file senza avanzare le unità.
+            record.setdefault('artifact_fingerprints', {})['science_issues.json'] = compute_file_sha256(get_science_issues_path(lesson_dir))
+            record['issue_sequence'] = sequence
+            save_manifest(manifest, lesson_dir)
+        request_documents(lesson_dir)
+    return {'unit_id': unit.unit_id, 'issues': len(inserted)}
+
+
 class _MockReviewOrder:
     """Il mock conserva il budget storico e l'ordine delle risposte della lezione.
 

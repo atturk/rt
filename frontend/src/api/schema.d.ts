@@ -4393,6 +4393,11 @@ export interface components {
              */
             parent_context: boolean;
             /**
+             * Parts
+             * @description review_part: una selezione ancorata per ogni unità toccata
+             */
+            parts?: components["schemas"]["ReviewPartSelection"][] | null;
+            /**
              * Phase
              * @description Obbligatoria per run_phase
              */
@@ -4407,7 +4412,7 @@ export interface components {
              * @default run_pipeline
              * @enum {string}
              */
-            type: "run_pipeline" | "run_phase";
+            type: "run_pipeline" | "run_phase" | "review_part";
             /**
              * Unit
              * @description Rewrite o review: una sola unità
@@ -5671,6 +5676,12 @@ export interface components {
              * @description Valore completo, null se non impostato
              */
             value?: string | null;
+        };
+        /** ReviewPartSelection */
+        ReviewPartSelection: {
+            anchor: components["schemas"]["Anchor"];
+            /** Unit Id */
+            unit_id: string;
         };
         /** ReviewProgress */
         ReviewProgress: {

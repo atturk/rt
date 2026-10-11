@@ -89,7 +89,7 @@ def ensure_issue_decidable(lesson_dir: str, issue_id: str) -> None:
                            {"job_id": job.id, "type": job.type})
         pending = progress.get("pending_units")
         if pending is None:
-            if job.type == "review_unit":
+            if job.type in {"review_unit", "review_part"}:
                 pending = job.payload.get("units") or [job.payload.get("unit")]
             elif progress.get("phase") == "review" and progress.get("completed"):
                 pending = []

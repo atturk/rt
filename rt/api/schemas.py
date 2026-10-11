@@ -425,8 +425,14 @@ class UploadInventoryItem(BaseModel):
     modified_at: str
 
 
+class ReviewPartSelection(BaseModel):
+    unit_id: str = Field(min_length=1)
+    anchor: Anchor
+
+
 class JobRequest(BaseModel):
-    type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
+    type: Literal["run_pipeline", "run_phase", "review_part"] = "run_pipeline"
+    parts: Optional[List[ReviewPartSelection]] = Field(None, description="review_part: una selezione ancorata per ogni unità toccata")
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
         None, description="Obbligatoria per run_phase")
     unit: Optional[str] = Field(None, description="Rewrite o review: una sola unità")

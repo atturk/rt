@@ -3410,6 +3410,21 @@
             "title": "Parent Context",
             "type": "boolean"
           },
+          "parts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReviewPartSelection"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "review_part: una selezione ancorata per ogni unità toccata",
+            "title": "Parts"
+          },
           "phase": {
             "anyOf": [
               {
@@ -3438,7 +3453,8 @@
             "default": "run_pipeline",
             "enum": [
               "run_pipeline",
-              "run_phase"
+              "run_phase",
+              "review_part"
             ],
             "title": "Type",
             "type": "string"
@@ -6279,6 +6295,24 @@
           "field"
         ],
         "title": "RevealOut",
+        "type": "object"
+      },
+      "ReviewPartSelection": {
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/Anchor"
+          },
+          "unit_id": {
+            "minLength": 1,
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "anchor"
+        ],
+        "title": "ReviewPartSelection",
         "type": "object"
       },
       "ReviewProgress": {

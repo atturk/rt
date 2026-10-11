@@ -4,6 +4,8 @@
 
 ### Novità
 
+- VC2a: verifica mirata di una selezione con il critic della lezione; conserva decisioni e issue aperte fuori dal tratto e ritrova il passaggio prima di pubblicare il risultato.
+
 - V6c: risultati disponibili unità per unità, stati In corso e In coda e decisioni sulle unità finite; riepilogo della lezione tutta decisa e documento aggiornato senza clic.
 
 - V6b: issue aperte dentro l’unità, decisioni in sola lettura e Annulla nel messaggio; le decisioni da riconfermare ricevono una nuova scelta senza perdere la precedente.

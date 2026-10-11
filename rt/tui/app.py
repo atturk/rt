@@ -394,6 +394,14 @@ class RTApp(App):
 
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if isinstance(event.item, LessonRow):
+            # Gli eventi già accodati possono riferirsi al filtro precedente,
+            # anche mentre clear() sta ancora smontando le sue righe.
+            query = (self.query_one("#search", Input).value or "").strip().lower()
+            lesson = event.item.lesson
+            if query and query not in (lesson.title or "").lower() and query not in (lesson.subject or "").lower():
+                return
+            if event.item not in self.query_one("#lesson-list", ListView).children:
+                return
             await self._show_lesson(event.item.lesson)
 
     def action_focus_search(self) -> None:

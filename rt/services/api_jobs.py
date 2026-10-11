@@ -20,6 +20,7 @@ from rt.storage import fs
 
 REWRITE_UNIT = "rewrite_unit"
 REVIEW_UNIT = "review_unit"
+REVIEW_PART = "review_part"
 RECALL_BATCH = "recall_batch"
 RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
@@ -83,6 +84,26 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             pending.remove(unit)
             ctx.emit(ReviewUnitDone(unit_id=unit, issues=results[-1].get("issues", 0), pending_units=pending.copy()))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
+
+
+def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.review import run_review_part
+    from rt.services.events import ReviewUnitsQueued, ReviewUnitStarted, ReviewUnitDone
+    ctx.lesson_dir = job.lesson_path
+    pending = [part["unit_id"] for part in job.payload["parts"]]
+    ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
+    results = []
+    with ctx.activate():
+        for part in job.payload["parts"]:
+            ctx.check_cancelled()
+            uid = part["unit_id"]
+            ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=pending.copy(), running_units=[uid]))
+            result = run_review_part(job.lesson_path, part,
+                                     force_mock=ctx.force_mock or bool((job.payload.get("options") or {}).get("mock")))
+            results.append(result)
+            pending.remove(uid)
+            ctx.emit(ReviewUnitDone(unit_id=uid, issues=result["issues"], pending_units=pending.copy()))
+    return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
@@ -454,7 +475,7 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 for _type, _handler in (
-    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
+    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
