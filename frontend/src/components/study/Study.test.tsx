@@ -329,3 +329,35 @@ it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () =>
   expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
   expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.1')
 })
+
+it('strumenti V e C: scorciatoie tastiera, accensione/spegnimento e tasto Esc', () => {
+  renderStudy()
+  const btnV = screen.getByTestId('highlight-verifica')
+  const btnC = screen.getByTestId('highlight-chiedi')
+  const text = screen.getByTestId('study-text')
+
+  // Inizialmente spenti
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+  expect(btnC).toHaveAttribute('aria-pressed', 'false')
+
+  // Tasto V accende Verifica
+  fireEvent.keyDown(window, { key: 'v' })
+  expect(btnV).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
+
+  // Tasto V spegne Verifica
+  fireEvent.keyDown(window, { key: 'v' })
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+
+  // Tasto C accende Chiedi
+  fireEvent.keyDown(window, { key: 'c' })
+  expect(btnC).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'chiedi')
+
+  // Tasto Esc a popup chiuso spegne lo strumento
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(btnC).toHaveAttribute('aria-pressed', 'false')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+})
+
