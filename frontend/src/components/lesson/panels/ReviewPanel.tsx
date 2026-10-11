@@ -4,7 +4,7 @@ import { usePreference } from '@/lib/preferences'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Tooltip } from '@/components/ui/tooltip'
-import { ArrowDownWideNarrow, Check, Eye, MoreHorizontal, RotateCcw, ShieldCheck, Undo2, X } from 'lucide-react'
+import { Clock, TriangleAlert, Check, Eye, MoreHorizontal, RotateCcw, ShieldCheck, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
@@ -124,7 +124,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
       <p className="font-semibold" role="status">{verifying ? 'In corso · ' : ''}{status} · {reviewedCount}/{included.length} unità verificate</p>
       <div className="flex items-center gap-1">
         <IconButton label="Verifica" icon={ShieldCheck} variant="solid" unavailable={verifyUnavailable} hint={`${needsReview.length} unità da verificare`} badge={needsReview.length ? <span className="absolute -right-1 -top-1 rounded-full bg-foreground px-1 text-meta text-background">{needsReview.length}</span> : undefined} onClick={() => verify()} />
-        <IconButton label="Ordine delle issue" icon={ArrowDownWideNarrow} hint={order === 'cronologico' ? 'Cronologico' : 'Gravità'} onClick={() => { const nextOrder = order === 'cronologico' ? 'gravita' : 'cronologico'; setSavedOrder(nextOrder); const next = new URLSearchParams(params); next.set('ordine', nextOrder); setParams(next, { replace: true }) }} />
+        <IconButton label="Ordine delle issue" icon={order === 'cronologico' ? Clock : TriangleAlert} hint={order === 'cronologico' ? 'Cronologico' : 'Gravità'} onClick={() => { const nextOrder = order === 'cronologico' ? 'gravita' : 'cronologico'; setSavedOrder(nextOrder); const next = new URLSearchParams(params); next.set('ordine', nextOrder); setParams(next, { replace: true }) }} />
         <IconButton label="Mostra decise" icon={Eye} active={showDecided} aria-pressed={showDecided} onClick={() => setShowDecided(!showDecided)} />
         <LinkMenuButton label="Azioni della verifica" icon={MoreHorizontal} unavailable={busy ? 'Lavorazione in corso' : undefined} items={[
           { label: 'Riesegui tutta la lezione', unavailable: l.review_progress?.completed_once ? null : 'Una verifica completa non è ancora finita', onSelect: () => verify(undefined, true) },

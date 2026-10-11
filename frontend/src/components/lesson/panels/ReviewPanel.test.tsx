@@ -525,3 +525,13 @@ it('il bypass globale lascia fuori le escluse anche dalla coda', async () => {
   expect(within(screen.getByTestId('review-unit-issues')).getByRole('img', { name: 'In coda' })).toBeInTheDocument()
   expect(within(screen.getByTestId('review-unit-excluded')).queryByRole('img', { name: 'In coda' })).not.toBeInTheDocument()
 })
+
+it('l’icona dell’ordine passa da orologio a gravità col pulsante', () => {
+  mount()
+  const button = screen.getByRole('button', { name: 'Ordine delle issue' })
+  expect(button.querySelector('svg')).toHaveClass('lucide-clock')
+  fireEvent.click(button)
+  expect(button.querySelector('svg')).toHaveClass('lucide-triangle-alert')
+  fireEvent.click(button)
+  expect(button.querySelector('svg')).toHaveClass('lucide-clock')
+})

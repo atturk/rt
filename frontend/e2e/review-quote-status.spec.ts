@@ -12,8 +12,15 @@ test('salvare un passaggio cambiato ricarica lo stato server nella card della ve
   const line = page.getByTestId('lesson-document').locator('.cm-line').filter({ hasText: item.issue.claim }).first()
   await scrollDocumentTo(page, line)
   await line.click()
-  await page.keyboard.press('Home')
-  await page.keyboard.press('Shift+End')
+  const selected = await line.evaluate(element => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    return selection.toString()
+  })
+  expect(selected).toContain(item.issue.claim)
   await page.keyboard.type('Passaggio riscritto a mano nell’editor.')
   await expect(page.getByTestId('editor-status')).toHaveAttribute('data-status', 'saved')
   await expect.poll(async () => (await apiGet<{ items: Item[] }>(page.request, `/lessons/${lesson.id}/issues?status=all`)).items.find(row => row.issue.id === item.issue.id)?.quote_status).toBe('changed')

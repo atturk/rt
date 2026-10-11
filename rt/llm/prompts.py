@@ -182,7 +182,7 @@ Ogni problema deve avere ESATTAMENTE questi cinque campi, tutti obbligatori:
 - "tipo": "concettuale" oppure "asr_llm" solo per il punto ASR esplicitamente richiesto
 - "gravita": "bassa" | "media" | "alta"
 - "citazione": testo esatto, contiguo, presente nell'unità rielaborata da controllare
-- "motivazione": spiegazione scientifica dell'errore
+- "motivazione": spiegazione scientifica dell'errore in una o due frasi complete
 - "sostituzione": SEMPRE il testo letterale pronto a sostituire ESATTAMENTE la citazione, senza allargare il passaggio. Anche per aggiungere un dato mancante, cita un passaggio esistente e restituiscilo completo del dato. Niente suggerimenti, istruzioni, formule introduttive, alternative o virgolette esterne. Non aggiungere altri campi."""
 
 

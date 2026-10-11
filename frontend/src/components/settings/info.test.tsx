@@ -110,3 +110,42 @@ it('Novità senza file mostra uno stato vuoto', async () => {
   render(<QueryClientProvider client={client}><ChangelogSection version="4.2.4b1" /></QueryClientProvider>)
   expect(await screen.findByText('Nessuna nota disponibile.')).toBeVisible()
 })
+
+it('Novità conserva le caselle per versione e testo e permette di toglierle', async () => {
+  localStorage.clear()
+  const sections = [
+    { version: '4.2.4b3', date: '', groups: [{ title: 'Correzioni', items: ['Voce uguale.', 'Voce diversa.'] }] },
+    { version: '4.2.4b2', date: '', groups: [{ title: 'Correzioni', items: ['Voce uguale.'] }] },
+  ]
+  vi.spyOn(api, 'GET').mockResolvedValue(result(sections) as never)
+  const mount = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ChangelogSection version="4.2.4b3" /></QueryClientProvider>)
+  const first = mount()
+  const latest = within((await screen.findByText('4.2.4b3')).closest('details')!)
+  await userEvent.click(latest.getByRole('checkbox', { name: 'Voce uguale.' }))
+  expect(latest.getByText('Voce uguale.')).toHaveClass('line-through')
+  first.unmount()
+  mount()
+  const current = within((await screen.findByText('4.2.4b3')).closest('details')!)
+  expect(current.getByRole('checkbox', { name: 'Voce uguale.' })).toBeChecked()
+  expect(current.getByRole('checkbox', { name: 'Voce diversa.' })).not.toBeChecked()
+  await userEvent.click(screen.getByText('4.2.4b2'))
+  expect(within(screen.getByText('4.2.4b2').closest('details')!).getByRole('checkbox', { name: 'Voce uguale.' })).not.toBeChecked()
+  await userEvent.click(current.getByRole('checkbox', { name: 'Voce uguale.' }))
+  expect(current.getByText('Voce uguale.')).not.toHaveClass('line-through')
+  expect(localStorage.length).toBe(0)
+})
+
+it('Novità resta utilizzabile quando il browser non permette localStorage', async () => {
+  const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Bloccato') })
+  const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Bloccato') })
+  const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('Bloccato') })
+  try {
+    vi.spyOn(api, 'GET').mockResolvedValue(result([{ version: '4.2.4b3', date: '', groups: [{ title: 'Correzioni', items: ['Voce.'] }] }]) as never)
+    render(<QueryClientProvider client={new QueryClient()}><ChangelogSection version="4.2.4b3" /></QueryClientProvider>)
+    const checkbox = await screen.findByRole('checkbox', { name: 'Voce.' })
+    await userEvent.click(checkbox)
+    expect(checkbox).toBeChecked()
+    await userEvent.click(checkbox)
+    expect(checkbox).not.toBeChecked()
+  } finally { get.mockRestore(); set.mockRestore(); remove.mockRestore() }
+})

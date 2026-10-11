@@ -10,7 +10,8 @@ const sections = [
 ]
 async function choose(root: Page | Locator, label: string, option: string) {
   await root.getByRole('button', { name: label, exact: true }).click()
-  await root.getByRole('menuitemradio', { name: option, exact: true }).click()
+  const page = 'page' in root ? root.page() : root
+  await page.getByRole('menu', { name: label, exact: true }).getByRole('menuitemradio', { name: option, exact: true }).click()
 }
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 test.describe.configure({ mode: 'serial' })
