@@ -67,15 +67,15 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.getByTestId('lesson-waiting').getByRole('link', { name: 'Vai alla decisione' }).click()
   const panel = page.getByTestId('lesson-review-panel')
   const counter = panel.getByRole('status').first()
-  await expect(counter).toHaveText(`${total} da decidere su ${total}`)
+  await expect(counter).toContainText(`${total} da decidere`)
   for (let left = total - 1; left >= 0; left--) {
-    await panel.getByTestId('issue-detail').getByRole('button', { name: 'Accetta' }).click()
-    await expect(counter).toHaveText(left ? `${left} da decidere su ${total}` : 'Tutte decise')
+    await panel.getByTestId('issue-detail').getByRole('button', { name: /^Accetta(?: la correzione| il testo)?$/ }).click()
+    await expect(counter).toContainText(left ? `${left} da decidere` : 'Tutte decise')
   }
   // La pipeline può essere già ripartita: aspetta il suo esito prima dello stato finale.
   await waitJob(page, jobId, (j) => j.state === 'succeeded')
   await page.reload()
-  await expect(page.getByTestId('lesson-review-panel').getByRole('status').first()).toHaveText('Tutte decise')
+  await expect(page.getByTestId('lesson-review-panel').getByRole('status').first()).toContainText('Tutte decise')
   const decisions = await apiGet<Decision[]>(page.request, `/lessons/${lessonId}/decisions`)
   expect(decisions.map((d) => d.decision)).toEqual(Array(total).fill('accepted'))
 

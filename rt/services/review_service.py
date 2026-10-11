@@ -360,7 +360,8 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.services.unit_relevance import included_ids
     draft = load_resolved_draft(lesson_dir)
     # Le impronte seguono la bozza grezza: una decisione non rende l'unità "cambiata".
-    current = _unit_hashes(load_draft(lesson_dir).units)
+    raw_units = load_draft(lesson_dir).units
+    current = _unit_hashes(raw_units)
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     checkpoint = checkpoint or {}
@@ -368,7 +369,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     completed = set(checkpoint.get("completed_items") or [])
     decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     issues = load_science_issues(lesson_dir)
-    allowed = included_ids(lesson_dir, draft.units)
+    allowed = included_ids(lesson_dir, raw_units)
     rows = []
     for unit in draft.units:
         entry = registry.get(unit.unit_id) or {}

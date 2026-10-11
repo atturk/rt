@@ -4,6 +4,8 @@
 
 ### Novità
 
+- V6c: risultati disponibili unità per unità, stati In corso e In coda e decisioni sulle unità finite; riepilogo della lezione tutta decisa e documento aggiornato senza clic.
+
 - V6b: issue aperte dentro l’unità, decisioni in sola lettura e Annulla nel messaggio; le decisioni da riconfermare ricevono una nuova scelta senza perdere la precedente.
 
 - V6a: testa della Verifica con conteggio delle unità da fare, ordine e Mostra decise; elenco unico con gravità, menu per unità e rimando al Classificatore per le escluse.
@@ -28,6 +30,8 @@
 
 ### Correzioni
 
+- V6c: le esclusioni della verifica restano legate alla bozza grezza dopo una decisione; i link alle issue decise restano disponibili con Mostra decise.
+
 - V6b: la verifica registra le risposte già pronte prima di avviare altre unità, rispettando il limite dei fallimenti anche sotto carico.
 
 - V6a: il filtro della TUI mantiene subito la selezione durante il rimontaggio asincrono delle righe e ignora gli aggiornamenti di un pannello già chiuso.
@@ -38,6 +42,8 @@
 - Testo risolto e configurazione in cache, aggiornati quando cambiano bozza, issue, modifiche a mano o decisioni.
 - Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.
 - Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
+
+- **Verifica e documento live:** dettaglio, fasi e documento leggono i file della lezione con una sola istantanea, evitando centinaia di query ripetute durante gli aggiornamenti automatici.
 
 ## 4.2.4b1 — 2026-10-09
 

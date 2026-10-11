@@ -17,8 +17,8 @@ vi.mock('@/api/relevance', () => ({ useRelevance: () => ({ data: { mode: 'active
 vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJob: () => ({ mutate: state.cancel }) }))
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { needs_reconfirmation: false, issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
-function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}) {
-  return render(<MemoryRouter><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
+function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
+  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
 }
 beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
@@ -84,8 +84,8 @@ it('sul telefono mostra testo, correzione ed elenco sempre visibile', () => {
 
 it.each([
   ['MISSING', 'Mai verificata', ['never', 'never', 'never'], ['1.1', '1.2', '1.3']],
-  ['PARTIAL', 'Mai verificata', ['ok', 'changed', 'never'], ['1.2', '1.3']],
-  ['STALE', 'Mai verificata', ['ok', 'changed', 'failed'], ['1.2', '1.3']],
+  ['PARTIAL', '2 unità da verificare', ['ok', 'changed', 'never'], ['1.2', '1.3']],
+  ['STALE', '2 unità da verificare', ['ok', 'changed', 'failed'], ['1.2', '1.3']],
 ])('stato %s: titolo, azione e payload dalle sole unità da fare', async (review, title, states, ids) => {
   state.items = []
   state.units = states.map((status, i) => unit(`1.${i + 1}`, status as Schemas['ReviewUnit']['state']))
@@ -284,7 +284,7 @@ it.each(['review_unit', 'run_phase'])('il job singolo %s mostra Verifico solo ne
   const scroll = vi.fn()
   window.addEventListener('rt-editor-scroll', scroll)
   mount()
-  expect(screen.getAllByText('Verifico…')).toHaveLength(1)
+  expect(screen.getByTestId('review-unit-never')).toHaveTextContent('In corso')
   fireEvent.click(screen.getByRole('button', { name: /Titolo 1.1/ }))
   expect(scroll).toHaveBeenCalled()
   window.removeEventListener('rt-editor-scroll', scroll)
@@ -297,13 +297,13 @@ it('gli errori dei suggerimenti restano nella card', async () => {
   expect(screen.getByTestId('issue-detail')).toHaveTextContent('È un suggerimento')
 })
 
-it('la riga mostra Verifico già mentre si accoda il job', async () => {
+it('la riga mostra In coda mentre si accoda il job', async () => {
   state.units = [unit('1.1', 'never')]
   let finish!: () => void
   state.run.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
   mount()
   fireEvent.click(screen.getByRole('button', { name: "Verifica l'unità 1.1" }))
-  try { await waitFor(() => expect(screen.getByText('Verifico…')).toBeInTheDocument()) }
+  try { await waitFor(() => expect(screen.getByTestId('review-unit-never')).toHaveTextContent('In coda')) }
   finally { finish() }
 })
 
@@ -410,4 +410,55 @@ it('un avviso di paragrafo usa le icone e conserva conferma e modifica', async (
   fireEvent.change(screen.getByRole('textbox', { name: 'Testo del paragrafo' }), { target: { value: 'Paragrafo corretto.' } })
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Paragrafo corretto.' }))
+})
+
+
+it('durante la verifica decide e annulla su una unità finita, mentre le altre sono in corso o in coda', async () => {
+  state.units = [unit('1.1', 'issues', 1), unit('1.2', 'never'), unit('1.3', 'never')]
+  state.jobs = [{ id: 'j', type: 'run_phase', state: 'running', payload: { phase: 'review' }, attempts: 0, cancel_requested: false, progress: { phase: 'review', pending_units: ['1.2', '1.3'], running_units: ['1.2'] } } as Schemas['Job']]
+  mount()
+  const rows = screen.getByRole('list', { name: 'Unità della verifica' })
+  expect(rows.querySelector('[data-unit="1.1"]')).toHaveTextContent('Con issue')
+  expect(rows.querySelector('[data-unit="1.2"]')).toHaveTextContent('In corso')
+  expect(rows.querySelector('[data-unit="1.3"]')).toHaveTextContent('In coda')
+  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Accetta la correzione' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+  const message = await screen.findByTestId('review-decision-message')
+  await waitFor(() => expect(within(message).getByRole('button', { name: 'Annulla' })).toBeEnabled())
+  fireEvent.click(within(message).getByRole('button', { name: 'Annulla' }))
+  await waitFor(() => expect(state.undo).toHaveBeenCalledWith('a'))
+})
+it('una issue della unità ancora pendente non si decide', () => {
+  state.jobs = [{ id: 'j', type: 'review_unit', state: 'running', payload: { unit: '1.1' }, attempts: 0, cancel_requested: false, progress: { pending_units: ['1.1'], running_units: ['1.1'] } } as Schemas['Job']]
+  mount()
+  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toBeDisabled()
+})
+it('il riepilogo sostituisce l’elenco quando tutta la lezione è decisa; Mostra decise lo riapre', () => {
+  state.units = [unit('1.1', 'issues', 1)]
+  state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount()
+  expect(screen.getByTestId('review-summary')).toHaveTextContent('1 accettate')
+  expect(screen.queryByRole('list', { name: 'Unità della verifica' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  expect(screen.queryByTestId('review-summary')).not.toBeInTheDocument()
+  expect(screen.getByRole('list', { name: 'Unità della verifica' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  expect(screen.getByTestId('review-summary')).toBeInTheDocument()
+})
+it('il job documents segnala l’aggiornamento anche se il vecchio stato build era VALID', () => {
+  state.jobs = [{ id: 'doc', state: 'queued', type: 'documents', payload: {} } as Schemas['Job']]
+  mount({ rewrite: 'VALID', review: 'VALID', build: 'VALID' })
+  expect(screen.getByTestId('documents-status')).toHaveTextContent('Documento in aggiornamento')
+})
+
+it('un link a una decisione nascosta conserva l’issue fino a Mostra decise', () => {
+  state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'edited', resolved_text: 'Scelta precedente.', resolved_by: 'user', timestamp: '2026-10-10' } }, { ...issue, issue: { ...issue.issue!, id: 'b', suggested_fix: 'Prossima correzione.' } }]
+  mount(undefined, undefined, undefined, {}, '/?issue=a')
+  expect(screen.getByTestId('issue-detail')).toHaveTextContent('Prossima correzione.')
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  expect(screen.getByTestId('issue-detail')).toHaveTextContent('Scelta precedente.')
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  expect(screen.getByTestId('issue-detail')).toHaveTextContent('Prossima correzione.')
 })

@@ -63,7 +63,7 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.prompt_settings import extra_scope
     from rt.pipeline.rewrite import load_draft
     present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
-    from rt.services.events import ReviewUnitsQueued, ReviewUnitDone
+    from rt.services.events import ReviewUnitsQueued, ReviewUnitDone, ReviewUnitStarted
     results = []
     pending = list(job.payload.get("units") or [job.payload["unit"]])
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
@@ -75,6 +75,7 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 pending.remove(unit)
                 ctx.emit(ReviewUnitDone(unit_id=unit, issues=0, pending_units=pending.copy()))
                 continue
+            ctx.emit(ReviewUnitStarted(unit_id=unit, pending_units=pending.copy(), running_units=[unit]))
             results.append(run_review_unit(job.lesson_path, unit,
                                            force_mock=bool((job.payload.get("options") or {}).get("mock")),
                                            parent_context=bool(job.payload.get("parent_context")),

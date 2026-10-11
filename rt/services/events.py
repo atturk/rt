@@ -40,6 +40,15 @@ class ReviewUnitsQueued(_Event):
     """Unità ancora da fare, comprese quelle in esecuzione."""
     type: Literal["review_units_queued"] = "review_units_queued"
     pending_units: List[str]
+    running_units: List[str] = Field(default_factory=list)
+
+
+class ReviewUnitStarted(_Event):
+    """Unità inviata al pool; le altre pendenti restano in coda."""
+    type: Literal["review_unit_started"] = "review_unit_started"
+    unit_id: str
+    pending_units: List[str]
+    running_units: List[str]
 
 
 class ReviewUnitDone(_Event):
@@ -48,6 +57,7 @@ class ReviewUnitDone(_Event):
     unit_id: str
     issues: int
     pending_units: List[str] = Field(default_factory=list)
+    running_units: List[str] = Field(default_factory=list)
 
 
 class PhaseCompleted(_Event):
@@ -91,7 +101,7 @@ class Notice(_Event):
     level: Literal["info", "warning", "error"] = "info"
 
 
-Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice, ReviewUnitDone, ReviewUnitsQueued]
+Event = Union[PhaseStarted, PhaseProgress, PhaseCompleted, PhaseFailed, CostUpdated, DecisionRequired, Notice, ReviewUnitDone, ReviewUnitsQueued, ReviewUnitStarted]
 
 
 class Reporter(Protocol):

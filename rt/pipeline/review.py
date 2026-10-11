@@ -44,7 +44,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
-from rt.services.events import Notice, ListReporter, ReviewUnitDone, ReviewUnitsQueued
+from rt.services.events import Notice, ListReporter, ReviewUnitDone, ReviewUnitsQueued, ReviewUnitStarted
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 from rt.pipeline.review_units import record_review_unit, load_review_units
@@ -540,7 +540,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     unit = next((item for item in draft.units if item.unit_id == unit_id), None)
     if unit is None:
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
-    if not included(lesson_dir, unit):
+    raw_unit = next(u for u in load_draft(lesson_dir).units if u.unit_id == unit_id)
+    if not included(lesson_dir, raw_unit):
         return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
@@ -627,7 +628,7 @@ class _MockReviewOrder:
             self.condition.notify_all()
 
 
-def _parallel_units(work, run, parallel, stop):
+def _parallel_units(work, run, parallel, stop, started=None):
     """Al massimo parallel chiamate avviate; le risposte passano al thread chiamante.
 
     La coda conserva l'ordine di completamento. Quando stop diventa vero non
@@ -649,6 +650,8 @@ def _parallel_units(work, run, parallel, stop):
                 if item is None:
                     exhausted = True
                     break
+                if started:
+                    started(item)
                 future = pool.submit(copy_context().run, run, *item)
                 pending.add(future)
                 future.add_done_callback(finished.put)
@@ -709,8 +712,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
-    from rt.services.unit_relevance import included, included_ids
-    eligible_ids = included_ids(lesson_dir, draft.units)
+    from rt.services.unit_relevance import included_ids
+    eligible_ids = included_ids(lesson_dir, raw_draft.units)
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,
@@ -794,6 +797,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     mock_calls = {}
 
     pending_units = {unit.unit_id for _, unit in work}
+    running_units = set()
     if ctx:
         ctx.emit(ReviewUnitsQueued(pending_units=sorted(pending_units)))
 
@@ -824,9 +828,14 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     if ctx:
         ctx.check_cancelled()
+    def started(item):
+        uid = item[1].unit_id
+        running_units.add(uid)
+        if ctx:
+            ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=sorted(pending_units), running_units=sorted(running_units)))
     for idx, unit, client, generated, unit_result, events, prefilter, exc in _parallel_units(
             work, examine, _cfg.review.parallel_units,
-            lambda: stopped_early or fatal_error is not None or bool(ctx and ctx.cancel_token.cancelled)):
+            lambda: stopped_early or fatal_error is not None or bool(ctx and ctx.cancel_token.cancelled), started):
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
         jev_prefilter.update(prefilter)
         if ctx:
@@ -853,7 +862,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             if ctx:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
                 pending_units.discard(unit.unit_id)
-                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0, pending_units=sorted(pending_units)))
+                running_units.discard(unit.unit_id)
+                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0, pending_units=sorted(pending_units), running_units=sorted(running_units)))
             if failures.too_many():
                 stopped_early = True
             continue
@@ -889,7 +899,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             )
         if ctx:
             pending_units.discard(unit.unit_id)
-            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated), pending_units=sorted(pending_units)))
+            running_units.discard(unit.unit_id)
+            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated), pending_units=sorted(pending_units), running_units=sorted(running_units)))
 
     if ctx:
         ctx.check_cancelled()

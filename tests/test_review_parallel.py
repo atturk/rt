@@ -154,3 +154,23 @@ def test_actual_mock_has_same_findings_with_four_or_one_worker(tmp_path, monkeyp
         assert result['total_science_issues'] > 0
         snapshots.append([item.model_dump() for item in review.load_science_issues(lesson)])
     assert snapshots[0] == snapshots[1]
+
+
+
+def test_started_events_distinguish_running_and_queued_units(tmp_path, monkeypatch):
+    from rt.services.events import ReviewUnitStarted, ReviewUnitsQueued
+    lesson, _ = setup_six(tmp_path, monkeypatch)
+    monkeypatch.setattr(review, '_validated_review_issues', finding)
+    reporter = ListReporter()
+    review.run_review(lesson, force_mock=True, force=True, ctx=RunContext(reporter=reporter))
+    queued = reporter.of_type(ReviewUnitsQueued)[0]
+    assert len(queued.pending_units) == 6 and queued.running_units == []
+    started = reporter.of_type(ReviewUnitStarted)
+    assert len(started) == 6
+    assert {event.unit_id for event in started} == set(queued.pending_units)
+    assert all(event.unit_id in event.running_units and set(event.running_units) <= set(event.pending_units) for event in started)
+    assert max(len(event.running_units) for event in started) <= 4
+    assert len(started[0].running_units) == 1 and len(started[0].pending_units) == 6
+    done = reporter.of_type(ReviewUnitDone)
+    assert all(event.unit_id not in event.running_units for event in done)
+    assert done[-1].pending_units == done[-1].running_units == []

@@ -297,6 +297,7 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
     return items
 
 
+@fs.read_snapshot()
 def phase_report(lesson_dir: str) -> Dict[str, Any]:
     """Freschezza di ogni fase (come 'rt status') e report di validazione di outline e draft
     (come 'rt validate-outline' e 'rt validate-draft')."""
@@ -336,6 +337,7 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
     return report
 
 
+@fs.read_snapshot()
 def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.core.manifest import load_manifest
     from rt.pipeline.cost import compute_lesson_cost
@@ -496,6 +498,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     return out
 
 
+@fs.read_snapshot()
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from rt.core.markdown_render import markdown_parser
     markdown = load_markdown_preview(lesson_dir)

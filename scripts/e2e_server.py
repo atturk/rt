@@ -132,6 +132,8 @@ def _lessons(root: str) -> None:
     _study_lesson(root)
     # Vicina pronta e indipendente dalle prove che modificano CHIRURGIA.
     _study_lesson(root, materia="STUDIO_NAV", argomenti="Navigazione di prova")
+    _study_lesson(root, materia="VERIFICA LIVE", argomenti="Risultati progressivi", date="2026-08-10")
+    os.environ["RT_E2E_REVIEW_LIVE_LESSON"] = os.path.join(root, "[2026-08-10] VERIFICA LIVE - Risultati progressivi")
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).
     from rt.storage.migrate import migrate_storage
     report = migrate_storage(root)
@@ -139,14 +141,14 @@ def _lessons(root: str) -> None:
         raise RuntimeError("; ".join(report.errors))
 
 
-def _study_lesson(root: str, *, materia: str = "STUDIO", argomenti: str = "Unità di prova") -> None:
+def _study_lesson(root: str, *, materia: str = "STUDIO", argomenti: str = "Unità di prova", date: str = "2026-09-02") -> None:
     from rt.core.lesson_paths import lesson_path
     from rt.core.segments import load_segments_json
     from rt.pipeline.outline import load_outline, save_outline
     from rt.services.outline_service import approve_outline
     from rt.services.phase_validation_service import validate_phase
     from tests.api_support import run_mock_pipeline
-    path = _plain_lesson(root, "2026-09-02", materia, argomenti)
+    path = _plain_lesson(root, date, materia, argomenti)
     run_mock_pipeline(path, with_review=False, auto_accept=False)
     segments = load_segments_json(lesson_path(path, "segments.json")).segments
     middle = len(segments) // 2
@@ -175,7 +177,33 @@ def _study_lesson(root: str, *, materia: str = "STUDIO", argomenti: str = "Unit�
         raise RuntimeError(result.error)
 
 
+def _worker(args):
+    """Solo e2e: una unità della fixture aspetta il segnale del test nel suo tmpdir."""
+    import time
+    from rt.pipeline import review
+    from rt.cli import main as cli_main
+    original = review._validated_review_issues
+    live = os.environ.get("RT_E2E_REVIEW_LIVE_LESSON")
+
+    def controlled(client, unit, prompt, lesson_dir, *rest, **kwargs):
+        if live and os.path.realpath(lesson_dir) == live and unit.unit_id == "1.2":
+            release = os.path.join(os.path.dirname(live), ".review-live.release")
+            deadline = time.monotonic() + 120
+            while not os.path.isfile(release):
+                if time.monotonic() > deadline:
+                    raise TimeoutError("L'e2e non ha liberato la seconda unità")
+                time.sleep(.05)
+        return original(client, unit, prompt, lesson_dir, *rest, **kwargs)
+
+    review._validated_review_issues = controlled
+    cli_main(["worker", *args])
+    return 0
+
+
 def main() -> int:
+    if sys.argv[1:2] == ["--worker"]:
+        sys.path.insert(0, ROOT)
+        return _worker(sys.argv[2:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--dir", default=os.path.join(tempfile.gettempdir(), "rt-e2e"))
@@ -208,6 +236,9 @@ def main() -> int:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"base_url": base_url, "token": token, "lessons_root": root, "searxng_url": searxng_url}, f)
     print(f"Server e2e su {base_url} (lezioni in {root})", flush=True)
+    # Il wrapper appartiene solo al server di prova, non al worker di produzione.
+    import rt.api.launcher as launcher
+    launcher.worker_command = lambda extra=None: [sys.executable, __file__, "--worker", *(extra or [])]
     return run_spa(port=args.port, open_browser=False, worker_args=["--mock"])
 
 

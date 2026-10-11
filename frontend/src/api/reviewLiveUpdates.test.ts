@@ -11,3 +11,12 @@ it('ogni unità finita ricarica subito issue e unità della sola lezione', () =>
   expect(keys).not.toContainEqual(['costs'])
   expect(keys).not.toContainEqual(reviewKeys.issues(8))
 })
+
+
+it('l’avvio di una unità aggiorna solo lo stato del job', () => {
+  const keys = keysForEvent({ id: 1, job_id: 'verifica', job_type: 'run_phase', lesson_id: 7, type: 'review_unit_started' })
+  expect(keys).toContainEqual(lessonKeys.jobs(7))
+  expect(keys).not.toContainEqual(reviewKeys.issues(7))
+  expect(keys).not.toContainEqual(['lessons'])
+  expect(keys).not.toContainEqual(['lesson', 7])
+})
