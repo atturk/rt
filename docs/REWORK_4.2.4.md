@@ -724,7 +724,7 @@ vale questo piano).
   configurazione e controlla che compaiano la riga nel pannello Classificatore, l'etichetta nelle unità
   (mock), la scelta nel tipo consigliato, il bottone in Genera e una domanda generata (mock).
 
-### Decisioni (Attilio, 9 e 10 ottobre 2026)
+### Decisioni (Attilio, 9 ottobre 2026)
 
 - Un tipo vale **solo sulle materie scelte** quando lo si crea (`info.yaml › materia`). Una materia nuova
   si aggiunge a mano in Impostazioni. Niente ricerca "ovunque", nessuna proposta automatica di tipi.
