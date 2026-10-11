@@ -1,57 +1,32 @@
 # Novità di RT
 
-## 4.2.4b2 — 2026-10-09
+## 4.2.4b2 — 2026-10-11
 
 ### Novità
 
-- VC2b: «Verifica questa parte» nel menu contestuale dell’editor; avviso in basso con conteggio e link alla verifica sull’unità selezionata.
-
-- VC2a: verifica mirata di una selezione con il critic della lezione; conserva decisioni e issue aperte fuori dal tratto e ritrova il passaggio prima di pubblicare il risultato.
-
-- V6c: risultati disponibili unità per unità, stati In corso e In coda e decisioni sulle unità finite; riepilogo della lezione tutta decisa e documento aggiornato senza clic.
-
-- V6b: issue aperte dentro l’unità, decisioni in sola lettura e Annulla nel messaggio; le decisioni da riconfermare ricevono una nuova scelta senza perdere la precedente.
-
-- V6a: testa della Verifica con conteggio delle unità da fare, ordine e Mostra decise; elenco unico con gravità, menu per unità e rimando al Classificatore per le escluse.
-
-- V5b: documento automatico senza pulsanti di ricostruzione; la build conserva cartella e percorso, senza notifica Telegram.
-
-- Documento finale e registro degli errori aggiornati automaticamente dopo decisioni, annullamenti e salvataggi, con un solo job per lezione e tre secondi dall’ultimo cambio.
-
-- La verifica riceve un contesto fisso della lezione prima delle unità: titolo, materia, docente, argomenti e scaletta.
-
-- Schema vincolato della verifica su OpenRouter e Google; DeepSeek mantiene JSON con validazione locale obbligatoria.
-
-- La verifica restituisce citazioni e sostituzioni esatte con uno schema piccolo; i passaggi non ritrovati restano non ancorati, senza chiamate di riparazione.
-
-- Le unità già finite si possono decidere e riaprire mentre la verifica prosegue sulle altre.
-- Verifica fino a quattro unità in parallelo, con issue disponibili appena ciascuna unità termina.
-- La verifica controlla il testo risolto, conserva tutte le decisioni e riconosce i rifiuti sullo stesso passaggio anche con citazioni diverse.
-- Le correzioni si applicano solo al passaggio ancorato della propria unità; le decisioni non ritrovate restano da riconfermare.
-- Le lezioni esistenti ricevono le ancore alla prima lettura, senza chiamate al modello e con testo risolto identico.
-- Issue e decisioni conservano l’ancora e la provenienza; registro DB aggiornato senza perdere i campi storici.
-- Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
+- Pannello Verifica nuovo: un solo elenco di unità con la gravità delle issue, le issue dentro la loro unità, ✓ per accettare e ✗ per mantenere, Annulla nel messaggio in basso e "Mostra decise" per rivederle.
+- Mentre la verifica lavora, le unità già finite si possono decidere subito; fino a quattro unità vengono verificate in parallelo.
+- Il documento finale e gli Errori concettuali si aggiornano da soli dopo ogni decisione, annullamento o modifica a mano: non serve più "Ricostruisci il documento".
+- "Verifica questa parte" nel menu contestuale dell'editor: verifica solo il testo selezionato e un avviso in basso porta all'unità nel pannello.
+- La verifica riceve il contesto della lezione (titolo, materia, docente, argomenti e scaletta) e propone sempre la sostituzione esatta del passaggio.
+- Nei costi delle chiamate si vedono i token letti dalla cache del prompt, al loro prezzo quando è noto.
 
 ### Correzioni
 
-- VC2b: la verifica parziale conserva la sequenza degli ID anche dopo un risultato vuoto; il registro live riceve l’avvio di ogni unità e il documento automatico non impedisce di accodare Riprova.
+- Una decisione non fa più ripetere la verifica dell'unità.
+- Le correzioni si applicano solo al passaggio giusto della propria unità, anche quando la stessa frase compare più volte; quelle che non si ritrovano più restano "da riconfermare".
+- Un rifiuto resta valido anche se una verifica successiva cita lo stesso passaggio con parole diverse.
+- Verifiche e decisioni contemporanee non si sovrascrivono più a vicenda.
+- Le decisioni si vedono subito nel pannello, senza ricaricare tutta la lezione.
+- Colori Irlen leggibili anche nel tema scuro, in zen e nella lettura veloce.
+- Colori del pannello Classificatore più saturi e bordo della selezione non più tagliato.
 
-- Il filtro della TUI ripristina tutte le righe insieme, senza mostrare un elenco parziale durante il montaggio.
+### Cambiamenti
 
-- V6c: le esclusioni della verifica restano legate alla bozza grezza dopo una decisione; i link alle issue decise restano disponibili con Mostra decise.
-
-- V6b: la verifica registra le risposte già pronte prima di avviare altre unità, rispettando il limite dei fallimenti anche sotto carico.
-
-- V6a: il filtro della TUI mantiene subito la selezione durante il rimontaggio asincrono delle righe e ignora gli aggiornamenti di un pannello già chiuso.
-
-- I token del prompt letti dalla cache sono salvati nelle chiamate e conteggiati al prezzo della cache quando noto; il contesto fisso è marcato per OpenRouter con Anthropic e Gemini.
-
-- Le decisioni si vedono subito nel pannello; si ricaricano solo issue, unità della verifica e documento, con ripristino in caso di errore.
-- Testo risolto e configurazione in cache, aggiornati quando cambiano bozza, issue, modifiche a mano o decisioni.
-- Lock della lezione con proprietario e rinnovo: verifiche e decisioni concorrenti conservano tutti gli aggiornamenti.
-- Testo, icone ed evidenziazioni leggibili con i colori Irlen anche nel tema scuro, in zen e lettura veloce.
-
-- **Verifica e documento live:** dettaglio, fasi e documento leggono i file della lezione con una sola istantanea, evitando centinaia di query ripetute durante gli aggiornamenti automatici.
+- Le lezioni esistenti vengono aggiornate al nuovo formato alla prima apertura, senza chiamate al modello e senza cambiare il testo.
+- Le issue senza citazione ritrovabile nel testo si possono solo rifiutare.
+- La build non rinomina e non sposta più la cartella della lezione; `rt build` resta disponibile.
+- "Verifica e Chiedi" nello Studio arriva nella prossima beta.
 
 ## 4.2.4b1 — 2026-10-09
 

@@ -6,8 +6,8 @@ il 9 ottobre 2026 (thread "Raccolta feature 4.2.4b1"):
 | Beta | Area | Contenuto |
 |---|---|---|
 | **b1** | Classificatore e Studio | K1-K3, Z1, L1, L2, CH1 (questa sezione) |
-| **b2** | Verifica | backend della verifica rifatto, pannello nuovo, documento finale automatico, VC2, VC1 |
-| **b3** | Domande personalizzate | DP1 base ed editor in Impostazioni |
+| **b2** | Verifica | backend della verifica rifatto, pannello nuovo, documento finale automatico, VC2 (VC1 spostato alla b3, 11 ott) |
+| **b3** | Domande personalizzate | DP1 base ed editor in Impostazioni, VC1 (Verifica e Chiedi) |
 
 **Claude** non implementa: scrive il piano e i prompt, rivede le PR, prova le parti toccate, le unisce
 nel branch beta e pubblica la beta. Le beta successive aggiungono sezioni in fondo a questo file.
