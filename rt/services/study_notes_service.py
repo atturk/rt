@@ -2,7 +2,6 @@
 from typing import Any, Optional
 from sqlalchemy import delete, select
 
-from rt.api.errors import ApiError
 from rt.core.lesson_lock import lesson_lock
 from rt.core.models import Anchor, ScienceIssue, ScienceSeverity, ScienceType
 from rt.db.engine import get_database
@@ -11,7 +10,7 @@ from rt.db.session import read_scope, session_scope
 from rt.pipeline.anchors import locate, make_anchor
 from rt.pipeline.ledger import load_resolved_draft
 from rt.pipeline.review import load_science_issues, save_science_issues
-from rt.services.errors import NotFound
+from rt.services.errors import Conflict, Invalid, NotFound
 from rt.services.review_service import record_review_decision, undo_last_decision
 
 
@@ -150,27 +149,27 @@ def apply_study_note(lesson_dir: str, lesson_id: int, note_id: int) -> dict[str,
     with lesson_lock(lesson_dir):
         note = get_study_note(lesson_id, note_id)
         if note["kind"] != "verifica":
-            raise ApiError(422, "invalid_note_type", "Solo le verifiche possono essere applicate.")
+            raise Invalid("invalid_note_type", "Solo le verifiche possono essere applicate.")
 
         fix = (note.get("response") or {}).get("correzione")
         if not fix or not fix.strip():
-            raise ApiError(422, "no_fix_available", "Nessuna correzione proposta per questa verifica.")
+            raise Invalid("no_fix_available", "Nessuna correzione proposta per questa verifica.")
 
         if note.get("applied_decision_id"):
             with read_scope(get_database()) as session:
                 dec_row = session.get(ReviewDecision, note["applied_decision_id"])
                 if dec_row is not None and dec_row.reverted_at is None:
-                    raise ApiError(409, "already_applied", "Questa correzione è già stata applicata.")
+                    raise Conflict("already_applied", "Questa correzione è già stata applicata.")
 
         draft = load_resolved_draft(lesson_dir)
         unit = next((u for u in draft.units if u.unit_id == note["unit_id"]), None)
         if unit is None:
-            raise ApiError(404, "unit_not_found", f"Unità {note['unit_id']} non trovata nella bozza.")
+            raise NotFound("unit_not_found", f"Unità {note['unit_id']} non trovata nella bozza.")
 
         anchor_obj = Anchor.model_validate(note["anchor"])
         located = locate(anchor_obj, unit.content)
         if not located or unit.content[located.start:located.end] != anchor_obj.quote:
-            raise ApiError(409, "passage_changed", "Il passaggio è cambiato o non si ritrova uguale: la correzione non si può applicare.")
+            raise Conflict("passage_changed", "Il passaggio è cambiato o non si ritrova uguale: la correzione non si può applicare.")
 
         exact_anchor = make_anchor(unit.content, located.start, located.end)
 
@@ -233,12 +232,12 @@ def undo_study_note(lesson_dir: str, lesson_id: int, note_id: int) -> dict[str, 
     with lesson_lock(lesson_dir):
         note = get_study_note(lesson_id, note_id)
         if not note.get("applied_decision_id"):
-            raise ApiError(404, "not_applied", "Nessuna decisione applicata per questa nota.")
+            raise NotFound("not_applied", "Nessuna decisione applicata per questa nota.")
 
         with read_scope(get_database()) as session:
             dec_row = session.get(ReviewDecision, note["applied_decision_id"])
             if dec_row is None:
-                raise ApiError(404, "decision_not_found", "Decisione non trovata nel ledger.")
+                raise NotFound("decision_not_found", "Decisione non trovata nel ledger.")
             issue_id = dec_row.issue_id
 
         undo_last_decision(lesson_dir, issue_id)
