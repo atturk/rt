@@ -15,7 +15,7 @@ type Job = components['schemas']['ClassifierJobConfig']
 const jobs: [string, string, string, boolean][] = [
   ['relevance', 'Rilevanza', 'Esclude le subunità non didattiche', true],
   ['question_types', 'Tipo di domanda', 'Consiglia il tipo per subunità', false],
-  ['section_labels', 'Esercizi e casi clinici', 'Individua esercizi e contenuti clinici', false],
+  ['section_labels', 'Tipi di domanda personalizzati', 'Individua le sezioni adatte ai tipi di Impostazioni › Domande', false],
   ['prefilter', 'Prefiltro errori', 'Salta la revisione delle subunità corrette', true],
   ['drift', 'Deriva dal trascritto', 'Segnala contenuto assente dal trascritto', true],
   ['enrichment', 'Arricchimento', 'Valuta infografiche e visualizzazioni', false],

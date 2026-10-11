@@ -248,12 +248,12 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
         succeeded = True
         pairs = []
         for item in generated:
-            unit_ids = [u for u in item.unit_ids if u in all_units] or all_units
-            template = RecallTemplate(id="temporary", kind=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, section_ids=ids, unit_ids=unit_ids,
+            item_units = [u for u in item.unit_ids if u in all_units] or all_units
+            template = RecallTemplate(id="temporary", kind=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, section_ids=ids, unit_ids=item_units,
                                       tipo=item.tipo, fingerprint=fingerprint)
-            question = RecallQuestion(id="temporary", type=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, unit_ids=unit_ids, question_text=item.question_text,
+            question = RecallQuestion(id="temporary", type=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, unit_ids=item_units, question_text=item.question_text,
                                       pregenerated_material=None if definition.correzione == "testo" else item.pregenerated_material,
-                                      content_fingerprint=_compute_units_fingerprint(lesson_dir, unit_ids),
+                                      content_fingerprint=_compute_units_fingerprint(lesson_dir, item_units),
                                       generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
             pairs.append((question, template))
         attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",

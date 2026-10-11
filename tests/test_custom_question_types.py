@@ -54,11 +54,11 @@ def test_initial_registry_and_file_migration_are_idempotent(tmp_path, monkeypatc
                          {'id': 'recall_000002', 'type': 'quiz', 'unit_ids': ['1.1'], 'question_text': 'Q'}],
            'answers': [{'question_id': 'recall_000010'}, {'question_id': 'recall_000002'}],
            'templates': [{'kind': 'caso'}], 'generation_attempts': {'caso:sezioni:1': {}, 'quiz:1.1': {}}}
-    (state / 'recall_bank.json').write_text(json.dumps(old))
+    (state / 'recall_questions.json').write_text(json.dumps(old))
     cfg = load_config()
     assert [t.nome for t in cfg.recall.custom_types] == ['Caso clinico', 'Esercizio']
     assert all(t.materie == ['Medicina'] for t in cfg.recall.custom_types)
-    migrated = json.loads((state / 'recall_bank.json').read_text())
+    migrated = json.loads((state / 'recall_questions.json').read_text())
     assert [q['id'] for q in migrated['questions']] == ['recall_000002']
     assert migrated['answers'] == [{'question_id': 'recall_000002'}]
     assert migrated['last_question_number'] == 11 and migrated['templates'] == []
@@ -98,18 +98,18 @@ def test_alembic_0013_migrates_database_documents(tmp_path, monkeypatch):
         session.flush()
         session.add(LessonFile(lesson_id=lesson.id, name='section_labels.json', content=json.dumps(
             {'1': {'caso': 'esplicito', 'esercizio': 'svolto'}}).encode()))
-        session.add(LessonFile(lesson_id=lesson.id, name='recall_bank.json', content=json.dumps(bank).encode()))
-        session.add(StateDocument(key=str(tmp_path / 'recall_bank.json'), payload=bank))
+        session.add(LessonFile(lesson_id=lesson.id, name='recall_questions.json', content=json.dumps(bank).encode()))
+        session.add(StateDocument(key=str(tmp_path / 'recall_questions.json'), payload=bank))
         session.commit()
     upgrade_database(url, engine)
     assert current_revision(engine) == '0013'
     with Session(engine) as session:
-        document = session.get(StateDocument, str(tmp_path / 'recall_bank.json'))
+        document = session.get(StateDocument, str(tmp_path / 'recall_questions.json'))
         assert document.payload['last_question_number'] == 99
         assert document.payload['answers'] == []
         rows = session.query(LessonFile).all()
         assert next(json.loads(r.content) for r in rows if r.name == 'section_labels.json') == {}
-        assert [q['type'] for r in rows if r.name == 'recall_bank.json' for q in json.loads(r.content)['questions']] == ['quiz']
+        assert [q['type'] for r in rows if r.name == 'recall_questions.json' for q in json.loads(r.content)['questions']] == ['quiz']
     data = yaml.safe_load(Path('config/general.yaml').read_text())
     assert len(data['recall']['custom_types']) == 2
     engine.dispose()
@@ -126,3 +126,11 @@ def test_types_endpoint_reads_registry_without_fixed_custom_names(api_client, tm
     assert rows[-1]['nome'] == 'Query SQL' and rows[-1]['custom']
     other = api_client.get('/api/v1/recall/types', params={'materia': 'Storia'}).json()
     assert len(other) == 3
+
+
+def test_new_bank_keeps_attempts_of_registry_type_named_like_old_one():
+    """Il tipo Esercizio del registro usa le chiavi «esercizio:…»: senza vecchie domande non si toccano."""
+    bank = {'questions': [{'id': 'recall_000001', 'type': 'personalizzata', 'custom_type': 'esercizio'}],
+            'templates': [{'kind': 'personalizzata', 'custom_type': 'esercizio'}],
+            'generation_attempts': {'esercizio:sezioni:1': {'exhausted': True}}}
+    assert migrate_bank(bank) == bank

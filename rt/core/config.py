@@ -814,7 +814,11 @@ def _migrate_general(path, stamp, size):
     with open(path, encoding="utf-8") as stream:
         data = yaml.safe_load(stream)
     if isinstance(data, dict):
-        migrate_registry(path, data)
+        try:
+            migrate_registry(path, data)
+        except Exception as exc:  # una migrazione non riuscita non deve fermare l'app: si riprova al prossimo avvio
+            import logging
+            logging.getLogger(__name__).warning("Migrazione dei tipi di domanda non riuscita: %s", exc)
 
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:

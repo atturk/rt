@@ -37,7 +37,7 @@ def upgrade():
     for key, payload in connection.execute(sa.select(documents.c.key, documents.c.payload)):
         if not isinstance(payload, dict):
             continue
-        changed = migrate_bank(payload) if key.endswith('recall_bank.json') else (
+        changed = migrate_bank(payload) if key.endswith('recall_questions.json') else (
             {} if key.endswith('section_labels.json') and legacy_labels(payload) else payload)
         if changed != payload:
             connection.execute(documents.update().where(documents.c.key == key).values(payload=changed))
@@ -45,10 +45,10 @@ def upgrade():
                      sa.column('content', sa.LargeBinary), sa.column('size', sa.Integer),
                      sa.column('sha256', sa.String), sa.column('mtime', sa.Float))
     for identifier, name, content in connection.execute(sa.select(files.c.id, files.c.name, files.c.content)):
-        if name not in ('recall_bank.json', 'section_labels.json') or not content:
+        if name not in ('recall_questions.json', 'section_labels.json') or not content:
             continue
         payload = json.loads(content)
-        changed = migrate_bank(payload) if name == 'recall_bank.json' else ({} if legacy_labels(payload) else payload)
+        changed = migrate_bank(payload) if name == 'recall_questions.json' else ({} if legacy_labels(payload) else payload)
         if changed != payload:
             encoded = json.dumps(changed, ensure_ascii=False, indent=2).encode()
             connection.execute(files.update().where(files.c.id == identifier).values(

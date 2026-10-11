@@ -50,15 +50,22 @@ def save(item, identifier=None, *, actor=None):
             recall.custom_types.append(item)
         data.setdefault('recall', {})['custom_types'] = [t.model_dump(mode='json') for t in recall.custom_types]
         write_yaml_atomic(path, data)
-    if actor is not None:
+    if actor is not None and _automatic_labels():
         from rt.services.jobs import get_job_queue
         from rt.services.lesson_service import list_lessons, resolve_lesson_dir
         subjects = {m.casefold() for m in item.materie}
         for lesson in list_lessons():
-            if lesson.get('materia', '').casefold() in subjects:
+            if (lesson.get('materia') or '').casefold() in subjects:
                 get_job_queue().enqueue('classifier', resolve_lesson_dir(lesson['id']),
                                 {'job': f'custom:{item.id}', 'force': False}, created_by=actor)
     return item
+
+
+def _automatic_labels():
+    """Con il classificatore manuale o spento il salvataggio non accoda chiamate."""
+    from rt.core.config import classifier_job, load_config
+    from rt.services.section_labels import mode
+    return classifier_job(load_config(), 'section_labels').mode != 'manual' and mode() != 'disabled'
 
 
 def delete(identifier):

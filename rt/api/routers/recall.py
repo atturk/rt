@@ -47,8 +47,15 @@ def recall_types(_actor: Actor, lesson_id: Optional[int] = Query(None), materia:
     # Una materia può avere tipi prima che vi siano lezioni pronte per il ripasso.
     if not lesson_dirs and materia is not None:
         types = {t.id: t for t in active_types(materia=materia)}
-    marked = {kind for path in lesson_dirs for row in section_labels.labels(path).values()
-              for kind, value in row.items() if value == "presente"}
+    marked, classifiable = set(), section_labels.mode() != "disabled"
+    for path in lesson_dirs:
+        current = section_labels.labels(path)
+        for section in section_labels.sections(path):
+            row = current.get(section["id"])
+            for t in active_types(lesson_dir=path):
+                # Una sezione non ancora classificata per il tipo: Genera la classifica prima di generare.
+                if (row is None or t.id not in row) and classifiable or row and row.get(t.id) == "presente":
+                    marked.add(t.id)
     result.extend({"id": t.id, "nome": t.nome, "icona": t.icona, "custom": True,
                    "available": t.id in marked} for t in types.values())
     return result
