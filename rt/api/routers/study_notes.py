@@ -31,8 +31,8 @@ def create_study_note(
     if unit is None:
         raise ApiError(404, "unit_not_found", f"Unità {body.unit_id} non trovata nella bozza.")
 
-    loc = locate(body.anchor, unit.content)
-    if not loc or " ".join(unit.content[loc.start:loc.end].split()) != " ".join(body.anchor.quote.split()):
+    # Lo Studio seleziona il testo reso (senza ** o _): basta ritrovarlo, il job salva l'ancora sul markdown.
+    if not locate(body.anchor, unit.content):
         raise ApiError(422, "selection_changed", "Il testo selezionato è cambiato o non si ritrova.")
 
     return enqueue_job(

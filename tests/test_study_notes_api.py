@@ -269,3 +269,21 @@ def test_delete_note_non_tocca_correzione(tmp_path, monkeypatch, rt_db, api_clie
     assert "Passaggio con correzione" in resolved_draft.units[0].content
     ledger = load_ledger(lesson_dir)
     assert any(d.issue_id == issue_id for d in ledger.decisions)
+
+
+def test_api_study_note_selection_from_rendered_text(tmp_path, monkeypatch, rt_db, api_client):
+    """Nello Studio il testo selezionato è quello reso: il grassetto del markdown non lo blocca."""
+    text = "Durante la fase S il DNA si duplica. La **mitosi** produce due cellule figlie identiche."
+    lesson_dir = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch), {"1.1": text})
+    write_ledger_file(DecisionLedger(schema_version="2.0"), lesson_dir)
+    lesson_id = api_client.get("/api/v1/lessons").json()[0]["id"]
+    anchor = {"quote": "La mitosi produce due cellule", "prefix": "fase S il DNA si duplica. ",
+              "suffix": " figlie identiche.", "start": 37, "end": 66}
+    res = api_client.post(f"/api/v1/lessons/{lesson_id}/study-notes",
+                          json={"unit_id": "1.1", "kind": "verifica", "anchor": anchor, "mock": True})
+    assert res.status_code == 202
+
+    from rt.pipeline.study_notes import run_study_note
+    saved = run_study_note(lesson_dir=lesson_dir, unit_id="1.1", kind="verifica", anchor=anchor,
+                           lesson_id=lesson_id, force_mock=True)
+    assert saved["note"]["anchor"]["quote"] == "La **mitosi** produce due cellule"

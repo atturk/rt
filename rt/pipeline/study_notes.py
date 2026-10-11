@@ -41,7 +41,7 @@ def run_study_note(
 
     anchor_obj = Anchor.model_validate(anchor)
     located = locate(anchor_obj, unit.content)
-    if not located or " ".join(unit.content[located.start:located.end].split()) != " ".join(anchor_obj.quote.split()):
+    if not located:
         raise ValueError("Il testo selezionato è cambiato o non si ritrova. Selezionalo di nuovo.")
 
     exact_anchor = make_anchor(unit.content, located.start, located.end)

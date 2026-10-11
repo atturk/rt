@@ -287,18 +287,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           throw new Error(job.error || 'Operazione non riuscita')
         }
       }
-    } catch {
+    } catch (error) {
       setPopupState((prev) => (prev ? { ...prev, isWaiting: false } : null))
+      setToast({ message: errorMessage(error) })
     }
   }
 
   const handleApplyNote = async (noteId: number) => {
     if (!lesson) return
     try {
-      await applyNoteMutation.mutateAsync(noteId)
+      const applied = await applyNoteMutation.mutateAsync(noteId)
       setPopupState((prev) => {
         if (!prev || !prev.note || prev.note.id !== noteId) return prev
-        return { ...prev, note: { ...prev.note, applied_decision_id: noteId } }
+        return { ...prev, note: applied.note }
       })
       setToast({
         message: 'Correzione applicata · decisione nella Verifica con LLM',
@@ -307,8 +308,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           undoNoteMutation.mutate(noteId)
         },
       })
-    } catch {
-      //
+    } catch (error) {
+      setToast({ message: errorMessage(error) })
     }
   }
 
@@ -944,7 +945,8 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
 
     for (const n of notes) {
       if (n.anchor_state === 'non_ritrovata') continue
-      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').trim()
+      // L'ancora è sul markdown: nel testo reso grassetto, corsivo e codice non hanno i segni.
+      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
       if (!targetQuote) continue
 
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
