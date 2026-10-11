@@ -694,3 +694,143 @@ Claude rivede la PR, prova verifica, decisioni durante la verifica, documento au
 browser su una lezione con decisioni vecchie (migrazione), unisce in `claude/rt-4.2.4-beta`, porta
 `VERSION` a `4.2.4b2`, fa girare la suite completa in locale e pubblica la v4.2.4b2 con release.yml,
 seguendo il run fino alla fine.
+
+## 4.2.4b3 — domande personalizzate e Verifica e Chiedi
+
+Lavora **solo Codex**, con **una PR** sul branch `rt424b3/codex` (creato da `claude/rt-4.2.4-beta` dopo
+la v4.2.4b2). Ordine: prima DP1 (il tema della beta), poi VC1, che è già descritto nella sezione b2 e
+non cambia.
+
+| Id | Cosa |
+|---|---|
+| DP1a | Registro dei tipi personalizzati, via caso ed esercizio dal codice |
+| DP1b | Classificatore a etichette per materia, pannello Classificatore con una riga per tipo |
+| DP1c | Tipo consigliato che sceglie fra quiz, mirata e i tipi trovati nell'unità |
+| DP1d | Recaller generico, Genera, Domande, ripasso e recall per materia |
+| DP1e | Impostazioni › Domande: editor a campi guidati, modelli pronti, prova, esporta e importa |
+| VC1 | Verifica e Chiedi nello Studio (sezione b2, `### VC1`, punti 1-8) |
+
+Proposta di partenza: `domande-personalizzate.md` del 9 ottobre (riassunta qui sotto; dove non coincide
+vale questo piano).
+
+### Regole
+
+- Valgono le **Regole** delle sezioni 4.2.4b1 e 4.2.4b2 (nessuna perdita di dati salvo quanto deciso
+  qui sotto, un solo modo di cambiare il testo per VC1, test completi prima della PR).
+- **Nessun tipo personalizzato scritto nel codice.** Dopo DP1 le parole `caso`, `esercizio`,
+  `CASO`, `ESERCIZIO` non compaiono più in `rt/` e `frontend/src/` fuori da: il file dei modelli pronti
+  (dati, non logica), la migrazione e i test. Serve un **test di guardia** che lo controlli.
+- Un tipo nuovo deve funzionare **senza toccare il codice**: un test aggiunge un tipo "Query SQL" alla
+  configurazione e controlla che compaiano la riga nel pannello Classificatore, l'etichetta nelle unità
+  (mock), la scelta nel tipo consigliato, il bottone in Genera e una domanda generata (mock).
+
+### Decisioni (Attilio, 9 e 10 ottobre 2026)
+
+- Un tipo vale **solo sulle materie scelte** quando lo si crea (`info.yaml › materia`). Una materia nuova
+  si aggiunge a mano in Impostazioni. Niente ricerca "ovunque", nessuna proposta automatica di tipi.
+- **Campi guidati** nell'editor; un solo formato di risposta, il campo di testo di oggi (dettabile): il
+  prompt dice sempre al recaller che la risposta è testuale.
+- Il **tipo consigliato** sceglie fra quiz, mirata e i soli tipi personalizzati trovati in quell'unità,
+  con il criterio preso dal tipo. Via `_compatible` e i criteri fissi di caso ed esercizio.
+- Le **domande caso ed esercizio di oggi si possono perdere**: niente migrazione delle domande.
+
+### Default scelti da Claude (11 ottobre)
+
+- All'aggiornamento il registro nasce con **Caso clinico** ed **Esercizio** copiati dai modelli pronti
+  (prompt di oggi 1:1), con le materie delle lezioni dove le etichette di oggi ne trovano almeno uno.
+  Così chi aggiorna li ritrova; da lì sono tipi come gli altri, modificabili o eliminabili.
+- Le domande `caso`/`esercizio` esistenti si tolgono alla migrazione, come l'eliminazione di una domanda
+  di oggi. Le etichette di `section_labels.json` vecchie si scartano: le lezioni si riclassificano alla
+  prima occasione (generazione o bottone del pannello).
+
+### DP1a — Registro dei tipi
+
+1. `config.yaml › recall.custom_types`: lista di tipi con `id` (slug stabile, generato dal nome),
+   `nome`, `icona` (nome lucide), `materie`, `cerca` (criterio del classificatore), `anche_adatti`
+   (bool: il criterio include contenuti adatti senza un esempio esplicito), `continua` (bool: unità
+   consecutive con il tipo vanno al recaller insieme, al massimo 2), `chiedi` (istruzioni di generazione),
+   `correzione` (`soluzione` | `testo`), `varianti` (bool). Modello Pydantic in `rt/core/config.py`,
+   validazione di id unici e materie non vuote.
+2. Modelli pronti in un file di dati (per esempio `rt/recall/question_type_templates.json`): Caso
+   clinico, Esercizio, Query SQL, Codice, Timeline di eventi, Classificazione, Dimostrazione. Caso ed
+   Esercizio con i testi di `RECALL_CASO_*`, `RECALL_ESERCIZIO_*`, delle varianti cliniche e dei criteri
+   di `section_labels.py`, che escono da `prompts.py`.
+3. `RecallQuestionType` (`rt/core/models.py:222`) resta `quiz | mirata | vasta` più `personalizzata`;
+   `RecallQuestion` riceve `custom_type` (id del tipo). Via `SPECIAL_TYPES`. Nel DB, dove serve, colonna
+   `custom_type` con migrazione alembic. `refill_thresholds` per tipo, predefinito 0 per i personalizzati.
+4. Migrazione: registro iniziale come nei default qui sopra; via le domande caso/esercizio e le vecchie
+   etichette. Test della migrazione su una cartella temporanea.
+5. Un tipo eliminato: le sue domande restano leggibili nello storico ma non si generano più; nel
+   pannello Domande compaiono sotto "Tipo eliminato".
+
+### DP1b — Classificatore a etichette
+
+1. `rt/services/section_labels.py`: una chiamata per sezione con **una sola domanda di scelta**. Le
+   etichette sono i tipi attivi sulla materia della lezione più `nessuno`; il criterio di ogni etichetta
+   è `cerca` (con `anche_adatti` che lo allarga). Un tipo è presente se la sua probabilità supera
+   `recall.custom_type_threshold` (predefinito 0,25) e `nessuno` non vince nettamente. Più tipi nella
+   stessa sezione sono possibili.
+2. Lezioni di materie senza tipi: **nessuna chiamata**, nessuna riga nel pannello.
+3. `section_labels.json` diventa una mappa per tipo; impronta = tipi attivi e loro criteri (cambiare o
+   aggiungere un tipo riclassifica solo le lezioni delle sue materie). Correzioni a mano per sezione e per
+   tipo (presente / nessuno), valide finché il testo non cambia.
+4. Pannello Classificatore (`classifier_view.py`, `ClassifierPanel.tsx`): una riga per tipo attivo, con
+   nome e icona dal registro; valori "Presente" e "Nessuno". Via `values.caso`, `values.esercizio`,
+   `svolto`, `continua`, `esplicito`, `adattabile`.
+5. Mock deterministico: un tipo è presente se una parola del suo nome compare nel testo della sezione.
+
+### DP1c — Tipo consigliato
+
+`rt/services/question_types.py`: le scelte sono `quiz`, `mirata` e, per ogni unità, i tipi presenti
+nella sua sezione (DP1b), con il criterio `cerca`. L'impronta include i tipi offerti. Via `_compatible`
+e le chiavi caso/esercizio di `CRITERIA`. Test: un'unità con "Query SQL" presente può ricevere quel
+tipo; una senza no.
+
+### DP1d — Recaller e interfaccia
+
+1. `rt/pipeline/recall_special.py` generico: legge il tipo dal registro; il prompt è fatto dai blocchi
+   fissi di oggi (formato JSON, unità, tipi già presenti, few-shot, risposta testuale) più `chiedi`.
+   `correzione: soluzione` = il recaller scrive la soluzione attesa e la correzione la usa;
+   `correzione: testo` = la correzione riceve le subunità. `varianti: true` = variante più controllo con i
+   prompt generici di oggi. `continua` sostituisce `MAX_EXERCISE_SECTIONS`.
+2. Il recaller riceve l'etichetta dell'unità, così non rifà la valutazione.
+3. Genera (popup e "Genera ora"), pannello Domande (`QuestionsPanel.tsx`), ripasso
+   (`LightweightSession.tsx`), recall per materia, filtri e `questionTypes.ts`/`recall.ts`: i tipi base
+   più i personalizzati attivi sulla lezione (o sulla materia), da un endpoint che legge il registro.
+   Tipi senza unità marcate spenti, con il tooltip "Nessuna unità". "Genera ora" su unità scelte a mano
+   ignora le etichette, come oggi. Telegram (deprecato) mostra solo i tipi base.
+
+### DP1e — Impostazioni › Domande
+
+1. Nuova sezione in Impostazioni (`components/settings/`), "Domande": elenco dei tipi, editor a campi
+   guidati (i campi di DP1a, con una frase di aiuto ciascuno), materie scelte da quelle esistenti.
+2. **Galleria dei modelli pronti**: si parte da una copia.
+3. **Prova su un'unità**: scelta di lezione e unità, classifica e genera un esempio **senza salvare**
+   niente (né etichette né domande).
+4. **Esporta** un tipo in JSON e **importa** da file, con validazione e id rinominato se già presente.
+5. Salvare un tipo riclassifica in background le lezioni delle sue materie, alla prima occasione.
+
+### VC1 — Verifica e Chiedi
+
+Come la sezione `### VC1` della b2 (punti 1-8, wireframe `RT-verifica-chiedi.html` v3), con il
+contesto della lezione di V4 (`lesson_context_prompt`) e le ancore di V1. Applica passa da
+`record_review_decision` e accoda i documenti (V5).
+
+### Test di DP1
+
+pytest: registro e validazione, migrazione, classificatore a etichette (più tipi in una sezione, materie
+senza tipi senza chiamate, impronta), tipo consigliato, recaller generico per `soluzione` e `testo`,
+varianti, test del tipo nuovo senza codice, test di guardia. vitest: righe del pannello dal registro,
+editor, galleria, import/export, Genera con un tipo personalizzato. e2e: crea un tipo da Impostazioni,
+classifica una lezione mock, vede la riga nel pannello e genera una domanda di quel tipo.
+
+### CHANGELOG
+
+Le righe di questa beta vanno nella sezione `## 4.2.4b3` di `CHANGELOG.md`, scritte per l'utente
+(niente codici dei task).
+
+### Revisione e merge (Claude)
+
+Claude rivede la PR, prova nel browser la creazione di un tipo, il pannello Classificatore, Genera e VC1,
+unisce in `claude/rt-4.2.4-beta`, porta `VERSION` a `4.2.4b3`, fa girare la suite completa in locale e
+pubblica con release.yml seguendo il run fino alla fine.
