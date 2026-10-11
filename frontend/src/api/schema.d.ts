@@ -6119,7 +6119,7 @@ export interface components {
             /** Status At */
             status_at?: string | null;
             /** Suggested Qtype */
-            suggested_qtype?: ("quiz" | "mirata" | "caso" | "esercizio") | null;
+            suggested_qtype?: string | null;
             /** Title */
             title: string;
         };

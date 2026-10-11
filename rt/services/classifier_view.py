@@ -54,11 +54,12 @@ def overview(lesson_dir):
                 options = list(rel.CLASSES)
             elif name == "question_types":
                 row = types.get(uid,{})
-                fresh = row.get("text_hash") == qt._text_hash(item,lesson_dir) and (row.get("override") is not None or row.get("config_hash") == qt._config_hash(classifier_jev(cfg,"question_types")))
-                value = row.get("override") or qt._compatible(row, owner.get(uid), effective_labels)
+                criteria = qt.offered(lesson_dir, owner.get(uid), effective_labels, cfg=cfg)
+                fresh = row.get("text_hash") == qt._text_hash(item,lesson_dir) and (row.get("override") in criteria or row.get("config_hash") == qt._config_hash(classifier_jev(cfg,"question_types"), criteria))
+                value = qt.current_choice(row, criteria)
                 manual = row.get("override") is not None
                 skipped = uid not in allowed and not manual
-                options = list(qt.CRITERIA)
+                options = list(criteria)
             elif name in custom:
                 kind = custom[name].id
                 row = labels.get(sid, {})

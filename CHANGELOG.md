@@ -2,6 +2,8 @@
 
 ## 4.2.4b3 — 2026-10-11
 
+- Il tipo di domanda consigliato include i tipi personalizzati trovati nella sezione dell’unità.
+
 ### Novità
 
 - Il Classificatore mostra una riga per ogni tipo di domanda della materia, con nome, icona e correzioni “Presente” o “Nessuno”.

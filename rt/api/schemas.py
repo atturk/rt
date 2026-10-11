@@ -548,7 +548,7 @@ class StudyProgress(StudyStatusUpdate):
     last_read_at: Optional[datetime] = None
 
 
-SuggestedQuestionType = Literal["quiz", "mirata", "caso", "esercizio"]
+SuggestedQuestionType = str
 
 
 class StudyUnit(BaseModel):
