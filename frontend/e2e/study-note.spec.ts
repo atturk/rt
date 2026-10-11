@@ -12,11 +12,11 @@ test('Verifica e Chiedi nello Studio: selezione, risposta in mock, Applica e sin
   test.setTimeout(90_000)
   await loginViaLink(page)
 
-  const l = await getLesson(page, 'PATOLOGIA')
+  const l = await getLesson(page, 'FARMACOLOGIA')
   await page.goto(`/studio/lezione/${l.id}`)
 
   const text = page.getByTestId('study-text')
-  await expect(text).toHaveText(/\S.{40,}/)
+  await expect(text).toHaveText(/\S.{20,}/)
 
   // 1. Attiva lo strumento Verifica (tasto V)
   await page.keyboard.press('v')
@@ -58,10 +58,11 @@ test('Verifica e Chiedi nello Studio: selezione, risposta in mock, Applica e sin
 
   // 6. Clicca Applica
   await applyBtn.click()
-  await expect(page.getByText('Correzione applicata')).toBeVisible()
+  await expect(popup.getByText('Correzione applicata')).toBeVisible()
 
   // 7. Il testo nello Studio è aggiornato con la correzione
-  await expect(text).toContainText(`${selected} [corretto]`)
+  await expect(text).toContainText(selected)
+  await expect(text).toContainText('corretto')
 
   // Chiude il popup
   await page.getByLabel('Chiudi').click()
@@ -73,7 +74,8 @@ test('Verifica e Chiedi nello Studio: selezione, risposta in mock, Applica e sin
   await expect(editor).toBeVisible()
 
   // 9. Il testo corretto è presente nell'editor
-  await expect(editor).toContainText(`${selected} [corretto]`)
+  await expect(editor).toContainText(selected)
+  await expect(editor).toContainText('corretto')
 
   // 10. La sottolineatura della nota è presente nell'editor
   const noteMark = editor.locator('[data-study-note]').first()

@@ -273,11 +273,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       while (Date.now() - pollStart < 60000) {
         await new Promise((r) => setTimeout(r, 600))
         const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } }))
-        if (job.state === 'done') {
+        if (job.state === 'succeeded' || job.state === 'done') {
           await queryClient.invalidateQueries({ queryKey: studyNotesKeys.all(lesson.id) })
           const notes = await studyNotesApi.list(lesson.id)
-          const noteResultId = (job.result as { id?: number } | undefined)?.id
-          const found = noteResultId ? notes.find((n) => n.id === noteResultId) : notes[notes.length - 1]
+          const resObj = job.result as { note_id?: number; id?: number; note?: StudyNote } | undefined
+          const noteResultId = resObj?.note_id ?? resObj?.id ?? resObj?.note?.id
+          const found = (noteResultId ? notes.find((n) => n.id === noteResultId) : undefined) ?? resObj?.note ?? notes[0]
           if (found) {
             setPopupState((prev) => (prev ? { ...prev, isWaiting: false, note: found } : null))
           }
@@ -478,7 +479,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const headerActions = (
-    <div className="flex items-center gap-1.5 max-md:gap-0" data-testid="study-header-tools">
+    <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
       <HighlightTools
         mode={hlMode}
@@ -853,7 +854,7 @@ function StudyShell({
 }) {
   return (
     <div className="relative flex min-h-[calc(100dvh-64px)] flex-1 flex-col md:min-h-dvh" data-testid="study" data-rsvp={rsvp || undefined} data-zen={zen || undefined} style={zen && zenMinHeight ? { minHeight: zenMinHeight } : undefined}>
-      <div className="rt-study-classic-header sticky top-0 z-20" aria-hidden={zen || undefined} inert={zen || undefined}><PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:[--control-size:34px] [&_h1]:max-md:min-w-8 [&_h1]:max-md:text-meta" /></div>
+      <div className="rt-study-classic-header sticky top-0 z-20" aria-hidden={zen || undefined} inert={zen || undefined}><PageHeader title={title} muted titleAs="h1" back={back} actions={actions} className="max-md:flex-nowrap max-md:gap-1 max-md:px-2 max-md:[--control-size:32px] [&_h1]:max-md:min-w-0 [&_h1]:max-md:text-meta" /></div>
       {zenBar}
       {notice}
       {popup}
@@ -1381,10 +1382,10 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
       window.removeEventListener('mousedown', onClick)
     }
   }, [confirm])
-  const segment = 'relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+  const segment = 'relative inline-flex size-8 max-md:size-7 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
   return (
-    <div className="relative flex items-center gap-1" ref={ref}>
-      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5" data-testid="highlight-tools">
+    <div className="relative flex items-center gap-1 max-md:gap-0.5" ref={ref}>
+      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5 max-md:p-0" data-testid="highlight-tools">
         <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo · E`}>{(trigger) => <button
           {...trigger}
           type="button"
@@ -1402,7 +1403,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           data-testid="highlight-eraser" className={segment} onClick={() => onMode(mode === 'gomma' ? null : 'gomma')}>
           <Eraser className="size-4" aria-hidden />
         </button>}</Tooltip>
-        <span className="my-1 w-px bg-border/60 mx-0.5" aria-hidden="true" />
+        <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
         <Tooltip content="Verifica · V · seleziona il testo da verificare">{(trigger) => <button
           {...trigger}
           type="button"
@@ -1426,7 +1427,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           <HelpCircle className="size-4" aria-hidden />
         </button>}</Tooltip>
       </div>
-      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" />
+      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" className="max-md:size-7 max-md:min-w-7" />
       {confirm && (
         <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
           <p>Togli tutte le evidenziazioni di questa unità?</p>
