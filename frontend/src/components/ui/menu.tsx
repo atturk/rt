@@ -1,9 +1,50 @@
 import { Check, type LucideIcon } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from 'react'
+
+import { createPortal } from 'react-dom'
 
 import { Tooltip } from '@/components/ui/tooltip'
 import { IconButton } from '@/components/ui/icon-button'
 import { cn } from '@/lib/utils'
+
+/** Il menu segue il pulsante anche nei pannelli scorrevoli, fuori dai loro ritagli. */
+function useMenuPosition(open: boolean, root: RefObject<HTMLDivElement | null>, menu: RefObject<HTMLDivElement | null>, side: 'top' | 'bottom' = 'bottom') {
+  const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' })
+  const [host, setHost] = useState<Element>(document.body)
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      setHost(root.current?.closest('dialog') ?? document.body)
+      const button = root.current?.querySelector('button[aria-haspopup]')
+      const bubble = menu.current
+      if (!button || !bubble) return
+      const anchor = button.getBoundingClientRect()
+      const width = bubble.offsetWidth
+      const height = bubble.offsetHeight
+      const margin = 8
+      const above = anchor.top - 6 - height
+      const below = anchor.bottom + 6
+      const fitsAbove = above >= margin
+      const fitsBelow = below + height <= window.innerHeight - margin
+      const top = side === 'top' ? (fitsAbove || !fitsBelow ? above : below) : (fitsBelow || !fitsAbove ? below : above)
+      setStyle({
+        top: Math.max(margin, Math.min(top, window.innerHeight - height - margin)),
+        left: Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin)),
+      })
+    }
+    place()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
+    if (menu.current) observer?.observe(menu.current)
+    window.addEventListener('resize', place)
+    document.addEventListener('scroll', place, true)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', place)
+      document.removeEventListener('scroll', place, true)
+    }
+  }, [open, root, menu, side, host])
+  return { style, host }
+}
 
 export type MenuSection = { label: string; items: { label: string; checked: boolean; onSelect: () => void }[] }
 
@@ -16,23 +57,24 @@ export function MenuButton({ label, icon, sections, className }: { label: string
   const menuId = useId()
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
+  const position = useMenuPosition(open, root, menu)
 
   const close = (refocus: boolean) => {
     setOpen(false)
-    if (refocus) root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup]')?.focus()
+    if (refocus) root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup]')?.focus({ preventScroll: true })
   }
 
   useEffect(() => {
     if (!open) return
     const items = menu.current?.querySelectorAll<HTMLElement>('[role=menuitemradio]')
     const checked = Array.from(items ?? []).find((item) => item.getAttribute('aria-checked') === 'true')
-    ;(checked ?? items?.[0])?.focus()
+    ;(checked ?? items?.[0])?.focus({ preventScroll: true })
     const onPointer = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+      if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('pointerdown', onPointer)
     return () => document.removeEventListener('pointerdown', onPointer)
-  }, [open])
+  }, [open, position.host, position.style.visibility])
 
   const onKeyDown = (event: KeyboardEvent) => {
     const items = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role=menuitemradio]') ?? [])
@@ -44,24 +86,25 @@ export function MenuButton({ label, icon, sections, className }: { label: string
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       const next = (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
-      items[next]?.focus()
+      items[next]?.focus({ preventScroll: true })
     } else if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault()
-      items[event.key === 'Home' ? 0 : items.length - 1]?.focus()
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus({ preventScroll: true })
     } else if (event.key === 'Tab') setOpen(false)
   }
 
   return (
     <div ref={root} className={cn('relative', className)}>
       <IconButton label={label} icon={icon} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
-      {open && (
+      {open && createPortal(
         <div
           ref={menu}
           id={menuId}
           role="menu"
           aria-label={label}
           onKeyDown={onKeyDown}
-          className="absolute right-0 top-full z-30 mt-1.5 w-56 rounded-lg border bg-card p-1.5 text-body shadow-panel"
+          style={position.style}
+          className="fixed z-50 max-h-[calc(100dvh-1rem)] w-56 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-card p-1.5 text-body shadow-panel"
         >
           {sections.map((section) => (
             <div key={section.label} role="group" aria-label={section.label} className="py-0.5">
@@ -85,7 +128,7 @@ export function MenuButton({ label, icon, sections, className }: { label: string
               ))}
             </div>
           ))}
-        </div>
+        </div>, position.host,
       )}
     </div>
   )
@@ -105,19 +148,20 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
   const menuId = useId()
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
+  const position = useMenuPosition(open, root, menu, side)
   const close = (refocus: boolean) => {
     setOpen(false)
-    if (refocus) root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup]')?.focus()
+    if (refocus) root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup]')?.focus({ preventScroll: true })
   }
   useEffect(() => {
     if (!open) return
-    menu.current?.querySelector<HTMLElement>('[role^=menuitem]')?.focus()
+    menu.current?.querySelector<HTMLElement>('[role^=menuitem]')?.focus({ preventScroll: true })
     const onPointer = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+      if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('pointerdown', onPointer)
     return () => document.removeEventListener('pointerdown', onPointer)
-  }, [open])
+  }, [open, position.host, position.style.visibility])
   const onKeyDown = (event: KeyboardEvent) => {
     const all = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role^=menuitem]') ?? [])
     const index = all.indexOf(document.activeElement as HTMLElement)
@@ -127,17 +171,17 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
       close(true)
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      all[(index + (event.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length]?.focus()
+      all[(index + (event.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length]?.focus({ preventScroll: true })
     } else if (event.key === 'Tab') setOpen(false)
   }
   const itemClass = 'flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
   return (
     <div ref={root} className={cn('relative', className)}>
       <IconButton label={label} icon={icon} side={side} unavailable={unavailable} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
-      {open && (
+      {open && createPortal(
         <div ref={menu} id={menuId} role="menu" aria-label={label} onKeyDown={onKeyDown}
-          className={cn('absolute right-0 z-30 w-60 rounded-lg border bg-card p-1.5 text-body shadow-panel',
-            side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5')}>
+          style={position.style}
+          className="fixed z-50 max-h-[calc(100dvh-1rem)] w-60 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-card p-1.5 text-body shadow-panel">
           {items.map((item) =>
             item.unavailable ? (
               <Tooltip key={item.label} content={item.unavailable}>{(trigger) => <span {...trigger} role="menuitem" aria-disabled="true" tabIndex={-1} className={cn(itemClass, 'cursor-default opacity-50 hover:bg-transparent')}>
@@ -159,7 +203,7 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
               </a>}</Tooltip>
             ),
           )}
-        </div>
+        </div>, position.host,
       )}
     </div>
   )

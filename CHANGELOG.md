@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.2.4b3
+
+### Correzioni
+
+- I menu a icona escono dai pannelli e restano interamente nello schermo, anche sul telefono.
+
 ## 4.2.4b2 — 2026-10-11
 
 ### Novità
