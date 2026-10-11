@@ -1,4 +1,4 @@
-import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
+import { questionTypeId, typeLabel } from '@/lib/recall'
 import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
@@ -17,6 +17,8 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson } from '@/api/hooks'
 import {
+  BASE_RECALL_TYPES,
+  useRecallTypes,
   useAnswer,
   useAnswerSeen,
   useAnswerVoice,
@@ -50,14 +52,6 @@ import { cn } from '@/lib/utils'
 
 type SessionType = RecallType | 'mista'
 
-const SESSION_TYPES: { id: SessionType; label: string }[] = [
-  { id: 'mista', label: 'Mista' },
-  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz },
-  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata },
-  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta },
-  { id: 'caso', label: QUESTION_TYPE_LABELS.caso },
-  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio },
-]
 
 type DiscardReason = NonNullable<Schemas['RecallVote']['reasons']>[number]
 
@@ -106,6 +100,8 @@ export function LightweightSession({
   }, [propSelectionIds, params.ids])
 
   const subjectKey = isSelection ? selectionSubject(selectionIds.join(',')) : ''
+  const types = useRecallTypes(lessonId, subjectKey || undefined).data ?? BASE_RECALL_TYPES
+  const sessionTypes = [{ id: 'mista', label: 'Mista' }, ...types.filter(t => !unit || t.id !== 'vasta').map(t => ({ id: t.id, label: t.nome }))]
 
   // Dati lezione o selezione
   const lessonQuery = useLesson(lessonId ?? 0)
@@ -125,6 +121,7 @@ export function LightweightSession({
   const nextLesson = useNextQuestion(lessonId ?? 0)
   const nextSubject = useSubjectNext(subjectKey)
   const answerSeen = useAnswerSeen(activeLessonId)
+  const markSeen = answerSeen.mutateAsync
   const answerMutation = useAnswer(activeLessonId)
   const voiceMutation = useAnswerVoice(activeLessonId)
   const voteMutation = useVote(activeLessonId)
@@ -143,7 +140,7 @@ export function LightweightSession({
     if (unit) return 'mista'
     try {
       const saved = localStorage.getItem(LAST_TYPE_KEY)
-      if (saved && SESSION_TYPES.some((t) => t.id === saved)) {
+      if (saved && /^[a-z][a-z0-9-]{0,63}$/.test(saved)) {
         return saved as SessionType
       }
     } catch {
@@ -177,6 +174,20 @@ export function LightweightSession({
   const [selectedReasons, setSelectedReasons] = useState<Set<DiscardReason>>(() => new Set())
   const [commentModalOpen, setCommentModalOpen] = useState<boolean>(false)
   const [commentText, setCommentText] = useState<string>('')
+
+  // Rientrando, la valutazione già salvata si mostra subito; il job in corso si riaggancia.
+  useEffect(() => {
+    if (!currentQuestion) return
+    const saved = currentQuestion.saved_evaluation
+    if (!saved) return
+    let active = true
+    void markSeen(currentQuestion.id).then(() => {
+      if (!active) return
+      setWrittenAnswer(saved.answer_text)
+      setEvaluatedResult({ outcome: saved.outcome ?? undefined, explanation: saved.evaluation })
+    }).catch(error => { if (active) setGeneralError(errorMessage(error)) })
+    return () => { active = false }
+  }, [currentQuestion, activeLessonId, markSeen])
 
   // Richiesta prossima domanda: vale solo la risposta dell'ultima richiesta (es. tipo cambiato al volo)
   const requestSeq = useRef(0)
@@ -212,6 +223,7 @@ export function LightweightSession({
           return
         }
         setCurrentQuestion(q)
+        setEvaluationJob(q.evaluation_job_id ?? null)
         setQuestionCount((c) => c + 1)
       } catch (err: unknown) {
         if (seq !== requestSeq.current) return
@@ -463,7 +475,6 @@ export function LightweightSession({
 
   const unitPending = unit ? Object.values(unit.pending).reduce((a, b) => a + b, 0) : 0
   // Le domande vaste non si attaccano a una singola unità: nel ripasso dell'unità non ci sono.
-  const sessionTypes = unit ? SESSION_TYPES.filter((t) => t.id !== 'vasta') : SESSION_TYPES
   const isQuiz = currentQuestion?.type === 'quiz'
   const isAnswered = evaluatedResult !== null || evaluationJob !== null
   const busy =
@@ -617,10 +628,10 @@ export function LightweightSession({
 
           {/* Domanda corrente */}
           {currentQuestion && (
-            <div className="flex flex-col gap-4" data-testid="recall-question" data-question-id={currentQuestion.id} data-type={currentQuestion.type}>
+            <div className="flex flex-col gap-4" data-testid="recall-question" data-question-id={currentQuestion.id} data-type={questionTypeId(currentQuestion)}>
               <div className="flex flex-col gap-1">
                 <p className="text-meta text-muted-foreground">
-                  {currentQuestion.type.toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
+                  {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
                 </p>
                 <h2 className="text-heading font-semibold leading-relaxed">
                   {currentQuestion.question_text}
@@ -673,7 +684,7 @@ export function LightweightSession({
                 </div>
               )}
 
-              {/* Area risposte Aperte (Mirata, Vasta, Caso, Esercizio) */}
+              {/* Risposte aperte (tipi base e personalizzati) */}
               {!isQuiz && (
                 <div className="flex flex-col gap-3">
                   {!isAnswered && (
@@ -930,7 +941,7 @@ export function LightweightSession({
           <div className="mt-3 flex flex-col gap-3.5">
             <div className="rounded-lg bg-muted/50 p-2.5 text-meta">
               <p className="text-muted-foreground">
-                {currentQuestion.type.toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
+                {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
               </p>
               <p className="mt-0.5 font-medium text-foreground">
                 {currentQuestion.question_text}
@@ -948,7 +959,7 @@ export function LightweightSession({
                 id="comment-textarea"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Per esempio: troppo facile, chiedimi di ragionare su un caso concreto."
+                placeholder="Per esempio: troppo facile, chiedimi di ragionare su un esempio concreto."
                 rows={4}
                 className="block w-full resize-none rounded-md border bg-card p-2.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
               />

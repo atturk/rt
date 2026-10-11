@@ -1,11 +1,10 @@
-import type { RecallType } from '@/api/recall'
-import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
+import { typeLabel, questionTypeId } from '@/lib/recall'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
-import { useEditQuestion, useRecallQuestions, useRegenerateComment, type RecallQuestionDetail } from '@/api/recall'
+import { useRecallTypes, BASE_RECALL_TYPES, useEditQuestion, useRecallQuestions, useRegenerateComment, type RecallQuestionDetail } from '@/api/recall'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,12 +12,11 @@ import { Modal } from '@/components/ui/modal'
 import { cn } from '@/lib/utils'
 
 /** I tipi con il commento pregenerato dell'IA (per gli altri il modello non lo prevede). */
-const TYPES_WITH_COMMENT = ['quiz', 'vasta', 'esercizio']
+const TYPES_WITH_COMMENT = ['quiz', 'vasta']
 
 const COMMENT_LABEL: Record<string, string> = {
   quiz: "Spiegazione della risposta giusta",
   vasta: 'Scaletta della risposta ideale',
-  esercizio: 'Schema di risoluzione',
 }
 
 
@@ -37,8 +35,9 @@ export function QuestionEditModal({ lessonId, question, open, onClose }: {
   // Il testo delle domande da porre arriva senza soluzione: per modificarle serve reveal.
   const revealed = useRecallQuestions(lessonId, true)
   const full = revealed.data?.questions.find((q) => q.id === question.id)
+  const types = useRecallTypes(lessonId).data ?? BASE_RECALL_TYPES
   return (
-    <Modal open={open} onClose={onClose} title={`Modifica domanda · ${QUESTION_TYPE_LABELS[question.type as RecallType] ?? question.type}`}
+    <Modal open={open} onClose={onClose} title={`Modifica domanda · ${typeLabel(questionTypeId(question), types)}`}
       className="w-[min(560px,calc(100vw-32px))]" testId="question-edit-modal">
       {revealed.isError ? (
         <Alert tone="danger" className="mt-3">{errorMessage(revealed.error)}</Alert>
@@ -64,7 +63,7 @@ function EditForm({ lessonId, question, onClose }: {
   const [jobId, setJobId] = useState<string | null>(null)
   const job = useJobStatus(jobId)
   const isQuiz = question.type === 'quiz'
-  const hasComment = TYPES_WITH_COMMENT.includes(question.type)
+  const hasComment = TYPES_WITH_COMMENT.includes(question.type) || (question.type === 'personalizzata' && question.explanation != null)
 
   const [text, setText] = useState(question.question_text)
   const [options, setOptions] = useState<string[]>(() => {
@@ -138,7 +137,7 @@ function EditForm({ lessonId, question, onClose }: {
       {hasComment && (
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
-            <label htmlFor="edit-q-comment" className="text-meta text-muted-foreground">{COMMENT_LABEL[question.type]}</label>
+            <label htmlFor="edit-q-comment" className="text-meta text-muted-foreground">{COMMENT_LABEL[question.type] ?? "Soluzione attesa"}</label>
             <Button
               variant="ghost"
               size="sm"

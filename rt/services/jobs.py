@@ -427,7 +427,7 @@ class DbJobQueue:
         """Prende il job in coda più vecchio eseguibile (tipo supportato, lezione libera; i job
         che devono trascrivere solo se can_transcribe, RT4-G1).
         Su SQLite la transazione è BEGIN IMMEDIATE (un solo scrittore: l'UPDATE è
-        condizionato di fatto); su Postgres SELECT ... FOR UPDATE SKIP LOCKED. In ogni caso
+        condizionato di fatto); su Postgres SELECT ... FOR UPDATE SKIP LOCKED. Comunque
         il vincolo UNIQUE su active_lesson è l'ultima garanzia."""
         now = now or utcnow()
         self.requeue_expired(now)

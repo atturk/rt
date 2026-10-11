@@ -137,7 +137,7 @@ def call_jev(
     Esegue una chiamata a Jev (System One di typesafe.ai) via l'endpoint decisions di
     OpenRouter. Registra costo e telemetria come ogni altra chiamata LLM del progetto
     (compare in 'rt cost' e in llm_debug.log), ma non passa da LLMClient.call_structured.
-    Solleva JevError in caso di fallimento di rete, autenticazione o formato risposta.
+    Solleva JevError con fallimento di rete, autenticazione o formato risposta.
     """
     from rt.llm.client import _append_debug_log  # import locale: evita un ciclo di import con rt.llm.client
 

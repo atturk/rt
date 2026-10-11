@@ -1,3 +1,4 @@
+import { useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap, type Schemas } from './client'
@@ -5,6 +6,25 @@ import { formData } from './jobStatus'
 
 export type RecallType = string
 export type RecallGenerateType = RecallType | 'consigliato'
+export type RecallTypeInfo = Schemas['RecallTypeInfo']
+export const BASE_RECALL_TYPES: RecallTypeInfo[] = [
+  { id: 'quiz', nome: 'Quiz', icona: 'ListChecks', custom: false, available: true },
+  { id: 'mirata', nome: 'Mirata', icona: 'MessageSquare', custom: false, available: true },
+  { id: 'vasta', nome: 'Vasta', icona: 'Brain', custom: false, available: true },
+]
+export function useRecallTypes(lessonId?: number | null, materia?: string) {
+  const params = useParams()
+  const client = useQueryClient()
+  // Nello Studio di una selezione la lezione corrente è già osservata da useStudyLesson.
+  const study = client.getQueryCache().findAll({ queryKey: ['recall'], type: 'active' }).find(query => query.queryKey[2] === 'study')
+  const id = lessonId ?? (params.lessonId ? Number(params.lessonId) : !materia && study ? Number(study.queryKey[1]) : undefined)
+  return useQuery({
+    queryKey: ['recall-types', id ?? null, materia ?? null],
+    enabled: Boolean(id || materia),
+    placeholderData: BASE_RECALL_TYPES,
+    queryFn: () => unwrap(api.GET('/api/v1/recall/types', { params: { query: { lesson_id: id, materia } } })),
+  })
+}
 export type RecallQuestion = Schemas['RecallQuestion']
 export type RecallAnswerRecord = Schemas['RecallAnswerRecord']
 export type Vote = 'up' | 'down' | 'lightning'
@@ -283,7 +303,7 @@ export function useEndSession(id: number) {
 }
 
 export function useStartTelegram(id: number) {
-  return useSessionMutation((qtype: RecallType) =>
+  return useSessionMutation((qtype: Schemas['TelegramRecallStart']['qtype']) =>
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/telegram/start', { params: path(id), body: { qtype, mock: false } })),
   )
 }

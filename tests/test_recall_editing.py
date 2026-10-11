@@ -177,8 +177,21 @@ def test_seen_endpoint_marks_saved_evaluation(api_client, lesson):
     from rt.services.lesson_service import lesson_id_for_dir
     question = service.next_question_for(lesson, 'mirata')
     service.handle_recall_answer(lesson, question.id, 'Risposta', force_mock=True, mark_answered=False)
+    resumed = service.question_resume_view(lesson, service.find_question(lesson, question.id))
+    assert resumed['saved_evaluation']['answer_text'] == 'Risposta'
+    assert resumed['saved_evaluation']['evaluation']
+    assert service.find_question(lesson, question.id).status == RecallQuestionStatus.ASKED
     base = f'/api/v1/lessons/{lesson_id_for_dir(lesson)}/recall'
     assert api_client.post(f'{base}/seen', json={'question_id': question.id}).status_code == 200
     assert service.find_question(lesson, question.id).status == RecallQuestionStatus.ANSWERED
     assert api_client.post(f'{base}/skip', json={'question_id': question.id}).status_code == 200
     assert service.find_question(lesson, question.id).status == RecallQuestionStatus.ANSWERED
+
+
+def test_resume_view_reconnects_only_the_actors_pending_evaluation(lesson, rt_db):
+    from rt.services.jobs import DbJobQueue
+    question = service.next_question_for(lesson, 'mirata')
+    job_id = DbJobQueue(rt_db).enqueue('recall_evaluate', lesson_id=lesson,
+        payload={'question_id': question.id, 'answer': 'Risposta'}, created_by='studente')
+    assert service.question_resume_view(lesson, question, 'studente')['evaluation_job_id'] == job_id
+    assert 'evaluation_job_id' not in service.question_resume_view(lesson, question, 'altro')

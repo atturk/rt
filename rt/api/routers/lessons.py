@@ -114,7 +114,7 @@ def get_section_labels(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 
 @router.put("/lessons/{lesson_id}/sections/{section_id}", response_model=schemas.SectionLabels,
-            summary="Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità")
+            summary="Corregge o ripristina l'etichetta di un tipo personalizzato di un'unità")
 def put_section_label(lesson_id: int, section_id: str, body: schemas.SectionLabelOverride,
                       lesson_dir: LessonDir, _actor: Actor):
     from rt.services.classifier_view import correct

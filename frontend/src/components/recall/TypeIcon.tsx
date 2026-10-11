@@ -3,7 +3,7 @@ import { BookOpen, Brain, Calculator, Code, Database, History, ListChecks, ListT
 const icons = { BookOpen, Brain, Calculator, Code, Database, History, ListChecks, ListTree, MessageSquare, Sigma, Stethoscope }
 
 /** Il nome dell'icona arriva dal registro; i nomi sconosciuti usano l'icona di domanda. */
-export function TypeIcon({ name }: { name?: string | null }) {
+export function TypeIcon({ name, className = 'size-4 shrink-0' }: { name?: string | null; className?: string }) {
   const Icon = icons[name as keyof typeof icons] ?? MessageSquare
-  return <Icon className="size-4 shrink-0" aria-hidden />
+  return <Icon className={className} aria-hidden />
 }

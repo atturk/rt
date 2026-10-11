@@ -2,9 +2,10 @@
 
 ## 4.2.4b3 — 2026-10-11
 
-- Il tipo di domanda consigliato include i tipi personalizzati trovati nella sezione dell’unità.
-
 ### Novità
+
+- Il tipo consigliato, i controlli Genera e il ripasso includono i tipi personalizzati della materia. I tipi senza unità marcate restano spenti; si possono comunque usare sulle unità scelte a mano.
+- Le domande dei tipi eliminati restano consultabili nello storico sotto “Tipo eliminato”.
 
 - Il Classificatore mostra una riga per ogni tipo di domanda della materia, con nome, icona e correzioni “Presente” o “Nessuno”.
 

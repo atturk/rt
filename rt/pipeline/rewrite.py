@@ -82,7 +82,7 @@ def extract_context_window(
     """
     Estrae deterministicamente i segmenti di contesto precedente e successivo
     basandosi sulla durata temporale (~90 secondi), con un tetto massimo di segmenti (20)
-    per prevenire finestre sproporzionate in caso di segmenti ASR molto brevi.
+    per prevenire finestre sproporzionate con segmenti ASR molto brevi.
     """
     prev_segs: List[Segment] = []
     cur_prev_idx = start_seg.index - 2  # 0-indexed per il segmento precedente

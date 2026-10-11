@@ -171,5 +171,5 @@ def test_unit_without_advice_uses_quiz(path):
 def test_special_generation_only_uses_requested_unit(path):
     from rt.core.models import RecallQuestionType
     from rt.pipeline.recall_special import generate_special_batch
-    questions = generate_special_batch(path, RecallQuestionType.CASO, 2, force_mock=True, regenerate=True, unit_ids=["1.2"])
+    questions = generate_special_batch(path, "query-sql", 2, force_mock=True, regenerate=True, unit_ids=["1.2"])
     assert questions and all(q.unit_ids == ["1.2"] for q in questions)

@@ -35,7 +35,7 @@ RELEVANCE_CRITERIA = {
 RELEVANCE_INSTRUCTIONS = (
     "Classifica una singola unità riscritta di una lezione universitaria per review e domande di ripasso. "
     "Valuta il contenuto effettivo, non il titolo o la posizione: un'introduzione può insegnare nozioni. "
-    "Se è presente anche un contenuto didattico sostanziale, scegli didactic. In caso di dubbio "
+    "Se è presente anche un contenuto didattico sostanziale, scegli didactic. Nel dubbio "
     "scegli didactic per evitare omissioni. Restituisci solo la scelta tra i criteri."
     " Esempi: presentazione personale o composizione della classe senza nozioni → no_content; "
     "verifica audio e saluti → no_content; rose, date di esame, sede, indirizzo e ricevimento → organizational; "
@@ -44,7 +44,7 @@ RELEVANCE_INSTRUCTIONS = (
 _RELEVANCE_PROBABILITY = (
     "Valuta una singola unità riscritta di una lezione universitaria. Stima la probabilità che l'unità "
     "NON contenga alcuna nozione didattica (solo informazioni organizzative, saluti, prove audio o "
-    "conversazione). Un'introduzione con contenuto disciplinare è didattica. In caso di dubbio la "
+    "conversazione). Un'introduzione con contenuto disciplinare è didattica. Nel dubbio la "
     "probabilità deve essere bassa, per evitare omissioni."
 )
 

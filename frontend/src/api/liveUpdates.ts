@@ -54,6 +54,10 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
     if (event.job_type === 'unit_relevance') keys.push(['relevance', lesson])
   }
   if (RECALL_JOBS.has(event.job_type)) keys.push(['recall'], ['recall-subject'])
+  if (event.job_type === 'classifier' || DOCUMENT_JOBS.has(event.job_type) || RECALL_JOBS.has(event.job_type)) {
+    keys.push(['recall-types'])
+    if (lesson != null) keys.push(['classifier', lesson], ['recall', lesson, 'study'])
+  }
   if (LESSON_EVENTS.has(event.type)) keys.push(queryKeys.costs)
   return keys
 }

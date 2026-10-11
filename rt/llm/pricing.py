@@ -73,7 +73,7 @@ _OPENROUTER_DYNAMIC_FETCHED: bool = False
 def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
     """
     Recupera dinamicamente il pricing da https://openrouter.ai/api/v1/models con cache in-memory.
-    Non solleva eccezioni in caso di errore di rete / timeout, ma restituisce None.
+    Non solleva eccezioni con errore di rete / timeout, ma restituisce None.
     """
     global _OPENROUTER_DYNAMIC_FETCHED
     mod_clean = model_name.lower().strip().lstrip("~")

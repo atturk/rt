@@ -42,7 +42,13 @@ vi.mock('@/api/hooks', () => ({
   })),
 }))
 
-vi.mock('@/api/recall', () => ({
+vi.mock('@/api/recall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/recall')>()
+  return {
+  ...actual,
+  useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES,
+    { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: true },
+    { id: 'codice', nome: 'Codice', icona: 'Code', custom: true, available: true }] }),
   recallKeys: { all: (id: number) => ['recall', id] },
   useStudyLesson: () => ({ data: { suggestions: mockSuggestions } }),
   useGenerateRecall: () => ({ mutate: mockGenerateMutate, isPending: false }),
@@ -101,7 +107,7 @@ vi.mock('@/api/recall', () => ({
     isPending: false,
     isError: false,
   })),
-}))
+} })
 
 const sampleQuestion = {
   id: 'q100',
@@ -214,6 +220,22 @@ describe('LightweightSession', () => {
     expect(screen.getByRole('link', { name: "Rileggi l'unità 1.2" })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
   })
 
+  it('rientrando mostra la valutazione salvata e rende la domanda risposta', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, type: 'personalizzata', custom_type: 'query-sql', options: null,
+      saved_evaluation: { answer_text: 'SELECT dati', evaluation: 'Manca il filtro.', outcome: 'parziale' } })
+    renderSession()
+    expect(await screen.findByText('Manca il filtro.')).toBeInTheDocument()
+    expect(screen.getByText('Risposta parziale.')).toBeInTheDocument()
+    expect(mockSeenMutateAsync).toHaveBeenCalledWith(sampleQuestion.id)
+  })
+
+  it('rientrando riaggancia una valutazione ancora in corso', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, type: 'mirata', options: null, evaluation_job_id: 'job-in-corso' })
+    renderSession()
+    expect(await screen.findByRole('button', { name: 'Valutazione della risposta' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rispondi' })).not.toBeInTheDocument()
+  })
+
   it('invia Non lo so quando cliccato', async () => {
     mockAnswerMutateAsync.mockResolvedValue({ correct: false })
     renderSession()
@@ -309,7 +331,7 @@ describe('LightweightSession', () => {
     expect(types.querySelector('[aria-pressed=true]')).toHaveTextContent('Mista 3')
     expect(screen.getByRole('button', { name: 'Quiz 2' })).toBeEnabled()
     // I tipi senza domande da porre restano spenti.
-    expect(screen.getByRole('button', { name: 'Caso clinico' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Query SQL' })).toBeDisabled()
 
     // Prima della risposta si salta, "Prossima" non c'è ancora.
     expect(screen.getByRole('button', { name: 'Salta' })).toBeInTheDocument()

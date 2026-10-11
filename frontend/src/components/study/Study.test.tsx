@@ -46,6 +46,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
   return {
     ...actual,
+    useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES, { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: false }] }),
     useStudyLesson: () => ({
       data: { id: 1, units: UNITS.map(u => ({ ...u, suggested_qtype: 'mirata' })), has_audio: false, suggestions: mockSuggestions },
       isPending: false,
@@ -226,13 +227,13 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
 
     fireEvent.click(generate)
-    fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Query SQL' }))
     fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
     fireEvent.click(screen.getByTestId('study-generate-start'))
 
     expect(mockGenerate).toHaveBeenCalledWith(
-      { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
+      { unitIds: ['2.1'], qtype: 'query-sql', count: 2, instructions: 'solo sui valori soglia' },
       expect.anything(),
     )
   })

@@ -25,7 +25,7 @@ export function ClassifierPanel({ lessonId }: {lessonId?:number}) {
  const [hover,setHover]=useState<string|null>(null)
  const [selection,setSelection]=useState<{job:string;index:number}|null>(null)
  const [confirm,setConfirm]=useState<{job?:string}|null>(null)
- const invalidate=()=> {void client.invalidateQueries({queryKey:['classifier',id]});void client.invalidateQueries({queryKey:['relevance',id]});void client.invalidateQueries({queryKey:['lesson',id]});void client.invalidateQueries({queryKey:['recall-units',id]})}
+ const invalidate=()=> {void client.invalidateQueries({queryKey:['recall-types']});void client.invalidateQueries({queryKey:['recall']});void client.invalidateQueries({queryKey:['classifier',id]});void client.invalidateQueries({queryKey:['relevance',id]});void client.invalidateQueries({queryKey:['lesson',id]});void client.invalidateQueries({queryKey:['recall-units',id]})}
  const run=useMutation({mutationFn:({job,force=false,unit_ids}:{job?:string;force?:boolean;unit_ids?:string[]})=>job?unwrap(api.POST('/api/v1/lessons/{lesson_id}/classifier/{job}/run',{params:{path:{lesson_id:id,job}},body:{force,unit_ids}})):unwrap(api.POST('/api/v1/lessons/{lesson_id}/classifier/run',{params:{path:{lesson_id:id}},body:{force,unit_ids}})),onSuccess:invalidate})
  const update=useMutation({mutationFn:({job,cell,value}:{job:string;cell:Cell;value:string|null})=>unwrap(api.PUT('/api/v1/lessons/{lesson_id}/classifier/{job}/{cell_id}',{params:{path:{lesson_id:id,job,cell_id:cell.unit_id??cell.section_id??''}},body:{value}})),onSuccess:saved=>{client.setQueryData(['classifier',id],saved);invalidate()}})
  if(query.isPending)return <p className="text-meta text-muted-foreground">Carico le classificazioni…</p>

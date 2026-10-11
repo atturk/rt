@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { QuestionsPanel } from './QuestionsPanel'
 
 let mockSuggestions = false
+let mockDeletedType = false
 const mockGenerateMutate = vi.fn()
 const mockDeleteMutate = vi.fn()
 const mockSelectUnitsMutate = vi.fn()
@@ -13,8 +14,14 @@ const mockStatusMutate = vi.fn()
 const mockRestoreMutate = vi.fn()
 const mockEditMutate = vi.fn()
 
-vi.mock('@/api/recall', () => ({
-  useStudyLesson: () => ({ data: { suggestions: mockSuggestions, units: [{ id: '1.1', suggested_qtype: 'mirata' }, { id: '1.2', suggested_qtype: 'mirata' }, { id: '1.3', suggested_qtype: 'caso' }] } }),
+vi.mock('@/api/recall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/recall')>()
+  return {
+  ...actual,
+  useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES,
+    { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: true },
+    { id: 'codice', nome: 'Codice', icona: 'Code', custom: true, available: true }] }),
+  useStudyLesson: () => ({ data: { suggestions: mockSuggestions, units: [{ id: '1.1', suggested_qtype: 'mirata' }, { id: '1.2', suggested_qtype: 'mirata' }, { id: '1.3', suggested_qtype: 'query-sql' }] } }),
   useRecallOverview: vi.fn(() => ({
     data: {
       questions: {
@@ -28,6 +35,7 @@ vi.mock('@/api/recall', () => ({
     isError: false,
     data: {
       questions: [
+        ...(mockDeletedType ? [{ id: 'q-deleted', type: 'personalizzata', custom_type: 'tipo-rimosso', status: 'answered', outcome: 'corretta', question_text: 'Domanda del tipo rimosso', unit_ids: ['1.2'] }] : []),
         {
           id: 'q1',
           type: 'quiz',
@@ -103,7 +111,7 @@ vi.mock('@/api/recall', () => ({
   useRestorable: vi.fn(() => ({ data: { asked: 2, wrong: 1 } })),
   useEditQuestion: vi.fn(() => ({ mutate: mockEditMutate, isPending: false, isError: false })),
   useRegenerateComment: vi.fn(() => ({ mutate: vi.fn(), isPending: false, isError: false })),
-}))
+} })
 
 vi.mock('@/api/relevance', () => ({ useRelevance: () => ({ data: { mode: 'active', summary: { missing: 0, stale: 0, errors: 0 }, units: [] } }) }))
 vi.mock('@/api/jobs', () => ({
@@ -129,12 +137,13 @@ describe('QuestionsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSuggestions = false
+    mockDeletedType = false
   })
 
   it('mostra il riepilogo con conteggi per tipo e link al ripasso', () => {
     renderPanel()
 
-    expect(screen.getByText(/2 domande da porre/i)).toBeInTheDocument()
+    expect(screen.getByText(/3 domande da porre/i)).toBeInTheDocument()
     expect(screen.getByText(/Ultimo ripasso/i)).toHaveTextContent(/Ultimo ripasso: .+ · Mirata/)
     expect(screen.getByRole('link', { name: /Ripassa/i })).toHaveAttribute('href', '/lezioni/1/sessione')
 
@@ -316,4 +325,14 @@ it('il footer Domande usa la striscia al posto delle righe di testo', () => {
   expect(screen.getByTestId('unit-strip-recaller')).toHaveTextContent('2/3')
   expect(screen.queryByText(/^Unità per il recaller:/)).not.toBeInTheDocument()
   expect(screen.queryByText(/^Classificatore:/)).not.toBeInTheDocument()
+})
+
+it('conserva le domande di un tipo eliminato sotto un filtro dedicato', () => {
+  mockDeletedType = true
+  renderPanel()
+  expect(screen.getByText('Domanda del tipo rimosso')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra solo Tipo eliminato' }))
+  expect(screen.getByText('Domanda del tipo rimosso')).toBeInTheDocument()
+  expect(screen.queryByText('Quale valore definisce acidosi?')).not.toBeInTheDocument()
+  expect(screen.getAllByText('Tipo eliminato').length).toBeGreaterThan(1)
 })

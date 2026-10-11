@@ -244,7 +244,7 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
     Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
     segmenti ASR grezzi corrispondenti (possibile invenzione/allucinazione), o si discosta
     significativamente dal loro senso. Vede sia i segmenti grezzi sia il rielaborato.
-    Ritorna None se la chiamata fallisce: nessuna issue verrà creata in quel caso.
+    Ritorna None se la chiamata fallisce: nessuna issue verrà creata allora.
     """
     state = f"SEGMENTI GREZZI ASR:\n{source_context}\n\n---\n\nTESTO RIELABORATO:\n{unit.content}"
     try:

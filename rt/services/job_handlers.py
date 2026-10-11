@@ -144,7 +144,9 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                       count=job.payload.get("count"),
                                       progress=recall_progress(ctx))
             total = sum(generated.values())
-            names = {"quiz": "quiz", "mirata": "mirate", "vasta": "vaste", "caso": "casi clinici", "esercizio": "esercizi"}
+            names = {"quiz": "quiz", "mirata": "mirate", "vasta": "vaste"}
+            from rt.services.custom_question_types import active_types
+            names.update({t.id: t.nome for t in active_types(lesson_dir=lesson_dir)})
             detail = ", ".join(f"{n} {names.get(t, t)}" for t, n in generated.items())
             ctx.emit(Notice(message=_recall_message(f"Pool di domande: {total} nuove ({detail}).", total,
                                                     unit_rows(lesson_dir))))

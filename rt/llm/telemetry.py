@@ -62,7 +62,7 @@ class LLMTelemetryRecord(BaseModel):
     status: str = Field(default="success", description="Stato dell'attempt (success, timeout, error, ecc.)")
     error_class: Optional[str] = Field(default=None, description="Classe normalizzata dell'errore (retrocompatibilità)")
     http_status: Optional[int] = Field(default=None, description="Codice HTTP restituito (se disponibile)")
-    error_message: Optional[str] = Field(default=None, description="Messaggio di errore sanitizzato in caso di fallimento")
+    error_message: Optional[str] = Field(default=None, description="Messaggio di errore sanitizzato con fallimento")
 
     # Costo e modalità
     estimated_cost: Optional[float] = Field(default=None, description="Costo stimato in USD della richiesta")

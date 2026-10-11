@@ -243,13 +243,7 @@ class RecallQuestionType(str, Enum):
     MIRATA = "mirata"
     VASTA = "vasta"
     PERSONALIZZATA = "personalizzata"
-    # Domande speciali: nascono solo dove il classificatore delle unità (macro-sezioni)
-    # riconosce un caso clinico o un esercizio, e hanno un "tipo" rigenerabile in varianti.
-    CASO = "caso"
-    ESERCIZIO = "esercizio"
 
-
-SPECIAL_TYPES = (RecallQuestionType.CASO, RecallQuestionType.ESERCIZIO)
 
 class RecallQuestionStatus(str, Enum):
     PENDING = "pending"
@@ -270,7 +264,7 @@ class RecallQuestion(BaseModel):
     generation_version: Optional[str] = None
     generation_fingerprint: Optional[str] = None
     classifier_level: Optional[int] = None
-    # Solo casi ed esercizi: il tipo da cui nasce la domanda e la variante (0 = dalla lezione).
+    # Struttura della domanda personalizzata e variante (0 = dalla lezione).
     template_id: Optional[str] = None
     variant: Optional[int] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
@@ -306,12 +300,10 @@ class GeneratedRecallQuestion(BaseModel):
         else:
             if self.options is not None or self.correct_index is not None:
                 raise ValueError("Le domande aperte non hanno opzioni o indice")
-            if self.type in (RecallQuestionType.MIRATA, RecallQuestionType.CASO) and self.pregenerated_material is not None:
-                raise ValueError("Mirate e casi clinici non hanno materiale pregenerato")
+            if self.type == RecallQuestionType.MIRATA and self.pregenerated_material is not None:
+                raise ValueError("Le mirate non hanno materiale pregenerato")
             if self.type == RecallQuestionType.VASTA and not (self.pregenerated_material or "").strip():
                 raise ValueError("Vasta: scaletta obbligatoria")
-            if self.type == RecallQuestionType.ESERCIZIO and not (self.pregenerated_material or "").strip():
-                raise ValueError("Esercizio: schema di risoluzione obbligatorio")
         return self
 
 
@@ -350,7 +342,7 @@ class TemplateVariable(BaseModel):
 
 
 class SpecialTemplate(BaseModel):
-    """Caso clinico o esercizio "tipo": la struttura astratta da cui si rigenerano varianti."""
+    """Struttura astratta di una domanda, da cui si rigenerano varianti."""
     scenario: str = Field(min_length=1, max_length=4000)
     variabili: List[TemplateVariable] = Field(default_factory=list, max_length=20)
     obiettivo: str = Field(min_length=1, max_length=1500, description="Cosa verifica: comprensione, non nozioni")
@@ -358,29 +350,29 @@ class SpecialTemplate(BaseModel):
     esplicito: bool = Field(default=False, description="Presentato a lezione (non solo adattabile)")
 
 
-class GeneratedClinicalItem(BaseModel):
+class GeneratedTextItem(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
     unit_ids: List[str] = Field(default_factory=list, description="Subunità a cui si riferisce")
     tipo: SpecialTemplate
 
 
-class GeneratedSpecialItem(GeneratedClinicalItem):
-    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Schema di risoluzione dell'esercizio")
+class GeneratedSpecialItem(GeneratedTextItem):
+    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Soluzione attesa")
 
 
-class RecallClinicalGenerationResult(BaseModel):
-    items: List[GeneratedClinicalItem] = Field(..., max_length=8)
+class RecallTextGenerationResult(BaseModel):
+    items: List[GeneratedTextItem] = Field(..., max_length=8)
 
 
 class RecallSpecialGenerationResult(BaseModel):
     items: List[GeneratedSpecialItem] = Field(..., max_length=8)
 
 
-class GeneratedClinicalVariant(BaseModel):
+class GeneratedTextVariant(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
 
 
-class GeneratedVariant(GeneratedClinicalVariant):
+class GeneratedVariant(GeneratedTextVariant):
     pregenerated_material: str = Field(min_length=1, max_length=8000)
 
 
@@ -436,6 +428,6 @@ class RecallBank(BaseModel):
     unit_selection: Optional[Dict[str, List[str]]] = None
     # Numero dell'ultimo ID assegnato: le domande tolte dal pool non lasciano ID riusabili.
     last_question_number: int = 0
-    # Casi clinici ed esercizi "tipo" della lezione (rt.pipeline.recall_special).
+    # Strutture riutilizzabili delle domande personalizzate della lezione.
     templates: List[RecallTemplate] = Field(default_factory=list)
     last_template_number: int = 0

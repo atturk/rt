@@ -1,5 +1,6 @@
 """Narrow study API. The Telegram credential never grants access to RT administration."""
 from typing import Optional
+from rt.services.custom_question_types import question_key
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -78,7 +79,7 @@ def lesson(lesson_id: int, lesson_dir: LessonDir, _actor: StudyActor):
 def _matches(question, qtype, unit_id=None):
     """La domanda già posta vale ancora per la richiesta (stesso tipo, o mista, e stessa unità)."""
     from rt.pipeline.recall import on_unit
-    return ((qtype == "mista" or question.type.value == qtype)
+    return ((qtype == "mista" or question_key(question) == qtype)
             and (unit_id is None or on_unit(question, unit_id)))
 
 
@@ -181,7 +182,7 @@ def voice(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
 @router.post("/lessons/{lesson_id}/generate", status_code=202)
 def generate(lesson_id: int, lesson_dir: LessonDir, actor: StudyActor,
              qtype: NextQuestionType = "quiz"):
-    """Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi)."""
+    """Nuove domande di un tipo; con «mista» il pool dei tipi attivi della lezione."""
     from rt.api.jobs import queue, job_accepted
     from rt.services.jobs import ACTIVE_STATES
     mixed = qtype == "mista"

@@ -258,7 +258,7 @@ def test_mixed_type_unit_review_and_day_session(client, lesson, tmp_path):
         pass
     detail = client.get(f"{BASE}/lessons/{lid}").json()
     unit = next(u for u in detail["units"] if u["pending"])
-    assert set(unit["pending"]) <= {"quiz", "mirata", "caso", "esercizio"}
+    assert set(unit["pending"]) <= {"quiz", "mirata"}
     # Leggi e ripeti: solo domande di quell'unità, tipi a turno.
     first = client.post(f"{BASE}/lessons/{lid}/next", params={"qtype": "mista", "unit_id": unit["id"]}).json()
     assert unit["id"] in first["unit_ids"]

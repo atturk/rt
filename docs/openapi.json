@@ -5442,13 +5442,6 @@
           "qtype": {
             "anyOf": [
               {
-                "enum": [
-                  "quiz",
-                  "mirata",
-                  "vasta",
-                  "caso",
-                  "esercizio"
-                ],
                 "type": "string"
               },
               {
@@ -5604,6 +5597,17 @@
             "title": "Discard Reasons",
             "type": "array"
           },
+          "evaluation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Job Id"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -5665,6 +5669,16 @@
             ],
             "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
             "title": "Remaining"
+          },
+          "saved_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSavedEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -5774,6 +5788,17 @@
             "title": "Discard Reasons",
             "type": "array"
           },
+          "evaluation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Job Id"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -5835,6 +5860,16 @@
             ],
             "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
             "title": "Remaining"
+          },
+          "saved_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSavedEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -5901,7 +5936,7 @@
                 "type": "null"
               }
             ],
-            "description": "Commento dell'IA: solo quiz, vaste ed esercizi",
+            "description": "Commento dell'IA: tipi con soluzione pregenerata",
             "title": "Explanation"
           },
           "options": {
@@ -6050,6 +6085,40 @@
           "restored"
         ],
         "title": "RecallRestored",
+        "type": "object"
+      },
+      "RecallSavedEvaluation": {
+        "properties": {
+          "answer_text": {
+            "title": "Answer Text",
+            "type": "string"
+          },
+          "evaluation": {
+            "title": "Evaluation",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corretta",
+                  "parziale",
+                  "sbagliata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "required": [
+          "answer_text",
+          "evaluation"
+        ],
+        "title": "RecallSavedEvaluation",
         "type": "object"
       },
       "RecallSessionInfo": {
@@ -7610,9 +7679,7 @@
             "enum": [
               "quiz",
               "mirata",
-              "vasta",
-              "caso",
-              "esercizio"
+              "vasta"
             ],
             "title": "Qtype",
             "type": "string"
@@ -15075,14 +15142,6 @@
             "schema": {
               "default": "quiz",
               "description": "Tipo, oppure mista (tutti a turno)",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -15716,7 +15775,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Riscrive con l'IA solo il commento della domanda (quiz, vaste ed esercizi)",
+        "summary": "Riscrive con l'IA solo il commento della domanda (tipi con soluzione pregenerata)",
         "tags": [
           "recall"
         ]
@@ -17391,7 +17450,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità",
+        "summary": "Corregge o ripristina l'etichetta di un tipo personalizzato di un'unità",
         "tags": [
           "lezioni"
         ]
@@ -18322,14 +18381,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -18523,14 +18574,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -19510,14 +19553,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -20153,14 +20188,6 @@
             "schema": {
               "default": "quiz",
               "description": "Tipo, oppure mista (tutti a turno)",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }

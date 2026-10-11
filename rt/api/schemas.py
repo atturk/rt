@@ -9,8 +9,8 @@ from rt.services.study_progress_service import StudyStatus
 from rt.core.models import Anchor, ASRRiskSegment
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
-QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
-NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
+QuestionType = str
+NextQuestionType = str
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -475,7 +475,15 @@ class CredentialTest(BaseModel):
 
 # ---------------------------------------------------------------- recall
 
+class RecallSavedEvaluation(BaseModel):
+    answer_text: str
+    evaluation: str
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
+
+
 class RecallQuestion(BaseModel):
+    saved_evaluation: Optional[RecallSavedEvaluation] = None
+    evaluation_job_id: Optional[str] = None
     custom_type: Optional[str] = None
     remaining: Optional[int] = Field(None, ge=0, description="Domande pendenti dopo quella restituita, con gli stessi filtri di next")
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
@@ -648,7 +656,7 @@ class RecallQuestionEdit(BaseModel):
     options: Optional[List[str]] = Field(None, max_length=4, description="Solo quiz: quattro alternative")
     correct_index: Optional[int] = Field(None, ge=0, le=3, description="Solo quiz")
     explanation: Optional[str] = Field(None, max_length=10000,
-                                       description="Commento dell'IA: solo quiz, vaste ed esercizi")
+                                       description="Commento dell'IA: tipi con soluzione pregenerata")
 
 
 class RecallQuestionStatusIn(BaseModel):
@@ -745,7 +753,7 @@ class SubjectGenerateAccepted(BaseModel):
 
 
 class TelegramRecallStart(BaseModel):
-    qtype: QuestionType = "quiz"
+    qtype: Literal["quiz", "mirata", "vasta"] = "quiz"
     mock: bool = False
 
 

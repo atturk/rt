@@ -1157,7 +1157,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Riscrive con l'IA solo il commento della domanda (quiz, vaste ed esercizi) */
+        /** Riscrive con l'IA solo il commento della domanda (tipi con soluzione pregenerata) */
         post: operations["regenerate_question_comment_api_v1_lessons__lesson_id__recall_questions__question_id__comment_post"];
         delete?: never;
         options?: never;
@@ -1429,7 +1429,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità */
+        /** Corregge o ripristina l'etichetta di un tipo personalizzato di un'unità */
         put: operations["put_section_label_api_v1_lessons__lesson_id__sections__section_id__put"];
         post?: never;
         delete?: never;
@@ -5396,7 +5396,7 @@ export interface components {
              * Qtype
              * @description Vuoto: rigenera il pool di tutti i tipi dalle unità selezionate (aggiunge domande, non ne toglie)
              */
-            qtype?: ("quiz" | "mirata" | "vasta" | "caso" | "esercizio") | "consigliato" | null;
+            qtype?: string | "consigliato" | null;
             /**
              * Selection
              * @description Testo selezionato dall'utente nell'editor o nelle unità
@@ -5456,6 +5456,8 @@ export interface components {
             custom_type?: string | null;
             /** Discard Reasons */
             discard_reasons?: string[];
+            /** Evaluation Job Id */
+            evaluation_job_id?: string | null;
             /** Explanation */
             explanation?: string | null;
             /** Id */
@@ -5471,6 +5473,7 @@ export interface components {
              * @description Domande pendenti dopo quella restituita, con gli stessi filtri di next
              */
             remaining?: number | null;
+            saved_evaluation?: components["schemas"]["RecallSavedEvaluation"] | null;
             /** Status */
             status: string;
             /** Type */
@@ -5497,6 +5500,8 @@ export interface components {
             custom_type?: string | null;
             /** Discard Reasons */
             discard_reasons?: string[];
+            /** Evaluation Job Id */
+            evaluation_job_id?: string | null;
             /** Explanation */
             explanation?: string | null;
             /** Id */
@@ -5512,6 +5517,7 @@ export interface components {
              * @description Domande pendenti dopo quella restituita, con gli stessi filtri di next
              */
             remaining?: number | null;
+            saved_evaluation?: components["schemas"]["RecallSavedEvaluation"] | null;
             /** Status */
             status: string;
             /** Type */
@@ -5536,7 +5542,7 @@ export interface components {
             correct_index?: number | null;
             /**
              * Explanation
-             * @description Commento dell'IA: solo quiz, vaste ed esercizi
+             * @description Commento dell'IA: tipi con soluzione pregenerata
              */
             explanation?: string | null;
             /**
@@ -5609,6 +5615,15 @@ export interface components {
              * @description Domande rimesse fra quelle da porre
              */
             restored: number;
+        };
+        /** RecallSavedEvaluation */
+        RecallSavedEvaluation: {
+            /** Answer Text */
+            answer_text: string;
+            /** Evaluation */
+            evaluation: string;
+            /** Outcome */
+            outcome?: ("corretta" | "parziale" | "sbagliata") | null;
         };
         /** RecallSessionInfo */
         RecallSessionInfo: {
@@ -6284,7 +6299,7 @@ export interface components {
              * @default quiz
              * @enum {string}
              */
-            qtype: "quiz" | "mirata" | "vasta" | "caso" | "esercizio";
+            qtype: "quiz" | "mirata" | "vasta";
         };
         /** TelegramRecallStatus */
         TelegramRecallStatus: {
@@ -11378,7 +11393,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Tipo, oppure mista (tutti a turno) */
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
+                qtype?: string;
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata */
                 exclude_id?: string | null;
@@ -13705,7 +13720,7 @@ export interface operations {
     generate_api_v1_mini_app_lessons__lesson_id__generate_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
+                qtype?: string;
             };
             header?: never;
             path: {
@@ -13844,7 +13859,7 @@ export interface operations {
     next_question_api_v1_mini_app_lessons__lesson_id__next_post: {
         parameters: {
             query?: {
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
+                qtype?: string;
                 exclude_id?: string | null;
                 unit_id?: string | null;
             };
@@ -14544,7 +14559,7 @@ export interface operations {
         parameters: {
             query: {
                 materia: string;
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
+                qtype?: string;
                 exclude?: string | null;
             };
             header?: never;
@@ -15018,7 +15033,7 @@ export interface operations {
             query: {
                 materia: string;
                 /** @description Tipo, oppure mista (tutti a turno) */
-                qtype?: "quiz" | "mirata" | "vasta" | "caso" | "esercizio" | "mista";
+                qtype?: string;
                 order?: "alternato" | "sequenziale" | "casuale";
                 /** @description Domanda appena saltata, come <id lezione>:<id domanda> */
                 exclude?: string | null;

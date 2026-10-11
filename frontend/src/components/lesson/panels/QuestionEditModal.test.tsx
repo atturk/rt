@@ -22,6 +22,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
   return {
     ...actual,
+    useRecallTypes: () => ({ data: actual.BASE_RECALL_TYPES }),
     useRecallQuestions: vi.fn(() => ({ isError: false, data: { questions: [QUIZ, MIRATA] } })),
     useEditQuestion: vi.fn(() => ({ mutate: mockEdit, isPending: false, isError: false })),
     useRegenerateComment: vi.fn(() => ({ mutate: mockRegenerate, isPending: false, isError: false })),

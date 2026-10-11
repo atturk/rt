@@ -7,6 +7,9 @@ import { errorMessage } from '@/api/client'
 import { useJobs } from '@/api/jobs'
 import { useRelevance } from '@/api/relevance'
 import {
+  useRecallTypes,
+  BASE_RECALL_TYPES,
+  type RecallTypeInfo,
   useDeleteQuestions,
   useGenerateRecall,
   useStudyLesson,
@@ -29,19 +32,10 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { QUESTION_TYPE_LABELS, mostSuggested } from '@/lib/questionTypes'
+import { mostSuggested } from '@/lib/questionTypes'
+import { questionTypeId, typeLabel } from '@/lib/recall'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
-
-const TYPES: { id: RecallType; label: string; plural: string }[] = [
-  { id: 'quiz', label: QUESTION_TYPE_LABELS.quiz, plural: 'quiz' },
-  { id: 'mirata', label: QUESTION_TYPE_LABELS.mirata, plural: 'mirate' },
-  { id: 'vasta', label: QUESTION_TYPE_LABELS.vasta, plural: 'vaste' },
-  { id: 'caso', label: QUESTION_TYPE_LABELS.caso, plural: 'casi' },
-  { id: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio, plural: 'esercizi' },
-]
-
-const SELECTION_TYPES: RecallType[] = ['quiz', 'mirata', 'caso', 'esercizio']
 
 function formatUnits(units: string[]): string {
   if (units.length === 0) return ''
@@ -62,10 +56,8 @@ function formatRecallDate(iso: string): string {
   return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
-function questionMeta(q: RecallQuestionDetail, hideUnit: boolean): string {
-  const typeObj = TYPES.find((t) => t.id === q.type)
-  const typeLabel = typeObj ? typeObj.label : q.type
-  const parts: string[] = [typeLabel]
+function questionMeta(q: RecallQuestionDetail, hideUnit: boolean, types: RecallTypeInfo[]): string {
+  const parts: string[] = [typeLabel(questionTypeId(q), types)]
   if (!hideUnit && q.unit_ids.length > 0) {
     parts.push(`unità ${q.unit_ids.join(', ')}`)
   }
@@ -179,6 +171,9 @@ export function QuestionsPanel({
   onClearSelection?: () => void
 }) {
   const id = lessonId ?? 0
+  const registry = useRecallTypes(id).data ?? BASE_RECALL_TYPES
+  const types = registry.map(t => ({ id: t.id, label: t.nome, plural: ({ quiz: "quiz", mirata: "mirate", vasta: "vaste" } as Record<string, string>)[t.id] ?? t.nome }))
+  const selectionTypes = registry.filter(t => t.id !== "vasta")
   const questionsQuery = useRecallQuestions(id, false)
   const history = useRecallHistory(id)
   const recallUnits = useRecallUnits(id)
@@ -193,7 +188,7 @@ export function QuestionsPanel({
   const study = useStudyLesson(id).data
   const suggestions = study?.suggestions ?? false
   const selectedIds = new Set((recallUnits.data?.units ?? []).filter(u => u.selected).map(u => u.unit_id))
-  const advice = mostSuggested((study?.units ?? []).filter(u => selectedIds.has(u.id)))
+  const advice = mostSuggested((study?.units ?? []).filter(u => selectedIds.has(u.id)), registry)
 
   const [unitModalOpen, setUnitModalOpen] = useState(false)
 
@@ -228,22 +223,17 @@ export function QuestionsPanel({
 
   // Conteggio da porre e conteggio per tipo
   const counts = useMemo(() => {
-    const byType: Record<RecallType, number> = {
-      quiz: 0,
-      mirata: 0,
-      vasta: 0,
-      caso: 0,
-      esercizio: 0,
-    }
+    const byType: Record<RecallType, number> = {}
     let daPorre = 0
     for (const q of questionsList ?? []) {
       if (q.status !== 'discarded') {
-        if (q.type in byType) byType[q.type as RecallType]++
-        if (q.status === 'pending') daPorre++
+        const key = registry.some(t => t.id === questionTypeId(q)) ? questionTypeId(q) : "_deleted"
+        byType[key] = (byType[key] ?? 0) + 1
+        if (q.status === 'pending' || q.status === 'asked') daPorre++
       }
     }
     return { byType, daPorre }
-  }, [questionsList])
+  }, [questionsList, registry])
 
   // Domande filtrate
   const filteredQuestions = useMemo(() => {
@@ -252,12 +242,12 @@ export function QuestionsPanel({
       if (isSelectionMode) {
         return q.unit_ids.some((u) => selectedUnits!.includes(u))
       }
-      if (activeFilter && q.type !== activeFilter) return false
+      if (activeFilter && (registry.some(t => t.id === questionTypeId(q)) ? questionTypeId(q) : "_deleted") !== activeFilter) return false
       if (statusFilter === 'pending' && q.status !== 'pending') return false
       if (statusFilter === 'asked' && q.status !== 'asked' && q.status !== 'answered') return false
       return true
-    })
-  }, [questionsList, isSelectionMode, selectedUnits, activeFilter, statusFilter])
+    }).sort((a, b) => Number(!registry.some(t => t.id === questionTypeId(a))) - Number(!registry.some(t => t.id === questionTypeId(b))))
+  }, [questionsList, isSelectionMode, selectedUnits, activeFilter, statusFilter, registry])
 
   // Ultimo ripasso
   const lastRecallText = useMemo(() => {
@@ -265,10 +255,10 @@ export function QuestionsPanel({
     if (answers.length === 0) return 'Nessun ripasso recente'
     const last = answers[answers.length - 1]
     const q = questionsList?.find((item) => item.id === last.question_id)
-    const typeLabel = q ? (TYPES.find((t) => t.id === q.type)?.label ?? q.type) : 'Quiz'
+    const label = q ? typeLabel(questionTypeId(q), registry) : 'Quiz'
     const dateText = last.answered_at ? formatRecallDate(last.answered_at) : ''
-    return dateText ? `Ultimo ripasso: ${dateText} · ${typeLabel}` : `Ultimo ripasso · ${typeLabel}`
-  }, [history.data, questionsList])
+    return dateText ? `Ultimo ripasso: ${dateText} · ${label}` : `Ultimo ripasso · ${label}`
+  }, [history.data, questionsList, registry])
 
   const handleGlobalGenerate = (e: React.FormEvent) => {
     e.preventDefault()
@@ -341,11 +331,11 @@ export function QuestionsPanel({
           <div
             role="group"
             aria-label="Filtra per tipo di domanda"
-            className="grid grid-cols-5 gap-1"
+            className="grid grid-cols-3 gap-1"
           >
-            {TYPES.map(({ id: typeId, plural }) => {
+            {[...types, ...(counts.byType._deleted ? [{ id: "_deleted", label: "Tipo eliminato", plural: "Tipo eliminato" }] : [])].map(({ id: typeId, plural }) => {
               const active = activeFilter === typeId
-              const count = counts.byType[typeId]
+              const count = counts.byType[typeId] ?? 0
               return (
                 <button
                   key={typeId}
@@ -376,7 +366,7 @@ export function QuestionsPanel({
               <div className="flex gap-2">
                 <div className="flex-1">
                   <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
-                  <QuestionTypeChips value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} />
+                  <QuestionTypeChips lessonId={id} types={registry} value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} />
                 </div>
                 <div className="w-20">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
@@ -405,7 +395,7 @@ export function QuestionsPanel({
                   className="block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 />
               </div>
-              <Button type="submit" variant="default" size="sm" disabled={isGenerating} className="self-start">
+              <Button type="submit" variant="default" size="sm" disabled={isGenerating || registry.some(t => t.id === globalType && t.custom && !t.available)} className="self-start">
                 <Sparkles className="mr-1.5 size-3.5" aria-hidden />
                 {isGenerating ? 'Generazione in corso…' : 'Genera'}
               </Button>
@@ -438,19 +428,7 @@ export function QuestionsPanel({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-meta text-muted-foreground">Tipo</span>
-              <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap gap-1">
-                {SELECTION_TYPES.map((t) => (
-                  <Chip
-                    key={t}
-                    size="sm"
-                    active={partType === t}
-                    aria-pressed={partType === t}
-                    onClick={() => setPartType(t)}
-                  >
-                    {TYPES.find((x) => x.id === t)?.label ?? t}
-                  </Chip>
-                ))}
-              </div>
+              <QuestionTypeChips lessonId={id} types={selectionTypes} value={partType} onChange={setPartType} unit />
               <div className="ml-auto flex items-center gap-1.5">
                 <label htmlFor="p-count" className="text-meta text-muted-foreground">
                   Quante
@@ -571,12 +549,13 @@ export function QuestionsPanel({
 
       {filteredQuestions.length > 0 && (
         <ul className="divide-y divide-border" data-testid="questions-list">
-          {filteredQuestions.map((q) => {
+          {filteredQuestions.map((q, index) => {
             const hideUnit = Boolean(isSelectionMode && selectedUnits?.length === 1)
-            const meta = questionMeta(q, hideUnit)
+            const meta = questionMeta(q, hideUnit, registry)
             return (
               <li key={q.id} className="flex items-start gap-2 py-2.5 first:pt-1">
                 <div className="min-w-0 flex-1">
+                  {!registry.some(t => t.id === questionTypeId(q)) && (index === 0 || registry.some(t => t.id === questionTypeId(filteredQuestions[index - 1]))) && <p className="mb-2 text-body font-semibold">Tipo eliminato</p>}
                   <p className="text-meta text-muted-foreground">
                     {meta}
                   </p>

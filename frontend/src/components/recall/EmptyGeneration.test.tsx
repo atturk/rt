@@ -3,11 +3,17 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { EmptyGeneration } from './EmptyGeneration'
 
 const state = vi.hoisted(() => ({ suggestions: true, mutate: vi.fn(), failed: false }))
-vi.mock('@/api/recall', () => ({
+vi.mock('@/api/recall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/recall')>()
+  return {
+  ...actual,
+  useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES,
+    { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: true },
+    { id: 'codice', nome: 'Codice', icona: 'Code', custom: true, available: true }] }),
   recallKeys: { all: () => ['recall'] },
   useStudyLesson: () => ({ data: { suggestions: state.suggestions } }),
   useGenerateRecall: () => ({ mutate: state.mutate, isError: state.failed, error: new Error('Generazione non riuscita') }),
-}))
+} })
 vi.mock('@/components/JobProgress', () => ({ JobProgress: ({ onFinished }: { onFinished: (state: string) => void }) => <button onClick={() => onFinished('succeeded')}>Completa il job</button> }))
 vi.mock('@/api/jobStatus', () => ({ useJobStatus: () => ({}), jobFinished: () => false }))
 function mount(unit = false) {

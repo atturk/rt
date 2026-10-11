@@ -17,8 +17,9 @@ def _refill_later(lesson_dir: str, question, mock: bool, actor: str) -> None:
     """Come il recall da terminale dopo ogni domanda mostrata: se il pool del tipo è alla
     soglia, un job ne genera altre (la risposta non aspetta l'LLM)."""
     from rt.services.recall_service import needs_refill
-    if question is not None and needs_refill(lesson_dir, question.type, force_mock=mock):
-        enqueue_job("recall_refill", lesson_dir, {"qtype": question.type.value, "mock": mock}, actor)
+    from rt.services.custom_question_types import question_key
+    if question is not None and needs_refill(lesson_dir, question_key(question), force_mock=mock):
+        enqueue_job("recall_refill", lesson_dir, {"qtype": question_key(question), "mock": mock}, actor)
 
 
 def _require_draft(lesson_dir: str) -> None:
@@ -31,15 +32,27 @@ def _require_draft(lesson_dir: str) -> None:
 @router.get("/recall/types", response_model=List[schemas.RecallTypeInfo], summary="Tipi di domanda per materia")
 def recall_types(_actor: Actor, lesson_id: Optional[int] = Query(None), materia: Optional[str] = Query(None)):
     from rt.services.custom_question_types import active_types
-    lesson_dir = None
+    from rt.services.lesson_service import resolve_lesson_dir
+    from rt.services import section_labels
     if lesson_id is not None:
-        from rt.services.lesson_service import resolve_lesson_dir
-        lesson_dir = resolve_lesson_dir(lesson_id)
+        lesson_dirs = [resolve_lesson_dir(lesson_id)]
+    elif materia is not None:
+        from rt.services.recall_subject import subject_lessons
+        lesson_dirs = [resolve_lesson_dir(row["id"]) for row in subject_lessons(materia)]
+    else:
+        lesson_dirs = []
     result = [{"id": key, "nome": name, "icona": icon} for key, name, icon in (
         ("quiz", "Quiz", "ListChecks"), ("mirata", "Mirata", "MessageSquare"), ("vasta", "Vasta", "Brain"))]
-    result.extend({"id": t.id, "nome": t.nome, "icona": t.icona, "custom": True}
-                  for t in active_types(lesson_dir=lesson_dir, materia=materia))
+    types = {t.id: t for path in lesson_dirs for t in active_types(lesson_dir=path)}
+    # Una materia può avere tipi prima che vi siano lezioni pronte per il ripasso.
+    if not lesson_dirs and materia is not None:
+        types = {t.id: t for t in active_types(materia=materia)}
+    marked = {kind for path in lesson_dirs for row in section_labels.labels(path).values()
+              for kind, value in row.items() if value == "presente"}
+    result.extend({"id": t.id, "nome": t.nome, "icona": t.icona, "custom": True,
+                   "available": t.id in marked} for t in types.values())
     return result
+
 
 
 @router.get("/lessons/{lesson_id}/recall", response_model=schemas.RecallOverview, summary="Domande disponibili per tipo e stato")
@@ -59,6 +72,10 @@ def history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
              summary="Genera domande: aggiunge al pool domande da tutte le unità selezionate (job recall_generate) o di un tipo (job recall_batch)")
 def generate(lesson_id: int, body: schemas.RecallGenerate, lesson_dir: LessonDir, actor: Actor):
     _require_draft(lesson_dir)
+    if body.qtype and body.qtype != "consigliato":
+        from rt.services.custom_question_types import lesson_types
+        if body.qtype not in lesson_types(lesson_dir):
+            raise ApiError(422, "validation_error", "Tipo di domanda non disponibile nella materia.")
     if body.unit_ids is not None:
         from rt.pipeline.ledger import load_resolved_draft
         present = {u.unit_id for u in load_resolved_draft(lesson_dir).units}
@@ -140,16 +157,16 @@ def set_question_status(lesson_id: int, question_id: str, body: schemas.RecallQu
 
 
 @router.post("/lessons/{lesson_id}/recall/questions/{question_id}/comment", response_model=schemas.JobAccepted,
-             status_code=202, summary="Riscrive con l'IA solo il commento della domanda (quiz, vaste ed esercizi)")
+             status_code=202, summary="Riscrive con l'IA solo il commento della domanda (tipi con soluzione pregenerata)")
 def regenerate_question_comment(lesson_id: int, question_id: str, lesson_dir: LessonDir, actor: Actor,
                                 mock: bool = Query(False, description="Rigenerazione in mock")):
     from rt.api.jobs import enqueue_job
-    from rt.services.recall_editing import TYPES_WITH_COMMENT
+    from rt.services.custom_question_types import supports_comment
     from rt.services.recall_service import find_question
     question = find_question(lesson_dir, question_id)
     if question is None:
         raise ApiError(404, "question_not_found", "Domanda inesistente.")
-    if question.type not in TYPES_WITH_COMMENT:
+    if not supports_comment(question):
         raise ApiError(409, "comment_not_supported", "Questo tipo di domanda non ha un commento dell'IA.")
     return enqueue_job("recall_comment", lesson_dir, {"question_id": question_id, "mock": mock}, actor)
 
@@ -195,9 +212,12 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
                   exclude_id: Optional[str] = Query(None, description="Domanda appena saltata"),
                   mock: bool = Query(False, description="Rifornimento del pool in mock"),
                   unit_id: Optional[str] = Query(None, description="Solo le domande di questa unità (Leggi e ripeti)")):
-    from rt.services.recall_service import next_question_for, question_view
+    from rt.services.recall_service import next_question_for, question_resume_view
     from rt.services.recall_sessions import TELEGRAM, list_sessions
     _require_draft(lesson_dir)
+    from rt.services.custom_question_types import lesson_types
+    if qtype != "mista" and qtype not in lesson_types(lesson_dir):
+        raise ApiError(422, "validation_error", "Tipo di domanda non disponibile nella materia.")
     if list_sessions(channel=TELEGRAM, lesson_dir=lesson_dir):
         raise ApiError(409, "telegram_session_active",
                        "C'è una sessione in corso su Telegram per questa lezione: interrompila per continuare qui.")
@@ -207,7 +227,7 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     from rt.services.recall_service import pending_count
     remaining = max(0, pending_count(lesson_dir, qtype, unit_id=unit_id) - 1)
     _refill_later(lesson_dir, question, mock, actor)
-    return {**question_view(question), "remaining": remaining}
+    return {**question_resume_view(lesson_dir, question, actor), "remaining": remaining}
 
 
 @router.post("/lessons/{lesson_id}/recall/answer", summary="Risponde: quiz subito, risposta scritta con un job di valutazione",
@@ -401,13 +421,15 @@ def subject_next(actor: Actor, materia: str = Query(...),
                  order: Literal["alternato", "sequenziale", "casuale"] = Query("alternato"),
                  exclude: Optional[str] = Query(None, description="Domanda appena saltata, come <id lezione>:<id domanda>"),
                  mock: bool = Query(False, description="Rifornimento del pool in mock")):
-    from rt.services.recall_service import question_view
+    from rt.services.recall_service import question_resume_view
     from rt.services.recall_subject import next_subject_question
+    if qtype != "mista" and qtype not in {t['id'] for t in recall_types(actor, lesson_id=None, materia=materia)}:
+        raise ApiError(422, "validation_error", "Tipo di domanda non disponibile nella materia.")
     picked = _subject_call(next_subject_question, materia, qtype, order=order, exclude=exclude)
     if picked is None:
         raise ApiError(404, "no_questions", "Nessuna domanda di questo tipo da porre nelle lezioni della materia: generane altre.")
     _refill_later(picked["lesson_dir"], picked["question"], mock, actor)
-    return {"lesson_id": picked["lesson_id"], "question": question_view(picked["question"])}
+    return {"lesson_id": picked["lesson_id"], "question": question_resume_view(picked["lesson_dir"], picked["question"], actor)}
 
 
 @router.post("/recall/subject/end", response_model=schemas.RecallSessionInfo,

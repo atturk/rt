@@ -161,15 +161,15 @@ def sweep_stale_uploads(uploads_root: str, queue, max_age_days: float = UPLOAD_M
 
 
 def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Altre domande di un tipo da unità selezionate scelte a caso (come il rifornimento del pool)."""
+    """Altre domande di un tipo da unità selezionate scelte casualmente (come il rifornimento del pool)."""
     from rt.core.config import load_config
-    from rt.core.models import RecallQuestionType
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
     from rt.services.recall_service import recall_overview
     from rt.services.recall_units import unit_rows
     from rt.services.events import Notice
     p = job.payload
-    qtype = RecallQuestionType(p["qtype"])
+    from rt.services.custom_question_types import resolve_type, type_key
+    qtype = resolve_type(p["qtype"])
     cfg = load_config()
     count = int(p.get("count") or cfg.telegram.recall.refill_batch_size)
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
@@ -179,7 +179,7 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                           unit_ids=p.get("unit_ids"),
                                           instructions=p.get("instructions"),
                                           selection=p.get("selection"))
-        ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
+        ctx.emit(Notice(message=_recall_message(f"Recall {type_key(qtype)}: obiettivo {count}, generate {len(generated)}.",
                                                 len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
@@ -248,10 +248,9 @@ def recall_comment_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Rifornisce il pool di un tipo arrivato alla soglia (dopo una domanda mostrata)."""
-    from rt.core.models import RecallQuestionType
     from rt.services.recall_service import recall_overview, refill_active_type_if_low
     with ctx.activate():
-        refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
+        refill_active_type_if_low(job.lesson_path, job.payload["qtype"],
                                   force_mock=bool(job.payload.get("mock")), progress=recall_progress(ctx))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 

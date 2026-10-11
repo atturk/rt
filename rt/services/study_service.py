@@ -10,7 +10,8 @@ def unit_pending(pending, unit_id: str) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for q in pending:
         if on_unit(q, unit_id):
-            counts[q.type.value] = counts.get(q.type.value, 0) + 1
+            from rt.services.custom_question_types import question_key
+            counts[question_key(q)] = counts.get(question_key(q), 0) + 1
     return counts
 
 

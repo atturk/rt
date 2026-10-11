@@ -139,7 +139,7 @@ def _info_fingerprint_strs(lesson_dir: str) -> List[str]:
     info.yaml dal build: sono un prodotto della pipeline, non un input dell'utente, quindi
     finché coincidono con outline.generated_topics contano come argomenti vuoti. Vuoto può
     essere stato registrato come null o come '' a seconda di chi ha scritto info.yaml, per
-    cui in quel caso si restituiscono entrambe le varianti."""
+    cui allora si restituiscono entrambe le varianti."""
     from rt.core.state import read_info_yaml
     yaml_path = lesson_path(lesson_dir, "info.yaml")
     if not fs.isfile(yaml_path):
@@ -815,7 +815,7 @@ def record_manual_validation(lesson_dir: str, phase_name: str, actor: str = "use
 
     Si rifiuta (ManualValidationRefused) se l'artefatto manca o non è leggibile, se una fase a
     monte non è valida (va validata o eseguita prima) o se, anche con gli input attuali, la fase
-    non risulterebbe VALID (per esempio un draft con unità mancanti): in quel caso il checkpoint
+    non risulterebbe VALID (per esempio un draft con unità mancanti): allora il checkpoint
     torna com'era. Le fasi a valle non si toccano: il loro stato si ricalcola dalle loro
     impronte, quindi quelle costruite su input diversi restano (o diventano) STALE.
     Restituisce {"phase", "previous_status", "previous_reason", "status", "reason", "changed"}."""

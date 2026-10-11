@@ -4,7 +4,7 @@ Recall per materia: una sessione che pesca le domande da tutte le lezioni di una
 stessa logica della sessione di una lezione (tipo scelto, ordine fra le unità, salto, rifornimento
 del pool). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
 successiva (per data) che ha ancora domande di quel tipo da porre; con l'ordine casuale la
-lezione si sceglie a caso.
+lezione si sceglie casualmente.
 
 Qui ci sono solo la scelta della domanda e il registro della sessione (tabella recall_sessions,
 colonna subject, lesson_path vuoto, question_ids "<id lezione>:<id domanda>"). Risposte, voti e
@@ -286,7 +286,7 @@ def end_subject_session(materia: str, ended_by: str = "web", channel: str = WEB)
 
 def _turn_order(candidates: List[Dict[str, Any]], all_ids: List[int], last: Optional[int],
                 order: str) -> List[Dict[str, Any]]:
-    """Le lezioni candidate nell'ordine in cui provarle: a caso, oppure a partire da quella
+    """Le lezioni candidate nell'ordine in cui provarle: casualmente, oppure a partire da quella
     che segue l'ultima usata (ricominciando dalla prima)."""
     if order == "casuale":
         return random.sample(candidates, len(candidates))

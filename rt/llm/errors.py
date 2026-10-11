@@ -55,7 +55,7 @@ class RateLimitFailure(LLMFailure):
 
 
 class SafetyFailure(LLMFailure):
-    """Sollevata in caso di blocco di contenuto, content filter o prompt feedback Gemini/OpenRouter."""
+    """Sollevata con blocco di contenuto, content filter o prompt feedback Gemini/OpenRouter."""
     def __init__(self, message: str, finish_reason: str = "content_filter", safety_details: Optional[str] = None, **kwargs):
         super().__init__(message, **kwargs)
         self.finish_reason = finish_reason
@@ -64,7 +64,7 @@ class SafetyFailure(LLMFailure):
 
 
 class AuthenticationFailure(LLMFailure):
-    """Sollevata in caso di credenziale assente, non valida, HTTP 401 o 403."""
+    """Sollevata con credenziale assente, non valida, HTTP 401 o 403."""
     def __init__(self, message: str, **kwargs):
         super().__init__(message, **kwargs)
         self.failure_class = "auth_error"

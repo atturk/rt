@@ -582,7 +582,7 @@ pertinenti a questa sezione (lista vuota se nessuna)."""
 
 
 # ----------------------------------------------------------------------
-# 11. CASI CLINICI ED ESERCIZI (rt.pipeline.recall_special)
+# 11. DOMANDE PERSONALIZZATE (rt.pipeline.recall_special)
 # ----------------------------------------------------------------------
 
 _SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):
@@ -595,40 +595,20 @@ _SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationRe
 - tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.
 Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
 
-_CLINICAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallClinicalGenerationResult):
+_TEXT_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallTextGenerationResult):
 {"items": [{"question_text": "...", "unit_ids": ["5.1", "5.2"],
   "tipo": {"scenario": "...", "variabili": [{"nome": "...", "valore": "...", "intervallo": "..."}],
            "obiettivo": "...", "procedimento": "...", "esplicito": true}}]}
-- question_text: traccia completa del caso con tutti i dati necessari, senza soluzione.
-- unit_ids: subunità fornite da cui proviene il caso.
-- tipo: struttura astratta per creare varianti; variabili plausibili e procedimento generale.
-Non generare pregenerated_material né una soluzione del caso. Se non trovi materiale adatto restituisci {"items": []}.
-Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
-
-RECALL_CASO_SYSTEM_PROMPT = """Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.
-Ricevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:
-1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.
-2. Se non ci sono pazienti espliciti ma il contenuto si presta (fisiopatologia, quadro diagnostico, parametri, terapia), costruisci un caso plausibile coerente con il testo, con esplicito=false.
-3. Il caso presenta il paziente (età, sintomi, segni, parametri o esami pertinenti) e termina con un quesito che richiede ragionamento: interpretare i dati, formulare una diagnosi, spiegare il meccanismo, scegliere e motivare un intervento.
-4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.
-5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.
-
-""" + _CLINICAL_OUTPUT
-
-RECALL_ESERCIZIO_SYSTEM_PROMPT = """Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.
-Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):
-1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.
-2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.
-3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.
-4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.
-5. Non ripetere esercizi già presenti (te li elenco, se esistono).
-
-""" + _SPECIAL_OUTPUT
+La traccia ha tutti i dati necessari. Non generare pregenerated_material né una soluzione.
+unit_ids contiene solo subunità fornite; tipo descrive struttura, obiettivo e procedimento.
+Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp.
+La risposta dello studente è sempre testuale. Scrivi in italiano accademico."""
 
 
 def build_recall_special_user_prompt(
     kind: str, sections: list, existing: list, context: dict,
     instructions: Optional[str] = None, selection: Optional[str] = None,
+    text_correction: bool = False, labels: Optional[dict] = None,
 ) -> str:
     """sections: [{"id", "title", "units": [DraftUnit]}]; existing: tipi già salvati (dict)."""
     import json
@@ -637,7 +617,7 @@ def build_recall_special_user_prompt(
         blocks.append(f"=== UNITÀ {section['id']}: {section['title']} ===")
         for u in section["units"]:
             blocks.append(f"--- SUBUNITÀ {u.unit_id}: {u.title} ---\n{u.content}")
-    what = "casi clinici" if kind == "caso" else "esercizi"
+    what = kind
     prompt = context_block(context) + "\n\n" + "\n\n".join(blocks)
     if selection:
         prompt += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
@@ -645,11 +625,13 @@ def build_recall_special_user_prompt(
         prompt += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
     if existing:
         prompt += f"\n\n{what.upper()} GIÀ PRESENTI PER QUESTE UNITÀ (proponine di diversi):\n" + json.dumps(existing, ensure_ascii=False)
-    model = "RecallClinicalGenerationResult" if kind == "caso" else "RecallSpecialGenerationResult"
+    if labels is not None:
+        prompt += "\n\nETICHETTE GIÀ ASSEGNATE (non riclassificare):\n" + json.dumps(labels, ensure_ascii=False)
+    model = "RecallTextGenerationResult" if text_correction else "RecallSpecialGenerationResult"
     return prompt + f"\n\nRestituisci zero, uno o più {what} nel contenitore JSON items conforme a {model}."
 
 
-RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di un caso clinico o di un esercizio già usato a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato il caso.
+RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda già usata a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato la risposta.
 REGOLE:
 1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
@@ -658,31 +640,31 @@ REGOLE:
 OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
 
 
-RECALL_CLINICAL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario di medicina che crea una variante di un caso clinico.
+RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
 Mantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.
 La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
-Non generare pregenerated_material né una soluzione del caso.
-OUTPUT JSON (conforme a GeneratedClinicalVariant): {"question_text": "..."}"""
+Non generare pregenerated_material né una soluzione della domanda.
+OUTPUT JSON (conforme a GeneratedTextVariant): {"question_text": "..."}"""
 
-RECALL_CLINICAL_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente un caso clinico.
+RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente una domanda personalizzata.
 Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
 Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descrivi eventuali problemi.
 Non restituire una soluzione pregenerata: lascia soluzione vuota."""
 
 
-def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "") -> str:
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False) -> str:
     import json
-    what = "caso clinico" if kind == "caso" else "esercizio"
+    what = kind
     prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
     if previous:
         prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
-    model = "GeneratedClinicalVariant" if kind == "caso" else "GeneratedVariant"
+    model = "GeneratedTextVariant" if text_correction else "GeneratedVariant"
     return prompt + f"\n\nCrea una nuova variante del {what} e restituisci {model}."
 
 
-RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di un caso clinico o di un esercizio prima di proporla a uno studente.
+RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di una domanda personalizzata prima di proporla a uno studente.
 1. Risolvi la traccia in modo indipendente, seguendo il procedimento del tipo, senza fidarti della soluzione proposta.
 2. Confronta il tuo risultato con la soluzione proposta: coerente=true solo se conclusioni, valori e passaggi essenziali coincidono e i dati della traccia sono plausibili e sufficienti.
 3. Se non è coerente, descrivi brevemente i problemi in "problemi".
@@ -698,7 +680,7 @@ def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solut
             f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
 
 
-RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a un caso clinico o a un esercizio di active recall. Conta il ragionamento, non la memorizzazione.
+RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
 
 REGOLE CATEGORICHE:
 1. Valuta rispetto alla SOLUZIONE ATTESA fornita (e al procedimento del tipo, se presente); non aggiungere nozioni esterne.
@@ -725,7 +707,7 @@ RISPOSTA DELLO STUDENTE:
 Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
 
 
-RECALL_EVAL_CASO_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento clinico.
+RECALL_EVAL_TEXT_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento dello studente.
 Valuta la risposta usando la traccia e il contenuto reale delle unità della lezione fornite come riferimento.
 Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
 Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
@@ -733,7 +715,7 @@ Restituisci outcome: corretta se il ragionamento è corretto e completo, parzial
 sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo."""
 
 
-def build_recall_eval_caso_user_prompt(question_text: str, units: list, answer_text: str,
+def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_text: str,
                                       dont_know: bool = False) -> str:
     reference = "\n\n".join(f"[{u.unit_id}] {u.title}\n{u.content}" for u in units)
     note = DONT_KNOW_NOTE if dont_know else ""

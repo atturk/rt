@@ -131,7 +131,7 @@ def get_latest_remote_version(project_root: str, timeout: float = 5.0,
     Canale "stable": /releases/latest, che esclude prerelease e bozze.
     Canale "beta": la versione più alta fra le release pubblicate, prerelease comprese.
     Ritorna:
-    - None in caso di offline, errore di connessione, o timeout.
+    - None con offline, errore di connessione, o timeout.
     - "" (stringa vuota) se non esiste ancora nessuna Release pubblicata (HTTP 404).
     - la stringa di versione (es. '3.3.8' o '4.1.0b1') se disponibile.
     """

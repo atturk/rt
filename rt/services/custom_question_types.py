@@ -31,3 +31,25 @@ def question_key(question):
 
 def type_key(value):
     return value.value if hasattr(value, 'value') else str(value)
+
+
+def resolve_type(value):
+    from rt.core.models import RecallQuestionType
+    identifier = type_key(value)
+    if identifier in BASE_TYPES:
+        return RecallQuestionType(identifier)
+    if find_type(identifier) is None:
+        raise ValueError("Tipo di domanda non valido")
+    return identifier
+
+
+def lesson_types(lesson_dir):
+    return [*BASE_TYPES, *[t.id for t in active_types(lesson_dir=lesson_dir)]]
+
+
+def supports_comment(question):
+    if question.type.value in ("quiz", "vasta"):
+        return True
+    definition = find_type(question.custom_type)
+    return question.type.value == "personalizzata" and bool(
+        definition and definition.correzione == "soluzione" or definition is None and question.pregenerated_material)
