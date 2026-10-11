@@ -21,7 +21,7 @@ test('revisione decisa: documento aggiornato automaticamente', async ({ page }) 
   const issues = await apiGet<{ items: { decision: unknown }[] }>(page.request, `/lessons/${lesson.id}/issues?status=all`)
   let remaining = issues.items.filter(i => !i.decision).length
   while (remaining > 0) {
-    await panel.getByTestId('issue-detail').getByRole('button', { name: /^Accetta(?: la correzione| il testo)?$/ }).click()
+    await panel.getByTestId('issue-detail').getByRole('button', { name: /^(?:Accetta(?: la correzione| il testo)?|Ho controllato)$/ }).click()
     remaining--
     await expect(panel.getByRole('status').first()).toContainText(remaining ? `${remaining} da decidere` : 'Tutte decise')
   }

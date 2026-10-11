@@ -144,7 +144,26 @@ class Anchor(BaseModel):
         return self
 
 
+class ASRUncertainWord(BaseModel):
+    start_char: int
+    end_char: int
+    start_s: Optional[float] = None
+    end_s: Optional[float] = None
+    confidence: float
+
+
+class ASRRiskSegment(BaseModel):
+    segment_id: str
+    start_s: Optional[float] = None
+    end_s: Optional[float] = None
+    confidence: Optional[float] = None
+    threshold: Optional[float] = None
+    text_raw: str
+    uncertain_words: List[ASRUncertainWord] = Field(default_factory=list)
+
+
 class ScienceIssue(BaseModel):
+    asr_segments: Optional[List[ASRRiskSegment]] = Field(None, exclude_if=lambda value: value is None)
     literal_replacement: bool = False
     unanchored: bool = False
     anchor: Optional[Anchor] = None

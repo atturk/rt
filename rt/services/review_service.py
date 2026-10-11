@@ -85,7 +85,17 @@ def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=
             start_s = seg.start_seconds
             end_s = seg.end_seconds
 
+    asr_segments = None
+    if issue.type == "ERR_ASR_ST":
+        from rt.core.models import ASRRiskSegment
+        # Le issue precedenti alla b3 conservano il solo segmento salvato.
+        asr_segments = [part.model_dump(mode="json") for part in issue.asr_segments] if issue.asr_segments else [
+            ASRRiskSegment(segment_id=issue.segment_id or "", text_raw=issue.claim,
+                start_s=seg.start_seconds if seg else None, end_s=seg.end_seconds if seg else None,
+                confidence=seg.confidence if seg else None).model_dump(mode="json")]
+
     return {
+        "asr_segments": asr_segments,
         "timecode": seg.start_formatted if seg else "N/D",
         "unit_info": f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else issue.unit_id,
         "unit_content": resolved_unit_content(lesson_dir, issue, draft) if draft else None,
@@ -147,11 +157,11 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     if decision == "rejected" and is_asr and not reconfirming:
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
     if decision == "accepted":
-        resolved = _unit_content(lesson_dir, issue) if is_asr else text if reconfirming and text else resolve_science_accept_text(issue)
+        if is_asr:
+            return None  # Presa d'atto: il testo non viene copiato nel ledger.
+        resolved = text if reconfirming and text else resolve_science_accept_text(issue)
         if not is_asr and not resolved:
             raise ReviewDecisionError("È un suggerimento, non una correzione: scrivi tu il testo", reason="suggestion_only")
-        if is_asr and not resolved:
-            raise ReviewDecisionError("Unità non disponibile: impossibile accettare questa verifica ASR.")
         return resolved
     if decision == "rejected":
         return resolve_science_reject_text(issue)

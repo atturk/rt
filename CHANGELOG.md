@@ -4,6 +4,7 @@
 
 ### Correzioni
 
+- Qualità ASR mostra tutti i tratti incerti, con confidenza, parole sottolineate e ascolto limitato al tratto. “Ho controllato” chiude l’avviso senza cambiare il testo.
 - I menu a icona escono dai pannelli e restano interamente nello schermo, anche sul telefono.
 
 ## 4.2.4b2 — 2026-10-11

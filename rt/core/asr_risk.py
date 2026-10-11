@@ -6,7 +6,7 @@ Rilevamento statistico deterministico del rischio ASR basato su wordTimestamps e
 import os
 import json
 from typing import List, Dict, Any, Optional, Tuple
-from rt.core.models import Segment, ScienceIssue, ScienceType, ScienceSeverity, Draft
+from rt.core.models import ASRRiskSegment, ASRUncertainWord, ScienceIssue, ScienceType, ScienceSeverity
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.rewrite import load_draft
 from rt.storage import fs
@@ -72,6 +72,13 @@ def detect_statistical_asr_risks(
     if not isinstance(word_timestamps, list) or not isinstance(raw_segments, list):
         return []
 
+    # I timecode normalizzati coprono anche i trascritti storici senza startMs/endMs.
+    from rt.core.segments import load_segments_json
+    segment_path = lesson_path(lesson_dir, "segments.json")
+    segments = load_segments_json(segment_path) if fs.isfile(segment_path) else None
+    by_id = {segment.id: segment for segment in segments.segments} if segments else {}
+    segment_details = {}
+
     # 1. Calcola la metrica di rischio per segmento
     valid_seg_metrics: List[Tuple[str, str, float]] = []  # (seg_id, text_raw, metric)
 
@@ -97,6 +104,7 @@ def detect_statistical_asr_risks(
         metric = _calculate_p10(word_confs)
         text_raw = str(item.get("text", "")).strip()
         valid_seg_metrics.append((seg_id, text_raw, metric))
+        segment_details[seg_id] = (item, word_timestamps[s_idx:e_idx])
 
     if not valid_seg_metrics:
         return []
@@ -164,7 +172,38 @@ def detect_statistical_asr_risks(
                 f"(il più critico ha {thresh_info}) — verifica che l'unità rispecchi fedelmente quanto detto nell'audio."
             )
 
+        degraded = []
+        threshold = max(floor, threshold_stat) if threshold_stat is not None else floor
+        for seg_id, text_raw, metric, _ in seg_flags:
+            item, words = segment_details[seg_id]
+            segment = by_id.get(seg_id)
+            start_s = item.get("startMs", item.get("start"))
+            end_s = item.get("endMs", item.get("end"))
+            start_s = start_s / 1000 if isinstance(start_s, (int, float)) else segment.start_seconds if segment else None
+            end_s = end_s / 1000 if isinstance(end_s, (int, float)) else segment.end_seconds if segment else None
+            uncertain = []
+            cursor = 0
+            for word in words:
+                if not isinstance(word, dict):
+                    continue
+                literal = str(word.get("word", word.get("text", ""))).strip()
+                offset = text_raw.find(literal, cursor) if literal else -1
+                if offset < 0:
+                    continue
+                cursor = offset + len(literal)
+                confidence = word.get("confidence")
+                if isinstance(confidence, (int, float)) and confidence < threshold:
+                    uncertain.append(ASRUncertainWord(
+                        start_char=offset, end_char=cursor, confidence=confidence,
+                        start_s=word["startMs"] / 1000 if isinstance(word.get("startMs"), (int, float)) else None,
+                        end_s=word["endMs"] / 1000 if isinstance(word.get("endMs"), (int, float)) else None,
+                    ))
+            degraded.append(ASRRiskSegment(segment_id=seg_id, start_s=start_s, end_s=end_s,
+                confidence=metric, threshold=threshold, text_raw=text_raw, uncertain_words=uncertain))
+        degraded.sort(key=lambda segment: (segment.start_s is None, segment.start_s or 0, segment.segment_id))
+
         iss = ScienceIssue(
+            asr_segments=degraded,
             id=f"sci_st_{unit_id}",
             type=ScienceType.ERR_ASR_ST,
             severity=severity,

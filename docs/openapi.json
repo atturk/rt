@@ -1,6 +1,120 @@
 {
   "components": {
     "schemas": {
+      "ASRRiskSegment": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End S"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          },
+          "text_raw": {
+            "title": "Text Raw",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "uncertain_words": {
+            "items": {
+              "$ref": "#/components/schemas/ASRUncertainWord"
+            },
+            "title": "Uncertain Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segment_id",
+          "text_raw"
+        ],
+        "title": "ASRRiskSegment",
+        "type": "object"
+      },
+      "ASRUncertainWord": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "end_char": {
+            "title": "End Char",
+            "type": "integer"
+          },
+          "end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End S"
+          },
+          "start_char": {
+            "title": "Start Char",
+            "type": "integer"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          }
+        },
+        "required": [
+          "start_char",
+          "end_char",
+          "confidence"
+        ],
+        "title": "ASRUncertainWord",
+        "type": "object"
+      },
       "Action": {
         "properties": {
           "action": {
@@ -2736,6 +2850,20 @@
       },
       "IssueContext": {
         "properties": {
+          "asr_segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ASRRiskSegment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Segments"
+          },
           "end_s": {
             "anyOf": [
               {

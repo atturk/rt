@@ -2846,6 +2846,36 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ASRRiskSegment */
+        ASRRiskSegment: {
+            /** Confidence */
+            confidence?: number | null;
+            /** End S */
+            end_s?: number | null;
+            /** Segment Id */
+            segment_id: string;
+            /** Start S */
+            start_s?: number | null;
+            /** Text Raw */
+            text_raw: string;
+            /** Threshold */
+            threshold?: number | null;
+            /** Uncertain Words */
+            uncertain_words?: components["schemas"]["ASRUncertainWord"][];
+        };
+        /** ASRUncertainWord */
+        ASRUncertainWord: {
+            /** Confidence */
+            confidence: number;
+            /** End Char */
+            end_char: number;
+            /** End S */
+            end_s?: number | null;
+            /** Start Char */
+            start_char: number;
+            /** Start S */
+            start_s?: number | null;
+        };
         /** Action */
         Action: {
             /**
@@ -4095,6 +4125,8 @@ export interface components {
         };
         /** IssueContext */
         IssueContext: {
+            /** Asr Segments */
+            asr_segments?: components["schemas"]["ASRRiskSegment"][] | null;
             /** End S */
             end_s?: number | null;
             /** End Segment Id */

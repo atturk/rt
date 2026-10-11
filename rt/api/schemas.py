@@ -6,7 +6,7 @@ client generato della SPA).
 from datetime import datetime
 from typing import Union, Any, Dict, List, Literal, Optional
 from rt.services.study_progress_service import StudyStatus
-from rt.core.models import Anchor
+from rt.core.models import Anchor, ASRRiskSegment
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
 QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
@@ -300,6 +300,7 @@ class Outline(BaseModel):
 
 
 class IssueContext(BaseModel):
+    asr_segments: Optional[List[ASRRiskSegment]] = None
     timecode: str
     unit_info: Optional[str] = None
     unit_content: Optional[str] = None

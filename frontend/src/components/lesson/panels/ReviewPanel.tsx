@@ -1,10 +1,11 @@
+import { ASRSegments } from './ASRSegments'
 import { ReviewUnits } from './ReviewUnits'
 import { usePreference } from '@/lib/preferences'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Tooltip } from '@/components/ui/tooltip'
 import { EditorState } from '@codemirror/state'
-import { ArrowDownWideNarrow, Check, Eye, MoreHorizontal, RotateCcw, Pencil, ShieldCheck, Undo2, X } from 'lucide-react'
+import { ArrowDownWideNarrow, Check, Eye, MoreHorizontal, RotateCcw, ShieldCheck, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
@@ -150,14 +151,14 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
 function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onUndo }: {
   failure?: string; phone: boolean; changed: boolean; onUndo: () => void
   item: IssueItem; busy: boolean; editing: boolean; onEditing: (value: boolean) => void
-  onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void; onSeek?: (seconds: number) => void
+  onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void; onSeek?: (seconds: number, play?: boolean, endSeconds?: number) => void
 }) {
   const issue = issueOf(item)
   const paragraph = paragraphIssue(issue)
   const suggestion = !paragraph && item.fix_text === null && !item.decision?.resolved_text
   const readOnly = !!item.decision && !item.needs_reconfirmation
   const proposed = item.decision?.resolved_text ?? (paragraph ? item.context?.unit_content ?? issue.claim : suggestion ? issue.claim : item.fix_text ?? issue.suggested_fix ?? issue.claim)
-  const cannotApply = changed || !!issue.unanchored
+  const cannotApply = !paragraph && (changed || !!issue.unanchored)
   const [text, setText] = useState(proposed)
   const box = useRef<HTMLDivElement>(null)
   const controls = useRef<HTMLDivElement>(null)
@@ -185,9 +186,10 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
   }, [editing, readOnly, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
   return <Card className="flex flex-col gap-3 p-3" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
-    <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{!readOnly && onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
-    {phone && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
-    <div ref={box}>
+    <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{!paragraph && !readOnly && onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
+    {phone && !paragraph && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
+    {issue.type === 'ERR_ASR_ST' && <ASRSegments segments={item.context?.asr_segments ?? [{ segment_id: issue.segment_id ?? '', text_raw: issue.claim, start_s: item.context?.start_s, end_s: item.context?.end_s }]} onSeek={!readOnly ? onSeek : undefined} />}
+    {!paragraph && <div ref={box}>
       <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{paragraph ? 'Testo del paragrafo' : 'Correzione proposta'}</h3>
         {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
       </div>
@@ -200,16 +202,16 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
         }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
         <Tooltip content="Doppio clic per modificare" disabled={phone || readOnly || busy || cannotApply}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
           onDoubleClick={() => { if (!busy && !readOnly && !cannotApply) onEditing(true) }} onClick={() => { if (phone && !busy && !readOnly && !cannotApply) onEditing(true) }}>{suggestion && !item.decision ? issue.suggested_fix : proposed}</p>}</Tooltip>}
-    </div>
+    </div>}
     {failure && <Alert tone="danger">{failure}</Alert>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
     {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. {readOnly ? 'Il rifiuto è registrato.' : 'Puoi solo rifiutare questa issue.'}</p></>}
     {item.needs_reconfirmation && <><Badge tone="warning">Da riconfermare</Badge><p className="text-meta">La decisione precedente resta registrata. Puoi riconfermare la correzione se il passaggio è ritrovato oppure mantenere il testo attuale.</p></>}
-    {changed && !issue.unanchored && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
+    {changed && !paragraph && !issue.unanchored && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
     {readOnly ? <div className="flex items-center justify-between gap-2"><Badge tone="success">{decisionLabels[item.decision!.decision]}</Badge><Button variant="ghost" size="sm" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button></div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
-      {!cannotApply && (!suggestion || editing) && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
-      {paragraph && !cannotApply ? <IconButton label="Modifica il paragrafo" icon={Pencil} disabled={busy} onClick={() => onEditing(true)} /> : <IconButton label={issue.unanchored ? 'Rifiuta' : 'Mantieni il testo attuale'} icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />}
+      {paragraph ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('accepted')}><Check />Ho controllato</Button> : !cannotApply && (!suggestion || editing) && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
+      {!paragraph && <IconButton label={issue.unanchored ? 'Rifiuta' : 'Mantieni il testo attuale'} icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />}
     </div>}
   </Card>
 }

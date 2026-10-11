@@ -402,14 +402,21 @@ it('da riconfermare senza passaggio ritrovato permette solo di mantenere il test
   fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
-it('un avviso di paragrafo usa le icone e conserva conferma e modifica', async () => {
+it('un avviso di paragrafo si conferma senza modifica e una vecchia decisione resta annullabile', async () => {
   state.items = [{ ...issue, issue: { ...issue.issue, type: 'ERR_ASR_ST' } }]
+  const view = mount()
+  expect(screen.queryByRole('button', { name: 'Modifica il paragrafo' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Ho controllato' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+  view.unmount()
+  state.items = [{ ...state.items[0], decision: { issue_id: 'a', decision: 'edited', resolved_text: 'Paragrafo corretto.', timestamp: '2026-10-11', resolved_by: 'user' } }]
   mount()
-  expect(screen.getByRole('button', { name: 'Accetta il testo' })).toHaveTextContent('')
-  fireEvent.click(screen.getByRole('button', { name: 'Modifica il paragrafo' }))
-  fireEvent.change(screen.getByRole('textbox', { name: 'Testo del paragrafo' }), { target: { value: 'Paragrafo corretto.' } })
-  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', metaKey: true })
-  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Paragrafo corretto.' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
+  const card = within(screen.getByTestId('issue-detail'))
+  expect(card.getByText('modificata')).toBeInTheDocument()
+  fireEvent.click(card.getByRole('button', { name: 'Annulla' }))
+  await waitFor(() => expect(state.undo).toHaveBeenCalledWith('a'))
 })
 
 
@@ -461,4 +468,15 @@ it('un link a una decisione nascosta conserva l’issue fino a Mostra decise', (
   expect(screen.getByTestId('issue-detail')).toHaveTextContent('Scelta precedente.')
   fireEvent.click(screen.getByRole('button', { name: 'Mostra decise' }))
   expect(screen.getByTestId('issue-detail')).toHaveTextContent('Prossima correzione.')
+})
+
+it.each(['ERR_ASR_ST', 'ERR_REWRITE_DRIFT'])('avviso %s: solo Ho controllato, senza box o matita', async type => {
+  state.items = [{ ...issue, issue: { ...issue.issue, type, claim: 'Trascritto grezzo.' } }]
+  mount(undefined, undefined, 'Passaggio riscritto e cambiato.')
+  const card = within(screen.getByTestId('issue-detail'))
+  expect(card.queryByTestId('proposed-correction')).not.toBeInTheDocument()
+  expect(card.queryByRole('button', { name: /Modifica|Mantieni|Accetta/ })).not.toBeInTheDocument()
+  expect(card.queryByText('Testo cambiato')).not.toBeInTheDocument()
+  fireEvent.click(card.getByRole('button', { name: 'Ho controllato' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
 })
