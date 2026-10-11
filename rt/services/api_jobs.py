@@ -31,6 +31,7 @@ IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
 EXPORT_LESSONS = "export_lessons"
 UNIT_RELEVANCE = "unit_relevance"
+STUDY_NOTE = "study_note"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
 
@@ -108,6 +109,25 @@ def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             pending.remove(uid)
             ctx.emit(ReviewUnitDone(unit_id=uid, issues=result["issues"], pending_units=pending.copy()))
     return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
+
+
+def study_note_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.study_notes import run_study_note
+    ctx.lesson_dir = job.lesson_path
+    with ctx.activate():
+        ctx.check_cancelled()
+        options = job.payload.get("options") or {}
+        force_mock = ctx.force_mock or bool(options.get("mock"))
+        result = run_study_note(
+            lesson_dir=job.lesson_path,
+            unit_id=job.payload["unit_id"],
+            kind=job.payload["kind"],
+            anchor=job.payload["anchor"],
+            request=job.payload.get("request", ""),
+            lesson_id=job.payload.get("lesson_id"),
+            force_mock=force_mock,
+        )
+    return _done(result, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
@@ -484,7 +504,7 @@ for _type, _handler in (
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
-    (EXPORT_LESSONS, export_lessons_job),
+    (EXPORT_LESSONS, export_lessons_job), (STUDY_NOTE, study_note_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)

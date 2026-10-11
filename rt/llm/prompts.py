@@ -8,7 +8,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 
 import json
 from typing import ClassVar, List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from rt.core.models import ScienceIssue, RecallOutcome
 
 
@@ -26,6 +26,35 @@ class ReviewFindingList(BaseModel):
     constrained_schema: ClassVar[bool] = True
     model_config = ConfigDict(extra="forbid")
     issues: List[ReviewFinding]
+
+
+STUDY_NOTE_VERIFICA_SYSTEM_PROMPT = """Sei un revisore accademico ed esperto della materia. Il tuo compito è verificare l'accuratezza scientifica e concettuale del passaggio selezionato rispetto all'unità didattica e al contesto della lezione.
+Valuta se il passaggio è corretto, impreciso, errato o non verificabile.
+Fornisci una spiegazione rigorosa e chiara in formato markdown.
+Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione."""
+
+STUDY_NOTE_CHIEDI_SYSTEM_PROMPT = """Sei un tutor accademico chiaro, accurato e didattico. Il tuo compito è spiegare allo studente il passaggio selezionato tenendo conto dell'unità didattica e dell'intera lezione.
+Rispondi in formato markdown in modo chiaro, approfondito ma accessibile."""
+
+
+class StudyNoteVerificaResponse(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    esito: Literal["corretto", "impreciso", "errato", "non_verificabile"]
+    spiegazione: str = Field(min_length=1)
+    correzione: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_correzione(self) -> "StudyNoteVerificaResponse":
+        if self.esito in ("impreciso", "errato") and not (self.correzione and self.correzione.strip()):
+            raise ValueError("La correzione è obbligatoria se l'esito è impreciso o errato")
+        return self
+
+
+class StudyNoteChiediResponse(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    spiegazione: str = Field(min_length=1)
 
 
 class ScienceIssueList(BaseModel):
