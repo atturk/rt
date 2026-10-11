@@ -3527,6 +3527,12 @@
             "title": "Force",
             "type": "boolean"
           },
+          "include_excluded": {
+            "default": false,
+            "description": "Review di una sola unità: ignora l'esclusione didattica per questa esecuzione",
+            "title": "Include Excluded",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -3591,6 +3597,12 @@
           "rename": {
             "default": true,
             "title": "Rename",
+            "type": "boolean"
+          },
+          "skip_prefilter": {
+            "default": false,
+            "description": "Review: esegue il revisore senza il classificatore preventivo",
+            "title": "Skip Prefilter",
             "type": "boolean"
           },
           "type": {
@@ -6461,6 +6473,11 @@
       },
       "ReviewProgress": {
         "properties": {
+          "completed_once": {
+            "default": false,
+            "title": "Completed Once",
+            "type": "boolean"
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "integer"

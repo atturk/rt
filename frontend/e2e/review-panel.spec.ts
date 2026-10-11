@@ -91,22 +91,20 @@ test('le unità di Verifica corrispondono all’API e le escluse aprono il class
   }
 })
 
-test('tutto verificato: nessuna unità mancante e la ri-verifica globale chiede conferma', async ({ page }) => {
+test('tutto verificato: nessuna unità mancante e la ri-verifica globale parte subito', async ({ page }) => {
   await loginViaLink(page)
   const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=PATOLOGIA')
   const units = await apiGet<{ state: string }[]>(page.request, `/lessons/${lesson.id}/review/units`)
   expect(units.every(unit => ['ok', 'issues'].includes(unit.state))).toBeTruthy()
   await page.goto(`/lezioni/${lesson.id}?panel=verifica`)
   const panel = page.getByTestId('lesson-review-panel')
-  let launched = 0
-  page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith(`/lessons/${lesson.id}/jobs`)) launched++ })
+  const launched = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith(`/lessons/${lesson.id}/jobs`))
   await expect(panel.getByRole('button', { name: /^Verifica le unità mancanti/ })).toHaveCount(0)
   await panel.getByRole('button', { name: 'Azioni della verifica' }).click()
-  await panel.getByRole('menuitem', { name: 'Riesegui tutta la lezione…' }).click()
-  const confirmation = panel.getByRole('group', { name: 'Riesegui tutta la lezione' })
-  await expect(confirmation).toContainText('comprese quelle già verificate')
-  await confirmation.getByRole('button', { name: 'Annulla' }).click()
-  expect(launched).toBe(0)
+  await page.getByRole('menuitem', { name: 'Riesegui tutta la lezione' }).click()
+  expect((await launched).postDataJSON()).toMatchObject({ type: 'run_phase', phase: 'review', force: true })
+  await expect(panel.getByRole('group', { name: /Riesegui/ })).toHaveCount(0)
+  await expect.poll(async () => (await apiGet<{ state: string }[]>(page.request, `/jobs?lesson_id=${lesson.id}&limit=1`))[0].state).toBe('succeeded')
 })
 
 test('l’elenco resta per unità dopo il ricaricamento e conserva l’ordine', async ({ page }) => {

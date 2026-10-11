@@ -38,6 +38,7 @@ class PipelineOptions:
     model: Optional[str] = None
     skip_transcribe: bool = False
     force: bool = False
+    skip_prefilter: bool = False
     mock: bool = False
     with_review: bool = False
     with_enrichment: Optional[bool] = None
@@ -381,7 +382,8 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
         elif phase == "rewrite":
             res = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         elif phase == "review":
-            res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+            res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx,
+                             **({"skip_prefilter": True} if options.skip_prefilter else {}))
         else:
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
             res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)

@@ -4414,6 +4414,12 @@ export interface components {
              */
             force: boolean;
             /**
+             * Include Excluded
+             * @description Review di una sola unità: ignora l'esclusione didattica per questa esecuzione
+             * @default false
+             */
+            include_excluded: boolean;
+            /**
              * Mock
              * @default false
              */
@@ -4444,6 +4450,12 @@ export interface components {
              * @default true
              */
             rename: boolean;
+            /**
+             * Skip Prefilter
+             * @description Review: esegue il revisore senza il classificatore preventivo
+             * @default false
+             */
+            skip_prefilter: boolean;
             /**
              * Type
              * @default run_pipeline
@@ -5722,6 +5734,11 @@ export interface components {
         };
         /** ReviewProgress */
         ReviewProgress: {
+            /**
+             * Completed Once
+             * @default false
+             */
+            completed_once: boolean;
             /** Reviewed */
             reviewed: number;
             /** Total */

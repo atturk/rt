@@ -18,8 +18,40 @@ def load_review_units(lesson_dir: str) -> dict:
 @lesson_locked
 def save_review_units(lesson_dir: str, units: dict) -> None:
     path = lesson_path(lesson_dir, 'review_units.json')
+    completed = review_completed_once(lesson_dir)
     with fs.open(path + '.tmp', 'w', encoding='utf-8') as file:
-        json.dump({'schema_version': '1.0', 'units': units}, file, ensure_ascii=False, indent=2)
+        json.dump({'schema_version': '1.0', 'units': units, 'completed_once': completed}, file, ensure_ascii=False, indent=2)
+    fs.replace(path + '.tmp', path)
+
+
+def review_completed_once(lesson_dir: str) -> bool:
+    """Storico della verifica completa, anche dopo modifiche e tentativi parziali."""
+    path = lesson_path(lesson_dir, 'review_units.json')
+    if fs.isfile(path):
+        with fs.open(path, encoding='utf-8') as file:
+            if json.load(file).get('completed_once'):
+                return True
+    from rt.core.manifest import load_manifest
+    manifest = load_manifest(lesson_dir)
+    record = (manifest.phase_records or {}).get('review') if manifest else None
+    # Il VALID registrato sopravvive a un testo diventato STALE: vale anche per la b2.
+    return bool(record and record.get('status') == 'VALID' and not record.get('manual_validation'))
+
+
+@lesson_locked
+def remember_review_completion(lesson_dir: str, completed: bool = False) -> None:
+    if not completed and not review_completed_once(lesson_dir):
+        return
+    path = lesson_path(lesson_dir, 'review_units.json')
+    data = {'schema_version': '1.0', 'units': {}}
+    if fs.isfile(path):
+        with fs.open(path, encoding='utf-8') as file:
+            data = json.load(file)
+    if data.get('completed_once'):
+        return
+    data['completed_once'] = True
+    with fs.open(path + '.tmp', 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
     fs.replace(path + '.tmp', path)
 
 

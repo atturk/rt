@@ -318,7 +318,8 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
 def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
                  _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
-                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None) -> str:
+                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None,
+                 skip_prefilter: bool = False) -> str:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -334,8 +335,8 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     from rt.core.config import classifier_job, classifier_jev
     prefilter = classifier_job(_cfg, "prefilter")
     drift = classifier_job(_cfg, "drift")
-    if prefilter.mode in ("observe", "pipeline") or drift.mode in ("observe", "pipeline"):
-        verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if prefilter.mode in ("observe", "pipeline") else None
+    if (not skip_prefilter and prefilter.mode in ("observe", "pipeline")) or drift.mode in ("observe", "pipeline"):
+        verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if not skip_prefilter and prefilter.mode in ("observe", "pipeline") else None
         verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir) if drift.mode in ("observe", "pipeline") else None
         if verdict_a is not None:
             # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
@@ -387,13 +388,17 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     return "skipped_by_prefilter" if skip_expensive_llm else "ok"
 
 
-def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None, skip_prefilter: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
     from rt.services.unit_relevance import refresh
+    from rt.pipeline.review_units import remember_review_completion
     with phase_scope(ctx, "review") as scope:
+        remember_review_completion(lesson_dir)
         # Dentro lo scope: le chiamate JEV della rilevanza sono parte della fase (lock, errori, annullamento).
         refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-        result = _run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx)
+        result = _run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx, skip_prefilter=skip_prefilter)
+        if result.get("status") == "review_completed":
+            remember_review_completion(lesson_dir, completed=True)
         if result.get("action") != "SKIP":
             from rt.services.documents_service import request_documents
             request_documents(lesson_dir)
@@ -536,17 +541,21 @@ def parent_unit_context(units, unit_id: str) -> Optional[str]:
     return "\n\n".join(f"{u.unit_id} {(u.title or '').strip()}\n{u.content}" for u in siblings)
 
 
-def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False, force: bool = False) -> Dict[str, Any]:
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False, force: bool = False,
+                    skip_prefilter: bool = False, include_excluded: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions. Con
     parent_context il revisore riceve anche le altre subunità della stessa unità."""
     from rt.services.unit_relevance import refresh, included
+    from rt.pipeline.review_units import remember_review_completion
+    remember_review_completion(lesson_dir)
+    force = force or skip_prefilter
     refresh(lesson_dir, force_mock=force_mock)
     draft = load_resolved_draft(lesson_dir)
     unit = next((item for item in draft.units if item.unit_id == unit_id), None)
     if unit is None:
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
     raw_unit = next(u for u in load_draft(lesson_dir).units if u.unit_id == unit_id)
-    if not included(lesson_dir, raw_unit):
+    if not include_excluded and not included(lesson_dir, raw_unit):
         return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
@@ -569,7 +578,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
         result = _review_unit(client, unit, 1, 1, seg_by_id,
                      {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
                      generated, cfg, lesson_dir, False, cfg.jev.shadow,
-                     parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
+                     parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None,
+                     skip_prefilter=skip_prefilter)
     except Exception as exc:
         record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc), text_hash=raw_hashes.get(unit_id))
         raise
@@ -604,6 +614,7 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
             record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
                 {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
                 metadata={"unit_hashes": current})
+        remember_review_completion(lesson_dir)
     from rt.services.documents_service import request_documents
     request_documents(lesson_dir)
     return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(prior) - sum(i.unit_id == unit_id for i in prior),
@@ -758,9 +769,10 @@ def _parallel_units(work, run, parallel, stop, started=None):
             yield future.result()
 
 
-def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None, skip_prefilter: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
+    force = force or skip_prefilter
 
     manifest_before = load_manifest(lesson_dir)
     old_sci_hash = (
@@ -913,7 +925,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             with child.activate() if child else nullcontext():
                 if unit.unit_id in eligible_ids:
                     result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
-                                          _cfg, lesson_dir, asr_llm, shadow_jev, ctx=child, jev_log=prefilter)
+                                          _cfg, lesson_dir, asr_llm, shadow_jev, ctx=child, jev_log=prefilter,
+                                          skip_prefilter=skip_prefilter)
                 elif child:
                     child.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:

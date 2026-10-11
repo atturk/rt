@@ -67,6 +67,9 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.events import ReviewUnitsQueued, ReviewUnitDone, ReviewUnitStarted
     results = []
     pending = list(job.payload.get("units") or [job.payload["unit"]])
+    options = job.payload.get("options") or {}
+    if options.get("include_excluded") and len(pending) != 1:
+        raise ValueError("L'esclusione si può ignorare solo per una singola unità.")
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
     with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
         for unit in pending.copy():
@@ -80,7 +83,8 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             results.append(run_review_unit(job.lesson_path, unit,
                                            force_mock=bool((job.payload.get("options") or {}).get("mock")),
                                            parent_context=bool(job.payload.get("parent_context")),
-                                           force=bool(job.payload.get("force") or (job.payload.get("options") or {}).get("force"))))
+                                           force=bool(job.payload.get("force") or options.get("force")),
+                                           **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)}))
             pending.remove(unit)
             ctx.emit(ReviewUnitDone(unit_id=unit, issues=results[-1].get("issues", 0), pending_units=pending.copy()))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)

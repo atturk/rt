@@ -18,7 +18,7 @@ vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJ
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { quote_status: 'found', needs_reconfirmation: false, issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
 function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, _markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
-  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
+  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, review_progress: { reviewed: 0, total: 0, completed_once: phases.review === 'VALID' }, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
 }
 beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false; state.refetch.mockImplementation(() => { state.items = state.items.map(item => ({ ...item, quote_status: 'changed' })); return Promise.resolve() }) })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
@@ -126,13 +126,12 @@ it('gli avvisi non richiedono conferma per i documenti automatici', async () => 
   expect(state.run).not.toHaveBeenCalled()
 })
 
-it('testo cambiato: verifica globale solo dal menu con conferma nel pannello', async () => {
-  mount({ rewrite: 'VALID', review: 'STALE', build: 'STALE' })
+it('testo cambiato: verifica globale immediata dal menu dopo una verifica completa', async () => {
+  mount({ rewrite: 'VALID', review: 'STALE', build: 'STALE' }, undefined, undefined, { review_progress: { reviewed: 0, total: 1, completed_once: true } })
   expect(screen.queryByRole('button', { name: 'Ricostruisci il documento' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione…' }))
-  expect(state.run).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Riesegui tutte le unità' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione' }))
+  expect(screen.queryByRole('group', { name: /Riesegui/ })).not.toBeInTheDocument()
   await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true }))
 })
 
@@ -228,25 +227,22 @@ it('raggruppa per unità: cronologico e poi gravità', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Ordine delle issue' }))
   expect(screen.getAllByTestId('review-issue-group').map(el => el.closest('[data-unit]')?.getAttribute('data-unit'))).toEqual(['1.2', '1.1'])
 })
-it('la ri-verifica di una unità chiede conferma e forza solo quella', async () => {
+it('la ri-verifica di una unità parte subito e forza solo quella', async () => {
   state.units = [unit('1.1', 'ok')]
   mount()
   fireEvent.click(screen.getByRole('button', { name: 'Azioni sull’unità 1.1' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui l’unità' }))
-  expect(state.run).not.toHaveBeenCalled()
-  expect(screen.getByRole('group', { name: 'Riesegui l’unità 1.1' })).toHaveTextContent('Le decisioni restano registrate')
-  fireEvent.click(screen.getByRole('button', { name: 'Riesegui l’unità' }))
+  expect(screen.queryByRole('group', { name: /Riesegui/ })).not.toBeInTheDocument()
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true }))
 })
-it('tutto verificato: niente unità mancanti, la ri-verifica globale chiede conferma', () => {
+it('tutto verificato: niente unità mancanti, la ri-verifica globale parte subito', async () => {
   state.units = [unit('1.1', 'ok')]
   mount()
   expect(screen.queryByRole('button', { name: /^Verifica le unità mancanti/ })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione…' }))
-  expect(screen.getByRole('group', { name: 'Riesegui tutta la lezione' })).toHaveTextContent('comprese quelle già verificate')
-  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
-  expect(state.run).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Riesegui tutta la lezione' }))
+  expect(screen.queryByRole('group', { name: /Riesegui/ })).not.toBeInTheDocument()
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true }))
 })
 it('le issue si aprono e si chiudono nella propria unità', () => {
   state.units = [unit('1.1', 'issues', 1)]
@@ -497,4 +493,35 @@ it('quote_status changed offre una verifica immediata dell’unità', async () =
   fireEvent.click(screen.getByRole('button', { name: "Verifica di nuovo l'unità" }))
   await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true }))
   expect(screen.queryByRole('group', { name: /Riesegui/ })).not.toBeInTheDocument()
+})
+
+it('i menu tengono spenta la riesecuzione mai verificata e offrono il bypass', async () => {
+  state.units = [{ ...unit('1.1', 'never'), reviewed_at: null }]
+  mount({ rewrite: 'VALID', review: 'MISSING' })
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
+  expect(screen.getByRole('menuitem', { name: /Riesegui tutta la lezione/ })).toHaveAttribute('aria-disabled', 'true')
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni sull’unità 1.1' }))
+  expect(screen.getByRole('menuitem', { name: /Riesegui l’unità/ })).toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Esegui senza classificatore' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true, skip_prefilter: true }))
+})
+it('il bypass di una unità esclusa conserva il classificatore e ignora solo la sua esclusione', async () => {
+  state.units = [unit('1.1', 'excluded')]
+  mount({ rewrite: 'VALID', review: 'MISSING' })
+  expect(screen.getByRole('button', { name: 'Apri il Classificatore' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni sull’unità 1.1' }))
+  expect(screen.queryByRole('menuitem', { name: /Riesegui/ })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Esegui senza classificatore' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true, skip_prefilter: true, include_excluded: true }))
+})
+it('il bypass globale lascia fuori le escluse anche dalla coda', async () => {
+  state.units = [unit('1.1', 'issues'), unit('1.2', 'excluded')]
+  state.run.mockImplementationOnce(() => new Promise(() => {}))
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: 'Azioni della verifica' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Esegui senza classificatore' }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledExactlyOnceWith({ type: 'run_phase', phase: 'review', force: true, skip_prefilter: true }))
+  expect(within(screen.getByTestId('review-unit-issues')).getByRole('img', { name: 'In coda' })).toBeInTheDocument()
+  expect(within(screen.getByTestId('review-unit-excluded')).queryByRole('img', { name: 'In coda' })).not.toBeInTheDocument()
 })

@@ -130,6 +130,7 @@ class LessonActions(BaseModel):
 class ReviewProgress(BaseModel):
     reviewed: int
     total: int
+    completed_once: bool = False
 
 
 class LessonDetail(LessonSummary):
@@ -441,6 +442,8 @@ class JobRequest(BaseModel):
     units: Optional[List[str]] = Field(None, description="Rewrite o review: unità selezionate (lista multipla)")
     extra_prompt: Optional[str] = Field(None, max_length=10000, description="Istruzioni aggiuntive per outline, rewrite o review")
     force: bool = False
+    skip_prefilter: bool = Field(False, description="Review: esegue il revisore senza il classificatore preventivo")
+    include_excluded: bool = Field(False, description="Review di una sola unità: ignora l'esclusione didattica per questa esecuzione")
     mock: bool = False
     with_review: bool = False
     with_enrichment: Optional[bool] = Field(None, description="Esegue l'arricchimento didattico alla fine della pipeline")

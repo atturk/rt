@@ -350,6 +350,7 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     review_record = (manifest.phase_records or {}).get("review") if manifest else None
     out["review_progress"] = None
     if review_record is not None:
+        from rt.pipeline.review_units import review_completed_once
         from rt.pipeline.rewrite import load_draft
         try:
             draft = load_draft(lesson_dir)
@@ -358,6 +359,7 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         out["review_progress"] = {
             "reviewed": len(review_record.get("completed_items") or []),
             "total": len(draft.units) if draft else 0,
+            "completed_once": review_completed_once(lesson_dir),
         }
     out["segment_count"] = manifest.segment_count if manifest else 0
     out["outline_approved"] = is_outline_approved(lesson_dir)
