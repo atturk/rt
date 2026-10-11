@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { ClassifierPanel } from './ClassifierPanel'
 const cell = {unit_id:'1.1',value:'didactic',source:'classifier',state:'fresh',options:['didactic','organizational']}
-const overview = {units:[{id:'1.1',title:'Titolo',section_id:'1'}],pending:0,jobs:{relevance:{mode:'observe',state:'done',cells:[cell]},question_types:{mode:'off',state:'off',cells:[]},exercises:{mode:'manual',state:'never',cells:[{section_id:'1',value:null,source:'classifier',state:'missing',options:['nessuno','svolto']}]}}}
+const overview = {units:[{id:'1.1',title:'Titolo',section_id:'1'}],pending:0,jobs:{relevance:{mode:'observe',state:'done',cells:[cell]},question_types:{mode:'off',state:'off',cells:[]},'custom:query-sql':{nome:'Query SQL',icona:'Database',mode:'manual',state:'never',cells:[{section_id:'1',value:null,source:'classifier',state:'missing',options:['nessuno','presente']}]}}}
 const ok = (data:unknown)=>({data,response:new Response(null,{status:200})}) as never
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 function setup(){vi.spyOn(api,'GET').mockResolvedValue(ok(overview));const client=new QueryClient({defaultOptions:{queries:{retry:false}}});render(<QueryClientProvider client={client}><MemoryRouter><ClassifierPanel lessonId={5}/></MemoryRouter></QueryClientProvider>);return client}
@@ -14,7 +14,7 @@ it('mostra griglie attive, apre la scheda e corregge la cella',async()=>{
  setup()
  expect(await screen.findByTestId('classifier-job-relevance')).toBeInTheDocument()
  expect(screen.queryByTestId('classifier-job-question_types')).toBeNull()
- expect(screen.getByTestId('classifier-job-exercises')).toBeInTheDocument()
+ expect(screen.getByTestId('classifier-job-custom:query-sql')).toBeInTheDocument()
  fireEvent.click(screen.getByTestId('classifier-cell-relevance-1.1'))
  expect(await screen.findByRole('dialog',{name:/Rilevanza · 1.1/})).toBeInTheDocument()
  fireEvent.click(screen.getByRole('button',{name:'Organizzativa'}))
@@ -32,4 +32,13 @@ it('il tooltip mostra titolo e valore e la riclassificazione chiede conferma',as
  expect(await screen.findByRole('dialog',{name:'Riclassifica tutte'})).toBeInTheDocument()
  fireEvent.click(screen.getByRole('button',{name:'Riclassifica'}))
  await waitFor(()=>expect(api.POST).toHaveBeenCalled())
+})
+
+it('le righe personalizzate e i valori arrivano dal registro', async () => {
+ setup()
+ expect(await screen.findByTestId('classifier-job-custom:query-sql')).toHaveTextContent('Query SQL')
+ fireEvent.click(screen.getByTestId('classifier-cell-custom:query-sql-1'))
+ expect(await screen.findByRole('dialog', { name: /Query SQL/ })).toBeInTheDocument()
+ expect(screen.getByRole('button', { name: 'Presente' })).toBeInTheDocument()
+ expect(screen.getByRole('button', { name: 'Nessuno' })).toBeInTheDocument()
 })

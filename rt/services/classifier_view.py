@@ -8,8 +8,12 @@ from rt.services import unit_relevance as rel, question_types as qt, section_lab
 from rt.services.recall_context import digest, lesson_context
 from rt.storage import fs
 
-JOBS = {"relevance": "relevance", "question_types": "question_types", "exercises": "section_labels",
-        "cases": "section_labels", "prefilter": "prefilter", "drift": "drift", "enrichment": "enrichment"}
+JOBS = {"relevance": "relevance", "question_types": "question_types", "prefilter": "prefilter", "drift": "drift", "enrichment": "enrichment"}
+
+
+def jobs_for(lesson_dir, cfg=None):
+    from rt.services.custom_question_types import active_types
+    return {**JOBS, **{'custom:' + t.id: 'section_labels' for t in active_types(lesson_dir=lesson_dir, cfg=cfg)}}
 
 
 def units_view(lesson_dir):
@@ -27,17 +31,18 @@ def overview(lesson_dir):
     owner = {u.unit_id: s["id"] for s in sections for u in s["units"]}
     relevance, types, labels, prefilter = rel._load(lesson_dir, view), qt._load(lesson_dir), sl._load(lesson_dir), pf.load(lesson_dir)
     section_hashes = {s["id"]: sl._section_hash(lesson_dir, s) for s in sections}
-    effective_labels = {s["id"]: {kind: sl.effective(labels.get(s["id"], {}), kind) for kind in sl.KINDS}
-                        for s in sections if labels.get(s["id"], {}).get("text_hash") == section_hashes[s["id"]]}
+    effective_labels = sl.labels(lesson_dir, sections=sections)
+    from rt.services.custom_question_types import active_types
+    custom = {'custom:' + t.id: t for t in active_types(lesson_dir=lesson_dir, cfg=cfg)}
     allowed = rel.included_ids(lesson_dir, units, view=view, records=relevance, cfg=classifier_jev(cfg,"relevance"))
     from rt.services import enrichment_service as es
     enrichment = es.load(lesson_dir)
     out = {"units": [{"id": u.unit_id, "title": u.title, "section_id": owner[u.unit_id]} for u in units], "jobs": {}, "pending": 0}
     pending = set()
-    for name, config_name in JOBS.items():
+    for name, config_name in jobs_for(lesson_dir, cfg).items():
         job = classifier_job(cfg, config_name)
         cells, stamps = [], []
-        for item in sections if name in ("exercises", "cases") else units:
+        for item in sections if name in custom else units:
             sid = item["id"] if isinstance(item, dict) else None
             uid = None if sid else item.unit_id
             row, value, manual, fresh, skipped, options, confidence = {}, None, False, False, False, [], None
@@ -54,13 +59,15 @@ def overview(lesson_dir):
                 manual = row.get("override") is not None
                 skipped = uid not in allowed and not manual
                 options = list(qt.CRITERIA)
-            elif name in ("exercises", "cases"):
-                kind = "esercizio" if name == "exercises" else "caso"
-                row = labels.get(sid,{})
-                fresh = row.get("text_hash") == section_hashes[sid] and (row.get("override_"+kind) is not None or row.get("config_hash") in ("mock",sl._config_hash(classifier_jev(cfg,"section_labels"))))
-                value, manual = sl.effective(row,kind), row.get("override_"+kind) is not None
-                confidence = row.get(kind+"_confidence")
-                options = list(sl.ESERCIZIO_CRITERIA if kind == "esercizio" else sl.CASO_CRITERIA)
+            elif name in custom:
+                kind = custom[name].id
+                row = labels.get(sid, {})
+                manual = row.get('overrides', {}).get(kind) is not None
+                fresh = row.get('text_hash') == section_hashes[sid] and (manual or
+                        row.get('config_hash') in (sl.configuration(lesson_dir), sl.configuration(lesson_dir, force_mock=True)))
+                value = sl.effective(row, kind)
+                confidence = row.get('probabilities', {}).get(kind)
+                options = ['presente', 'nessuno']
             elif name in ("prefilter", "drift"):
                 task = "task_a" if name == "prefilter" else "task_b"
                 record = prefilter.get(uid,{})
@@ -94,7 +101,8 @@ def overview(lesson_dir):
                 pending.update(u.unit_id for u in item["units"]) if sid else pending.add(uid)
         states = {c["state"] for c in cells}
         state = "off" if job.mode == "off" else "stale" if "stale" in states else "never" if not cells or states <= {"missing","skipped"} else "partial" if states & {"error","missing"} else "done"
-        out["jobs"][name] = {"mode":job.mode,"state":state,"last_run_at":max(stamps) if stamps else None,"errors":sum(c["state"] == "error" for c in cells),"cells":cells}
+        out["jobs"][name] = {"nome": custom[name].nome if name in custom else None,
+                              "icona": custom[name].icona if name in custom else None, "mode":job.mode,"state":state,"last_run_at":max(stamps) if stamps else None,"errors":sum(c["state"] == "error" for c in cells),"cells":cells}
     out["pending"] = len(pending)
     return out
 
@@ -105,8 +113,8 @@ def correct(lesson_dir, job, cell_id, value, actor="utente"):
         rel.set_override(lesson_dir,cell_id,value,view=view,actor=actor)
     elif job == "question_types":
         qt.set_override(lesson_dir,cell_id,value)
-    elif job in ("exercises","cases"):
-        sl.set_override(lesson_dir,cell_id,"esercizio" if job == "exercises" else "caso",value)
+    elif job in jobs_for(lesson_dir) and job.startswith("custom:"):
+        sl.set_override(lesson_dir,cell_id,job[7:],value)
     else:
         raise ValueError("Job non correggibile")
     return overview(lesson_dir)
@@ -114,12 +122,13 @@ def correct(lesson_dir, job, cell_id, value, actor="utente"):
 
 def run(lesson_dir, job, *, force=False, unit_ids=None, ctx=None):
     cfg = load_config()
-    names = [job] if job else list(JOBS)
+    jobs = jobs_for(lesson_dir, cfg)
+    names = [job] if job else list(jobs)
     completed = set()
     for name in names:
-        if name not in JOBS:
+        if name not in jobs:
             raise ValueError("Job non valido")
-        config_name = JOBS[name]
+        config_name = jobs[name]
         if config_name in completed or classifier_job(cfg,config_name).mode == "off":
             continue
         completed.add(config_name)
@@ -129,7 +138,7 @@ def run(lesson_dir, job, *, force=False, unit_ids=None, ctx=None):
             rel.refresh(lesson_dir,force_mock=mock,force=force,unit_ids=unit_ids,ctx=ctx,view=view)
         elif name == "question_types":
             qt.refresh(lesson_dir,force_mock=mock,force=force,unit_ids=unit_ids,ctx=ctx,view=units_view(lesson_dir)[1])
-        elif name in ("exercises","cases"):
+        elif name.startswith("custom:"):
             sl.refresh(lesson_dir,force_mock=mock,force=force,unit_ids=unit_ids,explicit=True)
         elif name in ("prefilter","drift"):
             pf.refresh_prefilter(lesson_dir,unit_ids,force,jobs=(name,))

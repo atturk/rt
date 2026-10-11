@@ -191,6 +191,7 @@ def test_unit_review_filters_questions(tmp_path):
     unit = []
     while (q := recall_service.pick_pending_question(path, 'mista', unit_id='1.2')) is not None:
         unit.append(q)
+        recall.record_recall_answer(path, q.id, 'Risposta', 'Correttezza: 100%\nCompletezza: 100%')
     assert unit and all(q.type != RecallQuestionType.VASTA for q in unit)
     assert all('1.2' in q.unit_ids for q in unit)
     assert any(q.type == CASO for q in unit)  # il caso arriva sull'ultima subunità

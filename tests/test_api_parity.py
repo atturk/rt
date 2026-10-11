@@ -503,6 +503,7 @@ def test_row_recall_quiz_and_open_answer(api, cli, pair, monkeypatch):
     job = api.run(f"/lessons/{lesson_id}/recall/answer", json={"question_id": open_q["id"], "answer": answer_text,
                                                                 "mock": True})
     assert job["state"] == "succeeded", job
+    api.post(f"/lessons/{lesson_id}/recall/seen", json={"question_id": open_q["id"]})
     shown("mirata")  # mostrata, poi "esci"
     api.drain()
     cli_bank, api_bank = _recall_files(cli_dir), _recall_files(api_dir)

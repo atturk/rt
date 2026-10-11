@@ -52,9 +52,8 @@ def _load(lesson_dir):
 
 
 def _compatible(row, section, labels):
-    from rt.services.section_labels import POSITIVE
     kind = row.get("candidate", row.get("type"))
-    if kind in POSITIVE and labels.get(section, {}).get(kind) not in POSITIVE[kind]:
+    if kind not in ("quiz", "mirata", None) and labels.get(section, {}).get(kind) != "presente":
         probabilities = row.get("probabilities") or {}
         return max(("quiz", "mirata"), key=lambda k: probabilities.get(k, 0))
     return kind if kind in CRITERIA else None

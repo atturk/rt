@@ -199,6 +199,11 @@ def skip(lesson_id: int, body: schemas.RecallSkip, lesson_dir: LessonDir, actor:
     return recall.skip(lesson_id, body, lesson_dir, actor)
 
 
+@router.post("/lessons/{lesson_id}/seen")
+def seen(lesson_id: int, body: schemas.RecallSkip, lesson_dir: LessonDir, actor: StudyActor):
+    return recall.seen(lesson_id, body, lesson_dir, actor)
+
+
 @router.post("/lessons/{lesson_id}/vote")
 def vote(lesson_id: int, body: schemas.RecallVote, lesson_dir: LessonDir, actor: StudyActor):
     return recall.vote(lesson_id, body, lesson_dir, actor)

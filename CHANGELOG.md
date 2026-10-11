@@ -4,6 +4,8 @@
 
 ### Novità
 
+- Il Classificatore mostra una riga per ogni tipo di domanda della materia, con nome, icona e correzioni “Presente” o “Nessuno”.
+
 - Registro di tipi di domanda personalizzati per materia, con modelli pronti da copiare e criteri di generazione e correzione modificabili.
 
 ### Cambiamenti

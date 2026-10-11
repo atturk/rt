@@ -45,7 +45,7 @@ def groups(lesson_dir: str, qtype: RecallQuestionType, sections=None, labels=Non
     previous_positive = False
     for section in sections:
         value = (labels.get(section["id"]) or {}).get(kind)
-        positive = value in section_labels.POSITIVE[kind]
+        positive = value == "presente"
         if not positive:
             previous_positive = False
             continue

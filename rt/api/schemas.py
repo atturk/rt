@@ -761,10 +761,8 @@ class SectionLabelRow(BaseModel):
     title: str
     unit_ids: List[str]
     fresh: bool = Field(description="Classificata sul testo attuale")
-    esercizio: Optional[str] = None
-    caso: Optional[str] = None
-    override_esercizio: Optional[str] = None
-    override_caso: Optional[str] = None
+    labels: Dict[str, str] = Field(default_factory=dict)
+    overrides: Dict[str, Optional[str]] = Field(default_factory=dict)
     error: Optional[str] = None
 
 
@@ -775,7 +773,7 @@ class SectionLabels(BaseModel):
 
 
 class SectionLabelOverride(BaseModel):
-    kind: Literal["esercizio", "caso"]
+    kind: str = Field(min_length=1)
     value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")
 
 
@@ -806,6 +804,8 @@ class ClassifierCell(BaseModel):
 
 
 class ClassifierJobView(BaseModel):
+    nome: Optional[str] = None
+    icona: Optional[str] = None
     mode: Literal["off", "manual", "observe", "pipeline"]
     state: Literal["done", "partial", "stale", "never", "off"]
     last_run_at: Optional[str] = None

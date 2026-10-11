@@ -120,7 +120,7 @@ def put_section_label(lesson_id: int, section_id: str, body: schemas.SectionLabe
     from rt.services.classifier_view import correct
     from rt.services.section_labels import view
     try:
-        correct(lesson_dir,"exercises" if body.kind == "esercizio" else "cases",section_id,body.value)
+        correct(lesson_dir,"custom:" + body.kind,section_id,body.value)
         return view(lesson_dir)
     except KeyError:
         raise ApiError(404, "section_not_found", "Unità non trovata nella scaletta.")
@@ -380,10 +380,10 @@ def run_classifier(lesson_id: int, body: schemas.ClassifierRun, lesson_dir: Less
 @router.post("/lessons/{lesson_id}/classifier/{job}/run", response_model=schemas.JobAccepted, status_code=202)
 def run_classifier_job(lesson_id: int, job: str, body: schemas.ClassifierRun, lesson_dir: LessonDir, actor: Actor):
     from rt.api.jobs import enqueue_job
-    from rt.services.classifier_view import JOBS
+    from rt.services.classifier_view import jobs_for
     from rt.core.config import load_config, classifier_job
-    if job not in JOBS:
+    if job not in jobs_for(lesson_dir):
         raise ApiError(422,"classifier_job_invalid","Job non valido")
-    if classifier_job(load_config(),JOBS[job]).mode == "off":
+    if classifier_job(load_config(),jobs_for(lesson_dir)[job]).mode == "off":
         raise ApiError(409,"classifier_job_off","Job spento")
     return enqueue_job("classifier",lesson_dir,{**body.model_dump(),"job":job},actor)

@@ -1679,6 +1679,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mini-app/lessons/{lesson_id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seen */
+        post: operations["seen_api_v1_mini_app_lessons__lesson_id__seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mini-app/lessons/{lesson_id}/session": {
         parameters: {
             query?: never;
@@ -3249,6 +3266,8 @@ export interface components {
              * @default 0
              */
             errors: number;
+            /** Icona */
+            icona?: string | null;
             /** Last Run At */
             last_run_at?: string | null;
             /**
@@ -3256,6 +3275,8 @@ export interface components {
              * @enum {string}
              */
             mode: "off" | "manual" | "observe" | "pipeline";
+            /** Nome */
+            nome?: string | null;
             /**
              * State
              * @enum {string}
@@ -5905,11 +5926,8 @@ export interface components {
         };
         /** SectionLabelOverride */
         SectionLabelOverride: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "esercizio" | "caso";
+            /** Kind */
+            kind: string;
             /**
              * Value
              * @description Nuovo valore; null torna a quello del classificatore
@@ -5918,21 +5936,21 @@ export interface components {
         };
         /** SectionLabelRow */
         SectionLabelRow: {
-            /** Caso */
-            caso?: string | null;
             /** Error */
             error?: string | null;
-            /** Esercizio */
-            esercizio?: string | null;
             /**
              * Fresh
              * @description Classificata sul testo attuale
              */
             fresh: boolean;
-            /** Override Caso */
-            override_caso?: string | null;
-            /** Override Esercizio */
-            override_esercizio?: string | null;
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            };
+            /** Overrides */
+            overrides?: {
+                [key: string]: string | null;
+            };
             /** Section Id */
             section_id: string;
             /** Title */
@@ -13909,6 +13927,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    seen_api_v1_mini_app_lessons__lesson_id__seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallSkip"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
