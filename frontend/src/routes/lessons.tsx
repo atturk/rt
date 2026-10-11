@@ -218,7 +218,6 @@ export function LessonPage() {
     window.addEventListener(OPEN_QUESTIONS_EVENT, handler)
     return () => window.removeEventListener(OPEN_QUESTIONS_EVENT, handler)
   }, [])
-  const [editorText, setEditorText] = useState<{ id: number; markdown: string } | null>(null)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const outline = useOutline(id)
@@ -261,7 +260,7 @@ export function LessonPage() {
           {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
           {outline.data && pendingOutline
             ? <LessonOutline key={outline.data.expires_at ?? JSON.stringify(outline.data.macro_sections)} lessonId={id} outline={outline.data} busy={!!job && isActive(job.state)} mock={job?.payload.mock === true || (typeof job?.payload.options === 'object' && job.payload.options != null && 'mock' in job.payload.options && job.payload.options.mock === true)} refresh={outline.refetch} />
-            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />}
+            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onEditingChange={setEditingDocument} />}
         </LessonPageNavigation>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
@@ -271,7 +270,6 @@ export function LessonPage() {
           lesson={l}
           sections={sections}
           editingDocument={editingDocument}
-          reviewMarkdown={editorText?.id === id ? editorText.markdown : document.data?.markdown}
           beforeReviewAction={async () => { await editorActions.current?.flush() }}
           onClose={() => setPanel(null)}
           onSwitchView={(next) => setPanel(next)}
@@ -322,7 +320,7 @@ function LessonProgress({ lessonId, job, pendingOutline }: { lessonId: number; j
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen, onDocumentChange }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const running = !!job && isActive(job.state)
@@ -348,7 +346,6 @@ function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, re
               key={id}
               classifierOpen={classifierOpen}
               reviewOpen={reviewOpen}
-              onDocumentChange={onDocumentChange}
               actionsRef={actionsRef}
               lessonId={id}
               document={doc}

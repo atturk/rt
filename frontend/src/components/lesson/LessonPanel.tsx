@@ -21,7 +21,6 @@ export function LessonPanel({
   sections,
   editingDocument,
   beforeReviewAction,
-  reviewMarkdown,
   onClose,
   onSwitchView,
   selectionContext,
@@ -31,7 +30,6 @@ export function LessonPanel({
   lesson: Schemas['LessonDetail']
   sections: Section[]
   editingDocument: boolean
-  reviewMarkdown?: string
   beforeReviewAction?: () => Promise<void>
   onClose: () => void
   onSwitchView?: (view: PanelView) => void
@@ -67,7 +65,7 @@ export function LessonPanel({
         <IconButton label="Chiudi il pannello" icon={X} onClick={onClose} className="-mr-2" />
       </div>
       {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
-      {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} markdown={reviewMarkdown} />}
+      {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} />}
       {view === 'domande' && (
         <QuestionsPanel
           lessonId={lesson.id}

@@ -6,21 +6,21 @@ import type { Schemas } from '@/api/client'
 import { AudioProvider } from '../audio'
 import { ReviewPanel } from './ReviewPanel'
 
-const state = vi.hoisted(() => ({ phone: false, units: [] as Schemas['ReviewUnit'][], items: [] as Schemas['IssueItem'][], jobs: [] as Schemas['Job'][], decide: vi.fn(), undo: vi.fn(), run: vi.fn(), cancel: vi.fn() }))
+const state = vi.hoisted(() => ({ phone: false, units: [] as Schemas['ReviewUnit'][], items: [] as Schemas['IssueItem'][], jobs: [] as Schemas['Job'][], decide: vi.fn(), undo: vi.fn(), run: vi.fn(), cancel: vi.fn(), refetch: vi.fn() }))
 vi.mock('@/api/hooks', () => ({
   useReviewUnits: () => ({ data: state.units }),
-  useIssues: () => ({ data: { items: state.items } }), useDecisions: () => ({ data: state.items.flatMap((i) => i.decision ? [i.decision] : []) }),
+  useIssues: () => ({ data: { items: state.items }, refetch: state.refetch }), useDecisions: () => ({ data: state.items.flatMap((i) => i.decision ? [i.decision] : []) }),
   useDecideIssue: () => ({ mutateAsync: state.decide }), useUndoDecision: () => ({ mutateAsync: state.undo }), useRunJob: () => ({ mutateAsync: state.run }),
 }))
 vi.mock('@/lib/preferences', () => ({ usePreference: (_name: string, fallback: unknown) => useState(fallback) }))
 vi.mock('@/api/relevance', () => ({ useRelevance: () => ({ data: { mode: 'active', summary: { missing: 0, stale: 0, errors: 0 }, units: [{ unit_id: '1.1', title: 'Acidosi', review_included: true, prediction: 'didactic', stale: false }] } }) }))
 vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJob: () => ({ mutate: state.cancel }) }))
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
-const issue: Schemas['IssueItem'] = { needs_reconfirmation: false, issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
-function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
-  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} markdown={markdown} /></AudioProvider></MemoryRouter>)
+const issue: Schemas['IssueItem'] = { quote_status: 'found', needs_reconfirmation: false, issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
+function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, _markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
+  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
 }
-beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false })
+beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false; state.refetch.mockImplementation(() => { state.items = state.items.map(item => ({ ...item, quote_status: 'changed' })); return Promise.resolve() }) })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
   let resolve!: () => void
   const save = vi.fn(() => new Promise<void>((r) => { resolve = r }))
@@ -66,10 +66,11 @@ it('modifica una correzione e permette di annullare l’ultima decisione', async
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,35.' }))
 })
 it('passaggio cambiato: mantiene il testo e chiude l\'issue', async () => {
-  mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nIl pH è 7.')
+  state.items = [{ ...issue, quote_status: 'changed' }]
+  mount()
   expect(within(screen.getByTestId('issue-detail')).getByText('Testo cambiato')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
 
@@ -308,12 +309,12 @@ it('la riga mostra In coda mentre si accoda il job', async () => {
 })
 
 it('una citazione non ancorata si può soltanto rifiutare', async () => {
-  state.items = [{ ...issue, issue: { ...issue.issue, unanchored: true } }]
+  state.items = [{ ...issue, quote_status: 'changed', issue: { ...issue.issue, unanchored: true } }]
   mount(undefined, undefined, 'testo senza la citazione')
   expect(screen.getByText('Non ancorata')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Correzione proposta')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Rifiuta' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
 
@@ -396,10 +397,10 @@ it('da riconfermare resta aperta senza Mostra decise e permette una nuova scelta
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
 })
 it('da riconfermare senza passaggio ritrovato permette solo di mantenere il testo', async () => {
-  state.items = [{ ...issue, needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  state.items = [{ ...issue, quote_status: 'changed', needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
   mount(undefined, undefined, '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto diverso.')
   expect(screen.queryByRole('button', { name: 'Riconferma la correzione' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'rejected', text: undefined }))
 })
 it('un avviso di paragrafo si conferma senza modifica e una vecchia decisione resta annullabile', async () => {
@@ -471,7 +472,7 @@ it('un link a una decisione nascosta conserva l’issue fino a Mostra decise', (
 })
 
 it.each(['ERR_ASR_ST', 'ERR_REWRITE_DRIFT'])('avviso %s: solo Ho controllato, senza box o matita', async type => {
-  state.items = [{ ...issue, issue: { ...issue.issue, type, claim: 'Trascritto grezzo.' } }]
+  state.items = [{ ...issue, quote_status: 'changed', issue: { ...issue.issue, type, claim: 'Trascritto grezzo.' } }]
   mount(undefined, undefined, 'Passaggio riscritto e cambiato.')
   const card = within(screen.getByTestId('issue-detail'))
   expect(card.queryByTestId('proposed-correction')).not.toBeInTheDocument()
@@ -479,4 +480,21 @@ it.each(['ERR_ASR_ST', 'ERR_REWRITE_DRIFT'])('avviso %s: solo Ho controllato, se
   expect(card.queryByText('Testo cambiato')).not.toBeInTheDocument()
   fireEvent.click(card.getByRole('button', { name: 'Ho controllato' }))
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'accepted', text: undefined }))
+})
+
+it('usa solo quote_status: il contesto può differire senza bloccare una citazione found', () => {
+  state.items = [{ ...issue, quote_status: 'found', context: { ...issue.context, timecode: '00:00', unit_content: 'Contesto differente.' } }]
+  mount()
+  expect(within(screen.getByTestId('issue-detail')).queryByText('Testo cambiato')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeEnabled()
+})
+
+it('quote_status changed offre una verifica immediata dell’unità', async () => {
+  state.units = [unit('1.1', 'changed')]
+  state.items = [{ ...issue, quote_status: 'changed' }]
+  mount()
+  expect(within(screen.getByTestId('issue-detail')).getByText('Testo cambiato')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: "Verifica di nuovo l'unità" }))
+  await waitFor(() => expect(state.run).toHaveBeenCalledWith({ type: 'run_phase', phase: 'review', unit: '1.1', force: true }))
+  expect(screen.queryByRole('group', { name: /Riesegui/ })).not.toBeInTheDocument()
 })

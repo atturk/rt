@@ -323,6 +323,7 @@ class Decision(BaseModel):
 
 
 class IssueItem(BaseModel):
+    quote_status: Optional[Literal["found", "changed"]] = Field(None, description="Stato della citazione nel testo risolto, per le issue aperte o da riconfermare")
     needs_reconfirmation: bool = Field(False, description="La decisione resta registrata ma il tratto non si ritrova")
     fix_text: Optional[str] = Field(None, description="Sostituzione letterale; null se assente")
     issue: Dict[str, Any] = Field(description="ScienceIssue (science_issues.json)")

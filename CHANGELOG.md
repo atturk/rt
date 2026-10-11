@@ -4,6 +4,7 @@
 
 ### Correzioni
 
+- Le issue indicano “Testo cambiato” dal passaggio effettivamente salvato sul server: puoi chiuderle o verificare di nuovo l’unità. Le modifiche altrove nell’unità lasciano applicabile la correzione.
 - Qualità ASR mostra tutti i tratti incerti, con confidenza, parole sottolineate e ascolto limitato al tratto. “Ho controllato” chiude l’avviso senza cambiare il testo.
 - I menu a icona escono dai pannelli e restano interamente nello schermo, anche sul telefono.
 

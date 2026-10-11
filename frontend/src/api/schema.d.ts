@@ -4164,6 +4164,11 @@ export interface components {
              * @default false
              */
             needs_reconfirmation: boolean;
+            /**
+             * Quote Status
+             * @description Stato della citazione nel testo risolto, per le issue aperte o da riconfermare
+             */
+            quote_status?: ("found" | "changed") | null;
         };
         /** IssueList */
         IssueList: {

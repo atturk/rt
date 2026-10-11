@@ -106,6 +106,23 @@ def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=
     }
 
 
+def issue_quote_status(issue: ScienceIssue, content: Optional[str]) -> str:
+    """La stessa ancora delle decisioni, sul testo risolto letto una volta dall'API."""
+    if _is_no_diff_issue_type(issue):
+        return "found"
+    if content is None or issue.unanchored:
+        return "changed"
+    import re
+    from rt.pipeline.anchors import find_quote, locate
+    found = locate(issue.anchor, content) if issue.anchor else find_quote(content, issue.claim)
+    if found is None:
+        return "changed"
+    # Un match fuzzy ritrova il posto, ma non autorizza una nuova correzione sul testo diverso.
+    normalize = lambda text: re.sub(r"\s+", " ", text).strip()
+    quote = issue.anchor.quote if issue.anchor else issue.claim
+    return "found" if normalize(content[found.start:found.end]) == normalize(quote) else "changed"
+
+
 def list_pending_issues(lesson_dir: str, with_context: bool = True) -> List[Dict[str, Any]]:
     """Issue scientifiche ancora senza decisione, serializzabili (JSON)."""
     _, pending = get_pending_issues(lesson_dir)

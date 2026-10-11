@@ -4,7 +4,6 @@ import { usePreference } from '@/lib/preferences'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Tooltip } from '@/components/ui/tooltip'
-import { EditorState } from '@codemirror/state'
 import { ArrowDownWideNarrow, Check, Eye, MoreHorizontal, RotateCcw, ShieldCheck, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -18,12 +17,11 @@ import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { parseIssueOrder, sortIssues } from '@/lib/issueOrder'
 import { useIsPhone } from '@/lib/phone'
-import { issueRange } from '../lessonReview'
 import { isActive } from '@/lib/jobs'
 import { useLessonAudio } from '../audio'
 import { decisionLabels, issueLabels, issueOf, paragraphIssue, type IssueItem } from '../reviewIssues'
 
-export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, markdown }: { markdown?: string; lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
+export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }: { lesson: Schemas['LessonDetail']; beforeAction?: () => Promise<void> }) {
   const issues = useIssues(l.id)
   const reviewUnits = useReviewUnits(l.id)
   const jobs = useJobs({ lesson_id: l.id, limit: 20 })
@@ -37,7 +35,6 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
   const [showDecided, setShowDecided] = useState(false)
   const [confirmation, setConfirmation] = useState<'all' | string | null>(null)
   const [queuedUnits, setQueuedUnits] = useState<string[]>([])
-  const [changedIssues, setChangedIssues] = useState<string[]>([])
   const [cardFailure, setCardFailure] = useState<{ id: string; message: string } | null>(null)
   const [message, setMessage] = useState<{ id: string; label: string } | null>(null)
   const [editing, setEditing] = useState(false)
@@ -99,7 +96,7 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
       } catch (error) {
         const id = issueOf(selected).id
         setCardFailure({ id, message: errorMessage(error) })
-        if (error instanceof ApiError && error.code === 'claim_changed') setChangedIssues(old => [...old, id])
+        if (error instanceof ApiError && error.code === 'claim_changed') void issues.refetch()
         return
       }
       setEditing(false)
@@ -141,15 +138,15 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined, m
     </Card>}
     {reviewUnits.isError && <Alert tone="danger">{errorMessage(reviewUnits.error)}</Alert>}
     {complete && !showDecided ? <Card data-testid="review-summary" className="flex flex-col gap-2 p-4 text-meta"><Check className="size-6 text-success" /><p className="font-semibold">La verifica è tutta decisa.</p><p>{ordered.filter(item => item.decision?.decision === 'accepted').length} accettate · {ordered.filter(item => item.decision?.decision === 'edited').length} modificate · {ordered.filter(item => item.decision?.decision === 'rejected').length} mantenute</p></Card> : <ReviewUnits units={orderedUnits} busy={busy} running={runningUnits} queued={waitingUnits} missing={units.filter(unit => !(reviewUnits.data ?? []).some(row => row.unit_id === unit.unit_id)).map(unit => unit.unit_id)} selectedUnit={(selected ? issueOf(selected).unit_id : null) ?? params.get('review_unit')} items={ordered.filter(item => !item.decision || item.needs_reconfirmation || showDecided)} onVerify={unit => verify(unit)} onReverify={setConfirmation} onClassifier={() => { const next = new URLSearchParams(params); next.set('panel', 'classificatore'); next.delete('issue'); next.delete('review_unit'); setParams(next) }} renderIssues={unit => <ul aria-label={`Issue dell’unità ${unit}`} className="flex flex-col gap-1">
-      {ordered.filter(item => issueOf(item).unit_id === unit && (!item.decision || item.needs_reconfirmation || showDecided)).map(item => <li key={issueOf(item).id}>{selected === item ? <IssueCard key={`${issueOf(item).id}:${item.decision?.timestamp}:${item.needs_reconfirmation}`} item={item} busy={decisionBusy(issueOf(item).unit_id)} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} failure={cardFailure?.id === issueOf(item).id ? cardFailure.message : undefined} changed={changedIssues.includes(issueOf(item).id) || markdown !== undefined && (!item.decision || item.needs_reconfirmation) && !issueRange(EditorState.create({ doc: markdown }), item)} onUndo={() => void action(async () => { await undo.mutateAsync(issueOf(item).id); setMessage(null); select(issueOf(item).id) })} /> : <Button variant="ghost" className="h-auto w-full flex-col items-start whitespace-normal py-2 text-left text-meta" aria-current={selected === item ? 'true' : undefined} onClick={() => select(issueOf(item).id)}><span>{issueLabels[issueOf(item).type]} · {item.context?.timecode}</span><span className="line-clamp-2 text-muted-foreground">{item.decision?.resolved_text ?? issueOf(item).suggested_fix ?? issueOf(item).claim}</span>{item.decision && <span>{item.needs_reconfirmation ? 'Da riconfermare' : decisionLabels[item.decision.decision]}</span>}</Button>}</li>)}
+      {ordered.filter(item => issueOf(item).unit_id === unit && (!item.decision || item.needs_reconfirmation || showDecided)).map(item => <li key={issueOf(item).id}>{selected === item ? <IssueCard key={`${issueOf(item).id}:${item.decision?.timestamp}:${item.needs_reconfirmation}`} item={item} busy={decisionBusy(issueOf(item).unit_id)} editing={editing} onEditing={setEditing} onDecide={onDecide} onSeek={l.has_audio ? seek : undefined} phone={phone} failure={cardFailure?.id === issueOf(item).id ? cardFailure.message : undefined} changed={item.quote_status === 'changed'} onReverify={() => verify(issueOf(item).unit_id ?? undefined, true)} onUndo={() => void action(async () => { await undo.mutateAsync(issueOf(item).id); setMessage(null); select(issueOf(item).id) })} /> : <Button variant="ghost" className="h-auto w-full flex-col items-start whitespace-normal py-2 text-left text-meta" aria-current={selected === item ? 'true' : undefined} onClick={() => select(issueOf(item).id)}><span>{issueLabels[issueOf(item).type]} · {item.context?.timecode}</span><span className="line-clamp-2 text-muted-foreground">{item.decision?.resolved_text ?? issueOf(item).suggested_fix ?? issueOf(item).claim}</span>{item.decision && <span>{item.needs_reconfirmation ? 'Da riconfermare' : decisionLabels[item.decision.decision]}</span>}</Button>}</li>)}
     </ul>} />}
     {message && <Card role="log" aria-live="polite" data-testid="review-decision-message" className="sticky bottom-0 flex items-center justify-between gap-2 bg-card p-3 text-meta"><span>{message.label}</span><Button variant="ghost" size="sm" disabled={decisionBusy(messageItem ? issueOf(messageItem).unit_id : null)} onClick={() => void action(async () => { await undo.mutateAsync(message.id); select(message.id); setMessage(null) })}><Undo2 />Annulla</Button></Card>}
     {(failure || cancel.isError) && <Alert tone="danger">{failure ?? errorMessage(cancel.error)}</Alert>}
   </div>
 }
 
-function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onUndo }: {
-  failure?: string; phone: boolean; changed: boolean; onUndo: () => void
+function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onUndo, onReverify }: {
+  failure?: string; phone: boolean; changed: boolean; onUndo: () => void; onReverify: () => void
   item: IssueItem; busy: boolean; editing: boolean; onEditing: (value: boolean) => void
   onDecide: (decision: 'accepted' | 'rejected' | 'edited', text?: string) => void; onSeek?: (seconds: number, play?: boolean, endSeconds?: number) => void
 }) {
@@ -201,15 +198,18 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
           else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); apply() }
         }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
         <Tooltip content="Doppio clic per modificare" disabled={phone || readOnly || busy || cannotApply}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
-          onDoubleClick={() => { if (!busy && !readOnly && !cannotApply) onEditing(true) }} onClick={() => { if (phone && !busy && !readOnly && !cannotApply) onEditing(true) }}>{suggestion && !item.decision ? issue.suggested_fix : proposed}</p>}</Tooltip>}
+          onDoubleClick={() => { if (!busy && !readOnly && !cannotApply) onEditing(true) }} onClick={() => { if (phone && !busy && !readOnly && !cannotApply) onEditing(true) }}>{changed ? <s>{issue.claim}</s> : suggestion && !item.decision ? issue.suggested_fix : proposed}</p>}</Tooltip>}
     </div>}
     {failure && <Alert tone="danger">{failure}</Alert>}
     <p className="text-meta">{issue.reason}</p>
     {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
     {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. {readOnly ? 'Il rifiuto è registrato.' : 'Puoi solo rifiutare questa issue.'}</p></>}
     {item.needs_reconfirmation && <><Badge tone="warning">Da riconfermare</Badge><p className="text-meta">La decisione precedente resta registrata. Puoi riconfermare la correzione se il passaggio è ritrovato oppure mantenere il testo attuale.</p></>}
-    {changed && !paragraph && !issue.unanchored && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
-    {readOnly ? <div className="flex items-center justify-between gap-2"><Badge tone="success">{decisionLabels[item.decision!.decision]}</Badge><Button variant="ghost" size="sm" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button></div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
+    {changed && !paragraph && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
+    {readOnly ? <div className="flex items-center justify-between gap-2"><Badge tone="success">{decisionLabels[item.decision!.decision]}</Badge><Button variant="ghost" size="sm" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button></div> : changed && !paragraph ? <div className="flex flex-wrap gap-2">
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('rejected')}>Chiudi</Button>
+      {issue.unit_id && <Button size="sm" variant="outline" disabled={busy} onClick={onReverify}>Verifica di nuovo l'unità</Button>}
+    </div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
       {paragraph ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('accepted')}><Check />Ho controllato</Button> : !cannotApply && (!suggestion || editing) && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
       {!paragraph && <IconButton label={issue.unanchored ? 'Rifiuta' : 'Mantieni il testo attuale'} icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />}
     </div>}

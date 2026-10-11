@@ -310,7 +310,7 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                status: Literal["pending", "all"] = Query("pending", description="pending: solo da decidere")):
     from rt.pipeline.ledger import load_ledger, resolve_science_accept_text
     from rt.pipeline.review import load_science_issues
-    from rt.services.review_service import issue_context, is_review_complete
+    from rt.services.review_service import issue_context, issue_quote_status, is_review_complete
     issues = load_science_issues(lesson_dir)
     decisions = {}
     for d in load_ledger(lesson_dir).decisions:
@@ -329,11 +329,13 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
         decision = decisions.get(issue.id)
         if status == "pending" and decision is not None and issue.id not in missing:
             continue
+        context = issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True)
         items.append({
+            "quote_status": issue_quote_status(issue, context["unit_content"]) if decision is None or issue.id in missing else None,
             "issue": issue.model_dump(mode="json"),
             "fix_text": resolve_science_accept_text(issue),
             "needs_reconfirmation": issue.id in missing,
-            "context": issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True),
+            "context": context,
             "decision": decision.model_dump(mode="json") if decision else None,
         })
     pending = sum(1 for i in issues if i.id not in decisions or i.id in missing)

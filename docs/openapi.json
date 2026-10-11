@@ -2986,6 +2986,22 @@
             "description": "La decisione resta registrata ma il tratto non si ritrova",
             "title": "Needs Reconfirmation",
             "type": "boolean"
+          },
+          "quote_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "found",
+                  "changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato della citazione nel testo risolto, per le issue aperte o da riconfermare",
+            "title": "Quote Status"
           }
         },
         "required": [
