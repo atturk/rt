@@ -242,6 +242,7 @@ class RecallQuestionType(str, Enum):
     QUIZ = "quiz"
     MIRATA = "mirata"
     VASTA = "vasta"
+    PERSONALIZZATA = "personalizzata"
     # Domande speciali: nascono solo dove il classificatore delle unità (macro-sezioni)
     # riconosce un caso clinico o un esercizio, e hanno un "tipo" rigenerabile in varianti.
     CASO = "caso"
@@ -259,6 +260,7 @@ class RecallQuestionStatus(str, Enum):
 class RecallQuestion(BaseModel):
     id: str  # e.g., recall_000001
     type: RecallQuestionType
+    custom_type: Optional[str] = None
     unit_ids: List[str] = Field(..., min_length=1)
     question_text: str
     options: Optional[List[str]] = None  # only quiz, exactly 4
@@ -391,6 +393,7 @@ class VariantCheck(BaseModel):
 class RecallTemplate(BaseModel):
     id: str  # template_000001
     kind: RecallQuestionType
+    custom_type: Optional[str] = None
     section_ids: List[str] = Field(..., min_length=1)
     unit_ids: List[str] = Field(..., min_length=1)
     tipo: SpecialTemplate

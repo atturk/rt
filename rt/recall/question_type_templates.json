@@ -1,0 +1,108 @@
+[
+  {
+    "id": "caso-clinico",
+    "nome": "Caso clinico",
+    "icona": "Stethoscope",
+    "materie": [],
+    "cerca": "Valuta un'intera sezione di una lezione universitaria riscritta: decidi se il docente presenta casi clinici o se il contenuto si presta a essere formulato come caso clinico per verificarne la comprensione. Il criterio è largo: in caso di dubbio tra nessuno e adattabile, scegli adattabile quando ci sono contenuti clinici applicabili a un paziente.\nIl docente presenta uno o più pazienti o situazioni cliniche concrete (ad esempio 'arriva in pronto soccorso un paziente con questi parametri').\nNessun paziente esplicito, ma il contenuto (fisiopatologia, quadro diagnostico, parametri, terapia) si presta bene a essere formulato come caso clinico.",
+    "anche_adatti": true,
+    "continua": false,
+    "chiedi": "Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.\nRicevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:\n1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.\n2. Se non ci sono pazienti espliciti ma il contenuto si presta (fisiopatologia, quadro diagnostico, parametri, terapia), costruisci un caso plausibile coerente con il testo, con esplicito=false.\n3. Il caso presenta il paziente (età, sintomi, segni, parametri o esami pertinenti) e termina con un quesito che richiede ragionamento: interpretare i dati, formulare una diagnosi, spiegare il meccanismo, scegliere e motivare un intervento.\n4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.\n5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.\n\nOUTPUT JSON RICHIESTO (conforme a RecallClinicalGenerationResult):\n{\"items\": [{\"question_text\": \"...\", \"unit_ids\": [\"5.1\", \"5.2\"],\n  \"tipo\": {\"scenario\": \"...\", \"variabili\": [{\"nome\": \"...\", \"valore\": \"...\", \"intervallo\": \"...\"}],\n           \"obiettivo\": \"...\", \"procedimento\": \"...\", \"esplicito\": true}}]}\n- question_text: traccia completa del caso con tutti i dati necessari, senza soluzione.\n- unit_ids: subunità fornite da cui proviene il caso.\n- tipo: struttura astratta per creare varianti; variabili plausibili e procedimento generale.\nNon generare pregenerated_material né una soluzione del caso. Se non trovi materiale adatto restituisci {\"items\": []}.\nNon assegnare ID, stato o timestamp. Scrivi in italiano accademico.",
+    "correzione": "testo",
+    "varianti": true,
+    "originali": {
+      "classificazione": {
+        "nessuno": "Il contenuto non riguarda pazienti, quadri clinici, diagnosi, fisiopatologia applicabile o terapie, e non si presta a diventare un caso clinico.",
+        "esplicito": "Il docente presenta uno o più pazienti o situazioni cliniche concrete (ad esempio 'arriva in pronto soccorso un paziente con questi parametri').",
+        "adattabile": "Nessun paziente esplicito, ma il contenuto (fisiopatologia, quadro diagnostico, parametri, terapia) si presta bene a essere formulato come caso clinico."
+      },
+      "istruzioni": "Valuta un'intera sezione di una lezione universitaria riscritta: decidi se il docente presenta casi clinici o se il contenuto si presta a essere formulato come caso clinico per verificarne la comprensione. Il criterio è largo: in caso di dubbio tra nessuno e adattabile, scegli adattabile quando ci sono contenuti clinici applicabili a un paziente.",
+      "generazione": "Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.\nRicevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:\n1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.\n2. Se non ci sono pazienti espliciti ma il contenuto si presta (fisiopatologia, quadro diagnostico, parametri, terapia), costruisci un caso plausibile coerente con il testo, con esplicito=false.\n3. Il caso presenta il paziente (età, sintomi, segni, parametri o esami pertinenti) e termina con un quesito che richiede ragionamento: interpretare i dati, formulare una diagnosi, spiegare il meccanismo, scegliere e motivare un intervento.\n4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.\n5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.\n\nOUTPUT JSON RICHIESTO (conforme a RecallClinicalGenerationResult):\n{\"items\": [{\"question_text\": \"...\", \"unit_ids\": [\"5.1\", \"5.2\"],\n  \"tipo\": {\"scenario\": \"...\", \"variabili\": [{\"nome\": \"...\", \"valore\": \"...\", \"intervallo\": \"...\"}],\n           \"obiettivo\": \"...\", \"procedimento\": \"...\", \"esplicito\": true}}]}\n- question_text: traccia completa del caso con tutti i dati necessari, senza soluzione.\n- unit_ids: subunità fornite da cui proviene il caso.\n- tipo: struttura astratta per creare varianti; variabili plausibili e procedimento generale.\nNon generare pregenerated_material né una soluzione del caso. Se non trovi materiale adatto restituisci {\"items\": []}.\nNon assegnare ID, stato o timestamp. Scrivi in italiano accademico.",
+      "variante": "Sei un docente universitario di medicina che crea una variante di un caso clinico.\nMantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.\nLa traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.\nNon generare pregenerated_material né una soluzione del caso.\nOUTPUT JSON (conforme a GeneratedClinicalVariant): {\"question_text\": \"...\"}",
+      "controllo": "Controlla in modo indipendente un caso clinico.\nVerifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.\nRestituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descrivi eventuali problemi.\nNon restituire una soluzione pregenerata: lascia soluzione vuota."
+    }
+  },
+  {
+    "id": "esercizio",
+    "nome": "Esercizio",
+    "icona": "Calculator",
+    "materie": [],
+    "cerca": "Valuta un'intera sezione di una lezione universitaria riscritta: decidi se contiene un esercizio effettivamente svolto o la spiegazione del procedimento di una tipologia di esercizi. Il criterio è stretto: una formula o un esempio teorico non bastano, servono passaggi risolutivi.\nIl docente svolge un esercizio (dati, passaggi, risultato) oppure spiega passo per passo come si risolve una tipologia di esercizi.\nLa sezione prosegue un esercizio iniziato nella sezione precedente (passaggi successivi, conclusione o verifica dello stesso esercizio).",
+    "anche_adatti": false,
+    "continua": true,
+    "chiedi": "Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.\nRicevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):\n1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.\n2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.\n3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.\n4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.\n5. Non ripetere esercizi già presenti (te li elenco, se esistono).\n\nOUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):\n{\"items\": [{\"question_text\": \"...\", \"pregenerated_material\": \"...\", \"unit_ids\": [\"5.1\", \"5.2\"],\n  \"tipo\": {\"scenario\": \"...\", \"variabili\": [{\"nome\": \"...\", \"valore\": \"...\", \"intervallo\": \"...\"}],\n           \"obiettivo\": \"...\", \"procedimento\": \"...\", \"esplicito\": true}}]}\n- question_text: la domanda completa da porre allo studente, con tutti i dati necessari.\n- pregenerated_material: la soluzione o il ragionamento atteso, passo per passo, basato ESCLUSIVAMENTE sul testo fornito; servirà per correggere la risposta.\n- unit_ids: le subunità (tra quelle fornite) da cui proviene il contenuto.\n- tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.\nSe non trovi materiale adatto restituisci {\"items\": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico.",
+    "correzione": "soluzione",
+    "varianti": true,
+    "originali": {
+      "classificazione": {
+        "nessuno": "Nessun esercizio svolto e nessuna spiegazione di come si risolve un tipo di esercizio: solo teoria, esempi citati di sfuggita o esercizi soltanto annunciati o assegnati.",
+        "svolto": "Il docente svolge un esercizio (dati, passaggi, risultato) oppure spiega passo per passo come si risolve una tipologia di esercizi.",
+        "continua": "La sezione prosegue un esercizio iniziato nella sezione precedente (passaggi successivi, conclusione o verifica dello stesso esercizio)."
+      },
+      "istruzioni": "Valuta un'intera sezione di una lezione universitaria riscritta: decidi se contiene un esercizio effettivamente svolto o la spiegazione del procedimento di una tipologia di esercizi. Il criterio è stretto: una formula o un esempio teorico non bastano, servono passaggi risolutivi.",
+      "generazione": "Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.\nRicevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):\n1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.\n2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.\n3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.\n4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.\n5. Non ripetere esercizi già presenti (te li elenco, se esistono).\n\nOUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):\n{\"items\": [{\"question_text\": \"...\", \"pregenerated_material\": \"...\", \"unit_ids\": [\"5.1\", \"5.2\"],\n  \"tipo\": {\"scenario\": \"...\", \"variabili\": [{\"nome\": \"...\", \"valore\": \"...\", \"intervallo\": \"...\"}],\n           \"obiettivo\": \"...\", \"procedimento\": \"...\", \"esplicito\": true}}]}\n- question_text: la domanda completa da porre allo studente, con tutti i dati necessari.\n- pregenerated_material: la soluzione o il ragionamento atteso, passo per passo, basato ESCLUSIVAMENTE sul testo fornito; servirà per correggere la risposta.\n- unit_ids: le subunità (tra quelle fornite) da cui proviene il contenuto.\n- tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.\nSe non trovi materiale adatto restituisci {\"items\": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico.",
+      "variante": "Sei un docente universitario che crea una variante di un caso clinico o di un esercizio già usato a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato il caso.\nREGOLE:\n1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).\n2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.\n3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.\n4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.\nOUTPUT JSON (conforme a GeneratedVariant): {\"question_text\": \"...\", \"pregenerated_material\": \"...\"}",
+      "controllo": "Sei un docente universitario che controlla una variante di un caso clinico o di un esercizio prima di proporla a uno studente.\n1. Risolvi la traccia in modo indipendente, seguendo il procedimento del tipo, senza fidarti della soluzione proposta.\n2. Confronta il tuo risultato con la soluzione proposta: coerente=true solo se conclusioni, valori e passaggi essenziali coincidono e i dati della traccia sono plausibili e sufficienti.\n3. Se non è coerente, descrivi brevemente i problemi in \"problemi\".\nOUTPUT JSON (conforme a VariantCheck): {\"coerente\": true, \"soluzione\": \"...\", \"problemi\": \"\"}"
+    }
+  },
+  {
+    "id": "query-sql",
+    "nome": "Query SQL",
+    "icona": "Database",
+    "materie": [],
+    "cerca": "Query SQL, interrogazioni di basi di dati e relazioni fra tabelle.",
+    "anche_adatti": false,
+    "continua": false,
+    "chiedi": "Proponi una query SQL da scrivere, con schema e dati sufficienti.",
+    "correzione": "soluzione",
+    "varianti": false
+  },
+  {
+    "id": "codice",
+    "nome": "Codice",
+    "icona": "Code",
+    "materie": [],
+    "cerca": "Codice sorgente, algoritmi e programmazione.",
+    "anche_adatti": false,
+    "continua": false,
+    "chiedi": "Proponi un problema di programmazione basato sul testo.",
+    "correzione": "soluzione",
+    "varianti": false
+  },
+  {
+    "id": "timeline-di-eventi",
+    "nome": "Timeline di eventi",
+    "icona": "History",
+    "materie": [],
+    "cerca": "Sequenze cronologiche ed eventi con rapporti temporali.",
+    "anche_adatti": false,
+    "continua": false,
+    "chiedi": "Chiedi di ricostruire gli eventi in ordine e motivare i collegamenti.",
+    "correzione": "testo",
+    "varianti": false
+  },
+  {
+    "id": "classificazione",
+    "nome": "Classificazione",
+    "icona": "ListTree",
+    "materie": [],
+    "cerca": "Elementi ordinabili in categorie definite nel testo.",
+    "anche_adatti": false,
+    "continua": false,
+    "chiedi": "Chiedi di classificare gli elementi e motivare le categorie.",
+    "correzione": "testo",
+    "varianti": false
+  },
+  {
+    "id": "dimostrazione",
+    "nome": "Dimostrazione",
+    "icona": "Sigma",
+    "materie": [],
+    "cerca": "Teoremi, proposizioni e passaggi dimostrativi.",
+    "anche_adatti": false,
+    "continua": false,
+    "chiedi": "Chiedi di ricostruire una dimostrazione dal testo, con tutti i passaggi.",
+    "correzione": "soluzione",
+    "varianti": false
+  }
+]

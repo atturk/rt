@@ -98,7 +98,7 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
             generated.update(generate_pool(lesson_dir, force_mock=force_mock, qtypes=[kind], progress=progress,
                                            unit_ids=groups[kind], instructions=instructions, selection=selection, count=quota))
         return generated
-    types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
+    types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType if t != RecallQuestionType.PERSONALIZZATA])]
     state_dir = load_config().telegram.state_dir
     generated = {}
     for qtype in types:
@@ -196,8 +196,11 @@ DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5, "caso": 0, "ese
 def refill_threshold(qtype: RecallQuestionType) -> int:
     """Soglia del tipo: con questo numero di domande da porre, o meno, si rifornisce."""
     from rt.core.config import load_config
-    thresholds = load_config().telegram.recall.refill_thresholds
-    return int(thresholds.get(qtype.value, DEFAULT_REFILL_THRESHOLDS[qtype.value]))
+    cfg = load_config()
+    from rt.services.custom_question_types import type_key
+    key = type_key(qtype)
+    thresholds = {**cfg.telegram.recall.refill_thresholds, **cfg.recall.refill_thresholds}
+    return int(thresholds.get(key, DEFAULT_REFILL_THRESHOLDS.get(key, 0)))
 
 
 def is_low(lesson_dir: str, qtype: RecallQuestionType) -> bool:
@@ -260,7 +263,7 @@ def find_stale_questions(lesson_dir: str) -> List[Any]:
 def question_view(question, reveal: bool = False, outcome=None) -> dict:
     """Domanda serializzabile; la risposta corretta del quiz solo dopo aver risposto."""
     data = {
-        "id": question.id, "type": question.type.value, "unit_ids": list(question.unit_ids),
+        "id": question.id, "type": question.type.value, "custom_type": question.custom_type, "unit_ids": list(question.unit_ids),
         "question_text": question.question_text, "options": question.options,
         "status": question.status.value, "outcome": outcome,
         "discard_reasons": question.discard_reasons, "comment": question.comment,
@@ -285,7 +288,7 @@ def recall_overview(lesson_dir: str) -> dict:
     return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text]),
             "legacy_pending": sum(q.status == RecallQuestionStatus.PENDING and q.generation_version != POLICY_VERSION for q in bank.questions),
             "evaluated_empty": sum(row.get("outcome") == "empty" for row in bank.generation_attempts.values()),
-            "refill_thresholds": {t.value: refill_threshold(t) for t in RecallQuestionType}}
+            "refill_thresholds": {t.value: refill_threshold(t) for t in RecallQuestionType if t != RecallQuestionType.PERSONALIZZATA}}
 
 
 def _latest_outcomes(bank) -> dict:

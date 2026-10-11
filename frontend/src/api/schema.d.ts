@@ -1969,6 +1969,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recall/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tipi di domanda per materia */
+        get: operations["recall_types_api_v1_recall_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/secrets/{name}": {
         parameters: {
             query?: never;
@@ -5414,6 +5431,8 @@ export interface components {
             comment?: string | null;
             /** Correct Index */
             correct_index?: number | null;
+            /** Custom Type */
+            custom_type?: string | null;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Explanation */
@@ -5453,6 +5472,8 @@ export interface components {
             correct_index?: number | null;
             /** Created At */
             created_at?: string | null;
+            /** Custom Type */
+            custom_type?: string | null;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Explanation */
@@ -5652,6 +5673,25 @@ export interface components {
              * @description Quiz a cui si è risposto
              */
             quiz_answered: number;
+        };
+        /** RecallTypeInfo */
+        RecallTypeInfo: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /**
+             * Custom
+             * @default false
+             */
+            custom: boolean;
+            /** Icona */
+            icona: string;
+            /** Id */
+            id: string;
+            /** Nome */
+            nome: string;
         };
         /** RecallUnit */
         RecallUnit: {
@@ -15105,6 +15145,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallSessionInfo"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    recall_types_api_v1_recall_types_get: {
+        parameters: {
+            query?: {
+                lesson_id?: number | null;
+                materia?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallTypeInfo"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */

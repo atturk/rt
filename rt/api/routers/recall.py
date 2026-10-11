@@ -28,6 +28,20 @@ def _require_draft(lesson_dir: str) -> None:
         raise ApiError(409, "draft_not_ready", f"La lezione non ha un draft valido ({reason}): esegui prima il rewrite.")
 
 
+@router.get("/recall/types", response_model=List[schemas.RecallTypeInfo], summary="Tipi di domanda per materia")
+def recall_types(_actor: Actor, lesson_id: Optional[int] = Query(None), materia: Optional[str] = Query(None)):
+    from rt.services.custom_question_types import active_types
+    lesson_dir = None
+    if lesson_id is not None:
+        from rt.services.lesson_service import resolve_lesson_dir
+        lesson_dir = resolve_lesson_dir(lesson_id)
+    result = [{"id": key, "nome": name, "icona": icon} for key, name, icon in (
+        ("quiz", "Quiz", "ListChecks"), ("mirata", "Mirata", "MessageSquare"), ("vasta", "Vasta", "Brain"))]
+    result.extend({"id": t.id, "nome": t.nome, "icona": t.icona, "custom": True}
+                  for t in active_types(lesson_dir=lesson_dir, materia=materia))
+    return result
+
+
 @router.get("/lessons/{lesson_id}/recall", response_model=schemas.RecallOverview, summary="Domande disponibili per tipo e stato")
 def overview(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.recall_service import recall_overview

@@ -476,7 +476,59 @@ def classifier_jev(cfg, name):
         "relevance_mode": "disabled" if job.mode == "off" else "active" if job.mode == "pipeline" else "shadow"})
 
 
+class CustomQuestionType(BaseModel):
+    model_config = {"extra": "forbid"}
+    id: str = Field(default="", max_length=64, pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+    nome: str = Field(min_length=1, max_length=100)
+    icona: str = Field(default="MessageSquare", min_length=1, max_length=60)
+    materie: List[str] = Field(min_length=1)
+    cerca: str = Field(min_length=1, max_length=12000)
+    anche_adatti: bool = False
+    continua: bool = False
+    chiedi: str = Field(min_length=1, max_length=24000)
+    correzione: Literal["soluzione", "testo"] = "testo"
+    varianti: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def identifier(cls, data):
+        if isinstance(data, dict):
+            data = dict(data)
+            for key in ("nome", "icona", "cerca", "chiedi"):
+                if isinstance(data.get(key), str):
+                    data[key] = data[key].strip()
+            if not data.get("id"):
+                import re
+                import unicodedata
+                name = unicodedata.normalize("NFKD", data.get("nome", "")).encode("ascii", "ignore").decode().lower()
+                data["id"] = re.sub(r"[^a-z0-9]+", "-", name).strip("-")
+            data["materie"] = list(dict.fromkeys(m.strip() for m in data.get("materie", []) if m.strip()))
+        return data
+
+    @field_validator("id")
+    @classmethod
+    def reserved(cls, value):
+        if value in {"quiz", "mirata", "vasta", "personalizzata", "mista", "consigliato", "nessuno"}:
+            raise ValueError("Questo identificativo è riservato.")
+        return value
+
+
+class RecallConfig(BaseModel):
+    custom_types: List[CustomQuestionType] = Field(default_factory=list)
+    custom_type_threshold: float = Field(default=.25, ge=0, le=1)
+    refill_thresholds: Dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def unique_types(self):
+        if len({t.id for t in self.custom_types}) != len(self.custom_types):
+            raise ValueError("Gli identificativi dei tipi devono essere unici.")
+        if any(v < 0 for v in self.refill_thresholds.values()):
+            raise ValueError("Le soglie non possono essere negative.")
+        return self
+
+
 class RTConfig(BaseModel):
+    recall: RecallConfig = Field(default_factory=RecallConfig)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
 
     @model_validator(mode="before")
@@ -748,12 +800,25 @@ def _cached_config(key):
     return _load_config_uncached(config_path)
 
 
+@lru_cache(maxsize=64)
+def _migrate_general(path, stamp, size):
+    from rt.recall.migration import migrate_registry
+    with open(path, encoding="utf-8") as stream:
+        data = yaml.safe_load(stream)
+    if isinstance(data, dict):
+        migrate_registry(path, data)
+
+
 def load_config(config_path: Optional[str] = None) -> RTConfig:
     """Cache dei YAML, invalidata anche per aggiunta/rimozione di file e cambio di sorgente."""
     from rt.core.paths import config_home
     explicit = os.path.abspath(config_path) if config_path is not None else None
     home = config_home(_default_project_root()) if explicit is None else os.path.dirname(explicit)
     directory = os.path.join(home, 'config')
+    general = explicit or os.path.join(directory, 'general.yaml')
+    if os.path.isfile(general):
+        info = os.stat(general)
+        _migrate_general(general, info.st_mtime_ns, info.st_size)
     files = ([explicit] if explicit else
              [os.path.join(directory, 'general.yaml'), *find_job_yaml_paths(directory).values()])
     stamps = []

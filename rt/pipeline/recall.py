@@ -58,7 +58,11 @@ def load_recall_bank(lesson_dir: str) -> RecallBank:
     try:
         with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        bank = RecallBank.model_validate(data)
+        from rt.recall.migration import migrate_bank
+        migrated = migrate_bank(data)
+        if migrated != data:
+            _atomic_write(path, migrated)
+        bank = RecallBank.model_validate(migrated)
         # Le banche storiche hanno il voto negativo ma nessuno stato di scarto.
         votes = {a.question_id: a for a in bank.answers if a.vote}
         for question in bank.questions:

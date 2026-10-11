@@ -2,6 +2,14 @@
 
 ## 4.2.4b3 — 2026-10-11
 
+### Novità
+
+- Registro di tipi di domanda personalizzati per materia, con modelli pronti da copiare e criteri di generazione e correzione modificabili.
+
+### Cambiamenti
+
+- Le vecchie domande caso ed esercizio vengono rimosse e le vecchie etichette saranno ricalcolate. I tipi trovati nelle lezioni esistenti vengono copiati nel registro delle loro materie.
+
 ### Correzioni
 
 - Il ripasso riprende per prime le domande lasciate senza risposta. La soluzione o la valutazione le segna subito come risposte; puoi rimettere in gioco tutte le risposte oppure solo quelle sbagliate.

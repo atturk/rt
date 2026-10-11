@@ -476,6 +476,7 @@ class CredentialTest(BaseModel):
 # ---------------------------------------------------------------- recall
 
 class RecallQuestion(BaseModel):
+    custom_type: Optional[str] = None
     remaining: Optional[int] = Field(None, ge=0, description="Domande pendenti dopo quella restituita, con gli stessi filtri di next")
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
@@ -825,3 +826,11 @@ class ClassifierCorrection(BaseModel):
 class ClassifierRun(BaseModel):
     force: bool = False
     unit_ids: Optional[List[str]] = None
+
+
+class RecallTypeInfo(BaseModel):
+    id: str
+    nome: str
+    icona: str
+    custom: bool = False
+    available: bool = True
