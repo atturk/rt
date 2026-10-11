@@ -18,6 +18,7 @@ import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson } from '@/api/hooks'
 import {
   useAnswer,
+  useAnswerSeen,
   useAnswerVoice,
   useEndSession,
   useNextQuestion,
@@ -123,6 +124,7 @@ export function LightweightSession({
   // Hooks mutazioni
   const nextLesson = useNextQuestion(lessonId ?? 0)
   const nextSubject = useSubjectNext(subjectKey)
+  const answerSeen = useAnswerSeen(activeLessonId)
   const answerMutation = useAnswer(activeLessonId)
   const voiceMutation = useAnswerVoice(activeLessonId)
   const voteMutation = useVote(activeLessonId)
@@ -313,6 +315,7 @@ export function LightweightSession({
     const questionId = currentQuestion?.id
     const { data } = await history.refetch()
     const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
+    if (questionId && saved?.evaluation) await answerSeen.mutateAsync(questionId)
     setEvaluationJob(null)
     setEvaluatedResult({
       outcome: saved?.outcome ?? undefined,
@@ -325,6 +328,10 @@ export function LightweightSession({
     if (!currentQuestion || !activeLessonId) return
     try {
       const res = await answerMutation.mutateAsync({ questionId: currentQuestion.id, dontKnow: true })
+      if (res.job) {
+        setEvaluationJob(res.job.job_id)
+        return
+      }
       const quiz = 'quiz' in res ? (res.quiz as Schemas['QuizResult']) : null
       setEvaluatedResult({
         correct: false,
@@ -398,16 +405,8 @@ export function LightweightSession({
     void askNext()
   }
 
-  // Termina sessione. La domanda lasciata a metà torna fra quelle da porre: /recall/next l'ha
-  // già segnata come posta, e senza questo resterebbe tale per sempre.
+  // Una domanda lasciata senza risposta resta posta e si riprende al rientro.
   const handleEnd = async () => {
-    if (currentQuestion && !isAnswered) {
-      try {
-        await skipMutation.mutateAsync(currentQuestion.id)
-      } catch {
-        // se non si riesce a rimetterla in coda, la sessione finisce comunque
-      }
-    }
     if (unit) {
       if (lessonId) {
         try {
@@ -449,7 +448,7 @@ export function LightweightSession({
         const byType = (l.questions ?? {}) as Record<string, Record<string, number>>
         let lessonPending = 0
         for (const s of Object.values(byType)) {
-          lessonPending += s?.pending ?? 0
+          lessonPending += (s?.pending ?? 0) + (s?.asked ?? 0)
         }
         return acc + lessonPending
       }, 0)
@@ -457,7 +456,7 @@ export function LightweightSession({
     const counts = overviewQuery.data?.questions ?? {}
     let total = 0
     for (const qtypeObj of Object.values(counts)) {
-      total += (qtypeObj as Record<string, number>)?.pending ?? 0
+      total += ((qtypeObj as Record<string, number>)?.pending ?? 0) + ((qtypeObj as Record<string, number>)?.asked ?? 0)
     }
     return total
   }, [isSelection, subjectRecallQuery.data, overviewQuery.data])
@@ -597,7 +596,7 @@ export function LightweightSession({
                     disabled={restore.isPending}
                     onClick={() => handleRestore('asked')}
                   >
-                    Riproponi le poste ({askedCount})
+                    Riproponi le risposte ({askedCount})
                   </Button>
                 )}
 

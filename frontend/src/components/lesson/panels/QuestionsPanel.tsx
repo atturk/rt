@@ -599,7 +599,7 @@ export function QuestionsPanel({
         <div className="flex items-center gap-3" data-testid="questions-restore">
           <div className="flex items-center gap-1.5">
             <IconButton
-              label="Riproponi le poste"
+              label="Riproponi le risposte"
               icon={RotateCcw}
               disabled={askedCount === 0 || restore.isPending}
               onClick={() => restore.mutate('asked')}

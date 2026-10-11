@@ -156,6 +156,9 @@ def test_next_returns_remaining_with_same_filters(api_client, ready, qtype, expl
         assert response.json()['remaining'] == remaining
         if explicit:
             assert uid in response.json()['unit_ids']
+        # Il pool si consuma dopo aver visto la valutazione, non con la sola richiesta.
+        from rt.pipeline.recall import record_recall_answer
+        record_recall_answer(path, response.json()['id'], 'Risposta', evaluation='Valutazione vista')
     assert api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params).status_code == 404
 
 

@@ -219,7 +219,7 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         is_voice = True
         _cleanup_upload(p)
     evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,
-                                      force_mock=bool(p.get("mock")))
+                                      force_mock=bool(p.get("mock")), mark_answered=False)
     if evaluation is None:
         raise ValueError("Domanda inesistente o a scelta multipla.")
     return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation,

@@ -364,3 +364,9 @@ export function useSubjectEnd(materia: string) {
 export function useSubjectGenerate(materia: string) {
   return useSubjectMutation(() => unwrap(api.POST('/api/v1/recall/subject/generate', { params: { query: { materia } } })))
 }
+
+export function useAnswerSeen(id: number) {
+  return useRecallMutation(id, (questionId: string) =>
+    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/seen', { params: path(id), body: { question_id: questionId } })),
+  )
+}

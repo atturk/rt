@@ -191,7 +191,7 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
     from rt.services.recall_service import pending_count
-    remaining = pending_count(lesson_dir, qtype, unit_id=unit_id)
+    remaining = max(0, pending_count(lesson_dir, qtype, unit_id=unit_id) - 1)
     _refill_later(lesson_dir, question, mock, actor)
     return {**question_view(question), "remaining": remaining}
 
@@ -262,6 +262,14 @@ def regenerate_question(lesson_id: int, body: schemas.RecallRegenerate, lesson_d
     accepted = enqueue_job("recall_regenerate", lesson_dir, body.model_dump(), actor)
     vote_question(lesson_dir, question.id, 'down', reasons=question.discard_reasons, comment=body.comment)
     return accepted
+
+
+@router.post("/lessons/{lesson_id}/recall/seen", response_model=schemas.Message,
+             summary="Segna come vista la valutazione di una risposta aperta")
+def seen(lesson_id: int, body: schemas.RecallSkip, lesson_dir: LessonDir, _actor: Actor):
+    from rt.services.recall_editing import mark_answer_seen
+    mark_answer_seen(lesson_dir, body.question_id)
+    return {"message": "Valutazione vista."}
 
 
 @router.post("/lessons/{lesson_id}/recall/skip", response_model=schemas.Message, summary="Salta una domanda (torna in coda)")

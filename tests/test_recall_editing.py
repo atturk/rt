@@ -61,7 +61,7 @@ def test_edit_refuses_what_the_model_would_refuse(lesson):
 def test_status_marks_asked_or_pending(lesson):
     quiz = _first(lesson, RecallQuestionType.QUIZ)
     assert editing.set_question_status(lesson, quiz.id, 'asked').status == RecallQuestionStatus.ASKED
-    assert service.pending_count(lesson, RecallQuestionType.QUIZ) < len(
+    assert service.pending_count(lesson, RecallQuestionType.QUIZ, include_asked=False) < len(
         [q for q in recall.load_recall_bank(lesson).questions if q.type == RecallQuestionType.QUIZ])
     assert editing.set_question_status(lesson, quiz.id, 'pending').status == RecallQuestionStatus.PENDING
     with pytest.raises(ValueError):
@@ -119,6 +119,9 @@ def test_endpoints(api_client, lesson):
     assert bad.status_code == 422 and bad.json()['error']['code'] == 'validation_error'
 
     assert api_client.post(f'{base}/questions/{quiz.id}/status', json={'status': 'asked'}).json()['status'] == 'asked'
+    assert api_client.get(f'{base}/questions/restorable').json() == {'asked': 0, 'wrong': 0}
+    answered = api_client.post(f'{base}/answer', json={'question_id': quiz.id, 'choice': 2})
+    assert answered.status_code == 200
     assert api_client.get(f'{base}/questions/restorable').json() == {'asked': 1, 'wrong': 0}
     assert api_client.post(f'{base}/questions/restore', json={'scope': 'asked'}).json() == {'restored': 1}
 
@@ -141,3 +144,41 @@ def test_comment_job(api_client, lesson, rt_db):
     result = recall_comment_job(job, RunContext()).result['question']
     assert result['id'] == quiz.id and quiz.id in result['explanation']
     assert result['question_text'] == quiz.question_text
+
+
+def test_web_resumes_unanswered_before_unasked_even_with_mixed_types(lesson):
+    mirata = _first(lesson, RecallQuestionType.MIRATA)
+    editing.set_question_status(lesson, mirata.id, 'asked')
+    assert service.pending_count(lesson, 'mirata') > 0
+    assert service.next_question_for(lesson, 'mista').id == mirata.id
+    assert service.next_question_for(lesson, 'mista').id == mirata.id
+    assert editing.restorable(lesson) == {'asked': 0, 'wrong': 0}
+    assert editing.restore_questions(lesson, 'asked') == 0
+    assert service.find_question(lesson, mirata.id).status == RecallQuestionStatus.ASKED
+    # Il canale deprecato mantiene la selezione delle sole mai poste.
+    selected = recall.get_next_pending_question(lesson, RecallQuestionType.MIRATA)
+    assert selected is None or selected.id != mirata.id
+
+
+def test_open_answer_becomes_answered_when_evaluation_is_seen_not_on_next(lesson):
+    mirata = service.next_question_for(lesson, 'mirata')
+    service.handle_recall_answer(lesson, mirata.id, 'Una risposta.', force_mock=True, mark_answered=False)
+    assert service.find_question(lesson, mirata.id).status == RecallQuestionStatus.ASKED
+    assert service.next_question_for(lesson, 'mirata').id == mirata.id
+    editing.mark_answer_seen(lesson, mirata.id)
+    service.skip_question(lesson, mirata.id)
+    assert service.find_question(lesson, mirata.id).status == RecallQuestionStatus.ANSWERED
+    assert editing.restorable(lesson)['asked'] == 1
+    assert editing.restore_questions(lesson, 'asked') == 1
+    assert service.find_question(lesson, mirata.id).status == RecallQuestionStatus.PENDING
+
+
+def test_seen_endpoint_marks_saved_evaluation(api_client, lesson):
+    from rt.services.lesson_service import lesson_id_for_dir
+    question = service.next_question_for(lesson, 'mirata')
+    service.handle_recall_answer(lesson, question.id, 'Risposta', force_mock=True, mark_answered=False)
+    base = f'/api/v1/lessons/{lesson_id_for_dir(lesson)}/recall'
+    assert api_client.post(f'{base}/seen', json={'question_id': question.id}).status_code == 200
+    assert service.find_question(lesson, question.id).status == RecallQuestionStatus.ANSWERED
+    assert api_client.post(f'{base}/skip', json={'question_id': question.id}).status_code == 200
+    assert service.find_question(lesson, question.id).status == RecallQuestionStatus.ANSWERED

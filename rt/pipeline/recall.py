@@ -151,6 +151,7 @@ def get_next_pending_question(
     unit_cursor: Optional[str] = None,
     exclude_id: Optional[str] = None,
     unit_id: Optional[str] = None,
+    include_asked: bool = False,
 ) -> Optional[RecallQuestion]:
     """Seleziona la prossima domanda pendente del tipo richiesto secondo l'ordine specificato.
 
@@ -175,7 +176,8 @@ def get_next_pending_question(
         bank = load_recall_bank(lesson_dir)
         if repair_duplicate_ids(bank):
             save_recall_bank(bank, lesson_dir)
-        pending = [q for q in bank.questions if q.type == qtype and q.status == RecallQuestionStatus.PENDING
+        active = (RecallQuestionStatus.PENDING, RecallQuestionStatus.ASKED) if include_asked else (RecallQuestionStatus.PENDING,)
+        pending = [q for q in bank.questions if q.type == qtype and q.status in active
                    and _question_allowed(q, allowed) and not ignored.intersection(q.unit_ids)]
         if unit_id is not None:
             pending = [q for q in pending if on_unit(q, unit_id)]
@@ -188,6 +190,11 @@ def get_next_pending_question(
             if filtered:
                 pending = filtered
             # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
+
+        # Nel web si riprende prima una domanda lasciata senza risposta.
+        asked = [q for q in pending if q.status == RecallQuestionStatus.ASKED]
+        if asked:
+            pending = asked
 
         selected: Optional[RecallQuestion] = None
 
@@ -242,13 +249,14 @@ def record_recall_answer(
     evaluation: Optional[str] = None,
     vote: Optional[str] = None,
     outcome: Optional[RecallOutcome] = None,
+    mark_answered: bool = True,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         for q in bank.questions:
             if q.id == question_id:
-                if q.status != RecallQuestionStatus.DISCARDED:
+                if mark_answered and q.status != RecallQuestionStatus.DISCARDED:
                     q.status = RecallQuestionStatus.ANSWERED
                 break
         if answer_text.strip() == '[Non lo so]':

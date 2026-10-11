@@ -307,13 +307,17 @@ def next_subject_question(materia: str, qtype, order: str = "alternato",
     subject = normalize_subject(materia)
     lessons = [s for s in subject_lessons(subject) if _ready(s)]
     busy = _telegram_busy() if channel == WEB else set()
-    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype) > 0]
+    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype, include_asked=channel == WEB) > 0]
     skipped_lesson, skipped_id = split_question_key(exclude) if exclude else (None, None)
     last = _last_lesson(subject, channel)
     if skipped_lesson is not None:
         last = skipped_lesson
-    for summary in _turn_order(candidates, [s["id"] for s in lessons], last, order):
-        question = pick_pending_question(summary["path"], qtype, order=order, current=False,
+    ordered = _turn_order(candidates, [s["id"] for s in lessons], last, order)
+    if channel == WEB:
+        ordered.sort(key=lambda s: pending_count(s["path"], qtype) ==
+                     pending_count(s["path"], qtype, include_asked=False))
+    for summary in ordered:
+        question = pick_pending_question(summary["path"], qtype, order=order, current=False, include_asked=channel == WEB,
                                          exclude_id=skipped_id if summary["id"] == skipped_lesson else None)
         if question is None:
             continue

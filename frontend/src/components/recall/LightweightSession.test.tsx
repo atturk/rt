@@ -16,6 +16,7 @@ const mockVoteMutate = vi.fn()
 const mockRegenerateMutateAsync = vi.fn()
 const mockSkipMutateAsync = vi.fn()
 const mockEndMutateAsync = vi.fn()
+const mockSeenMutateAsync = vi.fn().mockResolvedValue({})
 const mockHistoryRefetch = vi.fn()
 const mockRestoreMutate = vi.fn()
 let mockRestorableData = { asked: 0, wrong: 0 }
@@ -63,6 +64,7 @@ vi.mock('@/api/recall', () => ({
     mutateAsync: mockSubjectNextMutateAsync,
     isPending: false,
   })),
+  useAnswerSeen: () => ({ mutateAsync: mockSeenMutateAsync }),
   useAnswer: vi.fn(() => ({
     mutateAsync: mockAnswerMutateAsync,
     isPending: false,
@@ -184,6 +186,7 @@ describe('LightweightSession', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Valutazione della risposta' }))
     expect(await screen.findByText('Risposta parziale.')).toBeInTheDocument()
     expect(screen.getByText('Manca il compenso respiratorio.')).toBeInTheDocument()
+    expect(mockSeenMutateAsync).toHaveBeenCalledWith('q200')
   })
 
   it('quiz: il clic sull’alternativa è la risposta e l’esito è quello del server', async () => {
@@ -312,10 +315,10 @@ describe('LightweightSession', () => {
     expect(screen.getByRole('button', { name: 'Salta' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Prossima' })).not.toBeInTheDocument()
 
-    // Termina: la domanda lasciata a metà torna fra quelle da porre e si torna allo studio.
+    // Termina conserva la domanda posta per riprenderla al rientro.
     fireEvent.click(screen.getByRole('button', { name: 'Termina' }))
     await waitFor(() => expect(onBack).toHaveBeenCalled())
-    expect(mockSkipMutateAsync).toHaveBeenCalledWith('q100')
+    expect(mockSkipMutateAsync).not.toHaveBeenCalled()
   })
 
   it('modo unità: finite le domande si va avanti nello Studio', async () => {
@@ -366,7 +369,7 @@ describe('LightweightSession', () => {
 
     // Pulsanti ripescaggio con conteggio
     const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })
-    const askedBtn = screen.getByRole('button', { name: 'Riproponi le poste (4)' })
+    const askedBtn = screen.getByRole('button', { name: 'Riproponi le risposte (4)' })
     expect(wrongBtn).toBeInTheDocument()
     expect(askedBtn).toBeInTheDocument()
 
@@ -408,7 +411,7 @@ it.each([false, true])('all’ultima domanda Fine mostra il finale senza next (u
   fireEvent.click(finish)
   expect(await screen.findByTestId('recall-empty')).toBeVisible()
   if (unit) expect(screen.getByText('Hai finito le domande di questa unità')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Riproponi le poste (1)' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Riproponi le risposte (1)' })).toBeVisible()
   expect(mockNextMutateAsync).toHaveBeenCalledTimes(1)
 })
 

@@ -4,6 +4,8 @@
 
 ### Correzioni
 
+- Il ripasso riprende per prime le domande lasciate senza risposta. La soluzione o la valutazione le segna subito come risposte; puoi rimettere in gioco tutte le risposte oppure solo quelle sbagliate.
+
 - L’icona dell’ordine della verifica mostra un orologio per l’ordine cronologico e un triangolo per la gravità. Nelle Novità puoi spuntare e barrare le voci già lette, con memoria nel browser. Le motivazioni delle correzioni sono richieste in frasi complete.
 - Riesegui subito la verifica dal menu, oppure invia le unità al revisore senza il classificatore preventivo. Puoi verificare anche una singola unità esclusa; le verifiche della lezione continuano a escluderla.
 - Le issue indicano “Testo cambiato” dal passaggio effettivamente salvato sul server: puoi chiuderle o verificare di nuovo l’unità. Le modifiche altrove nell’unità lasciano applicabile la correzione.

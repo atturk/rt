@@ -220,7 +220,7 @@ describe('QuestionsPanel', () => {
     const restore = screen.getByTestId('questions-restore')
     expect(within(restore).getByText('2')).toBeInTheDocument()
     expect(within(restore).getByText('1')).toBeInTheDocument()
-    fireEvent.click(within(restore).getByRole('button', { name: /Riproponi le poste/ }))
+    fireEvent.click(within(restore).getByRole('button', { name: /Riproponi le risposte/ }))
     expect(mockRestoreMutate).toHaveBeenCalledWith('asked')
     fireEvent.click(within(restore).getByRole('button', { name: /Solo quelle sbagliate/ }))
     expect(mockRestoreMutate).toHaveBeenCalledWith('wrong')

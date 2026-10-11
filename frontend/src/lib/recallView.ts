@@ -32,7 +32,7 @@ export const RECALL_SORT_LABELS: Record<RecallSortKey, string> = {
 
 export const RECALL_DEFAULT_DIR: Record<RecallSortKey, SortDir> = { data: 'desc', titolo: 'asc', domande: 'desc' }
 
-export const pendingOf = (stats?: LessonRecallStats) => countStatus(stats?.questions, 'pending')
+export const pendingOf = (stats?: LessonRecallStats) => countStatus(stats?.questions, 'pending') + countStatus(stats?.questions, 'asked')
 
 /** Lezioni ordinate e raggruppate per materia (alfabetico, "Senza materia" in fondo) o per
  * giorno (nella direzione della data, "Senza data" in fondo). */

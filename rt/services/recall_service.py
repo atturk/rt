@@ -143,7 +143,7 @@ def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerat
     generate_pool(lesson_dir, force_mock=force_mock)
 
 
-def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None) -> Optional[str]:
+def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None, *, mark_answered: bool = True) -> Optional[str]:
     """Salva la risposta a una domanda mirata/vasta e la valuta con l'LLM.
     Ritorna il testo di valutazione, o None se la domanda non esiste o è un quiz
     (i quiz si rispondono con un bottone, gestiti a parte).
@@ -163,7 +163,7 @@ def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is
         force_mock = load_recall_session_state(lesson_dir).get("force_mock", False)
 
     evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock)
-    record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation)
+    record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation, mark_answered=mark_answered)
     return evaluation
 
 
@@ -349,7 +349,7 @@ def type_value(qtype) -> str:
     return qtype.value if isinstance(qtype, RecallQuestionType) else str(qtype)
 
 
-def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
+def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None, *, include_asked: bool = True) -> int:
     """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
     from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
     types = set(resolve_types(qtype))
@@ -357,7 +357,7 @@ def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
     allowed = None if unit_id is not None else _allowed_units(lesson_dir)
     ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
     return sum(1 for q in load_recall_bank(lesson_dir).questions
-               if q.type in types and q.status == RecallQuestionStatus.PENDING and _question_allowed(q, allowed)
+               if q.type in types and (q.status == RecallQuestionStatus.PENDING or include_asked and q.status == RecallQuestionStatus.ASKED) and _question_allowed(q, allowed)
                and not ignored.intersection(q.unit_ids) and (unit_id is None or on_unit(q, unit_id)))
 
 
@@ -375,7 +375,7 @@ def next_question_for(lesson_dir: str, qtype, order: str = "alternato",
 
 
 def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
-                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None):
+                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None, include_asked: bool = True):
     """Prossima domanda pendente della lezione (marcata come posta) con il cursore dell'ordine
     alternato della sessione salvata, senza registrarla in una sessione. current=False non la
     segna come domanda corrente della lezione (la sessione per materia non la occupa).
@@ -389,10 +389,16 @@ def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
         names = [t.value for t in types]
         start = names.index(last) + 1 if last in names else 0
         types = types[start:] + types[:start]
+    if include_asked:
+        from rt.pipeline.recall import load_recall_bank, on_unit
+        asked_types = {q.type for q in load_recall_bank(lesson_dir).questions
+                       if q.status == RecallQuestionStatus.ASKED and q.id != exclude_id
+                       and (unit_id is None or on_unit(q, unit_id))}
+        types.sort(key=lambda t: t not in asked_types)
     question = None
     for candidate in types:
         question = get_next_pending_question(lesson_dir, candidate, order=order, unit_cursor=state.get("unit_cursor"),
-                                             exclude_id=exclude_id, unit_id=unit_id)
+                                             exclude_id=exclude_id, unit_id=unit_id, include_asked=include_asked)
         if question is not None:
             break
     if question is not None:

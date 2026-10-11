@@ -22,7 +22,7 @@ class RegeneratedComment(BaseModel):
 #: Tipi con il commento (o la scaletta, o lo schema) pregenerato dall'IA.
 TYPES_WITH_COMMENT = (RecallQuestionType.QUIZ, RecallQuestionType.VASTA, RecallQuestionType.ESERCIZIO)
 
-ASKED_STATES = (RecallQuestionStatus.ASKED, RecallQuestionStatus.ANSWERED)
+ASKED_STATES = (RecallQuestionStatus.ANSWERED,)
 
 
 def _find(bank, question_id: str) -> RecallQuestion:
@@ -99,7 +99,7 @@ def _last_outcome(bank, question_id: str) -> Optional[str]:
 
 
 def restore_questions(lesson_dir: str, scope: str) -> int:
-    """Rimette fra quelle da porre le domande già poste ('asked') o solo quelle sbagliate
+    """Rimette fra quelle da porre le domande risposte ('asked') o solo quelle sbagliate
     ('wrong': esito sbagliata, quindi anche i 'Non lo so'). Le scartate restano fuori."""
     from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
 
@@ -173,3 +173,15 @@ def regenerate_comment(lesson_dir: str, question_id: str, *, force_mock: bool = 
         question.pregenerated_material = text
         save_recall_bank(bank, lesson_dir)
         return question
+
+
+def mark_answer_seen(lesson_dir: str, question_id: str) -> None:
+    """La valutazione aperta diventa risposta quando viene mostrata nel ripasso web."""
+    from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        question = _find(bank, question_id)
+        if question.status == RecallQuestionStatus.ASKED and any(
+                a.question_id == question_id and a.evaluation for a in bank.answers):
+            question.status = RecallQuestionStatus.ANSWERED
+            save_recall_bank(bank, lesson_dir)
