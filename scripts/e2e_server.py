@@ -132,6 +132,7 @@ def _lessons(root: str) -> None:
     _study_lesson(root)
     # Vicina pronta e indipendente dalle prove che modificano CHIRURGIA.
     _study_lesson(root, materia="STUDIO_NAV", argomenti="Navigazione di prova")
+    _study_lesson(root, materia="VERIFICA PARTE", argomenti="Selezione di prova", date="2026-08-09")
     _study_lesson(root, materia="VERIFICA LIVE", argomenti="Risultati progressivi", date="2026-08-10")
     os.environ["RT_E2E_REVIEW_LIVE_LESSON"] = os.path.join(root, "[2026-08-10] VERIFICA LIVE - Risultati progressivi")
     # Come le lezioni reali da RT 4.0: testi nel DB, media in media/ (le cartelle vanno nel backup).

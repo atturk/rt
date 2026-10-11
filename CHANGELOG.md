@@ -4,6 +4,8 @@
 
 ### Novità
 
+- VC2b: «Verifica questa parte» nel menu contestuale dell’editor; avviso in basso con conteggio e link alla verifica sull’unità selezionata.
+
 - VC2a: verifica mirata di una selezione con il critic della lezione; conserva decisioni e issue aperte fuori dal tratto e ritrova il passaggio prima di pubblicare il risultato.
 
 - V6c: risultati disponibili unità per unità, stati In corso e In coda e decisioni sulle unità finite; riepilogo della lezione tutta decisa e documento aggiornato senza clic.
@@ -31,6 +33,10 @@
 - Ancore testuali per ritrovare citazioni ripetute, spostate o parzialmente riscritte senza allargare il passaggio.
 
 ### Correzioni
+
+- VC2b: la verifica parziale conserva la sequenza degli ID anche dopo un risultato vuoto; il registro live riceve l’avvio di ogni unità e il documento automatico non impedisce di accodare Riprova.
+
+- Il filtro della TUI ripristina tutte le righe insieme, senza mostrare un elenco parziale durante il montaggio.
 
 - V6c: le esclusioni della verifica restano legate alla bozza grezza dopo una decisione; i link alle issue decise restano disponibili con Mostra decise.
 

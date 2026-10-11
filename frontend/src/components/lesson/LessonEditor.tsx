@@ -21,6 +21,7 @@ import { activeUnit } from '@/lib/audio'
 import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
+import { reviewSelection } from './reviewSelection'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
@@ -219,20 +220,21 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     savingRef.current = pending
     try { await pending } finally { if (savingRef.current === pending) savingRef.current = null }
   }, [persist])
+  const flush = useCallback(async () => {
+    await Promise.all([...uploads.current])
+    const markdown = viewOf(handle.current)?.state.doc.toString() ?? text
+    await save(markdown)
+    if (leaseRef.current) {
+      await unwrap(api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { token: leaseRef.current } } }))
+      leaseRef.current = null
+      setLease(null)
+    }
+  }, [text, save, lessonId])
   useEffect(() => {
     if (!actionsRef) return
-    actionsRef.current = { flush: async () => {
-      await Promise.all([...uploads.current])
-      const markdown = viewOf(handle.current)?.state.doc.toString() ?? text
-      await save(markdown)
-      if (leaseRef.current) {
-        await unwrap(api.DELETE('/api/v1/lessons/{lesson_id}/document/lease', { params: { path: { lesson_id: lessonId }, query: { token: leaseRef.current } } }))
-        leaseRef.current = null
-        setLease(null)
-      }
-    } }
+    actionsRef.current = { flush }
     return () => { actionsRef.current = null }
-  }, [actionsRef, text, save, lessonId])
+  }, [actionsRef, flush])
 
   // Salvataggio dopo una pausa nella scrittura.
   useEffect(() => {
@@ -398,7 +400,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       if (!text.trim()) return null
       const rect = view.coordsAtPos(sel.from) ?? { left: event.clientX, bottom: event.clientY }
       const units = partOfRange(blocks, state.doc.lineAt(sel.from).number - 1, state.doc.lineAt(sel.to).number - 1, unitIds)
-      return { text, units, anchor: { x: rect.left, y: rect.bottom } }
+      return { text, units, anchor: { x: rect.left, y: rect.bottom }, reviewParts: reviewSelection(state, sel.from, sel.to, unitIds) }
     }
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
     if (pos == null) return null
@@ -450,7 +452,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         onDownloadAndRestore={downloadAndRestore}
       />
       {showToolbar && <EditorToolbar view={editor?.view ?? null} state={editor?.state} shortcuts={shortcuts} readOnly={locked} />}
-      <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate}>
+      <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate} beforeReview={flush} reviewUnavailable={locked ? 'Lavorazione in corso' : null}>
         <div
           ref={surface}
           className="rt-lesson-editor"

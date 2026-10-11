@@ -60,6 +60,24 @@ def test_same_v4_prompt_schema_context_and_second_occurrence(tmp_path, monkeypat
     assert 'review' not in load_manifest(lesson).phase_records
 
 
+def test_partial_ids_survive_an_empty_result_without_a_unit_checkpoint(tmp_path, monkeypatch):
+    lesson = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch))
+    unit = load_draft(lesson).units[0]
+    selected = part(unit.unit_id, unit.content)
+    critic(monkeypatch, [unit.content])
+    review.run_review_part(lesson, selected, True)
+    first = review.load_science_issues(lesson)[0].id
+    critic(monkeypatch, [])
+    review.run_review_part(lesson, selected, True)
+    assert review.load_science_issues(lesson) == []
+    assert 'review' not in load_manifest(lesson).phase_records
+    # Anche il controllo successivo dell'unità intera deve rispettare la sequenza.
+    critic(monkeypatch, [unit.content])
+    review.run_review_unit(lesson, unit.unit_id, force_mock=True, force=True)
+    second = review.load_science_issues(lesson)[0].id
+    assert int(second[4:]) > int(first[4:])
+
+
 @pytest.mark.parametrize('decision', ['accepted', 'edited', 'rejected'])
 def test_keeps_decisions_outside_open_and_other_units(tmp_path, monkeypatch, decision):
     text = 'Prima. Dentro errato. Fuori errato.'

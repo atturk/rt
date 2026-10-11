@@ -299,8 +299,9 @@ class RTApp(App):
                                      and lesson.dir_path == self.selected_lesson.dir_path),
                                     filtered[0] if filtered else None)
         await list_view.clear()
-        for lesson in filtered:
-            await list_view.append(LessonRow(lesson))
+        # Monta l'elenco in un solo lotto: il ripristino non deve esporre
+        # un sottoinsieme mentre ogni append attende il proprio mount.
+        await list_view.extend([LessonRow(lesson) for lesson in filtered])
 
         if filtered:
             if self.selected_lesson and any(l.dir_path == self.selected_lesson.dir_path for l in filtered):

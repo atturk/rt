@@ -3,8 +3,12 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { errorMessage, type Schemas } from '@/api/client'
 import { useEnrichmentActions } from '@/api/enrichment'
+import { useRunJob } from '@/api/hooks'
+import { useJob } from '@/api/jobs'
+import { isActive } from '@/lib/jobs'
+import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/documentParts'
@@ -12,7 +16,7 @@ import { OPEN_QUESTIONS_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
 
 type Point = { x: number; y: number }
-type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range }
+type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range; reviewParts?: Schemas['ReviewPartSelection'][] }
 /** La parte sotto il clic destro, per una superficie che non è l'<article> (l'editor). */
 export type PartLocator = (event: MouseEvent) => Omit<Part, 'at'> | null
 export type GenerateKind = 'visualization' | 'infographic' | 'image'
@@ -25,18 +29,35 @@ const NO_PART = "Seleziona il testo di un'unità"
  * parte" sono le subunità toccate dalla selezione (lib/documentParts). Fuori dal testo e senza
  * selezione resta il menu del browser.
  */
-export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
+export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, reviewUnavailable, children }: {
   lessonId: number
   unitIds: string[]
-  /** Rielaborazione pronta: senza, Genera, Domande e Verifica non hanno senso. */
+  /** Rielaborazione pronta per Genera e Domande; Verifica segue le unità della selezione. */
   ready: boolean
   /** Al posto della lettura dell'<article>: l'editor sa da sé testo e unità della selezione. */
   locate?: PartLocator
+  beforeReview?: () => Promise<void>
+  reviewUnavailable?: string | null
   children: ReactNode
 }) {
   const [menu, setMenu] = useState<Part | null>(null)
   const [generate, setGenerate] = useState<Part | null>(null)
   const [queued, setQueued] = useState<string[] | null>(null)
+  const run = useRunJob(lessonId)
+  const [review, setReview] = useState<{ jobId?: string; unit: string; failure?: string } | null>(null)
+  const [sending, setSending] = useState(false)
+  const verify = async (part: Part) => {
+    if (!part.reviewParts?.length || sending) return
+    setSending(true)
+    setReview({ unit: part.reviewParts[0].unit_id })
+    try {
+      await beforeReview?.()
+      const accepted = await run.mutateAsync({ type: 'review_part', parts: part.reviewParts })
+      setReview({ jobId: accepted.job_id, unit: part.reviewParts[0].unit_id })
+    } catch (error) {
+      setReview({ unit: part.reviewParts[0].unit_id, failure: errorMessage(error) })
+    } finally { setSending(false) }
+  }
   // Il documento (l'<article> del DocumentView) sta dentro questo contenitore.
   const root = useRef<HTMLDivElement>(null)
 
@@ -87,6 +108,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
         </div>
       )}
       {children}
+      {review && <PartReviewNotice lessonId={lessonId} {...review} onClose={() => setReview(null)} />}
       {menu && (
         <ContextMenu
           at={menu.at}
@@ -104,7 +126,8 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
             {
               label: 'Verifica questa parte',
               icon: ShieldCheck,
-              unavailable: 'In arrivo',
+              unavailable: reviewUnavailable || (sending ? 'Invio in corso' : !menu.reviewParts?.length ? NO_PART : null),
+              onSelect: () => void verify(menu),
             },
           ]}
         />
@@ -112,6 +135,21 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, children }: {
       {generate && <GeneratePopover lessonId={lessonId} part={generate} onClose={() => setGenerate(null)} onQueued={() => setQueued(generate.units)} />}
     </div>
   )
+}
+
+/** In basso resta visibile anche se la selezione è lontana dall'inizio del documento. */
+function PartReviewNotice({ lessonId, jobId, unit, failure, onClose }: { lessonId: number; jobId?: string; unit: string; failure?: string; onClose: () => void }) {
+  const job = useJob(jobId ?? '')
+  const error = failure ?? (job.data?.state === 'failed' ? job.data.error : job.isError ? errorMessage(job.error) : null)
+  const finished = !!job.data && !isActive(job.data.state)
+  const count = typeof job.data?.result?.issues === 'number' ? job.data.result.issues : 0
+  return <Card role={error ? 'alert' : 'status'} data-testid="part-review-notice" className="fixed inset-x-3 bottom-4 z-40 mx-auto flex max-w-xl items-center gap-2 px-3 py-2 text-meta shadow-panel">
+    <ShieldCheck className="size-4 shrink-0" aria-hidden />
+    <span className="flex-1">{error || (job.data?.state === 'cancelled' ? 'Verifica annullata' : finished ? `${count} issue trovate` : 'Verifica in corso…')}
+      {!error && finished && job.data?.state === 'succeeded' && <> · <Link to={`/lezioni/${lessonId}?panel=verifica&review_unit=${encodeURIComponent(unit)}`} className="font-semibold text-link hover:underline">Apri Verifica</Link></>}
+    </span>
+    <IconButton label="Chiudi l’avviso di verifica" icon={X} onClick={onClose} />
+  </Card>
 }
 
 async function copy(text: string) {

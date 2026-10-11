@@ -58,7 +58,7 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   const unit = (await heading.getAttribute('data-unit-id'))!
 
   // Il clic destro su un testo senza selezione lascia il menu del browser.
-  const paragraph = doc.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h2):not(.cm-atomic-h3)', { hasText: /\w+ \w+ \w+/ }).first()
+  const paragraph = doc.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h2):not(.cm-atomic-h3):not(:has(.rt-timecode-locked))', { hasText: /\S/ }).first()
   await paragraph.click({ button: 'right' })
   await expect(page.getByTestId('document-menu')).toHaveCount(0)
 
@@ -66,7 +66,8 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   await heading.click({ button: 'right' })
   const menu = page.getByRole('menu', { name: 'Azioni sul testo' })
   await expect(menu).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da quiIn arrivo', 'Genera', `Domande sull'unità ${unit}`, 'Verifica questa parteIn arrivo'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da quiIn arrivo', 'Genera', `Domande sull'unità ${unit}`, 'Verifica questa parte'])
+  await expect(menu.getByRole('menuitem', { name: 'Verifica questa parte' })).toHaveAttribute('aria-disabled', 'true') // sul titolo manca un tratto selezionato
   await expect(page.getByTestId('document-menu-part')).toHaveCount(0)
   await expect(menu.getByRole('menuitem', { name: 'Copia' })).toBeFocused()
   const later = menu.getByRole('menuitem', { name: 'Leggi da qui' })
@@ -130,11 +131,14 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   expect(element?.kind).toBe('infographic')
   expect(element?.context_unit_ids).toEqual([unit])
 
-  // La verifica del solo testo selezionato è visibile, ma non accoda job.
+  // Sul titolo senza selezione manca un tratto da verificare.
+  await selected.click()
+  await page.keyboard.press('ArrowRight')
   await heading.click({ button: 'right' })
   const verifica = menu.getByRole('menuitem', { name: /Verifica questa parte/ })
   await expect(verifica).toHaveAttribute('aria-disabled', 'true')
-  await expect(verifica).toContainText('In arrivo')
+  await verifica.hover()
+  await expect(page.getByRole('tooltip')).toContainText("Seleziona il testo di un'unità")
   await verifica.click({ force: true })
   await expect(page.getByTestId('part-review')).toHaveCount(0)
 

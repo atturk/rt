@@ -234,8 +234,13 @@ class DbJobQueue:
             if again:
                 raise JobAlreadyRetried(again)
             if row.lesson_path:
-                busy = s.scalar(select(Job.id).where(Job.lesson_path == row.lesson_path,
-                                                     Job.state.in_(list(ACTIVE_STATES))).limit(1))
+                active = select(Job.id).where(Job.lesson_path == row.lesson_path,
+                                              Job.state.in_(list(ACTIVE_STATES)))
+                if row.type != "documents":
+                    # V5: il lavoro derivato non impedisce di accodare Riprova.
+                    # claim() continua a serializzare l'esecuzione sulla lezione.
+                    active = active.where(Job.type != "documents")
+                busy = s.scalar(active.limit(1))
                 if busy:
                     raise LessonHasActiveJob(busy)
             job_type, lesson_path, payload = row.type, row.lesson_path, retry_payload(row.type, row.payload or {})

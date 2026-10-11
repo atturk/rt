@@ -42,6 +42,7 @@ _STATE_ENTRIES: Set[str] = {
     "review_decisions.pre_anchors.json",
     "review_decisions.json",
     "review_units.json",
+    "review_sequence.json",
     "web_review_events.jsonl",
     "recall_questions.json",
     "telegram_recall_session.json",

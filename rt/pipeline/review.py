@@ -440,10 +440,15 @@ def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: L
     ledger = load_ledger(lesson_dir)
     decisions = {d.issue_id:d for d in ledger.decisions}
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    sequence_path = lesson_path(lesson_dir, 'review_sequence.json')
+    sequence_floor = 0
+    if fs.isfile(sequence_path):
+        with fs.open(sequence_path, encoding='utf-8') as stream:
+            sequence_floor = int(json.load(stream)['last'])
     sequence = max([int(value[4:]) for value in
                     [i.id for i in prior] + [d.issue_id for d in ledger.decisions]
                     if value.startswith("sci_") and value[4:].isdigit()] +
-                   [int((checkpoint or {}).get("issue_sequence", 0))])
+                   [int((checkpoint or {}).get("issue_sequence", 0)), sequence_floor])
     kept = [i for i in prior if i.unit_id not in replaced_units or i.id in decisions
             or (replace_open is not None and not replace_open(i))]
     unit_by_id = {u.unit_id:u for u in units}
@@ -679,6 +684,12 @@ def run_review_part(lesson_dir: str, part: dict, force_mock: bool = False) -> di
         old_ids = {issue.id for issue in prior}
         inserted = [issue for issue in combined if issue.id not in old_ids]
         save_science_issues(combined, lesson_dir)
+        # Una selezione mai verificata non ha un checkpoint di unità. Conserva
+        # comunque la sequenza se una risposta vuota rimuove tutte le aperte.
+        sequence_path = lesson_path(lesson_dir, 'review_sequence.json')
+        with fs.open(sequence_path + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump({'last': sequence}, stream)
+        fs.replace(sequence_path + '.tmp', sequence_path)
         manifest = load_manifest(lesson_dir)
         record = (manifest.phase_records or {}).get('review') if manifest else None
         if record:
