@@ -60,4 +60,7 @@ def record_update_summary(lesson_dir, mode, old_outline, outline, selected):
     state = _read_state(lesson_dir)
     state["ultimo_aggiornamento"] = {"modo": mode, "unita_nuove": len(new - old),
         "unita_cambiate": len(set(selected) & old), "il": datetime.now(timezone.utc).isoformat()}
+    changes = state.setdefault("unit_changed_at", {})
+    for uid in (old | new if mode == "rebuild" else set(selected)):
+        changes[uid] = state["ultimo_aggiornamento"]["il"]
     _write_state(lesson_dir, state)

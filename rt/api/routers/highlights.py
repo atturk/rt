@@ -19,6 +19,7 @@ class HighlightIn(BaseModel):
 
 class Highlight(HighlightIn):
     id: int
+    precedente: bool = False
 
 
 @router.get("/lessons/{lesson_id}/highlights", response_model=List[Highlight], summary="Evidenziazioni di un'unità")
