@@ -160,3 +160,22 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
         json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
     fs.replace(cache_path + '.tmp', cache_path)
     return pages
+
+
+def material_context_parts(lesson_dir, *, mock=False, ctx=None):
+    from rt.core.sources import load_sources
+    from rt.core.source_selection import selection
+    from rt.pipeline.source_update import _read_state
+    sources = load_sources(lesson_dir)
+    parts = []
+    primary = selection(lesson_dir)['principale']
+    cache = _read_state(lesson_dir).get('sources', {})
+    for source in sources:
+        if source.tipo == 'materiale':
+            for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
+                parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
+        elif primary and next((s.tipo for s in sources if s.id == primary), None) != 'audio' and source.id != primary:
+            texts = [segment['text_raw'] for segment in cache.get(source.id, {}).get('segments', [])]
+            if texts:
+                parts.append(f'[{source.id}, {os.path.basename(source.file)}]\n' + '\n'.join(texts))
+    return parts
