@@ -11,6 +11,8 @@ import { Field, SaveFeedback, Section } from './common'
  * impostazioni e l'aggiunta immagini lo rilegge a ogni job. */
 export function WebSearchSection({ settings }: { settings: Settings }) {
   const save = useSaveWebSearch()
+  const contextualVerification = Boolean((settings.web_search as any).contextual_verification)
+
   return (
     <Section
       id="ricerca-web"
@@ -23,6 +25,31 @@ export function WebSearchSection({ settings }: { settings: Settings }) {
       }
     >
       <WebSearchForm key={settings.web_search.searxng_base_url ?? ''} saved={settings.web_search.searxng_base_url ?? ''} save={save} />
+      <div className="mt-6 border-t border-border/60 pt-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-body font-medium text-foreground">
+              Cerca sul web durante la verifica contestuale
+            </span>
+            <span className="text-meta text-muted-foreground">
+              Le fonti con i link compaiono nella voce di verifica. Spenta, la verifica funziona come oggi.
+            </span>
+          </div>
+          <Button
+            id="wsw"
+            role="switch"
+            aria-label="Ricerca web nella verifica"
+            aria-checked={contextualVerification}
+            variant={contextualVerification ? 'default' : 'outline'}
+            size="sm"
+            disabled={save.isPending}
+            onClick={() => save.mutate({ contextual_verification: !contextualVerification })}
+            data-testid="toggle-contextual-web-search"
+          >
+            {contextualVerification ? 'Sì' : 'No'}
+          </Button>
+        </div>
+      </div>
       <SaveFeedback mutation={save} />
     </Section>
   )

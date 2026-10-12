@@ -75,7 +75,7 @@ export function StudyNotesPanel({
   // Vista 1: Dettaglio di una singola voce
   if (activeNote) {
     const isVerifica = activeNote.kind === 'verifica'
-    const resp = activeNote.response as { esito?: string; spiegazione?: string; correzione?: string } | undefined
+    const resp = activeNote.response as { esito?: string; spiegazione?: string; correzione?: string; sources?: Array<{ title?: string; url?: string }> } | undefined
     const anchorObj = activeNote.anchor as { quote?: string } | undefined
     const quote = String(anchorObj?.quote || activeNote.current_quote || '')
     const verdict = resp?.esito
@@ -187,6 +187,26 @@ export function StudyNotesPanel({
               )}
             </div>
             <div className="font-mono text-[13px] text-foreground">{fix}</div>
+          </div>
+        )}
+
+        {resp?.sources && resp.sources.length > 0 && (
+          <div data-testid="detail-sources">
+            <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Fonti</span>
+            <div className="mt-1 flex flex-col gap-1.5">
+              {resp.sources.map((src: { title?: string; url?: string }, idx: number) => (
+                <a
+                  key={idx}
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-meta text-primary hover:underline break-all"
+                >
+                  <ExternalLink className="size-3 shrink-0" aria-hidden />
+                  <span>{src.title || src.url}</span>
+                </a>
+              ))}
+            </div>
           </div>
         )}
 

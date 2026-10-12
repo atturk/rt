@@ -123,7 +123,12 @@ export function useSaveRoute() {
 }
 
 export function useSaveWebSearch() {
-  return useSettingsMutation((searxng_base_url: string) => unwrap(api.PUT('/api/v1/settings/web-search', { body: { searxng_base_url } })))
+  return useSettingsMutation(
+    (vars: { searxng_base_url?: string | null; contextual_verification?: boolean } | string) => {
+      const body = typeof vars === 'string' ? { searxng_base_url: vars } : vars
+      return unwrap(api.PUT('/api/v1/settings/web-search', { body: body as any }))
+    },
+  )
 }
 
 /** "Prova" di connessione e modello indicati nel form, anche prima di salvarli: chiamata minima

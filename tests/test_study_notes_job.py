@@ -202,3 +202,37 @@ def test_study_note_job_worker_execution(tmp_path, monkeypatch, rt_db):
     assert len(notes) == 1
     assert notes[0]["id"] == done.result["note_id"]
     assert notes[0]["applied_decision_id"] is None
+
+
+def test_study_note_verifica_with_web_search(tmp_path, monkeypatch, rt_db):
+    from unittest.mock import patch
+    from rt.core.config import RTConfig
+    from rt.core.searxng_client import WebSearchResult
+
+    text = "Il valore normale del pH arterioso è considerato tra 7,36 e 7,45."
+    lesson_dir = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch), {"1.1": text})
+    write_ledger_file(DecisionLedger(schema_version="2.0"), lesson_dir)
+
+    anchor = make_anchor(text, 0, len("Il valore")).model_dump()
+
+    fake_cfg = RTConfig(contextual_web_search=True, searxng_base_url="http://fake-searxng:8080")
+    fake_results = [
+        WebSearchResult(title="Manuale MSD", url="https://msd.it/ph", content="pH arterioso"),
+        WebSearchResult(title="Biochimica Clinica", url="https://biochimica.it/ph", content="equilibrio acido-base"),
+    ]
+
+    with patch("rt.core.config.load_config", return_value=fake_cfg), \
+         patch("rt.core.searxng_client.search_web", return_value=fake_results) as mock_search:
+        res = run_study_note(
+            lesson_dir=lesson_dir,
+            unit_id="1.1",
+            kind="verifica",
+            anchor=anchor,
+            request="Verifica questo passaggio",
+            force_mock=True,
+        )
+        assert mock_search.called
+        assert res["note"]["response"]["sources"] == [
+            {"title": "Manuale MSD", "url": "https://msd.it/ph"},
+            {"title": "Biochimica Clinica", "url": "https://biochimica.it/ph"},
+        ]

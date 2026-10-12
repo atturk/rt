@@ -199,4 +199,21 @@ describe('StudyNotesPanel', () => {
     renderPanel({ selectedNoteId: 1 })
     expect(screen.getByTestId('note-precedente-icon')).toBeInTheDocument()
   })
+
+  it('mostra sezione Fonti con link esterni se presenti nella risposta', () => {
+    mockNotes[0] = {
+      ...mockNotes[0],
+      response: {
+        ...mockNotes[0].response,
+        sources: [
+          { title: 'Manuale MSD', url: 'https://msd.it/ph' },
+        ],
+      },
+    }
+    renderPanel({ selectedNoteId: 1 })
+    expect(screen.getByTestId('detail-sources')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /Manuale MSD/i })
+    expect(link).toHaveAttribute('href', 'https://msd.it/ph')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
 })

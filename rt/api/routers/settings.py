@@ -133,6 +133,7 @@ class NoticeIn(BaseModel):
 
 class WebSearchSettings(BaseModel):
     searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
+    contextual_verification: bool = Field(default=False, description="Cerca sul web durante la verifica contestuale")
 
 
 class PreferencesSettings(BaseModel):
@@ -293,6 +294,7 @@ class ModelTestOut(BaseModel):
 
 class WebSearchIn(BaseModel):
     searxng_base_url: str = Field("", description="Vuoto per rimuoverlo")
+    contextual_verification: Optional[bool] = Field(None, description="Cerca sul web durante la verifica contestuale")
 
 
 class WebSearchTestIn(BaseModel):
@@ -813,10 +815,10 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
     return get_decision_model(_actor)
 
 
-@router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")
+@router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG e verifica contestuale")
 def put_web_search(body: WebSearchIn, _actor: Actor):
     from rt.services.settings_service import save_web_search, snapshot
-    _call(save_web_search, _project_root(), body.searxng_base_url)
+    _call(save_web_search, _project_root(), body.searxng_base_url, body.contextual_verification)
     return snapshot(_project_root())
 
 

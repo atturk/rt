@@ -90,16 +90,20 @@ def test_model_test_mock_and_validation(api_client, ws, monkeypatch):
 
 
 def test_web_search_saved_and_read_by_add_images(api_client, api_token, ws):
-    assert api_client.get("/api/v1/settings").json()["web_search"] == {"searxng_base_url": None}
-    res = api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": " http://localhost:8088/ "})
+    assert api_client.get("/api/v1/settings").json()["web_search"] == {"searxng_base_url": None, "contextual_verification": False}
+    res = api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": " http://localhost:8088/ ", "contextual_verification": True})
     assert res.status_code == 200, res.text
-    assert fresh(api_token).get("/api/v1/settings").json()["web_search"]["searxng_base_url"] == "http://localhost:8088"
+    ws_data = fresh(api_token).get("/api/v1/settings").json()["web_search"]
+    assert ws_data["searxng_base_url"] == "http://localhost:8088"
+    assert ws_data["contextual_verification"] is True
     # add_images legge l'URL da load_config(): nessun file da modificare a mano
     from rt.core.config import load_config
     assert load_config().searxng_base_url == "http://localhost:8088"
+    assert load_config().contextual_web_search is True
     assert api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": "localhost"}).status_code == 422
-    assert api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": ""}).status_code == 200
+    assert api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": "", "contextual_verification": False}).status_code == 200
     assert fresh(api_token).get("/api/v1/settings").json()["web_search"]["searxng_base_url"] is None
+    assert fresh(api_token).get("/api/v1/settings").json()["web_search"]["contextual_verification"] is False
 
 
 def test_web_search_test_counts_results(api_client, ws):
