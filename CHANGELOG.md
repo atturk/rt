@@ -1,5 +1,17 @@
 # Novità di RT
 
+## 4.2.5b1
+
+- Le lezioni conservano un elenco ordinato delle fonti originali, senza spostare i file delle lezioni esistenti.
+- L'inserimento di una fonte conserva i riferimenti ai segmenti esistenti e alle annotazioni già salvate.
+- Si possono preparare nuove parti audio e appunti senza trascrivere di nuovo le parti già presenti; l'audio segue l'ordine delle fonti.
+- La scaletta può essere estesa mantenendo le unità esistenti, i loro titoli e il loro ordine.
+- L'aggiornamento rielabora soltanto le unità nuove o cambiate e conserva il testo e le decisioni delle altre.
+- Prima di ogni aggiornamento viene salvata una fotografia: Annulla ripristina la lezione precedente, anche se il lavoro si interrompe.
+- Le API espongono le fonti non ancora usate e consentono di scegliere Estendi, Ricostruisci o Annulla; gli aggiornamenti si eseguono come lavori in coda.
+- Una lezione può nascere da soli appunti. L'audio può essere aggiunto in seguito, estendendo la lezione o ricostruendo la scaletta.
+- La rielaborazione segue il filo delle unità precedenti già scritte, anche rigenerando una sola unità, senza anticipare il trascritto delle successive. Il contesto si riduce soltanto con limiti del modello e consumi di token effettivamente disponibili.
+
 ## 4.2.4 — 2026-10-12
 
 ### Novità

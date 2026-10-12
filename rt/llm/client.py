@@ -140,13 +140,21 @@ def _with_json_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _cache_lesson_prefix(messages, provider, model, enabled):
-    """Marca solo il contesto fisso, senza alterare i messaggi dei fallback."""
+    """Marca la fine del prefisso crescente: scaletta, materiali, ultime unità già scritte."""
     clean_model = model.lower().strip().lstrip("~")
     if not enabled or provider != "openrouter" or not (
         clean_model.startswith("anthropic/") or clean_model.startswith("google/gemini")):
         return messages
+    if len(messages) < 2:
+        return messages
     out = [dict(message) for message in messages]
-    out[1]["content"] = [{"type": "text", "text": out[1]["content"], "cache_control": {"type": "ephemeral"}}]
+    content = out[1]["content"]
+    blocks = ([{"type": "text", "text": content}] if isinstance(content, str)
+              else [dict(block) for block in content])
+    text_blocks = [block for block in blocks if block.get("type") == "text"]
+    if text_blocks:
+        text_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    out[1]["content"] = blocks
     return out
 
 
@@ -236,6 +244,8 @@ class LLMClient:
         - Monitor a terminale con streaming live, costi stimati e redazione automatica dei secret;
         - Validazione Pydantic con meccanismo di auto-repair.
         """
+        self.last_usage = None
+        self.last_context_model = None
         job_routing_cfg = self._get_job_routing_config(job_name)
         primary_cfg = job_routing_cfg.primary
 
@@ -1011,6 +1021,8 @@ class LLMClient:
                         )
                         self.router.record_success(job_name, used_fallback=used_dedicated_fallback)
 
+                        self.last_usage = dict(final_usage) if final_usage else None
+                        self.last_context_model = {"provider": provider_name, "model": resolved_model or model_name}
                         return validated_obj
 
                     except RunCancelled:
@@ -1071,6 +1083,8 @@ class LLMClient:
                             break
 
                 # Anche una risposta rifiutata dal validatore ha consumato token.
+                self.last_usage = dict(final_usage) if final_usage else None
+                self.last_context_model = {"provider": provider_name, "model": resolved_model or model_name}
                 if final_usage:
                     cached_t = cached_prompt_tokens(final_usage)
                     in_t = final_usage.get("prompt_tokens")
@@ -1262,7 +1276,7 @@ class LLMClient:
         model_name = response_model.__name__
 
         if model_name == "Outline":
-            seg_matches = re.findall(r"seg_\d{6}", prompt)
+            seg_matches = list(dict.fromkeys(re.findall(r"\[(seg_\d{6,})\]", prompt)))
             first_seg = seg_matches[0] if seg_matches else "seg_000001"
             last_seg = seg_matches[-1] if len(seg_matches) > 1 else first_seg
 

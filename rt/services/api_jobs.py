@@ -30,6 +30,8 @@ TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
 EXPORT_LESSONS = "export_lessons"
+UPDATE_LESSON = "update_lesson"
+INGEST_NOTES = "ingest_notes"
 UNIT_RELEVANCE = "unit_relevance"
 STUDY_NOTE = "study_note"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
@@ -37,6 +39,33 @@ UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_
 
 def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
     return JobOutcome(state=JobState.SUCCEEDED, result=json_safe(result), lesson_path=lesson_path)
+
+
+def update_lesson_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.source_update import run_source_update
+    from rt.pipeline.build import write_automatic_documents
+    with ctx.activate():
+        result = run_source_update(job.lesson_path, mode=job.payload.get("mode", "extend"),
+                                   mock=bool(job.payload.get("mock")), ctx=ctx)
+        if result["status"] != "draft_validated" or result.get("failed_units"):
+            raise RuntimeError("Aggiornamento incompleto: puoi riprovare o annullare con la fotografia.")
+        write_automatic_documents(job.lesson_path)
+    return _done(result, lesson_path=job.lesson_path)
+
+
+def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.notes_lesson_service import create_notes_lesson
+    from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
+    from rt.services.pipeline_service import run_pipeline
+    options = job.payload.get("options") or {}
+    lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_notes_lesson(
+        job.payload["text"], **{name: options.get(name, "")
+        for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
+    ctx.lesson_dir = lesson
+    ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
+    if job.payload.get("run"):
+        return outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx))
+    return _done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson)
 
 
 def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -498,6 +527,8 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 for _type, _handler in (
+    (INGEST_NOTES, ingest_notes_job),
+    (UPDATE_LESSON, update_lesson_job),
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),

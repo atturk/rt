@@ -155,7 +155,7 @@ def _remove_partial(path: str) -> None:
              summary="Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true")
 def create_lesson(
     actor: Actor,
-    audio: List[UploadFile] = File(..., description="Uno o più file audio della stessa lezione"),
+    audio: List[UploadFile] = File([], description="Uno o più file audio della stessa lezione; facoltativo con soli appunti"),
     date: str = Form(..., description="Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')"),
     materia: str = Form(...),
     argomenti: str = Form(""),
@@ -166,9 +166,21 @@ def create_lesson(
     with_review: bool = Form(False),
     with_enrichment: Optional[bool] = Form(None),
     auto_accept: bool = Form(False),
+    appunti: str = Form("", description="Testo per creare una lezione senza audio"),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
+    if not audio:
+        if not appunti.strip():
+            raise ApiError(422, "validation_error", "Carica un audio o inserisci gli appunti.")
+        if len(appunti.encode("utf-8")) > _max_upload_bytes():
+            raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
+        options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),
+                   "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
+                   "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
+        return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options}, actor)
+    if appunti.strip():
+        raise ApiError(422, "validation_error", "Importa l'audio e aggiungi gli appunti dalle fonti della lezione.")
     target = _upload_dir()
 
     def _go():

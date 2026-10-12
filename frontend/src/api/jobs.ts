@@ -126,6 +126,7 @@ export function useCreateLesson() {
       setProgress({ loaded: 0, total: input.files.reduce((sum, f) => sum + f.size, 0) })
       const body = {
         audio: input.files.map((f) => f.name),
+        appunti: '',
         date: input.date,
         materia: input.materia,
         argomenti: input.argomenti,

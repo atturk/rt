@@ -12,7 +12,7 @@ from rt.core.timestamp import format_timestamp
 
 
 class Segment(BaseModel):
-    id: str = Field(..., description="ID univoco e stabile (es. seg_000001)")
+    id: str = Field(..., pattern=r"^seg_\d{6,}$", description="ID univoco e stabile di arrivo (es. seg_000001)")
     index: int = Field(..., ge=1, description="Indice progressivo a partire da 1")
     start_seconds: float = Field(..., ge=0.0, description="Timestamp iniziale in secondi")
     end_seconds: float = Field(..., gt=0.0, description="Timestamp finale in secondi")
@@ -34,12 +34,6 @@ class Segment(BaseModel):
 
     @model_validator(mode="after")
     def validate_cross_field_consistency(self) -> "Segment":
-        expected_id = f"seg_{self.index:06d}"
-        if self.id != expected_id:
-            raise ValueError(
-                f"Segment incoerente: id='{self.id}' non corrisponde all'index={self.index} "
-                f"(atteso '{expected_id}')"
-            )
         expected_start_fmt = format_timestamp(self.start_seconds)
         if self.start_formatted != expected_start_fmt:
             raise ValueError(

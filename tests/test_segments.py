@@ -294,10 +294,13 @@ def test_segment_cross_field_consistency():
     from rt.core.models import Segment
     from rt.core.timestamp import format_timestamp
 
-    # 1. Incoerenza id/index -> solleva ValueError
-    with pytest.raises(ValueError, match="non corrisponde all'index"):
+    # 1. L'ID di arrivo è indipendente dalla posizione; il formato resta vincolato.
+    valid = Segment(id="seg_000001", index=5, start_seconds=0.0,
+                    end_seconds=5.0, start_formatted="00:00", end_formatted="00:05", text_raw="Test")
+    assert valid.id == "seg_000001" and valid.index == 5
+    with pytest.raises(ValueError, match="String should match pattern"):
         Segment(
-            id="seg_000001",
+            id="invalid",
             index=5,
             start_seconds=0.0,
             end_seconds=5.0,
