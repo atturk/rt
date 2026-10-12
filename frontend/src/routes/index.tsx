@@ -127,6 +127,7 @@ const settingsArea: Area = {
         { index: true, Component: page(settings, (m) => m.SettingsIndexPage) },
         { path: 'aspetto', Component: page(settings, (m) => m.AppearanceSettingsPage) },
         { path: 'domande', Component: page(settings, (m) => m.QuestionsSettingsPage) },
+        { path: 'materie', Component: page(settings, (m) => m.SubjectsSettingsPage) },
         { path: 'editor', Component: page(settings, (m) => m.EditorSettingsPage) },
         { path: 'lavorazione', Component: page(settings, (m) => m.ProcessingSettingsPage) },
         { path: 'modelli-connessioni', Component: page(settings, (m) => m.ModelsSettingsPage) },

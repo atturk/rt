@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
+import { useSubjects } from '@/api/subjects'
 import { invalidateAfterJob, useCreateLesson, useImportLessonZips, type ZipImportResult } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
@@ -69,7 +70,10 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const kind = zipJob ? 'zip' : uploadKind(files)
   const zipFinished = !!zipJob && jobFinished(job.data)
   const busy = create.isPending || zips.isPending || (!!zipJob && !job.isError && !jobFinished(job.data))
-  const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
+  const subjectsQuery = useSubjects()
+  const subjects = subjectsQuery.data
+    ? subjectsQuery.data.map((s) => s.nome)
+    : [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
   const teachers = [...new Set((lessons.data ?? []).map((l) => l.docente?.trim()).filter(Boolean))].sort()
 
   const choose = (chosen: File[]) => {
