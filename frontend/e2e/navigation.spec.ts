@@ -60,16 +60,20 @@ test('le pagine tolte portano a Lezioni o al pannello della lezione', async ({ p
   await expect(page).toHaveURL(new RegExp(`/lezioni/${lesson.id}$`))
 })
 
-test('barra a icone: Nuova lezione, Lezioni, Job in corso con il badge, Impostazioni', async ({ page }) => {
+test('barra a icone: Nuova lezione, Lezioni, Calendario, Job in corso con il badge, Impostazioni', async ({ page }) => {
   await loginViaLink(page)
   const nav = page.getByRole('navigation', { name: 'Navigazione' })
   await expect(nav.getByRole('button', { name: 'Nuova lezione' })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(3)
+  await expect(nav.getByRole('link')).toHaveCount(4)
   // Ogni icona ha un nome accessibile uguale al suo tooltip.
   const lessons = nav.getByRole('link', { name: 'Lezioni' })
   await lessons.hover()
   await expect(page.getByRole('tooltip', { name: 'Lezioni' })).toBeVisible()
   await expect(lessons).toHaveAttribute('aria-current', 'page')
+
+  const calendar = nav.getByRole('link', { name: 'Calendario' })
+  await calendar.hover()
+  await expect(page.getByRole('tooltip', { name: 'Calendario' })).toBeVisible()
 
   const job = nav.getByRole('link', { name: 'Job in corso' })
   await expect(job.getByTestId('jobs-indicator')).toHaveCount(1)
@@ -84,12 +88,12 @@ test('barra a icone: Nuova lezione, Lezioni, Job in corso con il badge, Impostaz
   await expect(page).toHaveURL(/\/impostazioni$/)
 })
 
-test('telefono: tre schede in basso, niente barra a sinistra', async ({ page }) => {
+test('telefono: quattro schede in basso, niente barra a sinistra', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await loginViaLink(page)
   const tabs = page.getByRole('navigation', { name: 'Navigazione' })
   await expect(tabs).toHaveCount(1)
-  await expect(tabs.getByRole('link')).toHaveCount(3)
+  await expect(tabs.getByRole('link')).toHaveCount(4)
   await expect(tabs.getByRole('button', { name: 'Nuova lezione' })).toHaveCount(0)
   const box = (await tabs.boundingBox())!
   expect(box.y + box.height).toBeCloseTo(844, 0)
