@@ -54,6 +54,11 @@ svg{width:18px;height:18px;flex:none}
 .th .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .th .x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg);display:none;place-items:center;padding:0}
 .th:hover .x{display:grid} .th .x svg{width:12px;height:12px}
+.pn{flex:none;width:20px;height:20px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.mv{display:none;gap:0}.file:hover .mv,.file:focus-within .mv{display:flex}.mv .ib{width:28px;height:28px}
+.star{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;border:0;background:color-mix(in oklch,var(--bg) 80%,transparent);display:grid;place-items:center;padding:0;color:var(--mute)}
+.star svg{width:13px;height:13px}.star.on{color:var(--note-fg)}.star.on svg{fill:currentColor}
+.hint2{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mute)}.hint2 svg{width:14px;height:14px;color:var(--note-fg);fill:currentColor}
 .addmat{flex:none;width:46px;height:46px;border-radius:7px;border:1px dashed var(--border);background:transparent;display:grid;place-items:center;color:var(--mute);margin-bottom:19px}
 .addmat:hover{border-color:var(--fg);color:var(--fg)}
 .sect{display:grid;gap:6px}
@@ -88,10 +93,12 @@ svg{width:18px;height:18px;flex:none}
       <li><b>Un solo riquadro</b> per tutto: trascini audio e materiali insieme e RT li separa da solo (audio = registrazione, PDF e immagini = materiali). Il + accanto alle miniature aggiunge altri materiali.</li>
       <li><b>Ore del giorno</b>: se nel calendario ci sono lezioni nella data scelta, compaiono come scelte rapide. Un clic compila materia, docente e ora e collega la registrazione a quell'ora. È già scelta l'ora in corso o appena finita. Le ore già registrate sono spente.</li>
       <li>Cambiando la data con le frecce cambiano le ore proposte. La matita apre i campi a mano, come oggi; senza ore nel calendario si vedono direttamente i campi.</li>
+      <li><b>Ordine delle parti audio</b>: con più file audio ogni riga ha il numero della parte; al passaggio del mouse compaiono le frecce su e giù. Di partenza l'ordine è quello dell'ora di registrazione del file (o del nome), che di solito è già giusto. I materiali non hanno ordine.</li>
+      <li><b>Materiale principale</b>: senza audio, uno dei materiali (o gli appunti) fa da filo della lezione e diventa la base della scaletta; gli altri sono contesto e si allegano alle unità. È la stellina sulla miniatura: di partenza la prende il documento con più pagine, un clic su un'altra stellina la sposta. Con l'audio la stellina non c'è, perché il principale è l'audio.</li>
       <li><b>Graffetta</b> (DS1) accanto a Revisione e Arricchimento: accesa, le pagine dei materiali più legate a un'unità vengono allegate come immagini. Spenta, i materiali servono solo come contesto. Senza materiali è spenta.</li>
     </ul>
     <div class="controls">Prova:
-      <button data-demo="empty">Vuoto</button><button data-demo="audio">Solo audio</button><button data-demo="both" class="on">Audio + materiali</button><button data-demo="noslots">Giorno senza orario</button>
+      <button data-demo="empty">Vuoto</button><button data-demo="audio">Solo audio</button><button data-demo="both" class="on">Audio + materiali</button><button data-demo="noslots">Giorno senza orario</button><button data-demo="two">Due parti audio</button><button data-demo="mats">Solo materiali</button>
     </div>
   </section>
   <div class="scene">
@@ -129,40 +136,48 @@ const I={X:'<path d="M18 6 6 18M6 6l12 12"/>',L:'<path d="m15 18-6-6 6-6"/>',R:'
  FILE:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',SHIELD:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>',
  IMG:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',CLIP:'<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
  UP:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/>',AUD:'<path d="M17.5 22h.5a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M2 19v-3a6 6 0 0 1 12 0v3"/><path d="M4 14h2v6H4zM10 14h2v6h-2z"/>',
- PLUS:'<path d="M12 5v14M5 12h14"/>',OK:'<path d="M20 6 9 17l-5-5"/>'};
+ PLUS:'<path d="M12 5v14M5 12h14"/>',UPA:'<path d="m18 15-6-6-6 6"/>',DNA:'<path d="m6 9 6 6 6-6"/>',STAR:'<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',OK:'<path d="M20 6 9 17l-5-5"/>'};
 const ic=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
 document.querySelectorAll('.modal').forEach(m=>m.innerHTML=m.innerHTML.replace(/IC([A-Z]+)/g,(_,k)=>ic(k)));
 const fmt=h=>{const H=Math.floor(h),m=Math.round((h-H)*60);return String(H).padStart(2,'0')+':'+String(m).padStart(2,'0')};
 let day=12,pick=1,manual=false,demo='both',tg={solo:false,rev:true,arr:false,att:true};
+let audios=[['Registrazione 12-10 09-31.m4a','52 min · 49 MB'],['Registrazione 12-10 10-38.m4a','58 min · 55 MB']],star=0;
 let mats=[['Slide DM – k-means.pdf · p.1','pg'],['p.2','pg'],['p.3','pg'],['p.4','pg'],['Lavagna.jpg','photo'],['Lavagna 2.jpg','photo']];
 function render(){
-  const audio=demo!='empty', hasM=demo=='both'||demo=='noslots';
+  const audio=demo!='empty'&&demo!='mats', hasM=demo=='both'||demo=='noslots'||demo=='mats', two=demo=='two';
   let d='';
-  if(!audio)d=`<div class="drop" tabindex="0" role="button">${ic('UP')}<span>Trascina qui l'audio della lezione, slide, PDF o foto,<br>oppure un pacchetto .zip. Clic per scegliere.</span></div>`;
-  else d=`<div class="files"><div class="file">${ic('AUD')}<span class="n">Registrazione 12-10 11-41.m4a</span><span class="m">1 h 58 min · 112 MB</span><button class="ib" data-tip="Rimuovi" aria-label="Rimuovi">${ic('X')}</button></div>
-   ${hasM?`<div class="mats">${mats.map((m,i)=>`<div class="th"><div class="pg ${m[1]=='photo'?'photo':''}">${m[1]=='pg'?'<i class="h"></i><i></i><i style="width:80%"></i><i style="width:55%"></i>':''}</div><span class="lb">${m[0]}</span><button class="x" data-rm="${i}" data-tip="Togli" aria-label="Togli">${ic('X')}</button></div>`).join('')}<button class="addmat" data-tip="Aggiungi materiali" aria-label="Aggiungi materiali">${ic('PLUS')}</button></div>`
+  const auds=two?audios:[['Registrazione 12-10 11-41.m4a','1 h 58 min · 112 MB']];
+  const audRows=auds.map((a,i)=>`<div class="file">${ic('AUD')}${two?`<span class="pn">${i+1}</span>`:''}<span class="n">${a[0]}</span><span class="m">${a[1]}</span>${two?`<span class="mv"><button class="ib" data-mv="${i}:-1" ${i==0?'disabled':''} data-tip="Sposta prima" aria-label="Sposta prima">${ic('UPA')}</button><button class="ib" data-mv="${i}:1" ${i==auds.length-1?'disabled':''} data-tip="Sposta dopo" aria-label="Sposta dopo">${ic('DNA')}</button></span>`:''}<button class="ib" data-tip="Rimuovi" aria-label="Rimuovi">${ic('X')}</button></div>`).join('');
+  const thumbs=`<div class="mats">${mats.map((m,i)=>`<div class="th"><div class="pg ${m[1]=='photo'?'photo':''}">${m[1]=='pg'?'<i class="h"></i><i></i><i style="width:80%"></i><i style="width:55%"></i>':''}</div><span class="lb">${m[0]}</span><button class="x" data-rm="${i}" data-tip="Togli" aria-label="Togli">${ic('X')}</button>${!audio?`<button class="star ${star===i?'on':''}" data-star="${i}" data-tip="${star===i?'Materiale principale: fa da filo della lezione':'Usa come materiale principale'}" aria-label="Materiale principale" aria-pressed="${star===i}">${ic('STAR')}</button>`:''}</div>`).join('')}<button class="addmat" data-tip="Aggiungi materiali" aria-label="Aggiungi materiali">${ic('PLUS')}</button></div>`;
+  if(demo=='empty')d=`<div class="drop" tabindex="0" role="button">${ic('UP')}<span>Trascina qui l'audio della lezione, slide, PDF o foto,<br>oppure un pacchetto .zip. Clic per scegliere.</span></div>`;
+  else if(demo=='mats')d=`<div class="files">${thumbs}<div class="hint2">${ic('STAR')}<span>Senza audio la scaletta segue <b>${mats[star][0]}</b>; gli altri materiali sono contesto.</span></div></div>`;
+  else d=`<div class="files">${audRows}${two?`<div class="hint2"><span>${auds.length} parti, unite in quest'ordine</span></div>`:''}
+   ${hasM?thumbs
      :`<div class="mats"><button class="addmat" style="margin:0;width:auto;height:34px;padding:0 10px;display:flex;gap:6px;font-size:12.5px" data-tip="Slide, PDF o foto della lezione">${ic('PLUS')}Materiali</button></div>`}</div>`;
+  const any=audio||demo=='mats';
   document.getElementById('drop').innerHTML=d;
   const dd=demo=='noslots'?11:day, list=DAYS[dd]||[];
   document.getElementById('dlab').textContent=(dd==12?'Oggi, ':'')+DN[dd]+' '+dd+' ott';
-  const showSlots=list.length>0&&!manual&&audio;
+  const showSlots=list.length>0&&!manual&&any;
   document.getElementById('slots').innerHTML=list.length?list.map((s,i)=>`<button class="slot ${s[3]?'done':''} ${pick===i&&dd==12||(dd!=12&&pick===i)?'on':''}" style="--c:var(${M[s[0]][1]})" data-pick="${i}" ${s[3]?'disabled':''} data-tip="${s[3]?'Già registrata':M[s[0]][2]}"><span class="bar"></span><span class="tx"><b>${M[s[0]][0]}</b><span>${fmt(s[1])}–${fmt(s[2])}</span></span>${s[3]?`<span class="ok">${ic('OK')}</span>`:''}</button>`).join(''):'';
   document.getElementById('slots').hidden=!showSlots;
-  document.getElementById('slotsect').hidden=!audio;
-  document.getElementById('manual').classList.toggle('on',manual);document.getElementById('manual').hidden=!list.length;document.querySelector('.datebar').style.visibility=showSlots?'visible':'hidden';document.getElementById('slotsect').hidden=!audio||!list.length;
-  const f=document.getElementById('fields');f.hidden=!audio||showSlots;
+  document.getElementById('slotsect').hidden=!any;
+  document.getElementById('manual').classList.toggle('on',manual);document.getElementById('manual').hidden=!list.length;document.querySelector('.datebar').style.visibility=showSlots?'visible':'hidden';document.getElementById('slotsect').hidden=!any||!list.length;
+  const f=document.getElementById('fields');f.hidden=!any||showSlots;
   const s=list[pick];
   document.getElementById('f-m').value=s&&!manual?M[s[0]][0]:'';document.getElementById('f-doc').value=s&&!manual?M[s[0]][2]:'';
   document.getElementById('f-d').onchange=null;document.getElementById('f-d').value=`2026-10-${String(dd).padStart(2,'0')}`;document.getElementById('f-o').value=s&&!manual?fmt(s[1]):'';
-  const att=document.getElementById('att');att.disabled=!hasM||tg.solo||!audio;
-  document.querySelectorAll('[data-t]').forEach(b=>{const k=b.dataset.t;b.classList.toggle('on',tg[k]&&!(k!='solo'&&tg.solo)&&!(k=='att'&&b.disabled));if(k!='solo')b.disabled=tg.solo||!audio||(k=='att'&&!hasM)});
-  const steps=['trascrizione','scaletta','rielaborazione'+(hasM?' con i materiali':'')];if(tg.rev)steps.push('revisione');if(tg.arr)steps.push('arricchimento');if(hasM&&tg.att)steps.push('materiali allegati alle unità');
-  document.getElementById('sentence').textContent=!audio?'':tg.solo?"Dopo l'importazione: solo trascrizione":"Dopo l'importazione: "+steps.slice(0,-1).join(', ')+' e '+steps.at(-1)+(showSlots&&list[pick]&&!list[pick][3]?` · collegata a ${M[list[pick][0]][0]} delle ${fmt(list[pick][1])}`:'');
+  const att=document.getElementById('att');att.disabled=!hasM||tg.solo||!any;
+  document.querySelectorAll('[data-t]').forEach(b=>{const k=b.dataset.t;b.classList.toggle('on',tg[k]&&!(k!='solo'&&tg.solo)&&!(k=='att'&&b.disabled));if(k!='solo')b.disabled=tg.solo||!any||(k=='att'&&!hasM)});
+  const steps=[demo=='mats'?'lettura dei materiali':'trascrizione','scaletta','rielaborazione'+(hasM?' con i materiali':'')];if(tg.rev)steps.push('revisione');if(tg.arr)steps.push('arricchimento');if(hasM&&tg.att)steps.push('materiali allegati alle unità');
+  document.getElementById('sentence').textContent=!any?'':tg.solo?"Dopo l'importazione: solo trascrizione":"Dopo l'importazione: "+steps.slice(0,-1).join(', ')+' e '+steps.at(-1)+(showSlots&&list[pick]&&!list[pick][3]?` · collegata a ${M[list[pick][0]][0]} delle ${fmt(list[pick][1])}`:'');
 }
 document.addEventListener('click',e=>{const t=e.target;
   const dm=t.closest('[data-demo]');if(dm){demo=dm.dataset.demo;document.querySelectorAll('[data-demo]').forEach(b=>b.classList.toggle('on',b==dm));manual=false;day=12;pick=1;render();return}
   const p=t.closest('[data-pick]');if(p&&!p.disabled){pick=+p.dataset.pick;render();return}
   const tt=t.closest('[data-t]');if(tt&&!tt.disabled){tg[tt.dataset.t]=!tg[tt.dataset.t];render();return}
+  const mv=t.closest('[data-mv]');if(mv&&!mv.disabled){const[i,dlt]=mv.dataset.mv.split(':').map(Number);const a=audios.splice(i,1)[0];audios.splice(i+dlt,0,a);render();return}
+  const st=t.closest('[data-star]');if(st){star=+st.dataset.star;render();return}
   const rm=t.closest('[data-rm]');if(rm){mats.splice(+rm.dataset.rm,1);if(!mats.length)demo='audio';render();return}
   if(t.closest('#manual')){manual=!manual;render();return}
   if(t.closest('#dprev')){day=Math.max(9,day-1);pick=(DAYS[day]||[]).findIndex(s=>!s[3]);manual=false;render();return}

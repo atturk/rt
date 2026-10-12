@@ -73,6 +73,9 @@ svg{width:18px;height:18px;flex:none}
 .vi{position:relative;width:18px;text-align:center;color:var(--mute);font-weight:700}
 .prev{position:relative;display:inline-grid;place-items:center;color:var(--mute)}.prev svg{width:14px;height:14px}
 .ql{display:grid;gap:4px;border-top:1px solid var(--line);padding-top:10px}.ql div{display:flex;align-items:center;gap:8px;font-size:14px}
+.pn{flex:none;width:18px;height:18px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:11px;font-weight:700;margin-left:-4px}
+.mv{display:none}.row:hover .mv,.row:focus-within .mv{display:flex}.mv .ib{width:26px;height:26px}
+.tg{display:flex;align-items:center;gap:12px;font-size:14px}.tg .n{flex:1;min-width:0}.sw{width:36px;height:20px;border-radius:999px;background:var(--acc);position:relative;border:0;flex:none}.sw::after{content:"";position:absolute;top:2px;left:18px;width:16px;height:16px;border-radius:50%;background:var(--bg);transition:left .15s}.sw[aria-checked="false"]{background:var(--track)}.sw[aria-checked="false"]::after{left:2px}
 .faded{opacity:.45;font-size:13px;color:var(--mute);display:grid;gap:6px}
 /* scena 3: Impostazioni › Materie */
 .set{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:300px}
@@ -114,6 +117,9 @@ svg{width:18px;height:18px;flex:none}
       <li><b>Avviso nel documento</b>: con fonti nuove compare una riga sopra il testo con <b>Aggiorna</b>. Al passaggio del mouse si divide in Estendi e Ricostruisci, come la matita del calendario. Il puntino compare anche sull'icona Dettagli.</li>
       <li><b>Annulla aggiornamento</b>: dopo un aggiornamento la riga resta con l'icona di annullamento finché non apri un'altra lezione o la chiudi con la ×.</li>
       <li><b>Materie</b> (MA1): nuova sezione in Impostazioni. Elenco con quante lezioni ha ogni materia, campo per aggiungere, × solo sulle materie senza lezioni.</li>
+      <li><b>Ordine delle registrazioni</b> (scena 2): le parti audio hanno il numero e, al passaggio del mouse, le frecce su e giù. Una parte nuova si può mettere in qualunque posizione (pausa del prof in mezzo). Spostare parti già usate cambia la lezione, quindi compare la riga Aggiorna con il solo Ricostruisci. I materiali non hanno ordine.</li>
+      <li><b>Materiale principale</b>: senza audio, la stellina indica la fonte (materiale o appunti) che fa da filo della lezione; si sposta con un clic. Quando arriva l'audio diventa lui il principale, e la riga Aggiorna propone Ricostruisci.</li>
+      <li><b>Ricerca web</b> (scena 5): interruttore in Impostazioni › Ricerca web.</li>
       <li><b>Versioni</b> (scena 2): sotto Fonti, chiusa di default. RT tiene le ultime 5 versioni della lezione; l'icona al passaggio del mouse ripristina, con conferma. Anche il ripristino diventa una versione, quindi si può annullare. Lo studio non viene mai cancellato: tornando a una versione, evidenziazioni, note e domande tornano a combaciare.</li>
       <li><b>Studio precedente</b> (scena 4): domande, evidenziazioni e note nate prima che la loro unità cambiasse restano, con una piccola icona e il tooltip "Precedente all'ultima aggiunta di fonti".</li>
       <li><b>Consigliato</b> (QT1): un chip in più nel pannello Domande, separato dagli altri. Genera per ogni unità il tipo che Jev le ha consigliato. I chip di oggi restano come sono.</li>
@@ -163,8 +169,8 @@ svg{width:18px;height:18px;flex:none}
         </div>
       </div>
       <div class="src">
-        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="n">Registrazione · parte 1</span><span class="m">1 h 32 min</span><button class="ib x" data-tip="Togli" aria-label="Togli parte 1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="n">Registrazione · parte 2</span><span class="m">58 min</span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli parte 2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="pn">1</span><span class="n">Registrazione · parte 1</span><span class="m">1 h 32 min</span><span class="mv"><button class="ib" disabled data-tip="Sposta prima" aria-label="Sposta prima"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button><button class="ib" data-tip="Sposta dopo" aria-label="Sposta dopo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></span><button class="ib x" data-tip="Togli" aria-label="Togli parte 1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="pn">2</span><span class="n">Registrazione · parte 2</span><span class="m">58 min</span><span class="mv"><button class="ib" data-tip="Sposta prima" aria-label="Sposta prima"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button><button class="ib" disabled data-tip="Sposta dopo" aria-label="Sposta dopo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli parte 2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
         <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg><span class="n">Appunti di Giulia</span><span class="m">2.140 parole</span><button class="ib x" data-tip="Togli" aria-label="Togli appunti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
         <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg><span class="n">Slide_anemie.pdf</span><span class="m">34 pagine</span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       </div>
@@ -211,6 +217,16 @@ svg{width:18px;height:18px;flex:none}
     </div>
   </section>
 
+
+  <div class="lbl">5 · Impostazioni › Ricerca web</div>
+  <section class="frame set">
+    <nav class="nav"><span>Generali</span><span>Modelli</span><span>Domande</span><span>Materie</span><span class="on">Ricerca web</span></nav>
+    <div class="body">
+      <h2>Ricerca web</h2>
+      <p>Indirizzo SearXNG, prova e immagini restano come oggi. Si aggiunge una riga.</p>
+      <div class="tg"><span class="n">Cerca sul web durante la verifica contestuale<br><span style="font-size:12px;color:var(--mute)">Le fonti con i link compaiono nella voce di verifica. Spenta, la verifica funziona come oggi.</span></span><button class="sw" id="wsw" role="switch" aria-checked="false" aria-label="Ricerca web nella verifica"></button></div>
+    </div>
+  </section>
   <section class="notes"><h2>Decisioni</h2>
     <div class="ask">Deciso il 12 ott: fonti dentro Dettagli; Estendi parte subito, Ricostruisci chiede conferma; versioni e studio precedente nella b2.</div>
   </section>
@@ -272,4 +288,5 @@ function drawChips(){
   qhint.textContent=cur==='consigliato'?'Ogni unità riceve il tipo che Jev le ha consigliato: qui 6 Mirata e 4 Quiz.':'Tutte le unità selezionate ricevono domande '+TYPES.find(t=>t[0]===cur)[1]+', come oggi.';
 }
 drawChips();
+const wsw=document.getElementById('wsw');wsw.onclick=()=>wsw.setAttribute('aria-checked',String(wsw.getAttribute('aria-checked')!=='true'));
 </script>
