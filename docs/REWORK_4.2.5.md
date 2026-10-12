@@ -17,8 +17,8 @@ Il branch beta claude/rt-4.2.5-beta nasce da main dopo la 4.2.4 stabile. Se Atti
 | Lotto | Codex | Antigravity |
 |---|---|---|
 | b1 | LE1 backend + RC1 | CA1 calendario (completo) |
-| b2 | DS1 backend (materiali) | Import nuovo (DS1 + ore del calendario) + interfaccia LE1 nella lezione |
-| b3 | AP1 + WS1 backend | AU1 + PN1 + fonti di WS1 nel pannello |
+| b2 | DS1, MA1, LE1i-k backend (40%) | Interfaccia di tutta la b2 + AP1, WS1, AU1, PN1 completi (60%) |
+| b3 | accorpata nella b2 (Attilio, 12 ott sera) | |
 
 I file sono divisi in modo che i due agenti dello stesso lotto non si tocchino. b2 parte dopo la fusione di b1, b3 dopo b2.
 
@@ -61,8 +61,9 @@ Non toccare rewrite.py, prepare.py, outline.py, segments né le API delle lezion
 ## 4.2.5b2
 
 Branch: Codex su `rt425b2/codex`, Antigravity su `rt425b2/antigravity`, entrambi da claude/rt-4.2.5-beta dopo la b1.1. Wireframe: docs/wireframes-4.2.5/RT-import.html (import) e RT-fonti-materie.html (fonti della lezione, Materie, Consigliato).
-Codex fa tutto il backend, Antigravity tutto il frontend. L'unico punto di contatto è il contratto API qui sotto: Antigravity lo usa con tipi scritti a mano e mock nei test, alla fusione passo io ai tipi generati.
-Migrazioni: solo Codex, revision 0018 con down_revision 0017. Antigravity non ne crea.
+La b3 è accorpata qui (Attilio, 12 ott sera): lavoro diviso 60% Antigravity, 40% Codex. Codex fa il backend di DS1, MA1 e LE1i-k; Antigravity tutta l'interfaccia della b2 e, completi di backend e interfaccia, AP1, WS1, AU1 e PN1. Il punto di contatto è il contratto API qui sotto: Antigravity lo usa con tipi scritti a mano e mock nei test, alla fusione passo io ai tipi generati.
+Migrazioni: solo Codex, revision 0018 con down_revision 0017. Antigravity non ne crea: l'indice FTS5 di AP1 è un dato derivato creato e riempito all'avvio (CREATE VIRTUAL TABLE IF NOT EXISTS) e la chiave di AP1 sta nella configurazione come la chiave API di oggi.
+File di backend di Antigravity: solo i moduli nuovi di AP1, il codice della verifica contestuale (WS1) e quello che serve ad AU1. Codex non li tocca. rt/api/app.py, docs/openapi.json e schema.d.ts li cambiano entrambi: i conflitti li risolvo io.
 Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso una cartella di prova (es. ~/rt-dev-data), mai la ~/.rt vera.
 
 ### Contratto API della b2
@@ -113,13 +114,8 @@ Wireframe RT-fonti-materie.html, scene 1, 2 e 4.
 
 ---
 
-## 4.2.5b3
-
-### Codex · AP1 + WS1 backend
-- AP1: API di sola lettura con la sua openapi.json, servita su 127.0.0.1 (Open WebUI gira sullo stesso Mac). Quattro operazioni: cerca nel testo delle lezioni (SQLite FTS5, filtri materia e date), elenco lezioni, scaletta di una lezione, testo di un'unità. Chiave separata di sola lettura, creata e revocata da Impostazioni (nuova riga nella sezione esistente). Guida breve in docs per collegare Open WebUI.
-- WS1: durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta.
-
-### Antigravity · AU1 + PN1 + fonti WS1
-- AU1 (docs/wireframes-4.2.5/RT-audio-linea.html): nella pagina della lezione, linea verticale di 2 px a destra dell'unità che si ascolta, che avanza contando solo il parlato. Il lettore resta in basso. Solo pagina della lezione.
-- PN1 (docs/wireframes-4.2.5/RT-pannelli.html): cambiano solo contenitore (staccato di 8 px, angoli stondati, ombra, X) e animazioni (entrata e uscita da destra con dissolvenza, dissolvenza al cambio di pannello; dal basso su iPhone). Il contenuto di ogni pannello resta identico.
-- WS1: sezione Fonti con i link nella voce di verifica del pannello Verifiche e domande.
+### Antigravity · AP1, WS1, AU1, PN1 (dalla b3, completi)
+- **AP1:** API di sola lettura con la sua openapi.json, servita su 127.0.0.1 (Open WebUI gira sullo stesso Mac). Quattro operazioni: cerca nel testo delle lezioni (SQLite FTS5, filtri materia e date), elenco lezioni, scaletta di una lezione, testo di un'unità. Chiave separata di sola lettura, creata e revocata da Impostazioni (nuova riga nella sezione esistente). Guida breve in docs per collegare Open WebUI.
+- **WS1:** durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta e si vedono in una sezione Fonti nella voce di verifica del pannello Verifiche e domande. Senza SearXNG configurato la verifica funziona come oggi.
+- **AU1** (docs/wireframes-4.2.5/RT-audio-linea.html): nella pagina della lezione, linea verticale di 2 px a destra dell'unità che si ascolta, che avanza contando solo il parlato. Il lettore resta in basso. Solo pagina della lezione.
+- **PN1** (docs/wireframes-4.2.5/RT-pannelli.html): cambiano solo contenitore (staccato di 8 px, angoli stondati, ombra, X) e animazioni (entrata e uscita da destra con dissolvenza, dissolvenza al cambio di pannello; dal basso su iPhone). Il contenuto di ogni pannello resta identico.
