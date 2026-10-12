@@ -1,5 +1,10 @@
 # Novità di RT
 
+## 4.2.5b2 — 2026-10-12
+
+### Novità
+- Le materie si possono registrare anche prima di creare lezioni; l’elenco riunisce lezioni e calendario senza duplicati.
+
 ## 4.2.5b1.1 — 2026-10-12
 
 ### Correzioni
