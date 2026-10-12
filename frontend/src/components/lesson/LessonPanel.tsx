@@ -70,32 +70,34 @@ export function LessonPanel({
       aria-label={panelTitle}
       data-testid="lesson-panel"
       data-view={view}
-      className="fixed bottom-0 right-0 top-(--header-height) z-10 flex w-[min(24rem,100vw)] flex-col overflow-y-auto border-l bg-background px-4 pb-6 pt-3 shadow-panel max-md:top-auto max-md:max-h-[80dvh] max-md:rounded-t-xl max-md:border-t max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
+      className="fixed z-30 flex flex-col overflow-y-auto bg-background px-4 pb-6 pt-3 rt-panel-container max-md:max-h-[80dvh] max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
     >
       <div className="mb-3 flex items-center gap-2">
         <h2 className="min-w-0 flex-1 text-body font-semibold">{panelTitle}</h2>
         <IconButton label="Chiudi il pannello" icon={X} onClick={onClose} className="-mr-2" />
       </div>
-      {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
-      {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} />}
-      {view === 'domande' && (
-        <QuestionsPanel
-          lessonId={lesson.id}
-          selectedUnits={selectionContext?.units}
-          selectedText={selectionContext?.text}
-          onSwitchToClassifier={() => onSwitchView?.('classificatore')}
-          onClearSelection={onClearSelection}
-        />
-      )}
-      {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
-      {view === 'arricchimento' && <EnrichmentPanel lessonId={lesson.id} />}
-      {view === 'note' && (
-        <StudyNotesPanel
-          lessonId={lesson.id}
-          selectedNoteId={selectedNoteId}
-          onSelectNote={onSelectNote}
-        />
-      )}
+      <div key={view} className="rt-panel-body-switch flex flex-col flex-1">
+        {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
+        {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} />}
+        {view === 'domande' && (
+          <QuestionsPanel
+            lessonId={lesson.id}
+            selectedUnits={selectionContext?.units}
+            selectedText={selectionContext?.text}
+            onSwitchToClassifier={() => onSwitchView?.('classificatore')}
+            onClearSelection={onClearSelection}
+          />
+        )}
+        {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
+        {view === 'arricchimento' && <EnrichmentPanel lessonId={lesson.id} />}
+        {view === 'note' && (
+          <StudyNotesPanel
+            lessonId={lesson.id}
+            selectedNoteId={selectedNoteId}
+            onSelectNote={onSelectNote}
+          />
+        )}
+      </div>
     </aside>
   )
 }

@@ -367,6 +367,69 @@
   --atomic-editor-selection-bg: color-mix(in oklch, var(--success) 35%, transparent);
 }
 
+/* PN1: Pannelli staccati dai bordi, angoli stondati 16px, ombra e animazioni */
+@keyframes rt-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes rt-panel-switch {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rt-panel-container {
+  top: calc(var(--header-height) + 8px);
+  right: 8px;
+  bottom: 8px;
+  width: min(24rem, calc(100vw - 16px));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  transform-origin: top right;
+  animation: rt-panel-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.rt-panel-body-switch {
+  animation: rt-panel-switch 240ms ease-out both;
+}
+
+@media (max-width: 767px) {
+  .rt-panel-container {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-top: 1px solid var(--border);
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-panel-container,
+  .rt-panel-body-switch {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* Campi segreti (components/ui/secret-input.tsx): testo mascherato senza type="password",
  * così Safari non propone le password del portachiavi. */
 .secret-mask {
