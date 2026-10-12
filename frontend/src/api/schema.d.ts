@@ -3524,6 +3524,8 @@ export interface components {
         };
         /** Body_create_lesson_api_v1_lessons_post */
         Body_create_lesson_api_v1_lessons_post: {
+            /** Allega Materiali */
+            allega_materiali?: boolean | null;
             /**
              * Appunti
              * @description Testo per creare una lezione senza audio
@@ -3546,6 +3548,10 @@ export interface components {
              * @default false
              */
             auto_accept: boolean;
+            /** Calendar Date */
+            calendar_date?: string | null;
+            /** Calendar Entry Id */
+            calendar_entry_id?: string | null;
             /**
              * Date
              * @description Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')
@@ -3560,6 +3566,11 @@ export interface components {
             /** Materia */
             materia: string;
             /**
+             * Materiali
+             * @default []
+             */
+            materiali: string[];
+            /**
              * Mock
              * @default false
              */
@@ -3570,6 +3581,8 @@ export interface components {
              * @default
              */
             ora: string;
+            /** Principale */
+            principale?: string | null;
             /**
              * Run
              * @description True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')

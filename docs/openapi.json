@@ -369,6 +369,17 @@
       },
       "Body_create_lesson_api_v1_lessons_post": {
         "properties": {
+          "allega_materiali": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allega Materiali"
+          },
           "appunti": {
             "default": "",
             "description": "Testo per creare una lezione senza audio",
@@ -395,6 +406,28 @@
             "title": "Auto Accept",
             "type": "boolean"
           },
+          "calendar_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Date"
+          },
+          "calendar_entry_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Entry Id"
+          },
           "date": {
             "description": "Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')",
             "title": "Date",
@@ -410,6 +443,15 @@
             "title": "Materia",
             "type": "string"
           },
+          "materiali": {
+            "default": [],
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Materiali",
+            "type": "array"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -421,6 +463,17 @@
             "pattern": "^(?:(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
             "title": "Ora",
             "type": "string"
+          },
+          "principale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principale"
           },
           "run": {
             "default": false,

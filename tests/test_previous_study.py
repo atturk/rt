@@ -44,3 +44,19 @@ def test_recall_previous_across_every_question_view(tmp_path):
     assert question_resume_view(lesson, question)['precedente']
     assert recall_history(lesson)['questions'][0]['precedente']
     assert question_list(lesson)['questions'][0]['precedente']
+
+
+def test_legacy_question_local_time_is_compared_to_utc_change(tmp_path, monkeypatch):
+    import time
+    if not hasattr(time, 'tzset'):
+        return
+    _write_state(str(tmp_path), {'next_segment': 1, 'sources': {},
+        'unit_changed_at': {'1.1': '2026-10-12T09:00:00+00:00'}})
+    try:
+        with monkeypatch.context() as patch:
+            patch.setenv('TZ', 'Europe/Rome')
+            time.tzset()
+            assert is_previous(str(tmp_path), ['1.1'], '2026-10-12T10:30:00')
+            assert not is_previous(str(tmp_path), ['1.1'], '2026-10-12T11:30:00')
+    finally:
+        time.tzset()

@@ -9,7 +9,8 @@ def is_previous(lesson_dir, unit_ids, created_at):
         return False
     created = datetime.fromisoformat(created_at) if isinstance(created_at, str) else created_at
     if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
+        # Domande storiche: datetime.now() locale senza offset; righe DB: UTC senza offset.
+        created = created.astimezone(timezone.utc) if isinstance(created_at, str) else created.replace(tzinfo=timezone.utc)
     changes = _read_state(lesson_dir).get("unit_changed_at", {})
     return any(uid in changes and created < datetime.fromisoformat(changes[uid]) for uid in unit_ids)
 

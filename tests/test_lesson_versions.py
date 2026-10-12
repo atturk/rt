@@ -43,12 +43,20 @@ def test_restore_preserves_database_study_data_and_matches_original_text(rt_db, 
     write(lesson, 'draft.json', 'Il testo originale evidenziato')
     first = record_version(lesson, 'import')
     highlight = add_highlight(lid, '1.1', 1, {'text': 'originale evidenziato'})
+    from rt.services.study_notes_service import add_study_note, list_study_notes
+    from rt.core.models import RecallBank, RecallQuestion
+    from rt.pipeline.recall import save_recall_bank, load_recall_bank
+    note = add_study_note(lid, '1.1', 'chiedi', {'quote': 'originale'}, response={'answer': 'studio'})
+    question = RecallQuestion(id='q1', type='mirata', unit_ids=['1.1'], question_text='Domanda conservata')
+    save_recall_bank(RecallBank(questions=[question]), lesson)
     write(lesson, 'draft.json', 'Ricostruzione con testo diverso')
     record_version(lesson, 'rebuild')
     restore_version(lesson, first)
     assert list_highlights(lid, None) == [highlight]
     assert highlight['source']['text'] in read(lesson, 'draft.json')
     assert list_units(lid)[0]['status'] == 'studiata'
+    assert list_study_notes(lid) == [note]
+    assert load_recall_bank(lesson).questions == [question]
 
 
 def test_rebuild_then_restore_previous_version_preserves_highlights(api_client, rt_db, tmp_path, monkeypatch):

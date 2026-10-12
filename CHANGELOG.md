@@ -3,7 +3,13 @@
 ## 4.2.5b2 — 2026-10-12
 
 ### Novità
-- Le materie si possono registrare anche prima di creare lezioni; l’elenco riunisce lezioni e calendario senza duplicati.
+- Le materie si possono registrare anche prima di creare lezioni; l’elenco riunisce lezioni e calendario senza duplicati e ricorda le materie delle nuove lezioni e ore.
+- Le fonti mostrano nome, durata, pagine o parole e indicano quali non sono ancora state usate. Dopo un aggiornamento resta il riepilogo delle unità nuove e cambiate.
+- Puoi aggiungere PDF, foto e PowerPoint a una lezione, oppure partire solo da materiali. Il loro contenuto aiuta la rielaborazione; con la graffetta accesa, le pagine pertinenti vengono allegate come immagini.
+- Puoi scegliere la fonte principale e riordinare le parti audio. Le parti nuove si possono estendere; cambiare l’ordine già usato o la principale richiede di ricostruire. Rimettendo tutto com’era torna disponibile Estendi.
+- Le ultime cinque versioni precedenti della lezione si possono ripristinare. Prima del ripristino viene salvato lo stato attuale; evidenziazioni, note, domande e avanzamento di studio restano nel database.
+- Note, evidenziazioni e domande create prima di un cambiamento dell’unità sono indicate come precedenti.
+- L’import accetta insieme audio e materiali, rispetta l’ordine delle registrazioni e può collegare la lezione all’ora scelta nel calendario.
 
 ## 4.2.5b1.1 — 2026-10-12
 
