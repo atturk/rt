@@ -982,3 +982,42 @@ def put_classifier_settings(body: ClassifierConfig, actor: Actor):
     write_classifier(data, body)
     config_service.write_yaml_atomic(path, data)
     return body
+
+
+# ---------------------------------------------------------------- chiave sola lettura (AP1)
+
+class ReadonlyKeyInfo(BaseModel):
+    configured: bool
+    created_at: Optional[str] = None
+    key_preview: Optional[str] = None
+
+
+class ReadonlyKeyCreated(BaseModel):
+    key: str
+    created_at: str
+    key_preview: str
+
+
+class ReadonlyKeyRevoked(BaseModel):
+    ok: bool = True
+
+
+@router.get("/settings/readonly-key", response_model=ReadonlyKeyInfo, summary="Informazioni sulla chiave di sola lettura (AP1)")
+def get_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import get_readonly_key_info
+    return get_readonly_key_info()
+
+
+@router.post("/settings/readonly-key", response_model=ReadonlyKeyCreated, summary="Crea o rigenera la chiave di sola lettura (AP1)")
+def post_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import create_readonly_key, get_readonly_key_info
+    token = create_readonly_key()
+    info = get_readonly_key_info()
+    return ReadonlyKeyCreated(key=token, created_at=info["created_at"] or "", key_preview=info["key_preview"] or "")
+
+
+@router.delete("/settings/readonly-key", response_model=ReadonlyKeyRevoked, summary="Revoca la chiave di sola lettura (AP1)")
+def delete_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import revoke_readonly_key
+    revoke_readonly_key()
+    return ReadonlyKeyRevoked(ok=True)

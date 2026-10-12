@@ -3233,6 +3233,24 @@
             ],
             "title": "Relevance"
           },
+          "speech_segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tratti di parlato [inizio, fine] in secondi per la linea audio",
+            "title": "Speech Segments"
+          },
           "start_formatted": {
             "anyOf": [
               {
@@ -5319,6 +5337,67 @@
         "title": "LessonMetadataUpdate",
         "type": "object"
       },
+      "LessonOutline": {
+        "properties": {
+          "lesson_id": {
+            "description": "ID della lezione",
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "Materia",
+            "title": "Subject",
+            "type": "string"
+          },
+          "title": {
+            "description": "Titolo della lezione",
+            "title": "Title",
+            "type": "string"
+          },
+          "units": {
+            "description": "Elenco delle unità della lezione",
+            "items": {
+              "$ref": "#/components/schemas/LessonOutlineUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "title",
+          "subject",
+          "units"
+        ],
+        "title": "LessonOutline",
+        "type": "object"
+      },
+      "LessonOutlineUnit": {
+        "properties": {
+          "order": {
+            "description": "Ordine sequenziale",
+            "title": "Order",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Titolo dell'unità",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "description": "Identificativo dell'unità",
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "title",
+          "order"
+        ],
+        "title": "LessonOutlineUnit",
+        "type": "object"
+      },
       "LessonRecallStats": {
         "properties": {
           "answers": {
@@ -5370,6 +5449,50 @@
           "answers"
         ],
         "title": "LessonRecallStats",
+        "type": "object"
+      },
+      "LessonSearchResult": {
+        "properties": {
+          "date": {
+            "description": "Data della lezione (YYYY-MM-DD)",
+            "title": "Date",
+            "type": "string"
+          },
+          "lesson_id": {
+            "description": "ID della lezione",
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "snippet": {
+            "description": "Estratto con parole cercate evidenziate",
+            "title": "Snippet",
+            "type": "string"
+          },
+          "subject": {
+            "description": "Materia",
+            "title": "Subject",
+            "type": "string"
+          },
+          "title": {
+            "description": "Titolo dell'unità o della lezione",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "description": "ID dell'unità",
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "unit_id",
+          "subject",
+          "date",
+          "title",
+          "snippet"
+        ],
+        "title": "LessonSearchResult",
         "type": "object"
       },
       "LessonSummary": {
@@ -5538,6 +5661,38 @@
           "phases"
         ],
         "title": "LessonSummary",
+        "type": "object"
+      },
+      "LessonUnitText": {
+        "properties": {
+          "content": {
+            "description": "Testo completo dell'unità",
+            "title": "Content",
+            "type": "string"
+          },
+          "lesson_id": {
+            "description": "ID della lezione",
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Titolo dell'unità",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit_id": {
+            "description": "Identificativo dell'unità",
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "unit_id",
+          "title",
+          "content"
+        ],
+        "title": "LessonUnitText",
         "type": "object"
       },
       "ListenMessages": {
@@ -6514,6 +6669,125 @@
           "correct"
         ],
         "title": "QuizResult",
+        "type": "object"
+      },
+      "ReadonlyKeyCreated": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "key_preview": {
+            "title": "Key Preview",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "created_at",
+          "key_preview"
+        ],
+        "title": "ReadonlyKeyCreated",
+        "type": "object"
+      },
+      "ReadonlyKeyInfo": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "key_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Preview"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "ReadonlyKeyInfo",
+        "type": "object"
+      },
+      "ReadonlyKeyRevoked": {
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "ReadonlyKeyRevoked",
+        "type": "object"
+      },
+      "ReadonlyLessonSummary": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data di creazione",
+            "title": "Created At"
+          },
+          "date": {
+            "description": "Data della lezione",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "description": "ID della lezione",
+            "title": "Id",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "Materia",
+            "title": "Subject",
+            "type": "string"
+          },
+          "title": {
+            "description": "Titolo della lezione",
+            "title": "Title",
+            "type": "string"
+          },
+          "workflow_state": {
+            "description": "Stato della lezione",
+            "title": "Workflow State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "subject",
+          "date",
+          "workflow_state"
+        ],
+        "title": "ReadonlyLessonSummary",
         "type": "object"
       },
       "RecallAnswer": {
@@ -10088,6 +10362,18 @@
       },
       "WebSearchIn": {
         "properties": {
+          "contextual_verification": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cerca sul web durante la verifica contestuale",
+            "title": "Contextual Verification"
+          },
           "searxng_base_url": {
             "default": "",
             "description": "Vuoto per rimuoverlo",
@@ -10100,6 +10386,12 @@
       },
       "WebSearchSettings": {
         "properties": {
+          "contextual_verification": {
+            "default": false,
+            "description": "Cerca sul web durante la verifica contestuale",
+            "title": "Contextual Verification",
+            "type": "boolean"
+          },
           "searxng_base_url": {
             "anyOf": [
               {
@@ -10272,7 +10564,7 @@
     },
     "securitySchemes": {
       "HTTPBearer": {
-        "description": "Token mostrato da 'rt api' al primo avvio",
+        "description": "Chiave di sola lettura per Open WebUI",
         "scheme": "bearer",
         "type": "http"
       }
@@ -23385,6 +23677,510 @@
         ]
       }
     },
+    "/api/v1/readonly/lessons": {
+      "get": {
+        "description": "Restituisce l'elenco delle lezioni registrate, ordinabili con filtri per materia e date.",
+        "operationId": "listLessons",
+        "parameters": [
+          {
+            "description": "Filtro per materia",
+            "in": "query",
+            "name": "subject",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtro per materia",
+              "title": "Subject"
+            }
+          },
+          {
+            "description": "Data minima (YYYY-MM-DD)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data minima (YYYY-MM-DD)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Data massima (YYYY-MM-DD)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data massima (YYYY-MM-DD)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Numero massimo di lezioni",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Numero massimo di lezioni",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReadonlyLessonSummary"
+                  },
+                  "title": "Response Listlessons",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elenco lezioni",
+        "tags": [
+          "readonly"
+        ]
+      }
+    },
+    "/api/v1/readonly/lessons/search": {
+      "get": {
+        "description": "Esegue una ricerca full-text nelle unità delle lezioni con filtri opzionali su materia e date.",
+        "operationId": "searchLessons",
+        "parameters": [
+          {
+            "description": "Testo o parole chiave da cercare",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Testo o parole chiave da cercare",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtra per materia (es. BIOCHIMICA)",
+            "in": "query",
+            "name": "subject",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtra per materia (es. BIOCHIMICA)",
+              "title": "Subject"
+            }
+          },
+          {
+            "description": "Data minima (YYYY-MM-DD)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data minima (YYYY-MM-DD)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Data massima (YYYY-MM-DD)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data massima (YYYY-MM-DD)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Numero massimo di risultati",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Numero massimo di risultati",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LessonSearchResult"
+                  },
+                  "title": "Response Searchlessons",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cerca nel testo delle lezioni",
+        "tags": [
+          "readonly"
+        ]
+      }
+    },
+    "/api/v1/readonly/lessons/{lesson_id}/outline": {
+      "get": {
+        "description": "Restituisce la scaletta e i titoli delle unità della lezione indicata.",
+        "operationId": "getLessonOutline",
+        "parameters": [
+          {
+            "description": "ID univoco della lezione",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "ID univoco della lezione",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonOutline"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scaletta di una lezione",
+        "tags": [
+          "readonly"
+        ]
+      }
+    },
+    "/api/v1/readonly/lessons/{lesson_id}/units/{unit_id}": {
+      "get": {
+        "description": "Restituisce il contenuto testuale completo dell'unità richiesta.",
+        "operationId": "getLessonUnit",
+        "parameters": [
+          {
+            "description": "ID univoco della lezione",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "ID univoco della lezione",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "ID dell'unità (es. 1.1)",
+            "in": "path",
+            "name": "unit_id",
+            "required": true,
+            "schema": {
+              "description": "ID dell'unità (es. 1.1)",
+              "title": "Unit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonUnitText"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Testo di un'unità",
+        "tags": [
+          "readonly"
+        ]
+      }
+    },
     "/api/v1/recall/subject": {
       "get": {
         "operationId": "subject_state_api_v1_recall_subject_get",
@@ -26657,6 +27453,230 @@
         ]
       }
     },
+    "/api/v1/settings/readonly-key": {
+      "delete": {
+        "operationId": "delete_readonly_key_api_v1_settings_readonly_key_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadonlyKeyRevoked"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoca la chiave di sola lettura (AP1)",
+        "tags": [
+          "impostazioni"
+        ]
+      },
+      "get": {
+        "operationId": "get_readonly_key_api_v1_settings_readonly_key_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadonlyKeyInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Informazioni sulla chiave di sola lettura (AP1)",
+        "tags": [
+          "impostazioni"
+        ]
+      },
+      "post": {
+        "operationId": "post_readonly_key_api_v1_settings_readonly_key_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadonlyKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Crea o rigenera la chiave di sola lettura (AP1)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/routes/{job}/{role}": {
       "get": {
         "operationId": "get_route_api_v1_settings_routes__job___role__get",
@@ -28331,7 +29351,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Ricerca web: URL base di SearXNG",
+        "summary": "Ricerca web: URL base di SearXNG e verifica contestuale",
         "tags": [
           "impostazioni"
         ]

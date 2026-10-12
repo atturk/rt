@@ -243,3 +243,45 @@ export function useTopicTest(topicId: string, materia: string) {
   return { test, valid, run: () => test.mutate({ topic_id: Number(topicId.trim()), materia: materia.trim() }) }
 }
 
+// ---------------------------------------------------------------- chiave sola lettura (AP1)
+
+export interface ReadonlyKeyInfo {
+  configured: boolean
+  created_at?: string | null
+  key_preview?: string | null
+}
+
+export interface ReadonlyKeyCreated {
+  key: string
+  created_at: string
+  key_preview: string
+}
+
+export function useReadonlyKey() {
+  return useQuery({
+    queryKey: ['settings', 'readonly-key'],
+    queryFn: () => unwrap((api as any).GET('/api/v1/settings/readonly-key')) as Promise<ReadonlyKeyInfo>,
+  })
+}
+
+export function useCreateReadonlyKey() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap((api as any).POST('/api/v1/settings/readonly-key')) as Promise<ReadonlyKeyCreated>,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
+    },
+  })
+}
+
+export function useRevokeReadonlyKey() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap((api as any).DELETE('/api/v1/settings/readonly-key')),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
+    },
+  })
+}
+
+

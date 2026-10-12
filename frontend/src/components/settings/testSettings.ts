@@ -9,7 +9,7 @@ export const testSettings: Settings = {
   connections: [{ name: 'locale', provider: 'openai_compatible', base_url: 'http://localhost:9/v1', models: ['test'], credentials: [{ name: 'locale_1', set: true }] }],
   credentials: [{ name: 'locale_1', provider: 'openai_compatible', env_var: 'RT_LOCALE_1_API_KEY', set: true }],
   phases: ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image'].map(job => ({ job, label: job, connection: 'locale', model: 'test' })),
-  pricing: {}, web_search: { searxng_base_url: '' },
+  pricing: {}, web_search: { searxng_base_url: '', contextual_verification: false },
 }
 export const enrichmentSettings = { mode: 'manual' as const, automatic: false, cap_mode: 'fixed' as const, cap_number: 5, utility_threshold: 0.5,
   decision_model: 'jev/test', decision_credential: 'locale_1', decision_base_url: 'http://localhost:9/v1' }

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Copy } from 'lucide-react'
 import { encode } from 'uqr'
 
 import { errorMessage } from '@/api/client'
 import { useLoginLink, useTailnet } from '@/api/hooks'
+import { useCreateReadonlyKey, useReadonlyKey, useRevokeReadonlyKey } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { formatDateTime } from '@/lib/format'
 import {
   deviceLoginUrl,
   isHttpsIp,
@@ -107,7 +111,139 @@ export function DeviceAccessSection() {
       </div>
       {loginLink.isError && <Alert tone="danger">{errorMessage(loginLink.error)}</Alert>}
       {link && <LinkQr key={link.url} url={link.url} expiresAt={link.expiresAt} />}
+
+      <ReadonlyKeyManager />
     </Section>
+  )
+}
+
+function ReadonlyKeyManager() {
+  const query = useReadonlyKey()
+  const createKey = useCreateReadonlyKey()
+  const revokeKey = useRevokeReadonlyKey()
+  const [newKey, setNewKey] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [confirmRevoke, setConfirmRevoke] = useState(false)
+
+  const handleCreate = () => {
+    createKey.mutate(undefined, {
+      onSuccess: (data) => {
+        setNewKey(data.key)
+      },
+    })
+  }
+
+  const handleRevoke = () => {
+    revokeKey.mutate(undefined, {
+      onSuccess: () => {
+        setConfirmRevoke(false)
+        setNewKey(null)
+      },
+    })
+  }
+
+  const copyToClipboard = (text: string) => {
+    void navigator.clipboard?.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const info = query.data
+
+  return (
+    <div className="mt-8 border-t border-border/60 pt-6" data-testid="readonly-api-section">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-body font-semibold text-foreground">API di sola lettura (Open WebUI)</h3>
+        <p className="text-meta text-muted-foreground">
+          Chiave separata di sola lettura per consultare le lezioni su 127.0.0.1 con Open WebUI o assistenti locali.
+        </p>
+      </div>
+
+      {newKey && (
+        <div className="mt-3 rounded-lg border border-ok/40 bg-ok/5 p-3" data-testid="readonly-key-created-box">
+          <p className="text-meta font-medium text-ok">Nuova chiave generata (mostrata solo ora):</p>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="rounded bg-background px-2 py-1 font-mono text-body text-foreground border break-all">
+              {newKey}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => copyToClipboard(newKey)}
+              className="gap-1 shrink-0"
+              data-testid="copy-readonly-key"
+            >
+              <Copy className="size-3.5" aria-hidden /> {copied ? 'Copiata!' : 'Copia'}
+            </Button>
+          </div>
+          <p className="mt-2 text-meta text-muted-foreground">
+            Incolla questa chiave nell'Action/Tool di Open WebUI come Bearer token.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-body">
+          <span className="font-medium text-foreground">Stato chiave:</span>
+          {info?.configured ? (
+            <span className="inline-flex items-center gap-1.5 text-ok font-medium" data-testid="readonly-key-status">
+              <span className="size-2 rounded-full bg-ok" />
+              Attiva ({info.key_preview})
+              {info.created_at && (
+                <span className="text-meta text-muted-foreground font-normal">
+                  · creata {formatDateTime(info.created_at)}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-muted-foreground" data-testid="readonly-key-status">Non configurata</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant={info?.configured ? 'outline' : 'default'}
+            size="sm"
+            onClick={handleCreate}
+            disabled={createKey.isPending}
+            data-testid="btn-create-readonly-key"
+          >
+            {info?.configured ? 'Rigenera chiave' : 'Genera chiave'}
+          </Button>
+
+          {info?.configured && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setConfirmRevoke(true)}
+              disabled={revokeKey.isPending}
+              data-testid="btn-revoke-readonly-key"
+            >
+              Revoca
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 text-meta text-muted-foreground">
+        URL specifica OpenAPI:{' '}
+        <code className="text-foreground">http://127.0.0.1:8765/api/v1/readonly/openapi.json</code>
+      </div>
+
+      <ConfirmDialog
+        open={confirmRevoke}
+        title="Revoca chiave di sola lettura"
+        confirmLabel="Revoca"
+        confirmDisabled={revokeKey.isPending}
+        onCancel={() => setConfirmRevoke(false)}
+        onConfirm={handleRevoke}
+      >
+        <p>Revocare la chiave di sola lettura?</p>
+        <p className="mt-2 text-meta text-muted-foreground">
+          Open WebUI e gli altri client locali non potranno più accedere alle lezioni finché non generi una nuova chiave.
+        </p>
+      </ConfirmDialog>
+    </div>
   )
 }
 
