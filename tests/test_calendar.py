@@ -2,6 +2,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from sqlalchemy import select
+
 from rt.api import schemas
 from rt.api.app import create_app
 from rt.services import calendar_service
@@ -279,3 +281,128 @@ def test_api_calendar_endpoints(client, rt_db):
     # Cleanup
     assert client.delete(f"/api/v1/calendar/override/{ov_id}").status_code == 204
     assert client.delete(f"/api/v1/calendar/template/{tpl_id}").status_code == 204
+
+
+def test_automatic_lesson_link(tmp_path, rt_db):
+    """CA1b: Una lezione con stessa data, ora e materia si collega automaticamente all'ora e la segna Seguita."""
+    tpl = calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(
+            day_of_week=0,  # Lunedì
+            start_time="09:30",
+            end_time="11:30",
+            materia="Data Mining",
+            docente="Prof. Ferraris",
+        ),
+        db=rt_db,
+    )
+
+    lesson_dir = tmp_path / "2026-10-12-data-mining"
+    lesson_dir.mkdir()
+    (lesson_dir / "info.yaml").write_text(
+        "data: '2026-10-12'\nora: '09:30'\nmateria: 'Data Mining'\ntitolo: 'Clustering gerarchico'\n",
+        encoding="utf-8",
+    )
+
+    from rt.db.session import session_scope
+    from rt.db.repositories import LessonRepository
+    from rt.db.models import CalendarEntryState, StudyUnit
+
+    with session_scope(rt_db) as s:
+        lesson = LessonRepository(s).get_or_create(str(lesson_dir))
+        lesson.data = "2026-10-12"
+        lesson.materia = "DATA MINING"
+        lesson.titolo = "Clustering gerarchico"
+        # Aggiunge 3 unità: 2 apprese, 1 da-imparare
+        s.add(StudyUnit(lesson_id=lesson.id, unit_id="u1", status="appreso"))
+        s.add(StudyUnit(lesson_id=lesson.id, unit_id="u2", status="appreso"))
+        s.add(StudyUnit(lesson_id=lesson.id, unit_id="u3", status="da-imparare"))
+
+    # Verifica week view
+    week = calendar_service.get_week_view("2026-10-12", db=rt_db)
+    monday = week.days[0]
+    assert len(monday.events) == 1
+    ev = monday.events[0]
+
+    assert ev.status == "seguita"
+    assert ev.is_recorded is True
+    assert ev.lesson is not None
+    assert ev.lesson.titolo == "Clustering gerarchico"
+    assert ev.lesson.units_learned == 2
+    assert ev.lesson.units_total == 3
+
+    # Nel DB calendar_entry_states non dev'esserci alcun record scritto a mano
+    with session_scope(rt_db) as s:
+        row = s.scalars(select(CalendarEntryState).where(CalendarEntryState.date == "2026-10-12")).first()
+        assert row is None or not row.manual_link
+
+
+def test_manual_link_wins_over_automatic(tmp_path, rt_db):
+    """CA1b: Il collegamento fatto a mano vince su quello calcolato."""
+    tpl = calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(
+            day_of_week=0,  # Lunedì
+            start_time="09:30",
+            end_time="11:30",
+            materia="Data Mining",
+        ),
+        db=rt_db,
+    )
+
+    # Lezione automatica che corrisponderebbe
+    auto_dir = tmp_path / "auto_lesson"
+    auto_dir.mkdir()
+    (auto_dir / "info.yaml").write_text("data: '2026-10-12'\nora: '09:30'\nmateria: 'Data Mining'\ntitolo: 'Auto'\n")
+
+    # Lezione manuale diversa
+    manual_dir = tmp_path / "manual_lesson"
+    manual_dir.mkdir()
+    (manual_dir / "info.yaml").write_text("data: '2026-10-10'\nora: '15:00'\nmateria: 'Generale'\ntitolo: 'Manuale'\n")
+
+    from rt.db.session import session_scope
+    from rt.db.repositories import LessonRepository
+
+    with session_scope(rt_db) as s:
+        l_auto = LessonRepository(s).get_or_create(str(auto_dir))
+        l_auto.data = "2026-10-12"
+        l_auto.materia = "DATA MINING"
+        l_auto.titolo = "Auto"
+
+        l_man = LessonRepository(s).get_or_create(str(manual_dir))
+        l_man.data = "2026-10-10"
+        l_man.materia = "GENERALE"
+        l_man.titolo = "Manuale"
+        man_id = l_man.id
+
+    # Collega manualmente la lezione manuale
+    calendar_service.link_lesson(
+        schemas.CalendarLinkLessonRequest(
+            date="2026-10-12",
+            entry_key=f"tpl_{tpl.id}",
+            lesson_id=man_id,
+        ),
+        db=rt_db,
+    )
+
+    week = calendar_service.get_week_view("2026-10-12", db=rt_db)
+    ev = week.days[0].events[0]
+    assert ev.lesson is not None
+    assert ev.lesson.id == man_id
+    assert ev.lesson.titolo == "Manuale"
+    assert ev.status == "seguita"
+
+    # Se l'utente scollega a mano la lezione (lesson_id=None con manual_link=True)
+    calendar_service.link_lesson(
+        schemas.CalendarLinkLessonRequest(
+            date="2026-10-12",
+            entry_key=f"tpl_{tpl.id}",
+            lesson_id=None,
+        ),
+        db=rt_db,
+    )
+
+    week_unlinked = calendar_service.get_week_view("2026-10-12", db=rt_db)
+    ev_unlinked = week_unlinked.days[0].events[0]
+    # Lo scollegamento manuale vince: non deve ripescare la lezione automatica
+    assert ev_unlinked.lesson is None
+    assert ev_unlinked.is_recorded is False
+

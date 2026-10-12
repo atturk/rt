@@ -320,15 +320,17 @@ def link_lesson(
                 template_entry_id=data.template_entry_id,
                 override_id=data.override_id,
                 lesson_id=data.lesson_id,
-                manual_link=data.lesson_id is not None,
+                manual_link=True,
                 status="seguita" if data.lesson_id is not None else None,
             )
             session.add(row)
         else:
             row.lesson_id = data.lesson_id
-            row.manual_link = data.lesson_id is not None
+            row.manual_link = True
             if data.lesson_id is not None:
                 row.status = "seguita"
+            elif row.status == "seguita":
+                row.status = None
         session.flush()
         return schemas.CalendarEntryStateView(
             id=row.id,
@@ -341,6 +343,7 @@ def link_lesson(
             lesson_id=row.lesson_id,
             manual_link=row.manual_link,
         )
+
 
 
 # ---------------------------------------------------------------------------
