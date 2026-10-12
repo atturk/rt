@@ -366,3 +366,15 @@ def test_legacy_edit_date_survives_title_only_save(root):
     save_document_edit(lesson_dir, '\n'.join(lines))
     assert edited_unit_dates(lesson_dir)['1.1'] == date
     assert 'Testo corretto.' in _preview(lesson_dir)
+
+
+def test_document_sections_includes_speech_segments(root):
+    lesson_dir = _synthetic_lesson(root, {'1.1': 'Testo uno.', '1.2': 'Testo due.'})
+    sections = document_sections(lesson_dir)
+    assert len(sections) >= 1
+    assert "speech_segments" in sections[0]
+    if sections[0]["speech_segments"] is not None:
+        assert isinstance(sections[0]["speech_segments"], list)
+        for seg in sections[0]["speech_segments"]:
+            assert len(seg) == 2
+            assert seg[1] >= seg[0]

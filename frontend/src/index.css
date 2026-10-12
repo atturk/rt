@@ -323,6 +323,35 @@
 .dark .rt-document .rt-unit-active {
   box-shadow: -12px 0 0 -9px var(--link);
 }
+/* AU1: Linea audio fra le unità (2px verticale a destra dell'unità in ascolto) */
+.rt-audio-line {
+  position: absolute;
+  right: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 5;
+}
+.rt-audio-line.cur {
+  background: var(--track, #e6e6e6);
+}
+.dark .rt-audio-line.cur {
+  background: var(--track, #3a3a3a);
+}
+.rt-audio-line i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--acc) 55%, transparent);
+  transition: height 0.25s linear;
+}
+.rt-audio-line.done i {
+  height: 100% !important;
+  background: color-mix(in oklch, var(--acc) 18%, transparent);
+}
 .rt-document mark.rt-claim {
   background: #fce9a8;
   color: #3c311b;

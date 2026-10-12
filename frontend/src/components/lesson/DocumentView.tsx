@@ -1,11 +1,12 @@
 import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 import type { Schemas } from '@/api/client'
-import { activeUnit } from '@/lib/audio'
+import { activeUnit, unitSpeechProgress } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
+import { cn } from '@/lib/utils'
 import { useLessonAudio } from './audio'
 import { EnrichmentSlots } from './Enrichment'
 
@@ -142,19 +143,99 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   }, [hash, routerState, doc, highlightText])
 
   return (
-    <>
-    <article
-      ref={ref}
-      className="rt-document"
-      data-testid="lesson-document"
-      data-active-unit={current ?? ''}
-      onClick={(e) => {
-        const target = (e.target as HTMLElement).closest<HTMLElement>('[data-seconds]')
-        if (target) seek(Number(target.dataset.seconds))
-      }}
-      dangerouslySetInnerHTML={{ __html: withImageUrls(doc.html, lessonId) }}
-    />
-    <EnrichmentSlots root={ref} lessonId={lessonId} documentKey={doc.html} />
-    </>
+    <div className="relative">
+      <article
+        ref={ref}
+        className="rt-document relative pr-4"
+        data-testid="lesson-document"
+        data-active-unit={current ?? ''}
+        onClick={(e) => {
+          const target = (e.target as HTMLElement).closest<HTMLElement>('[data-seconds]')
+          if (target) seek(Number(target.dataset.seconds))
+        }}
+        dangerouslySetInnerHTML={{ __html: withImageUrls(doc.html, lessonId) }}
+      />
+      {hasAudio && doc.sections.length > 0 && (
+        <AudioSpeechLines rootRef={ref} sections={doc.sections} />
+      )}
+      <EnrichmentSlots root={ref} lessonId={lessonId} documentKey={doc.html} />
+    </div>
+  )
+}
+
+function AudioSpeechLines({
+  rootRef,
+  sections,
+}: {
+  rootRef: React.RefObject<HTMLDivElement | null>
+  sections: Schemas['DocumentSection'][]
+}) {
+  const { currentTime } = useLessonAudio()
+  const [positions, setPositions] = useState<Record<string, { top: number; height: number }>>({})
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const update = () => {
+      const next: Record<string, { top: number; height: number }> = {}
+      for (const section of sections) {
+        const blocks = unitBlock(root, section.unit_id)
+        if (!blocks.length) continue
+        const first = blocks[0] as HTMLElement
+        const last = blocks[blocks.length - 1] as HTMLElement
+        const top = first.offsetTop + 28
+        const bottom = last.offsetTop + last.offsetHeight - 8
+        next[section.unit_id] = {
+          top,
+          height: Math.max(16, bottom - top),
+        }
+      }
+      setPositions(next)
+    }
+
+    update()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    observer?.observe(root)
+    window.addEventListener('resize', update)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [rootRef, sections])
+
+  if (!sections.length) return null
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 select-none"
+      aria-hidden="true"
+      data-testid="audio-speech-lines"
+    >
+      {sections.map((section) => {
+        const pos = positions[section.unit_id]
+        if (!pos) return null
+        const { cur, done, percent } = unitSpeechProgress(section, currentTime)
+        if (!cur && !done) return null
+        return (
+          <div
+            key={section.unit_id}
+            className={cn('rt-audio-line', cur && 'cur', done && 'done')}
+            style={{
+              top: `${pos.top}px`,
+              height: `${pos.height}px`,
+            }}
+            data-testid={`audio-line-${section.unit_id}`}
+            data-active={cur ? 'true' : 'false'}
+            data-done={done ? 'true' : 'false'}
+          >
+            <i
+              style={{
+                height: done ? '100%' : `${percent}%`,
+              }}
+            />
+          </div>
+        )
+      })}
+    </div>
   )
 }

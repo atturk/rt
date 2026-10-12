@@ -160,6 +160,7 @@ class DocumentSection(BaseModel):
     end_seconds: Optional[float] = None
     start_formatted: Optional[str] = None
     relevance: Optional[Literal["organizational", "no_content"]] = None
+    speech_segments: Optional[List[List[float]]] = Field(None, description="Tratti di parlato [inizio, fine] in secondi per la linea audio")
 
 
 class LessonDocument(BaseModel):
