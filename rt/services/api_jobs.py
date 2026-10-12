@@ -47,8 +47,6 @@ def update_lesson_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     with ctx.activate():
         result = run_source_update(job.lesson_path, mode=job.payload.get("mode", "extend"),
                                    mock=bool(job.payload.get("mock")), ctx=ctx)
-        if result["status"] != "draft_validated" or result.get("failed_units"):
-            raise RuntimeError("Aggiornamento incompleto: puoi riprovare o annullare con la fotografia.")
         write_automatic_documents(job.lesson_path)
     return _done(result, lesson_path=job.lesson_path)
 

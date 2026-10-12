@@ -16,7 +16,22 @@ FILES = ("sources.json", "segments.json", "outline.json", "draft.json", "review_
 POINTER = "update_snapshot.json"
 
 
-def snapshot_update(lesson_dir):
+def _read_pointer(lesson_dir):
+    pointer = lesson_path(lesson_dir, POINTER)
+    if not fs.isfile(pointer):
+        return None
+    with fs.open(pointer, encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def _write_pointer(lesson_dir, data):
+    pointer = lesson_path(lesson_dir, POINTER)
+    with fs.open(pointer + ".tmp", "w", encoding="utf-8") as stream:
+        json.dump(data, stream)
+    fs.replace(pointer + ".tmp", pointer)
+
+
+def snapshot_update(lesson_dir, *, keep_previous=False):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     history = os.path.join(lesson_dir, "history", stamp)
     fs.makedirs(history, exist_ok=True)
@@ -28,17 +43,32 @@ def snapshot_update(lesson_dir):
         entries[name] = fs.isfile(path)
         if entries[name]:
             fs.copy2(path, os.path.join(history, name))
-    pointer = lesson_path(lesson_dir, POINTER)
-    old = None
-    if fs.isfile(pointer):
-        with fs.open(pointer, encoding="utf-8") as stream:
-            old = json.load(stream)
-    with fs.open(pointer + ".tmp", "w", encoding="utf-8") as stream:
-        json.dump({"timestamp": stamp, "files": entries, "root_markdown": root_markdown}, stream)
-    fs.replace(pointer + ".tmp", pointer)
-    if old:
+    old = _read_pointer(lesson_dir)
+    _write_pointer(lesson_dir, {"timestamp": stamp, "files": entries, "root_markdown": root_markdown})
+    if old and not keep_previous:
         fs.rmtree(os.path.join(lesson_dir, "history", old["timestamp"]), ignore_errors=True)
     return stamp
+
+
+def begin_update(lesson_dir):
+    """Fotografia dell'aggiornamento che parte; quella precedente resta finché non riesce."""
+    previous = _read_pointer(lesson_dir)
+    snapshot_update(lesson_dir, keep_previous=True)
+    return previous
+
+
+def finish_update(lesson_dir, previous):
+    """Aggiornamento riuscito: resta una sola fotografia, la sua."""
+    if previous:
+        fs.rmtree(os.path.join(lesson_dir, "history", previous["timestamp"]), ignore_errors=True)
+
+
+def abort_update(lesson_dir, previous):
+    """Aggiornamento fallito: rimette la lezione com'era e la fotografia dell'aggiornamento
+    precedente, così Annulla continua ad annullare quello."""
+    undo_update(lesson_dir)
+    if previous:
+        _write_pointer(lesson_dir, previous)
 
 
 def has_update_snapshot(lesson_dir):

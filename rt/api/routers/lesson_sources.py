@@ -32,14 +32,15 @@ class UndoUpdateResult(BaseModel):
 
 
 @contextmanager
-def source_mutation(lesson_id, lesson_dir):
+def source_mutation(lesson_id, lesson_dir, *, allow_documents=True):
     from rt.core.process_lock import lesson_work_lock, LessonBusy
     from rt.services.document_edit_lease import assert_editable
     try:
         with lesson_work_lock(lesson_dir):
             assert_editable(lesson_id)
             busy = [job for job in queue().list(state=["queued", "running", "waiting_for_decision"],
-                                               lesson_id=lesson_dir) if job.type != "documents"]
+                                               lesson_id=lesson_dir)
+                    if job.type != "documents" or not allow_documents]
             if busy:
                 raise ApiError(409, "lesson_busy", "La lezione ha un lavoro attivo o in attesa.")
             yield
@@ -60,27 +61,32 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 tipo: Literal["audio", "appunti"] = Form(...),
                 file: Optional[UploadFile] = File(None), testo: Optional[str] = Form(None),
                 ordine: Optional[int] = Form(None, ge=1)):
-    from rt.api.routers.jobs import _max_upload_bytes
+    from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
+    import shutil
     if tipo == "audio":
         if file is None or testo is not None:
             raise ApiError(422, "validation_error", "Carica un file audio.")
-        filename = file.filename or ""
-        if os.path.splitext(filename)[1].lower() not in SUPPORTED_AUDIO_EXTENSIONS:
-            raise ApiError(415, "unsupported_media_type", "Formato audio non supportato.")
-        content = file.file.read(_max_upload_bytes() + 1)
-    else:
-        if testo is None or file is not None or not testo.strip():
-            raise ApiError(422, "validation_error", "Inserisci il testo degli appunti.")
-        filename, content = "appunti.txt", testo.encode("utf-8")
+        # A blocchi su disco con limite, come l'import: mai l'intero file in memoria.
+        target = _upload_dir()
+        try:
+            saved = _save_uploads([file], SUPPORTED_AUDIO_EXTENSIONS, target)[0]
+            return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved), None, ordine, saved)
+        finally:
+            shutil.rmtree(target, ignore_errors=True)
+    if testo is None or file is not None or not testo.strip():
+        raise ApiError(422, "validation_error", "Inserisci il testo degli appunti.")
+    content = testo.encode("utf-8")
     if len(content) > _max_upload_bytes():
         raise ApiError(413, "payload_too_large", "La fonte supera la dimensione massima.")
-    if not content:
-        raise ApiError(422, "validation_error", "La fonte è vuota.")
+    return _add_source(lesson_id, lesson_dir, tipo, "appunti.txt", content, ordine)
+
+
+def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_path=None):
     with source_mutation(lesson_id, lesson_dir):
         try:
-            return add_source(lesson_dir, tipo, filename, content, ordine)
+            return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
 
@@ -107,7 +113,8 @@ def update_lesson(lesson_id: int, body: UpdateRequest, lesson_dir: LessonDir, ac
 @router.post("/lessons/{lesson_id}/update/undo", response_model=UndoUpdateResult,
              summary="Annulla l'ultimo aggiornamento")
 def undo_lesson_update(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
-    with source_mutation(lesson_id, lesson_dir):
+    # Annulla riscrive anche i documenti: nemmeno un job documents può essere in corso.
+    with source_mutation(lesson_id, lesson_dir, allow_documents=False):
         try:
             return undo_update(lesson_dir)
         except ValueError as exc:
