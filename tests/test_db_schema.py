@@ -131,3 +131,31 @@ def test_cli_db_upgrade_and_status(monkeypatch, tmp_path, capsys):
     assert path.is_file()
     main(["db", "status"])
     assert head_revision() in capsys.readouterr().out
+
+
+def _template_columns(engine):
+    return {c["name"] for c in inspect(engine).get_columns("calendar_template_entries")}
+
+
+def test_calendar_valid_to_added_to_existing_tables(tmp_path):
+    """Un database con le tabelle del calendario create prima di valid_to la riceve dalla 0017."""
+    url = f"sqlite:///{tmp_path / 'rt.db'}"
+    engine = create_db_engine(url)
+    command.upgrade(alembic_config(url, engine), "0016")
+    assert "valid_to" not in _template_columns(engine)
+    upgrade_database(url, engine)
+    assert "valid_to" in _template_columns(engine)
+    engine.dispose()
+
+
+def test_calendar_valid_to_already_present_is_kept(tmp_path):
+    """La 4.2.5b1 creava valid_to già nella 0016: la 0017 non la aggiunge una seconda volta."""
+    url = f"sqlite:///{tmp_path / 'rt.db'}"
+    engine = create_db_engine(url)
+    command.upgrade(alembic_config(url, engine), "0016")
+    with engine.begin() as con:
+        con.execute(text("ALTER TABLE calendar_template_entries ADD COLUMN valid_to VARCHAR(10)"))
+    upgrade_database(url, engine)
+    assert current_revision(engine) == head_revision()
+    assert "valid_to" in _template_columns(engine)
+    engine.dispose()

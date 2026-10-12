@@ -1,5 +1,10 @@
 # Novità di RT
 
+## 4.2.5b1.1 — 2026-10-12
+
+### Correzioni
+- Il Calendario non si apriva ("Errore interno del server") se le sue tabelle erano già state create da una versione di prova: ora il database viene completato all'avvio.
+
 ## 4.2.5b1 — 2026-10-12
 
 ### Novità
