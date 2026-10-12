@@ -150,3 +150,42 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
     return {"previous_segments": previous, "segments": ordered}
+
+
+def changed_units(previous_outline, previous_segments, outline, segments):
+    """Gli offset audio non cambiano il contenuto; confronta ID, testo e flag."""
+    def signatures(structure, items):
+        positions = {s.id: i for i, s in enumerate(items)}
+        return {u.id: (u.title, [(s.id, s.text_raw, s.flags) for s in
+                items[positions[u.start_segment_id]:positions[u.end_segment_id] + 1]])
+                for macro in structure.macro_sections for u in macro.units}
+    old = signatures(previous_outline, previous_segments) if previous_outline else {}
+    return [uid for uid, signature in signatures(outline, segments).items() if old.get(uid) != signature]
+
+
+def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
+    from rt.pipeline.outline import load_outline, run_outline
+    from rt.pipeline.outline_extension import extend_outline
+    from rt.pipeline.rewrite import run_rewrite
+    from rt.core.idempotency import compute_source_fingerprint, compute_file_sha256, record_phase_fingerprint
+    from rt.core.state import transition_to, WorkflowState
+    if mode not in ("extend", "rebuild"):
+        raise ValueError("Modalità di aggiornamento non valida")
+    old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
+    prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx)
+    record_phase_fingerprint(lesson_dir, "prepare", compute_source_fingerprint(lesson_dir, "prepare"),
+                             {"segments.json": compute_file_sha256(lesson_path(lesson_dir, "segments.json"))})
+    transition_to(lesson_path(lesson_dir, "info.yaml"), WorkflowState.PREPARED, allow_force=True)
+    if mode == "extend" and old_outline:
+        extend_outline(lesson_dir, prepared["previous_segments"], mock=mock, ctx=ctx)
+        record_phase_fingerprint(lesson_dir, "outline", compute_source_fingerprint(lesson_dir, "outline"),
+                                 {"outline.json": compute_file_sha256(lesson_path(lesson_dir, "outline.json"))})
+        transition_to(lesson_path(lesson_dir, "info.yaml"), WorkflowState.OUTLINE_VALIDATED, allow_force=True)
+    else:
+        run_outline(lesson_dir, force=True, force_mock=mock, ctx=ctx)
+    outline = load_outline(lesson_dir)
+    selected = changed_units(old_outline, prepared["previous_segments"], outline, prepared["segments"])
+    result = run_rewrite(lesson_dir, force_mock=mock, ctx=ctx,
+                         changed_unit_ids=selected if mode == "extend" else None, force=mode == "rebuild")
+    result["changed_units"] = selected
+    return result

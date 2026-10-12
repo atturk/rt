@@ -112,10 +112,11 @@ def run_rewrite(
     force: bool = False,
     force_mock: bool = False,
     ctx: "Optional[RunContext]" = None,
+    changed_unit_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Rielaborazione delle unità (eventi e annullamento tra unità su ctx, se dato)."""
     with phase_scope(ctx, "rewrite") as scope:
-        result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
+        result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx, changed_unit_ids=changed_unit_ids)
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.classifier import classify_units
             classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
@@ -128,6 +129,7 @@ def _run_rewrite(
     force: bool = False,
     force_mock: bool = False,
     ctx: "Optional[RunContext]" = None,
+    changed_unit_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Esegue la rielaborazione delle unità didattiche a finestre scorrevoli con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
@@ -165,7 +167,7 @@ def _run_rewrite(
     # Controllo idempotenza: se valido e non forzato, SKIP immediato senza chiamate LLM
     phase_status, reason = check_phase_status(lesson_dir, "rewrite", target_unit_id=target_unit_id)
 
-    if phase_status == PhaseStatus.VALID and not force:
+    if phase_status == PhaseStatus.VALID and not force and changed_unit_ids is None:
         validation_report = validate_draft(draft, outline, segments_data)
         return {
             "status": "draft_validated",
@@ -179,7 +181,9 @@ def _run_rewrite(
 
     # Riconciliazione all'avvio:
     # Se force=True (globale) o se gli input sono STALE o INVALID, non riutilizzare il vecchio draft.json
-    if (force and not target_unit_id) or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID) and not target_unit_id):
+    if changed_unit_ids is not None:
+        draft_units_map = {uid: unit for uid, unit in draft_units_map.items() if uid in outline_units_map}
+    elif (force and not target_unit_id) or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID) and not target_unit_id):
         draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
         draft_units_map = {}
     else:
@@ -221,7 +225,10 @@ def _run_rewrite(
     units_to_process = []
     for macro in outline.macro_sections:
         for u in macro.units:
-            if target_unit_id is not None:
+            if changed_unit_ids is not None:
+                if u.id in changed_unit_ids or u.id not in draft_units_map:
+                    units_to_process.append(u)
+            elif target_unit_id is not None:
                 if u.id == target_unit_id:
                     units_to_process.append(u)
             else:
