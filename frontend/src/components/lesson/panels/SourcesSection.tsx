@@ -386,7 +386,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                   type="button"
                   className="flex size-4 shrink-0 cursor-pointer items-center justify-center text-muted-foreground opacity-0 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100"
                   aria-label={`Usa ${s.nome} come principale`}
-                  title="Usa come principale (rifà la lezione)"
                   data-testid={`star-choose-${s.id}`}
                   onClick={() => handleSelectPrimary(s)}
                 >

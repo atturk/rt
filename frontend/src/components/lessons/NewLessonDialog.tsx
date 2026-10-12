@@ -556,11 +556,6 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                                   ? 'text-amber-500'
                                   : 'text-muted-foreground hover:text-foreground',
                               )}
-                              title={
-                                isPrimary
-                                  ? 'Materiale principale: fa da filo della lezione'
-                                  : 'Usa come materiale principale'
-                              }
                               aria-label={
                                 isPrimary
                                   ? 'Materiale principale: fa da filo della lezione'
@@ -583,7 +578,6 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                         <button
                           type="button"
                           className="absolute -top-1.5 -right-1.5 hidden size-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-xs hover:text-foreground group-hover:flex group-focus-within:flex"
-                          title={`Togli ${m.name}`}
                           aria-label={`Togli ${m.name}`}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -599,7 +593,6 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                   <button
                     type="button"
                     className="mb-4 flex size-12 items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-                    title="Aggiungi materiali"
                     aria-label="Aggiungi materiali"
                     onClick={() => materialsInput.current?.click()}
                     data-testid="add-materials-btn"
@@ -625,7 +618,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                 <button
                   type="button"
                   className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1 text-meta text-muted-foreground hover:border-foreground hover:text-foreground"
-                  title="Slide, PDF o foto della lezione"
+                  aria-label="Slide, PDF o foto della lezione"
                   onClick={() => materialsInput.current?.click()}
                   data-testid="add-materials-btn"
                 >
@@ -684,7 +677,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                           isSelected && 'border-primary ring-1 ring-primary bg-primary/10',
                           h.is_recorded && 'opacity-50 cursor-not-allowed',
                         )}
-                        title={h.is_recorded ? 'Già registrata' : (h.docente ?? undefined)}
+                        aria-label={h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
                         data-testid={`calendar-slot-${i}`}
                       >
                         <span className="w-1 self-stretch rounded-full bg-primary" />

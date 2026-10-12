@@ -22,6 +22,7 @@ def install(tmp_path, monkeypatch):
     (root / "config.example" / "rt" / "outline.yaml").write_text("x: 1\n", encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("rt.core.paths.project_root", lambda: str(root))
     monkeypatch.setattr("rt.core.config._default_project_root", lambda: str(root))
     monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(home / ".rt"))

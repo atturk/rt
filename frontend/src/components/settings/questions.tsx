@@ -76,7 +76,7 @@ function QuestionsSettings({ data }: { data: QuestionSettings }) {
         </li>)}</ul>
       </details>
     </Section>
-    {editor && <QuestionTypeEditor key={`${editor.id ?? 'new'}:${editor.definition.nome}`} initial={editor.definition} existing={Boolean(editor.id)} subjects={subjectsQuery.data ? subjectsQuery.data.map((s) => s.nome) : data.materie} onSave={submit} onCancel={() => setEditor(null)} pending={save.isPending} error={save.isError ? errorMessage(save.error) : null} />}
+    {editor && <QuestionTypeEditor key={`${editor.id ?? 'new'}:${editor.definition.nome}`} initial={editor.definition} existing={Boolean(editor.id)} subjects={Array.isArray(subjectsQuery.data) ? subjectsQuery.data.map((s) => s.nome) : data.materie} onSave={submit} onCancel={() => setEditor(null)} pending={save.isPending} error={save.error ? errorMessage(save.error) : null} />}
     <ConfirmDialog open={Boolean(deleting)} title="Elimina tipo" confirmLabel="Elimina" onCancel={() => setDeleting(null)} confirmDisabled={remove.isPending}
       onConfirm={() => { if (deleting?.id) remove.mutate(deleting.id, { onSuccess: () => { setDeleting(null); setEditor(null) } }) }}>
       Le domande già generate resteranno nello storico.
