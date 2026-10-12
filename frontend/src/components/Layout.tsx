@@ -1,5 +1,5 @@
 import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
-import { Activity, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
+import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation, useMatches } from 'react-router'
 
@@ -19,12 +19,18 @@ const NewLessonDialog = lazy(() => import('@/components/lessons/NewLessonDialog'
 
 type Section = { to: string; label: string; icon: LucideIcon; match: (path: string) => boolean; badge?: boolean }
 
-/** Le tre voci del design 4.2 (linee guida §2); le pagine di prima restano raggiungibili dai link. */
+/** Le quattro voci del design 4.2.5; le pagine di prima restano raggiungibili dai link. */
 const LESSONS: Section = {
   to: '/',
   label: 'Lezioni',
-  icon: Calendar,
+  icon: BookOpen,
   match: (path) => path === '/' || /^\/(lezioni|studio|recall|review|immagini|arricchimento)(\/|$)/.test(path),
+}
+const CALENDAR: Section = {
+  to: '/calendario',
+  label: 'Calendario',
+  icon: Calendar,
+  match: (path) => /^\/calendario(\/|$)/.test(path),
 }
 const JOBS: Section = { to: '/job', label: 'Job in corso', icon: Activity, match: (path) => /^\/(job|importa)(\/|$)/.test(path), badge: true }
 const SETTINGS: Section = { to: '/impostazioni', label: 'Impostazioni', icon: Settings, match: (path) => /^\/(impostazioni|bot)(\/|$)/.test(path) }
@@ -42,7 +48,7 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
   const returnAddress = useReturnAddress()
   return (
     <IconLink
-      to={active && section !== LESSONS ? returnAddress : section.to}
+      to={active && (section === JOBS || section === SETTINGS) ? returnAddress : section.to}
       label={section.label}
       icon={section.icon}
       side={side}
@@ -116,6 +122,7 @@ export function Layout() {
           <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={openNewLesson} aria-haspopup="dialog" />
           <div className="h-2" aria-hidden />
           <NavItem section={LESSONS} path={path} side="right" variant="rail" />
+          <NavItem section={CALENDAR} path={path} side="right" variant="rail" />
           <div className="flex-1" aria-hidden />
           <NavItem section={JOBS} path={path} side="right" variant="rail" />
           <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
@@ -131,12 +138,12 @@ export function Layout() {
           </main>
         </div>
 
-        {/* Telefono: tre schede in basso (linee guida §2). */}
+        {/* Telefono: quattro schede in basso. */}
         {phone && <nav
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
           className="fixed inset-x-0 bottom-0 z-50 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
         >
-          {[LESSONS, JOBS, SETTINGS].map((section) => (
+          {[LESSONS, CALENDAR, JOBS, SETTINGS].map((section) => (
             <NavItem key={section.to} section={section} path={path} side="top" variant="ghost" />
           ))}
         </nav>}

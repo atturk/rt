@@ -875,3 +875,28 @@ class StudyNoteApplyResponse(BaseModel):
     applied_decision_id: int
     issue_id: str
     note: StudyNoteView
+
+
+# ---------------------------------------------------------------------------
+# Calendario (4.2.5 CA1)
+# ---------------------------------------------------------------------------
+from rt.services.calendar_models import (  # noqa: F401
+    CalendarTemplateEntryCreate,
+    CalendarTemplateEntryView,
+    CalendarOverrideCreate,
+    CalendarOverrideView,
+    CalendarDayStateSet,
+    CalendarDayStateView,
+    CalendarEntryStateSet,
+    CalendarEntryStateView,
+    CalendarLinkLessonRequest,
+    CalendarLessonSummary,
+    CalendarEventView,
+    CalendarDayView,
+    CalendarToRecoverItem,
+    CalendarWeekSummary,
+    CalendarWeekView,
+    CalendarDayImportHour,
+    CalendarDayImportView,
+)
+

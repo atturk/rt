@@ -321,3 +321,81 @@ class TelegramCommand(Base):
     created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class CalendarTemplateEntry(Base):
+    """Slot dell'orario della settimana tipo (con data di inizio validità)."""
+    __tablename__ = "calendar_template_entries"
+    __table_args__ = (
+        Index("ix_calendar_template_valid_day", "valid_from", "day_of_week"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    valid_from: Mapped[str] = mapped_column(String(10), default="2000-01-01")
+    day_of_week: Mapped[int] = mapped_column(Integer)
+    start_time: Mapped[str] = mapped_column(String(8))
+    end_time: Mapped[str] = mapped_column(String(8))
+    materia: Mapped[str] = mapped_column(String(256))
+    docente: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class CalendarOverride(Base):
+    """Modifica all'orario di una settimana precisa (aggiunta, tolta o spostata solo quella settimana)."""
+    __tablename__ = "calendar_overrides"
+    __table_args__ = (
+        Index("ix_calendar_overrides_date", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[str] = mapped_column(String(10))
+    template_entry_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("calendar_template_entries.id", ondelete="CASCADE"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(32))
+    start_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    end_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    materia: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    docente: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class CalendarDayState(Base):
+    """Stato dell'intera giornata (es. nonseguita, saltare, annullata) e note del giorno."""
+    __tablename__ = "calendar_day_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[str] = mapped_column(String(10), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class CalendarEntryState(Base):
+    """Stato puntuale di un'ora del calendario, note e collegamento lezione."""
+    __tablename__ = "calendar_entry_states"
+    __table_args__ = (
+        Index("ix_calendar_entry_states_date_key", "date", "entry_key", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[str] = mapped_column(String(10))
+    entry_key: Mapped[str] = mapped_column(String(128))
+    template_entry_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("calendar_template_entries.id", ondelete="CASCADE"), nullable=True
+    )
+    override_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("calendar_overrides.id", ondelete="CASCADE"), nullable=True
+    )
+    status: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lesson_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    manual_link: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
