@@ -254,5 +254,7 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
                          changed_unit_ids=selected if mode == "extend" else None, force=mode == "rebuild")
     if result["status"] != "draft_validated" or result.get("failed_units"):
         raise RuntimeError("Aggiornamento incompleto: la lezione è tornata com'era, puoi riprovare.")
+    from rt.services.sources_view import record_update_summary
+    record_update_summary(lesson_dir, mode, old_outline, outline, selected)
     result["changed_units"] = selected
     return result

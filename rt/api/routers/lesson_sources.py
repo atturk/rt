@@ -13,13 +13,16 @@ from rt.core.sources import Source, load_sources, add_source, remove_source
 from rt.core.update_history import has_update_snapshot, undo_update
 from rt.pipeline.source_update import sources_pending
 
+from rt.services.sources_view import SourceView, LastUpdate, sources_view
+
 router = APIRouter(tags=["lezioni"])
 
 
 class SourcesView(BaseModel):
-    sources: list[Source]
+    sources: list[SourceView]
     has_unused_sources: bool
     can_undo: bool
+    ultimo_aggiornamento: LastUpdate | None = None
 
 
 class UpdateRequest(BaseModel):
@@ -51,8 +54,7 @@ def source_mutation(lesson_id, lesson_dir, *, allow_documents=True):
 @router.get("/lessons/{lesson_id}/sources", response_model=SourcesView,
             summary="Fonti della lezione e stato delle fonti non ancora usate")
 def get_sources(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
-    return {"sources": load_sources(lesson_dir), "has_unused_sources": sources_pending(lesson_dir),
-            "can_undo": has_update_snapshot(lesson_dir)}
+    return sources_view(lesson_dir)
 
 
 @router.post("/lessons/{lesson_id}/sources", response_model=Source, status_code=201,
