@@ -52,8 +52,10 @@ def load_sources(lesson_dir: str) -> list[Source]:
 
 @lesson_locked
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
-               filename: str, content: bytes, ordine: int | None = None) -> Source:
-    """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte."""
+               filename: str, content: bytes | None, ordine: int | None = None,
+               source_path: str | None = None) -> Source:
+    """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
+    source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
     sources = load_sources(lesson_dir)
@@ -67,8 +69,11 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     relative = os.path.join("sources", sid, name)
     path = os.path.join(lesson_dir, relative)
     fs.makedirs(os.path.dirname(path), exist_ok=True)
-    with fs.open(path, "wb") as stream:
-        stream.write(content)
+    if source_path is not None:
+        fs.copyfile(source_path, path)
+    else:
+        with fs.open(path, "wb") as stream:
+            stream.write(content)
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
                     aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position)

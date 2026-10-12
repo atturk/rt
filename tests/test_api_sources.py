@@ -107,3 +107,39 @@ def test_audio_upload_preserves_original_and_does_not_start_update(api_client, s
     with fs.open(source_lesson + "/lezione.m4a", "rb") as stream:
         assert stream.read() == original
     assert load_draft(source_lesson) == before
+
+
+def test_audio_upload_is_streamed_with_limit_and_cleaned_up(api_client, source_lesson, monkeypatch):
+    import os
+    from rt.core.sources import load_sources
+    from rt.services.lesson_service import work_dir
+    from rt.storage import fs
+    url = f"/api/v1/lessons/{lesson_id(api_client)}"
+    uploads = os.path.join(work_dir(), "uploads")
+    before = len(load_sources(source_lesson))
+    monkeypatch.setenv("RT_API_MAX_UPLOAD_MB", str(2048 / (1024 * 1024)))
+    response = api_client.post(url + "/sources", data={"tipo": "audio"}, files={"file": ("big.m4a", b"x" * 4096, "audio/mp4")})
+    assert response.status_code == 413
+    assert len(load_sources(source_lesson)) == before
+    assert not os.path.isdir(uploads) or not os.listdir(uploads)
+    response = api_client.post(url + "/sources", data={"tipo": "audio"}, files={"file": ("small.m4a", b"y" * 1024, "audio/mp4")})
+    assert response.status_code == 201
+    with fs.open(os.path.join(source_lesson, response.json()["file"]), "rb") as stream:
+        assert stream.read() == b"y" * 1024
+    assert not os.listdir(uploads)
+
+
+def test_undo_is_blocked_by_documents_job_but_sources_are_not(api_client, source_lesson, monkeypatch, rt_db):
+    from types import SimpleNamespace
+    url = f"/api/v1/lessons/{lesson_id(api_client)}"
+    assert api_client.post(url + "/sources", data={"tipo": "appunti", "testo": "notes"}).status_code == 201
+    assert api_client.post(url + "/update", json={"mode": "extend", "mock": True}).status_code == 202
+    worker = Worker(DbJobQueue(rt_db), job_types=["update_lesson"], on_message=lambda *_: None)
+    assert worker.run_once().state == "succeeded"
+    with monkeypatch.context() as patch:
+        fake = SimpleNamespace(list=lambda **kwargs: [SimpleNamespace(type="documents")])
+        patch.setattr("rt.api.routers.lesson_sources.queue", lambda: fake)
+        assert api_client.post(url + "/sources", data={"tipo": "appunti", "testo": "more"}).status_code == 201
+        response = api_client.post(url + "/update/undo")
+        assert response.status_code == 409 and response.json()["error"]["code"] == "lesson_busy"
+    assert api_client.post(url + "/update/undo").status_code == 200
