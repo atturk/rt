@@ -23,6 +23,7 @@ const lessons = () => import('./lessons')
 const jobs = () => import('./jobs')
 const recall = () => import('./recall')
 const settings = () => import('./settings')
+const calendar = () => import('./calendar')
 
 const bare = { bare: true }
 
@@ -140,7 +141,11 @@ const settingsArea: Area = {
   ],
 }
 
-export const areas: Area[] = [lessonsArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
+const calendarArea: Area = {
+  routes: [{ path: 'calendario', Component: page(calendar, (m) => m.CalendarPage), handle: bare }],
+}
+
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

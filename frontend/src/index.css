@@ -54,8 +54,18 @@
   --group-3: rgb(184 134 11 / 8%);
   --group-4: rgb(150 80 110 / 6%);
   --group-gray: color-mix(in oklch, var(--fg) 4%, transparent);
+  /* Materie nel calendario (CA1) */
+  --m1: #2f6fd0;
+  --m2: #8a4fc8;
+  --m3: #c0542b;
+  --m4: #14806e;
+  --m5: #5d6b7a;
+  --m6: #b0397a;
+  --m7: #9a7a12;
+  --tint: 12%;
 
   --size-meta: 12px;
+
   --size-body: 15px;
   --size-heading: 22px;
   --rail-width: 56px;
@@ -91,7 +101,17 @@
   --group-2: rgb(130 175 230 / 8%);
   --group-3: rgb(241 194 122 / 8%);
   --group-4: rgb(230 150 185 / 8%);
+  /* Materie nel calendario (CA1) */
+  --m1: #7aa8f0;
+  --m2: #b993ec;
+  --m3: #ee9370;
+  --m4: #5cc7b2;
+  --m5: #a9b6c3;
+  --m6: #ea86bd;
+  --m7: #e0c158;
+  --tint: 20%;
 }
+
 
 /* Telefono: aree da toccare di 44 px (linee guida §5). */
 @media (max-width: 767px) {
