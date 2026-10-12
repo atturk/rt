@@ -1,16 +1,14 @@
 # Novità di RT
 
-## 4.2.5b1
+## 4.2.5b1 — 2026-10-12
 
-- Le lezioni conservano un elenco ordinato delle fonti originali, senza spostare i file delle lezioni esistenti.
-- L'inserimento di una fonte conserva i riferimenti ai segmenti esistenti e alle annotazioni già salvate.
-- Si possono preparare nuove parti audio e appunti senza trascrivere di nuovo le parti già presenti; l'audio segue l'ordine delle fonti.
-- La scaletta può essere estesa mantenendo le unità esistenti, i loro titoli e il loro ordine.
-- L'aggiornamento rielabora soltanto le unità nuove o cambiate e conserva il testo e le decisioni delle altre.
-- Prima di ogni aggiornamento viene salvata una fotografia: Annulla ripristina la lezione precedente, anche se il lavoro si interrompe.
-- Le API espongono le fonti non ancora usate e consentono di scegliere Estendi, Ricostruisci o Annulla; gli aggiornamenti si eseguono come lavori in coda.
-- Una lezione può nascere da soli appunti. L'audio può essere aggiunto in seguito, estendendo la lezione o ricostruendo la scaletta.
-- La rielaborazione segue il filo delle unità precedenti già scritte, anche rigenerando una sola unità, senza anticipare il trascritto delle successive. Il contesto si riduce soltanto con limiti del modello e consumi di token effettivamente disponibili.
+### Novità
+- Nuova pagina Calendario, nella barra laterale sotto Lezioni (che ha una nuova icona) e nella barra in basso sull'iPhone. Mostra la settimana sul Mac e il giorno sull'iPhone, con l'orario delle lezioni colorato per materia.
+- L'orario si scrive una volta come settimana tipo e si modifica con la matita: solo questa settimana, oppure la settimana tipo da questa settimana in poi. Le settimane passate restano come erano.
+- Ogni ora ha uno stato (da seguire, seguita, non seguita, da saltare, annullata) e una nota; il menu del giorno segna tutto il giorno in un colpo. Il riepilogo della settimana è nel bottone ⓘ, con le ore da recuperare.
+- Una lezione registrata con la stessa data, ora e materia si collega da sola alla sua ora e la segna come seguita; dal popup dell'ora si può collegarne o scollegarne una a mano.
+- La rielaborazione tiene il filo delle unità già scritte prima di quella in corso, anche quando rigeneri una sola unità, senza passare al modello il trascritto delle unità successive. Le parti ripetute del prompt restano in cache, così le unità successive costano meno.
+- Prime basi per le lezioni che crescono nel tempo (aggiungere audio o appunti a una lezione esistente): i comandi arrivano nella prossima beta.
 
 ## 4.2.4 — 2026-10-12
 
