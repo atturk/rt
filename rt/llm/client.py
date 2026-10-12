@@ -1262,7 +1262,7 @@ class LLMClient:
         model_name = response_model.__name__
 
         if model_name == "Outline":
-            seg_matches = re.findall(r"seg_\d{6}", prompt)
+            seg_matches = list(dict.fromkeys(re.findall(r"\[(seg_\d{6,})\]", prompt)))
             first_seg = seg_matches[0] if seg_matches else "seg_000001"
             last_seg = seg_matches[-1] if len(seg_matches) > 1 else first_seg
 

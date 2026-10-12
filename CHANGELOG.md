@@ -3,6 +3,7 @@
 ## 4.2.5b1
 
 - Le lezioni conservano un elenco ordinato delle fonti originali, senza spostare i file delle lezioni esistenti.
+- L'inserimento di una fonte conserva i riferimenti ai segmenti esistenti e alle annotazioni già salvate.
 
 ## 4.2.4 — 2026-10-12
 

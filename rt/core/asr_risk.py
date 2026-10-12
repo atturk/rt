@@ -77,6 +77,13 @@ def detect_statistical_asr_risks(
     segment_path = lesson_path(lesson_dir, "segments.json")
     segments = load_segments_json(segment_path) if fs.isfile(segment_path) else None
     by_id = {segment.id: segment for segment in segments.segments} if segments else {}
+    # Il trascritto storico appartiene alla prima fonte audio, non alla posizione
+    # corrente nella lezione (possono esserci appunti o nuove parti davanti).
+    original_segments = segments.segments if segments else []
+    if fs.isfile(lesson_path(lesson_dir, "sources.json")):
+        from rt.core.sources import load_sources
+        identified = [s for s in original_segments if s.source_file == "src_000001"]
+        original_segments = identified or [s for s in original_segments if "appunti" not in s.flags]
     segment_details = {}
 
     # 1. Calcola la metrica di rischio per segmento
@@ -85,7 +92,8 @@ def detect_statistical_asr_risks(
     for i, item in enumerate(raw_segments, start=1):
         if not isinstance(item, dict):
             continue
-        seg_id = f"seg_{i:06d}"
+        seg_id = (original_segments[i - 1].id if i <= len(original_segments)
+                  else item.get("id", f"seg_{i:06d}"))
         w_range = item.get("wordRange")
         if not isinstance(w_range, dict):
             continue
