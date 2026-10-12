@@ -58,3 +58,12 @@ def delete_subject(nome, db=None):
                            if row.nome.casefold() == nome.casefold()), None)
         if registered is not None:
             session.delete(registered)
+
+
+def register_subject(session, nome):
+    """Registrazione implicita nella stessa transazione della lezione o dell'ora."""
+    nome = (nome or "").strip()
+    if nome and not any(value.casefold() == nome.casefold()
+                        for value in session.scalars(select(Subject.nome))):
+        session.add(Subject(nome=nome))
+        session.flush()

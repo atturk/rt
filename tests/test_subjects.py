@@ -38,3 +38,24 @@ def test_subject_migration_keeps_existing_table(tmp_path):
     with engine.connect() as connection:
         assert connection.execute(text('SELECT nome FROM subjects')).scalar() == 'Biologia'
     engine.dispose()
+
+
+def test_subject_registration_survives_lesson_and_calendar_deletion(rt_db, tmp_path):
+    from rt.api.schemas import CalendarTemplateEntryCreate
+    from rt.db.models import Subject
+    from rt.db.repositories import LessonRepository
+    from rt.services.calendar_service import create_template_entry, delete_template_entry
+    from rt.services.subjects import list_subjects
+    from rt.services.custom_question_settings import view
+    from rt.services.telegram_topics import known_materie
+    with session_scope(rt_db) as s:
+        repo = LessonRepository(s)
+        lesson = repo.get_or_create(str(tmp_path / 'lesson'))
+        repo.update_fields(lesson, {'materia': 'Biologia'})
+        s.delete(lesson)
+    entry = create_template_entry(CalendarTemplateEntryCreate(
+        day_of_week=0, start_time='09:00', end_time='10:00', materia='Anatomia'))
+    delete_template_entry(entry.id)
+    assert list_subjects() == [{'nome': 'Anatomia', 'lezioni': 0}, {'nome': 'Biologia', 'lezioni': 0}]
+    assert view()['materie'] == ['Anatomia', 'Biologia']
+    assert {'ANATOMIA', 'BIOLOGIA'} <= set(known_materie())
