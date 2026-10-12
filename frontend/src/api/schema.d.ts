@@ -3268,13 +3268,20 @@ export interface components {
         /** Body_create_lesson_api_v1_lessons_post */
         Body_create_lesson_api_v1_lessons_post: {
             /**
+             * Appunti
+             * @description Testo per creare una lezione senza audio
+             * @default
+             */
+            appunti: string;
+            /**
              * Argomenti
              * @default
              */
             argomenti: string;
             /**
              * Audio
-             * @description Uno o più file audio della stessa lezione
+             * @description Uno o più file audio della stessa lezione; facoltativo con soli appunti
+             * @default []
              */
             audio: string[];
             /**

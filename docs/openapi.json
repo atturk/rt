@@ -369,13 +369,20 @@
       },
       "Body_create_lesson_api_v1_lessons_post": {
         "properties": {
+          "appunti": {
+            "default": "",
+            "description": "Testo per creare una lezione senza audio",
+            "title": "Appunti",
+            "type": "string"
+          },
           "argomenti": {
             "default": "",
             "title": "Argomenti",
             "type": "string"
           },
           "audio": {
-            "description": "Uno o più file audio della stessa lezione",
+            "default": [],
+            "description": "Uno o più file audio della stessa lezione; facoltativo con soli appunti",
             "items": {
               "contentMediaType": "application/octet-stream",
               "type": "string"
@@ -439,7 +446,6 @@
           }
         },
         "required": [
-          "audio",
           "date",
           "materia"
         ],
