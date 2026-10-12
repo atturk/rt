@@ -619,6 +619,7 @@
           "note": {
             "anyOf": [
               {
+                "maxLength": 4000,
                 "type": "string"
               },
               {
@@ -630,6 +631,12 @@
           "status": {
             "default": "",
             "description": "nonseguita, saltare, annullata, o vuoto per normale",
+            "enum": [
+              "",
+              "nonseguita",
+              "saltare",
+              "annullata"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -756,6 +763,7 @@
           "note": {
             "anyOf": [
               {
+                "maxLength": 4000,
                 "type": "string"
               },
               {
@@ -778,6 +786,13 @@
           "status": {
             "anyOf": [
               {
+                "enum": [
+                  "seguire",
+                  "seguita",
+                  "nonseguita",
+                  "saltare",
+                  "annullata"
+                ],
                 "type": "string"
               },
               {
@@ -1072,6 +1087,7 @@
       "CalendarLinkLessonRequest": {
         "properties": {
           "date": {
+            "description": "Data YYYY-MM-DD",
             "maxLength": 10,
             "minLength": 10,
             "title": "Date",
@@ -1157,7 +1173,9 @@
           "end_time": {
             "anyOf": [
               {
-                "maxLength": 8,
+                "description": "Orario HH:MM",
+                "maxLength": 5,
+                "minLength": 3,
                 "type": "string"
               },
               {
@@ -1181,7 +1199,9 @@
           "start_time": {
             "anyOf": [
               {
-                "maxLength": 8,
+                "description": "Orario HH:MM",
+                "maxLength": 5,
+                "minLength": 3,
                 "type": "string"
               },
               {
@@ -1320,8 +1340,8 @@
             "title": "Docente"
           },
           "end_time": {
-            "description": "Orario di fine, es. 11:30",
-            "maxLength": 8,
+            "description": "Orario HH:MM",
+            "maxLength": 5,
             "minLength": 3,
             "title": "End Time",
             "type": "string"
@@ -1333,8 +1353,8 @@
             "type": "string"
           },
           "start_time": {
-            "description": "Orario di inizio, es. 09:30",
-            "maxLength": 8,
+            "description": "Orario HH:MM",
+            "maxLength": 5,
             "minLength": 3,
             "title": "Start Time",
             "type": "string"
@@ -1342,7 +1362,9 @@
           "valid_from": {
             "anyOf": [
               {
+                "description": "Data YYYY-MM-DD",
                 "maxLength": 10,
+                "minLength": 10,
                 "type": "string"
               },
               {
@@ -1350,7 +1372,6 @@
               }
             ],
             "default": "2000-01-01",
-            "description": "Data di inizio validità YYYY-MM-DD",
             "title": "Valid From"
           }
         },
@@ -1410,6 +1431,17 @@
           "valid_from": {
             "title": "Valid From",
             "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
           }
         },
         "required": [
@@ -11079,6 +11111,24 @@
               "title": "Entry Id",
               "type": "integer"
             }
+          },
+          {
+            "description": "Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano",
+              "title": "From"
+            }
           }
         ],
         "responses": {
@@ -11141,7 +11191,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Elimina un'ora dalla settimana tipo",
+        "summary": "Toglie un'ora dalla settimana tipo (da una data in poi, se indicata)",
         "tags": [
           "calendar"
         ]

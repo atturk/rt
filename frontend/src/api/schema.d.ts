@@ -186,7 +186,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Elimina un'ora dalla settimana tipo */
+        /** Toglie un'ora dalla settimana tipo (da una data in poi, se indicata) */
         delete: operations["delete_template_entry_api_v1_calendar_template__entry_id__delete"];
         options?: never;
         head?: never;
@@ -3546,8 +3546,9 @@ export interface components {
              * Status
              * @description nonseguita, saltare, annullata, o vuoto per normale
              * @default
+             * @enum {string}
              */
-            status: string;
+            status: "" | "nonseguita" | "saltare" | "annullata";
         };
         /** CalendarDayStateView */
         CalendarDayStateView: {
@@ -3604,7 +3605,7 @@ export interface components {
             /** Override Id */
             override_id?: number | null;
             /** Status */
-            status?: string | null;
+            status?: ("seguire" | "seguita" | "nonseguita" | "saltare" | "annullata") | null;
             /** Template Entry Id */
             template_entry_id?: number | null;
         };
@@ -3706,7 +3707,10 @@ export interface components {
         };
         /** CalendarLinkLessonRequest */
         CalendarLinkLessonRequest: {
-            /** Date */
+            /**
+             * Date
+             * @description Data YYYY-MM-DD
+             */
             date: string;
             /** Entry Key */
             entry_key: string;
@@ -3772,19 +3776,18 @@ export interface components {
             docente?: string | null;
             /**
              * End Time
-             * @description Orario di fine, es. 11:30
+             * @description Orario HH:MM
              */
             end_time: string;
             /** Materia */
             materia: string;
             /**
              * Start Time
-             * @description Orario di inizio, es. 09:30
+             * @description Orario HH:MM
              */
             start_time: string;
             /**
              * Valid From
-             * @description Data di inizio validità YYYY-MM-DD
              * @default 2000-01-01
              */
             valid_from: string | null;
@@ -3807,6 +3810,8 @@ export interface components {
             start_time: string;
             /** Valid From */
             valid_from: string;
+            /** Valid To */
+            valid_to?: string | null;
         };
         /** CalendarToRecoverItem */
         CalendarToRecoverItem: {
@@ -8370,7 +8375,10 @@ export interface operations {
     };
     delete_template_entry_api_v1_calendar_template__entry_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano */
+                from?: string | null;
+            };
             header?: never;
             path: {
                 entry_id: number;

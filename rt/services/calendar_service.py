@@ -27,6 +27,7 @@ from rt.db.models import (
 )
 from rt.db.session import read_scope, session_scope
 from rt.services.errors import Invalid, NotFound
+from rt.services.study_progress_service import current_unit_ids
 from rt.storage import fs
 
 MESI = [
@@ -83,6 +84,18 @@ def float_to_time(h: float) -> str:
     return f"{hours:02d}:{minutes:02d}"
 
 
+def parse_date(value: str) -> datetime.date:
+    try:
+        return datetime.date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise Invalid("invalid_date", "Data non valida, attesa AAAA-MM-GG.") from None
+
+
+def _template_valid_on(entry: CalendarTemplateEntry, date_str: str) -> bool:
+    """L'ora vale da valid_from (inclusa) a valid_to (esclusa)."""
+    return entry.valid_from <= date_str and (entry.valid_to is None or date_str < entry.valid_to)
+
+
 def normalize_subject(materia: Optional[str]) -> str:
     """Normalizza la materia per il confronto (maiuscolo, senza spazi ai bordi)."""
     return str(materia or "").strip().upper()
@@ -106,6 +119,7 @@ def list_template_entries(db=None) -> List[schemas.CalendarTemplateEntryView]:
             schemas.CalendarTemplateEntryView(
                 id=r.id,
                 valid_from=r.valid_from,
+                valid_to=r.valid_to,
                 day_of_week=r.day_of_week,
                 start_time=r.start_time,
                 end_time=r.end_time,
@@ -149,12 +163,24 @@ def create_template_entry(
         )
 
 
-def delete_template_entry(entry_id: int, db=None) -> None:
+def delete_template_entry(entry_id: int, from_date: Optional[str] = None, db=None) -> None:
+    """Toglie un'ora dalla settimana tipo.
+
+    Con from_date l'ora smette di valere da quella data: le settimane precedenti
+    la conservano insieme a stati, note e collegamenti. Si cancella davvero solo
+    se non era ancora mai valsa prima di from_date.
+    """
+    if from_date is not None:
+        from_date = parse_date(from_date).isoformat()
     database = db or get_database()
     with session_scope(database) as session:
         entry = session.get(CalendarTemplateEntry, entry_id)
         if entry is None:
             raise NotFound("template_entry_not_found", f"Slot {entry_id} non trovato.")
+        if from_date is not None and entry.valid_from < from_date:
+            if entry.valid_to is None or entry.valid_to > from_date:
+                entry.valid_to = from_date
+            return
         session.delete(entry)
 
 
@@ -307,6 +333,8 @@ def link_lesson(
 ) -> schemas.CalendarEntryStateView:
     database = db or get_database()
     with session_scope(database) as session:
+        if data.lesson_id is not None and session.get(Lesson, data.lesson_id) is None:
+            raise NotFound("lesson_not_found", f"Lezione {data.lesson_id} non trovata.")
         row = session.scalars(
             select(CalendarEntryState).where(
                 CalendarEntryState.date == data.date,
@@ -375,24 +403,17 @@ def _build_lesson_summary(
     meta = _get_lesson_metadata(lesson)
     title = lesson.titolo or meta.get("titolo") or lesson.argomenti or lesson.folder_name
 
-    # Conteggio unità apprese e totali
-    study_units = session.scalars(
-        select(StudyUnit).where(StudyUnit.lesson_id == lesson.id)
-    ).all()
-    units_learned = sum(1 for u in study_units if u.status == "appreso")
-    units_total = len(study_units)
-
-    # Se non ci sono study_units ma c'è la scaletta, prova a leggerla
-    if units_total == 0:
-        try:
-            from rt.pipeline.outline import load_outline
-            outline = load_outline(lesson.path)
-            units_total = sum(len(m.units) for m in outline.macro_sections)
-        except Exception:
-            units_total = 0
+    # Unità apprese sulla scaletta attuale (come il riepilogo dello Studio)
+    unit_ids = current_unit_ids(lesson.path)
+    units_learned = sum(
+        1
+        for u in session.scalars(select(StudyUnit).where(StudyUnit.lesson_id == lesson.id))
+        if u.status == "appreso" and u.unit_id in unit_ids
+    )
+    units_total = len(unit_ids)
 
     state_str = lesson.workflow_state or ""
-    is_proc = state_str not in ("completed", "ready", "done", "")
+    is_proc = state_str not in ("completato", "fallito", "")
 
     return schemas.CalendarLessonSummary(
         id=lesson.id,
@@ -468,7 +489,7 @@ def _resolve_day_events(
     }
 
     for tpl in template_entries:
-        if tpl.day_of_week != day_of_week:
+        if tpl.day_of_week != day_of_week or not _template_valid_on(tpl, date_str):
             continue
         if tpl.id in removed_template_ids:
             continue
@@ -566,79 +587,97 @@ def _resolve_day_events(
     return events
 
 
+def _resolve_dates(
+    session: Session, dates: List[datetime.date], now: datetime.datetime
+) -> Dict[str, Tuple[List[schemas.CalendarEventView], Optional[CalendarDayState]]]:
+    """Ore e stato del giorno per ogni data, con poche query per tutto l'intervallo."""
+    date_strs = [d.isoformat() for d in dates]
+    templates = session.scalars(
+        select(CalendarTemplateEntry).order_by(
+            CalendarTemplateEntry.day_of_week,
+            CalendarTemplateEntry.start_time,
+        )
+    ).all()
+
+    overrides_by_date: Dict[str, List[CalendarOverride]] = {}
+    for ov in session.scalars(
+        select(CalendarOverride).where(CalendarOverride.date.in_(date_strs))
+    ):
+        overrides_by_date.setdefault(ov.date, []).append(ov)
+
+    day_states_by_date = {
+        ds.date: ds
+        for ds in session.scalars(
+            select(CalendarDayState).where(CalendarDayState.date.in_(date_strs))
+        )
+    }
+
+    entry_states_by_date_key: Dict[str, Dict[str, CalendarEntryState]] = {}
+    for es in session.scalars(
+        select(CalendarEntryState).where(CalendarEntryState.date.in_(date_strs))
+    ):
+        entry_states_by_date_key.setdefault(es.date, {})[es.entry_key] = es
+
+    resolved = {}
+    for d in dates:
+        d_str = d.isoformat()
+        events = _resolve_day_events(
+            session=session,
+            target_date=d,
+            template_entries=templates,
+            day_overrides=overrides_by_date.get(d_str, []),
+            day_state=day_states_by_date.get(d_str),
+            entry_states_by_key=entry_states_by_date_key.get(d_str, {}),
+            now=now,
+        )
+        resolved[d_str] = (events, day_states_by_date.get(d_str))
+    return resolved
+
+
+def _day_view(
+    d: datetime.date,
+    events: List[schemas.CalendarEventView],
+    day_state: Optional[CalendarDayState],
+    today: datetime.date,
+) -> schemas.CalendarDayView:
+    return schemas.CalendarDayView(
+        date=d.isoformat(),
+        day_of_week=d.weekday(),
+        day_name=DAYS[d.weekday()],
+        day_number=d.day,
+        month_name=MESI[d.month - 1],
+        status=day_state.status if day_state else "",
+        note=day_state.note if day_state else None,
+        is_today=(d == today),
+        events=events,
+        hours=events,
+    )
+
+
+def _event_end(ev: schemas.CalendarEventView) -> datetime.datetime:
+    return datetime.datetime.combine(
+        datetime.date.fromisoformat(ev.date),
+        datetime.time(int(ev.end_hour), int(round((ev.end_hour - int(ev.end_hour)) * 60))),
+    )
+
+
 def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
-    target = datetime.date.fromisoformat(target_date_str)
+    target = parse_date(target_date_str)
     monday = target - datetime.timedelta(days=target.weekday())
     friday = monday + datetime.timedelta(days=4)
     week_dates = [monday + datetime.timedelta(days=i) for i in range(5)]
-    week_date_strs = [d.isoformat() for d in week_dates]
+    # "Da recuperare" guarda anche la settimana precedente, come nel riepilogo ⓘ.
+    previous_dates = [d - datetime.timedelta(days=7) for d in week_dates]
 
     now = datetime.datetime.now()
     today = now.date()
 
     database = db or get_database()
     with read_scope(database) as session:
-        # Carica template validi (ordinati per day_of_week e orario)
-        templates = session.scalars(
-            select(CalendarTemplateEntry).order_by(
-                CalendarTemplateEntry.day_of_week,
-                CalendarTemplateEntry.start_time,
-            )
-        ).all()
+        resolved = _resolve_dates(session, previous_dates + week_dates, now)
 
-        # Carica overrides della settimana
-        overrides = session.scalars(
-            select(CalendarOverride).where(CalendarOverride.date.in_(week_date_strs))
-        ).all()
-        overrides_by_date: Dict[str, List[CalendarOverride]] = {}
-        for ov in overrides:
-            overrides_by_date.setdefault(ov.date, []).append(ov)
-
-        # Carica stati del giorno
-        day_states = session.scalars(
-            select(CalendarDayState).where(CalendarDayState.date.in_(week_date_strs))
-        ).all()
-        day_states_by_date = {ds.date: ds for ds in day_states}
-
-        # Carica stati delle ore
-        entry_states = session.scalars(
-            select(CalendarEntryState).where(CalendarEntryState.date.in_(week_date_strs))
-        ).all()
-        entry_states_by_date_key: Dict[str, Dict[str, CalendarEntryState]] = {}
-        for es in entry_states:
-            entry_states_by_date_key.setdefault(es.date, {})[es.entry_key] = es
-
-        days: List[schemas.CalendarDayView] = []
-        all_week_events: List[schemas.CalendarEventView] = []
-
-        for d in week_dates:
-            d_str = d.isoformat()
-            d_events = _resolve_day_events(
-                session=session,
-                target_date=d,
-                template_entries=templates,
-                day_overrides=overrides_by_date.get(d_str, []),
-                day_state=day_states_by_date.get(d_str),
-                entry_states_by_key=entry_states_by_date_key.get(d_str, {}),
-                now=now,
-            )
-            all_week_events.extend(d_events)
-            ds = day_states_by_date.get(d_str)
-
-            days.append(
-                schemas.CalendarDayView(
-                    date=d_str,
-                    day_of_week=d.weekday(),
-                    day_name=DAYS[d.weekday()],
-                    day_number=d.day,
-                    month_name=MESI[d.month - 1],
-                    status=ds.status if ds else "",
-                    note=ds.note if ds else None,
-                    is_today=(d == today),
-                    events=d_events,
-                    hours=d_events,
-                )
-            )
+        days = [_day_view(d, *resolved[d.isoformat()], today) for d in week_dates]
+        all_week_events = [ev for day in days for ev in day.events]
 
         # Calcolo riassunto settimana (ⓘ)
         hours_total = sum(
@@ -648,36 +687,24 @@ def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
         skip_count = sum(1 for e in all_week_events if e.status == "saltare")
         modified_count = sum(1 for e in all_week_events if e.is_modified)
 
-        # "Da recuperare": ore passate con stato nonseguita senza lezione
-        # Cerchiamo nelle ultime settimane fino alla fine della settimana corrente
+        # "Da recuperare": ore passate non seguite e senza lezione, in questa settimana e nella precedente
         to_recover: List[schemas.CalendarToRecoverItem] = []
-        lookback_start = monday - datetime.timedelta(days=28)
-        past_dates = [
-            (lookback_start + datetime.timedelta(days=i)).isoformat()
-            for i in range((friday - lookback_start).days + 1)
-        ]
-
-        # Se ci sono eventi nonseguiti nella settimana corrente o precedente
-        for ev in all_week_events:
-            ev_dt = datetime.datetime.combine(
-                datetime.date.fromisoformat(ev.date),
-                datetime.time(int(ev.end_hour), int(round((ev.end_hour - int(ev.end_hour)) * 60))),
-            )
-            if ev.status == "nonseguita" and ev.lesson is None and ev_dt < now:
-                ev_d = datetime.date.fromisoformat(ev.date)
-                to_recover.append(
-                    schemas.CalendarToRecoverItem(
-                        key=ev.key,
-                        date=ev.date,
-                        day_of_week=ev.day_of_week,
-                        day_name=DAYS[ev.day_of_week],
-                        day_number=ev_d.day,
-                        month_number=ev_d.month,
-                        materia=ev.materia,
-                        start_time=ev.start_time,
-                        end_time=ev.end_time,
+        for d in previous_dates + week_dates:
+            for ev in resolved[d.isoformat()][0]:
+                if ev.status == "nonseguita" and ev.lesson is None and _event_end(ev) < now:
+                    to_recover.append(
+                        schemas.CalendarToRecoverItem(
+                            key=ev.key,
+                            date=ev.date,
+                            day_of_week=ev.day_of_week,
+                            day_name=DAYS[ev.day_of_week],
+                            day_number=d.day,
+                            month_number=d.month,
+                            materia=ev.materia,
+                            start_time=ev.start_time,
+                            end_time=ev.end_time,
+                        )
                     )
-                )
 
         # Costruzione label settimana (es. "12–16 ottobre" oppure "28 settembre – 2 ottobre")
         if monday.month == friday.month:
@@ -704,55 +731,13 @@ def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
 
 
 def get_day_view(target_date_str: str, db=None) -> schemas.CalendarDayView:
-    target = datetime.date.fromisoformat(target_date_str)
-    date_str = target.isoformat()
+    target = parse_date(target_date_str)
     now = datetime.datetime.now()
-    today = now.date()
 
     database = db or get_database()
     with read_scope(database) as session:
-        templates = session.scalars(
-            select(CalendarTemplateEntry).order_by(
-                CalendarTemplateEntry.day_of_week,
-                CalendarTemplateEntry.start_time,
-            )
-        ).all()
-
-        overrides = session.scalars(
-            select(CalendarOverride).where(CalendarOverride.date == date_str)
-        ).all()
-
-        day_state = session.scalars(
-            select(CalendarDayState).where(CalendarDayState.date == date_str)
-        ).first()
-
-        entry_states = session.scalars(
-            select(CalendarEntryState).where(CalendarEntryState.date == date_str)
-        ).all()
-        entry_states_by_key = {es.entry_key: es for es in entry_states}
-
-        events = _resolve_day_events(
-            session=session,
-            target_date=target,
-            template_entries=templates,
-            day_overrides=overrides,
-            day_state=day_state,
-            entry_states_by_key=entry_states_by_key,
-            now=now,
-        )
-
-        return schemas.CalendarDayView(
-            date=date_str,
-            day_of_week=target.weekday(),
-            day_name=DAYS[target.weekday()],
-            day_number=target.day,
-            month_name=MESI[target.month - 1],
-            status=day_state.status if day_state else "",
-            note=day_state.note if day_state else None,
-            is_today=(target == today),
-            events=events,
-            hours=events,
-        )
+        events, day_state = _resolve_dates(session, [target], now)[target.isoformat()]
+        return _day_view(target, events, day_state, now.date())
 
 
 def get_day_import_view(target_date_str: str, db=None) -> schemas.CalendarDayImportView:

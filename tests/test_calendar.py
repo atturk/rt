@@ -283,8 +283,10 @@ def test_api_calendar_endpoints(client, rt_db):
     assert client.delete(f"/api/v1/calendar/template/{tpl_id}").status_code == 204
 
 
-def test_automatic_lesson_link(tmp_path, rt_db):
+def test_automatic_lesson_link(tmp_path, rt_db, monkeypatch):
     """CA1b: Una lezione con stessa data, ora e materia si collega automaticamente all'ora e la segna Seguita."""
+    # Scaletta attuale di 4 unità: il totale viene da qui, non dalle righe di studio.
+    monkeypatch.setattr(calendar_service, "current_unit_ids", lambda _path: {"u1", "u2", "u3", "u4"})
     tpl = calendar_service.create_template_entry(
         schemas.CalendarTemplateEntryCreate(
             day_of_week=0,  # Lunedì
@@ -316,6 +318,8 @@ def test_automatic_lesson_link(tmp_path, rt_db):
         s.add(StudyUnit(lesson_id=lesson.id, unit_id="u1", status="appreso"))
         s.add(StudyUnit(lesson_id=lesson.id, unit_id="u2", status="appreso"))
         s.add(StudyUnit(lesson_id=lesson.id, unit_id="u3", status="da-imparare"))
+        # Unità tolta dalla scaletta: non conta
+        s.add(StudyUnit(lesson_id=lesson.id, unit_id="vecchia", status="appreso"))
 
     # Verifica week view
     week = calendar_service.get_week_view("2026-10-12", db=rt_db)
@@ -328,7 +332,7 @@ def test_automatic_lesson_link(tmp_path, rt_db):
     assert ev.lesson is not None
     assert ev.lesson.titolo == "Clustering gerarchico"
     assert ev.lesson.units_learned == 2
-    assert ev.lesson.units_total == 3
+    assert ev.lesson.units_total == 4
 
     # Nel DB calendar_entry_states non dev'esserci alcun record scritto a mano
     with session_scope(rt_db) as s:
@@ -474,3 +478,65 @@ def test_calendar_day_import_api(tmp_path, rt_db, client):
     assert em_hour["lesson"] is None
 
 
+
+
+def test_template_validity_keeps_past_weeks(rt_db):
+    """Togliere un'ora dalla settimana tipo "da questa settimana in poi" non tocca le settimane prima."""
+    from rt.db.models import CalendarEntryState
+    from rt.db.session import session_scope
+
+    old = calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(day_of_week=0, start_time="09:00", end_time="11:00",
+                                            materia="Analisi", valid_from="2026-09-07"),
+        db=rt_db,
+    )
+    new = calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(day_of_week=0, start_time="14:00", end_time="16:00",
+                                            materia="Fisica", valid_from="2026-10-12"),
+        db=rt_db,
+    )
+    calendar_service.set_entry_state(
+        schemas.CalendarEntryStateSet(date="2026-09-28", entry_key=f"tpl_{old.id}",
+                                      template_entry_id=old.id, note="portare il libro"),
+        db=rt_db,
+    )
+
+    # Un'ora nuova non compare nelle settimane prima della sua validità
+    september = calendar_service.get_week_view("2026-09-28", db=rt_db).days[0].events
+    assert [e.materia for e in september] == ["Analisi"]
+
+    calendar_service.delete_template_entry(old.id, from_date="2026-10-12", db=rt_db)
+
+    october = calendar_service.get_week_view("2026-10-12", db=rt_db).days[0].events
+    assert [e.materia for e in october] == ["Fisica"]
+    september = calendar_service.get_week_view("2026-09-28", db=rt_db).days[0].events
+    assert [(e.materia, e.note) for e in september] == [("Analisi", "portare il libro")]
+    with session_scope(rt_db) as s:
+        assert s.get(CalendarEntryState, 1) is not None
+
+    # Un'ora che non era ancora mai valsa si cancella davvero
+    calendar_service.delete_template_entry(new.id, from_date="2026-10-12", db=rt_db)
+    assert [e.id for e in calendar_service.list_template_entries(db=rt_db)] == [old.id]
+
+
+def test_to_recover_includes_previous_week(rt_db):
+    calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(day_of_week=4, start_time="09:00", end_time="11:00",
+                                            materia="Chimica", valid_from="2026-01-05"),
+        db=rt_db,
+    )
+    week = calendar_service.get_week_view("2026-03-09", db=rt_db)
+    assert [item.date for item in week.summary.to_recover] == ["2026-03-06", "2026-03-13"]
+
+
+def test_calendar_api_rejects_bad_input(client):
+    assert client.get("/api/v1/calendar/week", params={"date": "2026-13-45"}).status_code in (400, 422)
+    assert client.get("/api/v1/calendar/day", params={"date": "abc"}).status_code in (400, 422)
+    bad_state = {"date": "xxxxxxxxxx", "entry_key": "tpl_1", "status": "seguita"}
+    assert client.post("/api/v1/calendar/entry-state", json=bad_state).status_code == 422
+    bad_status = {"date": "2026-10-12", "entry_key": "tpl_1", "status": "boh"}
+    assert client.post("/api/v1/calendar/entry-state", json=bad_status).status_code == 422
+    bad_time = {"day_of_week": 0, "start_time": "25:99", "end_time": "26:00", "materia": "X"}
+    assert client.post("/api/v1/calendar/template", json=bad_time).status_code == 422
+    missing = {"date": "2026-10-12", "entry_key": "tpl_1", "lesson_id": 999}
+    assert client.post("/api/v1/calendar/link-lesson", json=missing).status_code == 404

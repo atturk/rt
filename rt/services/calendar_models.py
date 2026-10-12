@@ -1,20 +1,41 @@
 """Modelli di dominio e DTO per il calendario (4.2.5 CA1)."""
-from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+import datetime
+import re
+from typing import Annotated, List, Literal, Optional
+from pydantic import AfterValidator, BaseModel, Field
+
+
+def _check_date(value: str) -> str:
+    datetime.date.fromisoformat(value)
+    return value
+
+
+def _check_time(value: str) -> str:
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", value.strip())
+    if not match or int(match[1]) > 23 or int(match[2]) > 59:
+        raise ValueError("orario non valido, atteso HH:MM")
+    return f"{int(match[1]):02d}:{match[2]}"
+
+
+IsoDate = Annotated[str, Field(min_length=10, max_length=10, description="Data YYYY-MM-DD"), AfterValidator(_check_date)]
+ClockTime = Annotated[str, Field(min_length=3, max_length=5, description="Orario HH:MM"), AfterValidator(_check_time)]
+EntryStatus = Literal["seguire", "seguita", "nonseguita", "saltare", "annullata"]
+DayStatus = Literal["", "nonseguita", "saltare", "annullata"]
 
 
 class CalendarTemplateEntryCreate(BaseModel):
     day_of_week: int = Field(ge=0, le=6, description="0=Lun, 1=Mar, ..., 6=Dom")
-    start_time: str = Field(min_length=3, max_length=8, description="Orario di inizio, es. 09:30")
-    end_time: str = Field(min_length=3, max_length=8, description="Orario di fine, es. 11:30")
+    start_time: ClockTime
+    end_time: ClockTime
     materia: str = Field(min_length=1, max_length=256)
     docente: Optional[str] = Field(None, max_length=256)
-    valid_from: Optional[str] = Field("2000-01-01", max_length=10, description="Data di inizio validità YYYY-MM-DD")
+    valid_from: Optional[IsoDate] = "2000-01-01"
 
 
 class CalendarTemplateEntryView(BaseModel):
     id: int
     valid_from: str
+    valid_to: Optional[str] = None
     day_of_week: int
     start_time: str
     end_time: str
@@ -24,11 +45,11 @@ class CalendarTemplateEntryView(BaseModel):
 
 
 class CalendarOverrideCreate(BaseModel):
-    date: str = Field(min_length=10, max_length=10, description="Data YYYY-MM-DD")
+    date: IsoDate
     action: Literal["added", "removed", "modified"]
     template_entry_id: Optional[int] = None
-    start_time: Optional[str] = Field(None, max_length=8)
-    end_time: Optional[str] = Field(None, max_length=8)
+    start_time: Optional[ClockTime] = None
+    end_time: Optional[ClockTime] = None
     materia: Optional[str] = Field(None, max_length=256)
     docente: Optional[str] = Field(None, max_length=256)
 
@@ -46,9 +67,9 @@ class CalendarOverrideView(BaseModel):
 
 
 class CalendarDayStateSet(BaseModel):
-    date: str = Field(min_length=10, max_length=10, description="Data YYYY-MM-DD")
-    status: str = Field("", description="nonseguita, saltare, annullata, o vuoto per normale")
-    note: Optional[str] = None
+    date: IsoDate
+    status: DayStatus = Field("", description="nonseguita, saltare, annullata, o vuoto per normale")
+    note: Optional[str] = Field(None, max_length=4000)
 
 
 class CalendarDayStateView(BaseModel):
@@ -58,12 +79,12 @@ class CalendarDayStateView(BaseModel):
 
 
 class CalendarEntryStateSet(BaseModel):
-    date: str = Field(min_length=10, max_length=10, description="Data YYYY-MM-DD")
+    date: IsoDate
     entry_key: str = Field(min_length=1, max_length=128)
     template_entry_id: Optional[int] = None
     override_id: Optional[int] = None
-    status: Optional[str] = None
-    note: Optional[str] = None
+    status: Optional[EntryStatus] = None
+    note: Optional[str] = Field(None, max_length=4000)
 
 
 class CalendarEntryStateView(BaseModel):
@@ -79,7 +100,7 @@ class CalendarEntryStateView(BaseModel):
 
 
 class CalendarLinkLessonRequest(BaseModel):
-    date: str = Field(min_length=10, max_length=10)
+    date: IsoDate
     entry_key: str = Field(min_length=1, max_length=128)
     lesson_id: Optional[int] = None
     template_entry_id: Optional[int] = None

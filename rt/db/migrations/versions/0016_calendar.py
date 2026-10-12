@@ -21,6 +21,7 @@ def upgrade() -> None:
         'calendar_template_entries',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('valid_from', sa.String(length=10), nullable=False),
+        sa.Column('valid_to', sa.String(length=10), nullable=True),
         sa.Column('day_of_week', sa.Integer(), nullable=False),
         sa.Column('start_time', sa.String(length=8), nullable=False),
         sa.Column('end_time', sa.String(length=8), nullable=False),

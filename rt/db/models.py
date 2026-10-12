@@ -332,6 +332,8 @@ class CalendarTemplateEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     valid_from: Mapped[str] = mapped_column(String(10), default="2000-01-01")
+    # Prima data in cui l'ora non vale piu' (esclusa); None = ancora valida.
+    valid_to: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     day_of_week: Mapped[int] = mapped_column(Integer)
     start_time: Mapped[str] = mapped_column(String(8))
     end_time: Mapped[str] = mapped_column(String(8))

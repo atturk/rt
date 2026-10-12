@@ -180,24 +180,22 @@ export function EventPopup({
             rows={2}
             className="w-full resize-none rounded border bg-background p-1.5 text-xs outline-none focus:ring-1 focus:ring-primary"
           />
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+          <div className="flex justify-end gap-0.5">
+            <IconButton
+              label="Chiudi"
+              icon={X}
+              side="top"
               onClick={() => setEditingNote(false)}
-            >
-              Chiudi
-            </button>
-            <button
-              type="button"
-              className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            />
+            <IconButton
+              label="Salva la nota"
+              icon={Check}
+              side="top"
               onClick={() => {
                 onNoteSave(noteText)
                 setEditingNote(false)
               }}
-            >
-              Salva
-            </button>
+            />
           </div>
         </div>
       )}
@@ -513,6 +511,11 @@ export function AddEventPopup({
   const [endTime, setEndTime] = useState(defaultEndTime)
   const [docente, setDocente] = useState('')
   const popupRef = useRef<HTMLDivElement>(null)
+  // Le materie delle lezioni come suggerimenti: il collegamento automatico confronta la materia.
+  const lessonsQuery = useLessons()
+  const knownSubjects = [
+    ...new Set((lessonsQuery.data ?? []).map((l) => l.materia).filter((m): m is string => !!m)),
+  ].sort()
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -554,9 +557,15 @@ export function AddEventPopup({
             value={materia}
             onChange={(e) => setMateria(e.target.value)}
             placeholder="Nome materia"
+            list="calendar-known-subjects"
             className="rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary"
             autoFocus
           />
+          <datalist id="calendar-known-subjects">
+            {knownSubjects.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </label>
 
         <div className="grid grid-cols-2 gap-2">

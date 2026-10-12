@@ -177,18 +177,21 @@ export function CalendarWeekGrid({
               const tooltip = getEventTooltip(ev)
 
               return (
-                <Tooltip key={ev.key} content={tooltip} side="top">
+                <div
+                  key={ev.key}
+                  className="absolute inset-x-1"
+                  style={{ top: `${top}px`, height: `${height}px` }}
+                >
+                <Tooltip content={tooltip} side="top">
                   {(trigger) => (
                     <button
                       type="button"
                       data-testid={`calendar-event-${ev.key}`}
                       style={{
-                        top: `${top}px`,
-                        height: `${height}px`,
                         backgroundColor: `color-mix(in oklch, ${color} var(--tint, 12%), var(--bg))`,
                         boxShadow: `inset 3px 0 0 ${color}`,
                       }}
-                      className={`group absolute inset-x-1 flex flex-col justify-start gap-0.5 rounded-lg p-2 text-left text-xs transition-colors hover:brightness-95 ${
+                      className={`group relative flex size-full flex-col justify-start gap-0.5 rounded-lg p-2 text-left text-xs transition-colors hover:brightness-95 ${
                         isSelected ? 'ring-2 ring-primary ring-offset-1' : ''
                       } ${
                         ev.status === 'annullata'
@@ -232,23 +235,21 @@ export function CalendarWeekGrid({
                         />
                       )}
 
-                      {/* Tasto Rimuovi (×) in modalità modifica */}
-                      {editing && (
-                        <button
-                          type="button"
-                          className="absolute right-1 top-1 flex size-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-xs hover:text-danger"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onRemoveEvent(ev)
-                          }}
-                          aria-label="Togli quest'ora"
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                      )}
                     </button>
                   )}
                 </Tooltip>
+                {/* Tasto Rimuovi (×) in modalità modifica, fuori dal blocco: niente bottoni annidati */}
+                {editing && (
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1 flex size-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-xs hover:text-danger"
+                    onClick={() => onRemoveEvent(ev)}
+                    aria-label="Togli quest'ora"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+                </div>
               )
             })}
 

@@ -49,10 +49,10 @@ export const calendarApi = {
       }),
     ) as Promise<CalendarTemplateEntryView>,
 
-  deleteTemplate: (entryId: number): Promise<void> =>
+  deleteTemplate: (entryId: number, from?: string): Promise<void> =>
     unwrap(
       api.DELETE('/api/v1/calendar/template/{entry_id}', {
-        params: { path: { entry_id: entryId } },
+        params: { path: { entry_id: entryId }, query: from ? { from } : {} },
       }),
     ) as Promise<void>,
 
@@ -126,7 +126,7 @@ export function useCreateTemplateEntry() {
 export function useDeleteTemplateEntry() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => calendarApi.deleteTemplate(id),
+    mutationFn: ({ id, from }: { id: number; from?: string }) => calendarApi.deleteTemplate(id, from),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
     },

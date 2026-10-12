@@ -21,7 +21,9 @@ import {
   useLinkLesson,
   useSetDayState,
   useSetEntryState,
+  type CalendarDayStateSet,
   type CalendarDayView,
+  type CalendarEntryStateSet,
   type CalendarEventView,
 } from '@/api/calendar'
 import { IconButton } from '@/components/ui/icon-button'
@@ -37,25 +39,42 @@ import {
 import { CalendarWeekGrid } from '@/components/calendar/CalendarWeekGrid'
 import { CalendarDayList } from '@/components/calendar/CalendarDayList'
 
+// Date in ora locale: toISOString() passa per UTC e sbaglia giorno vicino a mezzanotte e al cambio d'ora.
+function toLocalIso(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function fromLocalIso(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 function shiftDate(isoDate: string, daysOffset: number): string {
-  const d = new Date(isoDate)
+  const d = fromLocalIso(isoDate)
   d.setDate(d.getDate() + daysOffset)
-  return d.toISOString().slice(0, 10)
+  return toLocalIso(d)
+}
+
+// Un giorno avanti o indietro saltando sabato e domenica (il calendario mostra lun–ven).
+function shiftWeekday(isoDate: string, step: 1 | -1): string {
+  let next = shiftDate(isoDate, step)
+  while ([0, 6].includes(fromLocalIso(next).getDay())) next = shiftDate(next, step)
+  return next
 }
 
 function getTodayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return toLocalIso(new Date())
 }
 
 export function CalendarPage() {
   const isPhone = useIsPhone()
   const [currentDate, setCurrentDate] = useState(getTodayIso)
   const [desktopView, setDesktopView] = useState<'week' | 'day'>('week')
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [editing, setEditing] = useState<'week' | 'tpl' | null>(null)
 
-  // Popups state
-  const [activeEvent, setActiveEvent] = useState<{
+  // Popups state: dell'ora si tiene solo la chiave, i dati si leggono sempre dalla settimana aggiornata
+  const [activeEventRef, setActiveEvent] = useState<{
     event: CalendarEventView
     anchor: PopupAnchor
   } | null>(null)
@@ -82,6 +101,20 @@ export function CalendarPage() {
 
   const week = weekQuery.data
   const days = week?.days ?? []
+  const liveEvent = activeEventRef
+    ? days
+        .flatMap((d) => d.events)
+        .find((ev) => ev?.key === activeEventRef.event.key && ev?.date === activeEventRef.event.date)
+    : undefined
+  const activeEvent = activeEventRef
+    ? { event: liveEvent ?? activeEventRef.event, anchor: activeEventRef.anchor }
+    : null
+  // Il giorno mostrato in vista giorno segue la data corrente (oggi all'apertura).
+  const selectedDayIndex = Math.max(
+    0,
+    days.findIndex((d) => d.date === currentDate),
+  )
+  const dayMode = isPhone || desktopView === 'day'
 
   function closeAllPopups() {
     setActiveEvent(null)
@@ -92,12 +125,12 @@ export function CalendarPage() {
 
   function handlePrev() {
     closeAllPopups()
-    setCurrentDate((cur) => shiftDate(cur, isPhone || desktopView === 'day' ? -1 : -7))
+    setCurrentDate((cur) => (dayMode ? shiftWeekday(cur, -1) : shiftDate(cur, -7)))
   }
 
   function handleNext() {
     closeAllPopups()
-    setCurrentDate((cur) => shiftDate(cur, isPhone || desktopView === 'day' ? 1 : 7))
+    setCurrentDate((cur) => (dayMode ? shiftWeekday(cur, 1) : shiftDate(cur, 7)))
   }
 
   function handleToday() {
@@ -118,7 +151,8 @@ export function CalendarPage() {
       }
     } else if (editing === 'tpl') {
       if (ev.template_entry_id) {
-        deleteTpl.mutate(ev.template_entry_id)
+        // Da questa settimana in poi: le settimane prima conservano l'ora, i suoi stati e le note.
+        deleteTpl.mutate({ id: ev.template_entry_id, from: week?.start_date })
       } else if (ev.override_id) {
         deleteOv.mutate(ev.override_id)
       }
@@ -132,7 +166,7 @@ export function CalendarPage() {
         <h1 className="mr-2 text-base font-semibold">Calendario</h1>
 
         <IconButton
-          label="Settimana precedente"
+          label={dayMode ? 'Giorno precedente' : 'Settimana precedente'}
           icon={ChevronLeft}
           side="bottom"
           onClick={handlePrev}
@@ -146,7 +180,7 @@ export function CalendarPage() {
         </span>
 
         <IconButton
-          label="Settimana successiva"
+          label={dayMode ? 'Giorno successivo' : 'Settimana successiva'}
           icon={ChevronRight}
           side="bottom"
           onClick={handleNext}
@@ -175,7 +209,7 @@ export function CalendarPage() {
         {/* Matita di modifica orario che si divide in due icone */}
         {!isPhone && (
           <div
-            className={`group flex items-center rounded-lg transition-colors ${
+            className={`group flex items-center rounded-lg transition-colors focus-within:bg-muted ${
               editing ? 'bg-muted' : 'hover:bg-muted'
             }`}
           >
@@ -195,7 +229,7 @@ export function CalendarPage() {
                 </Tooltip>
 
                 {/* All'hover/focus compaiono le due opzioni di modifica */}
-                <div className="hidden group-hover:flex items-center gap-0.5 animate-in fade-in">
+                <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5 animate-in fade-in">
                   <IconButton
                     label="Modifica solo questa settimana"
                     icon={CalendarRange}
@@ -309,7 +343,10 @@ export function CalendarPage() {
           <CalendarDayList
             days={days}
             selectedDayIndex={selectedDayIndex}
-            onSelectDayIndex={setSelectedDayIndex}
+            onSelectDayIndex={(i) => {
+              closeAllPopups()
+              if (days[i]) setCurrentDate(days[i].date)
+            }}
             onOpenEvent={(event, anchor) => {
               closeAllPopups()
               setActiveEvent({ event, anchor })
@@ -328,7 +365,7 @@ export function CalendarPage() {
             setEntryStateMutation.mutate({
               date: activeEvent.event.date,
               entry_key: activeEvent.event.key,
-              status,
+              status: status as CalendarEntryStateSet['status'],
               template_entry_id: activeEvent.event.template_entry_id ?? undefined,
               override_id: activeEvent.event.override_id ?? undefined,
             })
@@ -362,7 +399,7 @@ export function CalendarPage() {
           onSetDayState={(status) => {
             setDayStateMutation.mutate({
               date: activeDayMenu.day.date,
-              status,
+              status: status as CalendarDayStateSet['status'],
             })
           }}
         />
@@ -404,7 +441,7 @@ export function CalendarPage() {
                 end_time: endTime,
                 materia,
                 docente,
-                valid_from: addSlot.day.date,
+                valid_from: week.start_date,
               })
             }
           }}
