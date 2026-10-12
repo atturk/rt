@@ -5,6 +5,7 @@
 - Le lezioni conservano un elenco ordinato delle fonti originali, senza spostare i file delle lezioni esistenti.
 - L'inserimento di una fonte conserva i riferimenti ai segmenti esistenti e alle annotazioni già salvate.
 - Si possono preparare nuove parti audio e appunti senza trascrivere di nuovo le parti già presenti; l'audio segue l'ordine delle fonti.
+- La scaletta può essere estesa mantenendo le unità esistenti, i loro titoli e il loro ordine.
 
 ## 4.2.4 — 2026-10-12
 

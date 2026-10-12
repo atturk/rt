@@ -69,6 +69,7 @@ def _generate_validated_outline(
     segments_data,
     lesson_dir: str,
     max_repair_attempts: int = 2,
+    additional_validation=None,
 ):
     history = list(base_history)
     current_prompt = final_user_prompt
@@ -83,7 +84,10 @@ def _generate_validated_outline(
             history=history or None,
         )
         try:
-            return outline, validate_outline(outline, segments_data)
+            report = validate_outline(outline, segments_data)
+            if additional_validation:
+                additional_validation(outline)
+            return outline, report
         except ValidationError as e:
             last_error = e
             if attempt >= max_repair_attempts:
