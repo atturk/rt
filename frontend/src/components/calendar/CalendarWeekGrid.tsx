@@ -62,6 +62,7 @@ export function CalendarWeekGrid({
             {(trigger) => (
               <button
                 type="button"
+                data-testid={`calendar-day-header-${day.day_name}`}
                 className="flex items-baseline gap-1.5 rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect()
@@ -180,6 +181,7 @@ export function CalendarWeekGrid({
                   {(trigger) => (
                     <button
                       type="button"
+                      data-testid={`calendar-event-${ev.key}`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,

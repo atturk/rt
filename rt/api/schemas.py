@@ -1006,6 +1006,7 @@ class CalendarDayView(BaseModel):
     note: Optional[str] = None
     is_today: bool = False
     events: List[CalendarEventView] = Field(default_factory=list)
+    hours: List[CalendarEventView] = Field(default_factory=list, description="Ore del giorno per popup di import (CA1e)")
 
 
 class CalendarToRecoverItem(BaseModel):

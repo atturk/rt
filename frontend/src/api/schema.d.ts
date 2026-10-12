@@ -3481,6 +3481,11 @@ export interface components {
             /** Events */
             events?: components["schemas"]["CalendarEventView"][];
             /**
+             * Hours
+             * @description Ore del giorno per popup di import (CA1e)
+             */
+            hours?: components["schemas"]["CalendarEventView"][];
+            /**
              * Is Today
              * @default false
              */

@@ -23,7 +23,7 @@ export function CalendarDayList({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Striscia dei giorni con pallini delle materie */}
-      <div className="flex gap-1.5 border-b border-border bg-background px-3 py-2">
+      <div data-testid="calendar-day-strip" className="flex gap-1.5 border-b border-border bg-background px-3 py-2">
         {days.map((day, idx) => {
           const isSelected = idx === selectedDayIndex
           return (
@@ -76,6 +76,7 @@ export function CalendarDayList({
                     {(trigger) => (
                       <button
                         type="button"
+                        data-testid={`calendar-mobile-event-${ev.key}`}
                         style={{
                           backgroundColor: `color-mix(in oklch, ${color} var(--tint, 12%), var(--bg))`,
                           boxShadow: `inset 3px 0 0 ${color}`,

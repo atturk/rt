@@ -406,3 +406,71 @@ def test_manual_link_wins_over_automatic(tmp_path, rt_db):
     assert ev_unlinked.lesson is None
     assert ev_unlinked.is_recorded is False
 
+
+def test_calendar_day_import_api(tmp_path, rt_db, client):
+    """CA1e: GET /calendar/day?date= restituisce le ore del giorno e lo stato 'già registrata' per il popup di import."""
+    from rt.db.session import session_scope
+    from rt.db.repositories import LessonRepository
+
+    # Slot 1: Data Mining 09:30-11:30 (avrà una lezione collegata -> is_recorded = True)
+    calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(
+            day_of_week=0,  # Lunedì
+            start_time="09:30",
+            end_time="11:30",
+            materia="Data Mining",
+            docente="Prof. Ferraris",
+        ),
+        db=rt_db,
+    )
+
+    # Slot 2: Elettromagnetismo 11:30-13:30 (non registrata -> is_recorded = False)
+    calendar_service.create_template_entry(
+        schemas.CalendarTemplateEntryCreate(
+            day_of_week=0,  # Lunedì
+            start_time="11:30",
+            end_time="13:30",
+            materia="Elettromagnetismo",
+            docente="Prof.ssa Bassi",
+        ),
+        db=rt_db,
+    )
+
+    # Crea lezione per Data Mining
+    l_dir = tmp_path / "dm_import_lesson"
+    l_dir.mkdir()
+    (l_dir / "info.yaml").write_text("data: '2026-10-12'\nora: '09:30'\nmateria: 'Data Mining'\ntitolo: 'DM Lez 1'\n")
+
+    with session_scope(rt_db) as s:
+        l = LessonRepository(s).get_or_create(str(l_dir))
+        l.data = "2026-10-12"
+        l.materia = "DATA MINING"
+        l.titolo = "DM Lez 1"
+
+    res = client.get("/api/v1/calendar/day?date=2026-10-12")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["date"] == "2026-10-12"
+    assert data["day_name"] == "Lun"
+    assert len(data["hours"]) == 2
+    assert len(data["events"]) == 2
+
+    # Verifica slot 1: già registrata (spenta nel popup)
+    dm_hour = next(h for h in data["hours"] if h["materia"] == "Data Mining")
+    assert dm_hour["start_time"] == "09:30"
+    assert dm_hour["end_time"] == "11:30"
+    assert dm_hour["docente"] == "Prof. Ferraris"
+    assert dm_hour["is_recorded"] is True
+    assert dm_hour["status"] == "seguita"
+    assert dm_hour["lesson"] is not None
+    assert dm_hour["lesson"]["titolo"] == "DM Lez 1"
+
+    # Verifica slot 2: non ancora registrata (attiva come scelta rapida)
+    em_hour = next(h for h in data["hours"] if h["materia"] == "Elettromagnetismo")
+    assert em_hour["start_time"] == "11:30"
+    assert em_hour["end_time"] == "13:30"
+    assert em_hour["docente"] == "Prof.ssa Bassi"
+    assert em_hour["is_recorded"] is False
+    assert em_hour["lesson"] is None
+
+

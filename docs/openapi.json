@@ -636,6 +636,14 @@
             "title": "Events",
             "type": "array"
           },
+          "hours": {
+            "description": "Ore del giorno per popup di import (CA1e)",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventView"
+            },
+            "title": "Hours",
+            "type": "array"
+          },
           "is_today": {
             "default": false,
             "title": "Is Today",

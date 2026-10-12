@@ -110,6 +110,7 @@ export function EventPopup({
       ref={popupRef}
       style={style}
       role="dialog"
+      data-testid="calendar-event-popup"
       aria-label={`Dettaglio ora ${event.materia}`}
       className="flex flex-col gap-2.5 rounded-xl border bg-background p-3 text-sm shadow-xl"
     >
@@ -334,6 +335,7 @@ export function DayMenuPopup({
       ref={popupRef}
       style={style}
       role="dialog"
+      data-testid="calendar-day-menu"
       aria-label={`Menu giorno ${day.day_name} ${day.day_number}`}
       className="flex flex-col gap-2 rounded-xl border bg-background p-3 text-xs shadow-xl"
     >
@@ -429,6 +431,7 @@ export function WeekInfoPopup({
       ref={popupRef}
       style={style}
       role="dialog"
+      data-testid="calendar-week-popup"
       aria-label="Riepilogo della settimana"
       className="flex flex-col gap-2.5 rounded-xl border bg-background p-3 text-xs shadow-xl"
     >
@@ -535,6 +538,7 @@ export function AddEventPopup({
       ref={popupRef}
       style={style}
       role="dialog"
+      data-testid="calendar-add-event-popup"
       aria-label="Aggiungi ora"
       className="flex flex-col gap-2.5 rounded-xl border bg-background p-3 text-xs shadow-xl"
     >

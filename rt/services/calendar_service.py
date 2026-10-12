@@ -556,7 +556,7 @@ def _resolve_day_events(
                 status=effective_status,
                 note=es.note if es else None,
                 is_modified=s["is_modified"],
-                is_recorded=(lesson_summary is not None),
+                is_recorded=bool(lesson_summary is not None or effective_status == "seguita"),
                 template_entry_id=s["template_entry_id"],
                 override_id=s["override_id"],
                 lesson=lesson_summary,
@@ -636,6 +636,7 @@ def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
                     note=ds.note if ds else None,
                     is_today=(d == today),
                     events=d_events,
+                    hours=d_events,
                 )
             )
 
@@ -750,6 +751,7 @@ def get_day_view(target_date_str: str, db=None) -> schemas.CalendarDayView:
             note=day_state.note if day_state else None,
             is_today=(target == today),
             events=events,
+            hours=events,
         )
 
 

@@ -18,6 +18,7 @@ async function pages(page: Page): Promise<[string, string][]> {
   const review = await lessonId(page, 'FARMACOLOGIA')
   return [
     ['dashboard', '/'],
+    ['calendario', '/calendario'],
     ['lezione', `/lezioni/${done}`],
     ['pannello Verifica', `/lezioni/${review}?panel=verifica`],
     ['pannello Dettagli', `/lezioni/${done}?panel=dettagli`],

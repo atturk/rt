@@ -129,7 +129,7 @@ export function CalendarPage() {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header barra calendario */}
       <header className="flex h-(--header-height) shrink-0 items-center gap-1 border-b border-border px-3 sm:px-4">
-        <h2 className="mr-2 text-base font-semibold">Calendario</h2>
+        <h1 className="mr-2 text-base font-semibold">Calendario</h1>
 
         <IconButton
           label="Settimana precedente"
@@ -138,7 +138,10 @@ export function CalendarPage() {
           onClick={handlePrev}
         />
 
-        <span className="min-w-[130px] sm:min-w-[160px] text-center font-mono text-sm font-semibold text-foreground">
+        <span
+          data-testid="calendar-week-label"
+          className="min-w-[130px] sm:min-w-[160px] text-center font-mono text-sm font-semibold text-foreground"
+        >
           {week?.label || 'Caricamento…'}
         </span>
 
