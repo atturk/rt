@@ -156,6 +156,19 @@ OBIETTIVI DI SCRITTURA:
 7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi)."""
 
 
+def build_rewrite_prefix(outline_summary: str, previous_units_text: str = "",
+                         materials_text: str = "", glossary_text: str = "") -> str:
+    """Prefisso nell'ordine di cache; materials_text è il punto di innesto per b2."""
+    prefix = f"CONTESTO GLOBALE DELLA LEZIONE:\n{outline_summary}\n\n"
+    if materials_text:
+        prefix += f"MATERIALI DELLA LEZIONE:\n{materials_text}\n\n"
+    if glossary_text:
+        prefix += f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n\n"
+    if previous_units_text:
+        prefix += f"UNITÀ PRECEDENTI GIÀ RIELABORATE (in ordine, solo per mantenere il filo):\n{previous_units_text}\n\n"
+    return prefix
+
+
 def build_rewrite_user_prompt(
     unit_id: str,
     unit_title: str,
@@ -164,17 +177,16 @@ def build_rewrite_user_prompt(
     prev_context: str,
     next_context: str,
     outline_summary: str,
-    glossary_text: str = ""
+    glossary_text: str = "",
+    previous_units_text: str = "",
+    materials_text: str = "",
+    include_prefix: bool = True,
 ) -> str:
-    glossary_block = f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n" if glossary_text else ""
-    return f"""Devi rielaborare l'unità didattica:
+    prefix = build_rewrite_prefix(outline_summary, previous_units_text, materials_text, glossary_text) if include_prefix else ""
+    return prefix + f"""Devi rielaborare l'unità didattica:
 ID: {unit_id}
 Titolo: {unit_title}
 
-CONTESTO GLOBALE DELLA LEZIONE:
-{outline_summary}
-
-{glossary_block}
 ---
 CONTESTO PRECEDENTE (ultimi 1-2 minuti, solo per mantenere il filo, non riscrivere):
 {prev_context if prev_context else "_Inizio lezione_"}
@@ -183,7 +195,7 @@ SEGMENTI PRINCIPALI DELL'UNITÀ (da rielaborare integralmente):
 {main_segments_text}
 ---
 CONTESTO SUCCESSIVO (prossimi 1-2 minuti, solo per continuità):
-{next_context if next_context else "_Fine lezione_"}
+{next_context if next_context else "_Nessun contesto successivo disponibile_"}
 ---
 
 Genera l'oggetto JSON conforme allo schema DraftUnit con:

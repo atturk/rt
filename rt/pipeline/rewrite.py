@@ -20,7 +20,7 @@ from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import load_manifest, init_or_update_manifest
 from rt.core.config import load_config
 from rt.llm.client import LLMClient
-from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt
+from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt, build_rewrite_prefix
 from rt.services.prompt_settings import append_extra, effective_system
 from rt.pipeline.outline import load_outline
 from rt.pipeline.validator import validate_draft
@@ -44,6 +44,18 @@ from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 
 LOG = logging.getLogger(__name__)
+
+
+def previous_context_for_usage(units, context_length, usage):
+    """Non sottrae token stimati per unità: un superamento osservato svuota il contesto."""
+    if type(context_length) is not int or context_length <= 0 or not isinstance(usage, dict):
+        return units
+    prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    if type(prompt) is not int or type(completion) is not int or prompt < 0 or completion < 0:
+        return units
+    if prompt + completion > context_length:
+        return []
+    return units
 
 
 def get_draft_path(lesson_dir: str) -> str:
@@ -154,6 +166,7 @@ def _run_rewrite(
         draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
         
     draft_units_map = {u.unit_id: u for u in draft.units}
+    fixed_titles = {u.unit_id: u.title for u in draft.units}
     
     manifest_before = load_manifest(lesson_dir)
     old_draft_hash = (
@@ -189,6 +202,10 @@ def _run_rewrite(
     elif (force and not target_unit_id) or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID) and not target_unit_id):
         draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
         draft_units_map = {}
+    elif target_unit_id is not None:
+        # La rigenerazione isolata deve ricevere le precedenti già nel draft,
+        # anche quando non c'è un checkpoint compatibile per l'intera fase.
+        draft_units_map = {uid: unit for uid, unit in draft_units_map.items() if uid in outline_units_map}
     else:
         # Se PARTIAL o recupero checkpoint: verifichiamo la coerenza di ciò che è committato
         ckpt, ckpt_status, ckpt_reason = get_phase_checkpoint(lesson_dir, "rewrite")
@@ -247,6 +264,7 @@ def _run_rewrite(
     outline_position = {ou.id: pos for pos, ou in enumerate(all_outline_units, start=1)}
     failures = UnitFailureTracker()
     stopped_early = False
+    context_floor = 0
 
     for idx, u in enumerate(units_to_process, start=1):
         # Posizione nella lezione (es. 8/31), anche quando si riprende da un checkpoint
@@ -275,7 +293,25 @@ def _run_rewrite(
             max_segments=20
         )
         prev_text = "\n".join(s.text_raw for s in prev_segs)
-        next_text = "\n".join(s.text_raw for s in next_segs)
+        current_position = outline_position[u.id] - 1
+        future_segment_ids = set()
+        for future in all_outline_units[current_position + 1:]:
+            future_segment_ids.update(s.id for s in all_segments[
+                seg_by_id[future.start_segment_id].index - 1:seg_by_id[future.end_segment_id].index])
+        next_text = "\n".join(s.text_raw for s in next_segs if s.id not in future_segment_ids)
+        previous_units = [draft_units_map[unit.id] for unit in all_outline_units[context_floor:current_position]
+                          if unit.id in draft_units_map]
+        from rt.llm.pricing import get_model_context_length
+        model = getattr(client, "last_context_model", None)
+        usage = getattr(client, "last_usage", None)
+        limit = get_model_context_length(model["provider"], model["model"]) if model and usage else None
+        retained = previous_context_for_usage(previous_units, limit, usage)
+        if previous_units and not retained:
+            # Le chiamate successive ricominciano dall'unità attuale, senza reinserire
+            # quelle già tolte e senza stimare la dimensione del nuovo prompt.
+            context_floor = current_position
+        previous_text = "\n\n".join(f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained)
+        prefix = build_rewrite_prefix(outline_summary, previous_text)
         
         prompt = build_rewrite_user_prompt(
             unit_id=u.id,
@@ -284,7 +320,8 @@ def _run_rewrite(
             main_segment_ids=main_seg_ids,
             prev_context=prev_text,
             next_context=next_text,
-            outline_summary=outline_summary
+            outline_summary=outline_summary,
+            include_prefix=False,
         )
         
         u_title = u.title.strip() if getattr(u, "title", None) else ""
@@ -299,7 +336,8 @@ def _run_rewrite(
                 response_model=DraftUnit,
                 job_name="rewrite",
                 unit_id=unit_label,
-                lesson_dir=lesson_dir
+                lesson_dir=lesson_dir,
+                prompt_prefix=prefix,
             )
         except Exception as exc:
             if not is_unit_failure(exc):
@@ -321,6 +359,8 @@ def _run_rewrite(
         unit_draft.start_segment_id = u.start_segment_id
         unit_draft.end_segment_id = u.end_segment_id
         unit_draft.unit_id = u.id
+        if changed_unit_ids is not None:
+            unit_draft.title = fixed_titles.get(u.id, u.title)
         if not unit_draft.source_segment_ids:
             unit_draft.source_segment_ids = main_seg_ids
         else:

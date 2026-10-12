@@ -58,3 +58,24 @@ def test_notes_use_paragraphs_and_do_not_shift_audio(tmp_path):
     assert all(s.flags == ["appunti"] and s.end_seconds == .001 and s.source_file == source.id for s in result[:2])
     assert result[-1].start_seconds == 0
     assert [s.index for s in load_segments_json(str(tmp_path / "segments.json")).segments] == [1, 2, 3]
+
+
+def test_force_prepare_after_undo_preserves_legacy_duration_and_pending_sources(tmp_path, monkeypatch):
+    from rt.pipeline.prepare import run_prepare
+    from rt.core.update_history import undo_update
+    from rt.pipeline.source_update import run_source_update, _read_state
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    with open(lesson_path(lesson, "trascritto grezzo.json"), "w") as stream:
+        json.dump({"segments": [{"start": 0, "end": 1000, "text": "original"}]}, stream)
+    run_prepare(lesson, force=True)
+    add_source(lesson, "appunti", "pending.txt", b"pending notes")
+    monkeypatch.setattr("rt.services.classifier.classify_units", lambda *a, **k: None)
+    run_source_update(lesson, mock=True)
+    undo_update(lesson)
+    assert _read_state(lesson)["sources"] == {}
+    result = run_prepare(lesson, force=True)
+    assert result["duration_seconds"] == 1
+    assert [s.id for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["seg_000001"]
+    assert sources_pending(lesson)
+    assert _read_state(lesson)["next_segment"] >= 3

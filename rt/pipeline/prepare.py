@@ -99,7 +99,9 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     source_type = None
     source_path = None
     managed_segments = None
-    if fs.isfile(lesson_path(lesson_dir, "source_update.json")) and fs.isfile(segments_json_path):
+    from rt.pipeline.source_update import _read_state
+    has_source_cache = fs.isfile(lesson_path(lesson_dir, "source_update.json")) and bool(_read_state(lesson_dir)["sources"])
+    if has_source_cache and fs.isfile(segments_json_path):
         # Prepare non incorpora fonti pendenti e non rigenera gli ID della lezione
         # espansa, neppure con force: l'aggiornamento usa il comando dedicato.
         from rt.core.segments import load_segments_json

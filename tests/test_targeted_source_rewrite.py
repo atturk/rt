@@ -37,3 +37,39 @@ def test_update_only_rewrites_new_unit_and_preserves_human_decisions(tmp_path, m
     assert result["changed_units"] == ["1.2"]
     assert next(u for u in load_draft(lesson).units if u.unit_id == "1.1") == original
     assert decisions.read_bytes() == before
+
+
+def test_insertion_between_sources_rewrites_only_the_spanning_unit(tmp_path, monkeypatch):
+    from rt.services.notes_lesson_service import create_notes_lesson
+    from rt.pipeline.prepare import run_prepare
+    from rt.pipeline.rewrite import run_rewrite
+    from rt.pipeline.ledger import record_decision, load_ledger
+    lesson = create_notes_lesson("First", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
+    add_source(lesson, "appunti", "second.txt", b"Second")
+    add_source(lesson, "appunti", "third.txt", b"Third")
+    run_prepare(lesson)
+    save_outline(outline(), lesson)
+    from rt.core.state import transition_to, WorkflowState
+    from rt.core.lesson_paths import lesson_path
+    transition_to(lesson_path(lesson, "info.yaml"), WorkflowState.OUTLINE_VALIDATED, allow_force=True)
+    monkeypatch.setattr("rt.services.classifier.classify_units", lambda *args, **kwargs: None)
+    run_rewrite(lesson, force_mock=True)
+    original = next(u for u in load_draft(lesson).units if u.unit_id == "1.2")
+    original_title = next(u for u in load_draft(lesson).units if u.unit_id == "1.1").title
+    from rt.llm.client import LLMClient
+    call = LLMClient.call_structured
+    def changed_title(self, **kwargs):
+        result = call(self, **kwargs)
+        if kwargs["job_name"] == "rewrite":
+            result.title = "Titolo cambiato dal modello"
+        return result
+    monkeypatch.setattr(LLMClient, "call_structured", changed_title)
+    record_decision(lesson, "existing-decision", "rejected")
+    ledger = load_ledger(lesson)
+    add_source(lesson, "appunti", "inserted.txt", b"Inserted inside the first unit", ordine=2)
+    result = run_source_update(lesson, mock=True)
+    assert result["changed_units"] == ["1.1"] and result["processed_units"] == 1
+    assert next(u for u in load_draft(lesson).units if u.unit_id == "1.2") == original
+    assert next(u for u in load_draft(lesson).units if u.unit_id == "1.1").title == original_title
+    assert next(u for u in load_draft(lesson).units if u.unit_id == "1.1").source_segment_ids == ["seg_000001", "seg_000004", "seg_000002"]
+    assert load_ledger(lesson) == ledger

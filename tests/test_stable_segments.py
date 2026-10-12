@@ -37,3 +37,55 @@ def test_inserting_source_preserves_existing_ids_and_human_data(tmp_path):
 def test_counter_does_not_reuse_removed_ids():
     result = insert_source_segments([segment(1, "old")], [segment(1, "new")], "src-new", 1, next_number=10)
     assert result[-1].id == "seg_000010"
+
+
+def test_removing_original_audio_never_assigns_its_asr_risks_to_another_source(tmp_path):
+    from rt.core.sources import remove_source
+    from rt.core.asr_risk import detect_statistical_asr_risks
+    from rt.core.models import Draft, DraftUnit
+    from rt.pipeline.rewrite import save_draft
+    from rt.core.lesson_paths import lesson_path
+    lesson = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("file_audio: original.wav\n")
+    source = add_source(lesson, "audio", "new.wav", b"new audio")
+    remove_source(lesson, "src_000001")
+    old_raw = {"transcriptSegments": [{"text": "old audio", "wordRange": {"startIndex": 0, "endIndexExclusive": 1}}],
+               "wordTimestamps": [{"confidence": 0.01}]}
+    with open(lesson_path(lesson, "trascritto grezzo.json"), "w") as stream:
+        json.dump(old_raw, stream)
+    new = segment(2, "new audio").model_copy(update={"index": 1, "source_file": source.id})
+    save_segments_json([new], lesson_path(lesson, "segments.json"))
+    save_draft(Draft(units=[DraftUnit(unit_id="1.1", title="New", start_segment_id=new.id,
+        end_segment_id=new.id, source_segment_ids=[new.id], content="new audio")]), lesson)
+    assert detect_statistical_asr_risks(lesson) == []
+
+
+def test_original_asr_segment_and_word_times_follow_composed_audio_clock(tmp_path):
+    from rt.core.sources import load_sources
+    from rt.core.asr_risk import detect_statistical_asr_risks
+    from rt.core.models import Draft, DraftUnit
+    from rt.pipeline.rewrite import save_draft
+    from rt.core.lesson_paths import lesson_path
+    lesson = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("file_audio: original.wav\n")
+    load_sources(lesson)
+    raw = {"transcriptSegments": [{"text": "original", "startMs": 0, "endMs": 1000,
+               "wordRange": {"startIndex": 0, "endIndexExclusive": 1}}],
+           "wordTimestamps": [{"word": "original", "confidence": 0.01, "startMs": 100, "endMs": 200}]}
+    with open(lesson_path(lesson, "trascritto grezzo.json"), "w") as stream:
+        json.dump(raw, stream)
+    local = segment(1, "original").model_copy(update={"source_file": "src_000001"})
+    with open(lesson_path(lesson, "source_update.json"), "w") as stream:
+        json.dump({"sources": {"src_000001": {"segments": [local.model_dump()]}}}, stream)
+    shifted = local.model_copy(update={"start_seconds": 10, "end_seconds": 11,
+                                       "start_formatted": "00:10", "end_formatted": "00:11"})
+    save_segments_json([shifted], lesson_path(lesson, "segments.json"))
+    save_draft(Draft(units=[DraftUnit(unit_id="1.1", title="Original", start_segment_id=shifted.id,
+        end_segment_id=shifted.id, source_segment_ids=[shifted.id], content="original")]), lesson)
+    risk = detect_statistical_asr_risks(lesson)[0].asr_segments[0]
+    assert risk.start_s == 10 and risk.end_s == 11
+    assert risk.uncertain_words[0].start_s == 10.1 and risk.uncertain_words[0].end_s == 10.2
+    # Togliere dal registro è ancora pendente: la lezione corrente non cambia.
+    from rt.core.sources import remove_source
+    remove_source(lesson, "src_000001")
+    assert detect_statistical_asr_risks(lesson)[0].asr_segments[0] == risk

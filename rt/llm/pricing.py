@@ -67,6 +67,7 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
 
 # Cache in-memory per processo per i prezzi recuperati dinamicamente da OpenRouter
 _OPENROUTER_DYNAMIC_CACHE: Dict[str, Optional[ModelPricing]] = {}
+_OPENROUTER_CONTEXT_LENGTHS: Dict[str, int] = {}
 _OPENROUTER_DYNAMIC_FETCHED: bool = False
 
 
@@ -89,6 +90,10 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
             if resp.status_code == 200:
                 data = resp.json().get("data", [])
                 for item in data:
+                    if isinstance(item, dict) and "id" in item:
+                        length = item.get("context_length")
+                        if type(length) is int and length > 0:
+                            _OPENROUTER_CONTEXT_LENGTHS[str(item["id"]).lower().strip()] = length
                     if isinstance(item, dict) and "id" in item and "pricing" in item:
                         mid = str(item["id"]).lower().strip()
                         p_info = item["pricing"]
@@ -108,6 +113,16 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
             pass
 
     return _OPENROUTER_DYNAMIC_CACHE.get(mod_clean)
+
+
+def get_model_context_length(provider: str, model: str) -> Optional[int]:
+    """Solo metadati del provider: nessun limite presunto per modelli sconosciuti."""
+    if provider != "openrouter":
+        return None
+    clean = model.lower().strip().lstrip("~")
+    if clean not in _OPENROUTER_CONTEXT_LENGTHS:
+        _get_dynamic_openrouter_pricing(clean)
+    return _OPENROUTER_CONTEXT_LENGTHS.get(clean)
 
 
 def calculate_cost(
