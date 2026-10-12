@@ -482,7 +482,7 @@ class RecallSavedEvaluation(BaseModel):
 
 
 class RecallQuestion(BaseModel):
-    precedente: bool = False
+    precedente: bool = Field(False, json_schema_extra=lambda schema: schema.pop("default", None))
     saved_evaluation: Optional[RecallSavedEvaluation] = None
     evaluation_job_id: Optional[str] = None
     custom_type: Optional[str] = None
@@ -854,7 +854,7 @@ class StudyNoteCreate(BaseModel):
 
 
 class StudyNoteView(BaseModel):
-    precedente: bool = False
+    precedente: bool = Field(False, json_schema_extra=lambda schema: schema.pop("default", None))
     id: int
     lesson_id: int
     unit_id: str

@@ -167,7 +167,7 @@ def create_lesson(
     with_enrichment: Optional[bool] = Form(None),
     auto_accept: bool = Form(False),
     appunti: str = Form("", description="Testo per creare una lezione senza audio"),
-    materiali: List[UploadFile] = File([]),
+    materiali: List[UploadFile] = File([], json_schema_extra=lambda schema: schema.pop("default", None)),
     principale: Optional[str] = Form(None),
     allega_materiali: Optional[bool] = Form(None),
     calendar_entry_id: Optional[str] = Form(None),

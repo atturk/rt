@@ -3565,11 +3565,8 @@ export interface components {
             docente: string;
             /** Materia */
             materia: string;
-            /**
-             * Materiali
-             * @default []
-             */
-            materiali: string[];
+            /** Materiali */
+            materiali?: string[];
             /**
              * Mock
              * @default false
@@ -5030,11 +5027,8 @@ export interface components {
             color: number;
             /** Id */
             id: number;
-            /**
-             * Precedente
-             * @default false
-             */
-            precedente: boolean;
+            /** Precedente */
+            precedente?: boolean;
             /**
              * Source
              * @description Serializzazione di web-highlighter (startMeta, endMeta, text, id)
@@ -6449,11 +6443,8 @@ export interface components {
             options?: string[] | null;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
-            /**
-             * Precedente
-             * @default false
-             */
-            precedente: boolean;
+            /** Precedente */
+            precedente?: boolean;
             /** Question Text */
             question_text: string;
             /**
@@ -6498,11 +6489,8 @@ export interface components {
             options?: string[] | null;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
-            /**
-             * Precedente
-             * @default false
-             */
-            precedente: boolean;
+            /** Precedente */
+            precedente?: boolean;
             /** Question Text */
             question_text: string;
             /**
@@ -7203,11 +7191,8 @@ export interface components {
             lesson_id: number;
             /** Model */
             model?: string | null;
-            /**
-             * Precedente
-             * @default false
-             */
-            precedente: boolean;
+            /** Precedente */
+            precedente?: boolean;
             /** Request */
             request: string;
             /** Response */

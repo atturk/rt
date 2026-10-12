@@ -444,7 +444,6 @@
             "type": "string"
           },
           "materiali": {
-            "default": [],
             "items": {
               "contentMediaType": "application/octet-stream",
               "type": "string"
@@ -3975,7 +3974,6 @@
             "type": "integer"
           },
           "precedente": {
-            "default": false,
             "title": "Precedente",
             "type": "boolean"
           },
@@ -7060,7 +7058,6 @@
             "title": "Outcome"
           },
           "precedente": {
-            "default": false,
             "title": "Precedente",
             "type": "boolean"
           },
@@ -7256,7 +7253,6 @@
             "title": "Outcome"
           },
           "precedente": {
-            "default": false,
             "title": "Precedente",
             "type": "boolean"
           },
@@ -8961,7 +8957,6 @@
             "title": "Model"
           },
           "precedente": {
-            "default": false,
             "title": "Precedente",
             "type": "boolean"
           },
