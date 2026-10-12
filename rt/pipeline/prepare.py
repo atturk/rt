@@ -36,10 +36,10 @@ from rt.storage import fs
 def run_prepare(lesson_dir: str, force: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione (eventi su ctx, se dato)."""
     with phase_scope(ctx, "prepare") as scope:
-        return scope.complete(_run_prepare(lesson_dir, force=force))
+        return scope.complete(_run_prepare(lesson_dir, force=force, ctx=ctx))
 
 
-def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
+def _run_prepare(lesson_dir: str, force: bool = False, ctx=None) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione."""
     if not fs.isdir(lesson_dir):
         raise FileNotFoundError(f"Directory della lezione non trovata: '{lesson_dir}'")
@@ -106,9 +106,9 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
         # espansa, neppure con force: l'aggiornamento usa il comando dedicato.
         from rt.core.segments import load_segments_json
         managed_segments = load_segments_json(segments_json_path).segments
-    elif sources and all(s.tipo == "appunti" for s in sources) and not fs.isfile(segments_json_path):
+    elif sources and not fs.isfile(segments_json_path) and (all(s.tipo != "audio" for s in sources) or not audio_file):
         from rt.pipeline.source_update import prepare_source_update
-        managed_segments = prepare_source_update(lesson_dir)["segments"]
+        managed_segments = prepare_source_update(lesson_dir, mock=bool(ctx and ctx.force_mock), ctx=ctx)["segments"]
     if managed_segments is not None:
         source_type = "sources"
         source_path = lesson_path(lesson_dir, "sources.json")

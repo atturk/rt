@@ -86,8 +86,6 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     sources = load_sources(lesson_dir)
     if not sources:
         raise ValueError("La lezione deve avere almeno una fonte")
-    if any(s.tipo == "materiale" for s in sources):
-        raise ValueError("I materiali saranno disponibili nel prossimo lotto")
     state = _read_state(lesson_dir)
     cache = state["sources"]
     segment_path = lesson_path(lesson_dir, "segments.json")
@@ -118,6 +116,14 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             if source.tipo == "audio":
                 incoming = _transcribe(path, mock)
                 duration = _duration(path)
+            elif source.tipo == "materiale":
+                from rt.core.materials import material_pages
+                pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+                incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
+                    start_formatted="00:00", end_formatted="00:00",
+                    text_raw=page["testo"] or f"Pagina {page['numero']} senza testo leggibile",
+                    flags=["materiale"]) for page in pages]
+                duration = 0.0
             else:
                 with fs.open(path, encoding="utf-8") as stream:
                     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stream.read()) if p.strip()]
@@ -134,8 +140,10 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
             # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
             _write_state(lesson_dir, state)
-        # Con principale non audio, l’audio successivo resta contesto.
-        if primary_source.tipo != "audio" and any(s.tipo == "audio" for s in sources) and source.id != primary:
+        # Con materiali la scaletta usa solo la principale; la b1 conserva le sue fonti.
+        select_main = any(s.tipo == "materiale" for s in sources) or (state.get("primary_explicit") and primary_source.tipo != "audio")
+        is_main = source.tipo == "audio" if primary_source.tipo == "audio" else source.id == primary
+        if select_main and not is_main:
             offset += cache[source.id]["duration"]
             continue
         for item in cache[source.id]["segments"]:
@@ -162,6 +170,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
+    if any(s.tipo == "materiale" for s in sources):
+        from rt.core.source_selection import record_used_selection
+        record_used_selection(lesson_dir)
     return {"previous_segments": previous, "segments": ordered}
 
 

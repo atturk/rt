@@ -174,7 +174,9 @@ def material_context_parts(lesson_dir, *, mock=False, ctx=None):
         if source.tipo == 'materiale':
             for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
                 parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
-        elif primary and next((s.tipo for s in sources if s.id == primary), None) != 'audio' and source.id != primary:
+        elif source.id != primary and (
+                next((s.tipo for s in sources if s.id == primary), None) != 'audio'
+                or (any(s.tipo == 'materiale' for s in sources) and source.tipo == 'appunti')):
             texts = [segment['text_raw'] for segment in cache.get(source.id, {}).get('segments', [])]
             if texts:
                 parts.append(f'[{source.id}, {os.path.basename(source.file)}]\n' + '\n'.join(texts))

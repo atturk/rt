@@ -35,7 +35,7 @@ MEDIA_EXTENSIONS = {
     # video
     ".mp4", ".mov", ".mkv", ".avi", ".m4v",
     # immagini e documenti sorgente
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg", ".heic", ".pdf",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg", ".heic", ".pdf", ".pptx",
 }
 # Profondità massima di un file dentro una lezione (es. assets/images/x.png = 3).
 _MAX_DEPTH = 6
