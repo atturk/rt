@@ -101,6 +101,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
         # Audio storico mancante: la durata è la fine dell'ultimo segmento già preparato.
         duration = _duration(legacy_path) if fs.isfile(legacy_path) else previous[-1].end_seconds
         cache[legacy.id] = {"segments": [s.model_dump() for s in originals], "duration": duration}
+    from rt.core.source_selection import selection
+    primary = selection(lesson_dir)["principale"]
+    primary_source = next(s for s in sources if s.id == primary)
     offset = 0.0
     ordered = []
     for source in sources:
@@ -131,6 +134,10 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
             # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
             _write_state(lesson_dir, state)
+        # Con principale non audio, l’audio successivo resta contesto.
+        if primary_source.tipo != "audio" and any(s.tipo == "audio" for s in sources) and source.id != primary:
+            offset += cache[source.id]["duration"]
+            continue
         for item in cache[source.id]["segments"]:
             segment = Segment.model_validate(item)
             start, end = segment.start_seconds + offset, segment.end_seconds + offset
@@ -197,6 +204,9 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     from rt.core.update_history import begin_update, finish_update, abort_update
     if mode not in ("extend", "rebuild"):
         raise ValueError("Modalità di aggiornamento non valida")
+    from rt.core.source_selection import selection
+    if mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
+        raise ValueError("Ordine o principale cambiati: usa Ricostruisci")
     old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
     load_sources(lesson_dir)
     if mode == "extend" and old_outline:
@@ -262,5 +272,7 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
         raise RuntimeError("Aggiornamento incompleto: la lezione è tornata com'era, puoi riprovare.")
     from rt.services.sources_view import record_update_summary
     record_update_summary(lesson_dir, mode, old_outline, outline, selected)
+    from rt.core.source_selection import record_used_selection
+    record_used_selection(lesson_dir)
     result["changed_units"] = selected
     return result

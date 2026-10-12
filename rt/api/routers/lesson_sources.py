@@ -23,6 +23,10 @@ class SourcesView(BaseModel):
     has_unused_sources: bool
     can_undo: bool
     ultimo_aggiornamento: LastUpdate | None = None
+    principale: str
+    ordine_usato: list[str]
+    principale_usato: str | None
+    solo_ricostruzione: bool
 
 
 class UpdateRequest(BaseModel):
@@ -109,6 +113,9 @@ def update_lesson(lesson_id: int, body: UpdateRequest, lesson_dir: LessonDir, ac
     with source_mutation(lesson_id, lesson_dir):
         if not load_sources(lesson_dir):
             raise ApiError(422, "sources_empty", "Aggiungi almeno una fonte prima di aggiornare.")
+        from rt.core.source_selection import selection
+        if body.mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
+            raise ApiError(409, "rebuild_required", "Ordine o principale cambiati: usa Ricostruisci.")
         return enqueue_job("update_lesson", lesson_dir, body.model_dump(), actor)
 
 
@@ -147,3 +154,33 @@ def post_restore_version(lesson_id: int, vid: str, lesson_dir: LessonDir, actor:
         if not any(v["id"] == vid for v in list_versions(lesson_dir)):
             raise ApiError(404, "version_not_found", "Versione non trovata.")
         return enqueue_job("restore_version", lesson_dir, {"version": vid}, actor)
+
+
+class SourceOrder(BaseModel):
+    ids: list[str]
+
+
+class SourcePrimary(BaseModel):
+    id: str
+
+
+@router.put("/lessons/{lesson_id}/sources/order", response_model=SourcesView)
+def put_source_order(lesson_id: int, body: SourceOrder, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import set_order
+    with source_mutation(lesson_id, lesson_dir):
+        try:
+            set_order(lesson_dir, body.ids)
+        except ValueError as exc:
+            raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/sources/primary", response_model=SourcesView)
+def put_source_primary(lesson_id: int, body: SourcePrimary, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import set_primary
+    with source_mutation(lesson_id, lesson_dir):
+        try:
+            set_primary(lesson_dir, body.id)
+        except ValueError as exc:
+            raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)

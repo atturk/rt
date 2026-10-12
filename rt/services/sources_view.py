@@ -28,6 +28,7 @@ class LastUpdate(BaseModel):
 
 
 def sources_view(lesson_dir):
+    from rt.core.source_selection import selection
     sources = load_sources(lesson_dir)
     state = _read_state(lesson_dir)
     used = state.get("used", [s.id for s in sources if s.id == "src_000001"]
@@ -51,7 +52,8 @@ def sources_view(lesson_dir):
         views.append(SourceView(**values))
     return {"sources": views, "has_unused_sources": sources_pending(lesson_dir),
             "can_undo": has_update_snapshot(lesson_dir),
-            "ultimo_aggiornamento": state.get("ultimo_aggiornamento")}
+            "ultimo_aggiornamento": state.get("ultimo_aggiornamento"),
+            **selection(lesson_dir)}
 
 
 def record_update_summary(lesson_dir, mode, old_outline, outline, selected):

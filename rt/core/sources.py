@@ -59,6 +59,8 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
     sources = load_sources(lesson_dir)
+    from rt.core.source_selection import selection
+    previous_primary = selection(lesson_dir)["principale"]
     position = len(sources) + 1 if ordine is None else ordine
     if not 1 <= position <= len(sources) + 1:
         raise ValueError("Posizione della fonte non valida")
@@ -81,6 +83,11 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     for index, item in enumerate(sources, 1):
         item.ordine = index
     _save(lesson_dir, sources)
+    from rt.pipeline.source_update import _read_state, _write_state
+    state = _read_state(lesson_dir)
+    if "principale" not in state:
+        state["principale"] = previous_primary or source.id
+        _write_state(lesson_dir, state)
     return source
 
 
