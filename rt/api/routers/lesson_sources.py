@@ -61,23 +61,41 @@ def get_sources(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return sources_view(lesson_dir)
 
 
-@router.post("/lessons/{lesson_id}/sources", response_model=Source, status_code=201,
-             summary="Aggiunge audio o appunti senza aggiornare la lezione")
+@router.post("/lessons/{lesson_id}/sources", response_model=Source | list[Source], status_code=201,
+             summary="Aggiunge audio, appunti o materiali senza aggiornare la lezione")
 def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
-                tipo: Literal["audio", "appunti"] = Form(...),
-                file: Optional[UploadFile] = File(None), testo: Optional[str] = Form(None),
+                tipo: Literal["audio", "appunti", "materiale"] = Form(...),
+                file: Optional[list[UploadFile]] = File(None), testo: Optional[str] = Form(None),
                 ordine: Optional[int] = Form(None, ge=1)):
     from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
     import shutil
+    if tipo == "materiale":
+        from rt.core.materials import MATERIAL_EXTENSIONS, page_count
+        if not file or testo is not None:
+            raise ApiError(422, "validation_error", "Carica almeno un materiale.")
+        target = _upload_dir()
+        try:
+            saved = _save_uploads(file, MATERIAL_EXTENSIONS, target)
+            for path in saved:
+                try:
+                    page_count(path)
+                except Exception:
+                    raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
+            with source_mutation(lesson_id, lesson_dir):
+                return [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                   None if ordine is None else ordine + i, source_path=path)
+                        for i, path in enumerate(saved)]
+        finally:
+            shutil.rmtree(target, ignore_errors=True)
     if tipo == "audio":
-        if file is None or testo is not None:
+        if not file or len(file) != 1 or testo is not None:
             raise ApiError(422, "validation_error", "Carica un file audio.")
         # A blocchi su disco con limite, come l'import: mai l'intero file in memoria.
         target = _upload_dir()
         try:
-            saved = _save_uploads([file], SUPPORTED_AUDIO_EXTENSIONS, target)[0]
+            saved = _save_uploads(file, SUPPORTED_AUDIO_EXTENSIONS, target)[0]
             return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved), None, ordine, saved)
         finally:
             shutil.rmtree(target, ignore_errors=True)

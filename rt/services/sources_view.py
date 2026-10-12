@@ -42,6 +42,9 @@ def sources_view(lesson_dir):
         if source.tipo == "appunti":
             with fs.open(path, encoding="utf-8") as stream:
                 values["parole"] = len(stream.read().split())
+        elif source.tipo == "materiale":
+            from rt.core.materials import page_count
+            values["pagine"] = page_count(path)
         elif source.tipo == "audio":
             values["durata_s"] = state.get("sources", {}).get(source.id, {}).get("duration")
             if values["durata_s"] is None:
