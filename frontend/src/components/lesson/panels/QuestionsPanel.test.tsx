@@ -51,6 +51,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
           outcome: 'corretta',
           question_text: 'Come si calcola il gap anionico?',
           unit_ids: ['1.3'],
+          precedente: true,
         },
         {
           id: 'q3',
@@ -347,4 +348,9 @@ it('conserva le domande di un tipo eliminato sotto un filtro dedicato', () => {
   expect(screen.getByText('Domanda del tipo rimosso')).toBeInTheDocument()
   expect(screen.queryByText('Quale valore definisce acidosi?')).not.toBeInTheDocument()
   expect(screen.getAllByText('Tipo eliminato').length).toBeGreaterThan(1)
+})
+
+it('mostra icona precedente con tooltip per le domande precedenti', () => {
+  renderPanel()
+  expect(screen.getByTestId('question-precedente-icon')).toBeInTheDocument()
 })

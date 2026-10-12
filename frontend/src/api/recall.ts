@@ -120,13 +120,13 @@ export function useSelectRecallUnits(id: number) {
   })
 }
 
-export type RecallQuestionDetail = Schemas['RecallQuestionDetail']
+export type RecallQuestionDetail = Schemas['RecallQuestionDetail'] & { precedente?: boolean }
 
 /** Tutte le domande della lezione da rivedere; le soluzioni di quelle da porre solo con reveal. */
 export function useRecallQuestions(id: number, reveal: boolean) {
-  return useQuery({
+  return useQuery<{ questions: RecallQuestionDetail[] }>({
     queryKey: recallKeys.questions(id, reveal),
-    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/questions', { params: { ...path(id), query: { reveal } } })),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/questions', { params: { ...path(id), query: { reveal } } })) as Promise<{ questions: RecallQuestionDetail[] }>,
   })
 }
 

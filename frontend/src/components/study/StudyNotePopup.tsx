@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { AlertCircle, Check, CheckCircle2, Copy, HelpCircle, X } from 'lucide-react'
+import { AlertCircle, Check, CheckCircle2, Clock, Copy, HelpCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -130,6 +130,19 @@ export function StudyNotePopup({
           )}
           <span className="font-semibold text-foreground">{isVerifica ? 'Verifica' : 'Chiedi'}</span>
           <span className="text-meta text-muted-foreground">· unità {effectiveUnit}</span>
+          {note?.precedente && (
+            <Tooltip content="Precedente all'ultima aggiunta di fonti">
+              {(trigger) => (
+                <span
+                  {...trigger}
+                  className="inline-flex shrink-0 items-center text-muted-foreground"
+                  data-testid="note-precedente-icon"
+                >
+                  <Clock className="size-4" aria-hidden />
+                </span>
+              )}
+            </Tooltip>
+          )}
         </div>
         <IconButton label="Chiudi · Esc" icon={X} onClick={onClose} data-testid="study-note-close" />
       </div>

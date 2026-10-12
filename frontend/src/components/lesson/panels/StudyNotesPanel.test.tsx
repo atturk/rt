@@ -25,6 +25,7 @@ const mockNotes: StudyNote[] = [
     cost: 0.003,
     created_at: '2026-10-11T10:00:00Z',
     applied_decision_id: null,
+    precedente: true,
   },
   {
     id: 2,
@@ -188,5 +189,14 @@ describe('StudyNotesPanel', () => {
     renderPanel({ selectedNoteId: 2 })
 
     expect(screen.getByText(/Il testo è cambiato dopo la domanda/i)).toBeInTheDocument()
+  })
+
+  it('mostra icona precedente con tooltip nelle note precedenti', () => {
+    const { unmount } = renderPanel()
+    expect(screen.getByTestId('note-precedente-icon')).toBeInTheDocument()
+    unmount()
+
+    renderPanel({ selectedNoteId: 1 })
+    expect(screen.getByTestId('note-precedente-icon')).toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   ExternalLink,
   HelpCircle,
@@ -95,8 +96,21 @@ export function StudyNotesPanel({
             <ArrowLeft className="size-4" aria-hidden />
             Torna alla lista
           </Button>
-          <span className="text-meta font-medium text-foreground">
-            {isVerifica ? 'Verifica' : 'Chiedi'} · unità {activeNote.unit_id}
+          <span className="text-meta font-medium text-foreground flex items-center gap-1.5">
+            <span>{isVerifica ? 'Verifica' : 'Chiedi'} · unità {activeNote.unit_id}</span>
+            {activeNote.precedente && (
+              <Tooltip content="Precedente all'ultima aggiunta di fonti">
+                {(trigger) => (
+                  <span
+                    {...trigger}
+                    className="inline-flex shrink-0 items-center text-muted-foreground"
+                    data-testid="note-precedente-icon"
+                  >
+                    <Clock className="size-3.5" aria-hidden />
+                  </span>
+                )}
+              </Tooltip>
+            )}
           </span>
         </div>
 
@@ -324,6 +338,19 @@ export function StudyNotesPanel({
                             <span className="truncate text-meta font-medium text-foreground">
                               {quote}
                             </span>
+                            {note.precedente && (
+                              <Tooltip content="Precedente all'ultima aggiunta di fonti">
+                                {(trigger) => (
+                                  <span
+                                    {...trigger}
+                                    className="inline-flex shrink-0 items-center text-muted-foreground"
+                                    data-testid="note-precedente-icon"
+                                  >
+                                    <Clock className="size-3.5" aria-hidden />
+                                  </span>
+                                )}
+                              </Tooltip>
+                            )}
                           </div>
                           {isApplied ? (
                             <Badge tone="success" className="shrink-0 text-[11px]">

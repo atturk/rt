@@ -7,7 +7,7 @@ export type HighlightSourceData = StudyHighlight['source']
 /** Evidenziazioni dello Studio di un'unità (4.2.2, H1): solo su RT, non nel documento. */
 export const highlightsApi = {
   list: (lessonId: number, unit: string) =>
-    unwrap(api.GET('/api/v1/lessons/{lesson_id}/highlights', { params: { path: { lesson_id: lessonId }, query: { unit } } })),
+    unwrap(api.GET('/api/v1/lessons/{lesson_id}/highlights', { params: { path: { lesson_id: lessonId }, query: { unit } } })) as Promise<StudyHighlight[]>,
   add: (lessonId: number, body: Schemas['HighlightIn']) =>
     unwrap(api.POST('/api/v1/lessons/{lesson_id}/highlights', { params: { path: { lesson_id: lessonId } }, body })),
   remove: (lessonId: number, id: number) =>

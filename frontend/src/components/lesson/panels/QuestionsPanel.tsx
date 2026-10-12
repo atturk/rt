@@ -1,5 +1,5 @@
 import { UnitStrip } from './UnitStrip'
-import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, Clock, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -32,6 +32,7 @@ import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { Tooltip } from '@/components/ui/tooltip'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
 import { mostSuggested, unitsAdviceBreakdown } from '@/lib/questionTypes'
 import { questionTypeId, typeLabel } from '@/lib/recall'
@@ -565,7 +566,22 @@ export function QuestionsPanel({
                   <p className="text-meta text-muted-foreground">
                     {meta}
                   </p>
-                  <p className="mt-0.5 text-body">{q.question_text}</p>
+                  <p className="mt-0.5 text-body flex items-start gap-1.5">
+                    <span>{q.question_text}</span>
+                    {q.precedente && (
+                      <Tooltip content="Precedente all'ultima aggiunta di fonti">
+                        {(trigger) => (
+                          <span
+                            {...trigger}
+                            className="inline-flex shrink-0 items-center text-muted-foreground mt-0.5"
+                            data-testid="question-precedente-icon"
+                          >
+                            <Clock className="size-3.5" aria-hidden />
+                          </span>
+                        )}
+                      </Tooltip>
+                    )}
+                  </p>
                 </div>
                 <QuestionRowMenu
                   asked={q.status === 'asked' || q.status === 'answered'}
