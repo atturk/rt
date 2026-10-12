@@ -202,6 +202,12 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     const auds = chosen.filter(isAudioFile)
     const mats = chosen.filter(isMaterialFile)
 
+    const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
+    if (unsupported) {
+      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o PDF/immagini.`)
+      return
+    }
+
     // Ordinamento di partenza: data di modifica del file, poi per nome
     const sortedAuds = [...auds].sort(
       (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
@@ -311,6 +317,8 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
       })
       return
     }
+
+    if (problem) return
 
     if (audioFiles.length === 0 && materialFiles.length === 0) {
       setProblem('Scegli almeno un file audio o un materiale.')
@@ -426,7 +434,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
           multiple
           hidden
           accept=".pdf,image/*"
-          aria-label="Materiali aggiuntivi"
+          aria-label="Altri documenti"
           onChange={(event) => {
             chooseAdditionalMaterials(Array.from(event.target.files ?? []))
             event.target.value = ''
@@ -501,8 +509,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                   <span className="flex items-center gap-1.5">
                     <FileAudio className="size-4 shrink-0" aria-hidden />
                     <span>
-                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} · unite in
-                      quest'ordine
+                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} · diventano un'unica registrazione, in quest'ordine
                     </span>
                   </span>
                   <IconButton
@@ -867,7 +874,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                 onClick={() => setEnrichment(!enrichment)}
               />
               <IconButton
-                label="Allega i materiali alle unità"
+                label="Allega documenti alle unità"
                 icon={Paperclip}
                 aria-pressed={attachMaterials}
                 active={attachMaterials && materialFiles.length > 0 && !solo}

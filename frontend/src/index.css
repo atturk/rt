@@ -370,22 +370,18 @@
 /* PN1: Pannelli staccati dai bordi, angoli stondati 16px, ombra e animazioni */
 @keyframes rt-panel-in {
   from {
-    opacity: 0;
     transform: translateX(24px) scale(0.98);
   }
   to {
-    opacity: 1;
     transform: translateX(0) scale(1);
   }
 }
 
 @keyframes rt-panel-switch {
   from {
-    opacity: 0;
     transform: translateY(6px);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -394,7 +390,7 @@
   top: calc(var(--header-height) + 8px);
   right: 8px;
   bottom: 8px;
-  width: min(24rem, calc(100vw - 16px));
+  width: min(calc(24rem - 8px), calc(100vw - 16px));
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);

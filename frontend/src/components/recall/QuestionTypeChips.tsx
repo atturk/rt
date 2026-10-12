@@ -14,6 +14,7 @@ export function QuestionTypeChips({
   lessonId,
   types,
   withConsigliato = false,
+  groupLabel = 'Tipo di domanda',
 }: {
   value: RecallGenerateType
   onChange: (type: RecallGenerateType) => void
@@ -24,10 +25,11 @@ export function QuestionTypeChips({
   lessonId?: number
   types?: RecallTypeInfo[]
   withConsigliato?: boolean
+  groupLabel?: string
 }) {
   const registry = useRecallTypes(lessonId)
   return (
-    <div role="group" aria-label="Tipo di domanda" className="flex flex-wrap items-center gap-1.5">
+    <div role="group" aria-label={groupLabel} className="flex flex-wrap items-center gap-1.5">
       {withConsigliato && !unit && (
         <>
           <Chip

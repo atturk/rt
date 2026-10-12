@@ -14,7 +14,8 @@ export function SubjectsSettingsSection() {
   const createSubject = useCreateSubject()
   const deleteSubject = useDeleteSubject()
 
-  const subjects = [...(subjectsQuery.data ?? [])].sort((a, b) =>
+  const dataList = Array.isArray(subjectsQuery.data) ? subjectsQuery.data : []
+  const subjects = [...dataList].sort((a, b) =>
     a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }),
   )
 

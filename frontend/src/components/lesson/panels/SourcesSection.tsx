@@ -404,6 +404,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
               {/* Puntino fonte nuova non ancora usata */}
               {!s.usata && (
                 <span
+                  role="img"
                   className="size-1.5 shrink-0 rounded-full bg-amber-500"
                   title="Non ancora usata"
                   aria-label="Non ancora usata"

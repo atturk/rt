@@ -215,7 +215,7 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
     expect(screen.getByText('parte1.mp3')).toBeInTheDocument()
     expect(screen.getByText('slide.pdf')).toBeInTheDocument()
     expect(screen.getByTestId('materials-container')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Allega i materiali alle unità' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Allega documenti alle unità' })).toBeEnabled()
   })
 
   it('senza audio gestisce la stellina del materiale principale e manda principale', () => {
