@@ -172,6 +172,9 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     if mode not in ("extend", "rebuild"):
         raise ValueError("Modalità di aggiornamento non valida")
     old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
+    from rt.core.update_history import snapshot_update
+    load_sources(lesson_dir)
+    snapshot_update(lesson_dir)
     prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx)
     record_phase_fingerprint(lesson_dir, "prepare", compute_source_fingerprint(lesson_dir, "prepare"),
                              {"segments.json": compute_file_sha256(lesson_path(lesson_dir, "segments.json"))})
