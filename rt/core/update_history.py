@@ -71,7 +71,7 @@ def finish_update(lesson_dir, previous):
 def abort_update(lesson_dir, previous):
     """Aggiornamento fallito: rimette la lezione com'era e la fotografia dell'aggiornamento
     precedente, così Annulla continua ad annullare quello."""
-    undo_update(lesson_dir)
+    undo_update(lesson_dir, record_event=False)
     if previous:
         _write_pointer(lesson_dir, previous)
 
@@ -132,13 +132,15 @@ def _restore_snapshot(lesson_dir, snapshot):
     dual_write_lesson(lesson_dir)
 
 
-def undo_update(lesson_dir):
+def undo_update(lesson_dir, *, record_event=True):
     snapshot = _read_pointer(lesson_dir)
     if snapshot is None:
         raise ValueError("Non c'è un aggiornamento da annullare")
     _restore_snapshot(lesson_dir, snapshot)
     fs.remove(lesson_path(lesson_dir, POINTER))
     fs.rmtree(os.path.join(lesson_dir, "history", snapshot["timestamp"]), ignore_errors=True)
+    if record_event and _versions(lesson_dir):
+        record_version(lesson_dir, "restore")
     return {"status": "update_undone"}
 
 

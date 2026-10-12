@@ -49,3 +49,36 @@ def test_restore_preserves_database_study_data_and_matches_original_text(rt_db, 
     assert list_highlights(lid, None) == [highlight]
     assert highlight['source']['text'] in read(lesson, 'draft.json')
     assert list_units(lid)[0]['status'] == 'studiata'
+
+
+def test_rebuild_then_restore_previous_version_preserves_highlights(api_client, rt_db, tmp_path, monkeypatch):
+    from tests.test_api_sources import source_lesson, lesson_id
+    from tests.api_support import isolated_workspace, make_lesson, add_audio, run_mock_pipeline
+    from rt.services.highlights_service import add_highlight, list_highlights
+    from rt.services.jobs import DbJobQueue
+    from rt.services.worker import Worker
+    from rt.pipeline.rewrite import load_draft
+    from rt.core.sources import add_source
+    from rt.pipeline.source_update import run_source_update
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson = make_lesson(root)
+    add_audio(lesson)
+    assert run_mock_pipeline(lesson, with_review=False).status.value == 'completed'
+    lid = lesson_id(api_client)
+    original = load_draft(lesson).units[0]
+    first = record_version(lesson, 'import')
+    highlight = add_highlight(lid, original.unit_id, 1, {'text': original.content[:20]})
+    add_source(lesson, 'appunti', 'new.txt', b'Nuovo testo per ricostruire')
+    run_source_update(lesson, mode='rebuild', mock=True)
+    url = f'/api/v1/lessons/{lid}'
+    versions = api_client.get(url + '/versions').json()
+    assert versions[0]['modo'] == 'rebuild' and versions[0]['attuale']
+    response = api_client.post(url + f'/versions/{first}/restore')
+    assert response.status_code == 202
+    assert api_client.post(url + f'/versions/{first}/restore').status_code == 409
+    done = Worker(DbJobQueue(rt_db), job_types=['restore_version'], on_message=lambda *_: None).run_once()
+    assert done.state == 'succeeded', done.error
+    assert load_draft(lesson).units[0].content == original.content
+    assert list_highlights(lid, None) == [highlight]
+    assert highlight['source']['text'] in load_draft(lesson).units[0].content
+    assert api_client.get(url + '/versions').json()[0]['modo'] == 'restore'

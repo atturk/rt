@@ -201,9 +201,15 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     load_sources(lesson_dir)
     if mode == "extend" and old_outline:
         _check_extend_keeps_units(lesson_dir, old_outline)
+    previously_used = _read_state(lesson_dir).get("used", [s.id for s in load_sources(lesson_dir) if s.id == "src_000001"])
     previous_snapshot = begin_update(lesson_dir)
     try:
         result = _run_source_update(lesson_dir, old_outline, mode=mode, mock=mock, ctx=ctx)
+        from rt.core.update_history import record_version
+        summary = _read_state(lesson_dir)["ultimo_aggiornamento"]
+        record_version(lesson_dir, mode,
+            added=[s.id for s in load_sources(lesson_dir) if s.id not in previously_used],
+            new=summary["unita_nuove"], changed=summary["unita_cambiate"])
     except BaseException:
         # Qualsiasi errore (anche annullamento) riporta la lezione com'era prima dell'aggiornamento:
         # fonti nuove ancora da usare e fotografia dell'aggiornamento precedente per Annulla.

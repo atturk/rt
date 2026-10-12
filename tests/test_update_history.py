@@ -178,7 +178,10 @@ def test_failed_attempt_keeps_previous_update_undoable(tmp_path, extended_twice,
     restored = _files(tmp_path)
     for name in ("segments.json", "outline.json", "draft.json"):
         assert restored[name] == after_a[name]
-    assert [p.name for p in (tmp_path / "history").iterdir()] == []
+    # La b2 conserva le versioni riuscite anche dopo Annulla.
+    from rt.core.update_history import list_versions
+    assert list_versions(lesson)[0]["modo"] == "restore"
+    assert len(list_versions(lesson)) <= 6
 
 
 def test_failed_units_restore_the_lesson(tmp_path, extended_twice, monkeypatch):

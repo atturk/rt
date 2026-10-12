@@ -51,6 +51,14 @@ def update_lesson_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done(result, lesson_path=job.lesson_path)
 
 
+def restore_version_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.core.update_history import restore_version
+    with ctx.activate():
+        ctx.check_cancelled()
+        result = restore_version(job.lesson_path, job.payload["version"])
+    return _done(result, lesson_path=job.lesson_path)
+
+
 def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.notes_lesson_service import create_notes_lesson
     from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
@@ -527,6 +535,7 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 for _type, _handler in (
     (INGEST_NOTES, ingest_notes_job),
     (UPDATE_LESSON, update_lesson_job),
+    ("restore_version", restore_version_job),
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),

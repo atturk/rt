@@ -121,3 +121,29 @@ def undo_lesson_update(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             return undo_update(lesson_dir)
         except ValueError as exc:
             raise ApiError(409, "update_snapshot_missing", str(exc)) from None
+
+
+class LessonVersion(BaseModel):
+    id: str
+    il: str
+    modo: Literal["import", "extend", "rebuild", "restore"]
+    fonti_aggiunte: list[str]
+    unita_nuove: int
+    unita_cambiate: int
+    attuale: bool
+
+
+@router.get("/lessons/{lesson_id}/versions", response_model=list[LessonVersion])
+def get_versions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.update_history import list_versions
+    return list_versions(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/versions/{vid}/restore",
+             response_model=schemas.JobAccepted, status_code=202)
+def post_restore_version(lesson_id: int, vid: str, lesson_dir: LessonDir, actor: Actor):
+    from rt.core.update_history import list_versions
+    with source_mutation(lesson_id, lesson_dir, allow_documents=False):
+        if not any(v["id"] == vid for v in list_versions(lesson_dir)):
+            raise ApiError(404, "version_not_found", "Versione non trovata.")
+        return enqueue_job("restore_version", lesson_dir, {"version": vid}, actor)
