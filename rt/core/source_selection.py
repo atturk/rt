@@ -28,6 +28,10 @@ def selection(lesson_dir):
     primary_changed = used_primary is not None and primary != used_primary
     if primary in audio and used_primary in used_audio:
         primary_changed = False
+    if (primary in audio and not state.get("primary_explicit")
+            and not any(s.tipo == "materiale" for s in sources)):
+        # Compatibilità b1: dagli appunti impliciti all’audio sopraggiunto.
+        primary_changed = False
     return {'principale': primary, 'ordine_usato': used, 'principale_usato': used_primary,
             'solo_ricostruzione': reordered or primary_changed}
 
@@ -48,6 +52,7 @@ def set_primary(lesson_dir, sid):
         raise ValueError('Fonte principale inesistente.')
     state = _read_state(lesson_dir)
     state['principale'] = sid
+    state['primary_explicit'] = True
     _write_state(lesson_dir, state)
 
 

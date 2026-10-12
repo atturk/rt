@@ -85,7 +85,12 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     _save(lesson_dir, sources)
     from rt.pipeline.source_update import _read_state, _write_state
     state = _read_state(lesson_dir)
-    if "principale" not in state:
+    if (tipo == "audio" and not state.get("primary_explicit")
+            and not any(s.tipo == "materiale" for s in sources)
+            and not any(s.tipo == "audio" and s.id != source.id for s in sources)):
+        state["principale"] = source.id
+        _write_state(lesson_dir, state)
+    elif "principale" not in state:
         state["principale"] = previous_primary or source.id
         _write_state(lesson_dir, state)
     return source

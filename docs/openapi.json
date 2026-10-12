@@ -474,8 +474,11 @@
           "file": {
             "anyOf": [
               {
-                "contentMediaType": "application/octet-stream",
-                "type": "string"
+                "items": {
+                  "contentMediaType": "application/octet-stream",
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -509,7 +512,8 @@
           "tipo": {
             "enum": [
               "audio",
-              "appunti"
+              "appunti",
+              "materiale"
             ],
             "title": "Tipo",
             "type": "string"
@@ -3917,6 +3921,11 @@
             "title": "Id",
             "type": "integer"
           },
+          "precedente": {
+            "default": false,
+            "title": "Precedente",
+            "type": "boolean"
+          },
           "source": {
             "additionalProperties": true,
             "description": "Serializzazione di web-highlighter (startMeta, endMeta, text, id)",
@@ -4796,6 +4805,38 @@
         "title": "JobRequest",
         "type": "object"
       },
+      "LastUpdate": {
+        "properties": {
+          "il": {
+            "title": "Il",
+            "type": "string"
+          },
+          "modo": {
+            "enum": [
+              "extend",
+              "rebuild"
+            ],
+            "title": "Modo",
+            "type": "string"
+          },
+          "unita_cambiate": {
+            "title": "Unita Cambiate",
+            "type": "integer"
+          },
+          "unita_nuove": {
+            "title": "Unita Nuove",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "modo",
+          "unita_nuove",
+          "unita_cambiate",
+          "il"
+        ],
+        "title": "LastUpdate",
+        "type": "object"
+      },
       "LessonAction": {
         "properties": {
           "available": {
@@ -5538,6 +5579,58 @@
           "phases"
         ],
         "title": "LessonSummary",
+        "type": "object"
+      },
+      "LessonVersion": {
+        "properties": {
+          "attuale": {
+            "title": "Attuale",
+            "type": "boolean"
+          },
+          "fonti_aggiunte": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fonti Aggiunte",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "il": {
+            "title": "Il",
+            "type": "string"
+          },
+          "modo": {
+            "enum": [
+              "import",
+              "extend",
+              "rebuild",
+              "restore"
+            ],
+            "title": "Modo",
+            "type": "string"
+          },
+          "unita_cambiate": {
+            "title": "Unita Cambiate",
+            "type": "integer"
+          },
+          "unita_nuove": {
+            "title": "Unita Nuove",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "il",
+          "modo",
+          "fonti_aggiunte",
+          "unita_nuove",
+          "unita_cambiate",
+          "attuale"
+        ],
+        "title": "LessonVersion",
         "type": "object"
       },
       "ListenMessages": {
@@ -6913,6 +7006,11 @@
             ],
             "title": "Outcome"
           },
+          "precedente": {
+            "default": false,
+            "title": "Precedente",
+            "type": "boolean"
+          },
           "question_text": {
             "title": "Question Text",
             "type": "string"
@@ -7103,6 +7201,11 @@
               }
             ],
             "title": "Outcome"
+          },
+          "precedente": {
+            "default": false,
+            "title": "Precedente",
+            "type": "boolean"
           },
           "question_text": {
             "title": "Question Text",
@@ -8422,6 +8525,122 @@
         "title": "Source",
         "type": "object"
       },
+      "SourceOrder": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "SourceOrder",
+        "type": "object"
+      },
+      "SourcePrimary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "SourcePrimary",
+        "type": "object"
+      },
+      "SourceView": {
+        "properties": {
+          "aggiunta_il": {
+            "title": "Aggiunta Il",
+            "type": "string"
+          },
+          "durata_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata S"
+          },
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impronta": {
+            "title": "Impronta",
+            "type": "string"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          },
+          "ordine": {
+            "minimum": 1.0,
+            "title": "Ordine",
+            "type": "integer"
+          },
+          "pagine": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine"
+          },
+          "parole": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parole"
+          },
+          "tipo": {
+            "enum": [
+              "audio",
+              "appunti",
+              "materiale"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "usata": {
+            "title": "Usata",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tipo",
+          "file",
+          "impronta",
+          "aggiunta_il",
+          "ordine",
+          "nome",
+          "usata"
+        ],
+        "title": "SourceView",
+        "type": "object"
+      },
       "SourcesView": {
         "properties": {
           "can_undo": {
@@ -8432,18 +8651,58 @@
             "title": "Has Unused Sources",
             "type": "boolean"
           },
+          "ordine_usato": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordine Usato",
+            "type": "array"
+          },
+          "principale": {
+            "title": "Principale",
+            "type": "string"
+          },
+          "principale_usato": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principale Usato"
+          },
+          "solo_ricostruzione": {
+            "title": "Solo Ricostruzione",
+            "type": "boolean"
+          },
           "sources": {
             "items": {
-              "$ref": "#/components/schemas/Source"
+              "$ref": "#/components/schemas/SourceView"
             },
             "title": "Sources",
             "type": "array"
+          },
+          "ultimo_aggiornamento": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "sources",
           "has_unused_sources",
-          "can_undo"
+          "can_undo",
+          "principale",
+          "ordine_usato",
+          "principale_usato",
+          "solo_ricostruzione"
         ],
         "title": "SourcesView",
         "type": "object"
@@ -8647,6 +8906,11 @@
               }
             ],
             "title": "Model"
+          },
+          "precedente": {
+            "default": false,
+            "title": "Precedente",
+            "type": "boolean"
           },
           "request": {
             "title": "Request",
@@ -8855,6 +9119,21 @@
         "title": "StudyUnit",
         "type": "object"
       },
+      "SubjectCreate": {
+        "properties": {
+          "nome": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nome"
+        ],
+        "title": "SubjectCreate",
+        "type": "object"
+      },
       "SubjectGenerateAccepted": {
         "properties": {
           "jobs": {
@@ -8964,6 +9243,24 @@
           "lessons"
         ],
         "title": "SubjectRecallState",
+        "type": "object"
+      },
+      "SubjectView": {
+        "properties": {
+          "lezioni": {
+            "title": "Lezioni",
+            "type": "integer"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nome",
+          "lezioni"
+        ],
+        "title": "SubjectView",
         "type": "object"
       },
       "SystemInfo": {
@@ -20011,7 +20308,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Source"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Source"
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/Source"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "title": "Response Post Source Api V1 Lessons  Lesson Id  Sources Post"
                 }
               }
             },
@@ -20073,7 +20381,205 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Aggiunge audio o appunti senza aggiornare la lezione",
+        "summary": "Aggiunge audio, appunti o materiali senza aggiornare la lezione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sources/order": {
+      "put": {
+        "operationId": "put_source_order_api_v1_lessons__lesson_id__sources_order_put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Source Order",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sources/primary": {
+      "put": {
+        "operationId": "put_source_primary_api_v1_lessons__lesson_id__sources_primary_put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePrimary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Source Primary",
         "tags": [
           "lezioni"
         ]
@@ -21234,6 +21740,197 @@
           }
         ],
         "summary": "Annulla l'ultimo aggiornamento",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/versions": {
+      "get": {
+        "operationId": "get_versions_api_v1_lessons__lesson_id__versions_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LessonVersion"
+                  },
+                  "title": "Response Get Versions Api V1 Lessons  Lesson Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Versions",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/versions/{vid}/restore": {
+      "post": {
+        "operationId": "post_restore_version_api_v1_lessons__lesson_id__versions__vid__restore_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "vid",
+            "required": true,
+            "schema": {
+              "title": "Vid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Restore Version",
         "tags": [
           "lezioni"
         ]
@@ -28506,6 +29203,250 @@
         "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/subjects": {
+      "get": {
+        "operationId": "list_subjects_api_v1_subjects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubjectView"
+                  },
+                  "title": "Response List Subjects Api V1 Subjects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Subjects",
+        "tags": [
+          "subjects"
+        ]
+      },
+      "post": {
+        "operationId": "create_subject_api_v1_subjects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Subject",
+        "tags": [
+          "subjects"
+        ]
+      }
+    },
+    "/api/v1/subjects/{nome}": {
+      "delete": {
+        "operationId": "delete_subject_api_v1_subjects__nome__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nome",
+            "required": true,
+            "schema": {
+              "title": "Nome",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Subject",
+        "tags": [
+          "subjects"
         ]
       }
     },

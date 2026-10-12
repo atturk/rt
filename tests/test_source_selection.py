@@ -26,6 +26,7 @@ def test_audio_does_not_replace_existing_notes_primary(tmp_path):
     (tmp_path / 'info.yaml').write_text('materia: Test\n')
     lesson = str(tmp_path)
     note = add_source(lesson, 'appunti', 'note.txt', b'notes')
+    set_primary(lesson, note.id)
     write_audio(tmp_path / 'incoming.wav')
     add_source(lesson, 'audio', 'audio.wav', (tmp_path / 'incoming.wav').read_bytes())
     assert selection(lesson)['principale'] == note.id
@@ -60,6 +61,7 @@ def test_notes_primary_drives_outline_when_audio_arrives(tmp_path):
     (tmp_path / 'info.yaml').write_text('materia: Test\n')
     lesson = str(tmp_path)
     note = add_source(lesson, 'appunti', 'note.txt', b'notes main')
+    set_primary(lesson, note.id)
     write_audio(tmp_path / 'incoming.wav')
     add_source(lesson, 'audio', 'audio.wav', (tmp_path / 'incoming.wav').read_bytes())
     result = prepare_source_update(lesson, mock=True)
