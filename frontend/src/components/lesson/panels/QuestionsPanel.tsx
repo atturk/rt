@@ -22,6 +22,7 @@ import {
   useSelectRecallUnits,
   type RecallQuestionDetail,
   type RecallType,
+  type RecallGenerateType,
 } from '@/api/recall'
 import { QuestionEditModal } from './QuestionEditModal'
 import { Alert } from '@/components/ui/alert'
@@ -32,7 +33,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { mostSuggested } from '@/lib/questionTypes'
+import { mostSuggested, unitsAdviceBreakdown } from '@/lib/questionTypes'
 import { questionTypeId, typeLabel } from '@/lib/recall'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -202,8 +203,8 @@ export function QuestionsPanel({
   const [editing, setEditing] = useState<RecallQuestionDetail | null>(null)
 
   // Form generazione globale
-  const [chosenGlobalType, setGlobalType] = useState<RecallType | null>(null)
-  const globalType = chosenGlobalType ?? (suggestions ? advice.type : 'quiz')
+  const [chosenGlobalType, setGlobalType] = useState<RecallGenerateType | null>(null)
+  const globalType: RecallGenerateType = chosenGlobalType ?? (suggestions ? advice.type : 'quiz')
   const [globalCount, setGlobalCount] = useState<string>('10')
   const [globalInstructions, setGlobalInstructions] = useState<string>('')
 
@@ -366,7 +367,12 @@ export function QuestionsPanel({
               <div className="flex gap-2">
                 <div className="flex-1">
                   <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
-                  <QuestionTypeChips lessonId={id} types={registry} value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} />
+                  <QuestionTypeChips lessonId={id} types={registry} value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} withConsigliato />
+                  <p className="mt-1.5 text-meta text-muted-foreground" data-testid="question-type-hint">
+                    {globalType === 'consigliato'
+                      ? unitsAdviceBreakdown((study?.units ?? []).filter((u) => selectedIds.has(u.id)), registry)
+                      : `Tutte le unità selezionate ricevono domande ${registry.find((t) => t.id === globalType)?.nome ?? globalType}, come oggi.`}
+                  </p>
                 </div>
                 <div className="w-20">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
@@ -395,7 +401,7 @@ export function QuestionsPanel({
                   className="block w-full resize-none rounded-md border bg-card px-2.5 py-1.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 />
               </div>
-              <Button type="submit" variant="default" size="sm" disabled={isGenerating || registry.some(t => t.id === globalType && t.custom && !t.available)} className="self-start">
+              <Button type="submit" variant="default" size="sm" disabled={isGenerating || (globalType !== 'consigliato' && registry.some(t => t.id === globalType && t.custom && !t.available))} className="self-start">
                 <Sparkles className="mr-1.5 size-3.5" aria-hidden />
                 {isGenerating ? 'Generazione in corso…' : 'Genera'}
               </Button>

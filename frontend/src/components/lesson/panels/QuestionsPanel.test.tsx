@@ -320,6 +320,18 @@ it.each([true, false])('Genera altre domande: voce consigliata solo con Jev (%s)
   expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: suggestions ? 'mirata' : 'quiz', count: 2 }), expect.anything())
 })
 
+it('chip Consigliato seleziona qtype consigliato e mostra il dettaglio per unità (QT1)', () => {
+  mockSuggestions = true
+  renderPanel()
+  const consigliatoChip = within(screen.getByRole('group', { name: 'Tipo di domanda' })).getByRole('button', { name: 'Consigliato' })
+  expect(consigliatoChip).toBeInTheDocument()
+  fireEvent.click(consigliatoChip)
+  expect(consigliatoChip).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('question-type-hint')).toHaveTextContent(/Ogni unità riceve il tipo che Jev le ha consigliato/)
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
+  expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: 'consigliato' }), expect.anything())
+})
+
 it('il footer Domande usa la striscia al posto delle righe di testo', () => {
   renderPanel()
   expect(screen.getByTestId('unit-strip-recaller')).toHaveTextContent('2/3')
