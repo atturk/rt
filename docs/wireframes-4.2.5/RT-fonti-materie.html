@@ -1,0 +1,257 @@
+<title>Fonti e materie RT</title>
+<style>
+/* Layout: note in alto, poi quattro scene (pagina lezione, pannello Dettagli, Impostazioni › Materie, pannello Domande); token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c; --danger:#d4382a; --track:#e6e6e6;
+  --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c; --track:#3a3a3a;
+  --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c; --track:#3a3a3a;
+  --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;margin:0;padding:0 16px;padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance} h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:6px} .notes li{font-size:14px}
+.ask{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--mute)}
+.controls button{border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:3px 12px;font-size:13px}
+.controls button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--acc);font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+svg{width:18px;height:18px;flex:none}
+.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-width:0}
+.ib{position:relative;width:34px;height:34px;border:0;border-radius:8px;background:transparent;display:grid;place-items:center;color:var(--fg)}
+.ib:hover{background:var(--soft)} .ib.on{background:var(--acc-soft);color:var(--acc)} .ib[disabled]{opacity:.35;cursor:not-allowed}
+.dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--note-fg);border:2px solid var(--bg)}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--tip);color:var(--tip-fg);font-size:12px;padding:3px 8px;border-radius:6px;white-space:nowrap;z-index:5;pointer-events:none}
+/* scena 1: pagina lezione */
+.lhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.lhead .t{flex:1;min-width:0} .lhead .t b{display:block;font-size:17px} .lhead .t span{font-size:13px;color:var(--mute)}
+.acts{display:flex;gap:2px}
+.doc{padding:14px 16px 20px;display:grid;gap:12px;max-width:72ch}
+.doc h3{margin:0;font-size:16px} .doc p{margin:0;color:var(--mute);font-size:14px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;border:1px solid var(--border);border-radius:10px;padding:6px 6px 6px 12px;font-size:14px}
+.bar .msg{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.bar .msg svg{color:var(--note-fg)}
+.split{display:flex;align-items:center;gap:2px}
+.split .main{border:1px solid var(--border);background:var(--bg);border-radius:8px;height:30px;padding:0 10px;display:flex;align-items:center;gap:6px;font-size:13px}
+.split .opts{display:none;gap:2px}
+.split:hover .main,.split:focus-within .main{display:none} .split:hover .opts,.split:focus-within .opts{display:flex}
+.prog{height:4px;border-radius:2px;background:var(--track);overflow:hidden;flex-basis:100%} .prog i{display:block;height:100%;width:38%;background:var(--acc)}
+/* scena 2: pannello Dettagli */
+.two{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:360px}
+.ghost{padding:16px;display:grid;gap:10px;align-content:start}
+.ghost i{display:block;height:8px;border-radius:4px;background:var(--track)}
+.panel{border-left:1px solid var(--border);padding:14px 16px;display:grid;gap:12px;align-content:start;min-width:0}
+.ph{display:flex;align-items:center;gap:8px} .ph b{flex:1}
+.sh{display:flex;align-items:center;gap:6px}
+.sh .lbl{flex:1}
+.src{display:grid;gap:2px}
+.row{position:relative;display:flex;align-items:center;gap:10px;border-radius:8px;padding:6px 4px 6px 6px;font-size:14px;min-width:0}
+.row:hover{background:var(--soft)}
+.row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .m{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row .x{display:none} .row:hover .x,.row:focus-within .x{display:grid}
+.row .x{width:26px;height:26px}
+.new{width:6px;height:6px;border-radius:50%;background:var(--note-fg);flex:none}
+.menu{position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:4px;display:grid;min-width:190px;z-index:4}
+.menu button{display:flex;align-items:center;gap:8px;border:0;background:transparent;text-align:left;padding:6px 8px;border-radius:6px;font-size:14px}
+.menu button:hover{background:var(--soft)}
+.faded{opacity:.45;font-size:13px;color:var(--mute);display:grid;gap:6px}
+/* scena 3: Impostazioni › Materie */
+.set{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:300px}
+.nav{border-right:1px solid var(--border);padding:12px;display:grid;gap:2px;align-content:start;font-size:14px}
+.nav span{padding:6px 10px;border-radius:8px;color:var(--mute)} .nav span.on{background:var(--soft);color:var(--fg);font-weight:600}
+.body{padding:16px 20px;display:grid;gap:12px;align-content:start;max-width:560px}
+.body p{margin:0;font-size:13px;color:var(--mute)}
+.sub{display:flex;align-items:center;gap:10px;padding:6px 4px 6px 8px;border-radius:8px;font-size:14px}
+.sub:hover{background:var(--soft)} .sub .n{flex:1;min-width:0}
+.sub .m{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.sub .x{width:26px;height:26px;visibility:hidden} .sub:hover .x,.sub:focus-within .x{visibility:visible}
+.add{display:flex;gap:6px}
+.add input{flex:1;min-width:0;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);padding:0 10px;font:inherit;font-size:14px}
+/* scena 4: pannello Domande */
+.qp{padding:14px 16px;display:grid;gap:10px;max-width:520px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{border:1px solid var(--border);background:var(--bg);border-radius:999px;height:28px;padding:0 12px;font-size:13px;display:flex;align-items:center;gap:5px}
+.chip.on{background:var(--acc-soft);border-color:var(--acc);color:var(--acc);font-weight:600}
+.chip[disabled]{opacity:.4;cursor:not-allowed}
+.chip svg{width:14px;height:14px}
+.sep{width:1px;height:20px;background:var(--border);margin:0 2px}
+.f{display:grid;gap:4px;font-size:13px;color:var(--mute)}
+.f .in{height:32px;border:1px solid var(--border);border-radius:8px;padding:0 10px;display:flex;align-items:center;color:var(--fg);font-size:14px}
+.go{justify-self:start;height:32px;border:0;border-radius:8px;background:var(--fg);color:var(--bg);padding:0 14px;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+.hint{font-size:13px;color:var(--mute)}
+@media (max-width:760px){
+  .two{grid-template-columns:1fr} .panel{border-left:0;border-top:1px solid var(--border)}
+  .set{grid-template-columns:1fr} .nav{border-right:0;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="top"><h1>Fonti e materie</h1><span class="meta">Wireframe 4.2.5b2 · LE1 interfaccia, MA1 materie, QT1 Consigliato · dati d'esempio</span></div>
+<div class="wrap">
+  <section class="notes">
+    <h2>Cosa si aggiunge</h2>
+    <ul>
+      <li><b>Fonti della lezione</b> (LE1): nuova sezione in cima al pannello <b>Dettagli</b>, sopra Fasi. Elenca parti di audio, appunti e materiali; il + aggiunge, la × al passaggio del mouse toglie. Le fonti appena aggiunte hanno un puntino finché la lezione non si aggiorna.</li>
+      <li><b>Avviso nel documento</b>: con fonti nuove compare una riga sopra il testo con <b>Aggiorna</b>. Al passaggio del mouse si divide in Estendi e Ricostruisci, come la matita del calendario. Il puntino compare anche sull'icona Dettagli.</li>
+      <li><b>Annulla aggiornamento</b>: dopo un aggiornamento la riga resta con l'icona di annullamento finché non apri un'altra lezione o la chiudi con la ×.</li>
+      <li><b>Materie</b> (MA1): nuova sezione in Impostazioni. Elenco con quante lezioni ha ogni materia, campo per aggiungere, × solo sulle materie senza lezioni.</li>
+      <li><b>Consigliato</b> (QT1): un chip in più nel pannello Domande, separato dagli altri. Genera per ogni unità il tipo che Jev le ha consigliato. I chip di oggi restano come sono.</li>
+    </ul>
+    <div class="controls">Stato della lezione:
+      <button class="on" data-st="new">Fonti nuove</button><button data-st="run">Aggiornamento in corso</button><button data-st="done">Aggiornata</button><button data-st="none">Niente da fare</button>
+    </div>
+  </section>
+
+  <div class="lbl">1 · Pagina della lezione</div>
+  <section class="frame">
+    <div class="lhead">
+      <div class="t"><b>Patologia clinica 2 · Lezione 4</b><span>16 ottobre 2026 · 08:30–11:30 · Prof.ssa Villa</span></div>
+      <div class="acts">
+        <button class="ib" data-tip="Domande" aria-label="Domande"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-6 0 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5z"/><path d="M12 5a3 3 0 1 1 6 0 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></svg></button>
+        <button class="ib" data-tip="Studio" aria-label="Studio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z"/><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z"/></svg></button>
+        <button class="ib" data-tip="Arricchimento" aria-label="Arricchimento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></button>
+        <button class="ib" data-tip="Verifica con LLM" aria-label="Verifica con LLM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></button>
+        <button class="ib" id="det" data-tip="Dettagli · fonti nuove" aria-label="Dettagli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="dot" id="detdot"></span></button>
+        <button class="ib" data-tip="Esporta" aria-label="Esporta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+      </div>
+    </div>
+    <div class="doc">
+      <div class="bar" id="bar">
+        <div class="msg" id="barmsg"></div>
+        <div id="baract"></div>
+      </div>
+      <h3>1 · Emocromo e indici eritrocitari</h3>
+      <p>L'emocromo completo comprende la conta di eritrociti, leucociti e piastrine, l'emoglobina e l'ematocrito. Da questi si ricavano MCV, MCH e MCHC…</p>
+      <h3>2 · Anemie microcitiche</h3>
+      <p>Con MCV sotto 80 fL si distinguono la carenza di ferro, la talassemia e l'anemia delle malattie croniche…</p>
+    </div>
+  </section>
+
+  <div class="lbl">2 · Pannello Dettagli con le fonti</div>
+  <section class="frame two">
+    <div class="ghost"><i style="width:60%"></i><i></i><i style="width:85%"></i><i style="width:70%"></i><i></i><i style="width:40%"></i></div>
+    <aside class="panel">
+      <div class="ph"><b>Dettagli</b><button class="ib" aria-label="Chiudi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <div class="sh" style="position:relative">
+        <span class="lbl">Fonti</span>
+        <button class="ib" id="plus" data-tip="Aggiungi fonte" aria-label="Aggiungi fonte" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+        <div class="menu" id="menu" hidden>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>Parte di registrazione</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Appunti</button>
+          <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>Materiali (PDF, slide, foto)</button>
+        </div>
+      </div>
+      <div class="src">
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="n">Registrazione · parte 1</span><span class="m">1 h 32 min</span><button class="ib x" data-tip="Togli" aria-label="Togli parte 1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg><span class="n">Registrazione · parte 2</span><span class="m">58 min</span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli parte 2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg><span class="n">Appunti di Giulia</span><span class="m">2.140 parole</span><button class="ib x" data-tip="Togli" aria-label="Togli appunti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg><span class="n">Slide_anemie.pdf</span><span class="m">34 pagine</span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      </div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%;margin:0">
+      <div class="faded"><span class="lbl">Fasi</span><span>Preparazione · Scaletta · Rielaborazione · Verifica · Documento (come oggi)</span></div>
+      <hr style="border:0;border-top:1px solid var(--border);width:100%;margin:0">
+      <div class="faded"><span class="lbl">Job</span><span>come oggi</span></div>
+    </aside>
+  </section>
+
+  <div class="lbl">3 · Impostazioni › Materie</div>
+  <section class="frame set">
+    <nav class="nav"><span>Generali</span><span>Modelli</span><span>Domande</span><span class="on">Materie</span><span>Chiavi</span></nav>
+    <div class="body">
+      <h2>Materie</h2>
+      <p>Compaiono nei menu dell'import, del calendario e dei tipi di domanda. Una materia scritta nell'import o nel calendario si aggiunge da sola.</p>
+      <div class="add"><input id="newsub" placeholder="Nuova materia" aria-label="Nuova materia"><button class="ib" id="addsub" data-tip="Aggiungi" aria-label="Aggiungi materia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
+      <div id="subs"></div>
+    </div>
+  </section>
+
+  <div class="lbl">4 · Pannello Domande · Genera altre domande</div>
+  <section class="frame">
+    <div class="qp">
+      <div class="f">Tipo
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="hint" id="qhint"></div>
+      <div class="f">Quante<div class="in" style="width:80px">10</div></div>
+      <div class="f">Direttive (facoltative)<div class="in"></div></div>
+      <button class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8L4 10.7l5 3.7L7.2 20 12 16.5 16.8 20 15 14.4l5-3.7-6.1-1.9z"/></svg>Genera</button>
+    </div>
+  </section>
+
+  <section class="notes"><h2>Da decidere</h2>
+    <div class="ask">1. Fonti dentro Dettagli (proposta, niente icone nuove nella barra) oppure un pannello Fonti con la sua icona?<br>2. Ricostruisci chiede conferma con l'avviso che le unità cambiate perdono decisioni e stato di studio. Estendi parte subito senza conferma: va bene?</div>
+  </section>
+</div>
+
+<script>
+const ICON={
+  ext:'<path d="M12 5v14M5 12h14"/>',
+  reb:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  ok:'<path d="M20 6 9 17l-5-5"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  spark:'<path d="m12 3-1.9 5.8L4 10.7l5 3.7L7.2 20 12 16.5 16.8 20 15 14.4l5-3.7-6.1-1.9z"/>'
+};
+const sv=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+const bar=document.getElementById('bar'),msg=document.getElementById('barmsg'),act=document.getElementById('baract');
+function state(s){
+  document.querySelectorAll('[data-st]').forEach(b=>b.classList.toggle('on',b.dataset.st===s));
+  document.getElementById('detdot').hidden=s!=='new';
+  document.querySelectorAll('.js-new').forEach(d=>d.hidden=s!=='new');
+  bar.hidden=s==='none';
+  if(s==='new'){
+    msg.innerHTML=sv('info')+'<span>Fonti nuove non ancora usate: parte 2, Slide_anemie.pdf</span>';
+    act.innerHTML=`<div class="split"><button class="main">${sv('reb')}Aggiorna</button><div class="opts">
+      <button class="ib" data-tip="Estendi: aggiunge unità, non tocca quelle esistenti" aria-label="Estendi">${sv('ext')}</button>
+      <button class="ib" data-tip="Ricostruisci: rifà la scaletta da zero" aria-label="Ricostruisci">${sv('reb')}</button></div></div>`;
+  }else if(s==='run'){
+    msg.innerHTML='<span>Aggiornamento in corso · Estendi</span>';
+    
+    act.innerHTML='<div class="prog" style="width:160px"><i></i></div>';
+  }else if(s==='done'){
+    msg.innerHTML=`<span style="color:var(--acc);display:flex">${sv('ok')}</span><span>Lezione aggiornata · 2 unità nuove, 1 cambiata</span>`;
+    act.innerHTML=`<div style="display:flex;gap:2px"><button class="ib" data-tip="Annulla aggiornamento" aria-label="Annulla aggiornamento">${sv('undo')}</button><button class="ib" data-tip="Chiudi" aria-label="Chiudi">${sv('x')}</button></div>`;
+  }
+}
+document.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>state(b.dataset.st));
+state('new');
+const plus=document.getElementById('plus'),menu=document.getElementById('menu');
+plus.onclick=e=>{e.stopPropagation();menu.hidden=!menu.hidden;plus.setAttribute('aria-expanded',String(!menu.hidden))};
+document.addEventListener('click',()=>{menu.hidden=true;plus.setAttribute('aria-expanded','false')});
+
+let SUBS=[['Data mining',6],['Elettromagnetismo',4],['Patologia clinica 2',3],['Patologia generale 2',5],['Farmacologia',0]];
+const subs=document.getElementById('subs');
+function drawSubs(){
+  subs.innerHTML=SUBS.map(([n,c],i)=>`<div class="sub"><span class="n">${n}</span><span class="m">${c?c+(c===1?' lezione':' lezioni'):'nessuna lezione'}</span>${c?'<span style="width:26px"></span>':`<button class="ib x" data-i="${i}" data-tip="Togli" aria-label="Togli ${n}">${sv('x')}</button>`}</div>`).join('');
+  subs.querySelectorAll('button[data-i]').forEach(b=>b.onclick=()=>{SUBS.splice(+b.dataset.i,1);drawSubs()});
+}
+drawSubs();
+document.getElementById('addsub').onclick=()=>{const i=document.getElementById('newsub');const v=i.value.trim();if(v&&!SUBS.some(s=>s[0].toLowerCase()===v.toLowerCase())){SUBS.push([v,0]);SUBS.sort((a,b)=>a[0].localeCompare(b[0]));drawSubs()}i.value=''};
+
+const TYPES=[['quiz','Quiz'],['mirata','Mirata'],['vasta','Vasta'],['esercizio','Esercizio',1]];
+let cur='consigliato';
+const chips=document.getElementById('chips'),qhint=document.getElementById('qhint');
+function drawChips(){
+  chips.innerHTML=`<button class="chip ${cur==='consigliato'?'on':''}" data-t="consigliato">${sv('spark')}Consigliato</button><span class="sep"></span>`+
+    TYPES.map(([id,n,off])=>`<button class="chip ${cur===id?'on':''}" data-t="${id}" ${off?'disabled title="Nessuna unità"':''}>${n}${id==='mirata'?' '+sv('spark'):''}</button>`).join('');
+  chips.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{cur=b.dataset.t;drawChips()});
+  qhint.textContent=cur==='consigliato'?'Ogni unità riceve il tipo che Jev le ha consigliato: qui 6 Mirata e 4 Quiz.':'Tutte le unità selezionate ricevono domande '+TYPES.find(t=>t[0]===cur)[1]+', come oggi.';
+}
+drawChips();
+</script>

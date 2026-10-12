@@ -1,6 +1,6 @@
 # Piano 4.2.5
 
-12 ott 2026, approvato da Attilio. I wireframe approvati sono in docs/wireframes-4.2.5/ (calendario, import, pannelli, linea audio).
+12 ott 2026, approvato da Attilio. I wireframe approvati sono in docs/wireframes-4.2.5/ (calendario, import, fonti e materie, pannelli, linea audio).
 
 ## Regole per tutti i lotti
 - **Innestare, non rimpiazzare.** Gli elementi che esistono restano dove sono e come sono: lettore audio, contenuto dei pannelli, campi e bottoni del popup di import, voci della barra laterale. Si aggiungono le parti nuove e si adatta solo quello che il task nomina.
@@ -60,18 +60,49 @@ Non toccare rewrite.py, prepare.py, outline.py, segments né le API delle lezion
 
 ## 4.2.5b2
 
-### Codex · DS1 backend
-- Materiali come fonti (tipo `materiale`): PDF, immagini, PowerPoint. Ogni pagina o slide diventa testo una volta sola (testo del PDF; descrizione Vision per foto e slide-immagine, con il modello di Descrizione immagine già configurato). PowerPoint con libreria Python interna (python-pptx) per testo e immagini; per l'immagine della slide prova la resa di sistema di macOS e, se non c'è, usa le immagini contenute. Nessun programma da far installare all'utente.
-- Il testo dei materiali entra nel prefisso fisso della rielaborazione (posto lasciato da RC1).
-- Graffetta: con l'opzione accesa, il classificatore di Arricchimento assegna ogni pagina a una macro unità o a nessuna e le pagine assegnate vengono allegate all'unità come immagini (mai il testo). Opzione nel payload del job, accesa di default solo se ci sono materiali.
-- Lezione solo da materiali: le pagine diventano segmenti (flag `materiale`) e la pipeline è la stessa.
+Branch: Codex su `rt425b2/codex`, Antigravity su `rt425b2/antigravity`, entrambi da claude/rt-4.2.5-beta dopo la b1.1. Wireframe: docs/wireframes-4.2.5/RT-import.html (import) e RT-fonti-materie.html (fonti della lezione, Materie, Consigliato).
+Codex fa tutto il backend, Antigravity tutto il frontend. L'unico punto di contatto è il contratto API qui sotto: Antigravity lo usa con tipi scritti a mano e mock nei test, alla fusione passo io ai tipi generati.
+Migrazioni: solo Codex, revision 0018 con down_revision 0017. Antigravity non ne crea.
+Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso una cartella di prova (es. ~/rt-dev-data), mai la ~/.rt vera.
 
-### Antigravity · Import nuovo + interfaccia LE1
-Wireframe: docs/wireframes-4.2.5/RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggiunge:
+### Contratto API della b2
+- `GET /subjects` → `[{nome: str, lezioni: int}]`, ordinato senza maiuscole; unisce materie registrate, delle lezioni e del calendario, senza doppioni (confronto casefold, vince la grafia registrata).
+- `POST /subjects` body `{nome}` → 201 `{nome, lezioni}`; 409 `subject_exists` se c'è già.
+- `DELETE /subjects/{nome}` → 204; 409 `subject_in_use` se ha lezioni (le voci del calendario non bloccano).
+- `GET /lessons/{id}/sources`: ogni fonte ha in più `nome` (nome del file o "Appunti"), `durata_s` (audio), `pagine` (materiale), `parole` (appunti), `usata: bool`; la vista ha in più `ultimo_aggiornamento: {modo: "extend"|"rebuild", unita_nuove: int, unita_cambiate: int, il: str} | null`, che resta finché non si annulla o arriva un altro aggiornamento.
+- `POST /lessons/{id}/sources`: `tipo` accetta anche `materiale` (file PDF, PNG, JPG, HEIC, PPTX; più file in una chiamata con `file` ripetuto → lista di fonti).
+- `POST /lessons` (import): in più `materiali: List[UploadFile]` (facoltativi; con soli materiali e niente audio né appunti nasce la lezione solo da materiali), `allega_materiali: bool` (graffetta; default true se ci sono materiali), `calendar_entry_id: str` + `calendar_date: YYYY-MM-DD` (facoltativi: a lezione creata la collega a quell'ora).
+- `POST /lessons/{id}/recall/generate` con `qtype: "consigliato"` esiste già.
+
+### Codex · DS1 backend (materiali)
+- **DS1a · Materiali come fonti.** `tipo="materiale"` in POST sources (PDF, immagini, PowerPoint). Ogni pagina o slide diventa testo una volta sola e si tiene in cache con l'impronta della fonte: testo del PDF con PyMuPDF; descrizione Vision per foto e pagine senza testo, col modello di Descrizione immagine già configurato. PowerPoint con python-pptx (nuova dipendenza in requirements.txt) per testo e immagini; per l'immagine della slide prova la resa di sistema di macOS (qlmanage) e, se non c'è, usa le immagini contenute. Nessun programma da far installare all'utente.
+- **DS1b · Contesto.** Il testo dei materiali entra in `materials_text` di `build_rewrite_prefix_parts` (posto lasciato da RC1). Nel taglio per il contesto si tolgono prima le unità precedenti, i materiali per ultimi.
+- **DS1c · Graffetta.** Con `allega_materiali` acceso il classificatore di Arricchimento assegna ogni pagina a una macro unità o a nessuna (docs/ENRICHMENT.md) e le pagine assegnate vengono allegate all'unità come immagini, mai il testo. Spento, i materiali sono solo contesto.
+- **DS1d · Lezione solo da materiali.** Le pagine diventano segmenti con prefisso della fonte (come LE1) e la pipeline è la stessa; togliere il blocco "I materiali saranno disponibili nel prossimo lotto" in source_update.py. Se dopo arriva l'audio vale Estendi o Ricostruisci.
+- **DS1e · Import.** I nuovi campi di `POST /lessons` del contratto. Il collegamento al calendario usa la funzione che già collega a mano.
+- **LE1i · Vista delle fonti.** I campi in più di `GET /lessons/{id}/sources` del contratto.
+
+### Codex · MA1 backend (materie)
+- **MA1a.** Tabella `subjects` (nome, creata_il) con migrazione 0018 (down 0017, idempotente come la 0017). Servizio e router `/subjects` del contratto.
+- **MA1b.** Creare una lezione o una voce di calendario con una materia nuova la registra. `custom_question_settings.view` e `telegram_topics.known_materie` leggono dall'elenco unito.
+
+### Antigravity · Import nuovo
+Wireframe RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggiunge:
 - un solo riquadro che accetta audio e materiali e li separa per tipo; miniature dei materiali con + e ×;
-- le ore del giorno dal calendario (API CA1e) come scelte rapide, con l'ora in corso o appena finita già scelta, quelle registrate spente, frecce per il giorno, matita per i campi a mano (i campi di oggi restano identici);
-- la graffetta accanto a Revisione e Arricchimento (accesa di default; spenta e non cliccabile senza materiali; si accende da sola quando se ne caricano).
-- Nella pagina della lezione: elenco delle fonti (aggiungi parte di audio, appunti, materiali; togli), avviso "Fonti nuove non ancora usate" con Aggiorna (Estendi / Ricostruisci) e Annulla aggiornamento. Wireframe da fare prima del giro b2.
+- le ore del giorno dal calendario (`GET /calendar/day`) come scelte rapide, con l'ora in corso o appena finita già scelta, quelle già registrate spente, frecce per il giorno, matita per i campi a mano (i campi di oggi restano identici); la scelta manda `calendar_entry_id` e `calendar_date`;
+- la graffetta accanto a Revisione e Arricchimento (accesa di default; spenta e non cliccabile senza materiali; si accende da sola quando se ne caricano) → `allega_materiali`;
+- il menu delle materie legge `GET /subjects`.
+
+### Antigravity · Fonti nella lezione (LE1)
+Wireframe RT-fonti-materie.html, scene 1 e 2.
+- Sezione **Fonti** in cima al pannello Dettagli, sopra Fasi: icona per tipo, nome, misura, puntino sulle fonti non ancora usate, × al passaggio del mouse (toglie con `DELETE`), + con menu Parte di registrazione / Appunti / Materiali.
+- Riga sopra il testo della lezione quando `has_unused_sources`: "Fonti nuove non ancora usate: …" e **Aggiorna**, che al passaggio del mouse si divide in Estendi e Ricostruisci (icone con tooltip, come la matita del calendario). Estendi parte subito; Ricostruisci chiede conferma avvisando che le unità cambiate perdono decisioni e stato di studio. Durante il job la riga mostra l'avanzamento.
+- Dopo l'aggiornamento (`ultimo_aggiornamento` e `can_undo`): riga "Lezione aggiornata · N unità nuove, M cambiate" con Annulla aggiornamento e ×. La × la nasconde solo nel browser.
+- Puntino sull'icona Dettagli quando ci sono fonti non usate.
+
+### Antigravity · MA1 e QT1
+- **Materie** in Impostazioni (scena 3): elenco con il numero di lezioni, campo + per aggiungere, × solo sulle materie senza lezioni. L'editor dei tipi di domanda e il datalist del calendario leggono `GET /subjects`.
+- **Consigliato** nel pannello Domande (scena 4): chip in più prima degli altri, separato da una riga sottile, con la ✨; manda `qtype: "consigliato"`. Sotto i chip una riga dice cosa riceverà ogni unità (es. "6 Mirata e 4 Quiz"). I chip di oggi e la ✨ sul tipo più consigliato restano come sono. Il default resta quello di oggi.
 
 ---
 
