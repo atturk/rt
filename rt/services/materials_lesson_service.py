@@ -1,0 +1,94 @@
+"""Creazione di una lezione con fonti miste, mantenendo l'import storico separato."""
+import os
+from datetime import datetime, timezone
+
+import yaml
+
+from rt.core.lesson_paths import lesson_path
+from rt.core.sources import add_source
+from rt.core.source_selection import set_primary
+from rt.core.materials import page_count
+from rt.pipeline.setup import parse_flexible_date, sanitize_filename_part
+from rt.storage import fs
+
+
+def create_source_lesson(*, audio, materiali, appunti='', principale=None, allega_materiali=True,
+                         date, materia, argomenti='', docente='', ora='', dest_dir):
+    date = parse_flexible_date(date)
+    materia = sanitize_filename_part(materia.strip().upper())
+    if not materia:
+        raise ValueError('Indica la materia')
+    if not audio and not materiali and not appunti.strip():
+        raise ValueError('Aggiungi almeno una fonte')
+    suffix = sanitize_filename_part(argomenti.strip())
+    folder = f'[{date}] {materia}' + (f' - {suffix}' if suffix else '')
+    lesson_dir = os.path.join(dest_dir, folder)
+    if fs.isdir(lesson_dir):
+        raise ValueError('Esiste già una lezione con questi metadati')
+    # Verifica la principale prima di creare la lezione.
+    if not audio and principale and principale not in {os.path.basename(path) for path in materiali} | ({'Appunti', 'appunti.txt'} if appunti.strip() else set()):
+        raise ValueError('Fonte principale inesistente')
+    if fs.new_lessons_use_db():
+        lesson_dir = fs.create_db_lesson(lesson_dir)
+    else:
+        fs.makedirs(lesson_dir, exist_ok=False)
+    info = {'data': date, 'materia': materia, 'argomenti': argomenti, 'docente': docente,
+        'ora': ora, 'cartella': folder, 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
+        'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',
+        'allega_materiali': bool(materiali and allega_materiali)}
+    with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
+        yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
+    audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
+    notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
+    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path) for path in materiali]
+    if audio_sources:
+        primary = audio_sources[0]
+    elif principale in ('Appunti', 'appunti.txt') and notes:
+        primary = notes
+    elif principale:
+        primary = next(s for s in documents if os.path.basename(s.file) == principale)
+    elif documents:
+        primary = max(documents, key=lambda s: page_count(os.path.join(lesson_dir, s.file)))
+    else:
+        primary = notes
+    set_primary(lesson_dir, primary.id)
+    from rt.db.sync import dual_write_lesson
+    dual_write_lesson(lesson_dir)
+    return lesson_dir
+
+
+def link_imported_lesson(lesson_dir, entry_id, calendar_date):
+    """calendar_entry_id è la key dell'ora restituita da GET /calendar/day."""
+    if not entry_id:
+        return
+    from rt.services.calendar_service import get_day_view, link_lesson
+    from rt.services.calendar_models import CalendarLinkLessonRequest
+    from rt.services.lesson_service import lesson_id_for_dir
+    event = next((e for e in get_day_view(calendar_date).events if e.key == entry_id), None)
+    if event is None:
+        raise ValueError('Ora del calendario non trovata')
+    link_lesson(CalendarLinkLessonRequest(date=calendar_date, entry_key=event.key,
+        template_entry_id=event.template_entry_id, override_id=event.override_id,
+        lesson_id=lesson_id_for_dir(lesson_dir)))
+
+
+def record_import(lesson_dir):
+    from rt.core.update_history import list_versions, record_version
+    from rt.core.sources import load_sources
+    from rt.pipeline.outline import load_outline
+    if list_versions(lesson_dir):
+        return
+    count = 0
+    if fs.isfile(lesson_path(lesson_dir, 'outline.json')):
+        count = sum(len(m.units) for m in load_outline(lesson_dir).macro_sections)
+    record_version(lesson_dir, 'import', added=[s.id for s in load_sources(lesson_dir)], new=count)
+
+
+def finish_import(outcome, payload):
+    from rt.services.jobs import JobState
+    lesson = outcome.lesson_path
+    if lesson:
+        link_imported_lesson(lesson, payload.get('calendar_entry_id'), payload.get('calendar_date'))
+        if outcome.state == JobState.SUCCEEDED:
+            record_import(lesson)
+    return outcome

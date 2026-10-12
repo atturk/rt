@@ -79,13 +79,18 @@ def run_pipeline_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         if reason:
             raise TranscriptionUnavailable(reason)
     with _mock_failure(job, options):
-        return outcome_from_pipeline(run_pipeline(inputs, options, ctx, notifiers=build_notifiers()))
+        outcome = outcome_from_pipeline(run_pipeline(inputs, options, ctx, notifiers=build_notifiers()))
+    if is_audio_input(job.payload.get("inputs") or []):
+        from rt.services.materials_lesson_service import finish_import
+        return finish_import(outcome, job.payload)
+    return outcome
 
 
 def ingest_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.pipeline_service import ingest_audio
     options = pipeline_options(job.payload.get("options") or {})
-    return outcome_from_pipeline(ingest_audio(job.payload.get("inputs") or [], options, ctx))
+    from rt.services.materials_lesson_service import finish_import
+    return finish_import(outcome_from_pipeline(ingest_audio(job.payload.get("inputs") or [], options, ctx)), job.payload)
 
 
 def run_phase_job(job: JobInfo, ctx: RunContext) -> JobOutcome:

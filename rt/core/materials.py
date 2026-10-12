@@ -25,6 +25,11 @@ def page_count(path):
         if suffix == '.pptx':
             from pptx import Presentation
             return len(Presentation(real).slides)
+        from PIL import Image
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+        with Image.open(real) as image:
+            image.verify()
         return 1
 
 
@@ -70,7 +75,7 @@ def _quicklook_slides(real, count):
             images = sorted(Path(target).rglob('*.png'))
             if len(images) == count:
                 return [path.read_bytes() for path in images]
-    except (OSError, subprocess.SubprocessError, ValueError):
+    except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
         pass
     return None
 
