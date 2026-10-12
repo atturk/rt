@@ -73,6 +73,9 @@ Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso 
 - `POST /lessons/{id}/sources`: `tipo` accetta anche `materiale` (file PDF, PNG, JPG, HEIC, PPTX; più file in una chiamata con `file` ripetuto → lista di fonti).
 - `POST /lessons` (import): in più `materiali: List[UploadFile]` (facoltativi; con soli materiali e niente audio né appunti nasce la lezione solo da materiali), `allega_materiali: bool` (graffetta; default true se ci sono materiali), `calendar_entry_id: str` + `calendar_date: YYYY-MM-DD` (facoltativi: a lezione creata la collega a quell'ora).
 - `POST /lessons/{id}/recall/generate` con `qtype: "consigliato"` esiste già.
+- `GET /lessons/{id}/versions` → `[{id: str, il: str, modo: "import"|"extend"|"rebuild"|"restore", fonti_aggiunte: [str], unita_nuove: int, unita_cambiate: int, attuale: bool}]`, dalla più recente; al massimo 5 oltre all'attuale. Ogni versione è lo stato della lezione dopo quell'evento; le lezioni di prima della b2 mostrano solo quelle che hanno.
+- `POST /lessons/{id}/versions/{vid}/restore` → 202 job; prima fa una fotografia dello stato attuale (quindi si annulla anche il ripristino). 409 `lesson_busy` come le fonti.
+- Domande del ripasso, evidenziazioni e note di studio hanno in più `precedente: bool`: vero se l'unità è cambiata in un aggiornamento successivo alla loro creazione.
 
 ### Codex · DS1 backend (materiali)
 - **DS1a · Materiali come fonti.** `tipo="materiale"` in POST sources (PDF, immagini, PowerPoint). Ogni pagina o slide diventa testo una volta sola e si tiene in cache con l'impronta della fonte: testo del PDF con PyMuPDF; descrizione Vision per foto e pagine senza testo, col modello di Descrizione immagine già configurato. PowerPoint con python-pptx (nuova dipendenza in requirements.txt) per testo e immagini; per l'immagine della slide prova la resa di sistema di macOS (qlmanage) e, se non c'è, usa le immagini contenute. Nessun programma da far installare all'utente.
@@ -81,6 +84,8 @@ Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso 
 - **DS1d · Lezione solo da materiali.** Le pagine diventano segmenti con prefisso della fonte (come LE1) e la pipeline è la stessa; togliere il blocco "I materiali saranno disponibili nel prossimo lotto" in source_update.py. Se dopo arriva l'audio vale Estendi o Ricostruisci.
 - **DS1e · Import.** I nuovi campi di `POST /lessons` del contratto. Il collegamento al calendario usa la funzione che già collega a mano.
 - **LE1i · Vista delle fonti.** I campi in più di `GET /lessons/{id}/sources` del contratto.
+- **LE1j · Versioni della lezione.** update_history tiene le ultime 5 fotografie invece di una (stessa cartella history/, stessi file), ciascuna con modo, fonti aggiunte e conteggi. Annulla aggiornamento = ripristino della più recente. Il ripristino non cancella mai dati di studio nel database. Endpoint del contratto.
+- **LE1k · Studio precedente.** Ogni aggiornamento riuscito registra per unità cambiata (o tutte, con Ricostruisci) l'ora del cambio; domande, evidenziazioni e note create prima di quell'ora su quell'unità hanno `precedente: true`. Niente migrazioni dei dati esistenti: si calcola al volo.
 
 ### Codex · MA1 backend (materie)
 - **MA1a.** Tabella `subjects` (nome, creata_il) con migrazione 0018 (down 0017, idempotente come la 0017). Servizio e router `/subjects` del contratto.
@@ -94,11 +99,13 @@ Wireframe RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggi
 - il menu delle materie legge `GET /subjects`.
 
 ### Antigravity · Fonti nella lezione (LE1)
-Wireframe RT-fonti-materie.html, scene 1 e 2.
+Wireframe RT-fonti-materie.html, scene 1, 2 e 4.
 - Sezione **Fonti** in cima al pannello Dettagli, sopra Fasi: icona per tipo, nome, misura, puntino sulle fonti non ancora usate, × al passaggio del mouse (toglie con `DELETE`), + con menu Parte di registrazione / Appunti / Materiali.
 - Riga sopra il testo della lezione quando `has_unused_sources`: "Fonti nuove non ancora usate: …" e **Aggiorna**, che al passaggio del mouse si divide in Estendi e Ricostruisci (icone con tooltip, come la matita del calendario). Estendi parte subito; Ricostruisci chiede conferma avvisando che le unità cambiate perdono decisioni e stato di studio. Durante il job la riga mostra l'avanzamento.
 - Dopo l'aggiornamento (`ultimo_aggiornamento` e `can_undo`): riga "Lezione aggiornata · N unità nuove, M cambiate" con Annulla aggiornamento e ×. La × la nasconde solo nel browser.
 - Puntino sull'icona Dettagli quando ci sono fonti non usate.
+- Sezione **Versioni** sotto Fonti, chiusa di default: data, modo (icona Estendi, Ricostruisci o Ripristino con tooltip), fonti aggiunte; icona Ripristina con conferma.
+- Icona piccola con tooltip "Precedente all'ultima aggiunta di fonti" su domande (pannello Domande e Studio), evidenziazioni e note con `precedente`. Nessun altro cambiamento a quegli elementi.
 
 ### Antigravity · MA1 e QT1
 - **Materie** in Impostazioni (scena 3): elenco con il numero di lezioni, campo + per aggiungere, × solo sulle materie senza lezioni. L'editor dei tipi di domanda e il datalist del calendario leggono `GET /subjects`.

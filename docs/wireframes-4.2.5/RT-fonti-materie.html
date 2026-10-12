@@ -69,6 +69,10 @@ svg{width:18px;height:18px;flex:none}
 .menu{position:absolute;right:0;top:30px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:4px;display:grid;min-width:190px;z-index:4}
 .menu button{display:flex;align-items:center;gap:8px;border:0;background:transparent;text-align:left;padding:6px 8px;border-radius:6px;font-size:14px}
 .menu button:hover{background:var(--soft)}
+.vers summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}.vers summary::before{content:"›";color:var(--mute);transition:transform .15s}.vers[open] summary::before{transform:rotate(90deg)}
+.vi{position:relative;width:18px;text-align:center;color:var(--mute);font-weight:700}
+.prev{position:relative;display:inline-grid;place-items:center;color:var(--mute)}.prev svg{width:14px;height:14px}
+.ql{display:grid;gap:4px;border-top:1px solid var(--line);padding-top:10px}.ql div{display:flex;align-items:center;gap:8px;font-size:14px}
 .faded{opacity:.45;font-size:13px;color:var(--mute);display:grid;gap:6px}
 /* scena 3: Impostazioni › Materie */
 .set{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:300px}
@@ -110,6 +114,8 @@ svg{width:18px;height:18px;flex:none}
       <li><b>Avviso nel documento</b>: con fonti nuove compare una riga sopra il testo con <b>Aggiorna</b>. Al passaggio del mouse si divide in Estendi e Ricostruisci, come la matita del calendario. Il puntino compare anche sull'icona Dettagli.</li>
       <li><b>Annulla aggiornamento</b>: dopo un aggiornamento la riga resta con l'icona di annullamento finché non apri un'altra lezione o la chiudi con la ×.</li>
       <li><b>Materie</b> (MA1): nuova sezione in Impostazioni. Elenco con quante lezioni ha ogni materia, campo per aggiungere, × solo sulle materie senza lezioni.</li>
+      <li><b>Versioni</b> (scena 2): sotto Fonti, chiusa di default. RT tiene le ultime 5 versioni della lezione; l'icona al passaggio del mouse ripristina, con conferma. Anche il ripristino diventa una versione, quindi si può annullare. Lo studio non viene mai cancellato: tornando a una versione, evidenziazioni, note e domande tornano a combaciare.</li>
+      <li><b>Studio precedente</b> (scena 4): domande, evidenziazioni e note nate prima che la loro unità cambiasse restano, con una piccola icona e il tooltip "Precedente all'ultima aggiunta di fonti".</li>
       <li><b>Consigliato</b> (QT1): un chip in più nel pannello Domande, separato dagli altri. Genera per ogni unità il tipo che Jev le ha consigliato. I chip di oggi restano come sono.</li>
     </ul>
     <div class="controls">Stato della lezione:
@@ -162,6 +168,14 @@ svg{width:18px;height:18px;flex:none}
         <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg><span class="n">Appunti di Giulia</span><span class="m">2.140 parole</span><button class="ib x" data-tip="Togli" aria-label="Togli appunti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
         <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg><span class="n">Slide_anemie.pdf</span><span class="m">34 pagine</span><span class="new js-new" title="Non ancora usata"></span><button class="ib x" data-tip="Togli" aria-label="Togli slide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       </div>
+      <details class="vers">
+        <summary><span class="lbl">Versioni</span></summary>
+        <div class="src">
+          <div class="row"><span class="vi" data-tip="Estendi">+</span><span class="n">Oggi 18:40 · parte 2, Slide_anemie.pdf</span><span class="m">attuale</span></div>
+          <div class="row"><span class="vi" data-tip="Estendi">+</span><span class="n">10 ott 09:12 · Appunti di Giulia</span><button class="ib x" data-tip="Ripristina questa versione" aria-label="Ripristina versione del 10 ottobre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button></div>
+          <div class="row"><span class="vi" data-tip="Import">•</span><span class="n">9 ott 13:30 · import</span><button class="ib x" data-tip="Ripristina questa versione" aria-label="Ripristina versione del 9 ottobre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button></div>
+        </div>
+      </details>
       <hr style="border:0;border-top:1px solid var(--border);width:100%;margin:0">
       <div class="faded"><span class="lbl">Fasi</span><span>Preparazione · Scaletta · Rielaborazione · Verifica · Documento (come oggi)</span></div>
       <hr style="border:0;border-top:1px solid var(--border);width:100%;margin:0">
@@ -190,11 +204,15 @@ svg{width:18px;height:18px;flex:none}
       <div class="f">Quante<div class="in" style="width:80px">10</div></div>
       <div class="f">Direttive (facoltative)<div class="in"></div></div>
       <button class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8L4 10.7l5 3.7L7.2 20 12 16.5 16.8 20 15 14.4l5-3.7-6.1-1.9z"/></svg>Genera</button>
+      <div class="ql"><span class="lbl">Domande</span>
+        <div><span>Quali indici eritrocitari si ricavano dall'emocromo?</span></div>
+        <div><span>Come si distingue la talassemia dalla carenza di ferro?</span><span class="prev" data-tip="Precedente all'ultima aggiunta di fonti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div>
+      </div>
     </div>
   </section>
 
-  <section class="notes"><h2>Da decidere</h2>
-    <div class="ask">1. Fonti dentro Dettagli (proposta, niente icone nuove nella barra) oppure un pannello Fonti con la sua icona?<br>2. Ricostruisci chiede conferma con l'avviso che le unità cambiate perdono decisioni e stato di studio. Estendi parte subito senza conferma: va bene?</div>
+  <section class="notes"><h2>Decisioni</h2>
+    <div class="ask">Deciso il 12 ott: fonti dentro Dettagli; Estendi parte subito, Ricostruisci chiede conferma; versioni e studio precedente nella b2.</div>
   </section>
 </div>
 
