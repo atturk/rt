@@ -182,7 +182,10 @@ def _run_rewrite(
     # Riconciliazione all'avvio:
     # Se force=True (globale) o se gli input sono STALE o INVALID, non riutilizzare il vecchio draft.json
     if changed_unit_ids is not None:
-        draft_units_map = {uid: unit for uid, unit in draft_units_map.items() if uid in outline_units_map}
+        draft_units_map = {uid: unit for uid, unit in draft_units_map.items()
+                           if uid in outline_units_map and uid not in changed_unit_ids}
+        draft.units = [draft_units_map[u.id] for u in all_outline_units if u.id in draft_units_map]
+        save_draft(draft, lesson_dir)
     elif (force and not target_unit_id) or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID) and not target_unit_id):
         draft = Draft(schema_version="1.0", lesson_id=os.path.basename(os.path.abspath(lesson_dir)), units=[])
         draft_units_map = {}

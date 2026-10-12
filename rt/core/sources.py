@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_paths import lesson_path
 from rt.core.state import read_info_yaml
+from rt.core.lesson_lock import lesson_locked
 from rt.storage import fs
 
 
@@ -29,6 +30,7 @@ def _save(lesson_dir: str, sources: list[Source]) -> None:
     fs.replace(path + ".tmp", path)
 
 
+@lesson_locked
 def load_sources(lesson_dir: str) -> list[Source]:
     """Crea soltanto il registro se assente; non modifica i file storici."""
     path = lesson_path(lesson_dir, "sources.json")
@@ -48,6 +50,7 @@ def load_sources(lesson_dir: str) -> list[Source]:
     return sources
 
 
+@lesson_locked
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes, ordine: int | None = None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte."""
@@ -76,6 +79,7 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     return source
 
 
+@lesson_locked
 def remove_source(lesson_dir: str, source_id: str) -> None:
     """Toglie dal registro; conserva la copia immutabile per l'annullamento."""
     sources = load_sources(lesson_dir)

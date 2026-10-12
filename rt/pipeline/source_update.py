@@ -78,7 +78,7 @@ def sources_pending(lesson_dir):
     state = _read_state(lesson_dir)
     used = state.get("used")
     if used is None:
-        used = ["src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
+        used = [s.id for s in sources if s.id == "src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
     return used != [s.id for s in sources]
 
 
@@ -105,6 +105,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
         if ctx:
             ctx.check_cancelled()
         path = os.path.join(lesson_dir, source.file)
+        from rt.core.idempotency import compute_file_sha256
+        if source.impronta and compute_file_sha256(path) != source.impronta:
+            raise ValueError("Una fonte originale è cambiata: aggiungila come nuova fonte")
         if source.id not in cache:
             if source.tipo == "audio":
                 incoming = _transcribe(path, mock)
@@ -144,7 +147,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                 paths = [stack.enter_context(fs.materialize(os.path.join(lesson_dir, s.file))) for s in audio_sources]
                 target = stack.enter_context(fs.external_output(os.path.join(lesson_dir, audio_file)))
                 merge_audio_for_transcription(paths, target)
-    save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir))
+    save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir), audio_duration_seconds=offset)
     export_normalized_transcript_md(ordered, lesson_path(lesson_dir, "transcript_normalized.md"))
     update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
     state["used"] = [s.id for s in sources]
@@ -176,6 +179,20 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     load_sources(lesson_dir)
     snapshot_update(lesson_dir)
     prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx)
+    from rt.core.manifest import init_or_update_manifest, save_manifest
+    from rt.core.state import read_info_yaml
+    info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
+    source_state = _read_state(lesson_dir)
+    duration = sum(source_state["sources"][s.id]["duration"] for s in load_sources(lesson_dir))
+    manifest = init_or_update_manifest(lesson_dir, lesson_id=os.path.basename(lesson_dir),
+                            date=info.get("data", ""), subject=info.get("materia", ""),
+                            current_state=WorkflowState.PREPARED.value,
+                            topics=info.get("argomenti", ""), segment_count=len(prepared["segments"]),
+                            audio_file=info.get("file_audio"),
+                            audio_duration_seconds=duration)
+    manifest.audio_file = info.get("file_audio") or None
+    manifest.audio_duration_seconds = duration or None
+    save_manifest(manifest, lesson_dir)
     record_phase_fingerprint(lesson_dir, "prepare", compute_source_fingerprint(lesson_dir, "prepare"),
                              {"segments.json": compute_file_sha256(lesson_path(lesson_dir, "segments.json"))})
     transition_to(lesson_path(lesson_dir, "info.yaml"), WorkflowState.PREPARED, allow_force=True)

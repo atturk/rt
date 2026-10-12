@@ -281,9 +281,10 @@ def validate_and_refine_segments(segments: List[Segment]) -> List[Segment]:
     return segments
 
 
-def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Optional[str] = None) -> None:
+def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Optional[str] = None,
+                       audio_duration_seconds: Optional[float] = None) -> None:
     """Salva i segmenti strutturati in segments.json in modo atomico."""
-    duration = segments[-1].end_seconds if segments else 0.0
+    duration = audio_duration_seconds if audio_duration_seconds is not None else (segments[-1].end_seconds if segments else 0.0)
     data = SegmentsData(
         schema_version="1.0",
         lesson_id=lesson_id,

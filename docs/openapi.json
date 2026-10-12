@@ -463,6 +463,58 @@
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
         "type": "object"
       },
+      "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "ordine": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordine"
+          },
+          "testo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Testo"
+          },
+          "tipo": {
+            "enum": [
+              "audio",
+              "appunti"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tipo"
+        ],
+        "title": "Body_post_source_api_v1_lessons__lesson_id__sources_post",
+        "type": "object"
+      },
       "Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post": {
         "properties": {
           "file": {
@@ -7344,6 +7396,76 @@
         "title": "Settings",
         "type": "object"
       },
+      "Source": {
+        "properties": {
+          "aggiunta_il": {
+            "title": "Aggiunta Il",
+            "type": "string"
+          },
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impronta": {
+            "title": "Impronta",
+            "type": "string"
+          },
+          "ordine": {
+            "minimum": 1.0,
+            "title": "Ordine",
+            "type": "integer"
+          },
+          "tipo": {
+            "enum": [
+              "audio",
+              "appunti",
+              "materiale"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tipo",
+          "file",
+          "impronta",
+          "aggiunta_il",
+          "ordine"
+        ],
+        "title": "Source",
+        "type": "object"
+      },
+      "SourcesView": {
+        "properties": {
+          "can_undo": {
+            "title": "Can Undo",
+            "type": "boolean"
+          },
+          "has_unused_sources": {
+            "title": "Has Unused Sources",
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "has_unused_sources",
+          "can_undo"
+        ],
+        "title": "SourcesView",
+        "type": "object"
+      },
       "StudyLesson": {
         "properties": {
           "has_audio": {
@@ -8476,6 +8598,20 @@
         "title": "UndoRequest",
         "type": "object"
       },
+      "UndoUpdateResult": {
+        "properties": {
+          "status": {
+            "const": "update_undone",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "UndoUpdateResult",
+        "type": "object"
+      },
       "Unit": {
         "properties": {
           "id": {
@@ -8842,6 +8978,26 @@
           }
         },
         "title": "UnitRelevanceSummary",
+        "type": "object"
+      },
+      "UpdateRequest": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "extend",
+            "enum": [
+              "extend",
+              "rebuild"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "UpdateRequest",
         "type": "object"
       },
       "UploadInventoryItem": {
@@ -17877,6 +18033,283 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/sources": {
+      "get": {
+        "operationId": "get_sources_api_v1_lessons__lesson_id__sources_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Fonti della lezione e stato delle fonti non ancora usate",
+        "tags": [
+          "lezioni"
+        ]
+      },
+      "post": {
+        "operationId": "post_source_api_v1_lessons__lesson_id__sources_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_source_api_v1_lessons__lesson_id__sources_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aggiunge audio o appunti senza aggiornare la lezione",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sources/{sid}": {
+      "delete": {
+        "operationId": "delete_source_api_v1_lessons__lesson_id__sources__sid__delete",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Toglie una fonte dall'elenco; la lezione cambia solo con Aggiorna",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/study": {
       "get": {
         "operationId": "study_api_v1_lessons__lesson_id__study_get",
@@ -18755,6 +19188,194 @@
         "summary": "Segna l'ultima lettura di un'unità",
         "tags": [
           "studio"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/update": {
+      "post": {
+        "operationId": "update_lesson_api_v1_lessons__lesson_id__update_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aggiorna la lezione con Estendi o Ricostruisci",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/update/undo": {
+      "post": {
+        "operationId": "undo_lesson_update_api_v1_lessons__lesson_id__update_undo_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoUpdateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Annulla l'ultimo aggiornamento",
+        "tags": [
+          "lezioni"
         ]
       }
     },
