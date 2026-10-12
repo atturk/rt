@@ -168,11 +168,13 @@ def _save_versions(lesson_dir, versions):
 
 def record_version(lesson_dir, mode, *, added=None, new=0, changed=0):
     """Ogni voce conserva lo stato DOPO l'evento; massimo cinque oltre all'attuale."""
-    snapshot = _capture(lesson_dir)
+    existing = _versions(lesson_dir)
+    sequence = max((int(v["id"][4:]) for v in existing if v["id"].startswith("ver_")), default=0) + 1
+    snapshot = _capture(lesson_dir, stamp=f"ver_{sequence:06d}")
     version = {"id": snapshot["timestamp"], "il": datetime.now(timezone.utc).isoformat(),
         "modo": mode, "fonti_aggiunte": added or [], "unita_nuove": new,
         "unita_cambiate": changed, "snapshot": snapshot}
-    versions = [version, *_versions(lesson_dir)]
+    versions = [version, *existing]
     _save_versions(lesson_dir, versions[:6])
     for old in versions[6:]:
         fs.rmtree(os.path.join(lesson_dir, "history", old["id"]), ignore_errors=True)
