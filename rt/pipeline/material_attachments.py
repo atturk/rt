@@ -44,8 +44,9 @@ def attach_material_pages(lesson_dir, outline, *, mock=False, ctx=None):
     if len(macros) > 254:
         raise ValueError('Il giudice immagini supporta al massimo 254 macro unità per lezione')
     placement = load_image_placement(lesson_dir) or {'macros': {}, 'carousel': False}
-    old_hashes = set(previous.get('hashes', []))
-    assigned = {mid: [h for h in hashes if h not in old_hashes] for mid, hashes in placement['macros'].items()}
+    old_owned = previous.get('macros', {})
+    assigned = {mid: [h for h in hashes if h not in old_owned.get(mid, [])] for mid, hashes in placement['macros'].items()}
+    owned = {}
     descriptions = load_image_descriptions(lesson_dir)
     hashes = []
     if enabled and macros:
@@ -95,8 +96,11 @@ def attach_material_pages(lesson_dir, outline, *, mock=False, ctx=None):
                     # Il documento usa soltanto filename e alt_text, mai il testo OCR.
                     descriptions.setdefault(image_hash, {'filename': filename, 'source': f'material:{pid}',
                         'alt_text': f"{os.path.basename(source.file)}, pagina {page['numero']}"})
-                    assigned.setdefault(labels[label], []).append(image_hash)
+                    mid = labels[label]
+                    if image_hash not in assigned.get(mid, []):
+                        assigned.setdefault(mid, []).append(image_hash)
+                        owned.setdefault(mid, []).append(image_hash)
                     hashes.append(image_hash)
         save_image_descriptions(lesson_dir, descriptions)
     save_image_placement(lesson_dir, {mid: list(dict.fromkeys(values)) for mid, values in assigned.items()}, placement['carousel'])
-    _write(lesson_dir, STATE, {'hashes': hashes})
+    _write(lesson_dir, STATE, {'hashes': hashes, 'macros': owned})

@@ -44,10 +44,12 @@ def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
 def update_lesson_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.source_update import run_source_update
     from rt.pipeline.build import write_automatic_documents
+    from rt.core.update_history import refresh_current_version
     with ctx.activate():
         result = run_source_update(job.lesson_path, mode=job.payload.get("mode", "extend"),
                                    mock=bool(job.payload.get("mock")), ctx=ctx)
         write_automatic_documents(job.lesson_path)
+        refresh_current_version(job.lesson_path)
     return _done(result, lesson_path=job.lesson_path)
 
 

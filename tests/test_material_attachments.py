@@ -52,3 +52,17 @@ def test_classifier_none_and_decision_cache(multi_unit_lesson, monkeypatch):
     attach_material_pages(lesson, outline)
     assert len(calls) == 1
     assert images_for_document(lesson, outline)[0] == {}
+
+
+def test_pipeline_clip_and_versions_restore_image_placement(multi_unit_lesson, monkeypatch):
+    from rt.pipeline.rewrite import run_rewrite
+    from rt.core.update_history import record_version, restore_version
+    lesson = multi_unit_lesson
+    run_rewrite(lesson, force=True, force_mock=True)
+    first = record_version(lesson, 'import')
+    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('MATERIAL CONTEXT'))
+    run_rewrite(lesson, force=True, force_mock=True)
+    assert images_for_document(lesson, load_outline(lesson))[0]
+    record_version(lesson, 'rebuild')
+    restore_version(lesson, first)
+    assert images_for_document(lesson, load_outline(lesson))[0] == {}

@@ -12,7 +12,8 @@ FILES = ("sources.json", "segments.json", "outline.json", "draft.json", "review_
          "pipeline_version.json", "science_issues.json", "review_units.json", "review_sequence.json",
          "enrichment.json", "unit_relevance.json", "unit_question_types.json", "unit_prefilter.json",
          "unit_relevance_resolved.json", "section_labels.json", "documents.json",
-         "rielaborato.md", "pre-elaborato.md", "Errori concettuali.md")
+         "rielaborato.md", "pre-elaborato.md", "Errori concettuali.md",
+         "material_attachments.json", "assets/images/placement.json", "assets/images/descriptions.json")
 POINTER = "update_snapshot.json"
 
 
@@ -31,8 +32,8 @@ def _write_pointer(lesson_dir, data):
     fs.replace(pointer + ".tmp", pointer)
 
 
-def _capture(lesson_dir):
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+def _capture(lesson_dir, stamp=None):
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     history = os.path.join(lesson_dir, "history", stamp)
     fs.makedirs(history, exist_ok=True)
     entries = {}
@@ -42,7 +43,9 @@ def _capture(lesson_dir):
         path = lesson_path(lesson_dir, name)
         entries[name] = fs.isfile(path)
         if entries[name]:
-            fs.copy2(path, os.path.join(history, name))
+            destination = os.path.join(history, name)
+            fs.makedirs(os.path.dirname(destination), exist_ok=True)
+            fs.copy2(path, destination)
     return {"timestamp": stamp, "files": entries, "root_markdown": root_markdown}
 
 
@@ -114,6 +117,7 @@ def _restore_snapshot(lesson_dir, snapshot):
                 if fs.isfile(path):
                     fs.remove(path)
             else:
+                fs.makedirs(os.path.dirname(path), exist_ok=True)
                 with fs.open(path + ".tmp", "wb") as stream:
                     stream.write(data)
                 fs.replace(path + ".tmp", path)
@@ -194,3 +198,11 @@ def restore_version(lesson_dir, version_id):
         raise
     finish_update(lesson_dir, previous)
     return {"status": "version_restored", "version": version_id}
+
+
+def refresh_current_version(lesson_dir):
+    """Completa la fotografia dell'evento corrente dopo la scrittura dei documenti."""
+    versions = _versions(lesson_dir)
+    if versions:
+        versions[0]["snapshot"] = _capture(lesson_dir, stamp=versions[0]["id"])
+        _save_versions(lesson_dir, versions)

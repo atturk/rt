@@ -144,6 +144,10 @@ def run_rewrite(
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.classifier import classify_units
             classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
+            if result.get("status") == "draft_validated" and not result.get("failed_units"):
+                from rt.pipeline.material_attachments import attach_material_pages
+                from rt.pipeline.outline import load_outline
+                attach_material_pages(lesson_dir, load_outline(lesson_dir), mock=force_mock, ctx=ctx)
         return scope.complete(result)
 
 
