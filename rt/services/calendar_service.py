@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from rt.api import schemas
+from rt.services import calendar_models as schemas
 from rt.core.lesson_paths import lesson_path
 from rt.core.state import read_info_yaml
 from rt.db.engine import get_database
