@@ -201,3 +201,79 @@ describe('esito degli ZIP in Nuova lezione', () => {
     expect(mutateZips).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Import nuovo (wireframe RT-import.html)', () => {
+  it('separa audio e materiali e mostra miniature dei materiali', () => {
+    renderDialog()
+    const audio = new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' })
+    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
+
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [audio, pdf] },
+    })
+
+    expect(screen.getByText('parte1.mp3')).toBeInTheDocument()
+    expect(screen.getByText('slide.pdf')).toBeInTheDocument()
+    expect(screen.getByTestId('materials-container')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Allega i materiali alle unità' })).toBeEnabled()
+  })
+
+  it('senza audio gestisce la stellina del materiale principale e manda principale', () => {
+    renderDialog()
+    const pdf1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
+    const pdf2 = new File(['pdf2'], 'slide.pdf', { type: 'application/pdf' })
+
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [pdf1, pdf2] },
+    })
+
+    // Senza audio mostra l'avviso con la stellina
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/Senza audio la scaletta segue/)
+
+    // Stellina sulla prima miniatura attiva
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+
+    // Clic sulla stellina della seconda miniatura
+    fireEvent.click(screen.getByTestId('material-star-1'))
+    expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: [],
+        materiali: expect.arrayContaining([pdf1, pdf2]),
+        principale: 'slide.pdf',
+        allega_materiali: true,
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('l interruttore graffetta controlla allega_materiali', () => {
+    renderDialog()
+    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
+
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [pdf] },
+    })
+
+    const clipBtn = screen.getByTestId('attach-materials-btn')
+    expect(clipBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Spegne la graffetta
+    fireEvent.click(clipBtn)
+    expect(clipBtn).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'FISICA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allega_materiali: false,
+      }),
+      expect.anything(),
+    )
+  })
+})
