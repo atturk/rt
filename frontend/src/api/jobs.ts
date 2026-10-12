@@ -91,8 +91,14 @@ export function useRetryJob() {
   })
 }
 
+// Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
 export type NewLesson = {
   files: File[]
+  materiali?: File[]
+  principale?: string
+  allega_materiali?: boolean
+  calendar_entry_id?: string
+  calendar_date?: string
   date: string
   materia: string
   argomenti: string
@@ -113,6 +119,13 @@ export function useCreateLesson() {
     mutationFn: (input: NewLesson) => {
       const form = new FormData()
       for (const file of input.files) form.append('audio', file, file.name)
+      if (input.materiali) {
+        for (const file of input.materiali) form.append('materiali', file, file.name)
+      }
+      if (input.principale) form.append('principale', input.principale)
+      if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
+      if (input.calendar_entry_id) form.append('calendar_entry_id', input.calendar_entry_id)
+      if (input.calendar_date) form.append('calendar_date', input.calendar_date)
       form.append('date', input.date)
       form.append('materia', input.materia)
       form.append('argomenti', input.argomenti)
@@ -123,7 +136,8 @@ export function useCreateLesson() {
       form.append('auto_accept', String(input.auto_accept))
       form.append('with_review', String(input.with_review))
       if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
-      setProgress({ loaded: 0, total: input.files.reduce((sum, f) => sum + f.size, 0) })
+      const allFiles = [...input.files, ...(input.materiali ?? [])]
+      setProgress({ loaded: 0, total: allFiles.reduce((sum, f) => sum + f.size, 0) })
       const body = {
         audio: input.files.map((f) => f.name),
         appunti: '',
@@ -137,7 +151,7 @@ export function useCreateLesson() {
         auto_accept: input.auto_accept,
         with_review: input.with_review,
         with_enrichment: input.with_enrichment,
-      } satisfies Schemas['Body_create_lesson_api_v1_lessons_post']
+      } as Schemas['Body_create_lesson_api_v1_lessons_post']
       return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
     },
     onSettled: () => invalidateAfterJob(client),

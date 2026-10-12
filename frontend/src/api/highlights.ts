@@ -1,6 +1,7 @@
 import { api, unwrap, type Schemas } from './client'
 
-export type StudyHighlight = Schemas['Highlight']
+// Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
+export type StudyHighlight = Schemas['Highlight'] & { precedente?: boolean }
 export type HighlightSourceData = StudyHighlight['source']
 
 /** Evidenziazioni dello Studio di un'unità (4.2.2, H1): solo su RT, non nel documento. */

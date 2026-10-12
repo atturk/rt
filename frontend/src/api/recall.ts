@@ -25,7 +25,8 @@ export function useRecallTypes(lessonId?: number | null, materia?: string) {
     queryFn: () => unwrap(api.GET('/api/v1/recall/types', { params: { query: { lesson_id: id, materia } } })),
   })
 }
-export type RecallQuestion = Schemas['RecallQuestion']
+// Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
+export type RecallQuestion = Schemas['RecallQuestion'] & { precedente?: boolean }
 export type RecallAnswerRecord = Schemas['RecallAnswerRecord']
 export type Vote = 'up' | 'down' | 'lightning'
 
