@@ -100,3 +100,20 @@ def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, 
     view = api_client.get(url).json()
     materials = [s for s in view['sources'] if s['tipo'] == 'materiale']
     assert [(s['nome'], s['pagine'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
+
+
+def test_single_material_response_and_invalid_order_are_compatible_and_atomic(api_client, rt_db, tmp_path, monkeypatch):
+    from tests.api_support import isolated_workspace, make_lesson
+    root = isolated_workspace(tmp_path, monkeypatch)
+    make_lesson(root)
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    url = f'/api/v1/lessons/{lid}/sources'
+    response = api_client.post(url, data={'tipo': 'materiale'},
+                              files={'file': ('doc.pdf', pdf_bytes(), 'application/pdf')})
+    assert response.status_code == 201 and response.json()['tipo'] == 'materiale'
+    before = api_client.get(url).json()['sources']
+    response = api_client.post(url, data={'tipo': 'materiale', 'ordine': 99}, files=[
+        ('file', ('a.pdf', pdf_bytes(), 'application/pdf')),
+        ('file', ('b.pdf', pdf_bytes(), 'application/pdf'))])
+    assert response.status_code == 422 and response.json()['error']['code'] == 'validation_error'
+    assert api_client.get(url).json()['sources'] == before

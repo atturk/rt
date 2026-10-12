@@ -84,9 +84,12 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 except Exception:
                     raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
             with source_mutation(lesson_id, lesson_dir):
-                return [add_source(lesson_dir, tipo, os.path.basename(path), None,
-                                   None if ordine is None else ordine + i, source_path=path)
-                        for i, path in enumerate(saved)]
+                if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
+                    raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
+                added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                    None if ordine is None else ordine + i, source_path=path)
+                         for i, path in enumerate(saved)]
+                return added[0] if len(added) == 1 else added
         finally:
             shutil.rmtree(target, ignore_errors=True)
     if tipo == "audio":
