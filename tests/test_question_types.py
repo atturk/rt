@@ -4,26 +4,37 @@ from unittest.mock import patch
 
 import pytest
 
-from rt.core.config import RTConfig, JevConfig
+from rt.core.config import RTConfig, JevConfig, RecallConfig, CustomQuestionType
+from tests.test_custom_question_types import definition
+from rt.services import custom_question_types
 from rt.llm.jev_client import JevChoiceAnswer, JevResponse
 from rt.pipeline.rewrite import load_draft, save_draft
 from rt.services import question_types, section_labels
 from rt.services.context import RunContext
 from tests.test_recall_special import lesson
 
-ACTIVE = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
+ACTIVE = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"),
+    recall=RecallConfig(custom_types=[CustomQuestionType(**definition(materie=["Informatica"])),
+        CustomQuestionType(**definition(nome="Codice", materie=["Informatica"]))]))
 
 
 def answer(kind="mirata"):
     return JevResponse(model="typesafe/jev-1.13", answers={"tipo_consigliato": JevChoiceAnswer(
-        choice=kind, confidence=.9, probabilities={"quiz": .1, "mirata": .2, "caso": .6, "esercizio": .1})})
+        choice=kind, confidence=.9, probabilities={"quiz": .1, "mirata": .2, "query-sql": .6, "codice": .1})})
 
 
 @pytest.fixture
 def path(tmp_path, monkeypatch):
     monkeypatch.setattr(question_types, "load_config", lambda: ACTIVE)
     monkeypatch.setattr(section_labels, "load_config", lambda: ACTIVE)
+    monkeypatch.setattr(custom_question_types, "load_config", lambda: ACTIVE)
     path = lesson(tmp_path)
+    from pathlib import Path
+    Path(path, "info.yaml").write_text("materia: Informatica\n")
+    draft = load_draft(path)
+    draft.units[1].content += " Query SQL."
+    draft.units[2].content += " Codice."
+    save_draft(draft, path)
     section_labels.refresh(path, force_mock=True)
     monkeypatch.setattr(section_labels, "refresh", lambda *args, **kwargs: {})
     return path
@@ -46,19 +57,57 @@ def test_choice_instructions_endpoint_and_cache(path):
         draft.units[0].content += " Testo nuovo."
         save_draft(draft, path)
         question_types.refresh(path)
-        assert call.call_count == 6
-        with patch.object(question_types, "load_config", return_value=ACTIVE.model_copy(update={"jev": ACTIVE.jev.model_copy(update={"relevance_model": "nuovo"})})):
+        assert call.call_count == 7  # cambia anche l'offerta della sezione con il testo modificato
+        with patch.object(question_types, "load_config", return_value=ACTIVE.model_copy(update={"classifier": ACTIVE.classifier.model_copy(update={"model": "nuovo"})})):
             question_types.refresh(path)
-        assert call.call_count == 11
+        assert call.call_count == 12
 
 
-def test_special_type_must_have_positive_section_and_override_is_current(path):
-    with patch("rt.llm.jev_client.call_jev", return_value=answer("caso")):
+def test_custom_type_is_offered_only_where_present_and_override_is_current(path):
+    def choose(**kwargs):
+        criteria = kwargs["questions"]["tipo_consigliato"].criteria
+        return answer("query-sql" if "query-sql" in criteria else "mirata")
+    with patch("rt.llm.jev_client.call_jev", side_effect=choose) as call:
         rows = question_types.refresh(path)
-    assert rows["1.2"]["type"] == "caso"
-    assert rows["2.1"]["type"] == "mirata"  # più probabile del quiz
-    section_labels.set_override(path, "1", "caso", "nessuno")
+    assert rows["1.2"]["type"] == "query-sql"
+    assert rows["2.1"]["type"] == "mirata"
+    assert "query-sql" in call.call_args_list[0].kwargs["questions"]["tipo_consigliato"].criteria
+    assert "query-sql" not in call.call_args_list[2].kwargs["questions"]["tipo_consigliato"].criteria
+    question_types.set_override(path, "1.2", "query-sql")
+    assert question_types.suggestions(path)["1.2"] == "query-sql"
+    section_labels.set_override(path, "1", "query-sql", "nessuno")
+    assert "1.2" not in question_types.suggestions(path)
+    with pytest.raises(ValueError):
+        question_types.set_override(path, "1.2", "query-sql")
+    with patch("rt.llm.jev_client.call_jev", side_effect=choose):
+        rows = question_types.refresh(path)
+    assert rows["1.2"]["type"] == "mirata"  # la vecchia correzione non è più offerta
+    question_types.set_override(path, "1.2", None)
     assert question_types.suggestions(path)["1.2"] == "mirata"
+
+
+def test_offered_types_invalidate_only_affected_units(path):
+    with patch("rt.llm.jev_client.call_jev", return_value=answer()) as call:
+        question_types.refresh(path)
+        section_labels.set_override(path, "1", "query-sql", "nessuno")
+        question_types.refresh(path)
+        assert call.call_count == 7  # solo le due unità della prima sezione
+
+
+def test_combined_classifier_also_uses_the_offered_custom_types(path, monkeypatch):
+    from rt.services import classifier, unit_relevance
+    monkeypatch.setattr(classifier, 'load_config', lambda: ACTIVE)
+    monkeypatch.setattr(unit_relevance, 'load_config', lambda: ACTIVE)
+    def choose(**kwargs):
+        criteria = kwargs['questions'].get('tipo_consigliato')
+        return answer('query-sql' if criteria and 'query-sql' in criteria.criteria else 'mirata')
+    with patch('rt.llm.jev_client.call_jev', side_effect=choose) as call:
+        classifier.classify_units(path)
+    questions = [c.kwargs['questions']['tipo_consigliato'] for c in call.call_args_list
+                 if 'tipo_consigliato' in c.kwargs['questions']]
+    assert 'query-sql' in questions[0].criteria
+    assert 'query-sql' not in questions[2].criteria
+    assert question_types.suggestions(path)['1.2'] == 'query-sql'
 
 
 def test_fail_open_without_suggestion_warns_and_retries(path):
@@ -83,8 +132,8 @@ def test_disabled_has_no_suggestions_or_calls(path):
 def test_mock_is_deterministic_and_obeys_section_labels(path):
     first = question_types.refresh(path, force_mock=True)
     assert first == question_types.refresh(path, force_mock=True)
-    assert first["1.2"]["type"] == "caso"
-    assert first["2.1"]["type"] == "esercizio"
+    assert first["1.2"]["type"] == "query-sql"
+    assert first["2.1"]["type"] == "codice"
 
 
 def test_quotas_are_proportional_and_never_exceed_count():
@@ -122,5 +171,5 @@ def test_unit_without_advice_uses_quiz(path):
 def test_special_generation_only_uses_requested_unit(path):
     from rt.core.models import RecallQuestionType
     from rt.pipeline.recall_special import generate_special_batch
-    questions = generate_special_batch(path, RecallQuestionType.CASO, 2, force_mock=True, regenerate=True, unit_ids=["1.2"])
+    questions = generate_special_batch(path, "query-sql", 2, force_mock=True, regenerate=True, unit_ids=["1.2"])
     assert questions and all(q.unit_ids == ["1.2"] for q in questions)

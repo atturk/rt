@@ -95,7 +95,7 @@ def test_load_resolved_draft_reflects_accepted_science_decision(tmp_path):
 
 
 def test_sanitize_suggested_fix():
-    from rt.pipeline.ledger import sanitize_suggested_fix
+    from rt.pipeline.review_migration import sanitize_suggested_fix
     
     assert sanitize_suggested_fix("Sostituire con: 'La beta-ossidazione è un processo finemente regolato.'") == "La beta-ossidazione è un processo finemente regolato."
     assert sanitize_suggested_fix("Correggere con: 'CPT1 è sulla membrana esterna'.") == "CPT1 è sulla membrana esterna"
@@ -180,7 +180,7 @@ def test_apply_science_decision_clean_replacement(tmp_path):
 def test_replacement_recognizes_sentence_end(content, claim, fix, expected):
     """V2: decimali, abbreviazioni e paragrafi non spezzano la sostituzione."""
     from rt.core.models import DecisionLedger, ReviewDecision
-    from rt.pipeline.ledger import replace_claim
+    from rt.pipeline.review_migration import replace_claim
     assert replace_claim(content, claim, fix) == expected
     unit = DraftUnit(unit_id='1.1', title='pH', start_segment_id='seg_000001',
                      end_segment_id='seg_000001', source_segment_ids=['seg_000001'], content=content)

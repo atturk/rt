@@ -11,7 +11,7 @@ import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext } from '@/components/shell/newLesson'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
-import { ZenContext, IRLEN_COLORS, type ZenState } from '@/lib/zen'
+import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -54,21 +54,24 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 }
 
 export function Layout() {
-  const [zen, setZen] = useState<ZenState>({ active: false, tint: null })
+  const studyZen = useState(false)
+  const [rsvp, setRsvp] = useState<RsvpLayoutState>({ active: false, tint: null })
+  const [zen, setZen] = useState<RsvpLayoutState>({ active: false, tint: null })
+  const layout = rsvp.active ? rsvp : zen
   useEffect(() => {
-    if (!zen.active || !zen.tint) return
+    if (!layout.active || !layout.tint) return
     const existing = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     const meta = existing ?? document.createElement('meta')
     const previous = meta.getAttribute('content')
     meta.name = 'theme-color'
-    meta.content = IRLEN_COLORS[zen.tint]
+    meta.content = IRLEN_COLORS[layout.tint]
     if (!existing) document.head.append(meta)
     return () => {
       if (!existing) meta.remove()
       else if (previous === null) meta.removeAttribute('content')
       else meta.content = previous
     }
-  }, [zen.active, zen.tint])
+  }, [layout.active, layout.tint])
   const me = useMe()
   const location = useLocation()
   const matches = useMatches()
@@ -104,10 +107,10 @@ export function Layout() {
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
   return (
-    <ReturnAddressContext value={returnAddress}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
-      <div className="rt-layout flex min-h-dvh bg-background" data-zen={zen.active || undefined} data-tint={zen.active ? zen.tint ?? undefined : undefined}>
+    <ReturnAddressContext value={returnAddress}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
+      <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>
         {!phone && <nav
-          aria-label="Navigazione" aria-hidden={zen.active || undefined} inert={zen.active || undefined}
+          aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
           className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
         >
           <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={openNewLesson} aria-haspopup="dialog" />
@@ -130,7 +133,7 @@ export function Layout() {
 
         {/* Telefono: tre schede in basso (linee guida §2). */}
         {phone && <nav
-          aria-label="Navigazione" aria-hidden={zen.active || undefined} inert={zen.active || undefined}
+          aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
           className="fixed inset-x-0 bottom-0 z-50 flex min-h-16 items-center justify-around border-t bg-background pb-[max(8px,env(safe-area-inset-bottom))] pt-2 md:hidden"
         >
           {[LESSONS, JOBS, SETTINGS].map((section) => (
@@ -143,6 +146,6 @@ export function Layout() {
           <NewLessonDialog open onClose={closeNewLesson} />
         </Suspense>
       )}
-    </NewLessonContext></ZenContext></ReturnAddressContext>
+    </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></ReturnAddressContext>
   )
 }

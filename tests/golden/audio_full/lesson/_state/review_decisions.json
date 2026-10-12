@@ -1,7 +1,14 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "decisions": [
     {
+      "anchor": {
+        "quote": "La",
+        "prefix": "",
+        "suffix": " trattazione scientifica si apre con l'a",
+        "start": 0,
+        "end": 2
+      },
       "issue_id": "sci_000001",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #1",
@@ -13,6 +20,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "trattazione",
+        "prefix": "La ",
+        "suffix": " scientifica si apre con l'analisi siste",
+        "start": 3,
+        "end": 14
+      },
       "issue_id": "sci_000002",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #2",
@@ -24,6 +38,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "scientifica",
+        "prefix": "La trattazione ",
+        "suffix": " si apre con l'analisi sistematica dei m",
+        "start": 15,
+        "end": 26
+      },
       "issue_id": "sci_000003",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #3",
@@ -35,6 +56,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "si",
+        "prefix": "La trattazione scientifica ",
+        "suffix": " apre con l'analisi sistematica dei mecc",
+        "start": 27,
+        "end": 29
+      },
       "issue_id": "sci_000004",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #4",
@@ -46,6 +74,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "apre con",
+        "prefix": "La trattazione scientifica si ",
+        "suffix": " l'analisi sistematica dei meccanismi bi",
+        "start": 30,
+        "end": 38
+      },
       "issue_id": "sci_000005",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #5",
@@ -57,6 +92,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "l'analisi",
+        "prefix": "La trattazione scientifica si apre con ",
+        "suffix": " sistematica dei meccanismi biochimici f",
+        "start": 39,
+        "end": 48
+      },
       "issue_id": "sci_000006",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #6",
@@ -68,6 +110,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "sistematica",
+        "prefix": "zione scientifica si apre con l'analisi ",
+        "suffix": " dei meccanismi biochimici fondamentali.",
+        "start": 49,
+        "end": 60
+      },
       "issue_id": "sci_000007",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #7",
@@ -79,6 +128,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "dei",
+        "prefix": "ifica si apre con l'analisi sistematica ",
+        "suffix": " meccanismi biochimici fondamentali.",
+        "start": 61,
+        "end": 64
+      },
       "issue_id": "sci_000008",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #8",
@@ -90,6 +146,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "meccanismi",
+        "prefix": "a si apre con l'analisi sistematica dei ",
+        "suffix": " biochimici fondamentali.",
+        "start": 65,
+        "end": 75
+      },
       "issue_id": "sci_000009",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #9",
@@ -101,6 +164,13 @@
       "actor": "auto_accept"
     },
     {
+      "anchor": {
+        "quote": "biochimici fondamentali.",
+        "prefix": "on l'analisi sistematica dei meccanismi ",
+        "suffix": "",
+        "start": 76,
+        "end": 100
+      },
       "issue_id": "sci_000010",
       "decision": "accepted",
       "resolved_text": "[MOCK] Correzione #10",

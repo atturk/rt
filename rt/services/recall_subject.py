@@ -4,7 +4,7 @@ Recall per materia: una sessione che pesca le domande da tutte le lezioni di una
 stessa logica della sessione di una lezione (tipo scelto, ordine fra le unità, salto, rifornimento
 del pool). Le lezioni si danno il turno: dopo una domanda di una lezione tocca alla
 successiva (per data) che ha ancora domande di quel tipo da porre; con l'ordine casuale la
-lezione si sceglie a caso.
+lezione si sceglie casualmente.
 
 Qui ci sono solo la scelta della domanda e il registro della sessione (tabella recall_sessions,
 colonna subject, lesson_path vuoto, question_ids "<id lezione>:<id domanda>"). Risposte, voti e
@@ -286,7 +286,7 @@ def end_subject_session(materia: str, ended_by: str = "web", channel: str = WEB)
 
 def _turn_order(candidates: List[Dict[str, Any]], all_ids: List[int], last: Optional[int],
                 order: str) -> List[Dict[str, Any]]:
-    """Le lezioni candidate nell'ordine in cui provarle: a caso, oppure a partire da quella
+    """Le lezioni candidate nell'ordine in cui provarle: casualmente, oppure a partire da quella
     che segue l'ultima usata (ricominciando dalla prima)."""
     if order == "casuale":
         return random.sample(candidates, len(candidates))
@@ -307,13 +307,17 @@ def next_subject_question(materia: str, qtype, order: str = "alternato",
     subject = normalize_subject(materia)
     lessons = [s for s in subject_lessons(subject) if _ready(s)]
     busy = _telegram_busy() if channel == WEB else set()
-    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype) > 0]
+    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype, include_asked=channel == WEB) > 0]
     skipped_lesson, skipped_id = split_question_key(exclude) if exclude else (None, None)
     last = _last_lesson(subject, channel)
     if skipped_lesson is not None:
         last = skipped_lesson
-    for summary in _turn_order(candidates, [s["id"] for s in lessons], last, order):
-        question = pick_pending_question(summary["path"], qtype, order=order, current=False,
+    ordered = _turn_order(candidates, [s["id"] for s in lessons], last, order)
+    if channel == WEB:
+        ordered.sort(key=lambda s: pending_count(s["path"], qtype) ==
+                     pending_count(s["path"], qtype, include_asked=False))
+    for summary in ordered:
+        question = pick_pending_question(summary["path"], qtype, order=order, current=False, include_asked=channel == WEB,
                                          exclude_id=skipped_id if summary["id"] == skipped_lesson else None)
         if question is None:
             continue

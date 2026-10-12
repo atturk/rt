@@ -1,5 +1,5 @@
 /**
- * Ordinamento delle issue nella colonna "Da decidere" della revisione. Modulo puro: riordina
+ * Ordinamento delle issue dentro le unità della verifica. Modulo puro: riordina
  * solo quello che arriva dall'API, senza stato di dominio.
  */
 
@@ -7,11 +7,8 @@ export type IssueOrder = 'cronologico' | 'gravita'
 
 export const ISSUE_ORDERS: { value: IssueOrder; label: string }[] = [
   { value: 'cronologico', label: 'Cronologico' },
-  { value: 'gravita', label: 'Tipo e gravità' },
+  { value: 'gravita', label: 'Gravità' },
 ]
-
-/** Tipi di issue dal più importante: prima gli errori concettuali, poi gli avvisi sull'unità. */
-export const TYPE_RANK: readonly string[] = ['ERR_CONCETTUALE', 'ERR_REWRITE_DRIFT', 'ERR_ASR_LLM', 'ERR_ASR_ST']
 
 /** Gravità dalla più alta. */
 export const SEVERITY_RANK: readonly string[] = ['high', 'medium', 'low']
@@ -32,8 +29,6 @@ const time = (s: number | null | undefined) => (s == null || !Number.isFinite(s)
 
 function compare(order: IssueOrder, a: SortableIssue, b: SortableIssue): number {
   if (order === 'gravita') {
-    const byType = rank(TYPE_RANK, a.type) - rank(TYPE_RANK, b.type)
-    if (byType) return byType
     const bySeverity = rank(SEVERITY_RANK, a.severity) - rank(SEVERITY_RANK, b.severity)
     if (bySeverity) return bySeverity
   }

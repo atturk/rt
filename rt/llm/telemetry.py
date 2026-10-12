@@ -45,6 +45,7 @@ class LLMTelemetryRecord(BaseModel):
 
     # Conteggi token e caratteri
     input_tokens: Optional[int] = Field(default=None, description="Token di input/prompt")
+    cached_input_tokens: Optional[int] = Field(default=None, description="Token di input letti dalla cache del prompt")
     reasoning_tokens: Optional[int] = Field(default=None, description="Token generati durante il reasoning")
     output_tokens: Optional[int] = Field(default=None, description="Token di output/completion")
     total_tokens: Optional[int] = Field(default=None, description="Token complessivi consumati")
@@ -61,7 +62,7 @@ class LLMTelemetryRecord(BaseModel):
     status: str = Field(default="success", description="Stato dell'attempt (success, timeout, error, ecc.)")
     error_class: Optional[str] = Field(default=None, description="Classe normalizzata dell'errore (retrocompatibilità)")
     http_status: Optional[int] = Field(default=None, description="Codice HTTP restituito (se disponibile)")
-    error_message: Optional[str] = Field(default=None, description="Messaggio di errore sanitizzato in caso di fallimento")
+    error_message: Optional[str] = Field(default=None, description="Messaggio di errore sanitizzato con fallimento")
 
     # Costo e modalità
     estimated_cost: Optional[float] = Field(default=None, description="Costo stimato in USD della richiesta")

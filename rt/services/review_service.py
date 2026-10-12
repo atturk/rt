@@ -9,10 +9,9 @@ un lock a file per lezione (.rt.lock), così due processi (CLI, daemon Telegram,
 decidono sulla stessa lezione non si perdono decisioni a vicenda.
 """
 import os
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
-from rt.core.filelock import file_lock
+from rt.core.lesson_lock import lesson_lock
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import ReviewDecision, ScienceIssue
 from rt.pipeline.issue_review import _is_no_diff_issue_type, should_auto_accept_science
@@ -24,7 +23,6 @@ from rt.pipeline.ledger import (
     resolve_science_accept_text,
     resolve_science_reject_text,
     revert_last_decision,
-    sanitize_suggested_fix,
     load_resolved_draft, resolved_unit_content,
 )
 from rt.storage import fs
@@ -49,12 +47,6 @@ class ReviewDecisionError(ValueError):
         super().__init__(message)
         self.reason = reason
 
-
-@contextmanager
-def lesson_lock(lesson_dir: str) -> Iterator[None]:
-    """Lock esclusivo per lezione, valido tra processi e thread."""
-    with file_lock(fs.lock_path(os.path.join(lesson_dir, LOCK_FILE)), retries=100, backoff=0.05):
-        yield
 
 
 def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=None,
@@ -93,7 +85,17 @@ def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=
             start_s = seg.start_seconds
             end_s = seg.end_seconds
 
+    asr_segments = None
+    if issue.type == "ERR_ASR_ST":
+        from rt.core.models import ASRRiskSegment
+        # Le issue precedenti alla b3 conservano il solo segmento salvato.
+        asr_segments = [part.model_dump(mode="json") for part in issue.asr_segments] if issue.asr_segments else [
+            ASRRiskSegment(segment_id=issue.segment_id or "", text_raw=issue.claim,
+                start_s=seg.start_seconds if seg else None, end_s=seg.end_seconds if seg else None,
+                confidence=seg.confidence if seg else None).model_dump(mode="json")]
+
     return {
+        "asr_segments": asr_segments,
         "timecode": seg.start_formatted if seg else "N/D",
         "unit_info": f"{sci_unit.unit_id} - {sci_unit.title}" if sci_unit else issue.unit_id,
         "unit_content": resolved_unit_content(lesson_dir, issue, draft) if draft else None,
@@ -102,6 +104,23 @@ def issue_context(lesson_dir: str, issue: ScienceIssue, *, segments=None, draft=
         "start_s": start_s,
         "end_s": end_s,
     }
+
+
+def issue_quote_status(issue: ScienceIssue, content: Optional[str]) -> str:
+    """La stessa ancora delle decisioni, sul testo risolto letto una volta dall'API."""
+    if _is_no_diff_issue_type(issue):
+        return "found"
+    if content is None or issue.unanchored:
+        return "changed"
+    import re
+    from rt.pipeline.anchors import find_quote, locate
+    found = locate(issue.anchor, content) if issue.anchor else find_quote(content, issue.claim)
+    if found is None:
+        return "changed"
+    # Un match fuzzy ritrova il posto, ma non autorizza una nuova correzione sul testo diverso.
+    normalize = lambda text: re.sub(r"\s+", " ", text).strip()
+    quote = issue.anchor.quote if issue.anchor else issue.claim
+    return "found" if normalize(content[found.start:found.end]) == normalize(quote) else "changed"
 
 
 def list_pending_issues(lesson_dir: str, with_context: bool = True) -> List[Dict[str, Any]]:
@@ -132,25 +151,34 @@ def mark_ready_to_build(lesson_dir: str) -> None:
 
 
 def _unit_content(lesson_dir: str, issue: ScienceIssue) -> Optional[str]:
-    return resolved_unit_content(lesson_dir, issue)
+    draft = load_resolved_draft(lesson_dir)
+    if issue.unit_id and not any(unit.unit_id == issue.unit_id for unit in draft.units):
+        return None
+    return resolved_unit_content(lesson_dir, issue, draft)
 
 
-def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: Optional[str]) -> Optional[str]:
+def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: Optional[str], *, reconfirming: bool = False) -> Optional[str]:
     """Regole di validazione delle interfacce non interattive (web/API): stesso testo
     risolto che producono CLI e Telegram."""
     is_asr = _is_no_diff_issue_type(issue)
+    if issue.unanchored and decision != "rejected":
+        raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
     if not is_asr and decision in {"accepted", "edited"}:
         unit_content = _unit_content(lesson_dir, issue)
-        if not unit_content or not issue.claim.strip() or issue.claim.strip() not in unit_content:
+        from rt.pipeline.anchors import find_quote
+        # Una scelta nuova non sovrascrive una correzione già applicata con un match fuzzy.
+        quote = issue.anchor.quote if issue.anchor else issue.claim
+        found = find_quote(unit_content, quote) if unit_content else None
+        if found is None:
             raise ReviewDecisionError("Il testo è già cambiato: modificalo a mano o chiudi l'issue", reason="claim_changed")
-    if decision == "rejected" and is_asr:
+    if decision == "rejected" and is_asr and not reconfirming:
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
     if decision == "accepted":
-        resolved = _unit_content(lesson_dir, issue) if is_asr else resolve_science_accept_text(issue)
+        if is_asr:
+            return None  # Presa d'atto: il testo non viene copiato nel ledger.
+        resolved = text if reconfirming and text else resolve_science_accept_text(issue)
         if not is_asr and not resolved:
             raise ReviewDecisionError("È un suggerimento, non una correzione: scrivi tu il testo", reason="suggestion_only")
-        if is_asr and not resolved:
-            raise ReviewDecisionError("Unità non disponibile: impossibile accettare questa verifica ASR.")
         return resolved
     if decision == "rejected":
         return resolve_science_reject_text(issue)
@@ -174,8 +202,9 @@ def record_review_decision(
 ) -> ReviewDecision:
     """Registra una decisione (accepted | rejected | edited) nel ledger.
 
-    validate=True applica i controlli delle interfacce non interattive (issue esistente e
-    non ancora decisa, claim presente nel draft) e calcola il testo risolto; altrimenti
+    validate=True richiede un'issue aperta o una decisione da riconfermare e,
+    per applicare una correzione, la citazione letterale nel testo risolto.
+    Una riconferma aggiunge una scelta senza cancellare la precedente; altrimenti
     resolved_text è salvato così com'è, come fanno da sempre CLI e Telegram."""
     if channel not in CHANNELS:
         raise ValueError(f"Canale non valido: {channel}")
@@ -183,18 +212,41 @@ def record_review_decision(
     if decision not in {"accepted", "rejected", "edited"}:
         raise ReviewDecisionError("Decisione non riconosciuta.")
     with lesson_lock(lesson_dir):
+        issue = find_science_issue_by_id(lesson_dir, issue_id)
+        if issue and issue.unanchored and decision != "rejected":
+            raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
+        anchor = None
+        original_context = None
         if validate:
-            issue = find_science_issue_by_id(lesson_dir, issue_id)
             if issue is None:
                 raise ReviewDecisionError("La questione non esiste più: aggiorna l'elenco.")
-            if any(d.issue_id == issue_id for d in load_ledger(lesson_dir, strict=True).decisions):
+            from rt.pipeline.ledger import reconfirmation_issue_ids
+            previous = next((d for d in reversed(load_ledger(lesson_dir, strict=True).decisions) if d.issue_id == issue_id), None)
+            reconfirming = previous is not None and issue_id in reconfirmation_issue_ids(lesson_dir)
+            if previous is not None and not reconfirming:
                 raise ReviewDecisionError("Questa questione ha già una decisione. Aggiorna la pagina.")
-            resolved_text = _validated_text(lesson_dir, issue, decision, resolved_text)
+            if reconfirming and decision == "accepted" and previous.resolved_text:
+                resolved_text = previous.resolved_text
+            resolved_text = _validated_text(lesson_dir, issue, decision, resolved_text, reconfirming=reconfirming)
+            # La nuova decisione si ancora al tratto ritrovato, senza toccare la precedente.
+            if reconfirming and decision != "rejected":
+                from rt.pipeline.anchors import find_quote, locate, make_anchor
+                content = _unit_content(lesson_dir, issue)
+                if content:
+                    found = locate(issue.anchor, content) if issue.anchor else find_quote(content, issue.claim)
+                    if _is_no_diff_issue_type(issue):
+                        anchor = make_anchor(content, 0, len(content))
+                    elif found:
+                        anchor = make_anchor(content, found.start, found.end)
+            elif decision == "rejected" and _unit_content(lesson_dir, issue) is None:
+                original_context = ""  # Mantieni esplicito su un passaggio ormai sparito.
         recorded = record_decision(
             lesson_dir, issue_id, decision, resolved_text=resolved_text,
             resolved_by=resolved_by or "user",
-            notes=notes, channel=channel, actor=actor,
+            notes=notes, channel=channel, actor=actor, anchor=anchor, original_context=original_context,
         )
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
     # Con l'ultima issue decisa, il job della coda fermo sulla review riparte verso il build.
     from rt.services.jobs import resume_waiting_jobs
     resume_waiting_jobs(lesson_dir, "science_issue", condition=lambda: is_review_complete(lesson_dir))
@@ -211,6 +263,8 @@ def undo_last_decision(lesson_dir: str, issue_id: str, only_channel: Optional[st
             raise ReviewDecisionError("Puoi riaprire da qui solo una decisione presa da questo canale.", reason="not_allowed")
         if last is None or not revert_last_decision(lesson_dir, issue_id):
             raise ReviewDecisionError("La decisione non è più presente nel ledger.", reason="missing")
+        from rt.services.documents_service import request_documents
+        request_documents(lesson_dir)
         return last
 
 
@@ -258,7 +312,7 @@ def orphan_issue_ids(lesson_dir: str) -> List[str]:
         if content is not None and claim and claim in content:
             continue
         fixed = (decision.resolved_text or "").strip() if decision and decision.decision in ("accepted", "edited") else ""
-        literal = sanitize_suggested_fix(fixed) if fixed else None
+        literal = fixed or None
         if content is not None and literal and literal in content:
             continue
         out.append(issue.id)
@@ -302,7 +356,7 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
         decision = latest.get(issue.id)
         if not decision or decision.decision not in {"accepted", "edited"}:
             continue
-        text = sanitize_suggested_fix(decision.resolved_text) if decision.decision == "accepted" else decision.resolved_text
+        text = decision.resolved_text
         content = resolved_unit_content(lesson_dir, issue, resolved)
         if not text or content is None or text not in content:
             # Accettare un avviso di paragrafo conferma il testo corrente.
@@ -330,9 +384,11 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.review import _unit_hashes, load_science_issues
     from rt.pipeline.rewrite import load_draft
     from rt.core.idempotency import get_phase_checkpoint
-    from rt.services.unit_relevance import included
-    draft = load_draft(lesson_dir)
-    current = _unit_hashes(draft.units)
+    from rt.services.unit_relevance import included_ids
+    draft = load_resolved_draft(lesson_dir)
+    # Le impronte seguono la bozza grezza: una decisione non rende l'unità "cambiata".
+    raw_units = load_draft(lesson_dir).units
+    current = _unit_hashes(raw_units)
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     checkpoint = checkpoint or {}
@@ -340,6 +396,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
     completed = set(checkpoint.get("completed_items") or [])
     decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     issues = load_science_issues(lesson_dir)
+    allowed = included_ids(lesson_dir, raw_units)
     rows = []
     for unit in draft.units:
         entry = registry.get(unit.unit_id) or {}
@@ -347,7 +404,7 @@ def review_units(lesson_dir: str) -> List[Dict[str, Any]]:
                        (not i.unit_id and i.segment_id in unit.source_segment_ids)]
         digest = entry.get("text_hash") or hashes.get(unit.unit_id)
         known = bool(entry) or unit.unit_id in completed
-        if not included(lesson_dir, unit):
+        if unit.unit_id not in allowed:
             state = "excluded"
         elif known and digest and digest != current[unit.unit_id]:
             state = "changed"

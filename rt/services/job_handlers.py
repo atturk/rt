@@ -144,7 +144,9 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                       count=job.payload.get("count"),
                                       progress=recall_progress(ctx))
             total = sum(generated.values())
-            names = {"quiz": "quiz", "mirata": "mirate", "vasta": "vaste", "caso": "casi clinici", "esercizio": "esercizi"}
+            names = {"quiz": "quiz", "mirata": "mirate", "vasta": "vaste"}
+            from rt.services.custom_question_types import active_types
+            names.update({t.id: t.nome for t in active_types(lesson_dir=lesson_dir)})
             detail = ", ".join(f"{n} {names.get(t, t)}" for t, n in generated.items())
             ctx.emit(Notice(message=_recall_message(f"Pool di domande: {total} nuove ({detail}).", total,
                                                     unit_rows(lesson_dir))))
@@ -169,6 +171,9 @@ register_handler(TRANSCRIBE_VOICE, transcribe_voice_job)
 
 def enrichment_analyze_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.enrichment_service import analyze
+    from rt.core.config import classifier_job, load_config
+    if classifier_job(load_config(), "enrichment").mode == "off":
+        raise ValueError("Arricchimento spento")
     with ctx.activate():
         result = analyze(_lesson_dir(job), mock=bool(job.payload.get("mock")), ctx=ctx)
     return JobOutcome(state=JobState.SUCCEEDED, result=result)
@@ -193,3 +198,11 @@ def enrichment_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 register_handler("enrichment_analyze", enrichment_analyze_job)
 register_handler("enrichment_generate", enrichment_generate_job)
+
+
+def documents_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.documents_service import run_documents
+    return JobOutcome(state=JobState.SUCCEEDED, result=run_documents(_lesson_dir(job), ctx))
+
+
+register_handler("documents", documents_job)

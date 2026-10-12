@@ -141,7 +141,7 @@ def test_review_progress_from_manifest(api_client, lesson, reviewed):
     response = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}")
     assert response.status_code == 200
     assert response.json()["review_progress"] == (None if reviewed is None else {
-        "reviewed": len(units[:reviewed]), "total": len(units),
+        "reviewed": len(units[:reviewed]), "total": len(units), "completed_once": True,
     })
 
 

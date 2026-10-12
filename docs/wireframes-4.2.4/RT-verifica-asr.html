@@ -1,0 +1,221 @@
+<title>Verifica RT: voce ASR e menu</title>
+<style>
+/* Layout: tre pannelli Verifica (~400px) affiancati, ognuno con le sue note sotto; stessi token dei wireframe 4.2.4 */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c; --danger:#d4382a;
+  --warn:#c98a12; --ok:#1f9d74; --low:#8a8f8d; --tip:#171717; --tip-fg:#ffffff;
+  --shadow:0 8px 24px rgb(0 0 0/.14);
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --warn:#f0b44a; --ok:#4cc79a; --low:#8d918f; --tip:#f4f4f4; --tip-fg:#171717;
+  --shadow:0 8px 24px rgb(0 0 0/.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --warn:#f0b44a; --ok:#4cc79a; --low:#8d918f; --tip:#f4f4f4; --tip-fg:#171717;
+  --shadow:0 8px 24px rgb(0 0 0/.5); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;margin:0;padding:0 16px;padding-block:20px 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{max-width:1280px;margin:0 auto 18px;display:grid;gap:4px}
+.top p{margin:0;color:var(--mute);font-size:14px;max-width:70ch}
+.grid{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:20px;align-items:start}
+.col{display:grid;gap:12px;min-width:0}
+.cap{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:visible;position:relative}
+.phdr{display:flex;align-items:center;padding:12px 10px 4px 16px}
+.phdr h2{flex:1}
+.status{padding:0 16px 10px;display:grid;gap:8px;border-bottom:1px solid var(--border)}
+.status b{font-size:15px}
+.tools{display:flex;gap:4px;position:relative}
+.ib{width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;position:relative;padding:0}
+.ib:hover{background:var(--soft)}
+.ib[aria-pressed="true"],.ib.open{background:var(--acc-soft);color:var(--acc)}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib .badge{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;border-radius:999px;background:var(--fg);color:var(--bg);font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.sub{color:var(--mute);font-size:12.5px}
+.unit{border-bottom:1px solid var(--border);padding:4px 8px}
+.urow{display:flex;align-items:center;gap:8px;min-height:44px;padding:4px}
+.uid{font-weight:700;font-size:13.5px;width:30px;font-variant-numeric:tabular-nums}
+.ut{flex:1;min-width:0;display:grid}
+.ut span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.ut small{color:var(--mute);font-size:12px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.card{border:1px solid var(--border);border-radius:12px;padding:14px;margin:0 4px 10px;display:grid;gap:10px}
+.ch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ch h3{font-size:15.5px;margin:0}
+.pill{font-size:12px;border-radius:6px;padding:1px 8px;font-weight:600}
+.alta{background:color-mix(in oklab,var(--danger) 16%,transparent);color:var(--danger)}
+.media{background:color-mix(in oklab,var(--warn) 18%,transparent);color:var(--warn)}
+.changed{background:color-mix(in oklab,var(--warn) 18%,transparent);color:var(--warn)}
+.meta{font-size:13px;color:var(--mute)}
+.seg{display:grid;gap:6px;background:var(--soft);border-radius:10px;padding:10px 12px}
+.segh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tc{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.play{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--bg);color:var(--acc);border-radius:999px;padding:3px 10px 3px 8px;font:inherit;font-size:13px;cursor:pointer}
+.play svg{width:13px;height:13px;fill:currentColor}
+.conf{display:grid;gap:3px}
+.bar{height:6px;background:var(--bg);border-radius:999px;position:relative;overflow:visible}
+.bar i{display:block;height:100%;border-radius:inherit;background:var(--danger)}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fg);border-radius:1px}
+.asr{font-family:var(--mono);font-size:12.5px;color:var(--fg);margin:0}
+.asr u{text-decoration:underline wavy var(--danger);text-underline-offset:3px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:8px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn.pri{background:var(--acc-soft);border-color:transparent;color:var(--acc);font-weight:600}
+.btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.hint{font-size:13px;color:var(--mute)}
+.fix{background:var(--soft);border-radius:10px;padding:10px 12px;font-size:14.5px}
+.fix s{color:var(--mute)}
+.menu{position:absolute;left:0;top:calc(100% + 6px);z-index:5;width:260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:6px;display:grid}
+.menu.right{left:auto;right:0}
+.mi{display:grid;gap:1px;text-align:left;border:0;background:transparent;color:var(--fg);border-radius:7px;padding:8px 10px;font:inherit;font-size:14px;cursor:pointer}
+.mi:hover{background:var(--soft)}
+.mi small{color:var(--mute);font-size:12px}
+.mi[aria-disabled="true"]{color:var(--mute);cursor:default}
+.mi[aria-disabled="true"]:hover{background:transparent}
+.tip{position:absolute;background:var(--tip);color:var(--tip-fg);font-size:12.5px;border-radius:7px;padding:4px 9px;white-space:nowrap;z-index:6}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:grid;gap:6px}
+.notes ul{margin:0;padding-left:18px;display:grid;gap:5px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:7px 10px;font-size:13.5px}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.sorts{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--mute)}
+.sorts span{display:inline-flex;align-items:center;gap:6px}
+.sorts svg{width:18px;height:18px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+
+<div class="top">
+  <h1>Verifica: voce ASR, testo cambiato e menu</h1>
+  <p>Proposta per la 4.2.4b3 dal riscontro dell'11 ottobre. Tre pannelli Verifica affiancati; sotto ognuno le note per il codice e le domande aperte.</p>
+</div>
+
+<div class="grid">
+
+<!-- 1. Voce ASR -->
+<div class="col">
+  <div class="cap">1 · Qualità ASR con i tratti</div>
+  <div class="panel">
+    <div class="phdr"><h2>Verifica con LLM</h2></div>
+    <div class="status"><b>4 da decidere · 18/18 unità verificate</b><span class="sub">Documento aggiornato</span></div>
+    <div class="unit">
+      <div class="urow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg><span class="uid">3.3</span><span class="ut"><span>Spettro in frequenza e intensità</span><small>Con issue</small></span><i class="dot"></i></div>
+      <div class="card">
+        <div class="ch"><h3>Qualità ASR · statistica</h3><span class="pill alta">alta</span></div>
+        <p class="meta" style="margin:0">Unità 3.3 · 2 tratti trascritti con poca sicurezza. Ascoltali e controlla che il testo a sinistra dica la stessa cosa.</p>
+        <div class="seg">
+          <div class="segh"><span class="tc">50:24 – 50:39</span><button class="play" type="button"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>Ascolta il tratto</button></div>
+          <div class="conf"><div class="bar" aria-hidden="true"><i style="width:25%"></i><b style="left:38%"></b></div><span class="sub">Confidenza 0,25 · soglia della lezione 0,38</span></div>
+          <p class="asr">«…combinazione della nota <u>la tre</u> con frequenza fondamentale pari a <u>quattrocentoquaranta erz</u>…»</p>
+        </div>
+        <div class="seg">
+          <div class="segh"><span class="tc">51:02 – 51:15</span><button class="play" type="button"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>Ascolta il tratto</button></div>
+          <div class="conf"><div class="bar" aria-hidden="true"><i style="width:34%"></i><b style="left:38%"></b></div><span class="sub">Confidenza 0,34 · soglia della lezione 0,38</span></div>
+          <p class="asr">«…la <u>trasformata di furie</u> scompone il segnale…»</p>
+        </div>
+        <p class="hint" style="margin:0">Per correggere, modifica il testo nell'editor a sinistra.</p>
+        <div class="acts"><button class="btn pri" type="button"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Ho controllato</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Via il box con tutto il testo dell'unità e la matita: l'unica modifica è nell'editor.</li>
+      <li>Un tratto per ogni segmento degradato, ordinati per tempo. <span class="code">detect_statistical_asr_risks</span> li conosce già tutti (id, testo grezzo, confidenza); oggi ne tiene solo il peggiore.</li>
+      <li>"Ascolta il tratto" suona da inizio a fine segmento e si ferma. Le parole sottolineate sono quelle sotto la soglia, quando il file della trascrizione ha la confidenza per parola.</li>
+      <li>"Ho controllato" chiude la voce: è una presa d'atto, non cambia il testo. Nessun ✗.</li>
+      <li>Le decisioni ASR vecchie con il testo dell'unità modificato restano valide e si applicano come oggi.</li>
+    </ul>
+    <p class="q">Deciso l'11 ottobre: il testo grezzo resta.</p>
+  </div>
+</div>
+
+<!-- 2. Testo cambiato -->
+<div class="col">
+  <div class="cap">2 · Errore dopo una modifica nell'editor</div>
+  <div class="panel">
+    <div class="phdr"><h2>Verifica con LLM</h2></div>
+    <div class="status"><b>3 da decidere · 17/18 unità verificate</b><span class="sub">Unità 4.1 modificata dopo la verifica</span></div>
+    <div class="unit">
+      <div class="urow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg><span class="uid">4.1</span><span class="ut"><span>Campionamento e teorema di Nyquist</span><small>Modificata · da verificare di nuovo</small></span></div>
+      <div class="card">
+        <div class="ch"><h3>Errore concettuale</h3><span class="pill media">media</span><span class="pill changed">Testo cambiato</span></div>
+        <div class="fix"><s>la frequenza di campionamento deve essere uguale alla frequenza massima</s></div>
+        <p class="meta" style="margin:0">Hai modificato questo passaggio nell'editor: la correzione non si può più applicare. Se l'hai già sistemato, chiudi la voce; altrimenti verifica di nuovo l'unità.</p>
+        <div class="acts"><button class="btn" type="button">Chiudi</button><button class="btn" type="button">Verifica di nuovo l'unità</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>Il server dice se il passaggio si ritrova (<span class="code">quote_status</span>: trovato, cambiato) nella risposta delle issue, con lo stesso <span class="code">locate</span> che usa per applicare. Il client non lo ricalcola più per conto suo.</li>
+      <li>Dopo il salvataggio dall'editor si ricaricano issue e unità: la voce passa a "Testo cambiato" senza aprirla.</li>
+      <li>Il documento finale si aggiorna da solo dopo ogni salvataggio (b2): non serve ricostruire niente.</li>
+      <li>Una voce ASR della stessa unità non cambia: si chiude comunque con "Ho controllato".</li>
+      <li>L'unità modificata è "da verificare di nuovo". Una nuova verifica tiene le decisioni prese e sostituisce solo le voci aperte.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 3. Menu -->
+<div class="col">
+  <div class="cap">3 · Menu, ordine e riesecuzione</div>
+  <div class="panel">
+    <div class="phdr"><h2>Verifica con LLM</h2></div>
+    <div class="status">
+      <b>Tutte decise · 18/18 unità verificate</b>
+      <div class="tools">
+        <button class="ib" type="button" aria-label="Verifica"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg></button>
+        <button class="ib" type="button" aria-label="Ordine: gravità"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></button>
+        <button class="ib" type="button" aria-pressed="true" aria-label="Mostra decise"><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="ib open" type="button" aria-label="Azioni della verifica" aria-expanded="true"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        <div class="menu" role="menu" style="left:0">
+          <button class="mi" role="menuitem" type="button">Riesegui tutta la lezione<small>Parte subito, con il classificatore</small></button>
+          <button class="mi" role="menuitem" type="button">Esegui senza classificatore<small>Tutte le unità vanno al revisore</small></button>
+        </div>
+      </div>
+    </div>
+    <div style="height:116px"></div>
+    <div class="unit">
+      <div class="urow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg><span class="uid">5.2</span><span class="ut"><span>Compressione, ricostruzione</span><small>Senza problemi</small></span>
+        <span style="position:relative"><button class="ib open" type="button" aria-label="Azioni sull'unità 5.2"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        <span class="menu right" role="menu" style="width:240px">
+          <button class="mi" role="menuitem" type="button">Riesegui l'unità<small>Parte subito, con il classificatore</small></button>
+          <button class="mi" role="menuitem" type="button">Esegui senza classificatore<small>L'unità va al revisore</small></button>
+        </span></span>
+      </div>
+    </div>
+    <div style="height:120px"></div>
+    <div class="unit">
+      <div class="urow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg><span class="uid">6.1</span><span class="ut"><span>Campionamento</span><small>Mai verificata</small></span>
+        <span style="position:relative"><button class="ib open" type="button" aria-label="Azioni sull'unità 6.1"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        <span class="menu right" role="menu" style="width:240px">
+          <button class="mi" role="menuitem" type="button" aria-disabled="true">Riesegui l'unità<small>Mai verificata: usa Verifica</small></button>
+          <button class="mi" role="menuitem" type="button">Esegui senza classificatore<small>L'unità va al revisore</small></button>
+        </span></span>
+      </div>
+    </div>
+    <div style="height:118px"></div>
+  </div>
+  <div class="notes">
+    <ul>
+      <li>I menu escono dal pannello: si aprono sopra la pagina (portale) e si spostano per restare nello schermo. Vale per tutti i menu a icona di RT, compreso Esporta.</li>
+      <li>Niente conferma: la scelta dal menu è già la conferma. Le decisioni restano registrate.</li>
+      <li>"Riesegui tutta la lezione" è spenta finché una verifica completa non è mai finita; "Riesegui l'unità" finché l'unità non è mai stata verificata.</li>
+      <li>"Esegui senza classificatore" salta solo il filtro che decide se l'unità va rivista; le unità senza contenuto didattico restano escluse.</li>
+    </ul>
+    <div class="sorts"><span>Icona dell'ordine:</span>
+      <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>cronologico</span>
+      <span><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>gravità</span>
+    </div>
+    <p class="q">Deciso l'11 ottobre: sulla lezione le unità senza contenuto restano escluse; ogni unità esclusa ha il suo ⋯ con "Esegui senza classificatore", che la verifica lo stesso.</p>
+  </div>
+</div>
+
+</div>

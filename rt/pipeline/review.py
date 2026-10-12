@@ -5,11 +5,12 @@ Analizza il draft rielaborato identificando:
 - ERR_CONCETTUALE (incongruenze scientifiche ed errori concettuali nel rielaborato)
 Salva science_issues.json.
 """
+from rt.core.lesson_lock import lesson_locked
 
 import os
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, Literal
 
 from pydantic import ValidationError
 from rt.core.models import ScienceIssue, ScienceType, ScienceSeverity, DraftUnit
@@ -22,8 +23,9 @@ from rt.services.prompt_settings import append_extra, effective_system
 from rt.llm.prompts import (
     SCIENCE_REVIEW_SYSTEM_PROMPT,
     build_science_review_user_prompt,
-    ScienceIssueList
+    ReviewFindingList
 )
+from rt.pipeline.ledger import load_resolved_draft
 from rt.pipeline.rewrite import load_draft
 from rt.core.lesson_paths import lesson_path
 from rt.core.asr_risk import detect_statistical_asr_risks
@@ -42,7 +44,7 @@ from rt.core.idempotency import (
     mark_downstream_stale,
 )
 from rt.services.context import RunContext, phase_scope
-from rt.services.events import Notice
+from rt.services.events import Notice, ListReporter, ReviewUnitDone, ReviewUnitsQueued, ReviewUnitStarted
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
 from rt.pipeline.review_units import record_review_unit, load_review_units
@@ -61,7 +63,10 @@ LEGACY_TYPE_MAP = {
 }
 
 
-def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
+def load_science_issues(lesson_dir: str, *, _migrate: bool = True) -> List[ScienceIssue]:
+    if _migrate:
+        from rt.pipeline.review_migration import migrate_review_anchors
+        migrate_review_anchors(lesson_dir)
     path = get_science_issues_path(lesson_dir)
     if not fs.isfile(path):
         return []
@@ -83,10 +88,20 @@ def load_science_issues(lesson_dir: str) -> List[ScienceIssue]:
     return []
 
 
+@lesson_locked
 def save_science_issues(issues: List[ScienceIssue], lesson_dir: str) -> None:
     path = get_science_issues_path(lesson_dir)
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding([iss.model_dump(mode="json") for iss in issues])
+    for item in data:
+        if not item.get("literal_replacement"):
+            item.pop("literal_replacement", None)
+        if not item.get("unanchored"):
+            item.pop("unanchored", None)
+        if item.get("anchor") is None:
+            item.pop("anchor", None)
+        if item.get("origin") == "verifica":
+            item.pop("origin", None)
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
@@ -115,55 +130,36 @@ def _localize_claim_segment(claim: str, unit, seg_by_id: dict) -> Optional[str]:
     return segs[-1].id
 
 
+def finding_to_issue(finding, unit: DraftUnit, seg_by_id: dict, *,
+                     origin: Literal["verifica", "parte", "studio"] = "verifica") -> ScienceIssue:
+    """Converte il contratto del modello usando solo il testo dell'unità esaminata."""
+    from rt.pipeline.anchors import find_quote, make_anchor
+    found = find_quote(unit.content, finding.citazione)
+    anchor = make_anchor(unit.content, found.start, found.end) if found else None
+    claim = anchor.quote if anchor else finding.citazione
+    return ScienceIssue(
+        id="sci_000000", unit_id=unit.unit_id, origin=origin,
+        type=ScienceType.ERR_CONCETTUALE if finding.tipo == "concettuale" else ScienceType.ERR_ASR_LLM,
+        severity={"bassa": ScienceSeverity.LOW, "media": ScienceSeverity.MEDIUM,
+                  "alta": ScienceSeverity.HIGH}[finding.gravita],
+        claim=claim, reason=finding.motivazione, suggested_fix=finding.sostituzione,
+        literal_replacement=finding.tipo == "asr_llm",
+        unanchored=anchor is None, anchor=anchor, segment_id=_localize_claim_segment(claim, unit, seg_by_id),
+    )
+
+
 def _validated_review_issues(client: LLMClient, unit: DraftUnit, prompt: str,
                              lesson_dir: str, unit_label: str,
-                             max_repair_attempts: int = 2) -> List[ScienceIssue]:
-    """Non persiste claim concettuali che non sono nel draft esaminato dal critic."""
+                             seg_by_id: Optional[dict] = None) -> List[ScienceIssue]:
+    """Una sola verifica: le citazioni assenti restano non ancorate, senza riparazioni."""
+    from rt.llm.lesson_context import lesson_context_prompt
     result = client.call_structured(
         prompt=prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
-        response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
+        response_model=ReviewFindingList, job_name="review", unit_id=unit_label,
         min_elapsed_seconds=5.0, lesson_dir=lesson_dir,
+        prompt_prefix=lesson_context_prompt(lesson_dir),
     )
-    issues = list(result.issues)
-    for index, issue in enumerate(issues):
-        if issue.type != ScienceType.ERR_CONCETTUALE:
-            continue
-        for attempt in range(max_repair_attempts + 1):
-            claim = issue.claim.strip()
-            if claim and claim in unit.content:
-                issue.claim = claim
-                break
-            if attempt == max_repair_attempts:
-                # Conserviamo l'oggetto per renderlo auditabile, ma il livello web/CLI
-                # lo tratta come non applicabile: nessuna decisione può modificarlo.
-                # La sidebar lo esclude dall'elenco operativo e mostra il conteggio
-                # con il collegamento al JSON completo.
-                LOG.error("Review unità %s: claim issue %s non ancorabile dopo %s tentativi; issue marcata come orfana",
-                          unit.unit_id, index + 1, max_repair_attempts)
-                break
-            LOG.warning("Claim review non ancorabile, unità %s issue %s: tentativo di correzione %s/%s",
-                        unit.unit_id, index + 1, attempt + 1, max_repair_attempts)
-            repair_prompt = (
-                "Correggi SOLTANTO il campo claim della singola issue seguente. "
-                "Deve essere una sottostringa letteralmente identica e contigua del "
-                "TESTO RIELABORATO, completa abbastanza da identificare il punto. "
-                "Conserva tipo, gravità, motivazione e proposta; restituisci "
-                "ScienceIssueList con esattamente questa unica issue. "
-                "Se la tua critica non riguarda il testo fornito, non inventare una citazione.\n\n"
-                f"UNITÀ: {unit.unit_id}\nTESTO RIELABORATO:\n{unit.content}\n\n"
-                f"ISSUE DA RIPARARE:\n{json.dumps(issue.model_dump(mode='json'), ensure_ascii=False)}"
-            )
-            repaired = client.call_structured(
-                prompt=repair_prompt, system_prompt=effective_system("review", SCIENCE_REVIEW_SYSTEM_PROMPT),
-                response_model=ScienceIssueList, job_name="review", unit_id=unit_label,
-                lesson_dir=lesson_dir,
-            )
-            if len(repaired.issues) != 1 or repaired.issues[0].type != issue.type:
-                continue
-            candidate = repaired.issues[0]
-            # Il job di correzione può cambiare solo l'ancora, mai il contenuto della critica.
-            issue.claim = candidate.claim
-    return issues
+    return [finding_to_issue(finding, unit, seg_by_id or {}) for finding in result.issues]
 
 
 # -----------------------------------------------------------------------
@@ -196,6 +192,10 @@ class JevTaskBVerdict:
         self.is_high_confidence_drift = is_high_confidence_drift
 
 
+from rt.services.unit_prefilter import cached
+
+
+@cached("task_a")
 def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskAVerdict]:
     """
     Chiede a Jev la domanda configurata per il prefiltro errori (predefinita: gravità degli
@@ -238,12 +238,13 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
                            label=result.label, outcome=result.outcome, answer=result.answer)
 
 
+@cached("task_b")
 def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
     """
     Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
     segmenti ASR grezzi corrispondenti (possibile invenzione/allucinazione), o si discosta
     significativamente dal loro senso. Vede sia i segmenti grezzi sia il rielaborato.
-    Ritorna None se la chiamata fallisce: nessuna issue verrà creata in quel caso.
+    Ritorna None se la chiamata fallisce: nessuna issue verrà creata allora.
     """
     state = f"SEGMENTI GREZZI ASR:\n{source_context}\n\n---\n\nTESTO RIELABORATO:\n{unit.content}"
     try:
@@ -317,7 +318,8 @@ def build_rewrite_drift_issue(unit: DraftUnit, verdict: JevTaskBVerdict) -> Scie
 def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int, seg_by_id: dict,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
                  _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
-                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None) -> str:
+                 jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None,
+                 skip_prefilter: bool = False) -> str:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -330,9 +332,12 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
     # ma non saltano né creano nulla: il comportamento resta identico a Jev disattivato.
     skip_expensive_llm = False
-    if _cfg.jev.enabled:
-        verdict_a = run_jev_task_a(unit, _cfg.jev, lesson_dir)
-        verdict_b = run_jev_task_b(unit, source_context, _cfg.jev, lesson_dir)
+    from rt.core.config import classifier_job, classifier_jev
+    prefilter = classifier_job(_cfg, "prefilter")
+    drift = classifier_job(_cfg, "drift")
+    if (not skip_prefilter and prefilter.mode in ("observe", "pipeline")) or drift.mode in ("observe", "pipeline"):
+        verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if not skip_prefilter and prefilter.mode in ("observe", "pipeline") else None
+        verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir) if drift.mode in ("observe", "pipeline") else None
         if verdict_a is not None:
             # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
             if jev_log is not None:
@@ -342,10 +347,10 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                 ctx.emit(Notice(message=f"Classificatore prefiltro {unit.unit_id}: " + describe(DecisionResult(
                     label=verdict_a.label, outcome=verdict_a.outcome, rule=None, answer=verdict_a.answer))))
 
-        if not (shadow_jev or _cfg.jev.shadow):
-            if verdict_b is not None and verdict_b.is_high_confidence_drift:
+        if not shadow_jev:
+            if drift.mode == "pipeline" and verdict_b is not None and verdict_b.is_high_confidence_drift:
                 all_science_issues.append(build_rewrite_drift_issue(unit, verdict_b))
-            if verdict_a is not None and verdict_a.should_skip_expensive_llm:
+            if prefilter.mode == "pipeline" and verdict_a is not None and verdict_a.should_skip_expensive_llm:
                 skip_expensive_llm = True
 
     if not skip_expensive_llm:
@@ -359,9 +364,9 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                 f"ECCEZIONE PER QUESTO PUNTO SPECIFICO: la tua istruzione generale è di ignorare artefatti ASR isolati — "
                 f"per QUESTO segmento specifico, invece, valuta se il testo rielaborato corrispondente riflette fedelmente "
                 f"questa trascrizione raw o se sembra un'invenzione/allucinazione introdotta durante la riscrittura. "
-                f"Se sospetti fabbricazione o travisamento, genera una issue con \"type\": \"ERR_ASR_LLM\", "
-                f"\"segment_id\": \"{unit_st.segment_id or ''}\", \"claim\": \"{unit_st.claim}\", \"reason\": la tua motivazione, "
-                f"\"suggested_fix\": null. Se non sospetti nulla, non generare alcuna issue per questo punto."
+                f"Se sospetti fabbricazione o travisamento, genera un problema con tipo asr_llm, "
+                f"citazione esatta del testo RIELABORATO, motivazione e sostituzione letterale. "
+                f"Se non sospetti nulla, non generare alcun problema per questo punto."
             )
 
         prompt = build_science_review_user_prompt(
@@ -377,26 +382,33 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
         unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
         prompt = append_extra(lesson_dir, "review", prompt)
-        for iss in _validated_review_issues(client, unit, prompt, lesson_dir, unit_label):
-            iss.unit_id = unit.unit_id
-            if iss.segment_id and iss.segment_id not in unit.source_segment_ids:
-                LOG.warning("Segmento %s fuori dall'unità %s: ricalcolo ancora review",
-                            iss.segment_id, unit.unit_id)
-                iss.segment_id = None
-            if not iss.segment_id:
-                iss.segment_id = _localize_claim_segment(iss.claim, unit, seg_by_id)
-            all_science_issues.append(iss)
+        all_science_issues.extend(_validated_review_issues(
+            client, unit, prompt, lesson_dir, unit_label, seg_by_id))
 
     return "skipped_by_prefilter" if skip_expensive_llm else "ok"
 
 
-def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None, skip_prefilter: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente (eventi e annullamento tra unità su ctx)."""
     from rt.services.unit_relevance import refresh
+    from rt.pipeline.review_units import remember_review_completion
     with phase_scope(ctx, "review") as scope:
+        remember_review_completion(lesson_dir)
         # Dentro lo scope: le chiamate JEV della rilevanza sono parte della fase (lock, errori, annullamento).
         refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-        return scope.complete(_run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx))
+        result = _run_review(lesson_dir, force=force, force_mock=force_mock, asr_llm=asr_llm, shadow_jev=shadow_jev, ctx=ctx, skip_prefilter=skip_prefilter)
+        if result.get("status") == "review_completed":
+            remember_review_completion(lesson_dir, completed=True)
+        if result.get("action") != "SKIP":
+            from rt.services.documents_service import request_documents
+            request_documents(lesson_dir)
+        return scope.complete(result)
+
+
+def _draft_hashes(lesson_dir: str) -> Dict[str, str]:
+    """Impronte della bozza grezza: le decisioni cambiano il testo risolto ma non rendono
+    un'unità da rivedere; solo riscrittura e modifiche a mano lo fanno."""
+    return _unit_hashes(load_draft(lesson_dir).units)
 
 
 def _unit_hashes(units) -> Dict[str, str]:
@@ -405,54 +417,78 @@ def _unit_hashes(units) -> Dict[str, str]:
     return {unit.unit_id: hashlib.sha256(unit.model_dump_json(exclude={"generated_at"}).encode("utf-8")).hexdigest() for unit in units}
 
 
-def _issue_key(issue) -> tuple:
-    return (issue.type, issue.segment_id, " ".join((issue.claim or "").split()))
+def anchor_findings(findings: List[ScienceIssue], unit: DraftUnit, *, origin: Literal["verifica", "parte", "studio"] = "verifica") -> None:
+    """Le ancore vengono dal testo esaminato, mai dalle posizioni inventate dal modello."""
+    from rt.pipeline.anchors import make_anchor, find_quote
+    paragraph_types = {ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT}
+    for issue in findings:
+        issue.unit_id = unit.unit_id
+        issue.origin = origin
+        issue.status = "pending"
+        if issue.type in paragraph_types and not (issue.type == ScienceType.ERR_ASR_LLM and issue.literal_replacement):
+            issue.anchor = make_anchor(unit.content, 0, len(unit.content))
+        else:
+            found = find_quote(unit.content, issue.claim)
+            issue.anchor = make_anchor(unit.content, found.start, found.end) if found else None
 
 
-def reconcile_unit_issues(lesson_dir: str, prior: List[ScienceIssue], generated: List[ScienceIssue],
-                          units, replaced_units: set) -> tuple:
-    """Ritrova le issue per identità, assegna id nuovi e rimuove solo le decisioni sparite."""
-    from rt.pipeline.ledger import load_ledger, revert_last_decision
+def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: List[ScienceIssue],
+                        units, replaced_units: set, *,
+                        replace_open: Optional[Callable[[ScienceIssue], bool]] = None) -> tuple:
+    """Conserva le decise, sostituisce le aperte, eredita i rifiuti sullo stesso tratto.
+
+    replace_open permette ai chiamanti di limitare la sostituzione delle aperte
+    a un tratto, conservando quelle della stessa unità fuori dal tratto.
+    """
+    from rt.pipeline.ledger import load_ledger
+    from rt.pipeline.anchors import locate
     ledger = load_ledger(lesson_dir)
+    decisions = {d.issue_id:d for d in ledger.decisions}
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    sequence_path = lesson_path(lesson_dir, 'review_sequence.json')
+    sequence_floor = 0
+    if fs.isfile(sequence_path):
+        with fs.open(sequence_path, encoding='utf-8') as stream:
+            sequence_floor = int(json.load(stream)['last'])
     sequence = max([int(value[4:]) for value in
                     [i.id for i in prior] + [d.issue_id for d in ledger.decisions]
                     if value.startswith("sci_") and value[4:].isdigit()] +
-                   [int((checkpoint or {}).get("issue_sequence", 0))])
-    previous = {}
+                   [int((checkpoint or {}).get("issue_sequence", 0)), sequence_floor])
+    kept = [i for i in prior if i.unit_id not in replaced_units or i.id in decisions
+            or (replace_open is not None and not replace_open(i))]
+    unit_by_id = {u.unit_id:u for u in units}
+    rejections = []
     for old in prior:
-        if old.unit_id in replaced_units:
-            previous.setdefault((old.unit_id, *_issue_key(old)), []).append(old.id)
-    kept = [i for i in prior if i.unit_id not in replaced_units]
-    used = {i.id for i in kept}
+        decision = decisions.get(old.id)
+        unit = unit_by_id.get(old.unit_id)
+        if decision and decision.decision == "rejected" and unit:
+            anchor = decision.anchor or old.anchor
+            found = locate(anchor, unit.content) if anchor else None
+            if found:
+                rejections.append((old, found))
+    fresh_issues = []
     for fresh in generated:
-        candidates = previous.get((fresh.unit_id, *_issue_key(fresh))) or []
-        if candidates:
-            fresh.id = candidates.pop(0)
-        else:
-            sequence += 1
-            fresh.id = f"sci_{sequence:06d}"
-        used.add(fresh.id)
-    removed = {i.id for i in prior if i.unit_id in replaced_units} - used
-    orphaned = sorted(removed & {d.issue_id for d in ledger.decisions})
-    for decision in ledger.decisions:
-        if decision.issue_id in removed:
-            revert_last_decision(lesson_dir, decision.issue_id)
-    rank = {u.unit_id: index for index, u in enumerate(units)}
-    combined = sorted(kept + generated, key=lambda i: rank.get(i.unit_id, len(rank)))
-    return combined, orphaned, sequence
+        # Il rifiuto mantiene l'issue originale come rappresentante di quel tratto:
+        # né la motivazione storica né la decisione vengono riscritte dal modello.
+        if fresh.anchor and any(old.unit_id == fresh.unit_id and old.type == fresh.type and
+                max(found.start, fresh.anchor.start) < min(found.end, fresh.anchor.end)
+                for old, found in rejections):
+            continue
+        sequence += 1
+        fresh.id = f"sci_{sequence:06d}"
+        fresh_issues.append(fresh)
+    rank = {u.unit_id:index for index, u in enumerate(units)}
+    combined = sorted(kept + fresh_issues, key=lambda i:rank.get(i.unit_id, len(rank)))
+    return combined, [], sequence
 
 
-def _drop_moved_decisions(lesson_dir: str, before: Dict[str, tuple], issues: List[ScienceIssue]) -> None:
-    """Le issue si rinumerano per posizione (sci_000001...): se un id ora indica un'issue diversa
-    da quella decisa, la decisione va tolta. Altrimenti il build la applicherebbe all'issue nuova,
-    e una "modificata" su un'issue di tutta l'unità ne sostituirebbe l'intero testo."""
-    from rt.pipeline.ledger import load_ledger, purge_decisions_by_prefix
-    now = {issue.id: (issue.unit_id, *_issue_key(issue)) for issue in issues}
-    for decision in load_ledger(lesson_dir).decisions:
-        issue_id = decision.issue_id
-        if issue_id in before and now.get(issue_id) != before[issue_id]:
-            purge_decisions_by_prefix(lesson_dir, prefix=issue_id)
+def _initialize_anchor_ledger(lesson_dir: str) -> None:
+    """Le verifiche nuove producono già dati ancorati, non suggerimenti da migrare."""
+    from rt.pipeline.ledger import load_ledger, save_ledger
+    ledger = load_ledger(lesson_dir)
+    if ledger.schema_version != "2.0":
+        ledger.schema_version = "2.0"
+        save_ledger(ledger, lesson_dir)
 
 
 def manual_review_units(lesson_dir: str, units) -> set:
@@ -505,23 +541,29 @@ def parent_unit_context(units, unit_id: str) -> Optional[str]:
     return "\n\n".join(f"{u.unit_id} {(u.title or '').strip()}\n{u.content}" for u in siblings)
 
 
-def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False, force: bool = False) -> Dict[str, Any]:
+def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, parent_context: bool = False, force: bool = False,
+                    skip_prefilter: bool = False, include_excluded: bool = False) -> Dict[str, Any]:
     """Refresh just one unit, retaining other issues and their stable IDs/decisions. Con
     parent_context il revisore riceve anche le altre subunità della stessa unità."""
     from rt.services.unit_relevance import refresh, included
+    from rt.pipeline.review_units import remember_review_completion
+    remember_review_completion(lesson_dir)
+    force = force or skip_prefilter
     refresh(lesson_dir, force_mock=force_mock)
-    draft = load_draft(lesson_dir)
+    draft = load_resolved_draft(lesson_dir)
     unit = next((item for item in draft.units if item.unit_id == unit_id), None)
     if unit is None:
         raise ValueError(f"Unità {unit_id} non presente nella bozza.")
-    if not included(lesson_dir, unit):
+    raw_unit = next(u for u in load_draft(lesson_dir).units if u.unit_id == unit_id)
+    if not include_excluded and not included(lesson_dir, raw_unit):
         return {"status": "skipped", "unit": unit_id, "reason": "Unità priva di contenuto didattico"}
     registry = load_review_units(lesson_dir)
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     entry = registry.get(unit_id) or {}
     digest = entry.get("text_hash") or ((checkpoint or {}).get("unit_hashes") or {}).get(unit_id)
     known = bool(entry) or unit_id in ((checkpoint or {}).get("completed_items") or [])
-    if not force and known and entry.get("result") != "failed" and digest == _unit_hashes([unit])[unit_id]:
+    raw_hashes = _draft_hashes(lesson_dir)
+    if not force and known and entry.get("result") != "failed" and digest == raw_hashes.get(unit_id):
         return {"status": "skipped", "unit": unit_id, "reason": "già verificata", "issues": entry.get("issues", 0)}
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments.segments}
@@ -529,50 +571,208 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
     prior = load_science_issues(lesson_dir)
+    _initialize_anchor_ledger(lesson_dir)
     generated = []
     client = LLMClient(force_mock=force_mock)
     try:
         result = _review_unit(client, unit, 1, 1, seg_by_id,
                      {unit_id: [issue for issue in stats if issue.unit_id == unit_id]},
                      generated, cfg, lesson_dir, False, cfg.jev.shadow,
-                     parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None)
+                     parent_context=parent_unit_context(draft.units, unit_id) if parent_context else None,
+                     skip_prefilter=skip_prefilter)
     except Exception as exc:
-        record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc))
+        record_review_unit(lesson_dir, unit, cfg, client, 0, "failed", str(exc), text_hash=raw_hashes.get(unit_id))
         raise
     generated.extend(issue for issue in stats if issue.unit_id == unit_id)
-    combined, orphaned, sequence = reconcile_unit_issues(lesson_dir, prior, generated, draft.units, {unit_id})
-    save_science_issues(combined, lesson_dir)
-    record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result)
-    checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
-    current = _unit_hashes(draft.units)
-    reviewed = (checkpoint or {}).get("unit_hashes")
-    completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
-    # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
-    # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
-    # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
-    if isinstance(reviewed, dict):
-        completed = [item for item in completed if reviewed.get(item) == current.get(item)]
-    elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
-        completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
-    if unit_id not in completed:
-        completed.append(unit_id)
-    record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
-        source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
-        artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-        completed_items=completed,
-        metadata={"unit_hashes": {item: current[item] for item in completed if item in current},
-                  "issue_sequence": sequence})
-    if set(completed) >= set(current):
-        record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
-            {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-            metadata={"unit_hashes": current})
+    anchor_findings(generated, unit)
+    from rt.core.lesson_lock import lesson_lock
+    with lesson_lock(lesson_dir):
+        combined, orphaned, sequence = merge_unit_findings(lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit_id})
+        save_science_issues(combined, lesson_dir)
+        record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
+                           text_hash=raw_hashes.get(unit_id))
+        checkpoint, status_before, _ = get_phase_checkpoint(lesson_dir, "review")
+        current = raw_hashes
+        reviewed = (checkpoint or {}).get("unit_hashes")
+        completed = list(checkpoint.get("completed_items") or []) if checkpoint else []
+        # Il checkpoint prende l'impronta della bozza di adesso: resta "fatta" solo un'unità
+        # rivista su questo stesso testo. Le altre unità cambiate (riscritte dopo la revisione)
+        # tornano da rivedere, invece di risultare valide senza che nessuno le abbia guardate.
+        if isinstance(reviewed, dict):
+            completed = [item for item in completed if reviewed.get(item) == current.get(item)]
+        elif status_before not in (PhaseStatus.VALID, PhaseStatus.PARTIAL):
+            completed = []  # checkpoint di una versione precedente e bozza cambiata: nessuna certezza
+        if unit_id not in completed:
+            completed.append(unit_id)
+        record_phase_checkpoint(lesson_dir=lesson_dir, phase_name="review",
+            source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
+            artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+            completed_items=completed,
+            metadata={"unit_hashes": {item: current[item] for item in completed if item in current},
+                      "issue_sequence": sequence})
+        if set(completed) >= set(current):
+            record_phase_fingerprint(lesson_dir, "review", compute_source_fingerprint(lesson_dir, "review"),
+                {"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
+                metadata={"unit_hashes": current})
+        remember_review_completion(lesson_dir)
+    from rt.services.documents_service import request_documents
+    request_documents(lesson_dir)
     return {"unit": unit_id, "issues": len(generated), "other_issues_preserved": len(prior) - sum(i.unit_id == unit_id for i in prior),
             "orphaned_decisions": orphaned}
 
 
-def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
+def prepare_review_parts(lesson_dir: str, parts: list) -> list:
+    """Ritrova la selezione nel testo risolto e ne crea l'ancora sul server."""
+    from rt.core.models import Anchor
+    from rt.pipeline.anchors import locate, make_anchor
+    units = {u.unit_id: u for u in load_resolved_draft(lesson_dir).units}
+    if not parts or len({p['unit_id'] for p in parts}) != len(parts):
+        raise ValueError("Seleziona un tratto di testo per ogni unità da verificare.")
+    prepared = []
+    for part in parts:
+        unit = units.get(part['unit_id'])
+        if unit is None:
+            raise KeyError(part['unit_id'])
+        anchor = Anchor.model_validate(part['anchor'])
+        found = locate(anchor, unit.content)
+        if not found or ' '.join(unit.content[found.start:found.end].split()) != ' '.join(anchor.quote.split()):
+            raise ValueError("Il testo selezionato è cambiato o non si ritrova. Selezionalo di nuovo.")
+        prepared.append({'unit_id': unit.unit_id, 'anchor': make_anchor(unit.content, found.start, found.end).model_dump()})
+    return prepared
+
+
+def run_review_part(lesson_dir: str, part: dict, force_mock: bool = False) -> dict:
+    """V4 sulla selezione: conserva le decisioni e le aperte fuori dal tratto.
+
+    Non aggiorna impronte, stato o registro della verifica dell'intera unità.
+    """
+    from rt.core.models import Anchor
+    from rt.core.lesson_lock import lesson_lock
+    from rt.core.manifest import save_manifest
+    from rt.pipeline.anchors import find_quote, locate, make_anchor
+    from rt.services.documents_service import request_documents
+    part = prepare_review_parts(lesson_dir, [part])[0]
+    draft = load_resolved_draft(lesson_dir)
+    unit = next(u for u in draft.units if u.unit_id == part['unit_id'])
+    selection = Anchor.model_validate(part['anchor'])
+    segments = load_segments_json(lesson_path(lesson_dir, 'segments.json'))
+    prompt = build_science_review_user_prompt(unit_id=unit.unit_id, rewritten_content=unit.content)
+    prompt += ("\n\nTRATTO DA CONTROLLARE (il resto dell'unità è solo contesto):\n"
+               + json.dumps(selection.quote, ensure_ascii=False)
+               + "\nSegnala soltanto problemi la cui citazione si trova dentro questo tratto.")
+    generated = _validated_review_issues(LLMClient(force_mock=force_mock), unit,
+        append_extra(lesson_dir, 'review', prompt), lesson_dir, f'parte ({unit.unit_id})',
+        {s.id: s for s in segments.segments})
+
+    with lesson_lock(lesson_dir):
+        # Anche un cambio esterno durante la chiamata deve rispettare il tratto scelto.
+        part = prepare_review_parts(lesson_dir, [part])[0]
+        selection = Anchor.model_validate(part['anchor'])
+        draft = load_resolved_draft(lesson_dir)
+        unit = next(u for u in draft.units if u.unit_id == part['unit_id'])
+        scoped = []
+        for issue in generated:
+            local = find_quote(selection.quote, issue.claim)
+            if local:
+                issue.anchor = make_anchor(unit.content, selection.start + local.start, selection.start + local.end)
+                issue.claim = issue.anchor.quote
+                issue.unanchored = False
+            elif find_quote(unit.content, issue.claim):
+                continue  # il modello ha citato un punto fuori dalla selezione
+            else:
+                issue.anchor, issue.unanchored = None, True
+            issue.origin = 'parte'
+            scoped.append(issue)
+
+        def inside(issue):
+            found = locate(issue.anchor, unit.content) if issue.anchor else None
+            return bool(found and selection.start <= found.start < found.end <= selection.end)
+
+        prior = load_science_issues(lesson_dir)
+        _initialize_anchor_ledger(lesson_dir)
+        combined, _, sequence = merge_unit_findings(lesson_dir, prior, scoped, draft.units,
+                                                   {unit.unit_id}, replace_open=inside)
+        old_ids = {issue.id for issue in prior}
+        inserted = [issue for issue in combined if issue.id not in old_ids]
+        save_science_issues(combined, lesson_dir)
+        # Una selezione mai verificata non ha un checkpoint di unità. Conserva
+        # comunque la sequenza se una risposta vuota rimuove tutte le aperte.
+        sequence_path = lesson_path(lesson_dir, 'review_sequence.json')
+        with fs.open(sequence_path + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump({'last': sequence}, stream)
+        fs.replace(sequence_path + '.tmp', sequence_path)
+        manifest = load_manifest(lesson_dir)
+        record = (manifest.phase_records or {}).get('review') if manifest else None
+        if record:
+            # Un checkpoint parziale riconosce il nuovo file senza avanzare le unità.
+            record.setdefault('artifact_fingerprints', {})['science_issues.json'] = compute_file_sha256(get_science_issues_path(lesson_dir))
+            record['issue_sequence'] = sequence
+            save_manifest(manifest, lesson_dir)
+        request_documents(lesson_dir)
+    return {'unit_id': unit.unit_id, 'issues': len(inserted)}
+
+
+class _MockReviewOrder:
+    """Il mock conserva il budget storico e l'ordine delle risposte della lezione.
+
+    La sincronizzazione riguarda solo la generazione finta, mai il modello reale.
+    Le unità escluse o fallite liberano comunque quelle successive.
+    """
+    def __init__(self, units):
+        import threading
+        self.units = units
+        self.finished = set()
+        self.condition = threading.Condition()
+
+    def wait(self, unit_id):
+        before = self.units[:self.units.index(unit_id)]
+        with self.condition:
+            self.condition.wait_for(lambda: all(uid in self.finished for uid in before))
+
+    def complete(self, unit_id):
+        with self.condition:
+            self.finished.add(unit_id)
+            self.condition.notify_all()
+
+
+def _parallel_units(work, run, parallel, stop, started=None):
+    """Al massimo parallel chiamate avviate; le risposte passano al thread chiamante.
+
+    La coda conserva l'ordine di completamento. Quando stop diventa vero non
+    partono nuove unità, ma si aspettano e si raccolgono quelle già avviate.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+    from queue import Queue
+    finished = Queue()
+    remaining = iter(work)
+    pending = set()
+    exhausted = False
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        while pending or not exhausted:
+            # Prima registra tutte le risposte già pronte: possono raggiungere il
+            # limite dei fallimenti e fermare l'avvio delle unità ancora in coda.
+            while not exhausted and len(pending) < parallel and not stop() and finished.empty():
+                item = next(remaining, None)
+                if item is None:
+                    exhausted = True
+                    break
+                if started:
+                    started(item)
+                future = pool.submit(copy_context().run, run, *item)
+                pending.add(future)
+                future.add_done_callback(finished.put)
+            if not pending:
+                break
+            future = finished.get()
+            pending.remove(future)
+            yield future.result()
+
+
+def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None, skip_prefilter: bool = False) -> Dict[str, Any]:
     """Esegue la critica scientifica indipendente sul draft con checkpointing continuo."""
     yaml_path = lesson_path(lesson_dir, "info.yaml")
+    force = force or skip_prefilter
 
     manifest_before = load_manifest(lesson_dir)
     old_sci_hash = (
@@ -584,13 +784,22 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     )
 
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
+    draft = load_resolved_draft(lesson_dir)
+    raw_draft = load_draft(lesson_dir)
     phase_status, reason = check_phase_status(lesson_dir, "review")
     registry = load_review_units(lesson_dir)
-    if phase_status == PhaseStatus.VALID and not force and not any(e.get("result") == "failed" for e in registry.values()):
+    checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
+    prior_hashes = (checkpoint or {}).get("unit_hashes") or {}
+    current_hashes = _unit_hashes(raw_draft.units)
+    current_text = all((registry.get(uid, {}).get("text_hash") or prior_hashes.get(uid)) == digest
+                       for uid, digest in current_hashes.items())
+    # Anche le unità sparite devono attraversare la conservazione delle decise.
+    old_ids = set(prior_hashes)
+    if (phase_status == PhaseStatus.VALID and not force and current_text and old_ids <= set(current_hashes)
+            and not any(e.get("result") == "failed" for e in registry.values())):
         all_science_issues = load_science_issues(lesson_dir)
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
         next_state = WorkflowState.HUMAN_REVIEW_REQUIRED.value if pending_sci else WorkflowState.READY_TO_BUILD.value
         return {
             "status": "review_completed",
@@ -607,14 +816,12 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     action = "FORCE" if force else "RUN"
-    
-    draft = load_draft(lesson_dir)
     segments_data = load_segments_json(lesson_path(lesson_dir, "segments.json"))
     seg_by_id = {s.id: s for s in segments_data.segments}
 
     _cfg = load_config()
-    from rt.services.unit_relevance import included
-    eligible_ids = {unit.unit_id for unit in draft.units if included(lesson_dir, unit)}
+    from rt.services.unit_relevance import included_ids
+    eligible_ids = included_ids(lesson_dir, raw_draft.units)
     st_issues_all = detect_statistical_asr_risks(
         lesson_dir=lesson_dir,
         k=_cfg.review.asr_statistical_k,
@@ -628,20 +835,19 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
 
     # Testo corretto a mano nell'anteprima dopo la revisione (per esempio per chiudere un'issue):
     # la review resta valida con le sue issue e decisioni, invece di ripartire da zero (4.2.3b3.2).
-    if not force and phase_status == PhaseStatus.STALE and _only_manual_edits(lesson_dir, draft.units, eligible_ids):
+    if not force and phase_status == PhaseStatus.STALE and _only_manual_edits(lesson_dir, raw_draft.units, eligible_ids):
         all_science_issues = load_science_issues(lesson_dir)
         record_phase_fingerprint(
             lesson_dir=lesson_dir, phase_name="review",
             source_fingerprint=compute_source_fingerprint(lesson_dir, "review"),
             artifact_fingerprints={"science_issues.json": compute_file_sha256(get_science_issues_path(lesson_dir))},
-            metadata={"unit_hashes": _unit_hashes(draft.units), "eligible_units": sorted(eligible_ids)},
+            metadata={"unit_hashes": _unit_hashes(raw_draft.units), "eligible_units": sorted(eligible_ids)},
         )
         if ctx is not None:
             ctx.emit(Notice(level="info", message="Revisione già fatta: il testo è cambiato solo nelle unità "
                                                   "corrette a mano, issue e decisioni restano."))
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
         return {
             "status": "review_completed", "action": "SKIP", "skipped": True,
             "reason": "testo modificato solo a mano dopo la revisione",
@@ -656,24 +862,24 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     all_science_issues = load_science_issues(lesson_dir)
-    # Unità sparite dalla bozza (scaletta rifatta): le loro issue e decisioni non valgono più.
+    # Una scaletta nuova elimina soltanto le issue aperte delle unità sparite.
+    # Le decisioni e le relative issue restano leggibili e da riconfermare.
+    from rt.pipeline.ledger import load_ledger
+    decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
     draft_ids = {u.unit_id for u in draft.units}
-    gone = {i.id for i in all_science_issues if i.unit_id and i.unit_id not in draft_ids}
-    if gone:
-        from rt.pipeline.ledger import load_ledger, revert_last_decision
-        all_science_issues = [i for i in all_science_issues if i.id not in gone]
+    retained = [i for i in all_science_issues if not i.unit_id or i.unit_id in draft_ids or i.id in decided_ids]
+    if len(retained) != len(all_science_issues):
+        all_science_issues = retained
         save_science_issues(all_science_issues, lesson_dir)
-        for decision in load_ledger(lesson_dir).decisions:
-            if decision.issue_id in gone:
-                revert_last_decision(lesson_dir, decision.issue_id)
+    _initialize_anchor_ledger(lesson_dir)
     if not fs.isfile(get_science_issues_path(lesson_dir)):
         save_science_issues(all_science_issues, lesson_dir)
     ckpt, ckpt_status, _ = get_phase_checkpoint(lesson_dir, "review")
     from rt.pipeline.document_edits import edited_unit_ids
-    current_hashes = _unit_hashes(draft.units)
+    current_hashes = _unit_hashes(raw_draft.units)
     prior_hashes = (ckpt or {}).get("unit_hashes") or {}
     completed = set((ckpt or {}).get("completed_items") or [])
-    manual = manual_review_units(lesson_dir, draft.units)
+    manual = manual_review_units(lesson_dir, raw_draft.units)
     reviewed_unit_ids = []
     for unit in draft.units:
         entry = registry.get(unit.unit_id) or {}
@@ -685,67 +891,131 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
             reviewed_unit_ids.append(unit.unit_id)
     client = LLMClient(force_mock=force_mock)
     reviewed_set = set(reviewed_unit_ids)
-    unit_hashes = _unit_hashes(draft.units)
+    unit_hashes = current_hashes
     total_units = len(draft.units)
     failures = UnitFailureTracker()
     stopped_early = False
+    fatal_error = None
     jev_prefilter: Dict[str, Any] = {}
 
-    for idx, unit in enumerate(draft.units, start=1):
-        if not force and unit.unit_id in reviewed_set:
-            continue
-        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
-        if ctx is not None:
-            ctx.check_cancelled()
-            ctx.progress("review", current=idx, total=total_units, message=f"{unit.unit_id} {unit_title}".strip(),
-                         unit_id=unit.unit_id, unit_title=unit_title or None, failed=len(failures.failures))
-        generated = []
-        unit_result = "excluded"
+    work = [(idx, unit) for idx, unit in enumerate(draft.units, start=1)
+            if force or unit.unit_id not in reviewed_set]
+
+    mock_order = _MockReviewOrder([unit.unit_id for _, unit in work])
+    mock_calls = {}
+
+    pending_units = {unit.unit_id for _, unit in work}
+    running_units = set()
+    if ctx:
+        ctx.emit(ReviewUnitsQueued(pending_units=sorted(pending_units)))
+
+    def examine(idx, unit):
+        # Client separati; soltanto il budget del mock resta quello della lezione.
+        client = None
+        reporter = ListReporter()
+        child = RunContext(lesson_dir=lesson_dir, reporter=reporter,
+                           telemetry=ctx.telemetry, cancel_token=ctx.cancel_token) if ctx else None
+        generated, prefilter = [], {}
+        result, error = "excluded", None
         try:
-            if unit.unit_id in eligible_ids:
-                unit_result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
-                             _cfg, lesson_dir, asr_llm, shadow_jev, ctx=ctx, jev_log=jev_prefilter)
-            elif ctx is not None:
-                ctx.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
+            client = LLMClient(force_mock=force_mock)
+            client._mock_issue_calls = mock_calls
+            client._mock_review_wait = lambda: mock_order.wait(unit.unit_id)
+            from contextlib import nullcontext
+            with child.activate() if child else nullcontext():
+                if unit.unit_id in eligible_ids:
+                    result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
+                                          _cfg, lesson_dir, asr_llm, shadow_jev, ctx=child, jev_log=prefilter,
+                                          skip_prefilter=skip_prefilter)
+                elif child:
+                    child.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:
+            error = exc
+        finally:
+            mock_order.complete(unit.unit_id)
+        return idx, unit, client, generated, result, reporter.events, prefilter, error
+
+    if ctx:
+        ctx.check_cancelled()
+    def started(item):
+        uid = item[1].unit_id
+        running_units.add(uid)
+        if ctx:
+            ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=sorted(pending_units), running_units=sorted(running_units)))
+    for idx, unit, client, generated, unit_result, events, prefilter, exc in _parallel_units(
+            work, examine, _cfg.review.parallel_units,
+            lambda: stopped_early or fatal_error is not None or bool(ctx and ctx.cancel_token.cancelled), started):
+        unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
+        jev_prefilter.update(prefilter)
+        if ctx:
+            for event in events:
+                ctx.emit(event)
+            ctx.progress("review", current=len(reviewed_set) + len(failures.failures) + 1, total=total_units,
+                         message=f"{unit.unit_id} {unit_title}".strip(), unit_id=unit.unit_id,
+                         unit_title=unit_title or None, failed=len(failures.failures))
+        if exc is not None:
+            from rt.services.context import RunCancelled
+            if isinstance(exc, RunCancelled) and ctx and ctx.cancel_token.cancelled:
+                continue
             if not is_unit_failure(exc):
-                raise
-            # L'unità resta fuori dal checkpoint (e le sue issue parziali fuori dal file):
-            # una nuova run la rifà, le altre proseguono.
+                # Ferma gli invii, ma salva anche le altre unità già partite.
+                fatal_error = fatal_error or exc
+                if client is not None:
+                    record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", str(exc),
+                                       text_hash=unit_hashes.get(unit.unit_id))
+                continue
             failure = failures.failed(unit.unit_id, f"{idx}/{total_units} ({unit.unit_id}{': ' + unit_title if unit_title else ''})", exc)
-            record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message)
+            record_review_unit(lesson_dir, unit, _cfg, client, 0, "failed", failure.message,
+                               text_hash=unit_hashes.get(unit.unit_id))
             LOG.error("Review unità %s non riuscita: %s", unit.unit_id, failure.message)
-            if ctx is not None:
+            if ctx:
                 ctx.emit(Notice(level="warning", message=f"Revisione dell'unità {failure.label} non riuscita: {failure.message}"))
+                pending_units.discard(unit.unit_id)
+                running_units.discard(unit.unit_id)
+                ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=0, pending_units=sorted(pending_units), running_units=sorted(running_units)))
             if failures.too_many():
                 stopped_early = True
-                break
             continue
         failures.succeeded()
 
         if not asr_llm:
             generated.extend(st_issues_by_unit.get(unit.unit_id, []))
-        all_science_issues, _, sequence = reconcile_unit_issues(
-            lesson_dir, all_science_issues, generated, draft.units, {unit.unit_id})
-        save_science_issues(all_science_issues, lesson_dir)
-        record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result)
+        anchor_findings(generated, unit)
+        from rt.core.lesson_lock import lesson_lock
+        with lesson_lock(lesson_dir):
+            all_science_issues, _, sequence = merge_unit_findings(
+                lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit.unit_id})
+            save_science_issues(all_science_issues, lesson_dir)
+            record_review_unit(lesson_dir, unit, _cfg, client, len(generated), "issues" if generated else unit_result,
+                               text_hash=unit_hashes.get(unit.unit_id))
 
-        # Commit atomico nel checkpoint
-        if unit.unit_id not in reviewed_set:
-            reviewed_unit_ids.append(unit.unit_id)
-            reviewed_set.add(unit.unit_id)
+            # Commit atomico nel checkpoint
+            if unit.unit_id not in reviewed_set:
+                reviewed_unit_ids.append(unit.unit_id)
+                reviewed_set.add(unit.unit_id)
+            reviewed_unit_ids = [u.unit_id for u in draft.units if u.unit_id in reviewed_set]
 
-        source_fp = compute_source_fingerprint(lesson_dir, "review")
-        sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
-        record_phase_checkpoint(
-            lesson_dir=lesson_dir,
-            phase_name="review",
-            source_fingerprint=source_fp,
-            artifact_fingerprints={"science_issues.json": sci_hash},
-            completed_items=reviewed_unit_ids,
-            metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes},
-                      "issue_sequence": sequence},
-        )
+            source_fp = compute_source_fingerprint(lesson_dir, "review")
+            sci_hash = compute_file_sha256(get_science_issues_path(lesson_dir))
+            record_phase_checkpoint(
+                lesson_dir=lesson_dir,
+                phase_name="review",
+                source_fingerprint=source_fp,
+                artifact_fingerprints={"science_issues.json": sci_hash},
+                completed_items=reviewed_unit_ids,
+                metadata={"unit_hashes": {uid: unit_hashes[uid] for uid in reviewed_unit_ids if uid in unit_hashes},
+                          "issue_sequence": sequence},
+            )
+        if ctx:
+            pending_units.discard(unit.unit_id)
+            running_units.discard(unit.unit_id)
+            ctx.emit(ReviewUnitDone(unit_id=unit.unit_id, issues=len(generated), pending_units=sorted(pending_units), running_units=sorted(running_units)))
+
+    if ctx:
+        ctx.check_cancelled()
+
+    if fatal_error is not None:
+        raise fatal_error
 
     # Finalizzazione se tutte le unità del draft sono state esaminate
     all_draft_unit_ids = [u.unit_id for u in draft.units]
@@ -783,10 +1053,9 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         if (force or phase_status == PhaseStatus.STALE) and (old_sci_hash is None or old_sci_hash != sci_hash):
             mark_downstream_stale(lesson_dir, "review")
 
-        from rt.pipeline.ledger import load_ledger
-        decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending_sci = [s for s in all_science_issues if s.id not in decided_ids]
-        
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_sci = get_pending_issues(lesson_dir)
+
         allow_t = force or (phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID, PhaseStatus.PARTIAL))
         if pending_sci:
             transition_to(yaml_path, WorkflowState.HUMAN_REVIEW_REQUIRED, allow_force=allow_t)

@@ -294,17 +294,10 @@ def test_review_checkpoint_and_zero_issue_tracking(multi_unit_lesson):
             return EmptyList()
         elif "1.2" in str(unit_id):
             # Unità 1.2: 1 issue trovata
-            iss = ScienceIssue(
-                id="sci_temp",
-                unit_id="1.2",
-                segment_id="seg_000003",
-                type=ScienceType.ERR_CONCETTUALE,
-                claim="Affermazione contestata",
-                source_quote="I lipidi sono depositati nel tessuto adiposo",
-                reason="Lapsus terminologico",
-                severity=ScienceSeverity.HIGH,
-                status="pending"
-            )
+            from rt.llm.prompts import ReviewFinding
+            iss = ReviewFinding(tipo="concettuale", gravita="alta",
+                                citazione="Affermazione contestata", motivazione="Lapsus terminologico",
+                                sostituzione="Testo corretto")
             class OneIssueList:
                 issues = [iss]
             return OneIssueList()

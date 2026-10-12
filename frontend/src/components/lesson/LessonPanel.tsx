@@ -8,11 +8,19 @@ import { ReviewPanel } from './panels/ReviewPanel'
 import { QuestionsPanel } from './panels/QuestionsPanel'
 import { ClassifierPanel } from './panels/ClassifierPanel'
 import { EnrichmentPanel } from './panels/EnrichmentPanel'
+import { StudyNotesPanel } from './panels/StudyNotesPanel'
 import { PANEL_ID, type PanelView } from '@/lib/lessonPanel'
 
 type Section = Schemas['DocumentSection']
 
-const TITLES: Record<PanelView, string> = { dettagli: 'Dettagli', verifica: 'Verifica con LLM', domande: 'Domande', classificatore: 'Classificatore', arricchimento: 'Arricchimento' }
+const TITLES: Record<PanelView, string> = {
+  dettagli: 'Dettagli',
+  verifica: 'Verifica con LLM',
+  domande: 'Domande',
+  classificatore: 'Classificatore',
+  arricchimento: 'Arricchimento',
+  note: 'Verifiche e domande',
+}
 
 /** Contenitore comune: un pannello per volta, chiusura con X o Esc. */
 export function LessonPanel({
@@ -21,22 +29,24 @@ export function LessonPanel({
   sections,
   editingDocument,
   beforeReviewAction,
-  reviewMarkdown,
   onClose,
   onSwitchView,
   selectionContext,
   onClearSelection,
+  selectedNoteId,
+  onSelectNote,
 }: {
   view: PanelView
   lesson: Schemas['LessonDetail']
   sections: Section[]
   editingDocument: boolean
-  reviewMarkdown?: string
   beforeReviewAction?: () => Promise<void>
   onClose: () => void
   onSwitchView?: (view: PanelView) => void
   selectionContext?: { units?: string[]; text?: string } | null
   onClearSelection?: () => void
+  selectedNoteId?: number | null
+  onSelectNote?: (noteId: number | null) => void
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -67,7 +77,7 @@ export function LessonPanel({
         <IconButton label="Chiudi il pannello" icon={X} onClick={onClose} className="-mr-2" />
       </div>
       {view === 'dettagli' && <DetailsPanel lesson={lesson} sections={sections} editingDocument={editingDocument} />}
-      {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} markdown={reviewMarkdown} />}
+      {view === 'verifica' && <ReviewPanel lesson={lesson} beforeAction={beforeReviewAction} />}
       {view === 'domande' && (
         <QuestionsPanel
           lessonId={lesson.id}
@@ -79,6 +89,13 @@ export function LessonPanel({
       )}
       {view === 'classificatore' && <ClassifierPanel lessonId={lesson.id} />}
       {view === 'arricchimento' && <EnrichmentPanel lessonId={lesson.id} />}
+      {view === 'note' && (
+        <StudyNotesPanel
+          lessonId={lesson.id}
+          selectedNoteId={selectedNoteId}
+          onSelectNote={onSelectNote}
+        />
+      )}
     </aside>
   )
 }

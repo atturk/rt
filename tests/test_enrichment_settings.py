@@ -25,7 +25,7 @@ def test_enrichment_settings_round_trip_and_cap_validation(api_client, tmp_path,
     assert api_client.put("/api/v1/settings/enrichment", json=cfg).status_code == 200
     res = api_client.get("/api/v1/settings/enrichment").json()
     assert res["cap_number"] == 3
-    assert res["mode"] == "automatic"
+    assert res["mode"] == "manual"  # Le modalità si salvano solo da /settings/classifier.
     cfg["cap_number"] = 0
     assert api_client.put("/api/v1/settings/enrichment", json=cfg).status_code == 422
 

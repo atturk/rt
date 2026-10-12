@@ -52,7 +52,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
     for i, item in enumerate(raw_list, start=1):
         seg_id = make_segment_id(i)
         
-        # Caso 4: macparakeet-cli (startMs ed endMs in millisecondi)
+        # Formato 4: macparakeet-cli (startMs ed endMs in millisecondi)
         if "startMs" in item and "endMs" in item and isinstance(item["startMs"], (int, float)):
             start_val = float(item["startMs"])
             end_val = float(item["endMs"])
@@ -91,7 +91,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
                 confidence=conf_val
             ))
 
-        # Caso 1: MacWhisper (start ed end in millisecondi)
+        # Formato 1: MacWhisper (start ed end in millisecondi)
         elif "start" in item and "end" in item and isinstance(item["start"], (int, float)):
             # MacWhisper esporta sempre start/end in millisecondi (es. 2720 per 2.72s)
             start_val = float(item["start"])
@@ -117,7 +117,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
                 confidence=item.get("confidence")
             ))
             
-        # Caso 2: timestamp stringa (es. "00:02-00:12" o "00:02")
+        # Formato 2: timestamp stringa (es. "00:02-00:12" o "00:02")
         elif "timestamp" in item:
             ts_str = str(item["timestamp"]).strip()
             text = fix_mojibake(str(item.get("text", "")).strip())
@@ -139,7 +139,7 @@ def parse_segments_from_json(json_path: str) -> List[Segment]:
                 source_file=os.path.basename(json_path)
             ))
             
-        # Caso 3: Segment già conforme
+        # Formato 3: Segment già conforme
         elif "id" in item and "start_seconds" in item and "text_raw" in item:
             parsed_segments.append(Segment.model_validate(sanitize_object_encoding(item)))
             

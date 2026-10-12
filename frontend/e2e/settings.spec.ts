@@ -5,21 +5,22 @@ const CONNECTION = 'Server locale 422'
 const KEY = 'sk-e2e-chiave-422-0123456789abcdef'
 const BASE_URL = 'http://127.0.0.1:9/v1'
 const sections = [
-  ['aspetto', 'Aspetto e lettura'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
+  ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
   ['modelli-connessioni', 'Modelli e connessioni'], ['telegram', 'Telegram'], ['accesso', 'Accesso da iPhone'], ['info-aggiornamenti', 'Info e aggiornamenti'],
 ]
 async function choose(root: Page | Locator, label: string, option: string) {
   await root.getByRole('button', { name: label, exact: true }).click()
-  await root.getByRole('menuitemradio', { name: option, exact: true }).click()
+  const page = 'page' in root ? root.page() : root
+  await page.getByRole('menu', { name: label, exact: true }).getByRole('menuitemradio', { name: option, exact: true }).click()
 }
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 test.describe.configure({ mode: 'serial' })
 
-test('sette sezioni: desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
+test('otto sezioni: desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const nav = page.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
-  await expect(nav.getByRole('link')).toHaveCount(7)
+  await expect(nav.getByRole('link')).toHaveCount(8)
   await expect(page.getByRole('radiogroup', { name: 'Tema' })).toBeVisible()
   const navBox = (await nav.boundingBox())!
   const themeBox = (await page.getByRole('radiogroup', { name: 'Tema' }).boundingBox())!
@@ -90,10 +91,10 @@ test('lavorazione: trascrizione, scaletta, modalità unica e job', async ({ page
   await outline.getByRole('button', { name: 'Salva scaletta' }).click()
   await expect(outline.getByRole('status')).toHaveText('Salvato.')
   const enrichment = region(page, 'Arricchimento')
-  await choose(enrichment, 'Modalità dell’arricchimento', 'Automatico')
+  await enrichment.getByLabel('Utilità minima (0–1)').fill('0.65')
   await enrichment.getByRole('button', { name: 'Salva arricchimento' }).click()
   await expect(enrichment.getByRole('status')).toHaveText('Salvato.')
-  expect(await apiGet(page.request, '/settings/enrichment')).toMatchObject({ mode: 'automatic', automatic: true })
+  expect(await apiGet(page.request, '/settings/enrichment')).toMatchObject({ utility_threshold: 0.65 })
   await expect(page.getByText(/Analizza anche nella pipeline/)).toHaveCount(0)
   await choose(region(page, 'Job'), 'Job in parallelo', '3')
   await region(page, 'Job').getByRole('button', { name: 'Salva', exact: true }).click()
@@ -102,11 +103,11 @@ test('lavorazione: trascrizione, scaletta, modalità unica e job', async ({ page
   await expect(page.getByTestId('stt-engine')).toHaveAttribute('data-value', 'custom')
   await expect(stt.getByLabel('Chiave API (facoltativa)')).toHaveValue('')
   await expect(page.getByTestId('worker-concurrency')).toHaveAttribute('data-value', '3')
-  await expect(enrichment.getByTestId('enrichment-mode')).toHaveAttribute('data-value', 'automatic')
+  await expect(enrichment.getByLabel('Utilità minima (0–1)')).toHaveValue('0.65')
   await page.goto('/impostazioni/aspetto')
   await choose(page, 'Sfondo dei gruppi in Lezioni', 'Colori')
   await expect.poll(async () => (await apiGet<{ preferences: { sfondo_gruppi: string } }>(page.request, '/settings')).preferences.sfondo_gruppi).toBe('colori')
-  expect(await apiGet(page.request, '/settings/enrichment')).toMatchObject({ mode: 'automatic', automatic: true })
+  expect(await apiGet(page.request, '/settings/enrichment')).toMatchObject({ utility_threshold: 0.65 })
 })
 
 test('connessione: chiavi, modello e costi nello stesso gruppo', async ({ page }) => {

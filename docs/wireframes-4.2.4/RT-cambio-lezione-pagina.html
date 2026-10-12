@@ -1,0 +1,387 @@
+<title>Cambio lezione dalla pagina</title>
+<style>
+/* Layout: note in alto, cornice della pagina lezione (computer o iPhone) al centro, elenco lezioni d'esempio e note tecniche sotto; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --rail:#fafafa; --shadow:0 8px 28px rgb(0 0 0/.16);
+  --tip:#171717; --tip-fg:#ffffff; --zone:color-mix(in oklch,var(--acc) 7%,transparent);
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5);
+  --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5);
+  --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul,.notes ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg);white-space:nowrap}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px;color:var(--mute)}
+.controls label{display:inline-flex;gap:6px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.seg button{border:0;background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:5px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--acc-soft);color:var(--acc);font-weight:600}
+button:focus-visible,[contenteditable]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.status{font-size:13px;color:var(--mute);min-height:20px}
+.status b{color:var(--fg)}
+
+.stage{overflow-x:auto;padding-bottom:4px}
+.app{width:1000px;height:620px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:14px;display:flex;overflow:hidden;position:relative}
+.app.phone{width:390px;height:min(720px,calc(100vh - 24px));border-radius:30px;border-width:8px;border-color:var(--soft)}
+.app.phone .rail{display:none}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0}
+.rail i{width:26px;height:26px;border-radius:8px;background:var(--soft);display:block}
+.rail i.on{background:var(--acc-soft)} .rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:2px;padding:0 10px 0 6px;flex:none}
+.hdr .back{display:flex;align-items:center;gap:2px;font-size:14px;color:var(--mute);padding:0 6px;flex:1}
+.hdr .back svg{width:18px;height:18px}
+.ib{width:34px;height:34px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center}
+.ib svg{width:19px;height:19px}
+.app.phone .ib.opt{display:none}
+.scroll{flex:1;overflow:auto;padding:0 28px;position:relative;touch-action:pan-y}
+.app.phone .scroll{padding:0 16px}
+.art{max-width:620px;margin:0 auto;padding:28px 0 80px}
+.app.phone .art{padding-top:12px}
+
+/* Box del titolo con le due fasce sensibili ai lati */
+.titlebox{position:relative}
+.titlebox h3{font-size:24px;line-height:1.25;margin:0 0 8px;text-wrap:balance}
+.titlebox p{margin:0;color:var(--mute);font-size:13px}
+.zone{position:absolute;top:-10px;bottom:-10px;width:76px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.zone.l{right:100%;margin-right:4px} .zone.r{left:100%;margin-left:4px}
+.showzones .zone{background:var(--zone);outline:1px dashed color-mix(in oklch,var(--acc) 45%,transparent)}
+.app.phone .zone{display:none}
+.jump{display:flex;align-items:center;gap:6px;opacity:0;pointer-events:none;transition:opacity .18s ease-out}
+.zone.l .jump{flex-direction:row-reverse}
+.jump.on{opacity:1;pointer-events:auto}
+.titlebox.hovering .jump.on .tb{opacity:.4;transition:opacity .12s ease-out}
+.titlebox.hovering .jump.on .tb:hover{opacity:1}
+.jump .btns{display:flex;flex-direction:column;gap:6px}
+.tb{position:relative;display:flex;align-items:center;gap:2px;justify-content:center;width:52px;height:40px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--fg);cursor:pointer}
+.tb:hover:not(:disabled){background:var(--soft)}
+.tb:disabled{color:var(--mute);opacity:.45;cursor:not-allowed}
+.tb svg{width:18px;height:18px} .tb svg.ar{width:14px;height:14px}
+.timer{width:4px;align-self:stretch;border-radius:3px;background:var(--soft);position:relative;overflow:hidden}
+.timer i{position:absolute;inset:0;background:var(--acc);transform-origin:top;animation:drain 5s linear forwards}
+.timer.paused i{animation-play-state:paused}
+@keyframes drain{to{transform:scaleY(0)}}
+
+/* Linguetta di riserva quando il titolo non si vede (come nello Studio) */
+.tab{position:absolute;top:50%;z-index:8;display:flex;align-items:stretch;gap:8px;padding:8px;background:var(--bg);border:1px solid var(--border);box-shadow:var(--shadow);transform:translateY(-50%)}
+.tab.r{right:0;border-right:0;border-radius:14px 0 0 14px;animation:inR .25s ease-out}
+.tab.l{left:0;border-left:0;border-radius:0 14px 14px 0;animation:inL .25s ease-out;flex-direction:row-reverse}
+@keyframes inR{from{transform:translate(100%,-50%)}} @keyframes inL{from{transform:translate(-100%,-50%)}}
+.tab .btns{display:flex;flex-direction:column;gap:6px}
+.app.phone .tb{width:56px;height:46px}
+
+/* Testo modificabile: fa le veci di CodeMirror */
+.doc{margin-top:26px;border-radius:8px;padding:2px 4px;margin-inline:-4px;line-height:1.75;caret-color:var(--acc)}
+.doc:focus{outline:none;background:color-mix(in oklch,var(--acc) 4%,transparent)}
+.doc h4{font-size:18px;margin:22px 0 8px}
+.doc p{margin:0 0 14px}
+.doc table{border-collapse:collapse;font-size:13px;margin:0 0 14px}
+.doc .hscroll{overflow-x:auto;margin:0 0 14px;border:1px solid var(--border);border-radius:8px}
+.doc .hscroll table{margin:0;min-width:520px}
+.doc td,.doc th{border-bottom:1px solid var(--border);padding:5px 9px;text-align:left;white-space:nowrap}
+.tip{position:absolute;z-index:9;max-width:260px;background:var(--tip);color:var(--tip-fg);font-size:12.5px;line-height:1.4;padding:6px 9px;border-radius:7px;pointer-events:none;box-shadow:var(--shadow)}
+.tip b{display:block;font-weight:600}
+.loading{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in oklch,var(--bg) 70%,transparent);z-index:10;font-size:14px;color:var(--mute)}
+.hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-size:12.5px;background:var(--tip);color:var(--tip-fg);padding:5px 10px;border-radius:999px;z-index:9;white-space:nowrap;opacity:.9}
+
+table.list{border-collapse:collapse;width:100%;font-size:14px}
+.list th,.list td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.list th{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.list td.t{white-space:normal}
+.list tr.cur td{background:var(--acc-soft)}
+.tbl{overflow-x:auto}
+.pill{font-size:12px;border-radius:999px;padding:1px 8px;background:var(--soft)}
+@media (prefers-reduced-motion: reduce){.jump{transition:none}.tab{animation:none}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-cal"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></g>
+    <g id="i-tag"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></g>
+    <g id="i-r"><path d="M5 12h14M12 5l7 7-7 7"/></g>
+    <g id="i-l"><path d="M19 12H5M12 19l-7-7 7-7"/></g>
+    <g id="i-back"><path d="m15 18-6-6 6-6"/></g>
+    <g id="i-brain"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></g>
+    <g id="i-book"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></g>
+    <g id="i-shield"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g>
+    <g id="i-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></g>
+    <g id="i-dl"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></g>
+  </defs>
+</svg>
+
+<div class="top">
+  <h1>Cambio lezione dalla pagina lezione</h1>
+  <span class="meta">RT 4.2.4b1 · wireframe · 9 ottobre 2026 · compagno di L1 (Studio)</span>
+</div>
+
+<div class="wrap">
+  <div class="notes">
+    <h2>Ai lati del titolo, gli stessi due bottoni della linguetta dello Studio</h2>
+    <ul>
+      <li><b>Computer, col mouse.</b> Ai due lati del box del titolo c'è una fascia invisibile. Passando su una delle due compaiono <b>tutti e quattro</b> i bottoni, semitrasparenti tranne quello sotto il mouse: <b>calendario + freccia</b> (lezione dopo o prima <i>dello stesso giorno</i>) e <b>materia + freccia</b> (lezione dopo o prima <i>della stessa materia</i>), con il tooltip. Uscito il mouse da fascia e bottoni, tornano invisibili.</li>
+      <li><b>Computer, con la tastiera.</b> <span class="kbd">←</span> <span class="kbd">→</span> mostrano i bottoni di quel lato per 5 s, con la barra del tempo; ripremendo la freccia i 5 s ripartono. Valgono <b>solo se non stai scrivendo</b>: il cursore non è nel testo (CodeMirror), in un campo o in un menu, e non c'è testo selezionato. Altrimenti le frecce muovono il cursore come sempre.</li>
+      <li><b>Pagina scorsa.</b> Se il titolo non si vede più, frecce e swipe mostrano la linguetta dello Studio a metà altezza, così i bottoni compaiono sempre dove guardi.</li>
+      <li><b>iPhone.</b> Uno swipe orizzontale sulla pagina mostra i bottoni di quel lato per 5 s: da destra a sinistra la lezione dopo, da sinistra a destra quella prima. Lo swipe non apre direttamente la lezione, così un gesto sbagliato non ti porta via. Su iPhone i bottoni escono <b>sempre come linguetta fissa a metà dello schermo</b>, sopra al testo, a qualunque punto della pagina tu sia.</li>
+      <li>Prova: passa col mouse ai lati del titolo; clicca fuori dal testo e usa <span class="kbd">←</span> <span class="kbd">→</span>; clicca nel testo e le frecce tornano a muovere il cursore. In vista iPhone trascina col mouse in orizzontale.</li>
+    </ul>
+    <div class="controls">
+      <span class="seg" role="group" aria-label="Vista"><button type="button" data-view="pc" aria-pressed="true">Computer</button><button type="button" data-view="phone" aria-pressed="false">iPhone</button></span>
+      <label><input type="checkbox" id="zones"> Mostra le fasce sensibili</label>
+      <label><input type="checkbox" id="pause" checked> Il mouse sopra i bottoni ferma il timer</label>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+
+  <div class="stage"><div class="app" id="app">
+    <div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>
+    <div class="main" id="main"></div>
+  </div></div>
+
+  <div class="notes">
+    <h2>Lezioni d'esempio e quale si apre</h2>
+    <p style="margin:0;font-size:14px;color:var(--mute)">Ordine: data, poi ora, poi titolo. Riga evidenziata = lezione aperta. Qui contano <b>tutte</b> le lezioni, anche quelle non ancora rielaborate, perché la pagina lezione le apre tutte (nello Studio invece si saltano).</p>
+    <div class="tbl"><table class="list">
+      <thead><tr><th>Data</th><th>Ora</th><th>Materia</th><th>Lezione</th></tr></thead>
+      <tbody id="list"></tbody>
+    </table></div>
+  </div>
+
+  <div class="notes">
+    <h2>Domande aperte, con la mia proposta</h2>
+    <ol>
+      <li><b>Lezioni non rielaborate:</b> qui si includono (la pagina lezione le mostra comunque, con la scaletta o il progresso). Nello Studio restano escluse.</li>
+      <li><b>Dove si apre la lezione nuova:</b> in cima alla pagina, in entrambe le direzioni. Il pannello laterale aperto (Verifica, Domande…) resta aperto sulla lezione nuova.</li>
+      <li><b>Swipe su iPhone:</b> mostra i bottoni e non apre subito la lezione. Se preferisci che apra subito la lezione dopo dello stesso giorno, si cambia.</li>
+      <li><b>Per tornare alle frecce dopo aver scritto:</b> un clic fuori dal testo (margine o titolo). <span class="kbd">Esc</span> resta all'editor (chiude la ricerca e i menu), per non togliergli un tasto.</li>
+    </ol>
+  </div>
+
+  <div class="notes">
+    <h2>Come si farebbe (per il prompt a Codex)</h2>
+    <ul>
+      <li>Un solo componente per i due bottoni, condiviso con L1: <span class="code">LessonJumpButtons</span> (bottoni + tooltip + barra del tempo facoltativa) e la funzione pura <span class="code">lessonNeighbors(lessons, id, {readyOnly})</span>: <span class="code">readyOnly</span> vale <span class="code">true</span> nello Studio e <span class="code">false</span> qui.</li>
+      <li><span class="code">routes/lessons.tsx</span>: il box del titolo (<span class="code">h1</span>, percorso, meta) diventa <span class="code">relative</span>, con due fasce assolute fuori dalla colonna di lettura (circa 76 px). Solo con <span class="code">@media (hover:hover)</span>. Con il pannello laterale aperto la fascia destra resta a sinistra del pannello, perché la colonna si sposta già (<span class="code">xl:pr-[calc(24rem+28px)]</span>).</li>
+      <li>Frecce: un <span class="code">keydown</span> sul documento che esce subito se ci sono modificatori, se <span class="code">event.defaultPrevented</span>, se il bersaglio è dentro <span class="code">.cm-editor</span>, <span class="code">input</span>, <span class="code">textarea</span>, <span class="code">select</span>, <span class="code">[contenteditable]</span>, <span class="code">[role=slider|menu|listbox|dialog]</span> (il player audio usa le frecce), se c'è una selezione non vuota o un dialogo aperto. Così CodeMirror tiene le sue frecce senza toccarlo.</li>
+      <li>Linguetta: <span class="code">position: fixed</span> rispetto alla finestra (non dentro l'articolo), a metà altezza dell'area visibile, sopra all'editor e al player audio (<span class="code">z-index</span> sotto solo a menu e tooltip), con <span class="code">env(safe-area-inset-*)</span> per i bordi dell'iPhone. Su iPhone si usa sempre la linguetta, mai i bottoni accanto al titolo.</li>
+      <li>Titolo visibile o no: un <span class="code">IntersectionObserver</span> sul box del titolo; se è fuori vista si mostra la linguetta fissa a metà altezza (lo stesso componente di L1).</li>
+      <li>Swipe: <span class="code">pointerdown/up</span> con <span class="code">pointerType === 'touch'</span> sull'articolo, con la stessa soglia dello swipe dello Studio (|dx| ≥ 60 px, |dx| &gt; 2·|dy|, meno di 600 ms). Si ignorano i gesti che partono dentro tabelle o formule che scorrono in orizzontale, con una selezione attiva o nei primi 25 px dal bordo sinistro (indietro di Safari).</li>
+      <li>Clic: <span class="code">navigate('/lezioni/' + id)</span> mantenendo il <span class="code">?panel=</span> aperto; la pagina riparte dall'alto.</li>
+      <li>Test: e2e con il cursore nell'editor (le frecce muovono il cursore e i bottoni non compaiono), fuori dall'editor (compaiono per 5 s), hover sulle fasce, swipe con <span class="code">Input.dispatchTouchEvent</span> in un contesto <span class="code">hasTouch</span>.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+const ic = (id, cls='') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const LESSONS = [
+  {id:1, data:'2026-10-05', ora:'09:00', materia:'Patologia generale', docente:'Rossi', titolo:'Infiammazione acuta'},
+  {id:2, data:'2026-10-05', ora:'11:00', materia:'Fisiologia', docente:'Bianchi', titolo:'Ventilazione polmonare'},
+  {id:3, data:'2026-10-06', ora:'09:00', materia:'Fisiologia', docente:'Bianchi', titolo:'Scambi gassosi'},
+  {id:4, data:'2026-10-06', ora:'11:00', materia:'Patologia generale', docente:'Rossi', titolo:'Fisiopatologia dell’equilibrio acido-base'},
+  {id:5, data:'2026-10-06', ora:'14:30', materia:'Biochimica', docente:'Verdi', titolo:'Ciclo dell’urea'},
+  {id:6, data:'2026-10-07', ora:'09:00', materia:'Patologia generale', docente:'Rossi', titolo:'Shock e insufficienza circolatoria'},
+  {id:7, data:'2026-10-07', ora:'11:00', materia:'Biochimica', docente:'Verdi', titolo:'Metabolismo del glicogeno'},
+];
+const fmt = d => new Date(d+'T12:00').toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+const sorted = () => [...LESSONS].sort((a,b)=>a.data.localeCompare(b.data)||a.ora.localeCompare(b.ora)||a.titolo.localeCompare(b.titolo));
+function neighbors(id, dir){
+  const list = sorted(), cur = LESSONS.find(l=>l.id===id);
+  const pick = f => { const xs = list.filter(f); const i = xs.findIndex(l=>l.id===id); return xs[i+dir] || null; };
+  return { day: pick(l=>l.data===cur.data), subj: pick(l=>l.materia===cur.materia) };
+}
+const app = document.getElementById('app'), main = document.getElementById('main'), status = document.getElementById('status');
+const st = { hoverOut:null, lesson:4, phone:false, shown:{l:null,r:null}, timers:{l:null,r:null}, tab:null };
+let tipEl=null;
+
+function say(t){ status.innerHTML = t; }
+function render(){
+  const L = LESSONS.find(l=>l.id===st.lesson);
+  main.innerHTML = `<div class="hdr"><span class="back">${ic('back')} Lezioni</span>
+      <button class="ib" type="button" aria-label="Domande">${ic('brain')}</button><button class="ib" type="button" aria-label="Studio">${ic('book')}</button>
+      <button class="ib opt" type="button" aria-label="Verifica con LLM">${ic('shield')}</button><button class="ib opt" type="button" aria-label="Dettagli">${ic('info')}</button><button class="ib opt" type="button" aria-label="Esporta">${ic('dl')}</button></div>
+    <div class="scroll" id="scroll"><article class="art">
+      <div class="titlebox" id="titlebox">
+        <div class="zone l" data-side="l">${jump('l')}</div>
+        <h3>${L.titolo}</h3>
+        <p>${L.materia} · ${fmt(L.data)} · ${L.docente}</p>
+        <p>6 unità · 1 h 32 min</p>
+        <div class="zone r" data-side="r">${jump('r')}</div>
+      </div>
+      <div class="doc" id="doc" contenteditable="true" spellcheck="false" aria-label="Testo della lezione (anteprima modificabile)">
+        <h4>1. Introduzione</h4>
+        <p>Questo riquadro fa le veci dell'anteprima modificabile (CodeMirror). Cliccaci dentro: il cursore si muove con ← e → come sempre e i bottoni non compaiono. Clicca sul margine o sul titolo per uscire dal testo, e le frecce tornano a mostrare i bottoni.</p>
+        <p>Se selezioni del testo, le frecce restano all'editor anche fuori dal riquadro, perché stanno estendendo o chiudendo la selezione.</p>
+        <h4>2. Sistemi tampone</h4>
+        <div class="hscroll" contenteditable="false"><table><tr><th>Sistema</th><th>pKa</th><th>Sede</th><th>Ruolo</th></tr><tr><td>Bicarbonato</td><td>6,1</td><td>Plasma</td><td>Principale extracellulare</td></tr><tr><td>Fosfato</td><td>6,8</td><td>Rene, cellule</td><td>Intracellulare e urine</td></tr><tr><td>Proteine</td><td>variabile</td><td>Cellule</td><td>Emoglobina</td></tr></table></div>
+        <p>Le tabelle larghe scorrono in orizzontale: su iPhone uno swipe che parte qui dentro fa scorrere la tabella e non mostra i bottoni.</p>
+        <h4>3. Meccanismi di compenso</h4>
+        <p>Scorri in basso finché il titolo esce dalla vista, poi premi una freccia (o fai swipe su iPhone): al posto dei bottoni accanto al titolo esce la linguetta a metà altezza, la stessa dello Studio.</p>
+        <p>Il compenso respiratorio agisce in minuti modificando la ventilazione alveolare; quello renale richiede giorni e passa per l'escrezione di idrogenioni e il riassorbimento di bicarbonato.</p>
+        <h4>4. Interpretazione clinica</h4>
+        <p>Si parte dal pH, si guarda la PaCO₂ e il bicarbonato, si calcola il compenso atteso e, nelle acidosi metaboliche, il gap anionico.</p>
+        <p>Fine del testo d'esempio.</p>
+      </div>
+    </article></div>`;
+  st.shown={l:null,r:null}; st.tab=null;
+  wire(); renderList();
+}
+function jump(side, inTab){
+  const dir = side==='r'?1:-1, n = neighbors(st.lesson, dir), arrow = ic(side==='r'?'r':'l','ar');
+  const L = LESSONS.find(l=>l.id===st.lesson);
+  const btn = (kind, target) => {
+    const what = kind==='day' ? (dir>0?'Lezione successiva dello stesso giorno':'Lezione precedente dello stesso giorno') : (dir>0?'Lezione successiva di ':'Lezione precedente di ')+L.materia;
+    const tip = target ? `<b>${what}</b>${target.titolo} · ${fmt(target.data)}, ${target.ora}` : `<b>${what}</b>${kind==='day'?'Non ci sono altre lezioni in questo giorno':'Non ci sono altre lezioni di questa materia'}`;
+    const icon = ic(kind==='day'?'cal':'tag');
+    return `<button type="button" class="tb" data-go="${target?target.id:''}" ${target?'':'disabled'} data-tip="${tip.replace(/"/g,'&quot;')}" aria-label="${what}${target?': '+target.titolo:', nessuna'}">${dir>0?icon+arrow:arrow+icon}</button>`;
+  };
+  return `<div class="jump${inTab?' on':''}" role="group" aria-label="${dir>0?'Passa alla lezione successiva':'Passa alla lezione precedente'}"><div class="btns">${btn('day',n.day)}${btn('subj',n.subj)}</div><div class="timer" hidden aria-hidden="true"><i></i></div></div>`;
+}
+function zone(side){ return main.querySelector('.zone.'+side); }
+function titleVisible(){
+  const t = document.getElementById('titlebox'), s = document.getElementById('scroll');
+  const tr = t.getBoundingClientRect(), sr = s.getBoundingClientRect();
+  return tr.bottom > sr.top + 8 && tr.top < sr.bottom - 8;
+}
+/* Mostra i bottoni di un lato: 'hover' senza timer, 'key'/'swipe' con 5 s */
+function show(side, how){
+  const other = side==='r'?'l':'r'; if(how!=='hover') hide(other, true);
+  if(how!=='hover' && (st.phone || !titleVisible())) return showTab(side, how);
+  const j = zone(side).querySelector('.jump'); j.classList.add('on');
+  const tm = j.querySelector('.timer');
+  if(how==='hover'){ if(st.shown[side]!=='timed'){ st.shown[side]='hover'; tm.hidden=true; } return; }
+  st.shown[side]='timed'; tm.hidden=false; tm.classList.remove('paused');
+  const i=tm.querySelector('i'); i.replaceWith(i.cloneNode());
+  clearTimeout(st.timers[side]); st.timers[side]=setTimeout(()=>hide(side), 5000);
+  say(`<b>${side==='r'?'→':'←'}</b> fuori dal testo: bottoni ${side==='r'?'a destra':'a sinistra'} per 5 s.`);
+}
+function hide(side, force){
+  clearTimeout(st.timers[side]); hideTip();
+  if(st.tab===side){ main.querySelector('.tab')?.remove(); st.tab=null; }
+  const z = zone(side); if(!z) return;
+  if(!force && z.matches(':hover')){ st.shown[side]='hover'; z.querySelector('.timer').hidden=true; return; }
+  z.querySelector('.jump').classList.remove('on'); st.shown[side]=null;
+}
+function showTab(side, how){
+  main.querySelector('.tab')?.remove();
+  const t=document.createElement('div'); t.className='tab '+side; t.innerHTML=jump(side,true);
+  t.firstElementChild.classList.remove('jump'); t.firstElementChild.style.display='contents';
+  t.querySelector('.timer').hidden=false; main.appendChild(t); st.tab=side;
+  clearTimeout(st.timers[side]); st.timers[side]=setTimeout(()=>hide(side), 5000);
+  say(how==='swipe' ? `Swipe ${side==='r'?'verso sinistra: lezione dopo':'verso destra: lezione prima'}. Bottoni per 5 s.` : 'Il titolo non si vede: esce la linguetta a metà altezza, come nello Studio.');
+}
+function showTip(b){
+  if(st.phone) return;
+  hideTip(); tipEl=document.createElement('div'); tipEl.className='tip'; tipEl.innerHTML=b.dataset.tip; main.appendChild(tipEl);
+  const r=b.getBoundingClientRect(), m=main.getBoundingClientRect();
+  const right = !!b.closest('.zone.r, .tab.r');
+  let left = right ? r.left-m.left-tipEl.offsetWidth-10 : r.right-m.left+14;
+  left = Math.max(8, Math.min(left, m.width - tipEl.offsetWidth - 8));
+  tipEl.style.left=left+'px'; tipEl.style.top=Math.max(8, r.top-m.top+r.height/2-tipEl.offsetHeight/2)+'px';
+}
+function hideTip(){ if(tipEl){ tipEl.remove(); tipEl=null; } }
+
+function wire(){
+  ['l','r'].forEach(side=>{
+    const z = zone(side);
+    z.addEventListener('mouseenter', ()=>{
+      if(st.phone) return;
+      clearTimeout(st.hoverOut);
+      document.getElementById('titlebox').classList.add('hovering');
+      show('l','hover'); show('r','hover');
+    });
+    z.addEventListener('mouseleave', ()=>{
+      clearTimeout(st.hoverOut);
+      st.hoverOut = setTimeout(()=>{
+        if(main.querySelector('.zone:hover')) return;
+        document.getElementById('titlebox')?.classList.remove('hovering');
+        ['l','r'].forEach(s2=>{
+          if(st.shown[s2]==='hover') hide(s2, true);
+          const tm=zone(s2)?.querySelector('.timer'); if(st.shown[s2]==='timed' && tm.classList.contains('paused')) show(s2,'key');
+        });
+      }, 150);
+    });
+  });
+  main.querySelector('#scroll').addEventListener('scroll', ()=>{ if(st.tab && titleVisible()){ /* resta finché scade */ } }, {passive:true});
+  // swipe (in vista iPhone si simula col mouse)
+  const sc = main.querySelector('#scroll'); let s0=null;
+  sc.addEventListener('pointerdown', e=>{
+    if(!st.phone) return;
+    if(e.target.closest('.hscroll') || e.target.closest('.tb')) { s0=null; return; }
+    const r = sc.getBoundingClientRect(); if(e.clientX - r.left < 25){ s0=null; return; }
+    s0={x:e.clientX,y:e.clientY,t:Date.now(),sel:String(getSelection()).length>0};
+  });
+  sc.addEventListener('pointerup', e=>{
+    if(!s0) return; const dx=e.clientX-s0.x, dy=e.clientY-s0.y, dt=Date.now()-s0.t, s0sel=s0.sel; s0=null;
+    if(s0sel) return;
+    if(Math.abs(dx)>=60 && Math.abs(dx)>2*Math.abs(dy) && dt<600){ show(dx<0?'r':'l','swipe'); getSelection().removeAllRanges(); }
+  });
+}
+main.addEventListener('mouseover', e=>{
+  const b=e.target.closest('.tb'); if(b) showTip(b);
+  const box=e.target.closest('.jump, .tab'); if(box && document.getElementById('pause').checked){
+    const side = box.closest('.zone.r, .tab.r') ? 'r':'l';
+    const tm = box.querySelector('.timer');
+    if(tm && !tm.hidden && !tm.classList.contains('paused')){ tm.classList.add('paused'); clearTimeout(st.timers[side]); }
+  }
+});
+main.addEventListener('mouseout', e=>{
+  const b=e.target.closest('.tb'); if(b && !b.contains(e.relatedTarget)) hideTip();
+  const t=e.target.closest('.tab'); if(t && !t.contains(e.relatedTarget)){ const tm=t.querySelector('.timer'); if(tm.classList.contains('paused')){ tm.classList.remove('paused'); const i=tm.querySelector('i'); i.replaceWith(i.cloneNode()); const side=st.tab; clearTimeout(st.timers[side]); st.timers[side]=setTimeout(()=>hide(side),5000); } }
+});
+main.addEventListener('click', e=>{
+  const b=e.target.closest('.tb[data-go]'); if(!b || b.disabled) return;
+  hide('l',true); hide('r',true);
+  const ld=document.createElement('div'); ld.className='loading'; ld.textContent='Apro la lezione…'; main.appendChild(ld);
+  setTimeout(()=>{ st.lesson=Number(b.dataset.go); render(); say('Lezione aperta, dall\'inizio della pagina.'); },400);
+});
+/* Frecce: solo se non si sta scrivendo */
+document.addEventListener('keydown', e=>{
+  if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+  if(e.metaKey||e.ctrlKey||e.altKey||e.shiftKey||e.defaultPrevented) return;
+  const a = document.activeElement;
+  if(!app.contains(a) && a!==document.body) return;
+  if(a && a.closest && a.closest('[contenteditable="true"],input,textarea,select,[role=slider],[role=menu],[role=listbox]')){ say('Cursore nel testo: le frecce lo muovono, niente bottoni.'); return; }
+  if(String(getSelection()).length){ say('C\'è del testo selezionato: le frecce restano all\'editor.'); return; }
+  if(st.phone) return;
+  e.preventDefault(); show(e.key==='ArrowRight'?'r':'l','key');
+});
+/* Clic fuori dal testo dentro la cornice: toglie il fuoco dall'editor */
+app.addEventListener('mousedown', e=>{
+  if(!e.target.closest('#doc') && !e.target.closest('.tb') && document.activeElement && document.activeElement.id==='doc'){ document.activeElement.blur(); getSelection().removeAllRanges(); say('Uscito dal testo: ← → mostrano i bottoni.'); }
+});
+function renderList(){
+  const cur = st.lesson, nr = neighbors(cur,1), nl = neighbors(cur,-1);
+  document.getElementById('list').innerHTML = sorted().map(l=>{
+    const tags=[];
+    if(nr.day && nr.day.id===l.id) tags.push('→ calendario'); if(nr.subj && nr.subj.id===l.id) tags.push('→ materia');
+    if(nl.day && nl.day.id===l.id) tags.push('← calendario'); if(nl.subj && nl.subj.id===l.id) tags.push('← materia');
+    return `<tr class="${l.id===cur?'cur':''}"><td>${fmt(l.data)}</td><td>${l.ora}</td><td>${l.materia}</td><td class="t">${l.titolo} ${tags.map(t=>`<span class="pill">${t}</span>`).join(' ')}</td></tr>`;
+  }).join('');
+}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+  st.phone = b.dataset.view==='phone'; app.classList.toggle('phone', st.phone); render();
+  say(st.phone ? 'Vista iPhone: trascina col mouse in orizzontale sul testo per simulare lo swipe.' : '');
+}));
+document.getElementById('zones').addEventListener('change', e=>app.classList.toggle('showzones', e.target.checked));
+render();
+})();
+</script>

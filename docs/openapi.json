@@ -1,6 +1,120 @@
 {
   "components": {
     "schemas": {
+      "ASRRiskSegment": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End S"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          },
+          "text_raw": {
+            "title": "Text Raw",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "uncertain_words": {
+            "items": {
+              "$ref": "#/components/schemas/ASRUncertainWord"
+            },
+            "title": "Uncertain Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segment_id",
+          "text_raw"
+        ],
+        "title": "ASRRiskSegment",
+        "type": "object"
+      },
+      "ASRUncertainWord": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "end_char": {
+            "title": "End Char",
+            "type": "integer"
+          },
+          "end_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End S"
+          },
+          "start_char": {
+            "title": "Start Char",
+            "type": "integer"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          }
+        },
+        "required": [
+          "start_char",
+          "end_char",
+          "confidence"
+        ],
+        "title": "ASRUncertainWord",
+        "type": "object"
+      },
       "Action": {
         "properties": {
           "action": {
@@ -28,6 +142,42 @@
           }
         },
         "title": "AnalyzeIn",
+        "type": "object"
+      },
+      "Anchor": {
+        "description": "Citazione e contesto nel testo di una singola unità.",
+        "properties": {
+          "end": {
+            "minimum": 0.0,
+            "title": "End",
+            "type": "integer"
+          },
+          "prefix": {
+            "default": "",
+            "title": "Prefix",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "start": {
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "suffix": {
+            "default": "",
+            "title": "Suffix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote",
+          "start",
+          "end"
+        ],
+        "title": "Anchor",
         "type": "object"
       },
       "Answer": {
@@ -423,6 +573,53 @@
         "title": "Cap",
         "type": "object"
       },
+      "ChangelogGroup": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "items"
+        ],
+        "title": "ChangelogGroup",
+        "type": "object"
+      },
+      "ChangelogSection": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ChangelogGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "date",
+          "groups"
+        ],
+        "title": "ChangelogSection",
+        "type": "object"
+      },
       "ChooseFolderIn": {
         "properties": {
           "start": {
@@ -472,6 +669,403 @@
           "state"
         ],
         "title": "ClassificationStatus",
+        "type": "object"
+      },
+      "ClassifierCell": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "source": {
+            "default": "classifier",
+            "enum": [
+              "classifier",
+              "manual"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "fresh",
+              "stale",
+              "missing",
+              "error",
+              "skipped"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Id"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ClassifierCell",
+        "type": "object"
+      },
+      "ClassifierConfig": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "credential": {
+            "default": "openrouter",
+            "title": "Credential",
+            "type": "string"
+          },
+          "jobs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClassifierJobConfig"
+            },
+            "title": "Jobs",
+            "type": "object"
+          },
+          "model": {
+            "default": "typesafe/jev-1.13",
+            "title": "Model",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "default": 30,
+            "maximum": 300.0,
+            "minimum": 1.0,
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "title": "ClassifierConfig",
+        "type": "object"
+      },
+      "ClassifierCorrection": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "ClassifierCorrection",
+        "type": "object"
+      },
+      "ClassifierJobConfig": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
+          },
+          "mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "manual",
+              "observe",
+              "pipeline"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "title": "ClassifierJobConfig",
+        "type": "object"
+      },
+      "ClassifierJobView": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/ClassifierCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "errors": {
+            "default": 0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "icona": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icona"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "manual",
+              "observe",
+              "pipeline"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome"
+          },
+          "state": {
+            "enum": [
+              "done",
+              "partial",
+              "stale",
+              "never",
+              "off"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "state",
+          "cells"
+        ],
+        "title": "ClassifierJobView",
+        "type": "object"
+      },
+      "ClassifierOverview": {
+        "properties": {
+          "jobs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClassifierJobView"
+            },
+            "title": "Jobs",
+            "type": "object"
+          },
+          "pending": {
+            "default": 0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/ClassifierUnit"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "units",
+          "jobs"
+        ],
+        "title": "ClassifierOverview",
+        "type": "object"
+      },
+      "ClassifierProbeIn": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "mode": {
+            "default": "manual",
+            "enum": [
+              "off",
+              "manual",
+              "observe",
+              "pipeline"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "request_type": {
+            "default": "choice",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ],
+            "title": "Request Type",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "credential",
+          "timeout_seconds"
+        ],
+        "title": "ClassifierProbeIn",
+        "type": "object"
+      },
+      "ClassifierRun": {
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "unit_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Ids"
+          }
+        },
+        "title": "ClassifierRun",
+        "type": "object"
+      },
+      "ClassifierUnit": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "section_id"
+        ],
+        "title": "ClassifierUnit",
         "type": "object"
       },
       "Connection": {
@@ -676,6 +1270,83 @@
         "title": "CredentialTest",
         "type": "object"
       },
+      "CustomQuestionType": {
+        "additionalProperties": false,
+        "properties": {
+          "anche_adatti": {
+            "default": false,
+            "title": "Anche Adatti",
+            "type": "boolean"
+          },
+          "cerca": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Cerca",
+            "type": "string"
+          },
+          "chiedi": {
+            "maxLength": 24000,
+            "minLength": 1,
+            "title": "Chiedi",
+            "type": "string"
+          },
+          "continua": {
+            "default": false,
+            "title": "Continua",
+            "type": "boolean"
+          },
+          "correzione": {
+            "default": "testo",
+            "enum": [
+              "soluzione",
+              "testo"
+            ],
+            "title": "Correzione",
+            "type": "string"
+          },
+          "icona": {
+            "default": "MessageSquare",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "default": "",
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Id",
+            "type": "string"
+          },
+          "materie": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Materie",
+            "type": "array"
+          },
+          "nome": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Nome",
+            "type": "string"
+          },
+          "varianti": {
+            "default": false,
+            "title": "Varianti",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nome",
+          "materie",
+          "cerca",
+          "chiedi"
+        ],
+        "title": "CustomQuestionType",
+        "type": "object"
+      },
       "DaemonStatus": {
         "properties": {
           "pid": {
@@ -712,6 +1383,16 @@
               }
             ],
             "title": "Actor"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Anchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "channel": {
             "anyOf": [
@@ -2268,6 +2949,20 @@
       },
       "IssueContext": {
         "properties": {
+          "asr_segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ASRRiskSegment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Segments"
+          },
           "end_s": {
             "anyOf": [
               {
@@ -2376,7 +3071,7 @@
                 "type": "null"
               }
             ],
-            "description": "Correzione letterale applicabile; null per un suggerimento",
+            "description": "Sostituzione letterale; null se assente",
             "title": "Fix Text"
           },
           "issue": {
@@ -2384,6 +3079,28 @@
             "description": "ScienceIssue (science_issues.json)",
             "title": "Issue",
             "type": "object"
+          },
+          "needs_reconfirmation": {
+            "default": false,
+            "description": "La decisione resta registrata ma il tratto non si ritrova",
+            "title": "Needs Reconfirmation",
+            "type": "boolean"
+          },
+          "quote_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "found",
+                  "changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stato della citazione nel testo risolto, per le issue aperte o da riconfermare",
+            "title": "Quote Status"
           }
         },
         "required": [
@@ -2909,6 +3626,12 @@
             "title": "Force",
             "type": "boolean"
           },
+          "include_excluded": {
+            "default": false,
+            "description": "Review di una sola unità: ignora l'esclusione didattica per questa esecuzione",
+            "title": "Include Excluded",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -2936,6 +3659,21 @@
             "title": "Parent Context",
             "type": "boolean"
           },
+          "parts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReviewPartSelection"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "review_part: una selezione ancorata per ogni unità toccata",
+            "title": "Parts"
+          },
           "phase": {
             "anyOf": [
               {
@@ -2960,11 +3698,18 @@
             "title": "Rename",
             "type": "boolean"
           },
+          "skip_prefilter": {
+            "default": false,
+            "description": "Review: esegue il revisore senza il classificatore preventivo",
+            "title": "Skip Prefilter",
+            "type": "boolean"
+          },
           "type": {
             "default": "run_pipeline",
             "enum": [
               "run_pipeline",
-              "run_phase"
+              "run_phase",
+              "review_part"
             ],
             "title": "Type",
             "type": "string"
@@ -4571,6 +5316,155 @@
         "title": "PromptOverrideOut",
         "type": "object"
       },
+      "QuestionSettings": {
+        "properties": {
+          "materie": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Materie",
+            "type": "array"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTemplate"
+            },
+            "title": "Templates",
+            "type": "array"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/CustomQuestionType"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "types",
+          "templates",
+          "materie"
+        ],
+        "title": "QuestionSettings",
+        "type": "object"
+      },
+      "QuestionTemplate": {
+        "properties": {
+          "anche_adatti": {
+            "title": "Anche Adatti",
+            "type": "boolean"
+          },
+          "cerca": {
+            "title": "Cerca",
+            "type": "string"
+          },
+          "chiedi": {
+            "title": "Chiedi",
+            "type": "string"
+          },
+          "continua": {
+            "title": "Continua",
+            "type": "boolean"
+          },
+          "correzione": {
+            "enum": [
+              "soluzione",
+              "testo"
+            ],
+            "title": "Correzione",
+            "type": "string"
+          },
+          "icona": {
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "materie": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Materie",
+            "type": "array"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          },
+          "varianti": {
+            "title": "Varianti",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "nome",
+          "icona",
+          "materie",
+          "cerca",
+          "anche_adatti",
+          "continua",
+          "chiedi",
+          "correzione",
+          "varianti"
+        ],
+        "title": "QuestionTemplate",
+        "type": "object"
+      },
+      "QuestionTrialIn": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/CustomQuestionType"
+          },
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition",
+          "lesson_id",
+          "unit_id"
+        ],
+        "title": "QuestionTrialIn",
+        "type": "object"
+      },
+      "QuestionTrialOut": {
+        "properties": {
+          "example": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "QuestionTrialOut",
+        "type": "object"
+      },
       "QuizResult": {
         "properties": {
           "correct": {
@@ -4774,13 +5668,6 @@
           "qtype": {
             "anyOf": [
               {
-                "enum": [
-                  "quiz",
-                  "mirata",
-                  "vasta",
-                  "caso",
-                  "esercizio"
-                ],
                 "type": "string"
               },
               {
@@ -4918,12 +5805,34 @@
             ],
             "title": "Correct Index"
           },
+          "custom_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Type"
+          },
           "discard_reasons": {
             "items": {
               "type": "string"
             },
             "title": "Discard Reasons",
             "type": "array"
+          },
+          "evaluation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Job Id"
           },
           "explanation": {
             "anyOf": [
@@ -4986,6 +5895,16 @@
             ],
             "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
             "title": "Remaining"
+          },
+          "saved_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSavedEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -5077,12 +5996,34 @@
             ],
             "title": "Created At"
           },
+          "custom_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Type"
+          },
           "discard_reasons": {
             "items": {
               "type": "string"
             },
             "title": "Discard Reasons",
             "type": "array"
+          },
+          "evaluation_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Job Id"
           },
           "explanation": {
             "anyOf": [
@@ -5145,6 +6086,16 @@
             ],
             "description": "Domande pendenti dopo quella restituita, con gli stessi filtri di next",
             "title": "Remaining"
+          },
+          "saved_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecallSavedEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "title": "Status",
@@ -5211,7 +6162,7 @@
                 "type": "null"
               }
             ],
-            "description": "Commento dell'IA: solo quiz, vaste ed esercizi",
+            "description": "Commento dell'IA: tipi con soluzione pregenerata",
             "title": "Explanation"
           },
           "options": {
@@ -5360,6 +6311,40 @@
           "restored"
         ],
         "title": "RecallRestored",
+        "type": "object"
+      },
+      "RecallSavedEvaluation": {
+        "properties": {
+          "answer_text": {
+            "title": "Answer Text",
+            "type": "string"
+          },
+          "evaluation": {
+            "title": "Evaluation",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "corretta",
+                  "parziale",
+                  "sbagliata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "required": [
+          "answer_text",
+          "evaluation"
+        ],
+        "title": "RecallSavedEvaluation",
         "type": "object"
       },
       "RecallSessionInfo": {
@@ -5571,6 +6556,39 @@
           "correct"
         ],
         "title": "RecallSummary",
+        "type": "object"
+      },
+      "RecallTypeInfo": {
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "custom": {
+            "default": false,
+            "title": "Custom",
+            "type": "boolean"
+          },
+          "icona": {
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "nome",
+          "icona"
+        ],
+        "title": "RecallTypeInfo",
         "type": "object"
       },
       "RecallUnit": {
@@ -5807,8 +6825,31 @@
         "title": "RevealOut",
         "type": "object"
       },
+      "ReviewPartSelection": {
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/Anchor"
+          },
+          "unit_id": {
+            "minLength": 1,
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "anchor"
+        ],
+        "title": "ReviewPartSelection",
+        "type": "object"
+      },
       "ReviewProgress": {
         "properties": {
+          "completed_once": {
+            "default": false,
+            "title": "Completed Once",
+            "type": "boolean"
+          },
           "reviewed": {
             "title": "Reviewed",
             "type": "integer"
@@ -6053,10 +7094,7 @@
       "SectionLabelOverride": {
         "properties": {
           "kind": {
-            "enum": [
-              "esercizio",
-              "caso"
-            ],
+            "minLength": 1,
             "title": "Kind",
             "type": "string"
           },
@@ -6081,17 +7119,6 @@
       },
       "SectionLabelRow": {
         "properties": {
-          "caso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Caso"
-          },
           "error": {
             "anyOf": [
               {
@@ -6103,43 +7130,31 @@
             ],
             "title": "Error"
           },
-          "esercizio": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Esercizio"
-          },
           "fresh": {
             "description": "Classificata sul testo attuale",
             "title": "Fresh",
             "type": "boolean"
           },
-          "override_caso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Override Caso"
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
           },
-          "override_esercizio": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Override Esercizio"
+          "overrides": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Overrides",
+            "type": "object"
           },
           "section_id": {
             "title": "Section Id",
@@ -6366,6 +7381,201 @@
         "title": "StudyLesson",
         "type": "object"
       },
+      "StudyNoteApplyResponse": {
+        "properties": {
+          "applied_decision_id": {
+            "title": "Applied Decision Id",
+            "type": "integer"
+          },
+          "issue_id": {
+            "title": "Issue Id",
+            "type": "string"
+          },
+          "note": {
+            "$ref": "#/components/schemas/StudyNoteView"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "applied_decision_id",
+          "issue_id",
+          "note"
+        ],
+        "title": "StudyNoteApplyResponse",
+        "type": "object"
+      },
+      "StudyNoteCreate": {
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/Anchor"
+          },
+          "kind": {
+            "enum": [
+              "verifica",
+              "chiedi"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "request": {
+            "default": "",
+            "title": "Request",
+            "type": "string"
+          },
+          "unit_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "kind",
+          "anchor"
+        ],
+        "title": "StudyNoteCreate",
+        "type": "object"
+      },
+      "StudyNoteView": {
+        "properties": {
+          "anchor": {
+            "additionalProperties": true,
+            "title": "Anchor",
+            "type": "object"
+          },
+          "anchor_state": {
+            "enum": [
+              "trovata",
+              "cambiata",
+              "non_ritrovata"
+            ],
+            "title": "Anchor State",
+            "type": "string"
+          },
+          "applied_decision_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Decision Id"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Quote"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Id"
+          },
+          "kind": {
+            "enum": [
+              "verifica",
+              "chiedi"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "response": {
+            "additionalProperties": true,
+            "title": "Response",
+            "type": "object"
+          },
+          "unit_fingerprint": {
+            "title": "Unit Fingerprint",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "lesson_id",
+          "unit_id",
+          "kind",
+          "anchor",
+          "unit_fingerprint",
+          "request",
+          "response",
+          "anchor_state"
+        ],
+        "title": "StudyNoteView",
+        "type": "object"
+      },
       "StudyProgress": {
         "properties": {
           "last_read_at": {
@@ -6519,12 +7729,6 @@
           "suggested_qtype": {
             "anyOf": [
               {
-                "enum": [
-                  "quiz",
-                  "mirata",
-                  "caso",
-                  "esercizio"
-                ],
                 "type": "string"
               },
               {
@@ -6896,9 +8100,7 @@
             "enum": [
               "quiz",
               "mirata",
-              "vasta",
-              "caso",
-              "esercizio"
+              "vasta"
             ],
             "title": "Qtype",
             "type": "string"
@@ -10188,6 +11390,419 @@
           }
         ],
         "summary": "Forma d'onda dell'audio per il player (ready=false mentre si calcola)",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/classifier": {
+      "get": {
+        "operationId": "get_classifier_api_v1_lessons__lesson_id__classifier_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Classifier",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/classifier/run": {
+      "post": {
+        "operationId": "run_classifier_api_v1_lessons__lesson_id__classifier_run_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifierRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Classifier",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/classifier/{job}/run": {
+      "post": {
+        "operationId": "run_classifier_job_api_v1_lessons__lesson_id__classifier__job__run_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job",
+            "required": true,
+            "schema": {
+              "title": "Job",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifierRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Classifier Job",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/classifier/{job}/{cell_id}": {
+      "put": {
+        "operationId": "correct_classifier_api_v1_lessons__lesson_id__classifier__job___cell_id__put",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job",
+            "required": true,
+            "schema": {
+              "title": "Job",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "cell_id",
+            "required": true,
+            "schema": {
+              "title": "Cell Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifierCorrection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Correct Classifier",
         "tags": [
           "lezioni"
         ]
@@ -13948,14 +15563,6 @@
             "schema": {
               "default": "quiz",
               "description": "Tipo, oppure mista (tutti a turno)",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -14589,7 +16196,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Riscrive con l'IA solo il commento della domanda (quiz, vaste ed esercizi)",
+        "summary": "Riscrive con l'IA solo il commento della domanda (tipi con soluzione pregenerata)",
         "tags": [
           "recall"
         ]
@@ -14905,6 +16512,105 @@
           }
         ],
         "summary": "Commenta e rigenera la domanda dalle sue unità (job recall_regenerate)",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/recall/seen": {
+      "post": {
+        "operationId": "seen_api_v1_lessons__lesson_id__recall_seen_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallSkip"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Segna come vista la valutazione di una risposta aperta",
         "tags": [
           "recall"
         ]
@@ -16165,7 +17871,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità",
+        "summary": "Corregge o ripristina l'etichetta di un tipo personalizzato di un'unità",
         "tags": [
           "lezioni"
         ]
@@ -16257,6 +17963,595 @@
         "summary": "Studio: le unità della lezione con testo, tratto d'audio e domande da porre su ciascuna",
         "tags": [
           "recall"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study-notes": {
+      "get": {
+        "operationId": "list_notes_api_v1_lessons__lesson_id__study_notes_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unit_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudyNoteView"
+                  },
+                  "title": "Response List Notes Api V1 Lessons  Lesson Id  Study Notes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elenco delle note dello Studio per la lezione",
+        "tags": [
+          "studio"
+        ]
+      },
+      "post": {
+        "operationId": "create_study_note_api_v1_lessons__lesson_id__study_notes_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyNoteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accoda un'analisi di Verifica o Chiedi nello Studio",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study-notes/{note_id}": {
+      "delete": {
+        "operationId": "delete_note_api_v1_lessons__lesson_id__study_notes__note_id__delete",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina una nota dello Studio (non tocca la correzione se applicata)",
+        "tags": [
+          "studio"
+        ]
+      },
+      "get": {
+        "operationId": "get_note_api_v1_lessons__lesson_id__study_notes__note_id__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyNoteView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dettaglio di una nota dello Studio",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study-notes/{note_id}/apply": {
+      "post": {
+        "operationId": "apply_note_api_v1_lessons__lesson_id__study_notes__note_id__apply_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyNoteApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Applica la correzione proposta registrando una decisione accettata",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/study-notes/{note_id}/undo": {
+      "post": {
+        "operationId": "undo_note_api_v1_lessons__lesson_id__study_notes__note_id__undo_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyNoteView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Annulla la correzione applicata per questa nota",
+        "tags": [
+          "studio"
         ]
       }
     },
@@ -17076,7 +19371,7 @@
     },
     "/api/v1/mini-app/lessons/{lesson_id}/generate": {
       "post": {
-        "description": "Nuove domande di un tipo; con «mista» il pool intero (tutti i tipi, anche casi ed esercizi).",
+        "description": "Nuove domande di un tipo; con «mista» il pool dei tipi attivi della lezione.",
         "operationId": "generate_api_v1_mini_app_lessons__lesson_id__generate_post",
         "parameters": [
           {
@@ -17096,14 +19391,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -17297,14 +19584,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -17520,6 +19799,103 @@
           }
         ],
         "summary": "Resume",
+        "tags": [
+          "Telegram Mini App"
+        ]
+      }
+    },
+    "/api/v1/mini-app/lessons/{lesson_id}/seen": {
+      "post": {
+        "operationId": "seen_api_v1_mini_app_lessons__lesson_id__seen_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallSkip"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Seen",
         "tags": [
           "Telegram Mini App"
         ]
@@ -18187,14 +20563,6 @@
             "required": false,
             "schema": {
               "default": "quiz",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -18830,14 +21198,6 @@
             "schema": {
               "default": "quiz",
               "description": "Tipo, oppure mista (tutti a turno)",
-              "enum": [
-                "quiz",
-                "mirata",
-                "vasta",
-                "caso",
-                "esercizio",
-                "mista"
-              ],
               "title": "Qtype",
               "type": "string"
             }
@@ -19204,6 +21564,120 @@
         ]
       }
     },
+    "/api/v1/recall/types": {
+      "get": {
+        "operationId": "recall_types_api_v1_recall_types_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lesson_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lesson Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "materia",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Materia"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecallTypeInfo"
+                  },
+                  "title": "Response Recall Types Api V1 Recall Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Tipi di domanda per materia",
+        "tags": [
+          "recall"
+        ]
+      }
+    },
     "/api/v1/secrets/{name}": {
       "delete": {
         "operationId": "delete_secret_api_v1_secrets__name__delete",
@@ -19457,6 +21931,252 @@
           }
         ],
         "summary": "Tutte le impostazioni (nessun valore segreto)",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/classifier": {
+      "get": {
+        "operationId": "get_classifier_settings_api_v1_settings_classifier_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Classifier Settings",
+        "tags": [
+          "impostazioni"
+        ]
+      },
+      "put": {
+        "operationId": "put_classifier_settings_api_v1_settings_classifier_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifierConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifierConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Classifier Settings",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/classifier/probe": {
+      "post": {
+        "operationId": "probe_classifier_settings_api_v1_settings_classifier_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifierProbeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionProbeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Probe Classifier Settings",
         "tags": [
           "impostazioni"
         ]
@@ -20844,6 +23564,614 @@
         ],
         "summary": "Salva istruzioni per una fase; vuoto ripristina il default",
         "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/questions": {
+      "get": {
+        "operationId": "questions_api_v1_settings_questions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Questions",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      },
+      "post": {
+        "operationId": "create_api_v1_settings_questions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomQuestionType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomQuestionType"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/questions/import": {
+      "post": {
+        "operationId": "import_type_api_v1_settings_questions_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomQuestionType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomQuestionType"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Type",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/questions/trial": {
+      "post": {
+        "operationId": "trial_api_v1_settings_questions_trial_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTrialIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionTrialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trial",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/questions/{identifier}": {
+      "delete": {
+        "operationId": "delete_api_v1_settings_questions__identifier__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      },
+      "put": {
+        "operationId": "update_api_v1_settings_questions__identifier__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomQuestionType"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomQuestionType"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/questions/{identifier}/export": {
+      "get": {
+        "operationId": "export_api_v1_settings_questions__identifier__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomQuestionType"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export",
+        "tags": [
+          "impostazioni",
           "impostazioni"
         ]
       }
@@ -22745,6 +26073,36 @@
           }
         ],
         "summary": "Spazio occupato dalla cache audio e dalle forme d’onda",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/changelog": {
+      "get": {
+        "operationId": "system_changelog_api_v1_system_changelog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChangelogSection"
+                  },
+                  "title": "Response System Changelog Api V1 System Changelog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Novità delle versioni installate",
         "tags": [
           "sistema"
         ]

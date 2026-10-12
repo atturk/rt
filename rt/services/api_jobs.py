@@ -20,6 +20,7 @@ from rt.storage import fs
 
 REWRITE_UNIT = "rewrite_unit"
 REVIEW_UNIT = "review_unit"
+REVIEW_PART = "review_part"
 RECALL_BATCH = "recall_batch"
 RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
@@ -30,6 +31,7 @@ IMPORT_LESSON_ZIPS = "import_lesson_zips"
 TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
 EXPORT_LESSONS = "export_lessons"
 UNIT_RELEVANCE = "unit_relevance"
+STUDY_NOTE = "study_note"
 UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
 
 
@@ -63,17 +65,69 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.services.prompt_settings import extra_scope
     from rt.pipeline.rewrite import load_draft
     present = {unit.unit_id for unit in load_draft(job.lesson_path).units}
+    from rt.services.events import ReviewUnitsQueued, ReviewUnitDone, ReviewUnitStarted
     results = []
+    pending = list(job.payload.get("units") or [job.payload["unit"]])
+    options = job.payload.get("options") or {}
+    if options.get("include_excluded") and len(pending) != 1:
+        raise ValueError("L'esclusione si può ignorare solo per una singola unità.")
+    ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
     with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
-        for unit in job.payload.get("units") or [job.payload["unit"]]:
+        for unit in pending.copy():
+            ctx.check_cancelled()
             if unit not in present:
                 results.append({"unit": unit, "status": "skipped", "reason": "Unità non presente nella bozza"})
+                pending.remove(unit)
+                ctx.emit(ReviewUnitDone(unit_id=unit, issues=0, pending_units=pending.copy()))
                 continue
+            ctx.emit(ReviewUnitStarted(unit_id=unit, pending_units=pending.copy(), running_units=[unit]))
             results.append(run_review_unit(job.lesson_path, unit,
                                            force_mock=bool((job.payload.get("options") or {}).get("mock")),
                                            parent_context=bool(job.payload.get("parent_context")),
-                                           force=bool(job.payload.get("force") or (job.payload.get("options") or {}).get("force"))))
+                                           force=bool(job.payload.get("force") or options.get("force")),
+                                           **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)}))
+            pending.remove(unit)
+            ctx.emit(ReviewUnitDone(unit_id=unit, issues=results[-1].get("issues", 0), pending_units=pending.copy()))
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
+
+
+def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.review import run_review_part
+    from rt.services.events import ReviewUnitsQueued, ReviewUnitStarted, ReviewUnitDone
+    ctx.lesson_dir = job.lesson_path
+    pending = [part["unit_id"] for part in job.payload["parts"]]
+    ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
+    results = []
+    with ctx.activate():
+        for part in job.payload["parts"]:
+            ctx.check_cancelled()
+            uid = part["unit_id"]
+            ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=pending.copy(), running_units=[uid]))
+            result = run_review_part(job.lesson_path, part,
+                                     force_mock=ctx.force_mock or bool((job.payload.get("options") or {}).get("mock")))
+            results.append(result)
+            pending.remove(uid)
+            ctx.emit(ReviewUnitDone(unit_id=uid, issues=result["issues"], pending_units=pending.copy()))
+    return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
+
+
+def study_note_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.pipeline.study_notes import run_study_note
+    ctx.lesson_dir = job.lesson_path
+    with ctx.activate():
+        ctx.check_cancelled()
+        options = job.payload.get("options") or {}
+        force_mock = ctx.force_mock or bool(options.get("mock"))
+        result = run_study_note(
+            lesson_dir=job.lesson_path,
+            unit_id=job.payload["unit_id"],
+            kind=job.payload["kind"],
+            anchor=job.payload["anchor"],
+            request=job.payload.get("request", ""),
+            lesson_id=job.payload.get("lesson_id"),
+            force_mock=force_mock,
+        )
+    return _done(result, lesson_path=job.lesson_path)
 
 
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
@@ -127,15 +181,15 @@ def sweep_stale_uploads(uploads_root: str, queue, max_age_days: float = UPLOAD_M
 
 
 def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Altre domande di un tipo da unità selezionate scelte a caso (come il rifornimento del pool)."""
+    """Altre domande di un tipo da unità selezionate scelte casualmente (come il rifornimento del pool)."""
     from rt.core.config import load_config
-    from rt.core.models import RecallQuestionType
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
     from rt.services.recall_service import recall_overview
     from rt.services.recall_units import unit_rows
     from rt.services.events import Notice
     p = job.payload
-    qtype = RecallQuestionType(p["qtype"])
+    from rt.services.custom_question_types import resolve_type, type_key
+    qtype = resolve_type(p["qtype"])
     cfg = load_config()
     count = int(p.get("count") or cfg.telegram.recall.refill_batch_size)
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
@@ -145,7 +199,7 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                                           unit_ids=p.get("unit_ids"),
                                           instructions=p.get("instructions"),
                                           selection=p.get("selection"))
-        ctx.emit(Notice(message=_recall_message(f"Recall {qtype.value}: obiettivo {count}, generate {len(generated)}.",
+        ctx.emit(Notice(message=_recall_message(f"Recall {type_key(qtype)}: obiettivo {count}, generate {len(generated)}.",
                                                 len(generated), unit_rows(job.lesson_path))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
@@ -185,7 +239,7 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         is_voice = True
         _cleanup_upload(p)
     evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,
-                                      force_mock=bool(p.get("mock")))
+                                      force_mock=bool(p.get("mock")), mark_answered=False)
     if evaluation is None:
         raise ValueError("Domanda inesistente o a scelta multipla.")
     return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation,
@@ -214,10 +268,9 @@ def recall_comment_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Rifornisce il pool di un tipo arrivato alla soglia (dopo una domanda mostrata)."""
-    from rt.core.models import RecallQuestionType
     from rt.services.recall_service import recall_overview, refill_active_type_if_low
     with ctx.activate():
-        refill_active_type_if_low(job.lesson_path, RecallQuestionType(job.payload["qtype"]),
+        refill_active_type_if_low(job.lesson_path, job.payload["qtype"],
                                   force_mock=bool(job.payload.get("mock")), progress=recall_progress(ctx))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
@@ -445,12 +498,12 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 for _type, _handler in (
-    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
+    (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
     (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
     (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
-    (EXPORT_LESSONS, export_lessons_job),
+    (EXPORT_LESSONS, export_lessons_job), (STUDY_NOTE, study_note_job),
 ):
     if _type not in _HANDLERS:
         register_handler(_type, _handler)
@@ -460,3 +513,15 @@ import rt.services.job_handlers  # noqa: E402,F401 - i tipi standard prima di av
 for _type in UPLOAD_JOB_TYPES:
     if _type in _HANDLERS and not getattr(_HANDLERS[_type], "upload_cleanup", False):
         _HANDLERS[_type] = with_upload_cleanup(_HANDLERS[_type])
+
+
+def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.classifier_view import run
+    ctx.force_mock = bool(job.payload.get("force_mock") or job.payload.get("mock"))
+    with ctx.activate():
+        result = run(job.lesson_path,job.payload.get("job"),force=bool(job.payload.get("force")),
+                     unit_ids=job.payload.get("unit_ids"),ctx=ctx)
+    return _done(result,lesson_path=job.lesson_path)
+
+
+register_handler("classifier",classifier_job_handler)

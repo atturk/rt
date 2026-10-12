@@ -139,7 +139,7 @@ def create_login_code(db=None, ttl_seconds: int = LOGIN_CODE_SECONDS) -> str:
 
 
 def consume_login_code(code: str) -> bool:
-    """True se il codice era valido; in ogni caso non è più utilizzabile."""
+    """True se il codice era valido; comunque non è più utilizzabile."""
     from rt.db.repositories import SettingRepository
     from rt.db.session import session_scope
     if not code:

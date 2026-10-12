@@ -1,3 +1,4 @@
+vi.mock('@/api/classifier', () => ({ useClassifier: () => ({ data: { pending: 2 } }) }))
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
@@ -204,4 +205,13 @@ describe('DetailsPanel', () => {
     fireEvent.click(submitBtn)
     expect(mutateDelete).toHaveBeenCalled()
   })
+})
+
+it('il documento si aggiorna da solo: nessuna azione di build nei Dettagli', () => {
+  phases.list = [{ phase: 'build', status: 'STALE', reason: 'Testo cambiato' }]
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  expect(row('build')).toHaveTextContent('in aggiornamento')
+  expect(within(row('build')).queryByRole('button')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Ricrea' })).not.toBeInTheDocument()
+  expect(mutateRun).not.toHaveBeenCalled()
 })

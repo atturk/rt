@@ -10,7 +10,8 @@ def unit_pending(pending, unit_id: str) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for q in pending:
         if on_unit(q, unit_id):
-            counts[q.type.value] = counts.get(q.type.value, 0) + 1
+            from rt.services.custom_question_types import question_key
+            counts[question_key(q)] = counts.get(question_key(q), 0) + 1
     return counts
 
 
@@ -21,7 +22,7 @@ def study_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.recall import load_recall_bank
     from rt.services.lesson_service import document_sections
-    pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value == "pending"]
+    pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value in ("pending", "asked")]
     draft = load_resolved_draft(lesson_dir)
     sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
     edits = load_document_edits(lesson_dir)

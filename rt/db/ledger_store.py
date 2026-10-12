@@ -7,6 +7,7 @@ prima si reimporta review_decisions.json se è cambiato fuori da RT (hash divers
 Lesson.ledger_sha), poi si modifica il DB, poi si riesporta il file nello stesso formato di
 sempre. Le decisioni annullate restano nel DB con reverted_at, non nel file.
 """
+from rt.core.lesson_lock import lesson_locked
 import hashlib
 from typing import Any, Callable, Optional
 
@@ -19,6 +20,7 @@ from rt.storage import fs
 NO_DATABASE = object()
 
 
+@lesson_locked
 def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any]) -> Any:
     """Esegue op(repo, lesson) sul DB e, se il risultato è vero (qualcosa è cambiato),
     riesporta il file. NO_DATABASE se il DB non c'è (il chiamante scrive il file come prima)."""
@@ -26,7 +28,7 @@ def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any])
     if db is None:
         return NO_DATABASE
     from rt.core.models import DecisionLedger, ReviewDecision
-    from rt.pipeline.ledger import get_ledger_path, write_ledger_file
+    from rt.pipeline.ledger import get_ledger_path, write_ledger_file, load_ledger
 
     with db_sync.suspend_dual_write(), session_scope(db) as session:
         lesson = db_sync.sync_lesson(session, lesson_dir)
@@ -37,7 +39,7 @@ def mutate_ledger(lesson_dir: str, op: Callable[[DecisionRepository, Any], Any])
         result = op(repo, lesson)
         if not result:  # niente da annullare: il file resta com'è (o assente)
             return result
-        ledger = DecisionLedger(schema_version="1.0", decisions=[
+        ledger = DecisionLedger(schema_version=load_ledger(lesson_dir, _migrate=False).schema_version, decisions=[
             ReviewDecision(**{k: getattr(row, k) for k in db_sync.DECISION_FIELDS if getattr(row, k) is not None})
             for row in repo.active(lesson)
         ])
@@ -66,3 +68,25 @@ def active_decision_count(lesson_dir: str) -> Optional[int]:
     with session_scope(db) as session:
         lesson = LessonRepository(session).get_by_path(lesson_dir)
         return len(DecisionRepository(session).active(lesson)) if lesson else 0
+
+
+def ledger_version(lesson_dir: str) -> Optional[int]:
+    """Versione durevole fra processi: ogni append e ogni annullamento la fa crescere.
+
+    Gli id non si riutilizzano; le righe annullate restano nel DB. Anche un import
+    da file passa dalle stesse operazioni del repository.
+    """
+    from sqlalchemy import select, func, case
+    from rt.db.models import ReviewDecision as Row
+    from rt.db.session import read_scope
+    db = get_database()
+    if db is None:
+        return None
+    with read_scope(db) as session:
+        lesson = LessonRepository(session).get_by_path(lesson_dir)
+        if lesson is None:
+            return 0
+        return int(session.scalar(select(
+            func.coalesce(func.max(Row.id), 0) +
+            func.coalesce(func.sum(case((Row.reverted_at.is_not(None), 1), else_=0)), 0)
+        ).where(Row.lesson_id == lesson.id)) or 0)

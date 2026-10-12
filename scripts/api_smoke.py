@@ -68,11 +68,13 @@ def run(base: str, login_output: Callable[[], str], expect_lessons: int = 0) -> 
             print("❌ Nessun worker attivo", file=sys.stderr)
             return 1
         time.sleep(1)
+    # Dalla 4.2.4b2 il build non rinomina più la cartella: un secondo giro sulla stessa
+    # installazione usa un argomento diverso, altrimenti trova la cartella del primo.
     before = len(_lessons(s, base))
     with open(AUDIO, "rb") as f:
         r = s.post(f"{base}/api/v1/lessons", timeout=60,
                    files={"audio": ("demo_lecture.wav", f, "audio/wav")},
-                   data={"date": "2026-09-26", "materia": "Anatomia", "argomenti": "Prova installazione",
+                   data={"date": "2026-09-26", "materia": "Anatomia", "argomenti": f"Prova installazione {before + 1}",
                          "run": "true", "mock": "true", "auto_accept": "true"})
     if not r.ok:
         print(f"❌ Importazione rifiutata: {r.status_code} {r.text[:300]}", file=sys.stderr)

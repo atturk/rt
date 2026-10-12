@@ -3,7 +3,7 @@ import { EditorView } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { issueRange, issuePosition, lessonReview, setReview, ISSUE_EVENT } from './lessonReview'
 const markdown = '## 1. Sezione\n### 1.1 Unità\n00:00\nIl pH è 6.\n### 1.2 Altra\n00:20\nIl pH è 6.'
-const item = (id: string, unit: string): Schemas['IssueItem'] => ({ issue: { id, unit_id: unit, type: 'ERR_CONCETTUALE', severity: 'high', claim: 'Il pH è 6.' } })
+const item = (id: string, unit: string): Schemas['IssueItem'] => ({ needs_reconfirmation: false, issue: { id, unit_id: unit, type: 'ERR_CONCETTUALE', severity: 'high', claim: 'Il pH è 6.' } })
 it('cerca soltanto nell’unità corretta e riconosce il testo riscritto', () => {
   const state = EditorState.create({ doc: markdown })
   const first = issueRange(state, item('a', '1.1'))!
@@ -27,8 +27,8 @@ it('evidenzia l’issue selezionata, sottolinea le altre e le apre con un clic',
 })
 
 it('issue d’unità: widget al timestamp, nessun mark, selezione con clic; decise e fuori da Verifica spariscono', () => {
-  const asr = { issue: { ...item('asr', '1.1').issue, type: 'ERR_ASR_ST' } }
-  const drift = { issue: { ...item('drift', '1.1').issue, type: 'ERR_REWRITE_DRIFT' } }
+  const asr = { needs_reconfirmation: false, issue: { ...item('asr', '1.1').issue, type: 'ERR_ASR_ST' } }
+  const drift = { needs_reconfirmation: false, issue: { ...item('drift', '1.1').issue, type: 'ERR_REWRITE_DRIFT' } }
   const parent = document.createElement('div')
   const select = vi.fn()
   parent.addEventListener(ISSUE_EVENT, e => select((e as CustomEvent).detail))
@@ -48,5 +48,24 @@ it('issue d’unità: widget al timestamp, nessun mark, selezione con clic; deci
   expect(parent.querySelector('[data-review-issue]')).toBeNull()
   view.dispatch({ effects: setReview.of({ items: [], selected: null }) })
   expect(parent.querySelector('[data-review-issue]')).toBeNull()
+  view.destroy()
+})
+
+it('l’originale evidenziato segue il contesto dell’ancora fra citazioni ripetute', () => {
+  const content = 'Prima: 7.4. Seconda: 7.4 circa.'
+  const quote = '7.4'
+  const at = content.lastIndexOf(quote)
+  const anchored = { ...item('a', '1.1'), issue: { ...item('a', '1.1').issue, anchor: { quote, prefix: content.slice(0, at), suffix: content.slice(at + quote.length), start: at, end: at + quote.length } } }
+  const state = EditorState.create({ doc: `## 1. Sezione\n### 1.1 Unità\n00:00\n${content}` })
+  const range = issueRange(state, anchored)!
+  expect(state.sliceDoc(range.from, range.to)).toBe('7.4')
+  expect(state.sliceDoc(range.to)).toBe(' circa.')
+})
+it('una decisione da riconfermare conserva il passaggio evidenziato quando ritrovato', () => {
+  const parent = document.createElement('div')
+  const view = new EditorView({ parent, state: EditorState.create({ doc: markdown, extensions: lessonReview }) })
+  const reconfirm = { ...item('a', '1.1'), needs_reconfirmation: true, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '' } }
+  view.dispatch({ effects: setReview.of({ items: [reconfirm], selected: 'a' }) })
+  expect(parent.querySelector('.rt-issue-selected')?.textContent).toBe('Il pH è 6.')
   view.destroy()
 })

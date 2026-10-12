@@ -20,9 +20,9 @@ class RegeneratedComment(BaseModel):
 
 
 #: Tipi con il commento (o la scaletta, o lo schema) pregenerato dall'IA.
-TYPES_WITH_COMMENT = (RecallQuestionType.QUIZ, RecallQuestionType.VASTA, RecallQuestionType.ESERCIZIO)
+from rt.services.custom_question_types import supports_comment, question_key
 
-ASKED_STATES = (RecallQuestionStatus.ASKED, RecallQuestionStatus.ANSWERED)
+ASKED_STATES = (RecallQuestionStatus.ANSWERED,)
 
 
 def _find(bank, question_id: str) -> RecallQuestion:
@@ -38,7 +38,7 @@ def edit_question(lesson_dir: str, question_id: str, *, question_text: str,
     """Riscrive la domanda com'è stata corretta a mano e la rimette fra quelle da porre.
 
     Le regole sono quelle del modello (quiz: quattro opzioni distinte, un indice giusto e la
-    spiegazione; mirate e casi senza materiale pregenerato): le riusa `GeneratedRecallQuestion`,
+    spiegazione; mirate senza materiale pregenerato): le riusa `GeneratedRecallQuestion`,
     così una modifica a mano non può produrre una domanda che l'IA non avrebbe potuto scrivere.
     """
     from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
@@ -56,10 +56,10 @@ def edit_question(lesson_dir: str, question_id: str, *, question_text: str,
         if question.type != RecallQuestionType.QUIZ:
             candidate["options"] = None
             candidate["correct_index"] = None
-        if question.type not in TYPES_WITH_COMMENT:
+        if not supports_comment(question):
             candidate["pregenerated_material"] = None
         GeneratedRecallQuestion.model_validate(candidate)  # ValueError: la rifiuta il router
-        duplicate = any(q.id != question.id and q.type == question.type
+        duplicate = any(q.id != question.id and question_key(q) == question_key(question)
                         and q.question_text.strip().casefold() == candidate["question_text"].casefold()
                         for q in bank.questions)
         if duplicate:
@@ -99,7 +99,7 @@ def _last_outcome(bank, question_id: str) -> Optional[str]:
 
 
 def restore_questions(lesson_dir: str, scope: str) -> int:
-    """Rimette fra quelle da porre le domande già poste ('asked') o solo quelle sbagliate
+    """Rimette fra quelle da porre le domande risposte ('asked') o solo quelle sbagliate
     ('wrong': esito sbagliata, quindi anche i 'Non lo so'). Le scartate restano fuori."""
     from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
 
@@ -142,14 +142,13 @@ def regenerate_comment(lesson_dir: str, question_id: str, *, force_mock: bool = 
 
     bank = load_recall_bank(lesson_dir)
     question = _find(bank, question_id)
-    if question.type not in TYPES_WITH_COMMENT:
+    if not supports_comment(question):
         raise Conflict("comment_not_supported", "Questo tipo di domanda non ha un commento dell'IA.")
     units = [u for u in load_resolved_draft(lesson_dir).units if u.unit_id in question.unit_ids]
     if not units:
         raise Conflict("unit_not_found", "Le unità della domanda non esistono più.")
     what = {RecallQuestionType.QUIZ: "la spiegazione della risposta giusta",
-            RecallQuestionType.VASTA: "la scaletta della risposta ideale",
-            RecallQuestionType.ESERCIZIO: "lo schema di risoluzione"}[question.type]
+            RecallQuestionType.VASTA: "la scaletta della risposta ideale"}.get(question.type, "la soluzione attesa")
     system = (f"Riscrivi solo {what} di una domanda di ripasso, usando esclusivamente le unità fornite. "
               "Non cambiare la domanda né le alternative. Restituisci il JSON {\"testo\": ...}.")
     prompt = json.dumps({
@@ -173,3 +172,15 @@ def regenerate_comment(lesson_dir: str, question_id: str, *, force_mock: bool = 
         question.pregenerated_material = text
         save_recall_bank(bank, lesson_dir)
         return question
+
+
+def mark_answer_seen(lesson_dir: str, question_id: str) -> None:
+    """La valutazione aperta diventa risposta quando viene mostrata nel ripasso web."""
+    from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        question = _find(bank, question_id)
+        if question.status == RecallQuestionStatus.ASKED and any(
+                a.question_id == question_id and a.evaluation for a in bank.answers):
+            question.status = RecallQuestionStatus.ANSWERED
+            save_recall_bank(bank, lesson_dir)

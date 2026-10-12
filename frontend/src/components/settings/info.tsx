@@ -6,6 +6,7 @@ import { useSettings, useSystemInfo } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatBytes } from '@/lib/jobs'
 import { Section } from './common'
@@ -41,9 +42,42 @@ export function InfoSection() {
           </dl>
         )}
       </Section>
+      <ChangelogSection version={info.data?.version} />
       <CacheSection />
     </>
   )
+}
+
+/** Note distribuite con RT: nessun HTML o renderer Markdown. */
+export function ChangelogSection({ version }: { version?: string }) {
+  const changelog = useQuery({ queryKey: ['system', 'changelog'], queryFn: () => unwrap(api.GET('/api/v1/system/changelog')) })
+  const sections = Array.isArray(changelog.data) ? changelog.data : []
+  return <Section id="novita" title="Novità">
+    {changelog.isPending && <p className="text-body text-muted-foreground">Carico le novità…</p>}
+    {changelog.isError && <Alert tone="danger">{errorMessage(changelog.error)}</Alert>}
+    {changelog.isSuccess && sections.length === 0 && <p className="text-body text-muted-foreground">Nessuna nota disponibile.</p>}
+    {sections.map(section => <details key={`${section.version}:${version}`} open={section.version === version} className="rounded-lg border p-3">
+      <summary className="cursor-pointer text-body font-semibold">{section.version} <span className="text-meta font-normal text-muted-foreground">· {section.date}</span></summary>
+      {section.groups.map((group, index) => <div key={index} className="mt-3">
+        <h3 className="text-meta font-semibold text-muted-foreground">{group.title}</h3>
+        <ul className="mt-1 space-y-1 text-body">{group.items.map(item => <ChangelogItem key={JSON.stringify([section.version, item])} version={section.version} text={item} />)}</ul>
+      </div>)}
+    </details>)}
+  </Section>
+}
+
+function ChangelogItem({ version, text }: { version: string; text: string }) {
+  const storageKey = `rt.changelog.checked:${JSON.stringify([version, text])}`
+  const [checked, setChecked] = useState(() => {
+    try { return localStorage.getItem(storageKey) === '1' } catch { return false }
+  })
+  return <li><label className="flex cursor-pointer items-start gap-2">
+    <Checkbox label={text} checked={checked} className="mt-1" onChange={value => {
+      setChecked(value)
+      try { if (value) localStorage.setItem(storageKey, '1'); else localStorage.removeItem(storageKey) } catch { /* La casella resta utilizzabile senza memoria del browser. */ }
+    }} />
+    <span className={checked ? 'text-muted-foreground line-through' : undefined}>{text}</span>
+  </label></li>
 }
 
 const cacheKey = ['system', 'cache'] as const

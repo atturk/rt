@@ -234,9 +234,25 @@ export function useDecisions(id: number) {
 
 export type DecisionRequest = Schemas['DecisionRequest']
 
-/** Decisione su un'issue: dopo la scrittura rilegge issue, ledger, documento, fasi e job. */
+/** Aggiorna l'issue e i contatori, lasciando intatti gli altri risultati della lezione. */
+function setIssueDecision(client: ReturnType<typeof useQueryClient>, id: number, issueId: string, decision: Schemas['Decision'] | null) {
+  client.setQueryData<Schemas['IssueList']>(reviewKeys.issues(id), old => {
+    if (!old) return old
+    const items = old.items.map(item => item.issue.id === issueId ? { ...item, decision, needs_reconfirmation: false } : item)
+    const pending = items.filter(item => !item.decision || item.needs_reconfirmation).length
+    return { ...old, items, pending, review_complete: pending === 0 }
+  })
+}
+
+function refreshReview(client: ReturnType<typeof useQueryClient>, id: number) {
+  for (const queryKey of [reviewKeys.issues(id), reviewKeys.units(id), lessonKeys.document(id)]) {
+    void client.invalidateQueries({ queryKey, exact: true })
+  }
+}
+
+/** Decisione subito visibile; il server conferma il testo e i tre dati interessati si rileggono. */
 export function useDecideIssue(id: number) {
-  const refresh = useRefreshLesson(id)
+  const client = useQueryClient()
   return useMutation({
     mutationFn: ({ issueId, ...body }: { issueId: string } & DecisionRequest) =>
       unwrap(
@@ -245,19 +261,66 @@ export function useDecideIssue(id: number) {
           body,
         }),
       ),
-    onSettled: () => {
-      void refresh()
+    onMutate: async variables => {
+      await Promise.all([reviewKeys.issues(id), reviewKeys.decisions(id)].map(queryKey => client.cancelQueries({ queryKey, exact: true })))
+      const previous = client.getQueryData<Schemas['IssueList']>(reviewKeys.issues(id))?.items.find(item => item.issue.id === variables.issueId)
+      const previousDecisions = client.getQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id))?.filter(d => d.issue_id === variables.issueId)
+      const decision: Schemas['Decision'] = {
+        issue_id: variables.issueId, decision: variables.decision, timestamp: new Date().toISOString(), resolved_by: 'api', channel: 'api',
+        resolved_text: variables.text ?? (variables.decision === 'accepted' ? previous?.fix_text : previous?.issue.claim as string | undefined),
+        anchor: previous?.issue.anchor as Schemas['Anchor'] | undefined,
+        notes: variables.notes,
+      }
+      setIssueDecision(client, id, variables.issueId, decision)
+      client.setQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id), old => old ? [...old, decision] : old)
+      return { previous, previousDecisions }
     },
+    onSuccess: (decision, variables, context) => {
+      setIssueDecision(client, id, variables.issueId, decision)
+      client.setQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id), old => old ? [...old.filter(d => d.issue_id !== variables.issueId), ...(context?.previousDecisions ?? []), decision] : old)
+    },
+    onError: (_error, variables, context) => {
+      // Ripristina solo questa issue: eventi live e altre decisioni possono essere arrivati nel frattempo.
+      if (context?.previous) {
+        client.setQueryData<Schemas['IssueList']>(reviewKeys.issues(id), old => {
+          if (!old) return old
+          const items = old.items.map(item => item.issue.id === variables.issueId ? context.previous! : item)
+          const pending = items.filter(item => !item.decision || item.needs_reconfirmation).length
+          return { ...old, items, pending, review_complete: pending === 0 }
+        })
+      }
+      client.setQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id), old => old ? [...old.filter(d => d.issue_id !== variables.issueId), ...(context?.previousDecisions ?? [])] : old)
+    },
+    onSettled: () => refreshReview(client, id),
   })
 }
 
 export function useUndoDecision(id: number) {
-  const refresh = useRefreshLesson(id)
+  const client = useQueryClient()
   return useMutation({
     mutationFn: (issueId: string) =>
       unwrap(api.POST('/api/v1/lessons/{lesson_id}/decisions/undo', { params: { path: { lesson_id: id } }, body: { issue_id: issueId } })),
-    onSettled: () => {
-      void refresh()
+    onMutate: async issueId => {
+      await Promise.all([reviewKeys.issues(id), reviewKeys.decisions(id)].map(queryKey => client.cancelQueries({ queryKey, exact: true })))
+      const previous = client.getQueryData<Schemas['IssueList']>(reviewKeys.issues(id))?.items.find(item => item.issue.id === issueId)
+      const decisions = client.getQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id))
+      const previousDecisions = decisions?.filter(d => d.issue_id === issueId)
+      const earlier = previousDecisions?.slice(0, -1) ?? []
+      setIssueDecision(client, id, issueId, earlier.at(-1) ?? null)
+      client.setQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id), old => old ? [...old.filter(d => d.issue_id !== issueId), ...earlier] : old)
+      return { previous, previousDecisions }
     },
+    onError: (_error, issueId, context) => {
+      if (context?.previous) {
+        client.setQueryData<Schemas['IssueList']>(reviewKeys.issues(id), old => {
+          if (!old) return old
+          const items = old.items.map(item => item.issue.id === issueId ? context.previous! : item)
+          const pending = items.filter(item => !item.decision || item.needs_reconfirmation).length
+          return { ...old, items, pending, review_complete: pending === 0 }
+        })
+      }
+      client.setQueryData<Schemas['Decision'][]>(reviewKeys.decisions(id), old => old ? [...old.filter(d => d.issue_id !== issueId), ...(context?.previousDecisions ?? [])] : old)
+    },
+    onSettled: () => refreshReview(client, id),
   })
 }

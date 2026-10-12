@@ -4,6 +4,13 @@ Questo documento guida sviluppatori e maintainer all'estensione del sistema RT, 
 
 ---
 
+## Changelog delle beta
+
+Ogni PR verso un branch beta aggiunge le proprie righe alla sezione della versione in corso
+in `CHANGELOG.md`, sotto Novità, Correzioni o Cambiamenti. La versione più nuova sta in cima,
+con intestazione `## <versione> — AAAA-MM-GG`. Il rilascio richiede questa sezione: il suo testo
+alimenta le note su GitHub e Impostazioni › Info. Chi pubblica verifica la data e le righe delle PR.
+
 ## 1. Setup dell'Ambiente Locale
 
 Il progetto richiede Python 3.11+ ed è progettato per operare sia con le librerie standard sia con `pydantic` (v2):

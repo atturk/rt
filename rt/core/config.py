@@ -8,6 +8,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import os
+from functools import lru_cache
 from typing import Dict, Any, Optional, List, Literal
 import yaml
 from pydantic import BaseModel, Field, AliasChoices, field_validator, model_validator
@@ -259,9 +260,9 @@ class TelegramRuntimeConfig(BaseModel):
     # ------------------------------------------------------
     class RecallConfig(BaseModel):
         refill_thresholds: Dict[str, int] = Field(
-            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5, "caso": 0, "esercizio": 0},
+            default_factory=lambda: {"vasta": 2, "mirata": 3, "quiz": 5},
             description="Quando le domande da porre di un tipo scendono a questa soglia (o sotto), "
-                        "il recaller ne genera altre da unità selezionate scelte a caso")
+                        "il recaller ne genera altre da unità selezionate scelte casualmente")
         refill_batch_size: int = Field(default=4, ge=1, description="Domande cercate a ogni rifornimento")
         stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
@@ -291,6 +292,7 @@ class TranscriptionConfig(BaseModel):
 
 
 class ReviewConfig(BaseModel):
+    parallel_units: int = Field(default=4, ge=1, le=32, description="Unità verificate in parallelo")
     asr_statistical_k: float = Field(default=3.0, description="Fattore k per z-score robusto su mediana e MAD")
     asr_statistical_floor: float = Field(default=0.35, description="Soglia assoluta di sicurezza per confidenza ASR")
 
@@ -380,7 +382,171 @@ class EnrichmentConfig(BaseModel):
         return values
 
 
+CLASSIFIER_MODES = {
+    "relevance": ("off", "manual", "observe", "pipeline"),
+    "question_types": ("off", "manual", "pipeline"),
+    "section_labels": ("off", "manual", "pipeline"),
+    "prefilter": ("off", "manual", "observe", "pipeline"),
+    "drift": ("off", "manual", "observe", "pipeline"),
+    "enrichment": ("off", "manual", "pipeline"),
+    "images": ("off", "manual"),
+}
+
+
+class ClassifierJobConfig(BaseModel):
+    @field_validator("mode", mode="before")
+    @classmethod
+    def yaml_off(cls, value):
+        # YAML 1.1 legge la parola off come False.
+        return "off" if value is False else value
+
+    mode: Literal["off", "manual", "observe", "pipeline"] = "off"
+    model: Optional[str] = None
+    credential: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class ClassifierJob(BaseModel):
+    mode: Literal["off", "manual", "observe", "pipeline"]
+    model: str
+    credential: str
+    base_url: Optional[str] = None
+    timeout_seconds: float
+
+
+class ClassifierConfig(BaseModel):
+    model: str = "typesafe/jev-1.13"
+    credential: str = "openrouter"
+    base_url: Optional[str] = None
+    timeout_seconds: float = Field(default=30, ge=1, le=300)
+    jobs: Dict[str, ClassifierJobConfig] = Field(default_factory=lambda: {
+        name: ClassifierJobConfig(mode=mode) for name, mode in {
+            "relevance": "observe", "question_types": "pipeline", "section_labels": "pipeline",
+            "prefilter": "off", "drift": "off", "enrichment": "manual", "images": "manual"}.items()})
+
+    @model_validator(mode="after")
+    def valid_jobs(self):
+        for name, job in self.jobs.items():
+            if name not in CLASSIFIER_MODES or job.mode not in CLASSIFIER_MODES[name]:
+                raise ValueError(f"Modalità non valida per il job {name}")
+            if job.mode != "off" and not (job.model or self.model).strip():
+                raise ValueError(f"Indica un modello per il job {name}")
+        return self
+
+
+def migrate_classifier(jev, enrichment):
+    jev = JevConfig.model_validate(jev) if isinstance(jev, dict) else jev or JevConfig()
+    enrichment = EnrichmentConfig.model_validate(enrichment) if isinstance(enrichment, dict) else enrichment or EnrichmentConfig()
+    shared = jev.relevance_model.strip() or jev.model
+    relevance = {"disabled": "off", "shadow": "observe", "active": "pipeline"}[jev.relevance_mode] if jev.relevance_model.strip() else "off"
+    prefilter = "off" if not jev.enabled else "observe" if jev.shadow else "pipeline"
+    modes = {"relevance": relevance, "question_types": "off" if relevance == "off" else "pipeline",
+             "section_labels": "off" if relevance == "off" else "pipeline", "prefilter": prefilter,
+             "drift": prefilter, "enrichment": {"disabled": "off", "manual": "manual", "automatic": "pipeline"}[enrichment.mode],
+             "images": "off" if enrichment.mode == "disabled" else "manual"}
+    jobs = {name: ClassifierJobConfig(mode=mode) for name, mode in modes.items()}
+    if jev.model != shared:
+        for name in ("prefilter", "drift"):
+            jobs[name].model = jev.model
+    if (enrichment.decision_model, enrichment.decision_credential, enrichment.decision_base_url) != (shared, jev.credential, jev.base_url):
+        for name in ("enrichment", "images"):
+            jobs[name] = ClassifierJobConfig(mode=modes[name], model=enrichment.decision_model,
+                credential=enrichment.decision_credential, base_url=enrichment.decision_base_url)
+    return ClassifierConfig(model=shared, credential=jev.credential, base_url=jev.base_url,
+                            timeout_seconds=jev.timeout_seconds, jobs=jobs)
+
+
+def classifier_job(cfg, name) -> ClassifierJob:
+    if name not in CLASSIFIER_MODES:
+        raise ValueError("Job del classificatore non valido")
+    classifier = cfg.classifier
+    job = classifier.jobs.get(name, ClassifierJobConfig())
+    return ClassifierJob(mode=job.mode, model=job.model or classifier.model,
+        credential=job.credential or classifier.credential,
+        base_url=job.base_url or classifier.base_url,
+        timeout_seconds=classifier.timeout_seconds)
+
+
+def classifier_jev(cfg, name):
+    """Adatta le sole connessioni; prompt, mappature e impronte storiche restano separati."""
+    job = classifier_job(cfg, name)
+    return cfg.jev.model_copy(update={"model": job.model, "relevance_model": job.model,
+        "credential": job.credential, "base_url": job.base_url, "timeout_seconds": job.timeout_seconds,
+        "enabled": job.mode in ("observe", "pipeline"), "shadow": job.mode == "observe",
+        "relevance_mode": "disabled" if job.mode == "off" else "active" if job.mode == "pipeline" else "shadow"})
+
+
+class CustomQuestionType(BaseModel):
+    model_config = {"extra": "forbid"}
+    id: str = Field(default="", max_length=64, pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+    nome: str = Field(min_length=1, max_length=100)
+    icona: str = Field(default="MessageSquare", min_length=1, max_length=60)
+    materie: List[str] = Field(min_length=1)
+    cerca: str = Field(min_length=1, max_length=12000)
+    anche_adatti: bool = False
+    continua: bool = False
+    chiedi: str = Field(min_length=1, max_length=24000)
+    correzione: Literal["soluzione", "testo"] = "testo"
+    varianti: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def identifier(cls, data):
+        if isinstance(data, dict):
+            data = dict(data)
+            for key in ("nome", "icona", "cerca", "chiedi"):
+                if isinstance(data.get(key), str):
+                    data[key] = data[key].strip()
+            if not data.get("id") and isinstance(data.get("nome"), str):
+                import re
+                import unicodedata
+                name = unicodedata.normalize("NFKD", data.get("nome", "")).encode("ascii", "ignore").decode().lower()
+                data["id"] = re.sub(r"[^a-z0-9]+", "-", name).strip("-")
+            if isinstance(data.get("materie"), list):
+                cleaned = []
+                for materia in data["materie"]:
+                    if isinstance(materia, str):
+                        materia = materia.strip()
+                        if not materia or materia in cleaned:
+                            continue
+                    cleaned.append(materia)
+                data["materie"] = cleaned
+        return data
+
+    @field_validator("id")
+    @classmethod
+    def reserved(cls, value):
+        if value in {"quiz", "mirata", "vasta", "personalizzata", "mista", "consigliato", "nessuno"}:
+            raise ValueError("Questo identificativo è riservato.")
+        return value
+
+
+class RecallConfig(BaseModel):
+    custom_types: List[CustomQuestionType] = Field(default_factory=list)
+    custom_type_threshold: float = Field(default=.25, ge=0, le=1)
+    refill_thresholds: Dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def unique_types(self):
+        if len({t.id for t in self.custom_types}) != len(self.custom_types):
+            raise ValueError("Gli identificativi dei tipi devono essere unici.")
+        if any(v < 0 for v in self.refill_thresholds.values()):
+            raise ValueError("Le soglie non possono essere negative.")
+        return self
+
+
 class RTConfig(BaseModel):
+    recall: RecallConfig = Field(default_factory=RecallConfig)
+    classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_classifier_config(cls, data):
+        if isinstance(data, dict) and "classifier" not in data:
+            data = dict(data)
+            data["classifier"] = migrate_classifier(data.get("jev"), data.get("enrichment"))
+        return data
+
     enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
@@ -613,7 +779,7 @@ def _load_config_dir(config_dir: str) -> RTConfig:
     return RTConfig.model_validate(merged_data)
 
 
-def load_config(config_path: Optional[str] = None) -> RTConfig:
+def _load_config_uncached(config_path: Optional[str] = None) -> RTConfig:
     """Carica la configurazione. Se config_path è esplicito, comportamento invariato.
     Altrimenti (RT4-G1: prima di tutto RT_DATA_DIR/config): usa 'config/' nella cwd se presente (comportamento invariato per chi
     lancia 'rt' da dentro la project root); se non c'è, prova 'config/' nella project
@@ -634,3 +800,45 @@ def load_config(config_path: Optional[str] = None) -> RTConfig:
         return _resolve_telegram_state_dir(_load_config_dir(home_config_dir), home)
 
     return _resolve_telegram_state_dir(RTConfig(), home)
+
+
+@lru_cache(maxsize=64)
+def _cached_config(key):
+    config_path = key[0]
+    return _load_config_uncached(config_path)
+
+
+@lru_cache(maxsize=64)
+def _migrate_general(path, stamp, size):
+    from rt.recall.migration import migrate_registry
+    with open(path, encoding="utf-8") as stream:
+        data = yaml.safe_load(stream)
+    if isinstance(data, dict):
+        try:
+            migrate_registry(path, data)
+        except Exception as exc:  # una migrazione non riuscita non deve fermare l'app: si riprova al prossimo avvio
+            import logging
+            logging.getLogger(__name__).warning("Migrazione dei tipi di domanda non riuscita: %s", exc)
+
+
+def load_config(config_path: Optional[str] = None) -> RTConfig:
+    """Cache dei YAML, invalidata anche per aggiunta/rimozione di file e cambio di sorgente."""
+    from rt.core.paths import config_home
+    explicit = os.path.abspath(config_path) if config_path is not None else None
+    home = config_home(_default_project_root()) if explicit is None else os.path.dirname(explicit)
+    directory = os.path.join(home, 'config')
+    general = explicit or os.path.join(directory, 'general.yaml')
+    if os.path.isfile(general):
+        info = os.stat(general)
+        _migrate_general(general, info.st_mtime_ns, info.st_size)
+    files = ([explicit] if explicit else
+             [os.path.join(directory, 'general.yaml'), *find_job_yaml_paths(directory).values()])
+    stamps = []
+    for path in sorted(set(files)):
+        try:
+            info = os.stat(path)
+            stamps.append((path, info.st_mtime_ns, info.st_size))
+        except FileNotFoundError:
+            stamps.append((path, None, None))
+    key = explicit, home, tuple(stamps), os.environ.get('RT_TELEGRAM_ENABLED')
+    return _cached_config(key).model_copy(deep=True)

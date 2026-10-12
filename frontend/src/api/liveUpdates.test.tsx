@@ -146,3 +146,13 @@ describe('useLiveUpdates', () => {
     expect(FakeEventSource.all[0].closed).toBe(true)
   })
 })
+
+it('i documenti automatici aggiornano testo e fasi senza ricaricare costi, review o classificatore', () => {
+  const keys = keysForEvent(event({ job_type: 'documents', type: 'job_finished' }))
+  for (const key of [['lessons'], ['lesson', 7, 'detail'], ['lesson', 7, 'phases'], ['lesson', 7, 'document']]) {
+    expect(has(keys, key)).toBe(true)
+  }
+  for (const key of [['costs'], ['outline', 7], ['relevance', 7], ['review', 7], ['enrichment']]) {
+    expect(has(keys, key)).toBe(false)
+  }
+})

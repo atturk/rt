@@ -7,6 +7,7 @@ from rt.pipeline.ledger import load_resolved_draft
 from rt.pipeline.recall import (_compute_units_fingerprint, _next_id, load_fewshot_examples,
                                 load_recall_bank, recall_bank_lock, save_recall_bank)
 from rt.services.errors import Conflict, NotFound
+from rt.services.custom_question_types import find_type, question_key, supports_comment, active_types
 from rt.services.prompt_settings import effective_system
 
 
@@ -24,7 +25,10 @@ def regenerate(lesson_dir, question_id, comment, *, job_id, force_mock=False):
     from rt.core.config import load_config
     from rt.llm.prompts import recall_fewshot_block
     from rt.services.recall_context import POLICY_VERSION, lesson_context
-    examples = load_fewshot_examples(question.type, load_config().telegram.state_dir)
+    definition = find_type(question.custom_type)
+    if question.type == RecallQuestionType.PERSONALIZZATA and question.custom_type not in {t.id for t in active_types(lesson_dir=lesson_dir)}:
+        raise Conflict("type_removed", "Il tipo non è più disponibile nella materia.")
+    examples = load_fewshot_examples(question_key(question), load_config().telegram.state_dir)
     prompt = recall_fewshot_block(examples) + json.dumps({
         'domanda_originale': question.model_dump(mode='json'), 'commento': comment,
         'contesto': lesson_context(lesson_dir),
@@ -34,14 +38,16 @@ def regenerate(lesson_dir, question_id, comment, *, job_id, force_mock=False):
               'fornite e seguendo il commento dell’utente. Non ripetere l’originale. Restituisci il JSON '
               'GeneratedRecallQuestion. Quiz: domanda sotto 290 caratteri, quattro opzioni distinte '
               'sotto 100 caratteri, correct_index 0-3 e spiegazione in pregenerated_material. '
-              'Mirata: nessun materiale pregenerato. Vasta: scaletta ideale. Esercizio: schema di risoluzione. '
-              'Caso clinico: traccia senza pregenerated_material né soluzione. Niente opzioni o indice per le domande aperte.')
+              'Mirata: nessun materiale pregenerato. Vasta: scaletta ideale. '
+              'Niente opzioni o indice per le domande aperte.')
+    if definition is not None:
+        system += "\n" + definition.chiedi + ("\nNon generare materiale pregenerato." if definition.correzione == "testo" else "\nGenera la soluzione attesa in pregenerated_material.") + "\nLa risposta dello studente è testuale."
     client = LLMClient(force_mock=force_mock)
     if client.force_mock:
         data = {'type': question.type, 'question_text': f'Domanda rigenerata {question.type.value} {job_id}: ragiona sui dati.'}
         if question.type == RecallQuestionType.QUIZ:
             data.update(options=['A', 'B', 'C', 'D'], correct_index=0, pregenerated_material='Spiegazione della risposta A.')
-        elif question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.CASO):
+        elif supports_comment(question):
             data['pregenerated_material'] = 'Schema atteso: analizza i dati, ragiona, concludi.'
         generated = GeneratedRecallQuestion.model_validate(data)
     else:
@@ -56,9 +62,9 @@ def regenerate(lesson_dir, question_id, comment, *, job_id, force_mock=False):
             return previous
         if not any(q.id == question_id for q in bank.questions):
             raise NotFound('question_not_found', 'La domanda è stata eliminata durante la rigenerazione.')
-        if any(q.type == question.type and q.question_text.strip().casefold() == generated.question_text.strip().casefold() for q in bank.questions):
+        if any(question_key(q) == question_key(question) and q.question_text.strip().casefold() == generated.question_text.strip().casefold() for q in bank.questions):
             raise Conflict('question_duplicate', 'La domanda rigenerata è già nel pool.')
-        replacement = RecallQuestion(id=_next_id(bank), unit_ids=question.unit_ids, **generated.model_dump(),
+        replacement = RecallQuestion(id=_next_id(bank), unit_ids=question.unit_ids, custom_type=question.custom_type, **generated.model_dump(),
             content_fingerprint=_compute_units_fingerprint(lesson_dir, question.unit_ids), generation_version=POLICY_VERSION,
             regenerated_from=question.id, regeneration_job_id=job_id, classifier_level=question.classifier_level)
         original = next(q for q in bank.questions if q.id == question_id)

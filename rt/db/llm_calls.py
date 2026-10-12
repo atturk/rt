@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 _warned = False
 
 
+def normalize_call_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Conserva anche i conteggi dei provider nei log storici importati."""
+    from rt.llm.usage import cached_prompt_tokens
+    result = dict(entry)
+    if "cached_input_tokens" not in result:
+        cached = cached_prompt_tokens(result.get("usage") or result)
+        if cached is not None:
+            result["cached_input_tokens"] = cached
+    return result
+
+
 def read_log_entries(lesson_dir: str) -> Optional[List[Dict[str, Any]]]:
     """Righe valide di llm_debug.log (None se il file non esiste o non si legge)."""
     from rt.core.lesson_paths import lesson_path
@@ -47,7 +58,7 @@ def import_log_if_empty(session, lesson) -> bool:
     if repo.count_for_lesson(lesson):
         return False
     for entry in read_log_entries(lesson.path) or []:
-        repo.add(lesson, entry)
+        repo.add(lesson, normalize_call_entry(entry))
     return True
 
 
@@ -63,7 +74,7 @@ def record_llm_call(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
         with session_scope(db) as session:
             lesson = LessonRepository(session).get_or_create(lesson_dir)
             if not import_log_if_empty(session, lesson):  # il log importato contiene già entry
-                LlmCallRepository(session).add(lesson, entry)
+                LlmCallRepository(session).add(lesson, normalize_call_entry(entry))
     except Exception as exc:
         if not _warned:
             _warned = True

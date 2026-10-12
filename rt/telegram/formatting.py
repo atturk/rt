@@ -135,8 +135,7 @@ def render_recall_question_text(question) -> str:
     """Rende il testo di una RecallQuestion mirata/vasta per l'invio Telegram.
     I quiz non passano di qui: sono inviati come poll nativo (vedi rt.telegram.client.send_poll),
     che mostra già domanda e opzioni nella propria UI."""
-    label = {"mirata": "🔎 Domanda mirata", "vasta": "📚 Domanda vasta", "caso": "🩺 Caso clinico",
-             "esercizio": "🧮 Esercizio"}.get(question.type.value, "Domanda")
+    label = {"mirata": "🔎 Domanda mirata", "vasta": "📚 Domanda vasta"}.get(question.type.value, "Domanda")
     lines = [f"<b>{escape_html(label)}</b>", f"📌 Unità: {escape_html(', '.join(question.unit_ids))}", ""]
     lines.append(escape_html(question.question_text))
     return "\n".join(lines)
@@ -154,7 +153,7 @@ def build_recall_action_keyboard(short_id: str) -> dict:
 
 
 def build_stile_keyboard(current_style: str) -> dict:
-    labels = {"quiz": "Quiz", "mirata": "Mirata", "vasta": "Vasta", "caso": "Casi clinici", "esercizio": "Esercizi"}
+    labels = {"quiz": "Quiz", "mirata": "Mirata", "vasta": "Vasta"}
     buttons = [{"text": ("✅ " if style == current_style else "") + label, "callback_data": f"stile:{style}"}
                for style, label in labels.items()]
     return {"inline_keyboard": [buttons[:3], buttons[3:]]}

@@ -1,12 +1,13 @@
 """Decisioni umane: approvazione e revisione dell'outline, decisioni sulle issue, annullamento.
-Ogni decisione registra channel=api e l'attore; con un job mutante in corso sulla lezione la
-scrittura è rifiutata con 409."""
+Le unità finite si possono decidere durante una verifica; le altre scritture attive
+restano bloccate con 409. Ogni decisione conserva il canale e l'attore."""
 from fastapi import APIRouter
+from rt.core.lesson_lock import lesson_locked
 
 from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
-from rt.api.jobs import enqueue_job, ensure_no_running_job
+from rt.api.jobs import enqueue_job, ensure_no_running_job, ensure_issue_decidable
 from rt.storage import fs
 
 router = APIRouter(tags=["decisioni"])
@@ -46,11 +47,12 @@ def revise_outline(lesson_id: int, body: schemas.OutlineRevision, lesson_dir: Le
 
 @router.post("/lessons/{lesson_id}/issues/{issue_id}/decision", response_model=schemas.Decision,
              summary="Decide un'issue: accepted, rejected o edited (con testo)")
+@lesson_locked
 def decide_issue(lesson_id: int, issue_id: str, body: schemas.DecisionRequest, lesson_dir: LessonDir, actor: Actor):
     from rt.services.review_service import (
         ReviewDecisionError, is_review_complete, mark_ready_to_build, record_review_decision,
     )
-    ensure_no_running_job(lesson_dir)
+    ensure_issue_decidable(lesson_dir, issue_id)
     try:
         decision = record_review_decision(
             lesson_dir, issue_id, body.decision, body.text, channel="api", actor=actor,
@@ -65,9 +67,10 @@ def decide_issue(lesson_id: int, issue_id: str, body: schemas.DecisionRequest, l
 
 @router.post("/lessons/{lesson_id}/decisions/undo", response_model=schemas.Decision,
              summary="Annulla l'ultima decisione su un'issue")
+@lesson_locked
 def undo_decision(lesson_id: int, body: schemas.UndoRequest, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.review_service import ReviewDecisionError, undo_last_decision
-    ensure_no_running_job(lesson_dir)
+    ensure_issue_decidable(lesson_dir, body.issue_id)
     try:
         return undo_last_decision(lesson_dir, body.issue_id).model_dump(mode="json")
     except ReviewDecisionError as exc:

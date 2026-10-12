@@ -5,6 +5,7 @@ lezione, batch iniziale, scelta della prossima domanda con rifornimento, valutaz
 risposte, domande stale. Le interfacce sono rt.telegram.recall_channel (Telegram) e
 rt.tui.recall (terminale). Il motore delle domande resta rt.pipeline.recall.
 """
+from rt.services.custom_question_types import question_key, type_key, resolve_type, lesson_types
 import json
 import os
 import uuid
@@ -98,12 +99,12 @@ def generate_pool(lesson_dir: str, force_mock: bool = False, qtypes=None, progre
             generated.update(generate_pool(lesson_dir, force_mock=force_mock, qtypes=[kind], progress=progress,
                                            unit_ids=groups[kind], instructions=instructions, selection=selection, count=quota))
         return generated
-    types = [RecallQuestionType(t) for t in (qtypes or [t.value for t in RecallQuestionType])]
+    types = [resolve_type(t) for t in (qtypes or lesson_types(lesson_dir))]
     state_dir = load_config().telegram.state_dir
     generated = {}
     for qtype in types:
         examples = load_fewshot_examples(qtype, state_dir=state_dir)
-        generated[qtype.value] = len(generate_recall_batch(lesson_dir, qtype, count, examples,
+        generated[type_key(qtype)] = len(generate_recall_batch(lesson_dir, qtype, count, examples,
                                                            force_mock=force_mock, regenerate=True, progress=progress,
                                                            unit_ids=unit_ids,
                                                            instructions=instructions, selection=selection))
@@ -143,7 +144,7 @@ def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerat
     generate_pool(lesson_dir, force_mock=force_mock)
 
 
-def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None) -> Optional[str]:
+def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None, *, mark_answered: bool = True) -> Optional[str]:
     """Salva la risposta a una domanda mirata/vasta e la valuta con l'LLM.
     Ritorna il testo di valutazione, o None se la domanda non esiste o è un quiz
     (i quiz si rispondono con un bottone, gestiti a parte).
@@ -163,7 +164,7 @@ def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is
         force_mock = load_recall_session_state(lesson_dir).get("force_mock", False)
 
     evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock)
-    record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation)
+    record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation, mark_answered=mark_answered)
     return evaluation
 
 
@@ -178,7 +179,7 @@ def next_question(
     force_mock: bool = False,
 ):
     """Prossima domanda pendente del tipo richiesto; se il pool del tipo è vuoto ne genera
-    altre da unità selezionate a caso e riprova. None se non c'è nulla da proporre."""
+    altre da unità selezionate casualmente e riprova. None se non c'è nulla da proporre."""
     from rt.pipeline.recall import generate_recall_batch, get_next_pending_question, load_fewshot_examples
 
     question = get_next_pending_question(lesson_dir, qtype, order=order, unit_cursor=unit_cursor, exclude_id=exclude_id)
@@ -189,15 +190,18 @@ def next_question(
     return question
 
 
-# Casi ed esercizi: si riforniscono (con varianti dei tipi salvati) solo quando finiscono.
-DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5, "caso": 0, "esercizio": 0}
+# Per i personalizzati la soglia predefinita è zero.
+DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5}
 
 
 def refill_threshold(qtype: RecallQuestionType) -> int:
     """Soglia del tipo: con questo numero di domande da porre, o meno, si rifornisce."""
     from rt.core.config import load_config
-    thresholds = load_config().telegram.recall.refill_thresholds
-    return int(thresholds.get(qtype.value, DEFAULT_REFILL_THRESHOLDS[qtype.value]))
+    cfg = load_config()
+    from rt.services.custom_question_types import type_key
+    key = type_key(qtype)
+    thresholds = {**cfg.telegram.recall.refill_thresholds, **cfg.recall.refill_thresholds}
+    return int(thresholds.get(key, DEFAULT_REFILL_THRESHOLDS.get(key, 0)))
 
 
 def is_low(lesson_dir: str, qtype: RecallQuestionType) -> bool:
@@ -214,7 +218,7 @@ def refill_if_low(
     progress=None,
 ) -> None:
     """Quando le domande da porre del tipo scendono alla soglia (2 vaste, 3 mirate, 5 quiz
-    di predefinito), il recaller ne genera altre da unità selezionate scelte a caso."""
+    di predefinito), il recaller ne genera altre da unità selezionate scelte casualmente."""
     from rt.pipeline.recall import generate_recall_batch, load_fewshot_examples
 
     if is_low(lesson_dir, qtype):
@@ -260,7 +264,7 @@ def find_stale_questions(lesson_dir: str) -> List[Any]:
 def question_view(question, reveal: bool = False, outcome=None) -> dict:
     """Domanda serializzabile; la risposta corretta del quiz solo dopo aver risposto."""
     data = {
-        "id": question.id, "type": question.type.value, "unit_ids": list(question.unit_ids),
+        "id": question.id, "type": question.type.value, "custom_type": question.custom_type, "unit_ids": list(question.unit_ids),
         "question_text": question.question_text, "options": question.options,
         "status": question.status.value, "outcome": outcome,
         "discard_reasons": question.discard_reasons, "comment": question.comment,
@@ -271,6 +275,26 @@ def question_view(question, reveal: bool = False, outcome=None) -> dict:
     return data
 
 
+
+def question_resume_view(lesson_dir, question, actor=None):
+    """Riprende una valutazione salvata o un job ancora in corso, senza consumare la domanda."""
+    result = question_view(question)
+    if question.type == RecallQuestionType.QUIZ or question.status != RecallQuestionStatus.ASKED:
+        return result
+    from rt.pipeline.recall import load_recall_bank
+    saved = next((a for a in reversed(load_recall_bank(lesson_dir).answers)
+                  if a.question_id == question.id and a.evaluation), None)
+    if saved is not None:
+        result['saved_evaluation'] = {key: getattr(saved, key) for key in ('answer_text', 'evaluation', 'outcome')}
+    else:
+        from rt.services.jobs import get_job_queue, ACTIVE_STATES
+        pending = next((job for job in get_job_queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
+                        if job.type == 'recall_evaluate' and job.payload.get('question_id') == question.id
+                        and (actor is None or job.created_by == actor)), None)
+        if pending is not None:
+            result['evaluation_job_id'] = pending.id
+    return result
+
 def recall_overview(lesson_dir: str) -> dict:
     """Domande per tipo e stato, risposte date."""
     from rt.pipeline.recall import load_recall_bank
@@ -279,13 +303,13 @@ def recall_overview(lesson_dir: str) -> dict:
     for q in bank.questions:
         if q.status == RecallQuestionStatus.DISCARDED:
             continue
-        by_status = counts.setdefault(q.type.value, {})
+        by_status = counts.setdefault(question_key(q), {})
         by_status[q.status.value] = by_status.get(q.status.value, 0) + 1
     from rt.services.recall_context import POLICY_VERSION
     return {"questions": counts, "answers": len([a for a in bank.answers if a.answer_text]),
             "legacy_pending": sum(q.status == RecallQuestionStatus.PENDING and q.generation_version != POLICY_VERSION for q in bank.questions),
             "evaluated_empty": sum(row.get("outcome") == "empty" for row in bank.generation_attempts.values()),
-            "refill_thresholds": {t.value: refill_threshold(t) for t in RecallQuestionType}}
+            "refill_thresholds": {t: refill_threshold(t) for t in lesson_types(lesson_dir)}}
 
 
 def _latest_outcomes(bank) -> dict:
@@ -332,32 +356,31 @@ def question_list(lesson_dir: str, reveal: bool = False) -> dict:
     return {"questions": questions, "unit_titles": {uid: titles[uid] for uid in titles if uid in used}}
 
 
-# "mista": quiz, mirate, vaste, casi ed esercizi a turno nella stessa sessione.
+# "mista": tipi base e personalizzati attivi a turno nella stessa sessione.
 MIXED = "mista"
 
 
-def resolve_types(qtype) -> List[RecallQuestionType]:
-    """I tipi da cui pescare per un tipo richiesto (un tipo, o tutti per "mista")."""
-    if isinstance(qtype, RecallQuestionType):
-        return [qtype]
-    if qtype == MIXED:
-        return list(RecallQuestionType)
-    return [RecallQuestionType(qtype)]
+def resolve_types(qtype, lesson_dir=None):
+    """Tipi attivi da cui pescare, in ordine di registro per la sessione mista."""
+    if type_key(qtype) == MIXED:
+        from rt.services.custom_question_types import BASE_TYPES
+        return lesson_types(lesson_dir) if lesson_dir is not None else list(BASE_TYPES)
+    return [type_key(qtype)]
 
 
 def type_value(qtype) -> str:
     return qtype.value if isinstance(qtype, RecallQuestionType) else str(qtype)
 
 
-def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None) -> int:
+def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None, *, include_asked: bool = True) -> int:
     """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
     from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
-    types = set(resolve_types(qtype))
+    types = set(resolve_types(qtype, lesson_dir))
     from rt.services.study_progress_service import ignored_unit_ids
     allowed = None if unit_id is not None else _allowed_units(lesson_dir)
     ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
     return sum(1 for q in load_recall_bank(lesson_dir).questions
-               if q.type in types and q.status == RecallQuestionStatus.PENDING and _question_allowed(q, allowed)
+               if question_key(q) in types and (q.status == RecallQuestionStatus.PENDING or include_asked and q.status == RecallQuestionStatus.ASKED) and _question_allowed(q, allowed)
                and not ignored.intersection(q.unit_ids) and (unit_id is None or on_unit(q, unit_id)))
 
 
@@ -375,7 +398,7 @@ def next_question_for(lesson_dir: str, qtype, order: str = "alternato",
 
 
 def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
-                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None):
+                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None, include_asked: bool = True):
     """Prossima domanda pendente della lezione (marcata come posta) con il cursore dell'ordine
     alternato della sessione salvata, senza registrarla in una sessione. current=False non la
     segna come domanda corrente della lezione (la sessione per materia non la occupa).
@@ -383,20 +406,26 @@ def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
     limita alle domande di un'unità (Leggi e ripeti)."""
     from rt.pipeline.recall import get_next_pending_question
     state = load_recall_session_state(lesson_dir)
-    types = resolve_types(qtype)
+    types = resolve_types(qtype, lesson_dir)
     if len(types) > 1:
         last = state.get("last_type")
-        names = [t.value for t in types]
+        names = [type_key(t) for t in types]
         start = names.index(last) + 1 if last in names else 0
         types = types[start:] + types[:start]
+    if include_asked:
+        from rt.pipeline.recall import load_recall_bank, on_unit
+        asked_types = {question_key(q) for q in load_recall_bank(lesson_dir).questions
+                       if q.status == RecallQuestionStatus.ASKED and q.id != exclude_id
+                       and (unit_id is None or on_unit(q, unit_id))}
+        types.sort(key=lambda t: t not in asked_types)
     question = None
     for candidate in types:
         question = get_next_pending_question(lesson_dir, candidate, order=order, unit_cursor=state.get("unit_cursor"),
-                                             exclude_id=exclude_id, unit_id=unit_id)
+                                             exclude_id=exclude_id, unit_id=unit_id, include_asked=include_asked)
         if question is not None:
             break
     if question is not None:
-        state.update({"order": order, "last_type": question.type.value,
+        state.update({"order": order, "last_type": question_key(question),
                       "unit_cursor": question.unit_ids[0] if order == "alternato" else state.get("unit_cursor")})
         if current:
             state["current_question_id"] = question.id
@@ -434,7 +463,7 @@ def vote_question(lesson_dir: str, question_id: str, vote: str, reasons=None, co
     record_recall_vote(lesson_dir, question_id, vote, reasons=reasons, comment=comment)
     state_dir = load_config().telegram.state_dir
     fs.makedirs(state_dir, exist_ok=True)
-    record_fewshot_vote(question.type, question.question_text, vote, state_dir=state_dir, reasons=reasons, comment=comment)
+    record_fewshot_vote(question_key(question), question.question_text, vote, state_dir=state_dir, reasons=reasons, comment=comment)
 
 
 def skip_question(lesson_dir: str, question_id: str) -> None:

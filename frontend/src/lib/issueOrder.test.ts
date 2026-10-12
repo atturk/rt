@@ -18,17 +18,17 @@ it('cronologico: per timecode, senza timecode in fondo', () => {
   expect(ids(sortIssues(items, 'cronologico', key))).toEqual(['g', 'd', 'a', 'b', 'f', 'c', 'e'])
 })
 
-it('per tipo e gravità: prima gli errori concettuali più gravi, poi per timecode', () => {
-  expect(ids(sortIssues(items, 'gravita', key))).toEqual(['f', 'c', 'e', 'b', 'd', 'g', 'a'])
+it('per gravità: prima le alte, poi per timecode', () => {
+  expect(ids(sortIssues(items, 'gravita', key))).toEqual(['d', 'a', 'f', 'c', 'e', 'g', 'b'])
 })
 
-it('tipi e gravità sconosciuti dopo quelli noti', () => {
+it('gravità sconosciute dopo quelle note, senza precedenza per tipo', () => {
   const odd: Item[] = [
     { id: 'x', type: 'ALTRO', severity: 'high', startSeconds: 1 },
     { id: 'y', type: 'ERR_ASR_ST', severity: 'boh', startSeconds: 2 },
     { id: 'z', type: 'ERR_ASR_ST', severity: 'low', startSeconds: 3 },
   ]
-  expect(ids(sortIssues(odd, 'gravita', key))).toEqual(['z', 'y', 'x'])
+  expect(ids(sortIssues(odd, 'gravita', key))).toEqual(['x', 'z', 'y'])
 })
 
 it("a parità mantiene l'ordine dell'API e non modifica l'originale", () => {

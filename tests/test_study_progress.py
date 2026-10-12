@@ -112,7 +112,7 @@ def test_ignored_status_summary_and_recall_filters(api_client, ready):
     original = load_recall_bank(path)
     expected = sum(q.status == RecallQuestionStatus.PENDING and uid not in q.unit_ids for q in original.questions)
     assert recall_service.pending_count(path, 'mista') == expected
-    for kind in ['quiz', 'mirata', 'vasta', 'caso', 'esercizio', 'mista']:
+    for kind in ['quiz', 'mirata', 'vasta', 'query-sql', 'codice', 'mista']:
         save_recall_bank(original, path)
         while (question := recall_service.pick_pending_question(path, kind)) is not None:
             assert uid not in question.unit_ids

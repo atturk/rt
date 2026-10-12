@@ -84,7 +84,7 @@ def test_parent_unit_context_is_the_other_subunits_of_the_same_unit():
 def test_review_of_a_part_asks_for_the_parent_unit_as_context(api_client, ready, monkeypatch):
     path, lid, worker = ready
     from rt.pipeline import review
-    unit = review.load_draft(path).units[0].unit_id
+    unit = review.load_resolved_draft(path).units[0].unit_id
     seen = []
     original = review.run_review_unit
 
@@ -156,6 +156,9 @@ def test_next_returns_remaining_with_same_filters(api_client, ready, qtype, expl
         assert response.json()['remaining'] == remaining
         if explicit:
             assert uid in response.json()['unit_ids']
+        # Il pool si consuma dopo aver visto la valutazione, non con la sola richiesta.
+        from rt.pipeline.recall import record_recall_answer
+        record_recall_answer(path, response.json()['id'], 'Risposta', evaluation='Valutazione vista')
     assert api_client.post(f'/api/v1/lessons/{lid}/recall/next', params=params).status_code == 404
 
 
@@ -166,7 +169,7 @@ def test_study_suggested_qtype_and_recommended_job(api_client, ready, monkeypatc
     cfg = RTConfig(jev=JevConfig(relevance_mode="shadow", relevance_model="typesafe/jev-1.13"))
     monkeypatch.setattr(question_types, "load_config", lambda: cfg)
     monkeypatch.setattr(section_labels, "load_config", lambda: cfg)
-    question_types.refresh(path, force_mock=True)
+    question_types.refresh(path, force_mock=True, view="resolved")
     response = api_client.get(f"/api/v1/lessons/{lid}/study").json()
     assert response["suggestions"] is True
     assert response["units"][0]["suggested_qtype"] in ("quiz", "mirata")

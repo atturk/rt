@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
 import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
+import { LessonPageNavigation } from '@/components/shared/LessonPageNavigation'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
 import { LessonPanel } from '@/components/lesson/LessonPanel'
@@ -197,16 +198,18 @@ export function LessonPage() {
   const setPanel = (next: PanelView | null) => {
     storePanel(next)
     if (next !== 'domande') setSelectionContext(null)
-    if (params.has('panel') || params.has('issue') || params.has('unita')) {
+    if (params.has('panel') || params.has('issue') || params.has('unita') || params.has('note')) {
       const query = new URLSearchParams(params)
       query.delete('panel')
       query.delete('issue')
       query.delete('unita')
+      query.delete('note')
       setParams(query, { replace: true })
     }
   }
   const openQuestions = useRef(setPanel)
   useEffect(() => { openQuestions.current = setPanel })
+  const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ units: string[]; text: string }>).detail
@@ -217,12 +220,11 @@ export function LessonPage() {
     window.addEventListener(OPEN_QUESTIONS_EVENT, handler)
     return () => window.removeEventListener(OPEN_QUESTIONS_EVENT, handler)
   }, [])
-  const [editorText, setEditorText] = useState<{ id: number; markdown: string } | null>(null)
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const outline = useOutline(id)
   const jobs = useJobs({ lesson_id: id, limit: 20 })
-  const job = jobs.data?.find((j) => isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
+  const job = jobs.data?.find((j) => j.type !== 'documents' && isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
   const back = { to: '/', label: 'Lezioni' }
   if (lesson.isPending || lesson.isError) {
     return (
@@ -250,17 +252,18 @@ export function LessonPage() {
         back={back}
         actions={<LessonHeaderActions lesson={l} panel={panel} onToggle={toggle} />}
       />
-      <div className={cn('flex-1 px-7 max-md:px-4', panel && 'xl:pr-[calc(24rem+28px)]')}>
-        <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page">
+      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'xl:pr-[calc(24rem+28px)] xl:[@media(hover:hover)]:pr-[calc(24rem+76px)]')}>
+        <LessonPageNavigation id={id} panel={panel} title={<>
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
+        </>}>
           <LessonProgress lessonId={l.id} job={job} pendingOutline={pendingOutline} />
           {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
           {outline.data && pendingOutline
             ? <LessonOutline key={outline.data.expires_at ?? JSON.stringify(outline.data.macro_sections)} lessonId={id} outline={outline.data} busy={!!job && isActive(job.state)} mock={job?.payload.mock === true || (typeof job?.payload.options === 'object' && job.payload.options != null && 'mock' in job.payload.options && job.payload.options.mock === true)} refresh={outline.refetch} />
-            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onDocumentChange={(markdown) => setEditorText({ id, markdown })} onEditingChange={setEditingDocument} />}
-        </article>
+            : <DocumentCard lesson={l} outline={outline.data} job={job} actionsRef={editorActions} reviewOpen={panel === 'verifica'} classifierOpen={panel === 'classificatore'} onEditingChange={setEditingDocument} />}
+        </LessonPageNavigation>
       </div>
       {l.has_audio && <AudioPlayer lessonId={id} />}
       {panel && (
@@ -269,12 +272,21 @@ export function LessonPage() {
           lesson={l}
           sections={sections}
           editingDocument={editingDocument}
-          reviewMarkdown={editorText?.id === id ? editorText.markdown : document.data?.markdown}
           beforeReviewAction={async () => { await editorActions.current?.flush() }}
           onClose={() => setPanel(null)}
           onSwitchView={(next) => setPanel(next)}
           selectionContext={selectionContext}
           onClearSelection={() => setSelectionContext(null)}
+          selectedNoteId={selectedNoteId}
+          onSelectNote={(noteId) => {
+            const query = new URLSearchParams(params)
+            if (noteId) {
+              query.set('note', String(noteId))
+            } else {
+              query.delete('note')
+            }
+            setParams(query, { replace: true })
+          }}
         />
       )}
     </AudioProvider>
@@ -320,7 +332,7 @@ function LessonProgress({ lessonId, job, pendingOutline }: { lessonId: number; j
 const LessonEditor = lazy(() => import('@/components/lesson/LessonEditor').then((m) => ({ default: m.LessonEditor })))
 
 /** Documento della lezione: si legge e si modifica nello stesso posto, come in Obsidian. */
-function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen, onDocumentChange }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; onDocumentChange: (markdown: string) => void; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
+function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, reviewOpen, classifierOpen }: { outline?: Schemas['Outline']; job?: Schemas['Job']; classifierOpen: boolean; reviewOpen: boolean; actionsRef: RefObject<LessonEditorActions | null>; lesson: Schemas['LessonDetail']; onEditingChange: (editing: boolean) => void }) {
   const id = l.id
   const document = useLessonDocument(id)
   const running = !!job && isActive(job.state)
@@ -346,7 +358,6 @@ function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, re
               key={id}
               classifierOpen={classifierOpen}
               reviewOpen={reviewOpen}
-              onDocumentChange={onDocumentChange}
               actionsRef={actionsRef}
               lessonId={id}
               document={doc}

@@ -1,15 +1,13 @@
 import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
 import { ThumbsDown, ThumbsUp, Zap } from 'lucide-react'
 
-import type { RecallType, Vote } from '@/api/recall'
+import { BASE_RECALL_TYPES, type RecallQuestion, type RecallType, type RecallTypeInfo, type Vote } from '@/api/recall'
 import type { SlideOption } from '@/components/ui/slide-toggle'
 
 export const RECALL_TYPES: { value: RecallType; label: string; hint: string }[] = [
   { value: 'quiz', label: QUESTION_TYPE_LABELS.quiz, hint: 'Scelta multipla, esito immediato' },
   { value: 'mirata', label: QUESTION_TYPE_LABELS.mirata, hint: 'Domanda aperta su un punto preciso' },
   { value: 'vasta', label: QUESTION_TYPE_LABELS.vasta, hint: 'Domanda aperta di collegamento' },
-  { value: 'caso', label: QUESTION_TYPE_LABELS.caso, hint: 'Caso clinico da ragionare, dalle unità che lo contengono' },
-  { value: 'esercizio', label: QUESTION_TYPE_LABELS.esercizio, hint: 'Esercizio da svolgere, dalle unità in cui viene risolto' },
 ]
 export const TYPE_OPTIONS: SlideOption<RecallType>[] = RECALL_TYPES.map((t) => ({ value: t.value, label: t.label }))
 export const VOTES: { value: Vote; label: string; icon: typeof ThumbsUp }[] = [
@@ -18,13 +16,17 @@ export const VOTES: { value: Vote; label: string; icon: typeof ThumbsUp }[] = [
   { value: 'lightning', label: 'Domanda fulminante', icon: Zap },
 ]
 
-export function typeLabel(type: string) {
-  return RECALL_TYPES.find((t) => t.value === type)?.label ?? type
+export function typeLabel(type: string, types: RecallTypeInfo[] = BASE_RECALL_TYPES) {
+  return types.find(t => t.id === type)?.nome ?? "Tipo eliminato"
+}
+
+export function questionTypeId(question: Pick<RecallQuestion, "type" | "custom_type">) {
+  return question.type === "personalizzata" ? question.custom_type ?? "_deleted" : question.type
 }
 
 /** Tipo di domanda da ?tipo= (quiz se manca o non è valido). */
-export function recallTypeParam(value: string | null): RecallType {
-  return RECALL_TYPES.some((t) => t.value === value) ? (value as RecallType) : 'quiz'
+export function recallTypeParam(value: string | null, types: RecallTypeInfo[] = BASE_RECALL_TYPES): RecallType {
+  return types.some(t => t.id === value) ? value! : 'quiz'
 }
 
 export function startedAt(iso: string) {

@@ -297,6 +297,7 @@ def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
     return items
 
 
+@fs.read_snapshot()
 def phase_report(lesson_dir: str) -> Dict[str, Any]:
     """Freschezza di ogni fase (come 'rt status') e report di validazione di outline e draft
     (come 'rt validate-outline' e 'rt validate-draft')."""
@@ -336,6 +337,7 @@ def phase_report(lesson_dir: str) -> Dict[str, Any]:
     return report
 
 
+@fs.read_snapshot()
 def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     from rt.core.manifest import load_manifest
     from rt.pipeline.cost import compute_lesson_cost
@@ -348,6 +350,7 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     review_record = (manifest.phase_records or {}).get("review") if manifest else None
     out["review_progress"] = None
     if review_record is not None:
+        from rt.pipeline.review_units import review_completed_once
         from rt.pipeline.rewrite import load_draft
         try:
             draft = load_draft(lesson_dir)
@@ -356,6 +359,7 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         out["review_progress"] = {
             "reviewed": len(review_record.get("completed_items") or []),
             "total": len(draft.units) if draft else 0,
+            "completed_once": review_completed_once(lesson_dir),
         }
     out["segment_count"] = manifest.segment_count if manifest else 0
     out["outline_approved"] = is_outline_approved(lesson_dir)
@@ -496,6 +500,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     return out
 
 
+@fs.read_snapshot()
 def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     from rt.core.markdown_render import markdown_parser
     markdown = load_markdown_preview(lesson_dir)

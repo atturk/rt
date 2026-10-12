@@ -112,6 +112,7 @@ class ReviewDecision(Base):
     timestamp: Mapped[str] = mapped_column(String(64))
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     original_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    anchor: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     channel: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     actor: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -134,6 +135,7 @@ class LlmCall(Base):
     route_role: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cached_input_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     input_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reasoning_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -272,6 +274,25 @@ class StudyHighlight(Base):
     color: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class StudyNote(Base):
+    """Nota dello Studio (Verifica o Chiedi) su un passaggio di un'unità (4.2.4)."""
+    __tablename__ = "study_notes"
+    __table_args__ = (Index("ix_study_notes_lesson_unit", "lesson_id", "unit_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
+    unit_id: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi"
+    anchor: Mapped[dict[str, Any]] = mapped_column(JSON)
+    unit_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    request: Mapped[str] = mapped_column(Text, default="")
+    response: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    applied_decision_id: Mapped[Optional[int]] = mapped_column(ForeignKey("review_decisions.id", ondelete="SET NULL"), nullable=True)
 
 
 class StudyUnit(Base):

@@ -1,0 +1,559 @@
+<title>Verifica e Chiedi</title>
+<style>
+/* Layout: schede in alto, note, poi la cornice dello Studio o della pagina lezione; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --ok:#13896b; --ok-soft:#e4f3ed; --warn:#c7761a; --warn-soft:#fff3df; --bad:#d4382a; --bad-soft:#fde8e6;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --hl:#fde68a; --sel:#cfe3dc;
+  --rail:#fafafa; --shadow:0 10px 32px rgb(0 0 0/.18); --tip:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --bad:#ef6a5c; --bad-soft:#3a1d1a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --hl:#6b5a12; --sel:#1f4a3f;
+  --rail:#131313; --shadow:0 10px 32px rgb(0 0 0/.55); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --ok:#5cc79f; --ok-soft:#16312a; --warn:#f0a050; --warn-soft:#3a2c14; --bad:#ef6a5c; --bad-soft:#3a1d1a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --hl:#6b5a12; --sel:#1f4a3f;
+  --rail:#131313; --shadow:0 10px 32px rgb(0 0 0/.55); --tip:#f2f2f2; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;margin:0;padding:0 16px 48px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,textarea:focus-visible,[contenteditable]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul,.notes ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:5px;padding:0 5px;background:var(--bg);white-space:nowrap}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+pre{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:8px;padding:10px 12px;margin:0;white-space:pre-wrap;overflow-x:auto;line-height:1.5}
+.controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--mute)}
+.controls label{display:inline-flex;gap:6px;align-items:center}
+.stage{overflow-x:auto;padding-bottom:4px}
+.app{width:1000px;height:640px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:14px;display:flex;overflow:hidden;position:relative}
+.app:focus{outline:none}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0}
+.rail i{width:26px;height:26px;border-radius:8px;background:var(--soft);display:block} .rail i.on{background:var(--acc-soft)} .rail .sp{flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px 0 8px;flex:none}
+.hdr .title{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding-left:4px}
+.hdr .title b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ib{width:34px;height:34px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;position:relative}
+.ib:hover{background:var(--soft)}
+.ib:disabled{color:var(--mute);opacity:.45;cursor:not-allowed}
+.ib svg{width:19px;height:19px}
+.ib.sm{width:30px;height:30px} .ib.sm svg{width:17px;height:17px}
+.ib.on{background:var(--acc-soft);color:var(--acc)}
+.ib.ok{color:var(--ok)} .ib.danger{color:var(--bad)}
+.grp{display:flex;gap:2px;background:var(--soft);border-radius:9px;padding:2px}
+.grp .ib{width:32px;height:30px;color:var(--mute)}
+.grp .ib[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.grp .ib .bar{position:absolute;left:8px;right:8px;bottom:4px;height:3px;border-radius:2px;background:var(--hl)}
+.grp .gap{width:1px;background:var(--border);margin:5px 1px}
+.sep{width:1px;height:16px;background:var(--border);margin:0 2px;flex:none}
+.idx{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:9px;padding:0 10px;height:34px;font-size:14px;white-space:nowrap}
+.scroll{flex:1;overflow:auto;padding:0 28px;position:relative}
+.col{max-width:620px;margin:0 auto;padding:12px 0 40px;position:relative}
+.dots{display:flex;gap:4px;margin:4px 0 22px}
+.dots span{flex:1;height:3px;border-radius:3px;background:var(--track)} .dots span.l{background:var(--learned)} .dots span.a{background:var(--learning)} .dots span.cur{height:7px}
+.col h3{font-size:22px;line-height:1.3;margin:0 0 14px;text-wrap:balance}
+.col p{margin:0 0 16px;line-height:1.75}
+.col ::selection,.edoc ::selection{background:var(--sel)}
+mark{background:var(--hl);color:inherit;border-radius:2px}
+/* Passaggi con una verifica o una domanda salvata */
+.sn{text-decoration:underline dotted 2px;text-underline-offset:4px;cursor:pointer;border-radius:2px}
+.sn.v{text-decoration-color:var(--acc)} .sn.c{text-decoration-color:var(--warn)}
+.sn.v.bad{text-decoration-color:var(--bad)}
+.sn.changed{text-decoration-style:dashed;text-decoration-color:var(--warn)}
+.sn:hover,.sn.focus{background:color-mix(in oklch,var(--acc) 14%,transparent)}
+.app[data-tool="verifica"] .col p{cursor:url("CUR_V") 7 10, text}
+.app[data-tool="chiedi"] .col p{cursor:url("CUR_C") 7 10, text}
+.foot{flex:none;border-top:1px solid var(--border);padding:14px;display:flex;justify-content:center}
+.foot span{width:100%;max-width:620px;min-height:44px;border-radius:10px;background:var(--acc-soft);color:var(--acc);display:grid;place-items:center;font-weight:500}
+.tip{position:absolute;z-index:30;max-width:280px;background:var(--tip);color:var(--tip-fg);font-size:12.5px;line-height:1.4;padding:5px 9px;border-radius:7px;pointer-events:none;box-shadow:var(--shadow)}
+
+/* Popup */
+.pop{position:absolute;z-index:15;width:440px;max-width:calc(100% - 24px);background:var(--bg);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;max-height:470px}
+.pop .ph{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-bottom:1px solid var(--border)}
+.pop .ph b{flex:1;font-size:14px}
+.u{font-size:12px;color:var(--mute);font-weight:400}
+.pop .pb{padding:12px 14px;display:grid;gap:10px;overflow:auto}
+.quote{border-left:3px solid var(--acc);padding:2px 0 2px 10px;font-size:14px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.quote.c{border-left-color:var(--warn)}
+textarea{width:100%;min-height:62px;resize:vertical;font:inherit;font-size:14px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg);color:var(--fg)}
+textarea::placeholder{color:var(--mute)}
+.pf{display:flex;align-items:center;gap:4px;padding:8px 10px 8px 14px;border-top:1px solid var(--border)}
+.pf .sp{flex:1;font-size:12px;color:var(--mute)}
+.btn{border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.btn svg{width:16px;height:16px}
+.wait{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--mute)}
+.spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--acc);animation:spin 1s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skel{height:10px;border-radius:5px;background:var(--soft);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+.verdict{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;border-radius:999px;padding:2px 10px;justify-self:start;white-space:nowrap}
+.verdict.ok{background:var(--ok-soft);color:var(--ok)} .verdict.warn{background:var(--warn-soft);color:var(--warn)} .verdict.bad{background:var(--bad-soft);color:var(--bad)} .verdict.mute{background:var(--soft);color:var(--mute)}
+.ans{font-size:14px;line-height:1.6;display:grid;gap:8px}
+.ans p{margin:0}
+.req{font-size:13px} .req b{font-weight:600}
+/* Correzione proposta: come la card della Verifica con LLM, solo sostituzione */
+.fix{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.fix .fh{display:flex;align-items:center;gap:4px;padding:4px 4px 4px 10px;background:var(--soft);font-size:12px;color:var(--mute);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.fix .fh span{flex:1}
+.fix .ft{padding:8px 10px;font-size:14px}
+.fix.done .fh{background:var(--ok-soft);color:var(--ok)}
+.saved{font-size:12px;color:var(--mute)}
+.toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:16;background:var(--tip);color:var(--tip-fg);box-shadow:var(--shadow);border-radius:999px;padding:6px 8px 6px 14px;display:flex;gap:10px;align-items:center;font-size:13px;white-space:nowrap}
+.toast button{background:transparent;border:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;padding:2px 6px}
+
+/* Pagina lezione */
+.lmain{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.ldoc{flex:1;overflow:auto;padding:22px 32px 60px}
+.ldoc h3{margin:0 0 4px;font-size:22px;text-wrap:balance}
+.ldoc .path{font-size:13px;color:var(--mute);margin:0 0 18px}
+.edoc{line-height:1.75;font-size:15px;caret-color:var(--acc)}
+.edoc:focus{outline:none}
+.edoc h4{font-size:17px;margin:18px 0 6px}
+.edoc p{margin:0 0 12px}
+.panel{width:384px;flex:none;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg);min-height:0}
+.panel .ph{display:flex;align-items:center;gap:4px;padding:8px 8px 8px 12px;flex:none}
+.panel .ph h4{margin:0;flex:1;font-size:15px}
+.panel .pb{padding:0 14px 16px;overflow:auto;display:grid;gap:12px;align-content:start}
+dl{display:grid;grid-template-columns:96px 1fr;gap:6px 12px;margin:0;font-size:14px}
+dt{color:var(--mute);font-size:13px}
+dd{margin:0}
+hr{border:0;border-top:1px solid var(--border);margin:0}
+.h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tool{position:relative;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:0 10px;align-items:center;text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg);color:var(--fg);font:inherit;cursor:pointer}
+.tool:hover{background:var(--soft)}
+.tool svg{width:22px;height:22px;grid-row:1/3;color:var(--acc)}
+.tool b{font-size:14px;font-weight:600}
+.tool span{font-size:12.5px;color:var(--mute)}
+.tool .dot{position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.filters{display:flex;gap:2px;background:var(--soft);padding:2px;border-radius:8px}
+.filters button{flex:1;border:0;background:transparent;color:var(--fg);font:inherit;font-size:13px;padding:4px 6px;border-radius:6px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+.ugrp{display:grid;gap:6px}
+.ugrp>.uh{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--mute)}
+.ugrp>.uh b{color:var(--fg);font-size:13px}
+.entry{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:start;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--fg);font:inherit;text-align:left;cursor:pointer;width:100%}
+.entry:hover{background:var(--soft)}
+.entry>svg{width:17px;height:17px;margin-top:3px}
+.entry .ex{font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.entry .mt{grid-column:2/4;font-size:12px;color:var(--mute)}
+.entry .verdict{font-size:11px;padding:1px 8px}
+.entry.lost .ex{color:var(--mute);text-decoration:line-through;text-decoration-color:color-mix(in oklch,var(--mute) 50%,transparent)}
+.state{display:flex;gap:8px;align-items:flex-start;font-size:13px;border-radius:8px;padding:7px 10px;background:var(--warn-soft);color:var(--warn)}
+.state.ok{background:var(--ok-soft);color:var(--ok)}
+.state svg{width:16px;height:16px;flex:none;margin-top:2px}
+.acts{display:flex;gap:2px;align-items:center}
+.acts .grow{flex:1}
+.k-v{color:var(--acc)} .k-c{color:var(--warn)}
+@media (prefers-reduced-motion: reduce){.spin,.skel{animation:none}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-back"><path d="m15 18-6-6 6-6"/></g>
+    <g id="i-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></g>
+    <g id="i-hl"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></g>
+    <g id="i-er"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></g>
+    <g id="i-v"><path d="m8 11 2 2 4-4"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></g>
+    <g id="i-c"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4M22 5h-4"/></g>
+    <g id="i-trash"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></g>
+    <g id="i-zen"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></g>
+    <g id="i-gauge"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></g>
+    <g id="i-play"><polygon points="6 3 20 12 6 21 6 3"/></g>
+    <g id="i-list"><path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/></g>
+    <g id="i-x"><path d="M18 6 6 18M6 6l12 12"/></g>
+    <g id="i-copy"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></g>
+    <g id="i-check"><path d="M20 6 9 17l-5-5"/></g>
+    <g id="i-goto"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></g>
+    <g id="i-redo"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></g>
+    <g id="i-tags"><path d="m15 5 6.3 6.3a2.4 2.4 0 0 1 0 3.4L17 19"/><path d="M9.586 5.586A2 2 0 0 0 8.172 5H3a1 1 0 0 0-1 1v5.172a2 2 0 0 0 .586 1.414L8.29 18.29a2.426 2.426 0 0 0 3.42 0l3.58-3.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="6.5" cy="9.5" r=".5" fill="currentColor"/></g>
+    <g id="i-msgs"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></g>
+    <g id="i-alert"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></g>
+    <g id="i-brain"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></g>
+    <g id="i-book"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></g>
+    <g id="i-shield"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g>
+  </defs>
+</svg>
+
+<div class="top">
+  <h1>Verifica e Chiedi</h1>
+  <span class="meta">RT 4.2.4 · wireframe v3 · 9 ottobre 2026</span>
+  <div class="tabs" role="group" aria-label="Schermate">
+    <button type="button" data-tab="studio" aria-pressed="true">1 · Studio</button>
+    <button type="button" data-tab="pannello" aria-pressed="false">2 · Pagina lezione e pannello</button>
+    <button type="button" data-tab="llm" aria-pressed="false">3 · LLM e codice</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <section data-panel="studio" class="wrap">
+    <div class="notes">
+      <h2>Nello Studio: due strumenti accanto a evidenziatore e gomma</h2>
+      <ul>
+        <li><b>Verifica</b> (<span class="kbd">V</span>) e <b>Chiedi</b> (<span class="kbd">C</span>) stanno nello stesso gruppo di evidenziatore e gomma; ne è attivo uno alla volta. Il cursore ha un piccolo distintivo dello strumento.</li>
+        <li>Selezionando del testo si apre il popup: testo scelto, campo facoltativo, invio con <span class="kbd">⌘↵</span>. Attesa e risposta restano nello stesso popup; la voce si salva da sola.</li>
+        <li><b>Nuovo:</b> se la verifica trova un errore, il popup mostra la <b>correzione proposta</b> come nella Verifica con LLM, solo la sostituzione. <b>✓ Applica</b> la registra come decisione della Verifica con LLM: il testo cambia subito e il toast offre <b>Annulla</b>.</li>
+        <li><b>Nuovo:</b> i passaggi con una voce salvata sono <b>sottolineati a puntini</b> (verde per Verifica, rosso se ha trovato un errore, arancio per Chiedi). Un clic riapre la risposta.</li>
+        <li>Prova: clicca nella cornice, premi <span class="kbd">V</span> o <span class="kbd">C</span> e seleziona una frase, oppure clicca un passaggio sottolineato.</li>
+      </ul>
+      <div class="controls">
+        <label><input type="checkbox" id="slow"> Risposta lenta (per vedere l'attesa)</label>
+        <label><input type="checkbox" id="wrong" checked> La verifica trova un errore</label>
+      </div>
+    </div>
+    <div class="stage"><div class="app" id="studio" tabindex="0" aria-label="Studio d'esempio, clicca e usa V o C">
+      <div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>
+      <div class="main" id="studioMain">
+        <div class="hdr">
+          <button class="ib" type="button" data-tip="Esci">ICON:back</button>
+          <div class="title"><b>Fisiopatologia dell’equilibrio acido-base: sistemi tampone, meccanismi di compenso e interpretazione</b></div>
+          <button class="ib" type="button" data-tip="Modalità zen · Z">ICON:zen</button>
+          <div class="grp" role="group" aria-label="Strumenti">
+            <button class="ib" type="button" data-tool="evidenzia" data-tip="Evidenziatore · E">ICON:hl<span class="bar"></span></button>
+            <button class="ib" type="button" data-tool="gomma" data-tip="Gomma · G">ICON:er</button>
+            <span class="gap" aria-hidden="true"></span>
+            <button class="ib" type="button" data-tool="verifica" data-tip="Verifica · V · seleziona il testo da verificare">ICON:v</button>
+            <button class="ib" type="button" data-tool="chiedi" data-tip="Chiedi · C · seleziona il testo da farti spiegare">ICON:c</button>
+          </div>
+          <button class="ib" type="button" data-tip="Togli le evidenziazioni">ICON:trash</button>
+          <span class="sep"></span>
+          <button class="ib" type="button" data-tip="Lettura veloce">ICON:gauge</button>
+          <button class="ib" type="button" data-tip="Audio">ICON:play</button>
+          <span class="idx">ICON:list 4 di 14</span>
+        </div>
+        <div class="scroll"><div class="col" id="col"></div></div>
+        <div class="foot"><span>Mettimi alla prova · 6</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section data-panel="pannello" class="wrap" hidden>
+    <div class="notes">
+      <h2>Nella lezione: segni nel testo, due bottoni in Dettagli, pannello separato</h2>
+      <ul>
+        <li>In <b>Dettagli</b> due bottoni chiari, con icona, nome e numero: <b>Classificatore</b> (unità da rivedere) e <b>Verifiche e domande</b> (voci salvate; puntino arancio se qualche testo è cambiato). Nella barra in alto niente icone nuove.</li>
+        <li>Il pannello <b>Verifiche e domande</b> elenca le voci <b>per unità</b>, con un filtro Tutte / Verifiche / Chiedi. Ogni voce tiene sempre il testo di partenza, la richiesta e la risposta, e per le verifiche l'esito e la correzione proposta.</li>
+        <li>Nel testo della lezione (l'editor) i passaggi ritrovati sono sottolineati come nello Studio; un clic apre la voce nel pannello. Aprendo una voce dal pannello il passaggio si evidenzia nell'editor, come le issue della Verifica con LLM.</li>
+        <li><b>Se il testo cambia:</b> la voce non si rifà mai da sola. Se il passaggio si ritrova, resta evidenziato. Se non si ritrova, la voce lo dice e indica l'<b>unità in cui era l'ultima volta</b>; il testo di partenza resta nella voce.</li>
+        <li>Prova: scrivi nel testo della lezione dentro il passaggio sottolineato dell'unità 1.3 (o cancellalo), poi clicca fuori: la voce cambia stato. Le voci si aprono dal pannello.</li>
+      </ul>
+    </div>
+    <div class="stage"><div class="app" id="lesson">
+      <div class="rail" aria-hidden="true"><i class="on"></i><i></i><span class="sp"></span><i></i><i></i></div>
+      <div class="main" style="flex-direction:row" id="lessonMain">
+        <div class="lmain">
+          <div class="hdr"><span style="display:flex;align-items:center;gap:2px;color:var(--mute);font-size:14px;flex:1">ICON:back Lezioni</span>
+            <button class="ib" type="button" data-tip="Domande">ICON:brain</button><button class="ib" type="button" data-tip="Studio">ICON:book</button><button class="ib" type="button" data-tip="Verifica con LLM">ICON:shield</button><button class="ib on" type="button" data-tip="Dettagli" data-go="dettagli">ICON:info</button></div>
+          <div class="ldoc">
+            <h3>Fisiopatologia dell’equilibrio acido-base</h3>
+            <p class="path">Patologia generale · 6 ott · Rossi</p>
+            <div class="edoc" id="edoc" contenteditable="true" spellcheck="false" aria-label="Testo della lezione (anteprima modificabile)"></div>
+          </div>
+        </div>
+        <aside class="panel" id="panel" aria-label="Pannello della lezione"></aside>
+      </div>
+    </div></div>
+  </section>
+
+  <section data-panel="llm" class="wrap" hidden>
+    <div class="notes">
+      <h2>Cosa riceve l'LLM, in quest'ordine</h2>
+      <p style="margin:0;font-size:14px">Modello della revisione (route <span class="code">jobs.review</span>). Le parti fisse stanno in testa e la richiesta per ultima, così le chiamate sulla stessa unità riusano la cache del prompt. Il contesto della lezione è lo stesso blocco che la b2 prepara per la Verifica con LLM.</p>
+<pre>1. Istruzioni di sistema (fisse per strumento: Verifica oppure Chiedi)
+2. Lezione: titolo, materia, docente, argomenti
+3. Unità intera: "2.1 Regolazione omeostatica del pH…" + testo
+4. Testo selezionato
+5. Richiesta dello studente (vuota = richiesta predefinita)</pre>
+      <p style="margin:0;font-size:14px">Risposta JSON con schema vincolato, piccolo come quello della b2:</p>
+<pre><b>Verifica</b>  { esito: corretto | impreciso | errato | non_verificabile,
+            spiegazione: markdown,
+            correzione?: testo che sostituisce ESATTAMENTE il passaggio scelto }
+            correzione obbligatoria se esito è impreciso o errato
+<b>Chiedi</b>    { spiegazione: markdown }</pre>
+    </div>
+    <div class="notes">
+      <h2>Come si farebbe (per il prompt a Codex)</h2>
+      <ul>
+        <li><b>Ordine:</b> dopo il backend della 4.2.4b2 (ancore, contesto della lezione, schema), perché VC1 usa gli stessi pezzi. Se la b2 diventa grossa, VC1 slitta a una beta dopo senza bloccare il resto.</li>
+        <li><b>Dati:</b> tabella <span class="code">study_notes</span> nel database, accanto a <span class="code">study_highlights</span>: lezione, <span class="code">unit_id</span> (unità in cui il passaggio è stato visto l'ultima volta), tipo, <b>ancora</b> della b2 (citazione, contesto prima e dopo, posizione), impronta del testo dell'unità, richiesta, risposta JSON, modello, costo, data, <span class="code">applied_decision_id</span>. Non tocca documento, export né recall.</li>
+        <li><b>Ritrovare il passaggio:</b> la stessa funzione delle ancore della b2, prima nell'ultima unità e poi in tutta la lezione. Se si ritrova, si aggiorna <span class="code">unit_id</span>; se no, la voce è "non ritrovata" e tiene l'ultima unità. Mai una nuova chiamata da sola.</li>
+        <li><b>Applica:</b> chiama l'API delle decisioni della Verifica con LLM (la stessa di ✓ nella card) con la correzione come sostituzione e l'ancora della voce; la decisione ha origine <span class="code">studio</span>. Un solo modo di cambiare il documento: Annulla, documento finale e ri-verifica funzionano già.</li>
+        <li><b>Job:</b> <span class="code">study_note</span> nella coda esistente; API POST crea, GET lista per lezione (con stato dell'ancora), GET singola, DELETE.</li>
+        <li><b>Frontend:</b> <span class="code">HighlightMode</span> diventa <span class="code">'evidenzia' | 'gomma' | 'verifica' | 'chiedi' | null</span>; popup <span class="code">StudyNotePopup</span>; segni nel testo con lo stesso meccanismo delle issue nell'editor; <span class="code">PanelView</span> <span class="code">'note'</span> e <span class="code">StudyNotesPanel</span>; in <span class="code">DetailsPanel</span> i due bottoni Classificatore e Verifiche e domande.</li>
+      </ul>
+    </div>
+    <div class="notes">
+      <h2>Domande aperte, con la mia proposta</h2>
+      <ol>
+        <li><b>Lo strumento resta attivo dopo l'uso?</b> Sì, come l'evidenziatore; si spegne con lo stesso tasto o con Esc a popup chiuso.</li>
+        <li><b>Domande di seguito</b> nella stessa voce (una piccola chat)? No per ora: ogni richiesta è una voce a sé.</li>
+        <li><b>Voce eliminata dopo aver applicato la correzione:</b> la correzione resta nel testo (è una decisione della Verifica con LLM, si annulla da lì).</li>
+        <li><b>iPhone:</b> il popup diventa un pannello dal basso; la selezione funziona col tocco lungo.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+const ic = (id, extra='') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}><use href="#i-${id}"/></svg>`;
+document.querySelectorAll('.hdr').forEach(h=>{ h.innerHTML = h.innerHTML.replace(/ICON:(\w+)/g, (_,n)=>ic(n, n==='back'||n==='list'?'width="17" height="17"':'')); });
+document.querySelectorAll('[data-tip]').forEach(b=>{ if(!b.getAttribute('aria-label')) b.setAttribute('aria-label', b.dataset.tip); });
+function cursor(kind){
+  const badge = kind==='verifica'
+    ? `<circle cx='17' cy='17' r='6' fill='%23155f52' stroke='white' stroke-width='1.5'/><path d='m14.5 17 1.8 1.8 3.2-3.4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/>`
+    : `<circle cx='17' cy='17' r='6' fill='%23c7761a' stroke='white' stroke-width='1.5'/><path d='M17 13.6v6.8M13.6 17h6.8' stroke='white' stroke-width='1.6' stroke-linecap='round'/>`;
+  return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><path d='M4 2h6M7 2v16M4 18h6' stroke='white' stroke-width='3.4' stroke-linecap='round'/><path d='M4 2h6M7 2v16M4 18h6' stroke='black' stroke-width='1.4' stroke-linecap='round'/>${badge}</svg>`;
+}
+const css = document.querySelector('style');
+css.textContent = css.textContent.replace('CUR_V', cursor('verifica')).replace('CUR_C', cursor('chiedi'));
+
+/* Tooltip scuri, uno solo per tutta la pagina */
+let tipEl=null, tipHost=null;
+function showTip(el){
+  hideTip(); const host = el.closest('.main, .app'); if(!host) return;
+  tipEl=document.createElement('div'); tipEl.className='tip'; tipEl.textContent=el.dataset.tip; host.appendChild(tipEl); tipHost=host;
+  const r=el.getBoundingClientRect(), m=host.getBoundingClientRect();
+  let left = r.left-m.left + r.width/2 - tipEl.offsetWidth/2; left = Math.max(6, Math.min(left, m.width-tipEl.offsetWidth-6));
+  let top = r.bottom-m.top+6; if(top+tipEl.offsetHeight > m.height-6) top = r.top-m.top-tipEl.offsetHeight-6;
+  tipEl.style.left=left+'px'; tipEl.style.top=top+'px';
+}
+function hideTip(){ tipEl?.remove(); tipEl=null; }
+document.addEventListener('mouseover', e=>{ const t=e.target.closest('[data-tip]'); if(t) showTip(t); });
+document.addEventListener('mouseout', e=>{ const t=e.target.closest('[data-tip]'); if(t && !t.contains(e.relatedTarget)) hideTip(); });
+
+/* ---------- Dati condivisi ---------- */
+const NAMES = {evidenzia:'Evidenziatore', gomma:'Gomma', verifica:'Verifica', chiedi:'Chiedi'};
+const VERD = {ok:['ok','Corretto'], warn:['warn','Impreciso'], bad:['bad','Errato']};
+const UNITS = [
+  {id:'1.3', title:'1.3 Acidi volatili e acidi fissi', text:'L’organismo produce ogni giorno acidi volatili, rappresentati dalla CO₂, e acidi fissi, come l’acido solforico e l’acido fosforico. Gli acidi fissi vengono eliminati principalmente per via respiratoria, mentre la CO₂ viene eliminata dai polmoni.'},
+  {id:'2.1', title:'2.1 Regolazione omeostatica del pH', text:'Poiché il pH è definito come il logaritmo negativo in base 10 dell’attività degli ioni H⁺, una variazione di quest’ultima si riflette inversamente sul valore del pH. Il pH ematico si mantiene fisiologicamente entro un intervallo piuttosto ristretto, considerato normale tra 7,36 e 7,45.'},
+];
+let NOTES = [
+  {id:1, kind:'verifica', unit:'2.1', quote:'considerato normale tra 7,36 e 7,45', req:'il valore 7,36 è giusto?', verdict:'warn', fix:'considerato normale tra 7,35 e 7,45', answer:'Il valore inferiore dell’intervallo normale del pH arterioso è di solito indicato come <b>7,35</b>; molti testi usano 7,35–7,45. La differenza è piccola, ma è il riferimento più diffuso.', when:'oggi, 09:12', cost:'$0,004', applied:false},
+  {id:2, kind:'chiedi', unit:'2.1', quote:'il logaritmo negativo in base 10 dell’attività degli ioni H⁺', req:'', answer:'Siccome il pH è un logaritmo <i>negativo</i>, quando gli H⁺ aumentano il pH scende. Un passo di 1 nel pH vuol dire 10 volte più o meno H⁺.', when:'oggi, 09:05', cost:'$0,003'},
+  {id:3, kind:'verifica', unit:'1.3', quote:'Gli acidi fissi vengono eliminati principalmente per via respiratoria', req:'', verdict:'bad', fix:'Gli acidi fissi vengono eliminati principalmente per via renale', answer:'Gli acidi fissi (non volatili) sono eliminati dal <b>rene</b>; per via respiratoria si elimina la CO₂, cioè l’acido volatile.', when:'7 ott, 18:40', cost:'$0,004', applied:false},
+];
+const esc = s => s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* Ritrova il passaggio: esatto, simile (parole in comune), oppure perso */
+function locate(n){
+  const words = s => s.toLowerCase().replace(/[^\p{L}\p{N}, ]/gu,' ').split(/\s+/).filter(w=>w.length>2);
+  for(const u of UNITS){ if(u.text.includes(n.quote)) return {state:'found', unit:u.id}; }
+  const qw = words(n.quote); let best=null;
+  for(const u of UNITS){
+    const sentences = u.text.split(/(?<=[.;])\s+/);
+    for(const s of sentences){ const sw=new Set(words(s)); const hit=qw.filter(w=>sw.has(w)).length/qw.length; if(!best||hit>best.hit) best={hit, unit:u.id, text:s}; }
+  }
+  if(best && best.hit>=.6) return {state:'changed', unit:best.unit, now:best.text};
+  return {state:'lost', unit:n.unit};
+}
+function markText(text, unitId, cls=''){
+  let html = esc(text);
+  NOTES.forEach(n=>{
+    let q = text.includes(n.quote) ? n.quote : null, ch = '';
+    if(!q){ const s = locate(n); if(s.state==='changed' && text.includes(s.now)){ q = s.now; ch = ' changed'; } }
+    if(!q) return; q = esc(q); if(!html.includes(q)) return;
+    html = html.replace(q, `<span class="sn ${n.kind==='verifica'?'v':'c'} ${n.verdict==='bad'?'bad':''}${ch} ${cls}" data-note="${n.id}" data-tip="${n.kind==='verifica'?'Verifica':'Chiedi'}${n.verdict?' · '+VERD[n.verdict][1]:''}${ch?' · testo cambiato':''} · clic per aprire">${q}</span>`);
+  });
+  return html;
+}
+
+/* ---------- Studio ---------- */
+const studio = document.getElementById('studio'), main = document.getElementById('studioMain'), col = document.getElementById('col');
+let tool=null, pop=null, toastT=null;
+function renderStudio(){
+  const u = UNITS[1];
+  col.innerHTML = `<div class="dots" aria-hidden="true"><span class="l"></span><span class="l"></span><span class="l"></span><span class="a cur"></span><span class="a"></span><span class="l"></span><span></span><span></span><span></span><span></span></div>
+    <h3>${u.title} e significato delle variazioni degli idrogenioni</h3>
+    <p>L’equilibrio acido-base dell’organismo è regolato in modo particolarmente raffinato: <mark>alterazioni della concentrazione degli ioni H⁺ possono determinare conseguenze cliniche rilevanti</mark>.</p>
+    ${u.text.split(/(?<=\.)\s+(?=Il pH ematico)/).map(p=>`<p data-unit="${u.id}">${markText(p, u.id)}</p>`).join('')}
+    <p>Il principale sistema tampone del liquido extracellulare è la coppia bicarbonato/acido carbonico, la cui efficacia dipende dal fatto che è un sistema aperto: la CO₂ viene eliminata dai polmoni e il bicarbonato regolato dal rene.</p>`;
+}
+function setTool(t){
+  tool = tool===t ? null : t;
+  studio.querySelectorAll('.grp [data-tool]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.tool===tool)));
+  if(tool) studio.dataset.tool = tool; else delete studio.dataset.tool;
+}
+setTool('verifica');
+studio.querySelector('.grp').addEventListener('click', e=>{ const b=e.target.closest('[data-tool]'); if(b){ setTool(b.dataset.tool); studio.focus({preventScroll:true}); } });
+studio.addEventListener('keydown', e=>{
+  if(e.target.tagName==='TEXTAREA'){ if(e.key==='Enter' && (e.metaKey||e.ctrlKey)){ send(); e.preventDefault(); } if(e.key==='Escape'){ closePop(); studio.focus(); } return; }
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key.toLowerCase();
+  if(k==='escape' && pop){ closePop(); return; }
+  const map={e:'evidenzia',g:'gomma',v:'verifica',c:'chiedi'};
+  if(map[k]){ setTool(map[k]); e.preventDefault(); }
+});
+col.addEventListener('mouseup', e=>{
+  const sel = window.getSelection(); const text = sel.toString().trim();
+  if(!text){ const sn=e.target.closest('.sn'); if(sn){ const n=NOTES.find(x=>x.id==sn.dataset.note); openSaved(n, sn.getBoundingClientRect()); } return; }
+  if(tool!=='verifica' && tool!=='chiedi') return;
+  if(!col.contains(sel.anchorNode)) return;
+  openPop(tool, text, sel.getRangeAt(0).getBoundingClientRect());
+});
+function place(el, r){
+  const m = main.getBoundingClientRect();
+  let left = r.left - m.left + r.width/2 - 220; left = Math.max(12, Math.min(left, m.width - el.offsetWidth - 12));
+  let top = r.bottom - m.top + 10; if(top + el.offsetHeight > m.height - 8) top = Math.max(60, r.top - m.top - el.offsetHeight - 10);
+  el.style.left = left+'px'; el.style.top = top+'px';
+}
+function head(kind){ return `<div class="ph">${ic(kind==='verifica'?'v':'c','width="18" height="18" class="'+(kind==='verifica'?'k-v':'k-c')+'"')}<b>${NAMES[kind]} <span class="u">· unità 2.1</span></b><button class="ib sm" type="button" data-x data-tip="Chiudi · Esc">${ic('x')}</button></div>`; }
+function openPop(kind, text, rect){
+  closePop();
+  pop = document.createElement('section'); pop.className='pop'; pop.setAttribute('role','dialog'); pop.setAttribute('aria-label', NAMES[kind]);
+  pop.dataset.kind = kind; pop._text = text; pop._rect = rect;
+  pop.innerHTML = `${head(kind)}<div class="pb"><div class="quote ${kind==='chiedi'?'c':''}">${esc(text)}</div>
+    <textarea id="req" aria-label="Richiesta facoltativa" placeholder="${kind==='verifica'?'Cosa vuoi verificare?':'Cosa vuoi chiedere?'}"></textarea></div>
+    <div class="pf"><span class="sp"></span><button class="btn pri" type="button" data-send>${ic(kind==='verifica'?'v':'c')}${NAMES[kind]} <span style="opacity:.8;font-size:12px">⌘↵</span></button></div>`;
+  main.appendChild(pop); place(pop, rect); pop.querySelector('textarea').focus();
+}
+function send(){
+  if(!pop || pop.dataset.state) return;
+  const k = pop.dataset.kind; pop.dataset.state='wait'; pop._req = pop.querySelector('textarea').value.trim();
+  pop.innerHTML = `${head(k)}<div class="pb"><div class="quote ${k==='chiedi'?'c':''}">${esc(pop._text)}</div>${pop._req?`<div class="req"><b>Richiesta:</b> ${esc(pop._req)}</div>`:''}
+    <div class="wait"><span class="spin" aria-hidden="true"></span><span>${k==='verifica'?'Verifico':'Preparo la spiegazione'} con il modello della revisione…</span></div>
+    <div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div>
+    <div class="pf"><span class="sp">Puoi chiudere: la risposta arriva lo stesso e resta nella lezione.</span></div>`;
+  place(pop, pop._rect);
+  const delay = document.getElementById('slow').checked ? 6000 : 1400, p = pop;
+  setTimeout(()=>{
+    const wrong = document.getElementById('wrong').checked;
+    const n = {id:Date.now(), kind:k, unit:'2.1', quote:p._text, req:p._req, when:'adesso', cost:'$0,004', applied:false,
+      verdict: k==='verifica' ? (wrong?'warn':'ok') : undefined,
+      fix: k==='verifica' && wrong ? p._text.replace(/7,36/,'7,35').replace(/respiratoria/,'renale') + (p._text.includes('7,36')||p._text.includes('respiratoria') ? '' : ' [versione corretta proposta]') : undefined,
+      answer: k==='verifica' ? (wrong ? 'Il passaggio è impreciso nel contesto dell’unità: il riferimento più diffuso è diverso. Sotto la versione corretta, che sostituisce esattamente il testo scelto.' : 'Il passaggio è corretto nel contesto dell’unità e della lezione.') : 'Il passaggio riformulato in modo più semplice, con i termini tecnici spiegati e un esempio numerico.'};
+    NOTES.unshift(n); renderStudio(); renderPanel();
+    if(p===pop && p.isConnected) renderSaved(p, n); else toast(`${NAMES[k]} pronta`, 'Apri', ()=>openSaved(n, p._rect));
+  }, delay);
+}
+function fixBox(n){
+  if(!n.fix) return '';
+  return `<div class="fix ${n.applied?'done':''}"><div class="fh"><span>${n.applied?'Correzione applicata':'Correzione proposta'}</span>${n.applied?'':`<button class="ib sm ok" type="button" data-apply="${n.id}" data-tip="Applica la correzione al testo (come ✓ nella Verifica con LLM)">${ic('check')}</button>`}</div><div class="ft">${esc(n.fix)}</div></div>`;
+}
+function renderSaved(p, n){
+  p.dataset.state='done'; p._note = n.id;
+  p.innerHTML = `${head(n.kind)}<div class="pb"><div class="quote ${n.kind==='chiedi'?'c':''}">${esc(n.quote)}</div>${n.req?`<div class="req"><b>Richiesta:</b> ${esc(n.req)}</div>`:''}
+    ${n.verdict?`<span class="verdict ${VERD[n.verdict][0]}">${VERD[n.verdict][1]}</span>`:''}<div class="ans"><p>${n.answer}</p></div>${fixBox(n)}</div>
+    <div class="pf"><span class="sp saved">Salvata in Dettagli › Verifiche e domande · ${n.cost}</span><button class="ib sm" type="button" data-copy data-tip="Copia la risposta">${ic('copy')}</button></div>`;
+  place(p, p._rect);
+}
+function openSaved(n, rect){ closePop(); pop=document.createElement('section'); pop.className='pop'; pop.setAttribute('role','dialog'); pop._rect=rect; main.appendChild(pop); renderSaved(pop, n); }
+function toast(text, action, fn){
+  document.querySelectorAll('.toast').forEach(t=>t.remove()); clearTimeout(toastT);
+  const host = document.querySelector('[data-panel]:not([hidden]) .main') || main;
+  const t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status');
+  t.innerHTML = `<span>${text}</span>${action?`<button type="button">${action}</button>`:''}`;
+  if(action) t.querySelector('button').addEventListener('click', ()=>{ t.remove(); fn(); });
+  host.appendChild(t); toastT=setTimeout(()=>t.remove(), 6000);
+}
+function closePop(){ if(pop){ pop.remove(); pop=null; } }
+/* Applica: la correzione diventa una decisione della Verifica con LLM */
+function apply(id){
+  const n = NOTES.find(x=>x.id==id); if(!n || n.applied) return;
+  const u = UNITS.find(x=>x.text.includes(n.quote));
+  if(!u){ toast('Il passaggio non c’è più: la correzione non si può applicare'); return; }
+  const before = u.text; u.text = u.text.replace(n.quote, n.fix); n.applied = true; const oldQuote=n.quote; n._orig ||= oldQuote; n.quote = n.fix;
+  refreshAll();
+  toast('Correzione applicata · decisione nella Verifica con LLM', 'Annulla', ()=>{ u.text = before; n.applied=false; n.quote=oldQuote; refreshAll(); });
+}
+document.addEventListener('click', e=>{
+  const a=e.target.closest('[data-apply]'); if(a){ apply(a.dataset.apply); return; }
+  if(!pop) return;
+  if(e.target.closest('[data-x]')){ closePop(); studio.focus({preventScroll:true}); }
+  else if(e.target.closest('[data-send]')) send();
+  else if(e.target.closest('[data-copy]')) toast('Risposta copiata');
+});
+
+/* ---------- Pagina lezione ---------- */
+const panel = document.getElementById('panel'), edoc = document.getElementById('edoc');
+let view='dettagli', filter='tutte', open=null;
+function renderEditor(){
+  edoc.innerHTML = UNITS.map(u=>`<h4>${u.title}</h4><p data-unit="${u.id}">${markText(u.text, u.id, open && NOTES.find(n=>n.id===open) ? '' : '')}</p>`).join('');
+  if(open){ edoc.querySelector(`.sn[data-note="${open}"]`)?.classList.add('focus'); }
+}
+edoc.addEventListener('blur', ()=>{
+  edoc.querySelectorAll('p[data-unit]').forEach(p=>{ const u=UNITS.find(x=>x.id===p.dataset.unit); u.text = p.textContent; });
+  refreshAll();
+});
+edoc.addEventListener('click', e=>{ const sn=e.target.closest('.sn'); if(sn && document.activeElement!==edoc){ view='note'; open=Number(sn.dataset.note); refreshAll(); } });
+edoc.addEventListener('mousedown', e=>{ const sn=e.target.closest('.sn'); if(sn && e.altKey===false && document.activeElement!==edoc){ e.preventDefault(); view='note'; open=Number(sn.dataset.note); refreshAll(); } });
+function stateOf(n){ const s = locate(n); if(s.state!=='lost') n.unit = s.unit; return s; }
+function renderPanel(){ hideTip();
+  const counts = NOTES.length, changed = NOTES.filter(n=>stateOf(n).state!=='found').length;
+  if(view==='dettagli'){
+    panel.innerHTML = `<div class="ph"><h4>Dettagli</h4><button class="ib sm" type="button" data-tip="Chiudi il pannello">${ic('x')}</button></div><div class="pb">
+      <dl><dt>Stato</dt><dd>Completata</dd><dt>Durata</dt><dd>1 h 42 min · 14 unità</dd><dt>Costo</dt><dd>$0,84</dd></dl>
+      <div class="tools">
+        <button class="tool" type="button" data-go="classificatore" data-tip="Apri il pannello Classificatore">${ic('tags')}<b>Classificatore</b><span>2 unità da rivedere</span></button>
+        <button class="tool" type="button" data-go="note" data-tip="Apri Verifiche e domande">${ic('msgs')}<b>Verifiche e domande</b><span>${counts} ${counts===1?'voce':'voci'}${changed?` · ${changed} da guardare`:''}</span>${changed?'<i class="dot" aria-hidden="true"></i>':''}</button>
+      </div>
+      <hr><span class="h3">Fasi</span><div style="display:grid;gap:8px">${['Preparazione','Scaletta','Rielaborazione','Revisione','Documento'].map(f=>`<div style="display:flex;justify-content:space-between;font-size:14px"><span>${f}</span><span style="color:var(--ok)">valida</span></div>`).join('')}</div>
+      <hr><span class="h3">Job</span><span style="font-size:13px;color:var(--mute)">Ultimo: verifica nello Studio, oggi 09:12</span></div>`;
+  } else if(view==='classificatore'){
+    panel.innerHTML = `<div class="ph"><button class="ib sm" type="button" data-go="dettagli" data-tip="Torna a Dettagli">${ic('back')}</button><h4>Classificatore</h4><button class="ib sm" type="button" data-tip="Chiudi il pannello">${ic('x')}</button></div><div class="pb"><p style="font-size:14px;color:var(--mute);margin:0">Qui il pannello a griglia CL1 (wireframe a parte). In questo wireframe serve solo a mostrare che si apre da Dettagli.</p></div>`;
+  } else if(open===null){
+    const items = NOTES.filter(n=>filter==='tutte'||n.kind===filter);
+    const byUnit = {}; items.forEach(n=>{ const s=stateOf(n); (byUnit[n.unit] ||= []).push([n,s]); });
+    panel.innerHTML = `<div class="ph"><button class="ib sm" type="button" data-go="dettagli" data-tip="Torna a Dettagli">${ic('back')}</button><h4>Verifiche e domande</h4><button class="ib sm" type="button" data-tip="Chiudi il pannello">${ic('x')}</button></div><div class="pb">
+      <div class="filters" role="group" aria-label="Filtro">${[['tutte','Tutte'],['verifica','Verifiche'],['chiedi','Chiedi']].map(([v,l])=>`<button type="button" data-f="${v}" aria-pressed="${filter===v}">${l}</button>`).join('')}</div>
+      ${Object.keys(byUnit).sort().map(uid=>{ const u=UNITS.find(x=>x.id===uid); return `<div class="ugrp"><div class="uh"><b>${u?u.title:'Unità '+uid}</b><span>${byUnit[uid].length}</span></div>
+        ${byUnit[uid].map(([n,s])=>`<button type="button" class="entry ${s.state==='lost'?'lost':''}" data-open="${n.id}">${ic(n.kind==='verifica'?'v':'c','class="'+(n.kind==='verifica'?'k-v':'k-c')+'"')}<span class="ex">${esc(n.quote)}</span>${n.verdict?`<span class="verdict ${n.applied?'ok':VERD[n.verdict][0]}">${n.applied?'Applicata':VERD[n.verdict][1]}</span>`:'<span></span>'}<span class="mt">${n.when}${n.req?' · con richiesta':''}${s.state==='changed'?' · <span style="color:var(--warn)">testo cambiato</span>':s.state==='lost'?' · <span style="color:var(--warn)">passaggio non ritrovato</span>':''}</span></button>`).join('')}</div>`; }).join('') || '<p style="font-size:14px;color:var(--mute)">Niente qui.</p>'}</div>`;
+  } else {
+    const n = NOTES.find(x=>x.id===open), s = stateOf(n);
+    const st = s.state==='found' ? '' : s.state==='changed'
+      ? `<div class="state">${ic('alert')}<span>Il testo è cambiato dopo la ${n.kind==='verifica'?'verifica':'domanda'}. Adesso nell'unità ${s.unit}: “${esc(s.now)}”</span></div>`
+      : `<div class="state">${ic('alert')}<span>Passaggio non ritrovato. L'ultima volta era nell'<b>unità ${n.unit}</b>.</span></div>`;
+    panel.innerHTML = `<div class="ph"><button class="ib sm" type="button" data-close data-tip="Torna alla lista">${ic('back')}</button><h4>${n.kind==='verifica'?'Verifica':'Chiedi'} · unità ${n.unit}</h4><button class="ib sm" type="button" data-tip="Chiudi il pannello">${ic('x')}</button></div><div class="pb">
+      ${st}
+      <span class="h3">Testo di partenza</span><div class="quote ${n.kind==='chiedi'?'c':''}" style="-webkit-line-clamp:unset">${esc(n.applied?NOTES_ORIG(n):n.quote)}</div>
+      ${n.req?`<div class="req"><b>Richiesta:</b> ${esc(n.req)}</div>`:''}
+      ${n.verdict?`<span class="verdict ${VERD[n.verdict][0]}">${VERD[n.verdict][1]}</span>`:''}
+      <div class="ans"><p>${n.answer}</p></div>
+      ${s.state!=='found' && !n.applied ? (n.fix?`<div class="fix"><div class="fh"><span>Correzione proposta · non applicabile, ${s.state==='lost'?"il passaggio non c'è più":'il testo è cambiato'}</span></div><div class="ft">${esc(n.fix)}</div></div>`:'') : fixBox(n)}
+      <span class="saved">${n.when} · ${n.cost}</span>
+      <div class="acts"><button class="ib sm" type="button" data-goto data-tip="Vai all'unità ${n.unit}">${ic('goto')}</button><button class="ib sm" type="button" data-copy-n data-tip="Copia la risposta">${ic('copy')}</button><span class="grow"></span><button class="ib sm danger" type="button" data-del="${n.id}" data-tip="Elimina la voce">${ic('trash')}</button></div></div>`;
+  }
+}
+function NOTES_ORIG(n){ return n._orig || n.quote; }
+panel.addEventListener('click', e=>{
+  const g=e.target.closest('[data-go]'); if(g){ view=g.dataset.go; open=null; refreshAll(); return; }
+  const f=e.target.closest('[data-f]'); if(f){ filter=f.dataset.f; renderPanel(); return; }
+  const o=e.target.closest('[data-open]'); if(o){ open=Number(o.dataset.open); refreshAll(); edoc.querySelector('.sn.focus')?.scrollIntoView({block:'center',behavior:'smooth'}); return; }
+  if(e.target.closest('[data-close]')){ open=null; refreshAll(); return; }
+  if(e.target.closest('[data-goto]')){ const n=NOTES.find(x=>x.id===open); edoc.querySelector(`p[data-unit="${n.unit}"]`)?.scrollIntoView({block:'center',behavior:'smooth'}); toast(`Lezione aperta sull'unità ${n.unit}`); return; }
+  if(e.target.closest('[data-copy-n]')){ toast('Risposta copiata'); return; }
+  const d=e.target.closest('[data-del]'); if(d){ const n=NOTES.find(x=>x.id==d.dataset.del); NOTES=NOTES.filter(x=>x!==n); open=null; refreshAll(); toast('Voce eliminata', 'Annulla', ()=>{ NOTES.push(n); refreshAll(); }); }
+});
+document.querySelector('[data-go="dettagli"]').addEventListener('click', ()=>{ view='dettagli'; open=null; refreshAll(); });
+function refreshAll(){ hideTip(); renderStudio(); renderEditor(); renderPanel(); if(pop && pop._note){ const n=NOTES.find(x=>x.id===pop._note); if(n) renderSaved(pop, n); } }
+NOTES.forEach(n=>{ n._orig = n.quote; });
+refreshAll();
+
+/* schede */
+const tabs=[...document.querySelectorAll('[data-tab]')];
+function show(n){ tabs.forEach(t=>t.setAttribute('aria-pressed', String(t.dataset.tab===n))); document.querySelectorAll('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==n); hideTip(); }
+tabs.forEach(t=>t.addEventListener('click',()=>{ show(t.dataset.tab); try{ localStorage.setItem('rt-vc3-tab', t.dataset.tab); }catch(_){} }));
+let s=null; try{ s=localStorage.getItem('rt-vc3-tab'); }catch(_){}
+const h=(location.hash||'').slice(1);
+if(['studio','pannello','llm'].includes(h)) show(h); else if(['studio','pannello','llm'].includes(s)) show(s);
+})();
+</script>

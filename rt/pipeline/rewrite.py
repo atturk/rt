@@ -82,7 +82,7 @@ def extract_context_window(
     """
     Estrae deterministicamente i segmenti di contesto precedente e successivo
     basandosi sulla durata temporale (~90 secondi), con un tetto massimo di segmenti (20)
-    per prevenire finestre sproporzionate in caso di segmenti ASR molto brevi.
+    per prevenire finestre sproporzionate con segmenti ASR molto brevi.
     """
     prev_segs: List[Segment] = []
     cur_prev_idx = start_seg.index - 2  # 0-indexed per il segmento precedente
@@ -117,17 +117,8 @@ def run_rewrite(
     with phase_scope(ctx, "rewrite") as scope:
         result = _run_rewrite(lesson_dir, target_unit_id=target_unit_id, force=force, force_mock=force_mock, ctx=ctx)
         if result.get("status") in ("draft_validated", "unit_regenerated"):
-            from rt.services.unit_relevance import refresh
-            refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-            try:
-                from rt.services import question_types
-                question_types.refresh(lesson_dir, force_mock=force_mock, ctx=ctx)
-            except Exception:
-                import logging
-                logging.getLogger(__name__).warning("Tipi consigliati non disponibili", exc_info=True)
-                if ctx is not None:
-                    from rt.services.events import Notice
-                    ctx.emit(Notice(level="warning", message="Avviso: tipi di domanda consigliati non disponibili."))
+            from rt.services.classifier import classify_units
+            classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
         return scope.complete(result)
 
 

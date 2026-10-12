@@ -6,7 +6,6 @@
 - **Affermazione**: "La"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #1 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #1
-- **Domanda diplomatica**: *"Professore, intendeva confermare questo passaggio?"*
 - **Stato revisione**: `accepted`
 
 ### sci_000002 (00:00) - Gravità: MEDIUM
@@ -15,51 +14,49 @@
 - **Correzione proposta**: [MOCK] Correzione #2
 - **Stato revisione**: `accepted`
 
-### sci_000003 (00:00) - Gravità: LOW
+### sci_000003 (00:08) - Gravità: LOW
 - **Affermazione**: "scientifica"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #3 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #3
 - **Stato revisione**: `accepted`
 
-### sci_000004 (00:00) - Gravità: MEDIUM
+### sci_000004 (00:08) - Gravità: MEDIUM
 - **Affermazione**: "si"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #4 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #4
-- **Domanda diplomatica**: *"Professore, nel passaggio si riferiva al cofattore indicato?"*
 - **Stato revisione**: `accepted`
 
-### sci_000005 (00:00) - Gravità: HIGH
+### sci_000005 (00:08) - Gravità: HIGH
 - **Affermazione**: "apre con"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #5 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #5
 - **Stato revisione**: `accepted`
 
-### sci_000006 (00:00) - Gravità: MEDIUM
+### sci_000006 (00:24) - Gravità: MEDIUM
 - **Affermazione**: "l'analisi"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #6 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #6
 - **Stato revisione**: `accepted`
 
-### sci_000007 (00:00) - Gravità: LOW
+### sci_000007 (00:24) - Gravità: LOW
 - **Affermazione**: "sistematica"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #7 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #7
-- **Domanda diplomatica**: *"Professore, si intendeva il valore di riferimento citato?"*
 - **Stato revisione**: `accepted`
 
-### sci_000008 (00:00) - Gravità: LOW
+### sci_000008 (00:24) - Gravità: LOW
 - **Affermazione**: "dei"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #8 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #8
 - **Stato revisione**: `accepted`
 
-### sci_000009 (00:00) - Gravità: HIGH
+### sci_000009 (00:24) - Gravità: HIGH
 - **Affermazione**: "meccanismi"
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #9 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #9
 - **Stato revisione**: `accepted`
 
-### sci_000010 (00:00) - Gravità: MEDIUM
+### sci_000010 (00:45) - Gravità: MEDIUM
 - **Affermazione**: "biochimici fondamentali."
 - **Spiegazione scientifica**: [MOCK] Critica scientifica #10 di tipo ERR_CONCETTUALE
 - **Correzione proposta**: [MOCK] Correzione #10

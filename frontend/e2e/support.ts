@@ -156,3 +156,21 @@ export async function runPhase(page: Page, label: string) {
   await details.getByRole('button', { name: `Azioni su ${label}` }).click()
   await page.getByRole('menu', { name: `Azioni su ${label}` }).getByRole('menuitem', { name: 'Riesegui', exact: true }).click()
 }
+
+/** Esaurisce una domanda come il ripasso: risposta e, per le aperte, valutazione vista. */
+export async function answerAndSee(request: APIRequestContext, lessonId: number, questionId: string) {
+  expect((await request.post(`/api/v1/lessons/${lessonId}/recall/questions/${questionId}/status`, {
+    headers: authHeaders(), data: { status: 'asked' },
+  })).ok()).toBeTruthy()
+  const response = await request.post(`/api/v1/lessons/${lessonId}/recall/answer`, {
+    headers: authHeaders(), data: { question_id: questionId, dont_know: true, mock: true },
+  })
+  expect(response.ok()).toBeTruthy()
+  if (response.status() === 202) {
+    const { job_id } = await response.json()
+    await expect.poll(async () => (await apiGet<{ state: string }>(request, `/jobs/${job_id}`)).state, { timeout: 30_000 }).toBe('succeeded')
+    expect((await request.post(`/api/v1/lessons/${lessonId}/recall/seen`, {
+      headers: authHeaders(), data: { question_id: questionId },
+    })).ok()).toBeTruthy()
+  }
+}

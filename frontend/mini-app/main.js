@@ -693,6 +693,8 @@ import { renderDelimitedMath } from '../src/lib/math';
         }
         if (result.job_id) {
           r.jobId = result.job_id; saveSession(); const answer = await waitJob(result); r.evaluation = answer.evaluation; r.transcript = answer.is_voice ? answer.answer : ''; r.jobId = null;
+          // Valutazione vista: la domanda conta come risposta e non torna con «Prossima».
+          request(lessonPath(q._lesson.id, '/seen'), { method: 'POST', body: { question_id: q.id } }).catch(() => {});
           // Scaletta della vasta e soluzione di casi ed esercizi: visibili solo dopo la risposta.
           if (q.tipo !== 'mirata') {
             try { const saved = await request(lessonPath(q._lesson.id, '/resume?') + resumeParams()); q.spiegazione = saved.question?.explanation || q.spiegazione; }

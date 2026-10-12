@@ -24,6 +24,7 @@ from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
+from rt.llm.usage import cached_prompt_tokens
 from rt.llm.cancel import RunCancelled, current_cancel_token, raise_if_cancelled
 from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 from rt.llm.monitor import LiveTerminalMonitor
@@ -105,12 +106,15 @@ def mock_failure_once(job_name: str):
 def _consume_mock_failure(job_name: str, lesson_dir: Optional[str]) -> bool:
     if _MOCK_FAILURE.get() != job_name or not lesson_dir:
         return False
-    marker = lesson_path(lesson_dir, f"mock_failure_{job_name}.done")
-    if fs.isfile(marker):
-        return False
-    with fs.open(marker, "w", encoding="utf-8") as f:
-        f.write("1\n")
-    return True
+    from rt.core.lesson_lock import lesson_lock
+    with lesson_lock(lesson_dir):
+        marker = lesson_path(lesson_dir, f"mock_failure_{job_name}.done")
+        if fs.isfile(marker):
+            return False
+        with fs.open(marker, "w", encoding="utf-8") as f:
+            f.write("1\n")
+        return True
+
 
 
 JSON_REMINDER = (
@@ -132,6 +136,17 @@ def _with_json_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         elif isinstance(content, list):
             msg["content"] = list(content) + [{"type": "text", "text": JSON_REMINDER}]
         break
+    return out
+
+
+def _cache_lesson_prefix(messages, provider, model, enabled):
+    """Marca solo il contesto fisso, senza alterare i messaggi dei fallback."""
+    clean_model = model.lower().strip().lstrip("~")
+    if not enabled or provider != "openrouter" or not (
+        clean_model.startswith("anthropic/") or clean_model.startswith("google/gemini")):
+        return messages
+    out = [dict(message) for message in messages]
+    out[1]["content"] = [{"type": "text", "text": out[1]["content"], "cache_control": {"type": "ephemeral"}}]
     return out
 
 
@@ -209,7 +224,9 @@ class LLMClient:
         min_elapsed_seconds: Optional[float] = None,
         lesson_dir: Optional[str] = None,
         history: Optional[List[Dict[str, str]]] = None,
-        image_data_url: Optional[str] = None
+        image_data_url: Optional[str] = None,
+        constrained_schema: bool = False,
+        prompt_prefix: Optional[str] = None,
     ) -> T:
         """
         Invia una richiesta strutturata orchestrata dal Routing Engine:
@@ -256,6 +273,9 @@ class LLMClient:
                 timeout_seconds_configured=primary_cfg.timeout_seconds
             )
             current_telemetry().add(mock_rec)
+            wait = getattr(self, "_mock_review_wait", None)
+            if job_name == "review" and wait is not None:
+                wait()
             if _consume_mock_failure(job_name, lesson_dir):
                 failure = SchemaFailure("JSON non valido in 'content' (mock)", provider="mock", model="mock-deterministic")
                 failure.response_excerpt = response_excerpt(MOCK_OFF_SCHEMA_RESPONSE)
@@ -343,6 +363,8 @@ class LLMClient:
             f"Nessun commento prima o dopo il JSON."
         )
         messages = [{"role": "system", "content": full_system}]
+        if prompt_prefix:
+            messages.append({"role": "user", "content": prompt_prefix})
         if history:
             messages.extend(history)
         if image_data_url:
@@ -357,7 +379,7 @@ class LLMClient:
             messages.append({"role": "user", "content": prompt})
 
         history_len = sum(len(m.get("content", "")) if isinstance(m.get("content"), str) else 0 for m in history) if history else 0
-        approx_in_tok = max(1, (len(full_system) + len(prompt) + history_len) // 4)
+        approx_in_tok = max(1, (len(full_system) + len(prompt_prefix or "") + len(prompt) + history_len) // 4)
         prev_session_cost = current_telemetry().get_summary().get("total_estimated_cost_usd", 0.0)
 
         # Retry config locale per timeout sulla stessa route
@@ -473,7 +495,9 @@ class LLMClient:
 
                 payload = provider.build_payload(
                     model=model_name,
-                    messages=_with_json_reminder(messages) if schema_reminder else list(messages),
+                    messages=_cache_lesson_prefix(
+                        _with_json_reminder(messages) if schema_reminder else list(messages),
+                        provider_name, model_name, bool(prompt_prefix)),
                     max_tokens=route.max_tokens,
                     thinking=(True if force_thinking_override else route.thinking),
                     reasoning_effort=route.reasoning_effort,
@@ -482,7 +506,9 @@ class LLMClient:
                     stream=use_stream,
                     max_thinking_tokens=route.max_thinking_tokens,
                     provider_routing=self._resolve_provider_routing(route, provider_name),
-                    response_json_schema=response_model.model_json_schema()
+                    response_json_schema=(response_model.model_json_schema()
+                                          if constrained_schema or getattr(response_model, "constrained_schema", False)
+                                          or provider_name not in {"openrouter", "google"} else None)
                 )
 
                 raw_content = ""
@@ -503,6 +529,7 @@ class LLMClient:
                     raw_content = ""
                     reasoning_content = ""
                     final_usage = None
+                    in_t = out_t = reas_t = cached_t = cost_est = None
                     finish_reason = None
                     req_id = None
 
@@ -661,6 +688,7 @@ class LLMClient:
 
                                     if chunk.usage:
                                         final_usage = chunk.usage
+                                        cached_t = cached_prompt_tokens(final_usage)
                                         in_t = final_usage.get("prompt_tokens")
                                         out_t = final_usage.get("completion_tokens")
                                         det = final_usage.get("completion_tokens_details") or {}
@@ -671,6 +699,7 @@ class LLMClient:
                                             input_tokens=in_t,
                                             output_tokens=out_t,
                                             reasoning_tokens=reas_t,
+                                            cached_input_tokens=cached_t,
                                             custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                                         )
                                         monitor.on_usage(final_usage, cost_est)
@@ -884,6 +913,7 @@ class LLMClient:
                         t_attempt_end = time.time()
                         elapsed_att = t_attempt_end - t_attempt_start
 
+                        cached_t = cached_prompt_tokens(final_usage)
                         in_t = final_usage.get("prompt_tokens") if final_usage else None
                         out_t = final_usage.get("completion_tokens") if final_usage else None
                         det = final_usage.get("completion_tokens_details") or {} if final_usage else {}
@@ -898,6 +928,7 @@ class LLMClient:
                             input_tokens=in_t,
                             output_tokens=out_t,
                             reasoning_tokens=reas_t,
+                            cached_input_tokens=cached_t,
                             custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
                         )
 
@@ -925,6 +956,7 @@ class LLMClient:
                             retry_count=route_timeout_attempt - 1,
                             fallback_reason=current_fallback_reason,
                             input_tokens=in_t,
+                            cached_input_tokens=cached_t,
                             reasoning_tokens=reas_t,
                             output_tokens=out_t,
                             total_tokens=tot_t,
@@ -959,6 +991,7 @@ class LLMClient:
                                 "status": "success",
                                 "elapsed_seconds": round(elapsed_att, 4),
                                 "input_tokens": in_t,
+                                "cached_input_tokens": cached_t,
                                 "output_tokens": out_t,
                                 "reasoning_tokens": reas_t,
                                 "estimated_cost": cost_est,
@@ -1037,6 +1070,16 @@ class LLMClient:
                         else:
                             break
 
+                # Anche una risposta rifiutata dal validatore ha consumato token.
+                if final_usage:
+                    cached_t = cached_prompt_tokens(final_usage)
+                    in_t = final_usage.get("prompt_tokens")
+                    out_t = final_usage.get("completion_tokens")
+                    reas_t = (final_usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+                    cost_est = calculate_cost(provider_name, resolved_model or model_name, in_t, out_t,
+                        reasoning_tokens=reas_t, cached_input_tokens=cached_t,
+                        custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name))
+
                 # Attempt fallita: classificazione formale
                 t_attempt_end = time.time()
                 elapsed_att = t_attempt_end - t_attempt_start
@@ -1080,6 +1123,12 @@ class LLMClient:
                     output_chars=len(raw_content),
                     latency_ms=round(elapsed_att * 1000.0, 2),
                     finish_reason=finish_reason,
+                    input_tokens=in_t,
+                    cached_input_tokens=cached_t,
+                    output_tokens=out_t,
+                    reasoning_tokens=reas_t,
+                    total_tokens=final_usage.get("total_tokens") if final_usage else None,
+                    estimated_cost=cost_est,
                     status=err_status,
                     error_class=classified_failure.failure_class,
                     failure_class=classified_failure.failure_class,
@@ -1107,6 +1156,7 @@ class LLMClient:
                         "status": err_status,
                         "failure_class": classified_failure.failure_class,
                         "elapsed_seconds": round(elapsed_att, 4),
+                        "cached_input_tokens": cached_t,
                         "input_tokens": in_t if ('in_t' in locals()) else None,
                         "output_tokens": out_t if ('out_t' in locals()) else None,
                         "reasoning_tokens": reas_t if ('reas_t' in locals()) else None,
@@ -1275,14 +1325,14 @@ class LLMClient:
             )
             return unit_data  # type: ignore
 
-        elif model_name == "ScienceIssueList" or "ScienceIssue" in model_name:
+        elif model_name in ("ReviewFindingList", "ScienceIssueList") or "ScienceIssue" in model_name:
             from rt.core.models import ScienceType, ScienceSeverity
             class ScienceIssueList(BaseModel):
                 issues: list[ScienceIssue] = []
 
             self._mock_issue_calls["review_science"] = self._mock_issue_calls.get("review_science", 0) + 1
             if self._mock_issue_calls["review_science"] > 1:
-                return ScienceIssueList(issues=[])  # type: ignore
+                return response_model(issues=[])  # type: ignore
 
             u_match = re.search(r"UNITÀ:\s*([0-9.]+)", prompt)
             unit_id = u_match.group(1) if u_match else "1.1"
@@ -1344,6 +1394,11 @@ class LLMClient:
                         status="pending"
                     )
                 )
+            if model_name == "ReviewFindingList":
+                return response_model(issues=[{
+                    "tipo": "concettuale", "gravita": {"high": "alta", "medium": "media", "low": "bassa"}[issue.severity.value],
+                    "citazione": issue.claim, "motivazione": issue.reason, "sostituzione": issue.suggested_fix,
+                } for issue in mock_issues])
             return ScienceIssueList(issues=mock_issues)  # type: ignore
 
         elif model_name == "RecallQuestion":
@@ -1412,6 +1467,30 @@ class LLMClient:
                     "Meccanismi patologici e adattamento",
                     "Implicazioni cliniche e conclusioni",
                 ]
+            )  # type: ignore
+
+        elif model_name == "StudyNoteVerificaResponse":
+            from rt.llm.prompts import StudyNoteVerificaResponse
+            wrong = any(w in prompt.lower() for w in ("errat", "imprecis", "sbagliat", "wrong", "errore"))
+            quote_match = re.search(r"TESTO SELEZIONATO:\s*\n(.*?)(?:\n\nRICHIESTA|\Z)", prompt, re.DOTALL)
+            quote = quote_match.group(1).strip() if quote_match else ""
+            if wrong:
+                fix = f"{quote} [corretto]" if quote else "[MOCK] Correzione proposta"
+                return StudyNoteVerificaResponse(
+                    esito="errato",
+                    spiegazione="[MOCK] Il passaggio selezionato contiene un errore concettuale.",
+                    correzione=fix,
+                )  # type: ignore
+            return StudyNoteVerificaResponse(
+                esito="corretto",
+                spiegazione="[MOCK] Il passaggio selezionato è corretto nel contesto dell'unità.",
+                correzione=None,
+            )  # type: ignore
+
+        elif model_name == "StudyNoteChiediResponse":
+            from rt.llm.prompts import StudyNoteChiediResponse
+            return StudyNoteChiediResponse(
+                spiegazione="[MOCK] Spiegazione didattica del passaggio selezionato nel contesto dell'unità e della lezione.",
             )  # type: ignore
 
         # Fallback generico per qualsiasi altro modello

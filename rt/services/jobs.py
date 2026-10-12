@@ -204,7 +204,7 @@ class DbJobQueue:
                 from rt.db.models import Lesson
                 from rt.services.document_edit_lease import DocumentBeingEdited, is_being_edited
                 lesson = s.scalar(select(Lesson).where(Lesson.path == lesson_path))
-                if lesson and is_being_edited(s, lesson.id):
+                if job_type != "documents" and lesson and is_being_edited(s, lesson.id):
                     raise DocumentBeingEdited()
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
                       lesson_path=lesson_path, payload=json_safe(payload or {}),
@@ -234,8 +234,13 @@ class DbJobQueue:
             if again:
                 raise JobAlreadyRetried(again)
             if row.lesson_path:
-                busy = s.scalar(select(Job.id).where(Job.lesson_path == row.lesson_path,
-                                                     Job.state.in_(list(ACTIVE_STATES))).limit(1))
+                active = select(Job.id).where(Job.lesson_path == row.lesson_path,
+                                              Job.state.in_(list(ACTIVE_STATES)))
+                if row.type != "documents":
+                    # V5: il lavoro derivato non impedisce di accodare Riprova.
+                    # claim() continua a serializzare l'esecuzione sulla lezione.
+                    active = active.where(Job.type != "documents")
+                busy = s.scalar(active.limit(1))
                 if busy:
                     raise LessonHasActiveJob(busy)
             job_type, lesson_path, payload = row.type, row.lesson_path, retry_payload(row.type, row.payload or {})
@@ -422,7 +427,7 @@ class DbJobQueue:
         """Prende il job in coda più vecchio eseguibile (tipo supportato, lezione libera; i job
         che devono trascrivere solo se can_transcribe, RT4-G1).
         Su SQLite la transazione è BEGIN IMMEDIATE (un solo scrittore: l'UPDATE è
-        condizionato di fatto); su Postgres SELECT ... FOR UPDATE SKIP LOCKED. In ogni caso
+        condizionato di fatto); su Postgres SELECT ... FOR UPDATE SKIP LOCKED. Comunque
         il vincolo UNIQUE su active_lesson è l'ultima garanzia."""
         now = now or utcnow()
         self.requeue_expired(now)
@@ -491,6 +496,19 @@ class DbJobQueue:
             s.add(JobEvent(job_id=job_id, type="job_finished" if state in TERMINAL_STATES else "job_waiting",
                            payload=payload))
             return True
+
+    def complete_queued_documents(self, lesson_path: str) -> None:
+        """La build sincrona ha scritto lo stesso snapshot: nessuna seconda esecuzione."""
+        with session_scope(self.db) as s:
+            stmt = select(Job).where(Job.lesson_path == normalize_lesson_path(lesson_path),
+                                     Job.type == "documents", Job.state == JobState.QUEUED.value)
+            if s.get_bind().dialect.name == "postgresql":
+                stmt = stmt.with_for_update()
+            for row in s.scalars(stmt):
+                row.state = JobState.SUCCEEDED.value
+                row.finished_at = utcnow()
+                row.result = {"skipped": True, "reason": "documents_already_written"}
+                s.add(JobEvent(job_id=row.id, type="job_finished", payload={"state": row.state}))
 
     def release(self, job_id: str, worker_id: str, reason: str) -> bool:
         """Rimette in coda un job preso ma non eseguito (lezione occupata, worker che si

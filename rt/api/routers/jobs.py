@@ -186,15 +186,33 @@ def create_lesson(
 @router.post("/lessons/{lesson_id}/jobs", response_model=schemas.JobAccepted, status_code=202,
              summary="Avvia la pipeline o una fase sulla lezione (come 'rt run' o 'rt <fase>')")
 def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, actor: Actor):
+    if (body.skip_prefilter or body.include_excluded) and (body.type != "run_phase" or body.phase != "review"):
+        raise ApiError(422, "validation_error", "Il bypass del classificatore vale solo per la verifica.")
+    if body.include_excluded and len(set(body.units or ([body.unit] if body.unit else []))) != 1:
+        raise ApiError(422, "validation_error", "L'esclusione si può ignorare solo per una singola unità.")
     if body.mock_fail_once and not body.mock:
         raise ApiError(422, "validation_error", "mock_fail_once vale solo in modalità prova (mock).")
     if body.extra_prompt is not None and (body.type != "run_phase" or body.phase not in ("outline", "rewrite", "review")):
         raise ApiError(422, "validation_error", "Le istruzioni aggiuntive sono disponibili solo per outline, rewrite e review.")
     extra = {"mock_fail_once": body.mock_fail_once} if body.mock_fail_once else {}
+    if body.type == "review_part":
+        from rt.pipeline.review import prepare_review_parts
+        try:
+            parts = prepare_review_parts(lesson_dir, [part.model_dump() for part in body.parts or []])
+        except KeyError:
+            raise ApiError(404, "unit_not_found", "Unità non trovata nella bozza.")
+        except ValueError as exc:
+            raise ApiError(422, "selection_changed", str(exc))
+        return enqueue_job("review_part", lesson_dir,
+                           {"parts": parts, "units": [part["unit_id"] for part in parts], "options": {"mock": body.mock}}, actor)
     if body.type == "run_phase":
         if not body.phase:
             raise ApiError(422, "validation_error", "Indica la fase da eseguire.")
         options = {"force": body.force, "mock": body.mock, "rename": body.rename}
+        if body.skip_prefilter:
+            options["skip_prefilter"] = True
+        if body.include_excluded:
+            options["include_excluded"] = True
         prompt_payload = {"extra_prompt": body.extra_prompt} if body.extra_prompt is not None else {}
         if body.unit or body.units:
             if body.phase not in ("rewrite", "review"):

@@ -257,9 +257,9 @@ def test_cli_channel_dispatch(tmp_path):
         assert mock_notify.call_args[0][1] == "science"
         assert mock_notify.call_args[0][2] == 10
 
-    # 3. build standalone con channel telegram -> invia notify_build_completed
+    # V5b: il build standalone non invia più notifiche Telegram.
     args_bld_tg = MagicMock(lesson_dir=lesson_dir, force=True, rename=False, channel="telegram")
     with patch("rt.cli.run_build", return_value={"status": "completed", "lesson_dir": lesson_dir, "rielaborato": "rielaborato.md"}), \
          patch("rt.telegram.notify.notify_build_completed") as mock_notify_bld:
         cmd_build(args_bld_tg)
-        assert mock_notify_bld.called
+        mock_notify_bld.assert_not_called()

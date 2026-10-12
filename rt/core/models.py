@@ -129,7 +129,45 @@ class ScienceSeverity(str, Enum):
     HIGH = "high"
 
 
+class Anchor(BaseModel):
+    """Citazione e contesto nel testo di una singola unità."""
+    quote: str
+    prefix: str = ""
+    suffix: str = ""
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "Anchor":
+        if self.end < self.start or self.end - self.start != len(self.quote):
+            raise ValueError("Posizioni incoerenti con la citazione")
+        return self
+
+
+class ASRUncertainWord(BaseModel):
+    start_char: int
+    end_char: int
+    start_s: Optional[float] = None
+    end_s: Optional[float] = None
+    confidence: float
+
+
+class ASRRiskSegment(BaseModel):
+    segment_id: str
+    start_s: Optional[float] = None
+    end_s: Optional[float] = None
+    confidence: Optional[float] = None
+    threshold: Optional[float] = None
+    text_raw: str
+    uncertain_words: List[ASRUncertainWord] = Field(default_factory=list)
+
+
 class ScienceIssue(BaseModel):
+    asr_segments: Optional[List[ASRRiskSegment]] = Field(None, exclude_if=lambda value: value is None)
+    literal_replacement: bool = False
+    unanchored: bool = False
+    anchor: Optional[Anchor] = None
+    origin: Literal["verifica", "parte", "studio"] = "verifica"
     id: str = Field(..., description="ID univoco (es. sci_000001)")
     type: ScienceType = Field(..., description="Tipo di problematica scientifica")
     severity: ScienceSeverity = Field(..., description="Gravità dell'incongruenza")
@@ -148,6 +186,7 @@ class ScienceIssue(BaseModel):
 # ---------------------------------------------------------
 
 class ReviewDecision(BaseModel):
+    anchor: Optional[Anchor] = None
     issue_id: str = Field(..., description="ID dell'ASRIssue o ScienceIssue")
     decision: str = Field(..., description="accepted | rejected | edited")
     resolved_text: Optional[str] = Field(None, description="Testo finale convalidato")
@@ -203,13 +242,8 @@ class RecallQuestionType(str, Enum):
     QUIZ = "quiz"
     MIRATA = "mirata"
     VASTA = "vasta"
-    # Domande speciali: nascono solo dove il classificatore delle unità (macro-sezioni)
-    # riconosce un caso clinico o un esercizio, e hanno un "tipo" rigenerabile in varianti.
-    CASO = "caso"
-    ESERCIZIO = "esercizio"
+    PERSONALIZZATA = "personalizzata"
 
-
-SPECIAL_TYPES = (RecallQuestionType.CASO, RecallQuestionType.ESERCIZIO)
 
 class RecallQuestionStatus(str, Enum):
     PENDING = "pending"
@@ -220,6 +254,7 @@ class RecallQuestionStatus(str, Enum):
 class RecallQuestion(BaseModel):
     id: str  # e.g., recall_000001
     type: RecallQuestionType
+    custom_type: Optional[str] = None
     unit_ids: List[str] = Field(..., min_length=1)
     question_text: str
     options: Optional[List[str]] = None  # only quiz, exactly 4
@@ -229,7 +264,7 @@ class RecallQuestion(BaseModel):
     generation_version: Optional[str] = None
     generation_fingerprint: Optional[str] = None
     classifier_level: Optional[int] = None
-    # Solo casi ed esercizi: il tipo da cui nasce la domanda e la variante (0 = dalla lezione).
+    # Struttura della domanda personalizzata e variante (0 = dalla lezione).
     template_id: Optional[str] = None
     variant: Optional[int] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
@@ -265,12 +300,10 @@ class GeneratedRecallQuestion(BaseModel):
         else:
             if self.options is not None or self.correct_index is not None:
                 raise ValueError("Le domande aperte non hanno opzioni o indice")
-            if self.type in (RecallQuestionType.MIRATA, RecallQuestionType.CASO) and self.pregenerated_material is not None:
-                raise ValueError("Mirate e casi clinici non hanno materiale pregenerato")
+            if self.type == RecallQuestionType.MIRATA and self.pregenerated_material is not None:
+                raise ValueError("Le mirate non hanno materiale pregenerato")
             if self.type == RecallQuestionType.VASTA and not (self.pregenerated_material or "").strip():
                 raise ValueError("Vasta: scaletta obbligatoria")
-            if self.type == RecallQuestionType.ESERCIZIO and not (self.pregenerated_material or "").strip():
-                raise ValueError("Esercizio: schema di risoluzione obbligatorio")
         return self
 
 
@@ -309,7 +342,7 @@ class TemplateVariable(BaseModel):
 
 
 class SpecialTemplate(BaseModel):
-    """Caso clinico o esercizio "tipo": la struttura astratta da cui si rigenerano varianti."""
+    """Struttura astratta di una domanda, da cui si rigenerano varianti."""
     scenario: str = Field(min_length=1, max_length=4000)
     variabili: List[TemplateVariable] = Field(default_factory=list, max_length=20)
     obiettivo: str = Field(min_length=1, max_length=1500, description="Cosa verifica: comprensione, non nozioni")
@@ -317,29 +350,29 @@ class SpecialTemplate(BaseModel):
     esplicito: bool = Field(default=False, description="Presentato a lezione (non solo adattabile)")
 
 
-class GeneratedClinicalItem(BaseModel):
+class GeneratedTextItem(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
     unit_ids: List[str] = Field(default_factory=list, description="Subunità a cui si riferisce")
     tipo: SpecialTemplate
 
 
-class GeneratedSpecialItem(GeneratedClinicalItem):
-    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Schema di risoluzione dell'esercizio")
+class GeneratedSpecialItem(GeneratedTextItem):
+    pregenerated_material: str = Field(min_length=1, max_length=8000, description="Soluzione attesa")
 
 
-class RecallClinicalGenerationResult(BaseModel):
-    items: List[GeneratedClinicalItem] = Field(..., max_length=8)
+class RecallTextGenerationResult(BaseModel):
+    items: List[GeneratedTextItem] = Field(..., max_length=8)
 
 
 class RecallSpecialGenerationResult(BaseModel):
     items: List[GeneratedSpecialItem] = Field(..., max_length=8)
 
 
-class GeneratedClinicalVariant(BaseModel):
+class GeneratedTextVariant(BaseModel):
     question_text: str = Field(min_length=1, max_length=4000)
 
 
-class GeneratedVariant(GeneratedClinicalVariant):
+class GeneratedVariant(GeneratedTextVariant):
     pregenerated_material: str = Field(min_length=1, max_length=8000)
 
 
@@ -352,6 +385,7 @@ class VariantCheck(BaseModel):
 class RecallTemplate(BaseModel):
     id: str  # template_000001
     kind: RecallQuestionType
+    custom_type: Optional[str] = None
     section_ids: List[str] = Field(..., min_length=1)
     unit_ids: List[str] = Field(..., min_length=1)
     tipo: SpecialTemplate
@@ -394,6 +428,6 @@ class RecallBank(BaseModel):
     unit_selection: Optional[Dict[str, List[str]]] = None
     # Numero dell'ultimo ID assegnato: le domande tolte dal pool non lasciano ID riusabili.
     last_question_number: int = 0
-    # Casi clinici ed esercizi "tipo" della lezione (rt.pipeline.recall_special).
+    # Strutture riutilizzabili delle domande personalizzate della lezione.
     templates: List[RecallTemplate] = Field(default_factory=list)
     last_template_number: int = 0

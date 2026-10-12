@@ -44,7 +44,7 @@ def is_initialized(path: Optional[str] = None) -> bool:
 
 def active_data_dir() -> Optional[str]:
     """La cartella dati in uso, o None per un'installazione con la disposizione vecchia.
-    ~/.rt/rt-data.json può rimandare altrove ("location"): è il caso di una 3.x migrata con
+    ~/.rt/rt-data.json può rimandare altrove ("location"): avviene per una 3.x migrata con
     DB e media in <lessons_root>/.rt, lasciati dove sono (magari su un disco esterno)."""
     explicit = explicit_data_dir()
     if explicit:

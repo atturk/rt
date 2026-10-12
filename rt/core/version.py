@@ -131,7 +131,7 @@ def get_latest_remote_version(project_root: str, timeout: float = 5.0,
     Canale "stable": /releases/latest, che esclude prerelease e bozze.
     Canale "beta": la versione più alta fra le release pubblicate, prerelease comprese.
     Ritorna:
-    - None in caso di offline, errore di connessione, o timeout.
+    - None con offline, errore di connessione, o timeout.
     - "" (stringa vuota) se non esiste ancora nessuna Release pubblicata (HTTP 404).
     - la stringa di versione (es. '3.3.8' o '4.1.0b1') se disponibile.
     """
@@ -261,7 +261,7 @@ def _is_update_excluded(rel_path: str) -> bool:
 def _is_managed_code(rel_path: str) -> bool:
     """Solo queste directory appartengono al distributore, mai i dati dell'utente."""
     return rel_path.replace("\\", "/").split("/")[0] in (
-        "rt", "bin", "config.example", "docs",
+        "rt", "bin", "config.example", "docs", "CHANGELOG.md",
     )
 
 
@@ -504,7 +504,7 @@ def _run_update(project_root: str, channel: str = STABLE) -> int:
             for f in files:
                 src_file = os.path.join(root, f)
                 rel_path = os.path.relpath(src_file, extracted_root)
-                if rel_path == "VERSION" or _is_update_excluded(rel_path):
+                if rel_path in ("VERSION", "CHANGELOG.md") or _is_update_excluded(rel_path):
                     continue
                 dst_file = os.path.join(project_root, rel_path)
                 os.makedirs(os.path.dirname(dst_file), exist_ok=True)
@@ -539,6 +539,10 @@ def _run_update(project_root: str, channel: str = STABLE) -> int:
         # di pip lascia la vecchia versione per consentire un nuovo tentativo.
         if not _install_runtime_requirements(project_root) or not update_spa(project_root, latest_ver):
             return 1
+        # Le note arrivano insieme alla versione, solo dopo l'aggiornamento completo.
+        changelog_src = os.path.join(extracted_root, "CHANGELOG.md")
+        if os.path.isfile(changelog_src):
+            shutil.copy2(changelog_src, os.path.join(project_root, "CHANGELOG.md"))
         new_version_src = os.path.join(extracted_root, "VERSION")
         if os.path.isfile(new_version_src):
             shutil.copy2(new_version_src, os.path.join(project_root, "VERSION"))

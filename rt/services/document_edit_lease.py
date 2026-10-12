@@ -49,7 +49,8 @@ def acquire(lesson_id: int, token: str | None = None, recover: bool = False) -> 
         previous = dict(row.value or {}) if row and _active(row.value) else {}
         from sqlalchemy import select
         if session.scalar(select(Job.id).where(Job.lesson_path == lesson.path,
-                                             Job.state.in_(["queued", "running"])).limit(1)):
+                                             Job.state.in_(["queued", "running"]),
+                                             Job.type != "documents").limit(1)):
             raise Conflict("lesson_busy", "Un job sta già lavorando sulla lezione.")
         same_session = bool(previous and previous.get("token") == token)
         now = datetime.now(timezone.utc).isoformat()

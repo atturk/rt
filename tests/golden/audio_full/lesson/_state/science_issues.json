@@ -1,18 +1,32 @@
 [
   {
+    "anchor": {
+      "quote": "La",
+      "prefix": "",
+      "suffix": " trattazione scientifica si apre con l'a",
+      "start": 0,
+      "end": 2
+    },
     "id": "sci_000001",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
     "unit_id": "1.1",
     "segment_id": "seg_000001",
     "claim": "La",
-    "source_quote": "[MOCK] Citazione sorgente docente",
+    "source_quote": null,
     "reason": "[MOCK] Critica scientifica #1 di tipo ERR_CONCETTUALE",
     "suggested_fix": "[MOCK] Correzione #1",
-    "diplomatic_question": "Professore, intendeva confermare questo passaggio?",
+    "diplomatic_question": null,
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "trattazione",
+      "prefix": "La ",
+      "suffix": " scientifica si apre con l'analisi siste",
+      "start": 3,
+      "end": 14
+    },
     "id": "sci_000002",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
@@ -26,11 +40,18 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "scientifica",
+      "prefix": "La trattazione ",
+      "suffix": " si apre con l'analisi sistematica dei m",
+      "start": 15,
+      "end": 26
+    },
     "id": "sci_000003",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000002",
     "claim": "scientifica",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #3 di tipo ERR_CONCETTUALE",
@@ -39,24 +60,38 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "si",
+      "prefix": "La trattazione scientifica ",
+      "suffix": " apre con l'analisi sistematica dei mecc",
+      "start": 27,
+      "end": 29
+    },
     "id": "sci_000004",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000002",
     "claim": "si",
-    "source_quote": "[MOCK] Citazione sorgente docente",
+    "source_quote": null,
     "reason": "[MOCK] Critica scientifica #4 di tipo ERR_CONCETTUALE",
     "suggested_fix": "[MOCK] Correzione #4",
-    "diplomatic_question": "Professore, nel passaggio si riferiva al cofattore indicato?",
+    "diplomatic_question": null,
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "apre con",
+      "prefix": "La trattazione scientifica si ",
+      "suffix": " l'analisi sistematica dei meccanismi bi",
+      "start": 30,
+      "end": 38
+    },
     "id": "sci_000005",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000002",
     "claim": "apre con",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #5 di tipo ERR_CONCETTUALE",
@@ -65,11 +100,18 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "l'analisi",
+      "prefix": "La trattazione scientifica si apre con ",
+      "suffix": " sistematica dei meccanismi biochimici f",
+      "start": 39,
+      "end": 48
+    },
     "id": "sci_000006",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000003",
     "claim": "l'analisi",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #6 di tipo ERR_CONCETTUALE",
@@ -78,24 +120,38 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "sistematica",
+      "prefix": "zione scientifica si apre con l'analisi ",
+      "suffix": " dei meccanismi biochimici fondamentali.",
+      "start": 49,
+      "end": 60
+    },
     "id": "sci_000007",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000003",
     "claim": "sistematica",
-    "source_quote": "[MOCK] Citazione sorgente docente",
+    "source_quote": null,
     "reason": "[MOCK] Critica scientifica #7 di tipo ERR_CONCETTUALE",
     "suggested_fix": "[MOCK] Correzione #7",
-    "diplomatic_question": "Professore, si intendeva il valore di riferimento citato?",
+    "diplomatic_question": null,
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "dei",
+      "prefix": "ifica si apre con l'analisi sistematica ",
+      "suffix": " meccanismi biochimici fondamentali.",
+      "start": 61,
+      "end": 64
+    },
     "id": "sci_000008",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000003",
     "claim": "dei",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #8 di tipo ERR_CONCETTUALE",
@@ -104,11 +160,18 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "meccanismi",
+      "prefix": "a si apre con l'analisi sistematica dei ",
+      "suffix": " biochimici fondamentali.",
+      "start": 65,
+      "end": 75
+    },
     "id": "sci_000009",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000003",
     "claim": "meccanismi",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #9 di tipo ERR_CONCETTUALE",
@@ -117,11 +180,18 @@
     "status": "pending"
   },
   {
+    "anchor": {
+      "quote": "biochimici fondamentali.",
+      "prefix": "on l'analisi sistematica dei meccanismi ",
+      "suffix": "",
+      "start": 76,
+      "end": 100
+    },
     "id": "sci_000010",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
     "unit_id": "1.1",
-    "segment_id": "seg_000001",
+    "segment_id": "seg_000004",
     "claim": "biochimici fondamentali.",
     "source_quote": null,
     "reason": "[MOCK] Critica scientifica #10 di tipo ERR_CONCETTUALE",

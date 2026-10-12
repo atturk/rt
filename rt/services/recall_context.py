@@ -1,7 +1,9 @@
 """Contesto disciplinare deterministico condiviso da classificatore e recall."""
+import copy
 import hashlib
 import json
 import re
+from functools import lru_cache
 
 import yaml
 
@@ -38,10 +40,27 @@ def normalize_topics(value):
     return result
 
 
-def lesson_context(lesson_dir):
+def lesson_context(lesson_dir, *, include_structure=False):
+    stamps = []
+    for name in ("info.yaml", "outline.json"):
+        try:
+            stamps.append(fs.getmtime(lesson_path(lesson_dir, name)))
+        except OSError:
+            stamps.append(None)
+    context = _lesson_context(str(lesson_dir), *stamps)
+    # La vista disciplinare conserva le impronte storiche del classificatore.
+    keys = context.keys() if include_structure else ("materia", "titolo_lezione", "argomenti_lezione")
+    return {key: copy.deepcopy(context[key]) for key in keys}
+
+
+@lru_cache(maxsize=256)
+def _lesson_context(lesson_dir, info_mtime, outline_mtime):
     info, outline = {}, {}
     for name, reader in [("info.yaml", yaml.safe_load), ("outline.json", json.loads)]:
-        path = lesson_path(lesson_dir, name)
+        try:
+            path = lesson_path(lesson_dir, name)
+        except OSError:
+            continue
         if fs.isfile(path):
             try:
                 with fs.open(path, "r", encoding="utf-8") as stream:
@@ -62,7 +81,11 @@ def lesson_context(lesson_dir):
         topics = generated
     return {"materia": str(info.get("materia") or ""),
             "titolo_lezione": str(outline.get("lesson_title") or info.get("titolo") or ""),
-            "argomenti_lezione": normalize_topics(topics) or generated}
+            "argomenti_lezione": normalize_topics(topics) or generated,
+            "docente": str(info.get("docente") or ""),
+            "scaletta": [{"id": str(unit.get("id") or ""), "titolo": str(unit.get("title") or "")}
+                         for macro in outline.get("macro_sections", []) if isinstance(macro, dict)
+                         for unit in macro.get("units", []) if isinstance(unit, dict)]}
 
 
 def context_block(context):

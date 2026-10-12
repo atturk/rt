@@ -1,6 +1,7 @@
-import { BuildConfirmDialog } from '../BuildConfirmDialog'
-import { ChevronDown, ChevronUp, Download, MoreHorizontal, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useClassifier } from '@/api/classifier'
+import { useStudyNotes } from '@/api/studyNotes'
 import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -174,6 +175,10 @@ export function DetailsPanel({
   const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
   const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)
 
+  const classifier = useClassifier(l.id)
+  const studyNotes = useStudyNotes(l.id)
+  const notesCount = studyNotes.data?.length ?? 0
+  const changedCount = studyNotes.data?.filter((n) => n.anchor_state === 'cambiata').length ?? 0
   const jobs = useLessonJobs(l.id)
   const run = useRunJob(l.id)
   const validate = useValidatePhase(l.id)
@@ -183,7 +188,6 @@ export function DetailsPanel({
   const [selectedUnits, setSelectedUnits] = useState<Record<string, string[]>>({})
   const [extraPrompts, setExtraPrompts] = useState<Record<string, string>>({})
   const [forcePhase, setForcePhase] = useState<Record<string, boolean>>({})
-  const [confirmBuild, setConfirmBuild] = useState(false)
   const [confirmValidate, setConfirmValidate] = useState<Phase | null>(null)
 
   const [openPhaseMenu, setOpenPhaseMenu] = useState<Phase | null>(null)
@@ -200,10 +204,8 @@ export function DetailsPanel({
     return () => document.removeEventListener('pointerdown', onPointer)
   }, [openPhaseMenu])
 
-  const busy = editingDocument || (jobs.data ?? []).some((j) => isActiveJob(j.state)) || run.isPending || validate.isPending
+  const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
-  const buildPhase = phases.data?.phases.find((p) => p.phase === 'build')
-  const isBuildStale = buildPhase?.status === 'STALE' || l.phases.build === 'STALE'
 
   const start = (
     body: { type: 'run_pipeline' | 'run_phase'; phase?: Phase; units?: string[]; extra_prompt?: string; force?: boolean },
@@ -216,16 +218,11 @@ export function DetailsPanel({
         mock: false,
         with_review: body.type === 'run_pipeline' && withReview,
         auto_accept: false,
-        rename: true,
       },
       { onSuccess: onQueued },
     )
 
   const runPhase = (phase: Phase, force = false) => {
-    if (phase === 'build' && buildWarnings.length > 0) {
-      setConfirmBuild(true)
-      return
-    }
     const chosen = selectedUnits[phase] ?? []
     start(
       {
@@ -299,9 +296,9 @@ export function DetailsPanel({
   const runningJob = (jobs.data ?? []).find((j) => isActiveJob(j.state))
   const lastFinishedJob = (jobs.data ?? []).find((j) => !isActiveJob(j.state))
   const jobSummary = runningJob
-    ? `In corso: ${PHASE_LABELS[runningJob.payload?.phase as string] ?? runningJob.type}`
+    ? `In corso: ${PHASE_LABELS[runningJob.payload?.phase as string] ?? (runningJob.type === 'documents' ? 'Aggiornamento documento' : runningJob.type)}`
     : lastFinishedJob
-      ? `Nessun job in corso. L'ultimo: ${PHASE_LABELS[lastFinishedJob.payload?.phase as string] ?? lastFinishedJob.type} (${lastFinishedJob.state})`
+      ? `Nessun job in corso. L'ultimo: ${PHASE_LABELS[lastFinishedJob.payload?.phase as string] ?? (lastFinishedJob.type === 'documents' ? 'Aggiornamento documento' : lastFinishedJob.type)} (${lastFinishedJob.state})`
       : 'Nessun job registrato.'
 
   return (
@@ -381,18 +378,6 @@ export function DetailsPanel({
 
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
 
-      {/* Avviso "Documento da ricreare › Ricrea" */}
-      {isBuildStale && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning-soft p-3">
-          <p className="min-w-0 flex-1 text-meta font-medium text-warning">
-            Il documento finale non è aggiornato: il testo è cambiato.
-          </p>
-          <Button size="sm" variant="default" disabled={busy} onClick={() => runPhase('build')}>
-            Ricrea
-          </Button>
-        </div>
-      )}
-
       {/* Riepilogo */}
       <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body" data-testid="lesson-details">
         <dt className="self-center text-meta text-muted-foreground">Stato</dt>
@@ -417,6 +402,46 @@ export function DetailsPanel({
         </dd>
       </dl>
 
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Button
+          variant="outline"
+          className="h-auto w-full justify-start gap-3 py-3"
+          onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}
+          data-testid="open-classifier-panel"
+        >
+          <Tags size={18} aria-hidden />
+          <span className="flex flex-col items-start min-w-0">
+            <span className="text-body font-medium">Classificatore</span>
+            <span className="text-meta text-muted-foreground truncate">
+              {classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}
+            </span>
+          </span>
+        </Button>
+        <Button
+          variant="outline"
+          className="relative h-auto w-full justify-start gap-3 py-3"
+          onClick={() => navigate(`/lezioni/${l.id}?panel=note`)}
+          data-testid="open-study-notes-panel"
+        >
+          <MessageSquare size={18} aria-hidden />
+          <span className="flex flex-col items-start min-w-0">
+            <span className="text-body font-medium flex items-center gap-1.5">
+              Verifiche e domande
+              {changedCount > 0 && (
+                <span
+                  className="size-2 rounded-full bg-warning inline-block"
+                  title="Testo cambiato"
+                  data-testid="notes-changed-dot"
+                />
+              )}
+            </span>
+            <span className="text-meta text-muted-foreground truncate">
+              {notesCount} {notesCount === 1 ? 'voce' : 'voci'}
+              {changedCount > 0 ? ` · ${changedCount} da guardare` : ''}
+            </span>
+          </span>
+        </Button>
+      </div>
       {showCostDetail && <CostPanel lesson={l} />}
 
       <hr className="border-border" />
@@ -476,8 +501,8 @@ export function DetailsPanel({
               else if (p.status === 'VALID') statusLabel = 'completata'
             }
             if (p.phase === 'build') {
-              if (p.status === 'STALE') statusLabel = 'da ricreare: il testo è cambiato'
-              else if (p.status === 'VALID') statusLabel = 'valido'
+              if (p.status !== 'VALID') statusLabel = 'in aggiornamento'
+              else statusLabel = 'aggiornato'
             }
 
             const isMenuOpen = openPhaseMenu === phase
@@ -491,7 +516,7 @@ export function DetailsPanel({
                   <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" title={statusLabel}>
                     {statusLabel}
                   </span>
-                  <div className="relative">
+                  {phase !== 'build' && <div className="relative">
                     <IconButton
                       label={`Azioni su ${PHASE_LABELS[phase] ?? phase}`}
                       icon={MoreHorizontal}
@@ -545,7 +570,7 @@ export function DetailsPanel({
                         </button>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
 
                 {/* Scheda opzioni avanzate in linea */}
@@ -782,10 +807,6 @@ export function DetailsPanel({
         {validate.isError && <Alert tone="danger" className="mt-3">{errorMessage(validate.error)}</Alert>}
       </ConfirmDialog>
 
-      <BuildConfirmDialog open={confirmBuild} warnings={buildWarnings} onCancel={() => setConfirmBuild(false)} onConfirm={() => {
-        setConfirmBuild(false)
-        start({ type: 'run_phase', phase: 'build' })
-      }} />
     </div>
   )
 }

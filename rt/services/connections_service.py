@@ -201,10 +201,9 @@ def connection_usages(project_root: Path, name: str) -> list[str]:
                     used.append(label)
         if used:
             usages.append(f"{labels.get(job, job)} ({', '.join(used)})")
-    jev = _read_yaml(general_config_path(project_root)).get("jev") or {}
-    jev_active = bool(jev.get("enabled")) or (
-        jev.get("relevance_mode", "shadow") != "disabled" and bool(str(jev.get("relevance_model") or "").strip()))
-    if jev_active and jev.get("credential", "openrouter") in keys:
+    from rt.core.config import RTConfig, CLASSIFIER_MODES, classifier_job
+    cfg = RTConfig.model_validate(_read_yaml(general_config_path(project_root)))
+    if any(classifier_job(cfg, job).mode != "off" and classifier_job(cfg, job).credential in keys for job in CLASSIFIER_MODES):
         usages.append("Classificatore")
     return usages
 

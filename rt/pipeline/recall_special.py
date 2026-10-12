@@ -1,17 +1,4 @@
-"""
-rt.pipeline.recall_special
-Casi clinici ed esercizi: domande speciali generate solo dove il classificatore delle unità
-(rt.services.section_labels) li riconosce.
-
-- Esercizio: le sezioni con un esercizio svolto, unite alla precedente quando l'esercizio
-  continua (al massimo due); una chiamata al recaller per gruppo.
-- Caso clinico: una chiamata per sezione; il recaller restituisce da zero a N casi.
-
-Ogni elemento restituito diventa una domanda (variante 0, dal testo della lezione) e un "tipo"
-salvato nel bank (RecallBank.templates). Quando le domande da porre finiscono, il rifornimento
-crea varianti dai tipi; una seconda chiamata verifica i dati clinici o risolve gli esercizi
-in modo indipendente e scarta le varianti incoerenti.
-"""
+"""Domande personalizzate dal registro, strutture astratte e varianti verificate."""
 
 import logging
 import random
@@ -20,37 +7,51 @@ from datetime import datetime
 from typing import Callable, List, Optional
 
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
-                            GeneratedVariant, GeneratedClinicalVariant, RecallClinicalGenerationResult,
+                            GeneratedVariant, GeneratedTextVariant, RecallTextGenerationResult,
                             RecallEvaluation, VariantCheck)
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
+from rt.services.custom_question_types import find_type, active_types, type_key, question_key
 
 _LOG = logging.getLogger(__name__)
-MAX_EXERCISE_SECTIONS = 2
 VARIANT_ATTEMPTS = 2
 
 
-def _system(qtype: RecallQuestionType) -> str:
+def _definition(qtype, lesson_dir=None):
+    identifier = type_key(qtype)
+    definition = find_type(identifier)
+    if definition is None or lesson_dir is not None and identifier not in {t.id for t in active_types(lesson_dir=lesson_dir)}:
+        raise ValueError("Tipo personalizzato non disponibile nella materia")
+    return definition
+
+
+def _system(qtype) -> str:
+    return system_for(_definition(qtype))
+
+
+def system_for(definition) -> str:
     from rt.llm import prompts
-    return effective_system("recall", getattr(prompts, "RECALL_" + qtype.value.upper() + "_SYSTEM_PROMPT"))
+    output = prompts._TEXT_OUTPUT if definition.correzione == "testo" else prompts._SPECIAL_OUTPUT
+    return effective_system("recall", definition.chiedi + "\n\n" + output +
+                            "\nLa risposta dello studente è sempre testuale; non richiedere file o risposte interattive.")
 
 
 def groups(lesson_dir: str, qtype: RecallQuestionType, sections=None, labels=None) -> List[list]:
     """Gruppi di sezioni da mandare al recaller per il tipo speciale, nell'ordine della lezione."""
     from rt.services import section_labels
     sections = section_labels.sections(lesson_dir) if sections is None else sections
-    labels = section_labels.labels(lesson_dir) if labels is None else labels
-    kind = qtype.value
+    labels = section_labels.labels(lesson_dir, sections=sections) if labels is None else labels
+    definition = _definition(qtype, lesson_dir)
+    kind = definition.id
     out: List[list] = []
     previous_positive = False
     for section in sections:
         value = (labels.get(section["id"]) or {}).get(kind)
-        positive = value in section_labels.POSITIVE[kind]
+        positive = value == "presente"
         if not positive:
             previous_positive = False
             continue
-        if (qtype == RecallQuestionType.ESERCIZIO and value == "continua" and previous_positive and out
-                and len(out[-1]) < MAX_EXERCISE_SECTIONS):
+        if (definition.continua and previous_positive and out and len(out[-1]) < 2):
             out[-1].append(section)
         else:
             out.append([section])
@@ -59,7 +60,7 @@ def groups(lesson_dir: str, qtype: RecallQuestionType, sections=None, labels=Non
 
 
 def group_key(qtype: RecallQuestionType, group: list) -> str:
-    return qtype.value + ":sezioni:" + ",".join(s["id"] for s in group)
+    return type_key(qtype) + ":sezioni:" + ",".join(s["id"] for s in group)
 
 
 def _policy(qtype: RecallQuestionType, mock: bool) -> dict:
@@ -70,8 +71,8 @@ def _policy(qtype: RecallQuestionType, mock: bool) -> dict:
     from rt.pipeline.recall import load_fewshot_examples
     examples = load_fewshot_examples(qtype, cfg.telegram.state_dir)
     routing = cfg.jobs.get("recall") or cfg.llm.get("recall") or cfg.jobs.get("default") or cfg.llm.get("default")
-    return {"version": POLICY_VERSION, "labels": LABEL_VERSION, "style": qtype.value, "system": _system(qtype),
-            "fewshot": examples, "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
+    return {"version": POLICY_VERSION, "labels": LABEL_VERSION, "style": type_key(qtype), "system": _system(qtype),
+            "definition": _definition(qtype).model_dump(mode="json"), "fewshot": examples, "routing": routing.model_dump(mode="json") if routing else None, "mock": mock}
 
 
 def _digest(lesson_dir: str, group: list, policy: dict) -> str:
@@ -90,33 +91,38 @@ def available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = 
     """Senza LLM: c'è un gruppo ancora da valutare, oppure un tipo da cui creare varianti."""
     from rt.pipeline.recall import load_recall_bank
     from rt.services import section_labels
+    definition = find_type(type_key(qtype))
+    if definition is None or definition.id not in {t.id for t in active_types(lesson_dir=lesson_dir)}:
+        return False
     bank = load_recall_bank(lesson_dir)
-    if any(t.kind == qtype for t in bank.templates):
+    if definition.varianti and any(t.custom_type == definition.id for t in bank.templates):
         return True
     if section_labels.mode(force_mock) == "disabled":
         return False
     policy = _policy(qtype, _mock(force_mock))
-    for group in groups(lesson_dir, qtype):
+    sections = section_labels.sections(lesson_dir)
+    current = section_labels.labels(lesson_dir, sections=sections)
+    for group in groups(lesson_dir, qtype, sections=sections, labels=current):
         row = bank.generation_attempts.get(group_key(qtype, group), {})
         if not row.get("exhausted") or row.get("fingerprint") != _digest(lesson_dir, group, policy):
             return True
     # Sezioni non ancora classificate: la prossima generazione le valuta.
-    current = section_labels.labels(lesson_dir)
-    return any(s["id"] not in current for s in section_labels.sections(lesson_dir))
+    return any(s["id"] not in current for s in sections)
 
 
-def _mock_items(qtype: RecallQuestionType, group: list, existing: int) -> dict:
+def _mock_items(qtype: RecallQuestionType, group: list, existing: int, *, definition=None) -> dict:
     units = [u.unit_id for s in group for u in s["units"]]
     n = existing + 1
-    what = "Caso clinico" if qtype == RecallQuestionType.CASO else "Esercizio"
+    definition = definition or _definition(qtype)
+    what = definition.nome
     result = {"items": [{
         "question_text": f"{what} mock n. {n} per l'unità {', '.join(s['id'] for s in group)}: interpreta i dati e motiva.",
         "pregenerated_material": "Passaggi attesi: 1) lettura dei dati; 2) ragionamento; 3) conclusione.",
         "unit_ids": units,
         "tipo": {"scenario": f"{what} mock", "variabili": [{"nome": "valore", "valore": "1", "intervallo": "1-9"}],
                  "obiettivo": "Verificare il ragionamento", "procedimento": "Leggere i dati, ragionare, concludere.",
-                 "esplicito": qtype == RecallQuestionType.CASO}}]}
-    if qtype == RecallQuestionType.CASO:
+                 "esplicito": True}}]}
+    if definition.correzione == "testo":
         result['items'][0].pop('pregenerated_material')
     return result
 
@@ -129,9 +135,9 @@ def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         repair_duplicate_ids(bank)
-        known = {(q.type, q.question_text.strip().casefold()) for q in bank.questions}
+        known = {(question_key(q), q.question_text.strip().casefold()) for q in bank.questions}
         for question, template in pairs:
-            text_key = (question.type, question.question_text.strip().casefold())
+            text_key = (question_key(question), question.question_text.strip().casefold())
             if text_key in known:
                 continue
             known.add(text_key)
@@ -168,7 +174,8 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank
     from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
     from rt.services.recall_context import POLICY_VERSION, lesson_context
-    label = "Casi clinici" if qtype == RecallQuestionType.CASO else "Esercizi"
+    definition = _definition(qtype, lesson_dir)
+    label = definition.nome
     if unit_ids is not None:
         wanted_uids = set(unit_ids)
         from rt.services import section_labels
@@ -209,17 +216,18 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
             report(position + 1, len(todo), f"{head}: già valutata", **where)
             continue
         all_units = [u.unit_id for s in group for u in s["units"]]
-        existing = [t for t in bank.templates if t.kind == qtype and set(t.section_ids) & set(ids)]
+        existing = [t for t in bank.templates if t.custom_type == definition.id and set(t.section_ids) & set(ids)]
         started = time.monotonic()
         report(position, len(todo), f"{head}: chiedo {label.lower()} al recaller", **where)
         try:
-            response_model = RecallClinicalGenerationResult if qtype == RecallQuestionType.CASO else RecallSpecialGenerationResult
+            response_model = RecallTextGenerationResult if definition.correzione == "testo" else RecallSpecialGenerationResult
             if mock:
                 generated = response_model.model_validate(_mock_items(qtype, group, len(existing))).items
             else:
                 prompt = prompts.build_recall_special_user_prompt(
-                    qtype.value, group, [t.tipo.model_dump() for t in existing], context,
-                    instructions=instructions, selection=selection)
+                    label, group, [t.tipo.model_dump() for t in existing], context,
+                    instructions=instructions, selection=selection, text_correction=definition.correzione == "testo",
+                    labels={s["id"]: "selezionata" if unit_ids is not None else "presente" for s in group})
                 from rt.pipeline.recall import load_fewshot_examples
                 from rt.core.config import load_config
                 prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
@@ -229,7 +237,7 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
         except Exception as exc:
             if not is_unit_failure(exc):
                 raise
-            failures.failed(", ".join(ids), qtype.value, exc)
+            failures.failed(", ".join(ids), type_key(qtype), exc)
             report(position + 1, len(todo), f"{head}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
                    failed=len(failures.failures), **where)
             last_error = exc
@@ -240,12 +248,12 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
         succeeded = True
         pairs = []
         for item in generated:
-            unit_ids = [u for u in item.unit_ids if u in all_units] or all_units
-            template = RecallTemplate(id="temporary", kind=qtype, section_ids=ids, unit_ids=unit_ids,
+            item_units = [u for u in item.unit_ids if u in all_units] or all_units
+            template = RecallTemplate(id="temporary", kind=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, section_ids=ids, unit_ids=item_units,
                                       tipo=item.tipo, fingerprint=fingerprint)
-            question = RecallQuestion(id="temporary", type=qtype, unit_ids=unit_ids, question_text=item.question_text,
-                                      pregenerated_material=None if qtype == RecallQuestionType.CASO else item.pregenerated_material,
-                                      content_fingerprint=_compute_units_fingerprint(lesson_dir, unit_ids),
+            question = RecallQuestion(id="temporary", type=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, unit_ids=item_units, question_text=item.question_text,
+                                      pregenerated_material=None if definition.correzione == "testo" else item.pregenerated_material,
+                                      content_fingerprint=_compute_units_fingerprint(lesson_dir, item_units),
                                       generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
             pairs.append((question, template))
         attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
@@ -273,13 +281,16 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
         raise KeyError(template_id)
     previous = [q.question_text for q in bank.questions if q.template_id == template.id]
     tipo = template.tipo.model_dump()
-    clinical = template.kind == RecallQuestionType.CASO
-    response_model = GeneratedClinicalVariant if clinical else GeneratedVariant
-    system = prompts.RECALL_CLINICAL_VARIANT_SYSTEM_PROMPT if clinical else prompts.RECALL_VARIANT_SYSTEM_PROMPT
+    definition = _definition(template.custom_type, lesson_dir)
+    if not definition.varianti:
+        return None
+    text_correction = definition.correzione == "testo"
+    response_model = GeneratedTextVariant if text_correction else GeneratedVariant
+    system = prompts.RECALL_TEXT_VARIANT_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_SYSTEM_PROMPT
     variant = None
     if mock:
         data = {'question_text': f"Variante mock n. {template.variants + 1} di {template.id}: {template.tipo.scenario}"}
-        if not clinical:
+        if not text_correction:
             data['pregenerated_material'] = template.tipo.procedimento
         variant = response_model.model_validate(data)
     else:
@@ -287,14 +298,14 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
         problems = ""
         for _ in range(VARIANT_ATTEMPTS):
             candidate = client.call_structured(
-                prompt=prompts.recall_fewshot_block(load_fewshot_examples(template.kind)) + prompts.build_recall_variant_user_prompt(template.kind.value, tipo, previous, problems),
-                system_prompt=effective_system("recall", system),
+                prompt=prompts.recall_fewshot_block(load_fewshot_examples(template.custom_type)) + prompts.build_recall_variant_user_prompt(definition.nome, tipo, previous, problems, text_correction=text_correction),
+                system_prompt=effective_system("recall", definition.chiedi + "\n\n" + system + "\nLa risposta dello studente è testuale."),
                 response_model=response_model, job_name="recall", unit_id=", ".join(template.unit_ids),
                 lesson_dir=lesson_dir)
             check = client.call_structured(
                 prompt=prompts.build_recall_variant_check_user_prompt(tipo, candidate.question_text,
-                                                                     None if clinical else candidate.pregenerated_material),
-                system_prompt=prompts.RECALL_CLINICAL_VARIANT_CHECK_SYSTEM_PROMPT if clinical else prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT, response_model=VariantCheck,
+                                                                     None if text_correction else candidate.pregenerated_material),
+                system_prompt=prompts.RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT, response_model=VariantCheck,
                 job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir)
             if check.coerente:
                 variant = candidate
@@ -303,8 +314,8 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
             _LOG.info("Variante di %s scartata: %s", template.id, problems)
     if variant is None:
         return None
-    question = RecallQuestion(id="temporary", type=template.kind, unit_ids=template.unit_ids,
-                              question_text=variant.question_text, pregenerated_material=None if clinical else variant.pregenerated_material,
+    question = RecallQuestion(id="temporary", type=template.kind, custom_type=template.custom_type, unit_ids=template.unit_ids,
+                              question_text=variant.question_text, pregenerated_material=None if text_correction else variant.pregenerated_material,
                               content_fingerprint=_compute_units_fingerprint(lesson_dir, template.unit_ids),
                               generation_version=POLICY_VERSION, template_id=template.id)
     saved = _persist(lesson_dir, [(question, None)], None, None)
@@ -317,8 +328,7 @@ def generate_special_batch(
     unit_ids: Optional[List[str]] = None, instructions: Optional[str] = None,
     selection: Optional[str] = None,
 ) -> List[RecallQuestion]:
-    """Classifica le sezioni cambiate, genera casi o esercizi dai gruppi nuovi e, se servono altre
-    domande (count), crea varianti dai tipi già salvati scelti a caso."""
+    """Classifica le sezioni, genera dai gruppi nuovi e crea eventuali varianti verificate."""
     from rt.llm.cancel import raise_if_cancelled
     from rt.pipeline.recall import load_recall_bank
     from rt.services import section_labels
@@ -326,10 +336,11 @@ def generate_special_batch(
     if count is not None and count <= 0:
         return []
     mock = _mock(force_mock)
-    label = "Casi clinici" if qtype == RecallQuestionType.CASO else "Esercizi"
+    definition = _definition(qtype, lesson_dir)
+    label = definition.nome
     if unit_ids is None and section_labels.mode(force_mock) == "disabled":
         report(None, None, f"{label}: classificatore spento, nessuna domanda speciale")
-        templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype]
+        templates = [t for t in load_recall_bank(lesson_dir).templates if t.custom_type == definition.id]
         if not templates:
             return []
     elif unit_ids is None:
@@ -340,9 +351,9 @@ def generate_special_batch(
                          unit_ids=unit_ids, instructions=instructions, selection=selection) \
         if (unit_ids is not None or section_labels.mode(force_mock) != "disabled") else []
     wanted = (count - len(results)) if count is not None else 0
-    templates = [t for t in load_recall_bank(lesson_dir).templates if t.kind == qtype
+    templates = [t for t in load_recall_bank(lesson_dir).templates if t.custom_type == definition.id
                  and (unit_ids is None or set(t.unit_ids) <= set(unit_ids))]
-    if wanted > 0 and templates:
+    if wanted > 0 and templates and definition.varianti:
         random.shuffle(templates)
         for template in templates[:min(wanted, 2)]:  # ogni variante costa due chiamate
             raise_if_cancelled()
@@ -362,11 +373,12 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
         if dont_know:
             return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Ragionamento atteso spiegato passo per passo.", "sbagliata")
         return RecallEvaluation("Correttezza: 70%\nCompletezza: 60%\n\n[MOCK] Conclusione corretta, manca un passaggio del ragionamento.", "parziale")
-    if question.type == RecallQuestionType.CASO:
+    definition = find_type(question.custom_type)
+    if (definition and definition.correzione == "testo") or (definition is None and not question.pregenerated_material):
         from rt.pipeline.ledger import load_resolved_draft
         units = [u for u in load_resolved_draft(lesson_dir).units if u.unit_id in question.unit_ids]
-        prompt = prompts.build_recall_eval_caso_user_prompt(question.question_text, units, answer_text, dont_know=dont_know)
-        system = prompts.RECALL_EVAL_CASO_SYSTEM_PROMPT
+        prompt = prompts.build_recall_eval_text_user_prompt(question.question_text, units, answer_text, dont_know=dont_know)
+        system = prompts.RECALL_EVAL_TEXT_SYSTEM_PROMPT
     else:
         template = next((t for t in load_recall_bank(lesson_dir).templates if t.id == question.template_id), None)
         prompt = prompts.build_recall_eval_ragionamento_user_prompt(

@@ -202,7 +202,12 @@ def asset(lesson_id: int, name: str, lesson_dir: LessonDir, actor: Actor):
 
 @router.get("/settings/enrichment", response_model=EnrichmentConfig)
 def settings(actor: Actor):
-    return service.load_config().enrichment
+    from rt.core.config import classifier_job
+    cfg = service.load_config()
+    job = classifier_job(cfg, "enrichment")
+    return cfg.enrichment.model_copy(update={"mode": {"off":"disabled", "manual":"manual", "pipeline":"automatic"}[job.mode],
+        "automatic": job.mode == "pipeline", "decision_model":job.model, "decision_credential":job.credential,
+        "decision_base_url":job.base_url or cfg.enrichment.decision_base_url, "decision_timeout":job.timeout_seconds})
 
 
 @router.put("/settings/enrichment", response_model=EnrichmentConfig)
@@ -212,6 +217,8 @@ def save_settings(body: EnrichmentConfig, actor: Actor):
     from rt.services.settings_service import general_config_path, _read_yaml, _atomic_yaml
     path = general_config_path(Path(_default_project_root()))
     data = _read_yaml(path)
-    data["enrichment"] = body.model_dump()
+    from rt.services.classifier_settings import write_classifier
+    write_classifier(data, service.load_config().classifier)
+    data["enrichment"] = {k: v for k, v in body.model_dump().items() if not k.startswith("decision_") and k not in ("mode", "automatic")}
     _atomic_yaml(path, data)
-    return body
+    return settings(actor)

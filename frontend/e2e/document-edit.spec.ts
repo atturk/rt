@@ -57,10 +57,10 @@ test('documento modificabile in place: testo e timecode (triplo clic) salvati da
   await expect(status(page)).toHaveAttribute('data-status', 'saved')
   await expect(page.getByTestId('document-edit-errors')).toHaveCount(0)
 
-  // Dopo la ricarica: testo salvato, timecode spostato e funzionante, documento da ricreare.
+  // V5: dopo la ricarica testo salvato, timecode funzionante e documento aggiornato da solo.
   await page.reload()
   await expect(doc).toContainText('Paragrafo aggiunto a mano.')
-  await expect(page.locator('[data-phase-row="build"]')).toHaveAttribute('data-status', 'STALE')
+  await expect(page.locator('[data-phase-row="build"]')).toHaveAttribute('data-status', 'VALID', { timeout: 30_000 })
   const after = await apiGet<LessonDocument>(page.request, `/lessons/${chir.id}/document`)
   const moved = after.sections[0]
   expect(moved.start_formatted).not.toBe(oldTimecode)

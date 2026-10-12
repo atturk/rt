@@ -251,7 +251,7 @@ class TestIdempotencyParityAcrossLayouts:
 
 
 # ---------------------------------------------------------------------------
-# 5. Rinomina della cartella a fine build
+# 5. V5b: la build mantiene il percorso, anche con opzioni storiche
 # ---------------------------------------------------------------------------
 
 class TestBuildFolderRename:
@@ -262,20 +262,19 @@ class TestBuildFolderRename:
         run_rewrite(lesson_dir, force_mock=True)
         run_review(lesson_dir, force_mock=True)
 
-    def test_renames_to_target_and_result_reflects_new_dir(self, tmp_path):
+    def test_rename_option_preserves_folder_and_outputs(self, tmp_path):
         lesson_dir = str(tmp_path / "provvisorio")
         self._build_ready_lesson(lesson_dir)
 
         res = run_build(lesson_dir, rename_folder=True)
         assert res["status"] == "completed"
-        assert res["lesson_dir"] != lesson_dir
-        assert os.path.isdir(res["lesson_dir"])
-        assert not os.path.isdir(lesson_dir)
-        assert os.path.basename(res["lesson_dir"]).startswith("[2026-09-09] TEST")
+        assert res["lesson_dir"] == lesson_dir
+        assert os.path.isdir(lesson_dir)
+        assert os.path.isfile(res["named_file"])
+        assert os.path.basename(res["named_file"]).startswith("[2026-09-09] TEST")
 
     def test_noop_when_already_correctly_named(self, tmp_path, capsys):
-        # Costruisce prima con rename per ottenere il nome finale, poi rilancia
-        # con force sulla stessa cartella già correttamente nominata.
+        # L’opzione storica resta innocua anche nella build forzata.
         lesson_dir = str(tmp_path / "provvisorio2")
         self._build_ready_lesson(lesson_dir)
         first = run_build(lesson_dir, rename_folder=True)
@@ -289,19 +288,16 @@ class TestBuildFolderRename:
         lesson_dir = str(tmp_path / "provvisorio3")
         self._build_ready_lesson(lesson_dir)
 
-        # Copia della stessa lezione (stessa data/materia/titolo -> stesso nome target),
-        # buildata per prima, per scoprire il nome target e farlo esistere già.
-        import shutil
-        probe_dir = str(tmp_path / "provvisorio3_probe")
-        shutil.copytree(lesson_dir, probe_dir)
-        probe_res = run_build(probe_dir, rename_folder=True)
-        target_dir = probe_res["lesson_dir"]
-        assert os.path.isdir(target_dir)
+        # Una cartella col titolo del documento resta intatta: la build non la usa.
+        from rt.pipeline.build import render_lesson_documents
+        folder_name = render_lesson_documents(lesson_dir)["named_filename"][:-3]
+        target_dir = tmp_path / folder_name
+        target_dir.mkdir()
+        marker = target_dir / "conservato.txt"
+        marker.write_text("non sovrascrivere", encoding="utf-8")
 
-        # Ora la cartella target esiste già: build sulla cartella originale deve
-        # rilevare la collisione, non sovrascrivere, e non crashare.
         res = run_build(lesson_dir, rename_folder=True)
         assert res["status"] == "completed"
-        assert res["lesson_dir"] == lesson_dir  # non rinominata, collisione rilevata
+        assert res["lesson_dir"] == lesson_dir
         assert os.path.isdir(lesson_dir)
-        assert os.path.isdir(target_dir)  # la cartella target preesistente resta intatta
+        assert marker.read_text(encoding="utf-8") == "non sovrascrivere"

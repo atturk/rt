@@ -103,7 +103,7 @@ def send_current_issue(lesson_dir: str) -> None:
     issue_type = queue.issue_types[issue_id]
     issue = find_science_issue_by_id(lesson_dir, issue_id)
     if issue is None:
-        # issue non più trovata (caso limite, es. rigenerata nel frattempo): salta.
+        # issue non più trovata (situazione limite, es. rigenerata nel frattempo): salta.
         tg_queue.advance(lesson_dir)
         return send_current_issue(lesson_dir)
 

@@ -16,6 +16,7 @@ const mockVoteMutate = vi.fn()
 const mockRegenerateMutateAsync = vi.fn()
 const mockSkipMutateAsync = vi.fn()
 const mockEndMutateAsync = vi.fn()
+const mockSeenMutateAsync = vi.fn().mockResolvedValue({})
 const mockHistoryRefetch = vi.fn()
 const mockRestoreMutate = vi.fn()
 let mockRestorableData = { asked: 0, wrong: 0 }
@@ -41,7 +42,13 @@ vi.mock('@/api/hooks', () => ({
   })),
 }))
 
-vi.mock('@/api/recall', () => ({
+vi.mock('@/api/recall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/recall')>()
+  return {
+  ...actual,
+  useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES,
+    { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: true },
+    { id: 'codice', nome: 'Codice', icona: 'Code', custom: true, available: true }] }),
   recallKeys: { all: (id: number) => ['recall', id] },
   useStudyLesson: () => ({ data: { suggestions: mockSuggestions } }),
   useGenerateRecall: () => ({ mutate: mockGenerateMutate, isPending: false }),
@@ -63,6 +70,7 @@ vi.mock('@/api/recall', () => ({
     mutateAsync: mockSubjectNextMutateAsync,
     isPending: false,
   })),
+  useAnswerSeen: () => ({ mutateAsync: mockSeenMutateAsync }),
   useAnswer: vi.fn(() => ({
     mutateAsync: mockAnswerMutateAsync,
     isPending: false,
@@ -99,7 +107,7 @@ vi.mock('@/api/recall', () => ({
     isPending: false,
     isError: false,
   })),
-}))
+} })
 
 const sampleQuestion = {
   id: 'q100',
@@ -184,6 +192,7 @@ describe('LightweightSession', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Valutazione della risposta' }))
     expect(await screen.findByText('Risposta parziale.')).toBeInTheDocument()
     expect(screen.getByText('Manca il compenso respiratorio.')).toBeInTheDocument()
+    expect(mockSeenMutateAsync).toHaveBeenCalledWith('q200')
   })
 
   it('quiz: il clic sull’alternativa è la risposta e l’esito è quello del server', async () => {
@@ -209,6 +218,22 @@ describe('LightweightSession', () => {
     expect(screen.getByText('Giusto.')).toBeInTheDocument()
     expect(screen.getByText("Sotto 22 mEq/L.")).toBeInTheDocument()
     expect(screen.getByRole('link', { name: "Rileggi l'unità 1.2" })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
+  })
+
+  it('rientrando mostra la valutazione salvata e rende la domanda risposta', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, type: 'personalizzata', custom_type: 'query-sql', options: null,
+      saved_evaluation: { answer_text: 'SELECT dati', evaluation: 'Manca il filtro.', outcome: 'parziale' } })
+    renderSession()
+    expect(await screen.findByText('Manca il filtro.')).toBeInTheDocument()
+    expect(screen.getByText('Risposta parziale.')).toBeInTheDocument()
+    expect(mockSeenMutateAsync).toHaveBeenCalledWith(sampleQuestion.id)
+  })
+
+  it('rientrando riaggancia una valutazione ancora in corso', async () => {
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, type: 'mirata', options: null, evaluation_job_id: 'job-in-corso' })
+    renderSession()
+    expect(await screen.findByRole('button', { name: 'Valutazione della risposta' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rispondi' })).not.toBeInTheDocument()
   })
 
   it('invia Non lo so quando cliccato', async () => {
@@ -306,16 +331,16 @@ describe('LightweightSession', () => {
     expect(types.querySelector('[aria-pressed=true]')).toHaveTextContent('Mista 3')
     expect(screen.getByRole('button', { name: 'Quiz 2' })).toBeEnabled()
     // I tipi senza domande da porre restano spenti.
-    expect(screen.getByRole('button', { name: 'Caso clinico' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Query SQL' })).toBeDisabled()
 
     // Prima della risposta si salta, "Prossima" non c'è ancora.
     expect(screen.getByRole('button', { name: 'Salta' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Prossima' })).not.toBeInTheDocument()
 
-    // Termina: la domanda lasciata a metà torna fra quelle da porre e si torna allo studio.
+    // Termina conserva la domanda posta per riprenderla al rientro.
     fireEvent.click(screen.getByRole('button', { name: 'Termina' }))
     await waitFor(() => expect(onBack).toHaveBeenCalled())
-    expect(mockSkipMutateAsync).toHaveBeenCalledWith('q100')
+    expect(mockSkipMutateAsync).not.toHaveBeenCalled()
   })
 
   it('modo unità: finite le domande si va avanti nello Studio', async () => {
@@ -366,7 +391,7 @@ describe('LightweightSession', () => {
 
     // Pulsanti ripescaggio con conteggio
     const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })
-    const askedBtn = screen.getByRole('button', { name: 'Riproponi le poste (4)' })
+    const askedBtn = screen.getByRole('button', { name: 'Riproponi le risposte (4)' })
     expect(wrongBtn).toBeInTheDocument()
     expect(askedBtn).toBeInTheDocument()
 
@@ -408,7 +433,7 @@ it.each([false, true])('all’ultima domanda Fine mostra il finale senza next (u
   fireEvent.click(finish)
   expect(await screen.findByTestId('recall-empty')).toBeVisible()
   if (unit) expect(screen.getByText('Hai finito le domande di questa unità')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Riproponi le poste (1)' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Riproponi le risposte (1)' })).toBeVisible()
   expect(mockNextMutateAsync).toHaveBeenCalledTimes(1)
 })
 

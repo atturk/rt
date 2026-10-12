@@ -1,0 +1,406 @@
+<title>Pannello Classificatore RT</title>
+<style>
+/* Layout: note in alto, poi il pannello laterale della lezione (larghezza reale ~400px) e la scheda Impostazioni; token come nei wireframe 4.2.4 */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c; --danger:#d4382a;
+  --shadow:0 -10px 30px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  /* valori delle classificazioni */
+  --v-ok:#1f9d74; --v-warn:#e0a020; --v-none:#c9cbca; --v-blue:#3b7dd8; --v-teal:#1aa3a3;
+  --v-purple:#8a5cd6; --v-purple-l:#c5aef0; --v-coral:#e0664e; --v-coral-l:#f2b3a5; --v-red:#d4382a;
+  --hatch:#e6e6e6;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --shadow:0 -10px 30px rgb(0 0 0/.55); --tip:#f4f4f4; --tip-fg:#171717;
+  --v-ok:#4cc79a; --v-warn:#f0b44a; --v-none:#4a4a4a; --v-blue:#6aa2f0; --v-teal:#45c4c4;
+  --v-purple:#a985ea; --v-purple-l:#5d4a85; --v-coral:#f08670; --v-coral-l:#7a4338; --v-red:#ef6a5c;
+  --hatch:#2e2e2e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --shadow:0 -10px 30px rgb(0 0 0/.55); --tip:#f4f4f4; --tip-fg:#171717;
+  --v-ok:#4cc79a; --v-warn:#f0b44a; --v-none:#4a4a4a; --v-blue:#6aa2f0; --v-teal:#45c4c4;
+  --v-purple:#a985ea; --v-purple-l:#5d4a85; --v-coral:#f08670; --v-coral-l:#7a4338; --v-red:#ef6a5c;
+  --hatch:#2e2e2e; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;gap:2px;background:var(--soft);border-radius:10px;padding:3px}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+.legend-all{display:grid;gap:6px;font-size:13px}
+.legend-all div{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.legend-all b{min-width:118px;font-weight:600}
+
+/* Pannello */
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:14px;height:720px;display:flex;flex-direction:column;position:relative;overflow:hidden;width:100%;max-width:420px;justify-self:center}
+.phdr{display:flex;align-items:center;gap:4px;padding:10px 10px 10px 16px;border-bottom:1px solid var(--border);flex:none}
+.phdr h2{flex:1}
+.ib{width:32px;height:32px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;position:relative;padding:0}
+.ib:hover{background:var(--soft)}
+.ib svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib.sm{width:28px;height:28px}
+.ib.sm svg{width:15px;height:15px}
+.ib.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ib.spin svg{animation:none}}
+.pbody{flex:1;overflow:auto;padding:4px 16px 24px}
+.grp-t{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin:16px 0 2px}
+.job{padding:10px 0 12px;border-bottom:1px solid var(--border)}
+.job:last-child{border-bottom:0}
+.jh{display:flex;align-items:center;gap:2px;min-height:28px}
+.jh .name{font-weight:600;font-size:14px;flex:1;min-width:0;display:flex;align-items:center;gap:6px}
+.jh .lvl{font-size:11px;color:var(--mute);font-weight:400}
+.pill{font-size:11px;border-radius:999px;padding:1px 7px;background:var(--soft);color:var(--mute);font-weight:500}
+.pill.shadow{background:var(--note);color:var(--note-fg)}
+.job.off .grid{opacity:.35}
+.grid{display:flex;flex-wrap:wrap;gap:6px 8px;margin-top:6px}
+.u{display:flex;gap:3px}
+.c{height:22px;width:14px;border:0;border-radius:3px;padding:0;cursor:pointer;position:relative;background:var(--v-none);transition:transform .12s}
+.c.unit{width:auto}
+.c:hover,.c.hl{transform:translateY(-2px);box-shadow:0 0 0 2px var(--fg)}
+.c.todo{background:repeating-linear-gradient(135deg,var(--hatch) 0 3px,var(--bg) 3px 6px);box-shadow:inset 0 0 0 1px var(--border)}
+.c.err{background:repeating-linear-gradient(135deg,var(--hatch) 0 3px,var(--bg) 3px 6px);box-shadow:inset 0 0 0 2px var(--v-red)}
+.c.skip{background:transparent;outline:1px dashed var(--border);outline-offset:-1px;cursor:default}
+.c.skip:hover{transform:none;box-shadow:none}
+.c.man::after{content:"";position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;background:var(--fg);border:1.5px solid var(--bg)}
+.c.sel{box-shadow:0 0 0 2px var(--acc)}
+.c.busy{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.c.busy{animation:none;opacity:.5}}
+.sw{display:inline-block;width:10px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:4px}
+
+/* Tooltip */
+.tip{position:fixed;z-index:50;background:var(--tip);color:var(--tip-fg);font-size:12.5px;line-height:1.35;border-radius:7px;padding:6px 9px;pointer-events:none;max-width:260px;box-shadow:0 4px 14px rgb(0 0 0/.25)}
+.tip b{display:block;font-weight:600}
+.tip span{opacity:.8}
+
+/* Scheda da sotto */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:var(--shadow);transform:translateY(105%);transition:transform .22s ease;padding:8px 16px 16px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-height:75%;overflow:auto}
+.sheet.open{transform:none}
+@media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+.grab{width:36px;height:4px;border-radius:4px;background:var(--border);margin:0 auto}
+.sh{display:flex;align-items:center;gap:2px}
+.sh .t{flex:1;min-width:0}
+.sh .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh .t span{font-size:12px;color:var(--mute)}
+.opts{display:grid;gap:6px}
+.opt{display:flex;align-items:center;gap:10px;border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;cursor:pointer;text-align:left}
+.opt:hover{background:var(--soft)}
+.opt[aria-checked="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:var(--acc-soft)}
+.opt .sw{width:12px;height:18px;margin:0}
+.opt .ai{margin-left:auto;font-size:12px;color:var(--mute);display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
+.opt .ai svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sf{display:flex;gap:2px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:8px}
+
+/* Impostazioni */
+.wrap:not(.mode-set) .set{display:none!important}
+.mode-set .notes .pan{display:none!important}
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.srow .n{font-weight:600;font-size:14px}
+.srow .d{font-size:12px;color:var(--mute);grid-column:1}
+.seg{display:inline-flex;background:var(--soft);border-radius:8px;padding:2px;gap:2px;grid-row:span 2}
+.seg button{border:0;background:transparent;border-radius:6px;width:30px;height:28px;display:grid;place-items:center;color:var(--mute);cursor:pointer;padding:0}
+.seg button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.15)}
+.field{display:grid;gap:4px;font-size:13px;color:var(--mute);margin-top:12px}
+.field select{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 9px}
+.fieldrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+
+<header class="top">
+  <h1>Pannello Classificatore</h1>
+  <div class="tabs" role="group" aria-label="Vista">
+    <button type="button" id="tab-pan" aria-pressed="true">Lezione</button>
+    <button type="button" id="tab-set" aria-pressed="false">Impostazioni</button>
+  </div>
+  <span class="meta">Wireframe 4.2.4 · lezione d'esempio con 5 unità e 18 subunità</span>
+</header>
+
+<main class="wrap" id="wrap">
+  <section class="notes" aria-label="Note">
+    <h2 class="pan">Come funziona</h2>
+    <ul class="pan">
+      <li>Un blocco per job. Ogni rettangolo è una <b>subunità</b>. Per i job che lavorano sull'unità intera (Esercizi, Casi) un rettangolo copre tutte le sue subunità. Le colonne restano allineate tra i job.</li>
+      <li>Passando sopra un rettangolo, il tooltip mostra unità e valore e si evidenzia la stessa subunità in tutti i job.</li>
+      <li>Un clic apre la scheda da sotto: scegli il valore a mano, torni a quello del classificatore, la riclassifichi da sola o vai all'unità. ‹ › passano alla subunità vicina.</li>
+      <li>Puntino in alto a destra = corretta da te. Tratteggio = da classificare. Bordo rosso = classificazione non riuscita. Rettangolo vuoto tratteggiato = saltata (per esempio una subunità non didattica nel prefiltro).</li>
+      <li>Ogni job ha due bottoni: classifica le cambiate e riclassifica tutte. In alto, gli stessi per tutti i job.</li>
+      <li>Prefiltro, Deriva e Arricchimento si possono eseguire da qui prima della revisione: la revisione e l'arricchimento usano poi il risultato salvato, se il testo non è cambiato (richiede la cache del punto C6).</li>
+      <li>Le immagini non stanno nella griglia perché si classificano per immagine, non per subunità.</li>
+    </ul>
+    <h2 class="set">Impostazioni › Modelli › Classificatore</h2>
+    <ul class="set">
+      <li>Un solo modello condiviso in cima. Ogni job può usarne un altro (icona ⋯, qui omessa).</li>
+      <li>Per ogni job: spento, manuale (solo dal pannello), in pipeline. Rilevanza e Prefiltro, che fanno da filtro, hanno anche "in osservazione".</li>
+      <li>Toglie la dipendenza nascosta: oggi Tipo ed Esercizi/Casi si accendono con la Rilevanza.</li>
+    </ul>
+    <div class="legend-all" aria-label="Legenda dei valori" id="legend"></div>
+    <div class="q">Da decidere: per i Casi, un interruttore "lezione clinica" per lezione, predefinito dalla materia? Nella lezione d'esempio (tomografia) oggi le unità risultano "si presta".</div>
+  </section>
+
+  <div class="panel" id="panel">
+    <div class="pan" style="display:contents">
+      <div class="phdr">
+        <h2>Classificatore</h2>
+        <button class="ib" type="button" id="run-changed" aria-label="Classifica le cambiate (tutti i job)" data-tip="Classifica le cambiate (tutti i job)"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+        <button class="ib" type="button" id="run-all" aria-label="Riclassifica tutto" data-tip="Riclassifica tutto"><svg viewBox="0 0 24 24"><path d="M21 6H3"/><path d="M7 12H3"/><path d="M7 18H3"/><path d="M12 18a5 5 0 0 0 9-3 4.5 4.5 0 0 0-4.5-4.5c-1.39 0-2.5.65-3.5 1.5L11 14"/><path d="M11 10v4h4"/></svg></button>
+      </div>
+      <div class="pbody" id="body"></div>
+      <div class="sheet" id="sheet" role="dialog" aria-label="Modifica classificazione" aria-hidden="true">
+        <div class="grab"></div>
+        <div class="sh">
+          <button class="ib sm" type="button" id="prev" aria-label="Precedente" data-tip="Precedente"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <div class="t"><b id="sh-title"></b><span id="sh-job"></span></div>
+          <button class="ib sm" type="button" id="next" aria-label="Successiva" data-tip="Successiva"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <button class="ib sm" type="button" id="close" aria-label="Chiudi" data-tip="Chiudi"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="opts" id="opts" role="radiogroup" aria-label="Valore"></div>
+        <div class="sf">
+          <button class="ib" type="button" id="restore" aria-label="Torna al valore del classificatore" data-tip="Torna al valore del classificatore"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+          <button class="ib" type="button" id="rerun" aria-label="Riclassifica questa" data-tip="Riclassifica questa"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+          <button class="ib" type="button" id="goto" aria-label="Vai all'unità" data-tip="Vai all'unità"><svg viewBox="0 0 24 24"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="set pbody" id="settings">
+      <div class="fieldrow">
+        <label class="field">Modello condiviso<select id="m-model"><option>typesafe/jev-1.13</option></select></label>
+        <label class="field">Connessione<select id="m-conn"><option>openrouter</option></select></label>
+      </div>
+      <div id="srows" style="margin-top:8px"></div>
+    </div>
+  </div>
+</main>
+
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const UNITS = [
+  {id:'1', t:'Domini di rappresentazione dei segnali e motivazioni dell’analisi in frequenza', subs:['Avvisi sul corso e materiale','Segnali continui e discreti','Dominio del tempo e della frequenza','Perché l’analisi in frequenza']},
+  {id:'2', t:'Sinogramma e ricostruzione tomografica', subs:['Proiezioni e trasformata di Radon','Il sinogramma','Problema inverso']},
+  {id:'3', t:'Trasformata di Fourier 2D e teorema della sezione centrale', subs:['Fourier in due dimensioni','Proprietà della trasformata 2D','Teorema della sezione centrale','Interpolazione nel dominio delle frequenze','Domande dal pubblico']},
+  {id:'4', t:'Retroproiezione filtrata', subs:['Retroproiezione semplice e sfocatura','Filtro rampa e finestre']},
+  {id:'5', t:'Esercitazione: ricostruzione di un fantoccio', subs:['Impostazione dell’esercizio','Calcolo del sinogramma','Ricostruzione e confronto','Errori tipici']},
+];
+const SUBS = []; UNITS.forEach(u => u.subs.forEach((t,i) => SUBS.push({id:`${u.id}.${i+1}`, unit:u.id, t})));
+
+const V = (k,l,c) => ({k,l,c});
+const JOBS = [
+  {g:'Pipeline', id:'rel', name:'Rilevanza', lvl:'sub', state:'Attivo', vals:[V('did','didattica','--v-ok'),V('org','organizzativa','--v-warn'),V('no','senza contenuto','--v-none')]},
+  {g:'Pipeline', id:'tipo', name:'Tipo di domanda', lvl:'sub', state:'Attivo', vals:[V('quiz','quiz','--v-blue'),V('mir','mirata','--v-teal')], note:'caso ed esercizio arrivano da Esercizi e Casi'},
+  {g:'Pipeline', id:'ese', name:'Esercizi', lvl:'unit', state:'Attivo', vals:[V('no','nessuno','--v-none'),V('svo','svolto','--v-purple'),V('con','continua il precedente','--v-purple-l')]},
+  {g:'Pipeline', id:'caso', name:'Casi clinici', lvl:'unit', state:'Attivo', vals:[V('no','nessuno','--v-none'),V('esp','esplicito','--v-coral'),V('pre','si presta','--v-coral-l')]},
+  {g:'Revisione', id:'pre', name:'Prefiltro errori', lvl:'sub', state:'In osservazione', vals:[V('ok','corretta, salta la revisione','--v-ok'),V('rev','da rivedere','--v-warn')]},
+  {g:'Revisione', id:'der', name:'Deriva dal trascritto', lvl:'sub', state:'Attivo', vals:[V('ok','coerente','--v-ok'),V('inv','possibile invenzione','--v-red')]},
+  {g:'Arricchimento', id:'arr', name:'Arricchimento', lvl:'sub', state:'Manuale', vals:[V('no','nessuno','--v-none'),V('inf','infografica','--v-blue'),V('vis','visualizzazione','--v-teal'),V('both','entrambe','--v-purple')]},
+];
+const conf = () => (0.62 + Math.random()*0.36).toFixed(2).replace('.', ',');
+// Stato d'esempio: {value, ai, conf, man, todo, err, skip}
+const S = {};
+const set = (job, key, ai, extra={}) => S[job+'|'+key] = {value:ai, ai, conf:conf(), ...extra};
+const rel = {'1.1':'org','3.5':'no'};
+SUBS.forEach(s => set('rel', s.id, rel[s.id] || 'did'));
+S['rel|3.5'] = {...S['rel|3.5'], value:'did', man:true}; // corretta a mano
+const tipo = {'1.2':'quiz','1.3':'mir','1.4':'mir','2.1':'quiz','2.2':'mir','2.3':'mir','3.1':'quiz','3.2':'quiz','3.3':'mir','3.4':'mir','3.5':'quiz','4.1':'mir','4.2':'mir','5.1':'quiz','5.2':'mir','5.3':'mir','5.4':'quiz'};
+SUBS.forEach(s => s.id==='1.1' ? S['tipo|1.1'] = {skip:true} : set('tipo', s.id, tipo[s.id]));
+S['tipo|5.4'].todo = true; S['tipo|5.4'].value = null;
+const ese = {'1':'no','2':'no','3':'no','4':'svo','5':'con'}, caso = {'1':'no','2':'pre','3':'pre','4':'no','5':'no'};
+UNITS.forEach(u => { set('ese', u.id, ese[u.id]); set('caso', u.id, caso[u.id]); });
+S['caso|3'] = {...S['caso|3'], value:'no', man:true};
+SUBS.forEach(s => {
+  if (rel[s.id] && s.id !== '3.5') { S['pre|'+s.id] = {skip:true}; S['der|'+s.id] = {skip:true}; S['arr|'+s.id] = {skip:true}; return; }
+  set('pre', s.id, ['2.3','3.3','4.2','5.3'].includes(s.id) ? 'rev' : 'ok');
+  set('der', s.id, s.id === '3.4' ? 'inv' : 'ok');
+  set('arr', s.id, {'2.1':'vis','2.2':'inf','3.3':'both','4.1':'vis'}[s.id] || 'no');
+});
+S['der|5.2'] = {err:true, value:null, ai:null, msg:'Timeout del classificatore (15 s)'};
+['5.3','5.4'].forEach(id => { S['arr|'+id] = {todo:true, value:null, ai:null}; });
+
+const $ = id => document.getElementById(id);
+const tip = $('tip');
+const keyOf = (job, sub) => job.lvl === 'unit' ? sub.unit : sub.id;
+const valOf = (job, k) => job.vals.find(v => v.k === k);
+const unitById = id => UNITS.find(u => u.id === id);
+
+function cellInfo(job, key) {
+  const st = S[job.id+'|'+key] || {todo:true};
+  const name = job.lvl === 'unit' ? `${key} · ${unitById(key).t}` : `${key} · ${SUBS.find(s=>s.id===key).t}`;
+  let value = st.skip ? 'saltata (non didattica)' : st.err ? 'non riuscita' : st.todo ? 'da classificare' : valOf(job, st.value).l;
+  if (st.man) value += ' · corretta da te';
+  return {st, name, value};
+}
+
+function render() {
+  const body = $('body'); body.innerHTML = '';
+  let lastG = '';
+  JOBS.forEach(job => {
+    if (job.g !== lastG) { const t = document.createElement('div'); t.className='grp-t'; t.textContent = job.g; body.append(t); lastG = job.g; }
+    const el = document.createElement('section'); el.className = 'job'; el.dataset.job = job.id;
+    const legend = job.vals.map(v => `<span><span class="sw" style="background:var(${v.c})"></span>${v.l}</span>`).join(' ');
+    const pill = job.state === 'Attivo' ? '' : `<span class="pill ${job.state==='In osservazione'?'shadow':''}">${job.state==='In osservazione'?'osservazione':'manuale'}</span>`;
+    el.innerHTML = `<div class="jh"><span class="name" data-tip-html="${encodeURIComponent('<b>'+job.name+'</b>'+job.vals.map(v=>"<span class='sw' style='background:var("+v.c+")'></span>"+v.l).join('<br>')+(job.note?'<br><span>'+job.note+'</span>':''))}" tabindex="0">${job.name} ${pill}</span>
+      <button class="ib sm" type="button" data-run="changed" aria-label="Classifica le cambiate: ${job.name}" data-tip="Classifica le cambiate"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+      <button class="ib sm" type="button" data-run="all" aria-label="Riclassifica tutte: ${job.name}" data-tip="Riclassifica tutte"><svg viewBox="0 0 24 24"><path d="M21 6H3"/><path d="M7 12H3"/><path d="M7 18H3"/><path d="M12 18a5 5 0 0 0 9-3 4.5 4.5 0 0 0-4.5-4.5c-1.39 0-2.5.65-3.5 1.5L11 14"/><path d="M11 10v4h4"/></svg></button></div>
+      <div class="grid"></div>`;
+    const grid = el.querySelector('.grid');
+    UNITS.forEach(u => {
+      const g = document.createElement('div'); g.className = 'u';
+      const items = job.lvl === 'unit' ? [{key:u.id, w:u.subs.length}] : u.subs.map((_,i) => ({key:`${u.id}.${i+1}`, w:1}));
+      items.forEach(({key, w}) => {
+        const {st, name, value} = cellInfo(job, key);
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'c' + (job.lvl==='unit'?' unit':'') + (st.todo?' todo':'') + (st.err?' err':'') + (st.skip?' skip':'') + (st.man?' man':'');
+        if (job.lvl === 'unit') b.style.width = (w*14 + (w-1)*3) + 'px';
+        if (!st.todo && !st.err && !st.skip) b.style.background = `var(${valOf(job, st.value).c})`;
+        b.dataset.job = job.id; b.dataset.key = key; b.dataset.unit = u.id;
+        b.setAttribute('aria-label', `${name}: ${value}`);
+        if (st.skip) b.tabIndex = -1;
+        g.append(b);
+      });
+      grid.append(g);
+    });
+    body.append(el);
+  });
+}
+
+// Tooltip ed evidenziazione incrociata
+function showTip(target, html) {
+  tip.innerHTML = html; tip.hidden = false;
+  const r = target.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  let x = Math.min(Math.max(8, r.left + r.width/2 - t.width/2), innerWidth - t.width - 8);
+  let y = r.top - t.height - 8; if (y < 8) y = r.bottom + 8;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.hidden = true; document.querySelectorAll('.c.hl').forEach(c => c.classList.remove('hl')); }
+function highlight(cell) {
+  const job = JOBS.find(j => j.id === cell.dataset.job);
+  document.querySelectorAll('.c').forEach(c => {
+    const j = JOBS.find(x => x.id === c.dataset.job);
+    const same = job.lvl === 'unit' || j.lvl === 'unit' ? c.dataset.unit === cell.dataset.unit : c.dataset.key === cell.dataset.key;
+    c.classList.toggle('hl', same && c !== cell);
+  });
+}
+function onOver(e) {
+  const cell = e.target.closest('.c');
+  if (cell) {
+    const job = JOBS.find(j => j.id === cell.dataset.job);
+    const {name, value, st} = cellInfo(job, cell.dataset.key);
+    showTip(cell, `<b>${name}</b><span>${job.name}: ${value}${st.conf && !st.skip && !st.err ? ' · ' + st.conf : ''}${st.err ? '<br>' + st.msg : ''}</span>`);
+    highlight(cell); return;
+  }
+  const t = e.target.closest('[data-tip],[data-tip-html]');
+  if (t) showTip(t, t.dataset.tipHtml ? decodeURIComponent(t.dataset.tipHtml) : t.dataset.tip);
+}
+document.addEventListener('mouseover', onOver);
+document.addEventListener('focusin', onOver);
+document.addEventListener('mouseout', e => { if (e.target.closest('.c,[data-tip],[data-tip-html]')) hideTip(); });
+document.addEventListener('focusout', hideTip);
+
+// Scheda da sotto
+let cur = null;
+function openSheet(jobId, key) {
+  const job = JOBS.find(j => j.id === jobId);
+  cur = {job, key};
+  const {st, name} = cellInfo(job, key);
+  document.querySelectorAll('.c.sel').forEach(c => c.classList.remove('sel'));
+  document.querySelector(`.c[data-job="${jobId}"][data-key="${key}"]`)?.classList.add('sel');
+  $('sh-title').textContent = name;
+  $('sh-job').textContent = job.name + (st.err ? ' · non riuscita' : st.todo ? ' · da classificare' : '');
+  const sparkle = '<svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10.7l-5.8 1.9L12 18.4l-1.9-5.8L4 10.7l6.1-1.9z"/></svg>';
+  $('opts').innerHTML = job.vals.map(v => `<button class="opt" type="button" role="radio" aria-checked="${st.value===v.k}" data-v="${v.k}">
+    <span class="sw" style="background:var(${v.c})"></span>${v.l}${st.ai===v.k ? `<span class="ai" title="Scelta del classificatore">${sparkle}${st.conf}</span>` : ''}</button>`).join('');
+  $('restore').disabled = !st.man; $('restore').style.opacity = st.man ? 1 : .35;
+  $('sheet').classList.add('open'); $('sheet').setAttribute('aria-hidden', 'false');
+}
+function closeSheet() { $('sheet').classList.remove('open'); $('sheet').setAttribute('aria-hidden','true'); document.querySelectorAll('.c.sel').forEach(c => c.classList.remove('sel')); cur = null; }
+function step(d) {
+  if (!cur) return;
+  const keys = cur.job.lvl === 'unit' ? UNITS.map(u => u.id) : SUBS.map(s => s.id).filter(k => !S[cur.job.id+'|'+k]?.skip);
+  const i = keys.indexOf(cur.key); const n = keys[(i + d + keys.length) % keys.length];
+  openSheet(cur.job.id, n);
+}
+document.addEventListener('click', e => {
+  const cell = e.target.closest('.c');
+  if (cell && !cell.classList.contains('skip')) { hideTip(); openSheet(cell.dataset.job, cell.dataset.key); return; }
+  const opt = e.target.closest('.opt');
+  if (opt && cur) {
+    const k = cur.job.id+'|'+cur.key; const st = S[k] || {};
+    S[k] = {...st, value:opt.dataset.v, man: opt.dataset.v !== st.ai, todo:false, err:false};
+    const {job, key} = cur; render(); openSheet(job.id, key); return;
+  }
+  const run = e.target.closest('[data-run]');
+  if (run) { runJob(run.closest('.job').dataset.job, run.dataset.run === 'all', run); }
+});
+$('close').onclick = closeSheet; $('prev').onclick = () => step(-1); $('next').onclick = () => step(1);
+$('restore').onclick = () => { if (!cur) return; const k = cur.job.id+'|'+cur.key; S[k] = {...S[k], value:S[k].ai, man:false}; const {job,key} = cur; render(); openSheet(job.id, key); };
+$('rerun').onclick = () => { if (!cur) return; runCells([document.querySelector(`.c[data-job="${cur.job.id}"][data-key="${cur.key}"]`)], $('rerun')); };
+$('goto').onclick = () => { $('sh-job').textContent = 'Qui si apre la lezione su ' + cur.key; };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if (cur && e.key === 'ArrowRight') step(1); if (cur && e.key === 'ArrowLeft') step(-1); });
+
+// Esecuzione simulata
+function runCells(cells, btn) {
+  cells = cells.filter(Boolean);
+  btn?.classList.add('spin'); cells.forEach(c => c.classList.add('busy'));
+  setTimeout(() => {
+    cells.forEach(c => { const k = c.dataset.job+'|'+c.dataset.key; const st = S[k]; const job = JOBS.find(j=>j.id===c.dataset.job);
+      if (st && (st.todo || st.err)) { const v = job.vals[0].k; S[k] = {value:v, ai:v, conf:conf()}; } });
+    btn?.classList.remove('spin'); const reopen = cur && {...cur}; render(); if (reopen) openSheet(reopen.job.id, reopen.key);
+  }, 1100);
+}
+function runJob(jobId, all, btn) {
+  const cells = [...document.querySelectorAll(`.c[data-job="${jobId}"]:not(.skip)`)].filter(c => all || c.classList.contains('todo') || c.classList.contains('err'));
+  runCells(cells, btn);
+}
+$('run-changed').onclick = () => runCells([...document.querySelectorAll('.c.todo,.c.err')], $('run-changed'));
+$('run-all').onclick = () => runCells([...document.querySelectorAll('.c:not(.skip)')], $('run-all'));
+
+// Legenda nelle note
+$('legend').innerHTML = JOBS.map(j => `<div><b>${j.name}</b>${j.vals.map(v => `<span><span class="sw" style="background:var(${v.c})"></span>${v.l}</span>`).join('')}</div>`).join('');
+
+// Impostazioni
+const ICON = {
+  off:'<svg viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>',
+  hand:'<svg viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>',
+  eye:'<svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  pipe:'<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+};
+const SET = [
+  ['Rilevanza','Esclude le subunità non didattiche da revisione e recall', true, 'pipe'],
+  ['Tipo di domanda','Quiz o mirata per subunità', false, 'pipe'],
+  ['Esercizi','Unità con esercizi svolti', false, 'pipe'],
+  ['Casi clinici','Unità con pazienti o che si prestano', false, 'pipe'],
+  ['Prefiltro errori','Salta la revisione delle subunità corrette', true, 'eye'],
+  ['Deriva dal trascritto','Segnala contenuto assente dal trascritto', false, 'pipe'],
+  ['Arricchimento','Utilità di infografiche e visualizzazioni', false, 'hand'],
+  ['Immagini','A quale unità va ogni immagine trovata', false, 'hand'],
+];
+$('srows').innerHTML = SET.map(([n, d, shadow, on], i) => {
+  const opts = [['off','Spento'],['hand','Manuale, solo dal pannello']].concat(shadow ? [['eye','In osservazione']] : []).concat([['pipe','In pipeline']]);
+  return `<div class="srow"><span class="n">${n}</span><div class="seg" role="group" aria-label="${n}">${opts.map(([k,l]) => `<button type="button" aria-pressed="${k===on}" data-tip="${l}" aria-label="${l}">${ICON[k]}</button>`).join('')}</div><span class="d">${d}</span></div>`;
+}).join('');
+$('srows').addEventListener('click', e => { const b = e.target.closest('.seg button'); if (!b) return; b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+
+function mode(setMode) {
+  $('wrap').classList.toggle('mode-set', setMode);
+  $('tab-pan').setAttribute('aria-pressed', !setMode); $('tab-set').setAttribute('aria-pressed', setMode);
+  document.querySelector('.panel > .pan').style.display = setMode ? 'none' : 'contents';
+  closeSheet();
+}
+$('tab-pan').onclick = () => mode(false); $('tab-set').onclick = () => mode(true);
+render();
+</script>

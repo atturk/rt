@@ -73,6 +73,24 @@ def system_info(_actor: Actor) -> SystemInfo:
                       platform=f"{platform.system()} {platform.release()} ({platform.machine()})")
 
 
+class ChangelogGroup(BaseModel):
+    title: str
+    items: list[str]
+
+
+class ChangelogSection(BaseModel):
+    version: str
+    date: str
+    groups: list[ChangelogGroup]
+
+
+@router.get("/system/changelog", response_model=list[ChangelogSection], summary="Novità delle versioni installate")
+def system_changelog(_actor: Actor) -> list[ChangelogSection]:
+    from rt.core.changelog import read_changelog
+    from rt.core.config import _default_project_root
+    return [ChangelogSection(**section) for section in read_changelog(_default_project_root())]
+
+
 class SessionRequest(BaseModel):
     token: str = Field(description="Token API mostrato da 'rt api'")
 

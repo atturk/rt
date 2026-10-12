@@ -178,6 +178,12 @@ def _create_mock_tarball_bytes(version: str, new_file_name: str = "nuovo_modulo.
         ti_v.size = len(v_data)
         tar.addfile(ti_v, io.BytesIO(v_data))
 
+        # Le note vengono distribuite e copiate con VERSION.
+        notes = f"## {version} — 2026-10-09\n\n### Novità\n- Esempio.\n".encode("utf-8")
+        member = tarfile.TarInfo(name=f"rt-{version}/CHANGELOG.md")
+        member.size = len(notes)
+        tar.addfile(member, io.BytesIO(notes))
+
         # new file
         f_data = b"# new file content\n"
         ti_f = tarfile.TarInfo(name=f"rt-{version}/{new_file_name}")
@@ -259,6 +265,7 @@ def test_run_update_end_to_end_success(tmp_path, capsys, no_spa_download):
         assert (tmp_path / name).read_text(encoding="utf-8") == "contenuto locale"
     assert (tmp_path / "nuovo_modulo.py").exists()
     assert (tmp_path / "VERSION").read_text(encoding="utf-8").strip() == "3.3.8"
+    assert (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8").startswith("## 3.3.8 —")
     assert mock_subproc.call_args.args[0][-3:] == ["-r", str(tmp_path / "requirements.txt"), "--quiet"]
     # La web app della release viene installata; quella già presente non è "codice obsoleto".
     no_spa_download.assert_called_once_with(str(tmp_path), "3.3.8")

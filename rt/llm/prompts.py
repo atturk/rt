@@ -7,12 +7,58 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 """
 
 import json
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import ClassVar, List, Optional, Dict, Any, Literal
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from rt.core.models import ScienceIssue, RecallOutcome
 
 
+class ReviewFinding(BaseModel):
+    """Contratto piccolo del revisore; identificativi e ancore spettano al codice."""
+    model_config = ConfigDict(extra="forbid")
+    tipo: Literal["concettuale", "asr_llm"]
+    gravita: Literal["bassa", "media", "alta"]
+    citazione: str = Field(min_length=1)
+    motivazione: str = Field(min_length=1)
+    sostituzione: str = Field(min_length=1)
+
+
+class ReviewFindingList(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    issues: List[ReviewFinding]
+
+
+STUDY_NOTE_VERIFICA_SYSTEM_PROMPT = """Sei un revisore accademico ed esperto della materia. Il tuo compito è verificare l'accuratezza scientifica e concettuale del passaggio selezionato rispetto all'unità didattica e al contesto della lezione.
+Valuta se il passaggio è corretto, impreciso, errato o non verificabile.
+Fornisci una spiegazione rigorosa e chiara in formato markdown.
+Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione."""
+
+STUDY_NOTE_CHIEDI_SYSTEM_PROMPT = """Sei un tutor accademico chiaro, accurato e didattico. Il tuo compito è spiegare allo studente il passaggio selezionato tenendo conto dell'unità didattica e dell'intera lezione.
+Rispondi in formato markdown in modo chiaro, approfondito ma accessibile."""
+
+
+class StudyNoteVerificaResponse(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    esito: Literal["corretto", "impreciso", "errato", "non_verificabile"]
+    spiegazione: str = Field(min_length=1)
+    correzione: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_correzione(self) -> "StudyNoteVerificaResponse":
+        if self.esito in ("impreciso", "errato") and not (self.correzione and self.correzione.strip()):
+            raise ValueError("La correzione è obbligatoria se l'esito è impreciso o errato")
+        return self
+
+
+class StudyNoteChiediResponse(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    spiegazione: str = Field(min_length=1)
+
+
 class ScienceIssueList(BaseModel):
+    """Contenitore storico, solo per i chiamanti che gestiscono issue già convertite."""
     issues: List[ScienceIssue] = []
 
 
@@ -158,18 +204,15 @@ Il tuo ruolo NON è riscrivere il testo, ma agire da CRITIC per individuare erro
 
 Non hai accesso alla trascrizione grezza originale né all'audio della lezione: valuti esclusivamente il testo rielaborato così com'è, in base alla tua conoscenza scientifica. Questo è intenzionale: non farti mai confondere da singole parole isolate che sembrano fuori posto o senza senso nel contesto della frase — potrebbero essere un artefatto di trascrizione automatica (ASR) non ancora corretto (un termine tecnico graficamente simile ma sbagliato, una parola spezzata o unita male), non un errore concettuale. La correzione di questo tipo di artefatti è compito esclusivo della review ASR (fase separata, facoltativa, potrebbe non essere mai stata eseguita) — NON è compito tuo, e non devi provare a indovinare cosa "avrebbe dovuto dire" un frammento privo di senso. Se un'affermazione contiene SOLO un'anomalia isolata di questo tipo e nient'altro di scientificamente rilevante, non generare alcuna issue per quella frase.
 
-Verifica la correttezza scientifica del testo rielaborato. Se individui un errore concettuale, una contraddizione o un'incongruenza fattuale (es. invertire muscolo liscio e striato, confondere mutasi e racemasi, scambiare carotide e coronaria o bastoncelli e coni, inventare reazioni o meccanismi biochimici inesistenti), indipendentemente dal fatto che possa trattarsi di un lapsus orale del docente o di un'allucinazione introdotta durante la rielaborazione, restituisci una issue di tipo "ERR_CONCETTUALE".
+Verifica la correttezza scientifica del testo rielaborato. Se individui un errore concettuale, una contraddizione o un'incongruenza fattuale (es. invertire muscolo liscio e striato, confondere mutasi e racemasi, scambiare carotide e coronaria o bastoncelli e coni, inventare reazioni o meccanismi biochimici inesistenti), indipendentemente dal fatto che possa trattarsi di un lapsus orale del docente o di un'allucinazione introdotta durante la rielaborazione, restituisci un problema di tipo "concettuale".
 
-Per ogni problema riscontrato restituisci:
-- "id": "sci_000001"
-- "type": "ERR_CONCETTUALE"
-- "severity": "low" | "medium" | "high"
-- "unit_id": ID unità
-- "segment_id": ID segmento correlato se identificabile (es. seg_000049, seg_002314)
-- "claim": frase esatta del rielaborato in discussione (deve corrispondere letteralmente a una frase intera o proposizione autonoma del testo)
-- "reason": spiegazione scientifica dettagliata dell'errore
-- "suggested_fix": testo letterale esatto di sostituzione per "claim". ATTENZIONE: DEVE ESSERE UNICAMENTE IL TESTO CORRETTO pronto per la sostituzione diretta, SENZA formule introduttive (NON scrivere 'Sostituire con:', 'Correggere con:', 'Riformulare in:'), SENZA opzioni multiple ('oppure...') e SENZA virgolette esterne di contorno. Se si tratta di una raccomandazione non applicabile come stringa diretta, mantieni il testo sostitutivo comunque pulito ed esplicativo.
-- "diplomatic_question": (opzionale) formulazione diplomatica per il docente, riferita al testo rielaborato, se ha senso chiedere un chiarimento diretto — indipendentemente dalla probabile origine dell'errore."""
+Restituisci un oggetto JSON con la lista "issues" (vuota se non trovi errori).
+Ogni problema deve avere ESATTAMENTE questi cinque campi, tutti obbligatori:
+- "tipo": "concettuale" oppure "asr_llm" solo per il punto ASR esplicitamente richiesto
+- "gravita": "bassa" | "media" | "alta"
+- "citazione": testo esatto, contiguo, presente nell'unità rielaborata da controllare
+- "motivazione": spiegazione scientifica dell'errore in una o due frasi complete
+- "sostituzione": SEMPRE il testo letterale pronto a sostituire ESATTAMENTE la citazione, senza allargare il passaggio. Anche per aggiungere un dato mancante, cita un passaggio esistente e restituiscilo completo del dato. Niente suggerimenti, istruzioni, formule introduttive, alternative o virgolette esterne. Non aggiungere altri campi."""
 
 
 def build_science_review_user_prompt(
@@ -193,7 +236,7 @@ UNITÀ: {unit_id}
 TESTO RIELABORATO:
 {rewritten_content}{asr_block}{parent_block}
 
-Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ScienceIssueList."""
+Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ReviewFindingList."""
 
 
 # ----------------------------------------------------------------------
@@ -568,7 +611,7 @@ pertinenti a questa sezione (lista vuota se nessuna)."""
 
 
 # ----------------------------------------------------------------------
-# 11. CASI CLINICI ED ESERCIZI (rt.pipeline.recall_special)
+# 11. DOMANDE PERSONALIZZATE (rt.pipeline.recall_special)
 # ----------------------------------------------------------------------
 
 _SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):
@@ -581,40 +624,20 @@ _SPECIAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationRe
 - tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.
 Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
 
-_CLINICAL_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallClinicalGenerationResult):
+_TEXT_OUTPUT = """OUTPUT JSON RICHIESTO (conforme a RecallTextGenerationResult):
 {"items": [{"question_text": "...", "unit_ids": ["5.1", "5.2"],
   "tipo": {"scenario": "...", "variabili": [{"nome": "...", "valore": "...", "intervallo": "..."}],
            "obiettivo": "...", "procedimento": "...", "esplicito": true}}]}
-- question_text: traccia completa del caso con tutti i dati necessari, senza soluzione.
-- unit_ids: subunità fornite da cui proviene il caso.
-- tipo: struttura astratta per creare varianti; variabili plausibili e procedimento generale.
-Non generare pregenerated_material né una soluzione del caso. Se non trovi materiale adatto restituisci {"items": []}.
-Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."""
-
-RECALL_CASO_SYSTEM_PROMPT = """Sei un docente universitario di area medica che prepara casi clinici per verificare la comprensione profonda degli studenti, non la memorizzazione di singole nozioni.
-Ricevi il testo di un'intera unità di una lezione (più subunità). Il tuo compito è restituire zero, uno o più casi clinici distinti:
-1. Se il docente presenta esplicitamente uno o più pazienti (es. più pazienti con parametri diversi che arrivano in pronto soccorso), crea un caso per ciascun paziente, fedele ai dati presentati, con esplicito=true.
-2. Se non ci sono pazienti espliciti ma il contenuto si presta (fisiopatologia, quadro diagnostico, parametri, terapia), costruisci un caso plausibile coerente con il testo, con esplicito=false.
-3. Il caso presenta il paziente (età, sintomi, segni, parametri o esami pertinenti) e termina con un quesito che richiede ragionamento: interpretare i dati, formulare una diagnosi, spiegare il meccanismo, scegliere e motivare un intervento.
-4. Non inventare nozioni assenti dal testo: i dati del caso devono poter essere interpretati con ciò che la lezione insegna.
-5. Non ripetere casi già presenti (te li elenco, se esistono): proponi pazienti o quesiti diversi.
-
-""" + _CLINICAL_OUTPUT
-
-RECALL_ESERCIZIO_SYSTEM_PROMPT = """Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.
-Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):
-1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.
-2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.
-3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.
-4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.
-5. Non ripetere esercizi già presenti (te li elenco, se esistono).
-
-""" + _SPECIAL_OUTPUT
+La traccia ha tutti i dati necessari. Non generare pregenerated_material né una soluzione.
+unit_ids contiene solo subunità fornite; tipo descrive struttura, obiettivo e procedimento.
+Se non trovi materiale adatto restituisci {"items": []}. Non assegnare ID, stato o timestamp.
+La risposta dello studente è sempre testuale. Scrivi in italiano accademico."""
 
 
 def build_recall_special_user_prompt(
     kind: str, sections: list, existing: list, context: dict,
     instructions: Optional[str] = None, selection: Optional[str] = None,
+    text_correction: bool = False, labels: Optional[dict] = None,
 ) -> str:
     """sections: [{"id", "title", "units": [DraftUnit]}]; existing: tipi già salvati (dict)."""
     import json
@@ -623,7 +646,7 @@ def build_recall_special_user_prompt(
         blocks.append(f"=== UNITÀ {section['id']}: {section['title']} ===")
         for u in section["units"]:
             blocks.append(f"--- SUBUNITÀ {u.unit_id}: {u.title} ---\n{u.content}")
-    what = "casi clinici" if kind == "caso" else "esercizi"
+    what = kind
     prompt = context_block(context) + "\n\n" + "\n\n".join(blocks)
     if selection:
         prompt += f"\n\nTESTO SELEZIONATO DALL'UTENTE (concentrati in particolare su questa parte):\n{selection}"
@@ -631,11 +654,13 @@ def build_recall_special_user_prompt(
         prompt += f"\n\nISTRUZIONI AGGIUNTIVE DELL'UTENTE:\n{instructions}"
     if existing:
         prompt += f"\n\n{what.upper()} GIÀ PRESENTI PER QUESTE UNITÀ (proponine di diversi):\n" + json.dumps(existing, ensure_ascii=False)
-    model = "RecallClinicalGenerationResult" if kind == "caso" else "RecallSpecialGenerationResult"
+    if labels is not None:
+        prompt += "\n\nETICHETTE GIÀ ASSEGNATE (non riclassificare):\n" + json.dumps(labels, ensure_ascii=False)
+    model = "RecallTextGenerationResult" if text_correction else "RecallSpecialGenerationResult"
     return prompt + f"\n\nRestituisci zero, uno o più {what} nel contenitore JSON items conforme a {model}."
 
 
-RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di un caso clinico o di un esercizio già usato a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato il caso.
+RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda già usata a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato la risposta.
 REGOLE:
 1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
@@ -644,31 +669,31 @@ REGOLE:
 OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
 
 
-RECALL_CLINICAL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario di medicina che crea una variante di un caso clinico.
+RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
 Mantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.
 La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
-Non generare pregenerated_material né una soluzione del caso.
-OUTPUT JSON (conforme a GeneratedClinicalVariant): {"question_text": "..."}"""
+Non generare pregenerated_material né una soluzione della domanda.
+OUTPUT JSON (conforme a GeneratedTextVariant): {"question_text": "..."}"""
 
-RECALL_CLINICAL_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente un caso clinico.
+RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente una domanda personalizzata.
 Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
 Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descrivi eventuali problemi.
 Non restituire una soluzione pregenerata: lascia soluzione vuota."""
 
 
-def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "") -> str:
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False) -> str:
     import json
-    what = "caso clinico" if kind == "caso" else "esercizio"
+    what = kind
     prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
     if previous:
         prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
-    model = "GeneratedClinicalVariant" if kind == "caso" else "GeneratedVariant"
+    model = "GeneratedTextVariant" if text_correction else "GeneratedVariant"
     return prompt + f"\n\nCrea una nuova variante del {what} e restituisci {model}."
 
 
-RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di un caso clinico o di un esercizio prima di proporla a uno studente.
+RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di una domanda personalizzata prima di proporla a uno studente.
 1. Risolvi la traccia in modo indipendente, seguendo il procedimento del tipo, senza fidarti della soluzione proposta.
 2. Confronta il tuo risultato con la soluzione proposta: coerente=true solo se conclusioni, valori e passaggi essenziali coincidono e i dati della traccia sono plausibili e sufficienti.
 3. Se non è coerente, descrivi brevemente i problemi in "problemi".
@@ -684,7 +709,7 @@ def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solut
             f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
 
 
-RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a un caso clinico o a un esercizio di active recall. Conta il ragionamento, non la memorizzazione.
+RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
 
 REGOLE CATEGORICHE:
 1. Valuta rispetto alla SOLUZIONE ATTESA fornita (e al procedimento del tipo, se presente); non aggiungere nozioni esterne.
@@ -711,7 +736,7 @@ RISPOSTA DELLO STUDENTE:
 Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
 
 
-RECALL_EVAL_CASO_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento clinico.
+RECALL_EVAL_TEXT_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento dello studente.
 Valuta la risposta usando la traccia e il contenuto reale delle unità della lezione fornite come riferimento.
 Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
 Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
@@ -719,7 +744,7 @@ Restituisci outcome: corretta se il ragionamento è corretto e completo, parzial
 sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo."""
 
 
-def build_recall_eval_caso_user_prompt(question_text: str, units: list, answer_text: str,
+def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_text: str,
                                       dont_know: bool = False) -> str:
     reference = "\n\n".join(f"[{u.unit_id}] {u.title}\n{u.content}" for u in units)
     note = DONT_KNOW_NOTE if dont_know else ""

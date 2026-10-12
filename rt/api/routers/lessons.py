@@ -97,9 +97,11 @@ def run_unit_relevance(lesson_id: int, body: schemas.UnitRelevanceRun, lesson_di
             summary="Corregge o ripristina la classificazione di un'unità")
 def put_unit_relevance(lesson_id: int, unit_id: str, body: schemas.UnitRelevanceOverride,
                        lesson_dir: LessonDir, actor: Actor):
-    from rt.services.unit_relevance import set_override
+    from rt.services.classifier_view import correct, units_view
+    from rt.services.unit_relevance import list_units
     try:
-        return set_override(lesson_dir, unit_id, body.category, actor=str(actor))
+        correct(lesson_dir,"relevance",unit_id,body.category,actor=str(actor))
+        return list_units(lesson_dir,view=units_view(lesson_dir)[1])
     except KeyError:
         raise ApiError(404, "unit_not_found", "Unità non trovata nella bozza.")
 
@@ -112,12 +114,14 @@ def get_section_labels(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 
 @router.put("/lessons/{lesson_id}/sections/{section_id}", response_model=schemas.SectionLabels,
-            summary="Corregge o ripristina l'etichetta caso clinico o esercizio di un'unità")
+            summary="Corregge o ripristina l'etichetta di un tipo personalizzato di un'unità")
 def put_section_label(lesson_id: int, section_id: str, body: schemas.SectionLabelOverride,
                       lesson_dir: LessonDir, _actor: Actor):
-    from rt.services.section_labels import set_override
+    from rt.services.classifier_view import correct
+    from rt.services.section_labels import view
     try:
-        return set_override(lesson_dir, section_id, body.kind, body.value)
+        correct(lesson_dir,"custom:" + body.kind,section_id,body.value)
+        return view(lesson_dir)
     except KeyError:
         raise ApiError(404, "section_not_found", "Unità non trovata nella scaletta.")
     except ValueError as exc:
@@ -306,7 +310,7 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                status: Literal["pending", "all"] = Query("pending", description="pending: solo da decidere")):
     from rt.pipeline.ledger import load_ledger, resolve_science_accept_text
     from rt.pipeline.review import load_science_issues
-    from rt.services.review_service import issue_context, is_review_complete
+    from rt.services.review_service import issue_context, issue_quote_status, is_review_complete
     issues = load_science_issues(lesson_dir)
     decisions = {}
     for d in load_ledger(lesson_dir).decisions:
@@ -316,19 +320,25 @@ def get_issues(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.rewrite import get_draft_path
     segments = load_segments_json(lesson_path(lesson_dir, "segments.json"))
-    draft = load_resolved_draft(lesson_dir) if fs.isfile(get_draft_path(lesson_dir)) else None
+    missing = set()
+    draft = load_resolved_draft(lesson_dir, missing_decisions=missing) if fs.isfile(get_draft_path(lesson_dir)) else None
+    if draft is None:
+        missing.update(decisions)
     items = []
     for issue in issues:
         decision = decisions.get(issue.id)
-        if status == "pending" and decision is not None:
+        if status == "pending" and decision is not None and issue.id not in missing:
             continue
+        context = issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True)
         items.append({
+            "quote_status": issue_quote_status(issue, context["unit_content"]) if decision is None or issue.id in missing else None,
             "issue": issue.model_dump(mode="json"),
             "fix_text": resolve_science_accept_text(issue),
-            "context": issue_context(lesson_dir, issue, segments=segments, draft=draft, loaded=True),
+            "needs_reconfirmation": issue.id in missing,
+            "context": context,
             "decision": decision.model_dump(mode="json") if decision else None,
         })
-    pending = sum(1 for i in issues if i.id not in decisions)
+    pending = sum(1 for i in issues if i.id not in decisions or i.id in missing)
     return {"pending": pending, "total": len(issues), "review_complete": pending == 0, "items": items}
 
 
@@ -342,3 +352,38 @@ def get_decisions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 @router.get("/costs", response_model=schemas.CostSummary, summary="Riepilogo dei costi LLM di tutte le lezioni")
 def get_costs(_actor: Actor):
     return lesson_service.costs_summary()
+
+
+@router.get("/lessons/{lesson_id}/classifier", response_model=schemas.ClassifierOverview)
+def get_classifier(lesson_id: int, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.classifier_view import overview
+    return overview(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/classifier/{job}/{cell_id}", response_model=schemas.ClassifierOverview)
+def correct_classifier(lesson_id: int, job: str, cell_id: str, body: schemas.ClassifierCorrection, lesson_dir: LessonDir, actor: Actor):
+    from rt.services.classifier_view import correct
+    try:
+        return correct(lesson_dir, job, cell_id, body.value)
+    except KeyError as exc:
+        raise ApiError(404,"classifier_cell_missing","Cella non trovata") from exc
+    except ValueError as exc:
+        raise ApiError(422,"classifier_value_invalid",str(exc)) from exc
+
+
+@router.post("/lessons/{lesson_id}/classifier/run", response_model=schemas.JobAccepted, status_code=202)
+def run_classifier(lesson_id: int, body: schemas.ClassifierRun, lesson_dir: LessonDir, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job("classifier",lesson_dir,body.model_dump(),actor)
+
+
+@router.post("/lessons/{lesson_id}/classifier/{job}/run", response_model=schemas.JobAccepted, status_code=202)
+def run_classifier_job(lesson_id: int, job: str, body: schemas.ClassifierRun, lesson_dir: LessonDir, actor: Actor):
+    from rt.api.jobs import enqueue_job
+    from rt.services.classifier_view import jobs_for
+    from rt.core.config import load_config, classifier_job
+    if job not in jobs_for(lesson_dir):
+        raise ApiError(422,"classifier_job_invalid","Job non valido")
+    if classifier_job(load_config(),jobs_for(lesson_dir)[job]).mode == "off":
+        raise ApiError(409,"classifier_job_off","Job spento")
+    return enqueue_job("classifier",lesson_dir,{**body.model_dump(),"job":job},actor)

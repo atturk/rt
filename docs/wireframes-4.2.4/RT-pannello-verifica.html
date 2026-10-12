@@ -1,0 +1,430 @@
+<title>Pannello Verifica RT</title>
+<style>
+/* Layout: note a sinistra, pannello laterale della lezione (~420px) a destra; stessi token dei wireframe 4.2.4 */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c; --danger:#d4382a;
+  --warn:#c98a12; --ok:#1f9d74; --low:#8a8f8d; --del:#fde4e1; --ins:#dcf3e8;
+  --shadow:0 -10px 30px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --warn:#f0b44a; --ok:#4cc79a; --low:#8d918f; --del:#4a2421; --ins:#173a2c;
+  --shadow:0 -10px 30px rgb(0 0 0/.55); --tip:#f4f4f4; --tip-fg:#171717; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --danger:#ef6a5c;
+  --warn:#f0b44a; --ok:#4cc79a; --low:#8d918f; --del:#4a2421; --ins:#173a2c;
+  --shadow:0 -10px 30px rgb(0 0 0/.55); --tip:#f4f4f4; --tip-fg:#171717; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.tabs{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--soft);border-radius:10px;padding:3px}
+.tabs button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;padding:6px 12px;border-radius:8px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);box-shadow:0 1px 2px rgb(0 0 0/.12);font-weight:600}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:10px;min-width:0}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:6px}
+.notes li{font-size:14px}
+.notes .q{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.code{font-family:var(--mono);font-size:12.5px;background:var(--soft);border-radius:4px;padding:0 4px}
+
+/* Pannello */
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:14px;height:760px;display:flex;flex-direction:column;position:relative;overflow:hidden;width:100%;max-width:420px;justify-self:center}
+.phdr{display:flex;align-items:center;gap:2px;padding:10px 8px 10px 16px;flex:none}
+.phdr h2{flex:1}
+.ib{width:32px;height:32px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer;position:relative;padding:0}
+.ib:hover{background:var(--soft)}
+.ib:disabled{color:var(--mute);opacity:.45;cursor:default;background:transparent}
+.ib[aria-pressed="true"]{background:var(--acc-soft);color:var(--acc)}
+.ib.primary{background:var(--acc);color:var(--bg)}
+.ib.primary:hover{filter:brightness(1.08)}
+.ib.primary:disabled{background:var(--soft);color:var(--mute);opacity:1}
+.ib svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib.sm{width:28px;height:28px}
+.ib.sm svg{width:15px;height:15px}
+.ib .badge{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:999px;background:var(--fg);color:var(--bg);font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 4px;font-variant-numeric:tabular-nums}
+.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin svg{animation:none}}
+.status{padding:0 16px 10px;border-bottom:1px solid var(--border);display:grid;gap:6px;flex:none}
+.status .line{font-size:14px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.status .line b{font-size:15px}
+.status .sub{color:var(--mute);font-size:12.5px;display:flex;align-items:center;gap:6px}
+.status .sub .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.bar{height:4px;background:var(--soft);border-radius:999px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:inherit}
+.pbody{flex:1;overflow:auto;padding:0 8px 80px}
+
+/* Righe unità */
+.unit{border-bottom:1px solid var(--border)}
+.urow{display:flex;align-items:center;gap:6px;padding:9px 6px 9px 8px;border-radius:8px;cursor:pointer;min-height:44px}
+.urow:hover{background:var(--soft)}
+.chev{width:14px;height:14px;flex:none;stroke:var(--mute);fill:none;stroke-width:2;transition:transform .15s}
+.unit.open .chev{transform:rotate(90deg)}
+.uid{font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px;flex:none;width:28px}
+.utitle{flex:1;min-width:0;display:grid}
+.utitle span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.utitle small{color:var(--mute);font-size:12px}
+.dots{display:flex;gap:3px;flex:none}
+.dots i{width:7px;height:7px;border-radius:50%}
+.sev-high{background:var(--danger)} .sev-medium{background:var(--warn)} .sev-low{background:var(--low)}
+.dots i.done{background:transparent;box-shadow:inset 0 0 0 1.5px var(--mute);opacity:.6}
+.uact{display:flex;gap:0;flex:none;opacity:0;transition:opacity .1s}
+.urow:hover .uact,.urow:focus-within .uact,.unit.open .uact{opacity:1}
+@media (hover:none){.uact{opacity:1}}
+.ustate{width:18px;height:18px;flex:none;display:grid;place-items:center}
+.ustate svg{width:16px;height:16px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.st-ok svg{stroke:var(--ok)} .st-issues svg{stroke:var(--warn)} .st-never svg,.st-changed svg,.st-excluded svg{stroke:var(--mute)} .st-failed svg{stroke:var(--danger)} .st-running svg{stroke:var(--acc)}
+.unit.excluded .utitle span,.unit.excluded .uid{color:var(--mute)}
+.issues{display:grid;gap:2px;padding:0 0 8px 28px}
+.irow{display:flex;gap:8px;align-items:flex-start;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13.5px}
+.irow:hover{background:var(--soft)}
+.irow .dots{padding-top:6px}
+.irow .t{flex:1;min-width:0}
+.irow .t small{display:block;color:var(--mute);font-size:12px}
+.irow .t span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.irow.decided .t span{color:var(--mute)}
+.pill{font-size:11px;border-radius:999px;padding:1px 7px;background:var(--soft);color:var(--mute);white-space:nowrap}
+.pill.acc{background:var(--acc-soft);color:var(--acc)}
+.empty-unit{font-size:13px;color:var(--mute);padding:4px 8px 10px 36px}
+
+/* Card in linea */
+.card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:grid;gap:8px;margin:2px 0 6px;background:var(--bg);font-size:13.5px}
+.card .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card .head b{font-size:13.5px}
+.diff{border-radius:8px;background:var(--soft);padding:8px 10px;line-height:1.55}
+.diff del{background:var(--del);text-decoration:line-through;text-decoration-color:var(--danger)}
+.diff ins{background:var(--ins);text-decoration:none}
+.card .why{color:var(--mute)}
+.card .acts{display:flex;align-items:center;gap:4px}
+.card .acts .sp{flex:1}
+.card .acts .listen{font-size:12.5px;color:var(--acc);background:none;border:0;cursor:pointer;padding:4px 6px;border-radius:6px}
+.card .acts .listen:hover{background:var(--soft)}
+.card textarea{font:inherit;font-size:13.5px;width:100%;border:1px solid var(--acc);border-radius:8px;padding:8px 10px;background:var(--bg);color:var(--fg);resize:vertical;min-height:60px}
+
+/* Menu, toast, foglio di conferma, tooltip */
+.menu{position:absolute;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgb(0 0 0/.18);padding:4px;min-width:230px;display:grid}
+.menu button{border:0;background:transparent;color:var(--fg);font:inherit;font-size:14px;text-align:left;padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.menu button:hover{background:var(--soft)}
+.menu button small{color:var(--mute);margin-left:auto;font-size:12px}
+.menu hr{border:0;border-top:1px solid var(--border);margin:4px 0}
+.toast{position:absolute;left:12px;right:12px;bottom:12px;background:var(--tip);color:var(--tip-fg);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:14px;box-shadow:0 6px 20px rgb(0 0 0/.25)}
+.toast span{flex:1}
+.toast button{border:0;background:transparent;color:inherit;font:inherit;font-weight:700;cursor:pointer;padding:4px 6px;border-radius:6px;text-decoration:underline}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:var(--shadow);padding:16px;display:grid;gap:12px;z-index:30}
+.sheet p{margin:0;font-size:14px}
+.sheet .muted{color:var(--mute);font-size:13px}
+.sheet .row{display:flex;gap:8px;justify-content:flex-end}
+.btn{border:1px solid var(--border);background:var(--bg);color:var(--fg);font:inherit;font-size:14px;border-radius:8px;padding:7px 14px;cursor:pointer}
+.btn.solid{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.tip{position:fixed;z-index:50;background:var(--tip);color:var(--tip-fg);font-size:12.5px;line-height:1.35;border-radius:7px;padding:6px 9px;pointer-events:none;max-width:260px;box-shadow:0 4px 14px rgb(0 0 0/.25)}
+</style>
+
+<div class="top">
+  <h1>Pannello Verifica · 4.2.4b2</h1>
+  <div class="tabs" role="group" aria-label="Stato della lezione">
+    <button type="button" data-scn="never" aria-pressed="false">Mai verificata</button>
+    <button type="button" data-scn="running" aria-pressed="false">In corso</button>
+    <button type="button" data-scn="decide" aria-pressed="true">Da decidere</button>
+    <button type="button" data-scn="done" aria-pressed="false">Tutto deciso</button>
+  </div>
+  <span class="meta">Wireframe interattivo: passa sulle icone, apri le unità, decidi le issue.</span>
+</div>
+
+<div class="wrap">
+  <section class="notes" aria-label="Note">
+    <h2>Cosa cambia rispetto alla 4.2.3.2</h2>
+    <ul>
+      <li><b>Un solo pulsante Verifica</b> (scudo in testa). Verifica solo le unità mai verificate, cambiate o fallite, e il tooltip dice quante. Il numero sul pulsante è quello. Spento quando non c'è niente da fare.</li>
+      <li><b>Forzare</b> sta solo nei menu ⋯: "Riesegui tutta la lezione…" in testa e "Riesegui l'unità" sulla riga. Entrambi chiedono conferma nel pannello.</li>
+      <li><b>Icone con tooltip</b> al posto dei pulsanti con testo: Verifica, ordine (cronologico ⇄ gravità), mostra decise, ⋯.</li>
+      <li><b>Un solo elenco di unità</b>, sempre raggruppato, al posto delle schede Da decidere / Decise / Unità. Ogni riga ha stato, puntini delle issue e, al passaggio del mouse, Verifica e ⋯. Sul telefono le icone restano visibili.</li>
+      <li><b>L'issue si apre al suo posto</b> dentro l'unità e mostra solo la sostituzione e la motivazione: il testo originale è evidenziato nell'editor della lezione. ✓ accetta, ✗ mantiene, doppio clic modifica. Dopo la decisione si apre la successiva e compare "Annulla" nel messaggio in basso, al posto del pulsante fisso.</li>
+      <li><b>Le issue decise sono in sola lettura</b>: si torna indietro solo con "Annulla" subito dopo la decisione.</li>
+      <li><b>Niente suggerimenti</b>: ogni issue porta il testo che sostituisce quello originale, anche quando aggiunge un dato mancante (vedi 3.3).</li>
+      <li><b>Niente caselle</b> e niente striscia del classificatore: le unità escluse sono in grigio con un'icona che apre il pannello Classificatore (CL1).</li>
+      <li><b>Niente "Ricostruisci il documento"</b>: i file finali si scrivono da soli dopo ogni decisione. In testa c'è solo "Documento aggiornato".</li>
+      <li><b>Durante la verifica</b> (scheda "In corso") le unità finiscono 4 alla volta e le loro issue si possono già decidere.</li>
+    </ul>
+    <div class="q"><b>Deciso il 9 ott:</b> a lezione verificata e senza issue aperte, il pannello mostra solo il riepilogo (scheda "Tutto deciso"); le issue decise si rivedono con l'icona "Mostra decise".</div>
+  </section>
+
+  <section class="panel" id="panel" aria-label="Verifica con LLM">
+    <div class="phdr">
+      <h2>Verifica con LLM</h2>
+      <span id="hdr-actions" style="display:flex;gap:2px"></span>
+      <button class="ib" type="button" aria-label="Chiudi" data-tip="Chiudi"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="pbody" id="body"></div>
+    <div id="overlay"></div>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const I = {
+  shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  time:'<path d="M3 6h13M3 12h9M3 18h5"/><path d="M18 9v12M15 18l3 3 3-3"/>',
+  sev:'<path d="M3 6h5M3 12h9M3 18h13"/><path d="M18 9v12M15 18l3 3 3-3"/>',
+  eye:'<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
+  more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>', x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  ok:'<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  issues:'<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>',
+  never:'<circle cx="12" cy="12" r="9"/>',
+  changed:'<circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/>',
+  failed:'<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/>',
+  running:'<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
+  tag:'<path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+  pencil:'<path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/>',
+  redo:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  chev:'<path d="m9 18 6-6-6-6"/>'
+};
+const svg = (k, cls='') => `<svg viewBox="0 0 24 24" class="${cls}">${I[k]}</svg>`;
+
+const UNITS = [
+  ['1.1','Richiamo del modello compartimentale'],['1.2','Limiti della stima della clearance'],['1.3','Introduzione alla farmacocinetica non lineare'],
+  ['2.1','Definizione della dose di carico'],['2.2','Calcolo del volume di distribuzione'],['2.3','Avvisi sull’esame e materiale'],
+  ['3.1','Emivita e stato stazionario'],['3.2','Monitoraggio terapeutico'],['3.3','Esempio: digossina'],
+  ['4.1','Insufficienza renale e aggiustamento'],['4.2','Interazioni da induzione enzimatica'],['4.3','Domande degli studenti'],['4.4','Riepilogo']
+];
+const ISSUES = [
+  {id:'a',u:'1.2',sev:'high',type:'Errore concettuale',time:'08:41',before:'La clearance si misura in mg/h',after:'La clearance si misura in L/h (volume di plasma depurato per unità di tempo)',why:'La clearance è un volume per unità di tempo, non una quantità.'},
+  {id:'b',u:'1.2',sev:'low',type:'Imprecisione',time:'09:20',before:'quasi sempre lineare',after:'lineare nell’intervallo terapeutico per la maggior parte dei farmaci',why:'Generalizzazione eccessiva.'},
+  {id:'c',u:'2.2',sev:'medium',type:'Valore numerico',time:'17:05',before:'Vd della digossina circa 50 L',after:'Vd della digossina circa 500 L (7 L/kg)',why:'Ordine di grandezza errato rispetto alla letteratura.'},
+  {id:'d',u:'3.1',sev:'high',type:'Errore concettuale',time:'24:12',before:'lo stato stazionario si raggiunge dopo 2 emivite',after:'lo stato stazionario si raggiunge dopo 4-5 emivite',why:'Dopo 2 emivite si è al 75%.'},
+  {id:'e',u:'3.3',sev:'medium',type:'Informazione mancante',time:'31:40',before:'la digossina va dosata con attenzione',after:'la digossina va dosata con attenzione: la finestra terapeutica è stretta (0,5-2 ng/mL)',why:'Manca un dato utile allo studente.'},
+  {id:'f',u:'4.1',sev:'low',type:'Deriva dal trascritto',time:'38:02',before:'il docente cita la formula di Cockcroft-Gault',after:'Il docente cita la formula, ma il testo aggiunge un esempio numerico che nel trascritto non c’è.',why:'Contenuto non presente nella lezione.',paragraph:true},
+  {id:'g',u:'4.2',sev:'medium',type:'Errore concettuale',time:'42:55',before:'la rifampicina inibisce il CYP3A4',after:'la rifampicina induce il CYP3A4',why:'Inversione induzione/inibizione.'},
+  {id:'h',u:'4.2',sev:'low',type:'Imprecisione',time:'44:10',before:'effetto immediato',after:'effetto che compare in 1-2 settimane',why:'L’induzione richiede sintesi di nuovo enzima.'}
+];
+const EXCLUDED = ['2.3','4.3'];
+
+let S;
+function scenario(name){
+  const st = {};
+  UNITS.forEach(([id]) => st[id] = EXCLUDED.includes(id) ? 'excluded' : 'ok');
+  ISSUES.forEach(i => st[i.u] = 'issues');
+  S = {name, order:'time', showDecided:false, open:new Set(['1.2']), sel:'a', decided:{}, editing:null, menu:null, sheet:null, toast:null, running:new Set(), queue:[]};
+  if (name === 'never') { UNITS.forEach(([id]) => st[id] = EXCLUDED.includes(id) ? 'excluded' : 'never'); S.open = new Set(); S.sel = null; }
+  if (name === 'decide') { st['4.4'] = 'changed'; st['3.2'] = 'failed'; }
+  if (name === 'running') {
+    ['3.2','3.3','4.1','4.2','4.4'].forEach(id => st[id] = 'never');
+    ['3.1'].forEach(id => st[id] = 'never');
+    S.running = new Set(['3.1','3.2','3.3','4.1']); S.queue = ['4.2','4.4'];
+    S.decided = {a:'accepted'};
+  }
+  if (name === 'done') { ISSUES.forEach(i => S.decided[i.id] = i.id === 'b' ? 'rejected' : 'accepted'); S.open = new Set(); S.sel = null; }
+  S.st = st;
+  render();
+}
+
+const units = () => UNITS.map(([id,title]) => ({id, title, state: S.running.has(id) ? 'running' : S.st[id], issues: ISSUES.filter(i => i.u === id && (S.st[id] !== 'never' || S.running.has(id) === false) && S.st[id] !== 'never')}));
+const pending = () => ISSUES.filter(i => !S.decided[i.id] && !['never'].includes(S.st[i.u]));
+const missing = () => UNITS.filter(([id]) => ['never','changed','failed'].includes(S.st[id]) && !S.running.has(id) && !S.queue.includes(id));
+const SEVR = {high:0,medium:1,low:2};
+const LBL = {ok:'Nessun problema',issues:'Con issue',never:'Mai verificata',changed:'Testo cambiato dopo la verifica',failed:'Verifica fallita: riprova',excluded:'Esclusa dal classificatore',running:'Verifico…'};
+
+function render(){
+  const busy = S.running.size > 0 || S.queue.length > 0;
+  const miss = missing();
+  const pend = pending();
+  const reviewed = UNITS.filter(([id]) => ['ok','issues'].includes(S.st[id])).length;
+  const eligible = UNITS.length - EXCLUDED.length;
+  // Testata
+  const verifyTip = busy ? `Interrompi la verifica (${S.running.size + S.queue.length} unità restanti)`
+    : miss.length ? `Verifica ${miss.length} ${miss.length === 1 ? 'unità' : 'unità'} ${S.name === 'never' ? 'mai verificate' : 'mancanti o cambiate'}`
+    : 'Tutte le unità sono verificate';
+  document.getElementById('hdr-actions').innerHTML = `
+    <button class="ib ${busy ? 'spin' : 'primary'}" type="button" id="verify" ${!busy && !miss.length ? 'disabled' : ''} aria-label="${verifyTip}" data-tip="${verifyTip}">${busy ? svg('running') : svg('shield')}${!busy && miss.length ? `<span class="badge">${miss.length}</span>` : ''}</button>
+    <button class="ib" type="button" id="order" aria-label="Ordine" data-tip="${S.order === 'time' ? 'Ordine: cronologico (clic per gravità)' : 'Ordine: gravità (clic per cronologico)'}">${svg(S.order === 'time' ? 'time' : 'sev')}</button>
+    <button class="ib" type="button" id="decided" aria-pressed="${S.showDecided}" aria-label="Mostra le issue decise" data-tip="${S.showDecided ? 'Nascondi le issue decise' : 'Mostra le issue decise'}">${svg('eye')}</button>
+    <button class="ib" type="button" id="more" aria-label="Altro" data-tip="Altro">${svg('more')}</button>`;
+  // Stato
+  const doneN = Object.keys(S.decided).length;
+  let line;
+  if (S.name === 'never' && !busy) line = `<b>Mai verificata</b><span>${eligible} unità da verificare</span>`;
+  else if (busy) line = `<b>Verifico ${S.running.size + S.queue.length} unità</b><span>${pend.length} issue da decidere già pronte</span>`;
+  else if (pend.length) line = `<b>${pend.length} da decidere</b><span>${doneN} decise</span>`;
+  else line = `<b>Tutto deciso</b><span>${doneN} issue: ${Object.values(S.decided).filter(d => d === 'accepted').length} accettate, ${Object.values(S.decided).filter(d => d === 'rejected').length} mantenute</span>`;
+  const progress = busy ? Math.round(100 * reviewed / eligible) : null;
+  document.getElementById('status').innerHTML = `
+    <div class="line">${line}</div>
+    ${busy ? `<div class="bar" aria-label="Avanzamento"><i style="width:${progress}%"></i></div>` : ''}
+    <div class="sub">${reviewed}/${eligible} unità verificate · ${EXCLUDED.length} escluse <span style="flex:1"></span>${S.name === 'never' ? '' : '<span class="dot"></span>Documento aggiornato'}</div>`;
+  // Elenco
+  let list = units();
+  if (S.order === 'sev') list = [...list].sort((a,b) => {
+    const m = u => Math.min(3, ...u.issues.filter(i => !S.decided[i.id]).map(i => SEVR[i.sev]));
+    return m(a) - m(b);
+  });
+  if (S.name === 'done' && !S.showDecided) {
+    document.getElementById('body').innerHTML = `<div style="padding:28px 16px;text-align:center;color:var(--mute);display:grid;gap:8px;place-items:center">${svg('ok').replace('<svg','<svg style="width:28px;height:28px;stroke:var(--ok);fill:none;stroke-width:2"')}<span>Nessuna issue da decidere.<br>Le issue decise si rivedono con l'icona a forma di occhio.</span></div>` + list.map(unitHtml).join('');
+  } else document.getElementById('body').innerHTML = list.map(unitHtml).join('');
+  overlay();
+}
+
+function unitHtml(u){
+  const open = S.open.has(u.id);
+  const shown = u.issues.filter(i => S.showDecided || !S.decided[i.id]);
+  const dots = u.issues.map(i => `<i class="sev-${i.sev}${S.decided[i.id] ? ' done' : ''}"></i>`).join('');
+  const sub = u.state === 'running' ? 'Verifico…' : u.state === 'issues' ? `${u.issues.filter(i => !S.decided[i.id]).length} da decidere · ${u.issues.filter(i => S.decided[i.id]).length} decise` : LBL[u.state] + (S.queue.includes(u.id) ? ' · in coda' : '');
+  const canVerify = ['never','changed','failed'].includes(u.state) && !S.queue.includes(u.id);
+  const act = u.state === 'excluded'
+    ? `<button class="ib sm" type="button" data-act="cls" aria-label="Apri nel pannello Classificatore" data-tip="Esclusa dal classificatore: apri il pannello Classificatore">${svg('tag')}</button>`
+    : u.state === 'running' ? '' : `
+      ${canVerify ? `<button class="ib sm" type="button" data-act="verify-unit" data-u="${u.id}" aria-label="Verifica l’unità ${u.id}" data-tip="Verifica l’unità ${u.id}">${svg('shield')}</button>` : ''}
+      ${['ok','issues'].includes(u.state) ? `<button class="ib sm" type="button" data-act="unit-more" data-u="${u.id}" aria-label="Azioni sull’unità ${u.id}" data-tip="Altro">${svg('more')}</button>` : ''}`;
+  const body = open ? (shown.length ? `<div class="issues">${shown.map(issueHtml).join('')}</div>`
+    : `<div class="empty-unit">${u.state === 'ok' ? 'Verificata, nessun problema trovato.' : u.issues.length ? 'Tutte le issue sono decise.' : LBL[u.state] + '.'}</div>`) : '';
+  return `<div class="unit ${open ? 'open' : ''} ${u.state === 'excluded' ? 'excluded' : ''}" data-u="${u.id}">
+    <div class="urow" data-act="toggle" data-u="${u.id}" tabindex="0">
+      ${svg('chev','chev')}
+      <span class="ustate st-${u.state} ${u.state === 'running' ? 'spin' : ''}" data-tip="${LBL[u.state]}">${svg(u.state === 'excluded' ? 'never' : u.state)}</span>
+      <span class="uid">${u.id}</span>
+      <span class="utitle"><span>${u.title}</span><small>${sub}</small></span>
+      <span class="dots" aria-hidden="true">${dots}</span>
+      <span class="uact">${act}</span>
+    </div>${body}</div>`;
+}
+
+function issueHtml(i){
+  const d = S.decided[i.id];
+  if (S.sel !== i.id) return `<div class="irow ${d ? 'decided' : ''}" data-act="sel" data-i="${i.id}" tabindex="0">
+    <span class="dots"><i class="sev-${i.sev}${d ? ' done' : ''}"></i></span>
+    <span class="t"><small>${i.type} · ${i.time}${d ? ` · <span class="pill acc">${d === 'accepted' ? 'accettata' : d === 'edited' ? 'modificata' : 'mantenuta'}</span>` : ''}</small><span>${i.after}</span></span></div>`;
+  const editing = S.editing === i.id;
+  const text = d || i.paragraph ? `<div class="diff">${i.after}</div>`
+    : editing ? `<textarea id="edit-${i.id}" aria-label="Correzione">${i.after}</textarea>`
+    : `<div class="diff" data-act="edit" data-i="${i.id}" data-tip="Doppio clic per modificare">${i.after}</div>`;
+  const acts = d ? `<span class="pill acc">${d === 'accepted' ? 'Accettata' : d === 'edited' ? 'Modificata' : 'Mantenuta'}</span><span class="sp"></span>`
+    : `${true ? `<button class="ib sm primary" type="button" data-act="accept" data-i="${i.id}" aria-label="${editing ? 'Applica la tua correzione' : i.paragraph ? 'Chiudi l’avviso' : 'Accetta la correzione'}" data-tip="${editing ? 'Applica la tua correzione (⌘↵)' : i.paragraph ? 'Chiudi l’avviso' : 'Accetta la correzione'}">${svg('check')}</button>` : ''}
+       ${!i.paragraph ? `<button class="ib sm" type="button" data-act="reject" data-i="${i.id}" aria-label="Mantieni il testo attuale" data-tip="Mantieni il testo attuale">${svg('x')}</button>` : `<button class="ib sm" type="button" data-act="edit" data-i="${i.id}" aria-label="Modifica il paragrafo" data-tip="Modifica il paragrafo">${svg('pencil')}</button>`}
+       <span class="sp"></span>`;
+  return `<div class="card" data-i="${i.id}">
+    <div class="head"><span class="dots"><i class="sev-${i.sev}"></i></span><b>${i.type}</b></div>
+    ${text}
+    <div class="why">${i.why}</div>
+    <div class="acts">${acts}<button class="listen" type="button">Ascolta da ${i.time}</button></div>
+  </div>`;
+}
+
+function overlay(){
+  const o = document.getElementById('overlay');
+  let h = '';
+  if (S.menu === 'more') h += `<div class="menu" style="top:52px;right:40px" role="menu">
+      <button type="button" data-act="force-all" role="menuitem">${svg('redo').replace('<svg','<svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"')}Riesegui tutta la lezione…</button>
+      <hr><button type="button" data-act="noop" role="menuitem">Scarica il registro delle issue <small>.md</small></button></div>`;
+  if (S.menu && S.menu.startsWith('unit:')) {
+    const id = S.menu.slice(5);
+    const row = document.querySelector(`.unit[data-u="${id}"] .urow`);
+    const top = row ? row.offsetTop + row.offsetHeight + 90 - document.getElementById('body').scrollTop : 120;
+    h += `<div class="menu" style="top:${Math.min(top,600)}px;right:16px" role="menu"><button type="button" data-act="force-unit" data-u="${id}" role="menuitem">Riesegui l’unità ${id}…</button><button type="button" data-act="noop" role="menuitem">Vai all’unità nel testo</button></div>`;
+  }
+  if (S.sheet) {
+    const all = S.sheet === 'all';
+    const n = all ? Object.keys(S.decided).length : ISSUES.filter(i => i.u === S.sheet && S.decided[i.id]).length;
+    h += `<div class="sheet" role="dialog" aria-label="Conferma">
+      <p><b>${all ? 'Rieseguire la verifica di tutta la lezione?' : `Rieseguire la verifica dell’unità ${S.sheet}?`}</b></p>
+      <p class="muted">${all ? 'Anche le unità già verificate tornano al modello.' : 'L’unità è già verificata sul testo di adesso.'} ${n ? `Le ${n} decisioni prese restano: se un’issue non si ritrova, la sua correzione resta nel testo e la decisione va riconfermata.` : ''}</p>
+      <div class="row"><button class="btn" type="button" data-act="cancel">Annulla</button><button class="btn solid" type="button" data-act="${all ? 'do-force-all' : 'do-force-unit'}">Riesegui</button></div></div>`;
+  }
+  if (S.toast) h += `<div class="toast" role="status"><span>${S.toast.text}</span>${S.toast.undo ? '<button type="button" data-act="undo">Annulla</button>' : ''}</div>`;
+  o.innerHTML = h;
+}
+
+let toastTimer;
+function toast(text, undo){ S.toast = {text, undo}; clearTimeout(toastTimer); toastTimer = setTimeout(() => { S.toast = null; overlay(); }, 5000); }
+function next(after){
+  const order = ISSUES.filter(i => !S.decided[i.id] && S.st[i.u] !== 'never');
+  const nx = order.find(i => ISSUES.indexOf(i) > ISSUES.indexOf(after)) || order[0];
+  if (nx) { S.sel = nx.id; S.open.add(nx.u); } else S.sel = null;
+}
+function decide(id, d){
+  const i = ISSUES.find(x => x.id === id);
+  S.decided[id] = d; S.editing = null; S.lastUndo = id;
+  toast(`${i.u} · ${d === 'accepted' ? 'Correzione accettata' : d === 'edited' ? 'Correzione modificata' : 'Testo mantenuto'}. Documento aggiornato.`, true);
+  next(i); render();
+}
+function startRun(ids){
+  ids.forEach(id => S.queue.push(id));
+  pump();
+}
+function pump(){
+  while (S.running.size < 4 && S.queue.length) S.running.add(S.queue.shift());
+  render();
+  [...S.running].forEach(id => {
+    if (S['t' + id]) return;
+    S['t' + id] = setTimeout(() => {
+      S['t' + id] = null;
+      if (!S.running.has(id)) return;
+      S.running.delete(id);
+      S.st[id] = ISSUES.some(i => i.u === id) ? 'issues' : 'ok';
+      if (S.name === 'never') S.name = 'decide';
+      if (!S.sel) { const f = ISSUES.find(i => i.u === id && !S.decided[i.id]); if (f) { S.sel = f.id; S.open.add(id); } }
+      pump();
+    }, 900 + Math.random() * 1600);
+  });
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act],#verify,#order,#decided,#more,[data-scn]');
+  if (!t) { if (S.menu) { S.menu = null; overlay(); } return; }
+  if (t.dataset.scn) { document.querySelectorAll('[data-scn]').forEach(b => b.setAttribute('aria-pressed', b === t)); scenario(t.dataset.scn); return; }
+  const act = t.id || t.dataset.act;
+  if (act !== 'more' && act !== 'unit-more') S.menu = null;
+  switch (act) {
+    case 'verify':
+      if (S.running.size || S.queue.length) { S.queue = []; S.running.clear(); toast('Verifica interrotta. Le unità finite restano verificate.'); render(); }
+      else startRun(missing().map(([id]) => id));
+      break;
+    case 'order': S.order = S.order === 'time' ? 'sev' : 'time'; render(); break;
+    case 'decided': S.showDecided = !S.showDecided; render(); break;
+    case 'more': S.menu = S.menu === 'more' ? null : 'more'; overlay(); break;
+    case 'unit-more': e.stopPropagation(); S.menu = S.menu === 'unit:' + t.dataset.u ? null : 'unit:' + t.dataset.u; overlay(); break;
+    case 'toggle': { const id = t.dataset.u; S.open.has(id) ? S.open.delete(id) : S.open.add(id); render(); break; }
+    case 'sel': S.sel = t.dataset.i; S.editing = null; render(); break;
+    case 'accept': {
+      const ta = document.getElementById('edit-' + t.dataset.i);
+      decide(t.dataset.i, ta && ta.value !== ISSUES.find(i => i.id === t.dataset.i).after ? 'edited' : 'accepted'); break; }
+    case 'reject': decide(t.dataset.i, 'rejected'); break;
+    case 'edit': if (S.decided[t.dataset.i]) break; if (e.detail >= 2 || t.tagName === 'BUTTON') { S.editing = t.dataset.i; render(); document.getElementById('edit-' + t.dataset.i)?.focus(); } break;
+    case 'verify-unit': e.stopPropagation(); startRun([t.dataset.u]); break;
+    case 'cls': e.stopPropagation(); toast('Si apre il pannello Classificatore sull’unità.'); overlay(); break;
+    case 'force-all': S.menu = null; S.sheet = 'all'; overlay(); break;
+    case 'force-unit': S.menu = null; S.sheet = t.dataset.u; overlay(); break;
+    case 'cancel': S.sheet = null; overlay(); break;
+    case 'do-force-all': S.sheet = null; startRun(UNITS.map(([id]) => id).filter(id => !EXCLUDED.includes(id))); break;
+    case 'do-force-unit': { const id = S.sheet; S.sheet = null; startRun([id]); break; }
+    case 'undo': if (S.lastUndo) { delete S.decided[S.lastUndo]; S.sel = S.lastUndo; S.open.add(ISSUES.find(i => i.id === S.lastUndo).u); S.lastUndo = null; S.toast = null; render(); } break;
+    case 'noop': overlay(); break;
+  }
+});
+document.addEventListener('dblclick', e => { const t = e.target.closest('[data-act="edit"]'); if (t && !S.decided[t.dataset.i]) { S.editing = t.dataset.i; render(); document.getElementById('edit-' + t.dataset.i)?.focus(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && S.editing) { const id = S.editing; decide(id, 'edited'); }
+  if (e.key === 'Escape' && S.editing) { S.editing = null; render(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.urow,.irow')) { e.preventDefault(); e.target.click(); }
+});
+// Tooltip
+const tip = document.getElementById('tip');
+document.addEventListener('pointerover', e => {
+  const t = e.target.closest('[data-tip]'); if (!t) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false;
+  const r = t.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+  tip.style.top = (r.bottom + 6) + 'px';
+});
+document.addEventListener('scroll', () => tip.hidden = true, true);
+scenario('decide');
+</script>

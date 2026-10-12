@@ -62,15 +62,18 @@ def test_subject_session_rotates_lessons_and_saves_summary(api_client, lessons, 
         save_recall_bank(bank, directory)
 
     first = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
-    second = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
-    assert {first["lesson_id"], second["lesson_id"]} == set(lessons)  # le lezioni si danno il turno
-    assert first["question"]["type"] == "quiz" and first["question"]["correct_index"] is None
-
+    resumed = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
+    assert resumed["question"]["id"] == first["question"]["id"]
+    assert resumed["lesson_id"] == first["lesson_id"]
     # la risposta passa dagli endpoint della lezione della domanda
     lid, qid = first["lesson_id"], first["question"]["id"]
     res = api_client.post(f"/api/v1/lessons/{lid}/recall/answer",
                           json={"question_id": qid, "choice": _correct_index(lid, qid)})
     assert res.json()["correct"] is True
+
+    second = api_client.post("/api/v1/recall/subject/next", params={"materia": "BIOCHIMICA", "qtype": "quiz"}).json()
+    assert {first["lesson_id"], second["lesson_id"]} == set(lessons)  # le lezioni si danno il turno
+    assert first["question"]["type"] == "quiz" and first["question"]["correct_index"] is None
 
     # la domanda saltata torna in coda e si passa all'altra lezione
     skipped = second

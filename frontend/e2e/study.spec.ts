@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, answerAndSee, loginViaLink, serverState } from './support'
 
 // Studio del design 4.2 (schermate 05, 05b e 06): lettura dell'unità, poi le sue domande una
 // alla volta, poi l'unità dopo. Si entra dalle righe e dai gruppi di Lezioni e dall'intestazione
@@ -121,7 +121,8 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await page.getByRole('button', { name: 'Torna allo studio' }).first().click()
   await expect(page.getByTestId('study-text')).toBeVisible()
   await page.getByTestId('study-quiz').click()
-  await expect(page.getByTestId('recall-question')).toBeVisible()
+  // Il caricamento attende anche le riletture del pool: sul server e2e possono superare 10 s.
+  await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
   // Due risposte, poi "Termina" riporta al testo dell'unità con le domande rimaste.
   const answers = Math.min(2, total)
   const answered: string[] = []
@@ -601,7 +602,7 @@ test('ai limiti le frecce lasciano l’unità aperta e mostrano la fascia', asyn
   await expect(page.getByTestId('study-edge-right')).toBeVisible()
   await expect(page.getByRole('heading', { level: 2 })).toContainText(study.units.at(-1)!.title)
   await expect(page.getByTestId('study-done')).toHaveCount(0)
-  await expect(page.locator('[aria-live="polite"]')).toContainText('Ultima unità')
+  await expect(page.locator('[aria-live="polite"]', { hasText: 'Ultima unità' })).toHaveText('Ultima unità')
 })
 
 test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) => {
@@ -648,9 +649,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
   try {
     const history = await apiGet<{ questions: { id: string; unit_ids: string[] }[] }>(page.request, `/lessons/${l.id}/recall/history`)
     for (const question of history.questions.filter(q => q.unit_ids.includes(unit.id))) {
-      expect((await page.request.post(`/api/v1/lessons/${l.id}/recall/questions/${question.id}/status`, {
-        headers: authHeaders(), data: { status: 'asked' },
-      })).ok()).toBeTruthy()
+      await answerAndSee(page.request, l.id, question.id)
     }
     const accepted = await page.request.post(`/api/v1/lessons/${l.id}/recall/generate`, {
       headers: authHeaders(), data: { qtype: 'consigliato', unit_ids: [unit.id], count: 1 },
@@ -776,4 +775,121 @@ test('4.2.3.1: in cima alla finestra i suggerimenti scendono sotto; le info dell
   const popup = page.getByTestId('study-details-popup')
   await expect(popup).toBeVisible()
   await inView(await popup.boundingBox())
+})
+
+test('zen: Z, barra col mouse, posizione e ritorno dal ripasso', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await page.evaluate(() => window.scrollTo(0, 120))
+  const position = await page.evaluate(() => window.scrollY)
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByRole('navigation')).toBeHidden()
+  await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open')
+  const text = page.getByTestId('study-text')
+  const top = await text.evaluate(el => el.getBoundingClientRect().top)
+  for (const key of ['e', 'g', 'Shift+E', 's']) {
+    await page.keyboard.press(key)
+    await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
+  }
+  await page.mouse.move(300, 8)
+  await expect(page.getByTestId('zen-bar')).toHaveAttribute('data-open', 'true')
+  await page.mouse.move(300, 250)
+  await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open', { timeout: 4000 })
+  await page.keyboard.press('d')
+  if (await page.getByTestId('recall-session-page').isVisible()) {
+    await page.getByRole('button', { name: 'Torna allo studio', exact: true }).first().click()
+    await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+    await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
+  } else {
+    await expect(page.getByTestId('study-generate-modal')).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(position)
+})
+
+test('zen su iPhone: il bordo alto apre la barra e il testo la richiude', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: serverState().base_url, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  try {
+    await loginViaLink(page)
+    const l = await lesson(page, 'PATOLOGIA')
+    await page.goto(`/studio/lezione/${l.id}`)
+    await page.getByTestId('study-zen-btn').tap()
+    await expect(page.getByRole('navigation')).toBeHidden()
+    await page.touchscreen.tap(190, 8)
+    await expect(page.getByTestId('zen-bar')).toHaveAttribute('data-open', 'true')
+    await page.touchscreen.tap(190, 250)
+    await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open')
+    await page.touchscreen.tap(190, 8)
+    await page.getByRole('button', { name: 'Esci dalla modalità zen · Z' }).tap()
+    await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  } finally { await context.close() }
+})
+
+test('linguetta Studio: avanti dalla prima unità, indietro dall’ultima', async ({ page }) => {
+  await loginViaLink(page)
+  const source = await lesson(page, 'STUDIO')
+  const target = await lesson(page, 'STUDIO_NAV')
+  // I test della configurazione cambiano i modelli: rivalida le fixture con gli input attuali.
+  for (const fixture of [source, target]) {
+    for (const phase of ['prepare', 'outline', 'rewrite']) {
+      const response = await page.request.post(`/api/v1/lessons/${fixture.id}/phases/${phase}/validate`, { headers: authHeaders() })
+      expect(response.ok(), await response.text()).toBeTruthy()
+    }
+  }
+  await page.goto(`/studio/lezione/${source.id}`)
+  const units = (await apiGet<Study>(page.request, `/lessons/${source.id}/study`)).units
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await page.getByTestId('unit-index-toggle').click()
+  await page.getByRole('menuitem').last().click()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('lesson-jump-tab-right')).toBeVisible()
+  await page.getByTestId('lesson-jump-right-sameDay').click()
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${target.id}$`))
+  const targetUnits = (await apiGet<Study>(page.request, `/lessons/${target.id}/study`)).units
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', targetUnits[0].id)
+  await page.keyboard.press('ArrowLeft')
+  await page.getByTestId('lesson-jump-left-sameDay').click()
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${source.id}$`))
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', units.at(-1)!.id)
+})
+
+test('Irlen in tema scuro: contrasto in zen e lettura veloce con ogni tinta', async ({ page }) => {
+  const preferences = await apiGet<Record<string, unknown>>(page.request, '/preferences')
+  try {
+    expect((await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify('scuro') })).ok()).toBeTruthy()
+    await loginViaLink(page)
+    const l = await lesson(page, 'STUDIO')
+    for (const irlen of ['pesca', 'menta', 'pergamena']) {
+      expect((await page.request.put('/api/v1/preferences/study.rsvp', { headers: authHeaders(), data: { ...RSVP_DEFAULT, irlen } })).ok()).toBeTruthy()
+      await page.goto(`/studio/lezione/${l.id}`)
+      await expect(page.getByTestId('study-text')).toBeVisible()
+      await page.keyboard.press('z')
+      await expect(page.locator('.rt-layout')).toHaveAttribute('data-tint', irlen)
+      await expect(page.getByTestId('study-text')).toHaveCSS('color', 'rgb(42, 36, 31)')
+      await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+      await expect(page.locator('.rt-layout')).toHaveAttribute('data-tint', irlen)
+      await expect(page.getByTestId('speed-reader-word')).toHaveCSS('color', 'rgb(42, 36, 31)')
+      const contrast = await page.locator('.rt-layout').evaluate(el => {
+        const rgb = (s: string) => s.match(/[\d.]+/g)!.slice(0, 3).map(Number)
+        const luminance = (c: number[]) => c.map(v => { const n = v / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4 }).reduce((n, v, i) => n + v * [0.2126, 0.7152, 0.0722][i], 0)
+        const style = getComputedStyle(el)
+        const fg = luminance(rgb(style.color)), bg = luminance(rgb(style.backgroundColor))
+        return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05)
+      })
+      expect(contrast).toBeGreaterThanOrEqual(4.5)
+      await page.keyboard.press('Escape')
+    }
+  } finally {
+    const response = preferences.theme === undefined
+      ? await page.request.delete('/api/v1/preferences/theme', { headers: authHeaders() })
+      : await page.request.put('/api/v1/preferences/theme', { headers: { ...authHeaders(), 'Content-Type': 'application/json' }, data: JSON.stringify(preferences.theme) })
+    expect(response.ok()).toBeTruthy()
+  }
 })

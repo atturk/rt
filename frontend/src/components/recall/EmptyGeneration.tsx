@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { errorMessage } from '@/api/client'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
-import { recallKeys, useGenerateRecall, useStudyLesson, type RecallType } from '@/api/recall'
+import { BASE_RECALL_TYPES, useRecallTypes, recallKeys, useGenerateRecall, useStudyLesson, type RecallType } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -19,10 +19,11 @@ export function EmptyGeneration({ lessonId, unit, available = true, onGenerated 
 }) {
   const study = useStudyLesson(unit?.suggestions !== undefined ? null : lessonId)
   const suggestions = unit?.suggestions ?? study.data?.suggestions ?? false
+  const types = useRecallTypes(lessonId).data ?? BASE_RECALL_TYPES
   const generate = useGenerateRecall(lessonId)
   const client = useQueryClient()
   const [count, setCount] = useState(unit ? '3' : '10')
-  const suggested = suggestions ? unit?.suggestedQtype ?? mostSuggested(study.data?.units ?? []).type : null
+  const suggested = suggestions ? unit?.suggestedQtype ?? mostSuggested(study.data?.units ?? [], types).type : null
   const [chosenType, setCustomType] = useState<RecallType | null>(null)
   const customType = chosenType ?? suggested ?? 'quiz'
   const [jobId, setJobId] = useState<string | null>(null)
@@ -44,8 +45,8 @@ export function EmptyGeneration({ lessonId, unit, available = true, onGenerated 
     {!running && <div className="rt-empty-generation flex flex-wrap items-center justify-center gap-2">
       <label htmlFor="empty-gen-count" className="text-meta text-muted-foreground">Quante</label>
       <Input id="empty-gen-count" type="number" min="1" max="20" value={count} onChange={e => setCount(e.target.value)} className="h-9 w-16 text-center" />
-      <QuestionTypeChips value={customType} onChange={setCustomType} suggested={suggested} unit={!!unit} disabled={generate.isPending} />
-      <Button disabled={generate.isPending} onClick={() => start(customType)}>Genera</Button>
+      <QuestionTypeChips lessonId={lessonId} types={types} value={customType} onChange={setCustomType} suggested={suggested} unit={!!unit} disabled={generate.isPending} />
+      <Button disabled={generate.isPending || (!unit && types.some(t => t.id === customType && t.custom && !t.available))} onClick={() => start(customType)}>Genera</Button>
     </div>}
     {generate.isError && <Alert tone="danger" className="mt-2">{errorMessage(generate.error)}</Alert>}
   </div>

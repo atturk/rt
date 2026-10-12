@@ -3,79 +3,33 @@ rt.pipeline.ledger
 Gestione deterministica del Decision Ledger (review_decisions.json) e interfaccia Human-in-the-Loop.
 Registra ogni decisione in modo riproducibile e non ri-chiede decisioni già convalidate.
 """
+from rt.core.lesson_lock import lesson_locked
 
 import os
 import re
 import json
+import threading
+from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional, Set
-from rt.core.models import DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
+from rt.pipeline.issue_review import _is_no_diff_issue_type
+from rt.core.models import Anchor, DecisionLedger, ReviewDecision, ScienceIssue, ScienceType, Draft
 from rt.core.encoding import fix_mojibake, sanitize_object_encoding
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
 
-
-def sanitize_suggested_fix(text: Optional[str]) -> Optional[str]:
-    """
-    Estrae e sanifica il testo letterale di correzione rimuovendo formule metatestuali
-    (es. 'Sostituire con: ...', 'Correggere con: ...', 'Riformulare in: ...')
-    e virgolette di contorno. Se il suggerimento è un commento discorsivo/guida
-    (es. 'Precisare che...', 'Chiarire che...'), restituisce None per evitare
-    sostituzioni improprie nel testo di studio.
-    """
-    if not text:
-        return None
-    s = fix_mojibake(str(text)).strip()
-    if s.lower() in ("none", "null", ""):
-        return None
-
-    # 1. Match 'Sostituire con: "..."' / 'Sostituire la frase con: "..."' / 'Correggere con: "..."' / 'Riformulare in/come: "..."'
-    m = re.match(
-        r"^(?:Sostituire(?:\s+(?:la\s+frase|il\s+testo))?\s+con|Correggere(?:\s+la\s+descrizione)?\s+con|Riformulare\s+(?:come|in)):\s*['\"«](.+?)['\"»]\.?\s*$",
-        s,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if m:
-        return m.group(1).strip()
-
-    # 2. Match 'Sostituire con \'...\' per indicare...'
-    m2 = re.match(r"^Sostituire\s+con\s+['\"«](.+?)['\"»](?:\s+per\s+.+)?\.?\s*$", s, re.IGNORECASE | re.DOTALL)
-    if m2:
-        return m2.group(1).strip()
-
-    # 3. Match 'Riformulare come: \'...\''
-    m3 = re.match(r"^Riformulare\s+come:\s*['\"«](.+?)['\"»]\.?\s*$", s, re.IGNORECASE | re.DOTALL)
-    if m3:
-        return m3.group(1).strip()
-
-    # 4. Pattern discorsivi/esplicativi non sostituibili direttamente come testo continuo
-    advisory_starts = [
-        "precisare che",
-        "chiarire che",
-        "specificare che",
-        "correggere la descrizione",
-        "sostituire '",
-        "verificare",
-        "si raccomanda",
-    ]
-    if any(s.lower().startswith(adv) for adv in advisory_starts):
-        return None
-
-    # 5. Se racchiuso tra virgolette esterne
-    m_quotes = re.match(r"^['\"«](.+?)['\"»]\.?$", s, re.DOTALL)
-    if m_quotes:
-        return m_quotes.group(1).strip()
-
-    return s
 
 
 def get_ledger_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "review_decisions.json")
 
 
-def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
+def load_ledger(lesson_dir: str, strict: bool = False, *, _migrate: bool = True) -> DecisionLedger:
     """Carica il ledger. Un file illeggibile vale come ledger vuoto, oppure (strict=True)
     solleva l'errore: chi sta per scrivere non deve sovrascrivere dati che non sa leggere."""
+    if _migrate:
+        from rt.pipeline.review_migration import migrate_review_anchors
+        migrate_review_anchors(lesson_dir)
     path = get_ledger_path(lesson_dir)
     if not fs.isfile(path):
         return DecisionLedger(schema_version="1.0", decisions=[])
@@ -91,13 +45,14 @@ def load_ledger(lesson_dir: str, strict: bool = False) -> DecisionLedger:
         return DecisionLedger(schema_version="1.0", decisions=[])
 
 
+@lesson_locked
 def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
     """Scrive review_decisions.json (formato storico), senza toccare il DB."""
     path = get_ledger_path(lesson_dir)
     data = sanitize_object_encoding(ledger.model_dump(mode="json"))
     # channel/actor si scrivono solo quando noti: le decisioni senza restano nel formato storico.
     for dec in data.get("decisions", []):
-        for key in ("channel", "actor"):
+        for key in ("channel", "actor", "anchor"):
             if dec.get(key) is None:
                 dec.pop(key, None)
     tmp_path = path + ".tmp"
@@ -106,6 +61,7 @@ def write_ledger_file(ledger: DecisionLedger, lesson_dir: str) -> None:
     fs.replace(tmp_path, path)
 
 
+@lesson_locked
 def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     """Sovrascrive il ledger con `ledger` e allinea il DB (che lo reimporta)."""
     write_ledger_file(ledger, lesson_dir)
@@ -114,6 +70,7 @@ def save_ledger(ledger: DecisionLedger, lesson_dir: str) -> None:
     dual_write_lesson(lesson_dir)
 
 
+@lesson_locked
 def record_decision(
     lesson_dir: str,
     issue_id: str,
@@ -124,21 +81,34 @@ def record_decision(
     original_context: Optional[str] = None,
     channel: Optional[str] = None,
     actor: Optional[str] = None,
+    anchor: Optional[Anchor] = None,
 ) -> ReviewDecision:
     """Registra una decisione nel ledger atomico append-only con sanitizzazione UTF-8.
     Le interfacce passano da rt.services.review_service, che prende il lock per lezione."""
     ledger = load_ledger(lesson_dir)
     clean_resolved = fix_mojibake(resolved_text) if resolved_text else None
     clean_notes = fix_mojibake(notes) if notes else None
-    clean_context = fix_mojibake(original_context) if original_context else None
+    clean_context = fix_mojibake(original_context) if original_context is not None else None
     
-    # Se è una decisione scientifica accettata automaticamente, sanifica formule come 'Sostituire con:'
-    if decision.lower().strip() == "accepted" and resolved_by.startswith("cli_auto") and clean_resolved:
-        sanitized = sanitize_suggested_fix(clean_resolved)
-        if sanitized is not None:
-            clean_resolved = sanitized
-    
+    issue = find_science_issue_by_id(lesson_dir, issue_id)
+    # Una decisione nuova si ancora al testo che l'utente sta vedendo, anche
+    # quando l'issue proviene da un produttore storico privo di ancore.
+    if issue and issue.anchor is None:
+        from rt.pipeline.anchors import find_quote, make_anchor
+        try:
+            draft = load_resolved_draft(lesson_dir)
+        except FileNotFoundError:
+            draft = None
+        unit = next((u for u in draft.units if u.unit_id == issue.unit_id), None) if draft else None
+        if unit:
+            if _is_no_diff_issue_type(issue):
+                issue.anchor = make_anchor(unit.content, 0, len(unit.content))
+            else:
+                found = find_quote(unit.content, issue.claim)
+                if found:
+                    issue.anchor = make_anchor(unit.content, found.start, found.end)
     dec_obj = ReviewDecision(
+        anchor=anchor.model_copy(deep=True) if anchor else issue.anchor.model_copy(deep=True) if issue and issue.anchor else None,
         issue_id=issue_id,
         decision=decision.lower().strip(),
         resolved_text=clean_resolved,
@@ -160,6 +130,7 @@ def record_decision(
 
 
 
+@lesson_locked
 def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
     """Rimuove l'ultima voce per issue_id dal ledger (append-only). Ritorna False se non trovata.
     Con il DB attivo la voce resta nel DB marcata come annullata."""
@@ -180,6 +151,7 @@ def revert_last_decision(lesson_dir: str, issue_id: str) -> bool:
     return True
 
 
+@lesson_locked
 def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     """Rimuove dal ledger (append-only) tutte le voci il cui issue_id inizia con prefix. Salva e ritorna il numero di voci rimosse."""
     from rt.db.ledger_store import NO_DATABASE, revert_prefix
@@ -195,103 +167,82 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
     return removed_count
 
 
-def replace_claim(content: str, claim: str, resolved: str) -> str:
-    """Sostituisce il claim, allargando alla frase solo entro lo stesso paragrafo."""
-    start = content.find(claim)
-    if start < 0:
-        return content
-    end = start + len(claim)
-    paragraph_end = content.find("\n", start)
-    if paragraph_end < 0:
-        paragraph_end = len(content)
-    if end <= paragraph_end and resolved.strip().endswith((".", "!", "?")):
-        # La fine deve comprendere tutto il claim: un decimale o un'abbreviazione
-        # interna non possono troncarlo.
-        match = re.search(r"[.!?](?=\s|$)", content[max(start, end - 1):paragraph_end])
-        if match:
-            sentence_end = max(start, end - 1) + match.end()
-            sentence = content[start:sentence_end]
-            words = set(sentence.lower().split())
-            overlap = len(words & set(resolved.lower().split())) / max(1, len(words))
-            if overlap > 0.4:
-                end = sentence_end
-    return content[:start] + resolved + content[end:]
-
-
 def apply_decisions_to_draft(
-    draft: Draft,
-    ledger: DecisionLedger,
-    science_issues: List[ScienceIssue],
-    edited_units: Optional[Dict[str, str]] = None,
+    draft: Draft, ledger: DecisionLedger, science_issues: List[ScienceIssue],
+    edited_units: Optional[Dict[str, str]] = None, *, missing_decisions: Optional[Set[str]] = None,
 ) -> Draft:
+    """Applica le ultime decisioni nell'ordine del registro, solo nella loro unità.
+
+    Le ancore mancanti restano registrate: missing_decisions raccoglie lo stato
+    calcolato per l'API. I contratti storici in memoria passano dalla migrazione.
     """
-    Applica deterministicamente al draft le decisioni convalidate dal ledger.
-    Ogni sostituzione viene applicata una sola volta garantendo idempotenza e conformità UTF-8.
-    Per le unità modificate a mano si applicano solo le decisioni successive alla modifica.
-    """
-    decisions_map: Dict[str, ReviewDecision] = {d.issue_id: d for d in ledger.decisions}
-    sci_by_id = {iss.id: iss for iss in science_issues}
-    # Ultima decisione per issue, nell'ordine delle ultime voci del ledger.
-    ordered = [d for d in ledger.decisions if decisions_map[d.issue_id] is d]
-    paragraph_types = {ScienceType.ERR_ASR_ST, ScienceType.ERR_ASR_LLM, ScienceType.ERR_REWRITE_DRIFT}
-    ordered.sort(key=lambda d: sci_by_id[d.issue_id].type not in paragraph_types
-                 if d.issue_id in sci_by_id else True)
-    
-    updated_units = []
-    for unit in draft.units:
-        content = fix_mojibake(unit.content)
-        paragraph_date = None
-        # Applica decisioni su Science Issues
-        for dec in ordered:
-            iss_id = dec.issue_id
-            if edited_units and unit.unit_id in edited_units and dec.timestamp <= edited_units[unit.unit_id]:
+    from rt.pipeline.anchors import locate
+    if ledger.schema_version != "2.0":
+        from rt.pipeline.review_migration import migrate_objects
+        ledger, science_issues = migrate_objects(draft, ledger, science_issues, edited_units or {})
+    latest = {d.issue_id: d for d in ledger.decisions}
+    ordered = [d for d in ledger.decisions if latest[d.issue_id] is d]
+    by_id = {i.id:i for i in science_issues}
+    by_unit = {u.unit_id:u.model_copy(deep=True) for u in draft.units}
+    for unit in by_unit.values():
+        unit.content = fix_mojibake(unit.content)
+        unit.title = fix_mojibake(unit.title)
+    for decision in ordered:
+        issue = by_id.get(decision.issue_id)
+        if issue is None:
+            if missing_decisions is not None:
+                missing_decisions.add(decision.issue_id)
+            continue
+        unit = by_unit.get(issue.unit_id)
+        if unit is None:
+            # Un contesto vuoto registra la scelta umana fatta *dopo* la scomparsa.
+            # I rifiuti precedenti restano da riconfermare come le altre decisioni.
+            if decision.decision == 'rejected' and decision.original_context == '':
                 continue
-            if iss_id in sci_by_id:
-                s_iss = sci_by_id[iss_id]
-                if s_iss.unit_id == unit.unit_id or (s_iss.segment_id and s_iss.segment_id in unit.source_segment_ids):
-                    if s_iss.type in (
-                        ScienceType.ERR_ASR_ST,
-                        getattr(ScienceType, "ERR_ASR_LLM", "ERR_ASR_LLM"),
-                        getattr(ScienceType, "ERR_REWRITE_DRIFT", "ERR_REWRITE_DRIFT"),
-                    ):
-                        if dec.decision == "accepted":
-                            continue
-                        elif dec.decision == "edited" and dec.resolved_text:
-                            content = fix_mojibake(dec.resolved_text)
-                            paragraph_date = dec.timestamp
-                            continue
-
-                    raw_resolved = dec.resolved_text
-                    resolved = sanitize_suggested_fix(raw_resolved) if dec.decision == "accepted" else (fix_mojibake(raw_resolved) if raw_resolved else None)
-                    if dec.decision in ("accepted", "edited") and resolved:
-                        claim_clean = fix_mojibake(s_iss.claim)
-                        claim_raw = s_iss.claim
-                        target = None
-                        if claim_clean in content:
-                            target = claim_clean
-                        elif claim_raw in content:
-                            target = claim_raw
-                            
-                        if target:
-                            # Una modifica di paragrafo parte dal testo risolto:
-                            # le correzioni precedenti già dentro quel testo non
-                            # vanno ripetute se contengono il proprio claim.
-                            fixed_at = content.find(resolved)
-                            claim_at = content.find(target)
-                            if paragraph_date and dec.timestamp <= paragraph_date and fixed_at >= 0 and fixed_at <= claim_at < fixed_at + len(resolved):
-                                continue
-                            content = replace_claim(content, target, resolved)
-                            
-        unit_copy = unit.model_copy(update={
-            "title": fix_mojibake(unit.title),
-            "content": fix_mojibake(content)
-        })
-        updated_units.append(unit_copy)
-        
-    return Draft(schema_version=draft.schema_version, lesson_id=draft.lesson_id, units=updated_units)
+            if missing_decisions is not None:
+                missing_decisions.add(issue.id)
+            continue
+        if edited_units and unit.unit_id in edited_units and decision.timestamp <= edited_units[unit.unit_id]:
+            continue
+        if decision.decision == 'rejected':
+            continue
+        if _is_no_diff_issue_type(issue):
+            if decision.decision == 'edited' and decision.resolved_text:
+                unit.content = fix_mojibake(decision.resolved_text)
+            continue
+        found = locate(decision.anchor, unit.content) if decision.anchor else None
+        if found is None:
+            if missing_decisions is not None:
+                missing_decisions.add(issue.id)
+            continue
+        if decision.decision in ('accepted', 'edited') and decision.resolved_text:
+            unit.content = (unit.content[:found.start] + fix_mojibake(decision.resolved_text)
+                            + unit.content[found.end:])
+    return draft.model_copy(update={'units':[by_unit[u.unit_id] for u in draft.units]})
 
 
-def load_resolved_draft(lesson_dir: str) -> Draft:
+_resolved_cache = OrderedDict()
+_resolved_cache_lock = threading.RLock()
+
+
+def _resolved_key(lesson_dir):
+    from rt.pipeline.rewrite import get_draft_path
+    from rt.pipeline.review import get_science_issues_path
+    from rt.db.ledger_store import ledger_version
+    from rt.db.engine import get_database
+    database = get_database()
+    def stamp(path):
+        try:
+            return fs.getmtime(path), fs.getsize(path)
+        except FileNotFoundError:
+            return None
+    return (tuple(stamp(path) for path in (
+        get_draft_path(lesson_dir), get_science_issues_path(lesson_dir),
+        lesson_path(lesson_dir, 'document_edits.json'), get_ledger_path(lesson_dir))),
+        ledger_version(lesson_dir), database.url if database else None)
+
+
+def load_resolved_draft(lesson_dir: str, *, missing_decisions: Optional[Set[str]] = None) -> Draft:
     """Carica il draft con le decisioni del ledger scientifiche già applicate —
     la stessa vista che build.py usa per generare i documenti finali.
 
@@ -305,10 +256,36 @@ def load_resolved_draft(lesson_dir: str) -> Draft:
 
     from rt.pipeline.document_edits import edited_unit_dates
 
-    draft = load_draft(lesson_dir)
-    ledger = load_ledger(lesson_dir)
-    science_issues = load_science_issues(lesson_dir)
-    return apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir))
+    from rt.pipeline.review_migration import migrate_review_anchors
+    # La migrazione scrive e prende il lock della lezione: fuori dal lock della
+    # cache, così una decisione che legge il testo non può creare un deadlock.
+    migrate_review_anchors(lesson_dir)
+    path = os.path.realpath(lesson_dir)
+    with _resolved_cache_lock:
+        while True:
+            key = _resolved_key(lesson_dir)
+            cached = _resolved_cache.get(path)
+            if cached is not None and cached[0] == key:
+                _, result, missing = cached
+                _resolved_cache.move_to_end(path)
+                break
+            draft = load_draft(lesson_dir)
+            ledger = load_ledger(lesson_dir, _migrate=False)
+            science_issues = load_science_issues(lesson_dir, _migrate=False)
+            missing = set()
+            result = apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir),
+                                              missing_decisions=missing)
+            # Se una scrittura è arrivata durante la lettura, ricalcola sul nuovo stato.
+            if _resolved_key(lesson_dir) != key:
+                continue
+            _resolved_cache[path] = key, result, missing
+            _resolved_cache.move_to_end(path)
+            while len(_resolved_cache) > 128:
+                _resolved_cache.popitem(last=False)
+            break
+        if missing_decisions is not None:
+            missing_decisions.update(missing)
+        return result.model_copy(deep=True)
 
 
 def resolved_unit_content(lesson_dir: str, issue: ScienceIssue, draft: Optional[Draft] = None) -> Optional[str]:
@@ -363,9 +340,10 @@ def get_pending_issues(lesson_dir: str):
 
     ledger = load_ledger(lesson_dir)
     decided_ids = {d.issue_id for d in ledger.decisions}
+    missing = reconfirmation_issue_ids(lesson_dir)
     sci_issues = [
         iss for iss in load_science_issues(lesson_dir)
-        if iss.id not in decided_ids
+        if iss.id not in decided_ids or iss.id in missing
     ]
     return [], sci_issues
 
@@ -376,9 +354,19 @@ def find_science_issue_by_id(lesson_dir: str, issue_id: str):
 
 
 def resolve_science_accept_text(iss) -> Optional[str]:
-    return sanitize_suggested_fix(iss.suggested_fix)
+    return fix_mojibake(iss.suggested_fix).strip() if iss.suggested_fix else None
 
 
 def resolve_science_reject_text(iss) -> str:
     return iss.claim
 
+
+
+def reconfirmation_issue_ids(lesson_dir: str) -> Set[str]:
+    """Decisioni non ritrovate nel replay; nessuna scrittura e nessuna cancellazione."""
+    missing: Set[str] = set()
+    try:
+        load_resolved_draft(lesson_dir, missing_decisions=missing)
+    except FileNotFoundError:
+        missing.update(d.issue_id for d in load_ledger(lesson_dir).decisions)
+    return missing

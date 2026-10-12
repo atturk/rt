@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, answerAndSee } from './support'
 
 // Sessioni di ripasso (G4): il tipo resta l'ultimo usato, "Termina" chiude la sessione sul backend
 // con il riepilogo. Il recall su Telegram dall'app non c'è più (Telegram spento di predefinito):
@@ -60,7 +60,7 @@ type Bank = { questions: { id: string; status: string; question_text: string; ty
 
 const bank = (page: Page, lessonId: number) => apiGet<Bank>(page.request, `/lessons/${lessonId}/recall/history`)
 
-test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e riproposta delle poste', async ({ page }) => {
+test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e riproposta delle risposte', async ({ page }) => {
   const lesson = await openSession(page)
   await page.goto(`/lezioni/${lesson.id}?panel=domande`)
   const panel = page.getByTestId('questions-panel')
@@ -92,7 +92,7 @@ test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e 
   expect(before).not.toContain(text)
   await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.question_text === text)?.status).toBe('pending')
 
-  // Segnata come posta, il pulsante la ripesca.
+  // La posta senza risposta resta nel recall. Il ripristino ripropone le risposte.
   const edited = (await bank(page, lesson.id)).questions.find((q) => q.question_text === text)!
   const editedRow = panel.getByTestId('questions-list').locator('li', { hasText: text })
   await panel.getByRole('group', { name: 'Filtra per stato' }).getByRole('button', { name: 'Tutte' }).click()
@@ -100,9 +100,12 @@ test('pannello Domande: elenco contraibile, filtro per stato, modifica a mano e 
   await page.getByRole('menuitem', { name: 'Segna come posta' }).click()
   await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.id === edited.id)?.status).toBe('asked')
 
+  await answerAndSee(page.request, lesson.id, edited.id)
+  await expect.poll(async () => (await bank(page, lesson.id)).questions.find(q => q.id === edited.id)?.status).toBe('answered')
+  await page.reload()
   const restore = panel.getByTestId('questions-restore')
   await expect(restore).toBeVisible()
-  await expect(restore.getByRole('button', { name: /Riproponi le poste/ })).toBeVisible()
-  await restore.getByRole('button', { name: /Riproponi le poste/ }).click()
+  await expect(restore.getByRole('button', { name: /Riproponi le risposte/ })).toBeVisible()
+  await restore.getByRole('button', { name: /Riproponi le risposte/ }).click()
   await expect.poll(async () => (await bank(page, lesson.id)).questions.find((q) => q.id === edited.id)?.status).toBe('pending')
 })

@@ -46,6 +46,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
   return {
     ...actual,
+    useRecallTypes: () => ({ data: [...actual.BASE_RECALL_TYPES, { id: 'query-sql', nome: 'Query SQL', icona: 'Database', custom: true, available: false }] }),
     useStudyLesson: () => ({
       data: { id: 1, units: UNITS.map(u => ({ ...u, suggested_qtype: 'mirata' })), has_audio: false, suggestions: mockSuggestions },
       isPending: false,
@@ -226,13 +227,13 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
 
     fireEvent.click(generate)
-    fireEvent.click(screen.getByRole('button', { name: 'Caso clinico' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Query SQL' }))
     fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
     fireEvent.click(screen.getByTestId('study-generate-start'))
 
     expect(mockGenerate).toHaveBeenCalledWith(
-      { unitIds: ['2.1'], qtype: 'caso', count: 2, instructions: 'solo sui valori soglia' },
+      { unitIds: ['2.1'], qtype: 'query-sql', count: 2, instructions: 'solo sui valori soglia' },
       expect.anything(),
     )
   })
@@ -319,3 +320,45 @@ it.each([true, false])('popup Genera: consigliato presente e selezionato solo co
   fireEvent.click(screen.getByTestId('study-generate-start'))
   expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'mirata' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })
+
+it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () => {
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'z' })
+  fireEvent.keyDown(window, { key: 'd' })
+  expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Torna allo studio' })[0])
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.1')
+})
+
+it('strumenti V e C: scorciatoie tastiera, accensione/spegnimento e tasto Esc', () => {
+  renderStudy()
+  const btnV = screen.getByTestId('highlight-verifica')
+  const btnC = screen.getByTestId('highlight-chiedi')
+  const text = screen.getByTestId('study-text')
+
+  // Inizialmente spenti
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+  expect(btnC).toHaveAttribute('aria-pressed', 'false')
+
+  // Tasto V accende Verifica
+  fireEvent.keyDown(window, { key: 'v' })
+  expect(btnV).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
+
+  // Tasto V spegne Verifica
+  fireEvent.keyDown(window, { key: 'v' })
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+
+  // Tasto C accende Chiedi
+  fireEvent.keyDown(window, { key: 'c' })
+  expect(btnC).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'chiedi')
+
+  // Tasto Esc a popup chiuso spegne lo strumento
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(btnC).toHaveAttribute('aria-pressed', 'false')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+})
+

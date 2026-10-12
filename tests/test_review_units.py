@@ -46,7 +46,7 @@ def test_review_units_states_and_legacy_checkpoint(reviewed, monkeypatch):
     rows = review_units(lesson)
     assert rows[0]['state'] == 'changed' and rows[1]['state'] == 'issues'
     assert rows[1]['reviewed_at'] is None and rows[1]['model'] is None
-    monkeypatch.setattr('rt.services.unit_relevance.included', lambda *a: False)
+    monkeypatch.setattr('rt.services.unit_relevance.included_ids', lambda *a, **kw: set())
     assert all(u['state'] == 'excluded' for u in review_units(lesson))
 
 
@@ -81,3 +81,38 @@ def test_empty_prefilter_and_failed_runs_leave_a_trace(reviewed, monkeypatch):
     assert 'Tempo esaurito' in load_review_units(lesson)['1.1']['message']
     review.run_review(lesson, force=True, force_mock=True)
     assert all(e['result'] == 'failed' for e in load_review_units(lesson).values())
+
+
+def test_classifier_exclusion_keeps_raw_text_after_a_decision(reviewed, monkeypatch):
+    from rt.services import unit_relevance as gate
+    from rt.services.review_service import review_units
+    from rt.pipeline.ledger import record_decision, load_resolved_draft
+    from tests.test_unit_relevance import _config
+    lesson, _ = reviewed
+    monkeypatch.setattr(gate, 'load_config', lambda: _config('active'))
+    gate.set_override(lesson, '1.1', 'organizational', view='draft')
+    first = next(i for i in review.load_science_issues(lesson) if i.unit_id == '1.1')
+    record_decision(lesson, first.id, 'accepted', resolved_text='Testo corretto.')
+    assert load_resolved_draft(lesson).units[0].content == 'Testo corretto.'
+    assert gate.list_units(lesson)['units'][0]['review_included'] is False
+    assert review_units(lesson)[0]['state'] == 'excluded'
+
+
+@pytest.mark.parametrize('single', [False, True])
+def test_forced_review_keeps_classifier_exclusions_after_a_decision(reviewed, monkeypatch, single):
+    from rt.services import unit_relevance as gate
+    from rt.pipeline.ledger import record_decision, load_ledger
+    from tests.test_unit_relevance import _config
+    lesson, calls = reviewed
+    monkeypatch.setattr(gate, 'load_config', lambda: _config('active'))
+    gate.set_override(lesson, '1.1', 'organizational', view='draft')
+    first = next(i for i in review.load_science_issues(lesson) if i.unit_id == '1.1')
+    previous = record_decision(lesson, first.id, 'accepted', resolved_text='Testo corretto.')
+    calls.clear()
+    if single:
+        assert review.run_review_unit(lesson, '1.1', force_mock=True, force=True)['status'] == 'skipped'
+        assert calls == []
+    else:
+        review.run_review(lesson, force_mock=True, force=True)
+        assert sorted(calls) == ['1.2', '2.1']
+    assert load_ledger(lesson).decisions == [previous]

@@ -8,7 +8,7 @@
 import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import { lessonKeys, queryKeys } from './hooks'
+import { lessonKeys, queryKeys, reviewKeys } from './hooks'
 import type { paths } from './schema'
 
 const EVENTS_PATH = '/api/v1/events' satisfies keyof paths
@@ -17,7 +17,7 @@ const EVENTS_PATH = '/api/v1/events' satisfies keyof paths
 export type LiveJobEvent = { id: number; job_id: string; job_type: string; lesson_id: number | null; type: string }
 
 /** Eventi frequenti: il documento si rilegge solo per i job che scrivono checkpoint. */
-const PROGRESS_EVENTS = new Set(['phase_progress', 'cost_updated', 'notice', 'job_cancel_requested'])
+const PROGRESS_EVENTS = new Set(['phase_progress', 'cost_updated', 'notice', 'job_cancel_requested', 'review_units_queued', 'review_unit_started'])
 /** Eventi dopo cui documento, fasi e issue della lezione possono essere cambiati. */
 const LESSON_EVENTS = new Set(['phase_completed', 'phase_failed', 'job_waiting', 'job_finished', 'decision_required'])
 const RECALL_JOBS = new Set(['recall_generate', 'recall_batch', 'recall_refill', 'recall_evaluate', 'unit_relevance'])
@@ -31,6 +31,16 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
   // Stato e avanzamento del job: elenchi, dettaglio (jobs.ts, jobStatus.ts e settings.ts) e job della lezione.
   const keys: QueryKey[] = [['jobs'], ['job', event.job_id]]
   if (lesson != null) keys.push(lessonKeys.jobs(lesson))
+  if (event.job_type === 'documents') {
+    if (lesson != null && LESSON_EVENTS.has(event.type)) {
+      keys.push(queryKeys.allLessons, queryKeys.lesson(lesson), lessonKeys.phases(lesson), lessonKeys.document(lesson))
+    }
+    return keys
+  }
+  if (lesson != null && event.type === 'review_unit_done') {
+    keys.push(reviewKeys.issues(lesson), reviewKeys.units(lesson))
+    return keys
+  }
   if (event.job_type.startsWith('enrichment_')) keys.push(['enrichment'])
   if (event.type === 'cost_updated') keys.push(queryKeys.costs)
   if (lesson != null && event.type === 'phase_progress' && DOCUMENT_JOBS.has(event.job_type)) keys.push(lessonKeys.document(lesson))
@@ -44,6 +54,10 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
     if (event.job_type === 'unit_relevance') keys.push(['relevance', lesson])
   }
   if (RECALL_JOBS.has(event.job_type)) keys.push(['recall'], ['recall-subject'])
+  if (event.job_type === 'classifier' || DOCUMENT_JOBS.has(event.job_type) || RECALL_JOBS.has(event.job_type)) {
+    keys.push(['recall-types'])
+    if (lesson != null) keys.push(['classifier', lesson], ['recall', lesson, 'study'])
+  }
   if (LESSON_EVENTS.has(event.type)) keys.push(queryKeys.costs)
   return keys
 }

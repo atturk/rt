@@ -258,7 +258,7 @@ def test_mixed_type_unit_review_and_day_session(client, lesson, tmp_path):
         pass
     detail = client.get(f"{BASE}/lessons/{lid}").json()
     unit = next(u for u in detail["units"] if u["pending"])
-    assert set(unit["pending"]) <= {"quiz", "mirata", "caso", "esercizio"}
+    assert set(unit["pending"]) <= {"quiz", "mirata"}
     # Leggi e ripeti: solo domande di quell'unità, tipi a turno.
     first = client.post(f"{BASE}/lessons/{lid}/next", params={"qtype": "mista", "unit_id": unit["id"]}).json()
     assert unit["id"] in first["unit_ids"]
@@ -274,6 +274,8 @@ def test_mixed_type_unit_review_and_day_session(client, lesson, tmp_path):
     client.post(f"{BASE}/lessons/{lid}/answer", json={"question_id": picked["question"]["id"], "dont_know": True})
     while worker.run_once() is not None:  # una mirata si valuta in un job
         pass
+    # Il browser mostra la valutazione prima di chiedere la domanda successiva.
+    assert client.post(f"{BASE}/lessons/{lid}/seen", json={"question_id": picked["question"]["id"]}).status_code == 200
     nxt = client.post(BASE + "/subject/next", params=params).json()
     assert nxt["question"]["id"] != picked["question"]["id"]
     assert client.post(BASE + "/subject/end", params={"materia": f"GIORNO:{day}"}).json()["summary"]["questions"] == 2

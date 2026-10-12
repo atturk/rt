@@ -38,6 +38,7 @@ class PipelineOptions:
     model: Optional[str] = None
     skip_transcribe: bool = False
     force: bool = False
+    skip_prefilter: bool = False
     mock: bool = False
     with_review: bool = False
     with_enrichment: Optional[bool] = None
@@ -222,8 +223,6 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     result.lesson_dir = final_dir
     result.status = PipelineStatus.COMPLETED
 
-    if not mock:
-        notify_build_completed(final_dir, bld_res, ctx, notifiers)
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: RunContext,
@@ -295,11 +294,13 @@ def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext,
     """Optional analysis: failures do not prevent the lesson from being built."""
     from rt.core.config import load_config
     cfg = load_config()
-    if cfg.enrichment.mode == "disabled" and not with_enrichment:
+    from rt.core.config import classifier_job
+    enrichment_mode = classifier_job(cfg, "enrichment").mode
+    if enrichment_mode == "off":
         return {"skipped": "disabled"}
-    should_run = (with_enrichment is True) or (with_enrichment is None and cfg.enrichment.mode == "automatic")
+    should_run = (with_enrichment is True) or (with_enrichment is None and enrichment_mode == "pipeline")
     if not should_run:
-        return {"skipped": "manual" if cfg.enrichment.mode == "manual" else "disabled"}
+        return {"skipped": "manual" if enrichment_mode == "manual" else "disabled"}
     route = cfg.jobs.get("enrichment_writer")
     if not mock and (not route or not route.primary.is_configured):
         ctx.emit(Notice(message="Arricchimento automatico disponibile dopo aver configurato l'Arricchitore in Modelli."))
@@ -381,7 +382,8 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
         elif phase == "rewrite":
             res = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         elif phase == "review":
-            res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
+            res = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx,
+                             **({"skip_prefilter": True} if options.skip_prefilter else {}))
         else:
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
             res = run_build(lesson_dir, force=force, rename_folder=options.rename, ctx=ctx)
@@ -391,6 +393,4 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
     if phase in ("rewrite", "review"):
         with ctx.activate():
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)
-    if phase == "build" and not mock:
-        notify_build_completed(result.lesson_dir, res, ctx, notifiers)
     return result

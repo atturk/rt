@@ -6,10 +6,11 @@ client generato della SPA).
 from datetime import datetime
 from typing import Union, Any, Dict, List, Literal, Optional
 from rt.services.study_progress_service import StudyStatus
+from rt.core.models import Anchor, ASRRiskSegment
 
 # Tipi di domanda; "mista" (solo per pescare la prossima domanda) li alterna tutti.
-QuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio"]
-NextQuestionType = Literal["quiz", "mirata", "vasta", "caso", "esercizio", "mista"]
+QuestionType = str
+NextQuestionType = str
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -129,6 +130,7 @@ class LessonActions(BaseModel):
 class ReviewProgress(BaseModel):
     reviewed: int
     total: int
+    completed_once: bool = False
 
 
 class LessonDetail(LessonSummary):
@@ -299,6 +301,7 @@ class Outline(BaseModel):
 
 
 class IssueContext(BaseModel):
+    asr_segments: Optional[List[ASRRiskSegment]] = None
     timecode: str
     unit_info: Optional[str] = None
     unit_content: Optional[str] = None
@@ -309,6 +312,7 @@ class IssueContext(BaseModel):
 
 
 class Decision(BaseModel):
+    anchor: Optional[Anchor] = None
     issue_id: str
     decision: str
     resolved_text: Optional[str] = None
@@ -320,7 +324,9 @@ class Decision(BaseModel):
 
 
 class IssueItem(BaseModel):
-    fix_text: Optional[str] = Field(None, description="Correzione letterale applicabile; null per un suggerimento")
+    quote_status: Optional[Literal["found", "changed"]] = Field(None, description="Stato della citazione nel testo risolto, per le issue aperte o da riconfermare")
+    needs_reconfirmation: bool = Field(False, description="La decisione resta registrata ma il tratto non si ritrova")
+    fix_text: Optional[str] = Field(None, description="Sostituzione letterale; null se assente")
     issue: Dict[str, Any] = Field(description="ScienceIssue (science_issues.json)")
     context: Optional[IssueContext] = None
     decision: Optional[Decision] = None
@@ -422,14 +428,22 @@ class UploadInventoryItem(BaseModel):
     modified_at: str
 
 
+class ReviewPartSelection(BaseModel):
+    unit_id: str = Field(min_length=1)
+    anchor: Anchor
+
+
 class JobRequest(BaseModel):
-    type: Literal["run_pipeline", "run_phase"] = "run_pipeline"
+    type: Literal["run_pipeline", "run_phase", "review_part"] = "run_pipeline"
+    parts: Optional[List[ReviewPartSelection]] = Field(None, description="review_part: una selezione ancorata per ogni unità toccata")
     phase: Optional[Literal["prepare", "outline", "rewrite", "review", "build"]] = Field(
         None, description="Obbligatoria per run_phase")
     unit: Optional[str] = Field(None, description="Rewrite o review: una sola unità")
     units: Optional[List[str]] = Field(None, description="Rewrite o review: unità selezionate (lista multipla)")
     extra_prompt: Optional[str] = Field(None, max_length=10000, description="Istruzioni aggiuntive per outline, rewrite o review")
     force: bool = False
+    skip_prefilter: bool = Field(False, description="Review: esegue il revisore senza il classificatore preventivo")
+    include_excluded: bool = Field(False, description="Review di una sola unità: ignora l'esclusione didattica per questa esecuzione")
     mock: bool = False
     with_review: bool = False
     with_enrichment: Optional[bool] = Field(None, description="Esegue l'arricchimento didattico alla fine della pipeline")
@@ -461,7 +475,16 @@ class CredentialTest(BaseModel):
 
 # ---------------------------------------------------------------- recall
 
+class RecallSavedEvaluation(BaseModel):
+    answer_text: str
+    evaluation: str
+    outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
+
+
 class RecallQuestion(BaseModel):
+    saved_evaluation: Optional[RecallSavedEvaluation] = None
+    evaluation_job_id: Optional[str] = None
+    custom_type: Optional[str] = None
     remaining: Optional[int] = Field(None, ge=0, description="Domande pendenti dopo quella restituita, con gli stessi filtri di next")
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     id: str
@@ -533,7 +556,7 @@ class StudyProgress(StudyStatusUpdate):
     last_read_at: Optional[datetime] = None
 
 
-SuggestedQuestionType = Literal["quiz", "mirata", "caso", "esercizio"]
+SuggestedQuestionType = str
 
 
 class StudyUnit(BaseModel):
@@ -633,7 +656,7 @@ class RecallQuestionEdit(BaseModel):
     options: Optional[List[str]] = Field(None, max_length=4, description="Solo quiz: quattro alternative")
     correct_index: Optional[int] = Field(None, ge=0, le=3, description="Solo quiz")
     explanation: Optional[str] = Field(None, max_length=10000,
-                                       description="Commento dell'IA: solo quiz, vaste ed esercizi")
+                                       description="Commento dell'IA: tipi con soluzione pregenerata")
 
 
 class RecallQuestionStatusIn(BaseModel):
@@ -730,7 +753,7 @@ class SubjectGenerateAccepted(BaseModel):
 
 
 class TelegramRecallStart(BaseModel):
-    qtype: QuestionType = "quiz"
+    qtype: Literal["quiz", "mirata", "vasta"] = "quiz"
     mock: bool = False
 
 
@@ -746,10 +769,8 @@ class SectionLabelRow(BaseModel):
     title: str
     unit_ids: List[str]
     fresh: bool = Field(description="Classificata sul testo attuale")
-    esercizio: Optional[str] = None
-    caso: Optional[str] = None
-    override_esercizio: Optional[str] = None
-    override_caso: Optional[str] = None
+    labels: Dict[str, str] = Field(default_factory=dict)
+    overrides: Dict[str, Optional[str]] = Field(default_factory=dict)
     error: Optional[str] = None
 
 
@@ -760,7 +781,7 @@ class SectionLabels(BaseModel):
 
 
 class SectionLabelOverride(BaseModel):
-    kind: Literal["esercizio", "caso"]
+    kind: str = Field(min_length=1)
     value: Optional[str] = Field(None, description="Nuovo valore; null torna a quello del classificatore")
 
 
@@ -772,3 +793,85 @@ class ReviewUnit(BaseModel):
     model: Optional[str] = None
     issues_total: int = 0
     issues_pending: int = 0
+
+
+class ClassifierUnit(BaseModel):
+    id: str
+    title: str
+    section_id: str
+
+
+class ClassifierCell(BaseModel):
+    unit_id: Optional[str] = None
+    section_id: Optional[str] = None
+    value: Optional[str] = None
+    source: Literal["classifier", "manual"] = "classifier"
+    state: Literal["fresh", "stale", "missing", "error", "skipped"]
+    confidence: Optional[float] = None
+    options: List[str] = Field(default_factory=list)
+
+
+class ClassifierJobView(BaseModel):
+    nome: Optional[str] = None
+    icona: Optional[str] = None
+    mode: Literal["off", "manual", "observe", "pipeline"]
+    state: Literal["done", "partial", "stale", "never", "off"]
+    last_run_at: Optional[str] = None
+    errors: int = 0
+    cells: List[ClassifierCell]
+
+
+class ClassifierOverview(BaseModel):
+    units: List[ClassifierUnit]
+    jobs: Dict[str, ClassifierJobView]
+    pending: int = 0
+
+
+class ClassifierCorrection(BaseModel):
+    value: Optional[str] = None
+
+
+class ClassifierRun(BaseModel):
+    force: bool = False
+    unit_ids: Optional[List[str]] = None
+
+
+class RecallTypeInfo(BaseModel):
+    id: str
+    nome: str
+    icona: str
+    custom: bool = False
+    available: bool = True
+
+
+class StudyNoteCreate(BaseModel):
+    unit_id: str = Field(min_length=1, max_length=64)
+    kind: Literal["verifica", "chiedi"]
+    anchor: Anchor
+    request: str = ""
+    mock: bool = False
+
+
+class StudyNoteView(BaseModel):
+    id: int
+    lesson_id: int
+    unit_id: str
+    kind: Literal["verifica", "chiedi"]
+    anchor: Dict[str, Any]
+    unit_fingerprint: str
+    request: str
+    response: Dict[str, Any]
+    model: Optional[str] = None
+    cost: Optional[float] = None
+    created_at: Optional[str] = None
+    applied_decision_id: Optional[int] = None
+    issue_id: Optional[str] = None
+    anchor_state: Literal["trovata", "cambiata", "non_ritrovata"]
+    current_quote: Optional[str] = None
+
+
+class StudyNoteApplyResponse(BaseModel):
+    ok: bool = True
+    applied_decision_id: int
+    issue_id: str
+    note: StudyNoteView
