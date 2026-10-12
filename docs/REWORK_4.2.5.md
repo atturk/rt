@@ -1,0 +1,87 @@
+# Piano 4.2.5
+
+12 ott 2026, approvato da Attilio. I wireframe approvati sono in docs/wireframes-4.2.5/ (calendario, import, pannelli, linea audio).
+
+## Regole per tutti i lotti
+- **Innestare, non rimpiazzare.** Gli elementi che esistono restano dove sono e come sono: lettore audio, contenuto dei pannelli, campi e bottoni del popup di import, voci della barra laterale. Si aggiungono le parti nuove e si adatta solo quello che il task nomina.
+- Estetica di RT: icone con tooltip, non bottoni con scritte. Niente controlli o stati che il piano non chiede.
+- Le fonti non si modificano mai. Ogni aggiornamento della lezione parte solo su richiesta e si può annullare.
+- Test mirati per passo; suite completa due volte; e2e una volta alla fine (metodo della 4.2.4b3). Non si aggiornano golden o test esistenti per far passare cambiamenti che il piano non chiede.
+- Migrazioni assegnate per evitare conflitti: Codex 0015 (down_revision 0014), Antigravity 0016 (down_revision 0014; alla fusione la riaggancio a 0015).
+- CHANGELOG scritto per l'utente, senza codici dei task.
+
+## Branch
+Il branch beta claude/rt-4.2.5-beta nasce da main dopo la 4.2.4 stabile. Se Attilio vuole partire prima, i branch dei lotti partono da claude/rt-4.2.4-beta e il beta 4.2.5 si allinea a main prima della prima release (i tag beta devono discendere da main).
+
+## Lotti
+| Lotto | Codex | Antigravity |
+|---|---|---|
+| b1 | LE1 backend + RC1 | CA1 calendario (completo) |
+| b2 | DS1 backend (materiali) | Import nuovo (DS1 + ore del calendario) + interfaccia LE1 nella lezione |
+| b3 | AP1 + WS1 backend | AU1 + PN1 + fonti di WS1 nel pannello |
+
+I file sono divisi in modo che i due agenti dello stesso lotto non si tocchino. b2 parte dopo la fusione di b1, b3 dopo b2.
+
+---
+
+## 4.2.5b1
+
+### Codex · LE1 backend (lezioni espandibili)
+Stato di oggi: una lezione ha un audio (info.yaml `file_audio`), un trascritto grezzo, segments.json con ID `seg_{index:06d}` legati all'indice (rt/core/models.py, validatore su id = index), fasi prepare → outline → rewrite → review → build con impronte e "da rifare" (rt/core/idempotency.py).
+
+- **LE1a · Fonti.** Nuovo `sources.json` nella cartella della lezione: elenco ordinato di fonti `{id, tipo: audio|appunti|materiale, file, impronta, aggiunta_il, ordine}`. Per le lezioni esistenti si crea da solo con una fonte audio (nessuna migrazione dei file). Le fonti non si modificano: si aggiungono o si tolgono.
+- **LE1b · ID stabili.** L'ID di un segmento resta `seg_NNNNNN`, ma diventa un contatore di arrivo: non dipende più dalla posizione. `index` resta la posizione nell'ordine della lezione. Togli il vincolo id = index e adatta chi lo presuppone (asr_risk.py, segments.py, mock in llm/client.py). Ogni segmento sa da quale fonte viene (`source_file` esiste già: usa l'id della fonte). Aggiungere una parte non cambia gli ID dei segmenti esistenti, quindi decisioni, correzioni, evidenziazioni, note di studio e stato delle unità restano validi.
+- **LE1c · Aggiunta di una parte di audio.** Trascrizione solo della parte nuova; l'audio della lezione si ricompone nell'ordine delle fonti (stessa logica dell'import con più file); i tempi dei segmenti delle parti successive si spostano. Appunti scritti: testo diviso in paragrafi, segmenti con flag `appunti` e tempi della posizione in cui sono inseriti (durata zero non ammessa: usa la convenzione più semplice e scrivila nel commit; l'interfaccia non mostrerà il timecode dei segmenti `appunti`).
+- **LE1d · Scaletta estesa.** Nuova modalità dell'outline: riceve la scaletta attuale come fissa e i segmenti nuovi, e può solo aggiungere unità o allungare le unità confinanti. Le unità esistenti tengono id e titolo. Validazione: ogni segmento coperto, nessuna unità esistente spostata. Modalità "Ricostruisci" = outline da zero come oggi.
+- **LE1e · Rielaborazione mirata.** Si rielaborano solo le unità nuove o con segmenti cambiati. Le altre restano, con le loro decisioni.
+- **LE1f · Fotografia e Annulla.** Prima di ogni aggiornamento si salvano sources.json, segments.json, outline.json, draft.json, review_decisions.json (cartella `history/<timestamp>/`). "Annulla aggiornamento" li rimette. Una sola fotografia per volta basta.
+- **LE1g · API.** `GET /lessons/{id}/sources`; `POST /lessons/{id}/sources` (upload audio o testo appunti; i materiali arrivano in b2); `DELETE /lessons/{id}/sources/{sid}`; `GET` con lo stato "fonti nuove non ancora usate"; `POST /lessons/{id}/update` con `mode: extend|rebuild` che avvia il job; `POST /lessons/{id}/update/undo`. Rigenera openapi.json e schema.d.ts: Antigravity li userà in b2.
+- **LE1h · Lezione senza audio.** Una lezione può nascere senza audio (solo appunti ora, materiali in b2). Se arriva l'audio dopo: Estendi o Ricostruisci come sopra.
+
+### Codex · RC1 (rielaborazione con le unità precedenti)
+In rt/pipeline/rewrite.py e rt/llm/prompts.py:
+- Ordine del prompt per la cache: sistema; scaletta; (posto per i materiali, b2); unità precedenti già rielaborate, in ordine; poi in coda ID e titolo dell'unità, 90 s prima, segmenti, 90 s dopo. Oggi ID e titolo stanno in testa: spostali. Il trascritto delle unità successive non si passa.
+- Cache: estendi `_cache_lesson_prefix` (rt/llm/client.py) al prefisso che cresce (marcatore sull'ultima unità precedente) per OpenRouter con Anthropic e Gemini; gli altri provider fanno da soli.
+- Contesto senza stime: la lunghezza massima viene dai metadati del modello (context_length di OpenRouter, già letto per i prezzi in rt/llm/pricing.py); i token usati vengono da usage della chiamata precedente (prompt_tokens + completion_tokens). Se uno dei due manca non si taglia niente. Se si supera, si tolgono le unità più vecchie.
+- Rielaborando una sola unità, riceve le precedenti già presenti nel draft.
+
+Ordine dei commit: LE1a, LE1b, LE1c, LE1d, LE1e, LE1f, LE1g, LE1h, RC1, poi la PR verso il beta. Migrazione DB solo se serve (0015).
+
+### Antigravity · CA1 calendario
+Wireframe: docs/wireframes-4.2.5/RT-calendario.html. Tutto il calendario, backend e frontend.
+- **CA1a · Dati.** Migrazione 0016: tabelle per la settimana tipo (con data di inizio validità), le ore di una settimana precisa (aggiunte, tolte o spostate solo quella settimana), lo stato di un'ora (da seguire, seguita, non seguita, da saltare, annullata), lo stato del giorno intero, le note e il collegamento ora → lezione. Router `/calendar`.
+- **CA1b · Collegamento automatico.** Una lezione con stessa data, ora e materia si collega all'ora e la segna Seguita (calcolato, non scritto a mano; il collegamento manuale vince).
+- **CA1c · Pagina Calendario.** Settimana su Mac, giorno su iPhone, popup al posto del pannello, riepilogo nel bottone ⓘ, matita che si divide in due icone (solo questa settimana / settimana tipo), solo icona di stato nei blocchi con tooltip, menu del giorno intero.
+- **CA1d · Barra laterale.** Importa da solo in alto; poi Lezioni (nuova icona, BookOpen) e Calendario (icona Calendar); in basso Job e Impostazioni. Su iPhone il Calendario entra nella tab bar.
+- **CA1e · API per l'import.** `GET /calendar/day?date=` con le ore del giorno e lo stato "già registrata": in b2 lo usa il popup di import.
+Non toccare rewrite.py, prepare.py, outline.py, segments né le API delle lezioni: sono di Codex.
+
+---
+
+## 4.2.5b2
+
+### Codex · DS1 backend
+- Materiali come fonti (tipo `materiale`): PDF, immagini, PowerPoint. Ogni pagina o slide diventa testo una volta sola (testo del PDF; descrizione Vision per foto e slide-immagine, con il modello di Descrizione immagine già configurato). PowerPoint con libreria Python interna (python-pptx) per testo e immagini; per l'immagine della slide prova la resa di sistema di macOS e, se non c'è, usa le immagini contenute. Nessun programma da far installare all'utente.
+- Il testo dei materiali entra nel prefisso fisso della rielaborazione (posto lasciato da RC1).
+- Graffetta: con l'opzione accesa, il classificatore di Arricchimento assegna ogni pagina a una macro unità o a nessuna e le pagine assegnate vengono allegate all'unità come immagini (mai il testo). Opzione nel payload del job, accesa di default solo se ci sono materiali.
+- Lezione solo da materiali: le pagine diventano segmenti (flag `materiale`) e la pipeline è la stessa.
+
+### Antigravity · Import nuovo + interfaccia LE1
+Wireframe: docs/wireframes-4.2.5/RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggiunge:
+- un solo riquadro che accetta audio e materiali e li separa per tipo; miniature dei materiali con + e ×;
+- le ore del giorno dal calendario (API CA1e) come scelte rapide, con l'ora in corso o appena finita già scelta, quelle registrate spente, frecce per il giorno, matita per i campi a mano (i campi di oggi restano identici);
+- la graffetta accanto a Revisione e Arricchimento (accesa di default; spenta e non cliccabile senza materiali; si accende da sola quando se ne caricano).
+- Nella pagina della lezione: elenco delle fonti (aggiungi parte di audio, appunti, materiali; togli), avviso "Fonti nuove non ancora usate" con Aggiorna (Estendi / Ricostruisci) e Annulla aggiornamento. Wireframe da fare prima del giro b2.
+
+---
+
+## 4.2.5b3
+
+### Codex · AP1 + WS1 backend
+- AP1: API di sola lettura con la sua openapi.json, servita su 127.0.0.1 (Open WebUI gira sullo stesso Mac). Quattro operazioni: cerca nel testo delle lezioni (SQLite FTS5, filtri materia e date), elenco lezioni, scaletta di una lezione, testo di un'unità. Chiave separata di sola lettura, creata e revocata da Impostazioni (nuova riga nella sezione esistente). Guida breve in docs per collegare Open WebUI.
+- WS1: durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta.
+
+### Antigravity · AU1 + PN1 + fonti WS1
+- AU1 (docs/wireframes-4.2.5/RT-audio-linea.html): nella pagina della lezione, linea verticale di 2 px a destra dell'unità che si ascolta, che avanza contando solo il parlato. Il lettore resta in basso. Solo pagina della lezione.
+- PN1 (docs/wireframes-4.2.5/RT-pannelli.html): cambiano solo contenitore (staccato di 8 px, angoli stondati, ombra, X) e animazioni (entrata e uscita da destra con dissolvenza, dissolvenza al cambio di pannello; dal basso su iPhone). Il contenuto di ogni pannello resta identico.
+- WS1: sezione Fonti con i link nella voce di verifica del pannello Verifiche e domande.

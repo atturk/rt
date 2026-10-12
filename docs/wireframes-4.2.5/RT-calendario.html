@@ -1,0 +1,276 @@
+<title>Calendario lezioni RT</title>
+<style>
+/* Layout: note in alto, cornice dell'app (rail + pagina Calendario) al centro, vista iPhone sotto; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --danger:#d4382a; --rail:#fafafa;
+  --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --m1:#2f6fd0; --m2:#8a4fc8; --m3:#c0542b; --m4:#14806e; --m5:#5d6b7a; --m6:#b0397a; --m7:#9a7a12;
+  --tint:12%; --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0;text-wrap:balance} h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:6px} .notes li{font-size:14px}
+.notes .ask{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.stage{overflow-x:auto;padding-bottom:4px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.app{width:1040px;height:620px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:14px;display:flex;overflow:hidden;position:relative}
+.rail{width:56px;flex:none;border-right:1px solid var(--border);background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 0}
+.rail .grp{display:flex;flex-direction:column;gap:6px;align-items:center}
+.rail .sep{width:24px;height:1px;background:var(--border);margin:4px 0}
+.rail .fill{flex:1}
+.ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--mute);border:0;background:transparent}
+.ri:hover{background:var(--soft)} .ri.on{background:var(--acc-soft);color:var(--acc)}
+svg{width:18px;height:18px;flex:none}
+[data-tip]{position:relative}
+.tip{position:fixed;z-index:100;background:var(--tip);color:var(--tip-fg);font-size:12px;line-height:1.35;padding:4px 8px;border-radius:6px;white-space:pre;pointer-events:none;max-width:260px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;padding:0 10px 0 16px;flex:none}
+.hdr h2{margin:0 10px 0 0;font-size:16px}
+.ib{width:32px;height:32px;border:0;border-radius:8px;background:transparent;display:grid;place-items:center;color:var(--fg)}
+.ib:hover{background:var(--soft)} .ib.on{background:var(--acc-soft);color:var(--acc)}
+.lab{font-size:14px;font-weight:600;min-width:150px;text-align:center;font-variant-numeric:tabular-nums}
+.sp{flex:1}
+.vsel{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--soft)}
+.vsel .ib{width:30px;height:28px} .vsel .ib.on{background:var(--bg);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.split{display:flex;align-items:center;border-radius:9px;transition:background .15s}
+.split .more{display:flex;gap:2px;width:0;overflow:hidden;transition:width .18s ease-out}
+.split:hover .more,.split:focus-within .more,.split.editing .more{width:66px}
+.split:hover,.split.editing{background:var(--soft)}
+.split .more .ib.on{background:var(--acc);color:var(--bg)}
+.split.editing>.ib{display:none}
+.split .done{display:none} .split.editing .done{display:grid}
+.body{flex:1;min-height:0;display:flex}
+.grid-wrap{flex:1;min-width:0;overflow:auto;position:relative}
+.grid{display:grid;grid-template-columns:52px repeat(5,1fr)}
+.dh{position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:1px solid var(--border);height:48px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line)}
+.dh button{border:0;background:transparent;border-radius:8px;padding:2px 10px;display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--mute)}
+.dh button:hover{background:var(--soft)}
+.dh .n{font-size:16px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.dh.today .n{background:var(--acc);color:var(--bg);border-radius:999px;padding:0 7px}
+.dh .flag{color:var(--danger);display:inline-grid} .dh .flag svg{width:13px;height:13px}
+.corner{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border)}
+.times{padding-top:10px}
+.times div{height:46px;font-size:11px;color:var(--mute);text-align:right;padding-right:8px;transform:translateY(-7px);font-variant-numeric:tabular-nums}
+.col{position:relative;margin-top:10px;height:470px;border-left:1px solid var(--line);background:repeating-linear-gradient(to bottom,transparent 0 45px,var(--line) 45px 46px)}
+.col::before{content:"";position:absolute;left:0;right:0;top:230px;height:46px;background:repeating-linear-gradient(135deg,transparent 0 6px,var(--soft) 6px 8px)}
+.slot{position:absolute;left:4px;right:4px;height:42px;border:1px dashed var(--border);border-radius:8px;background:transparent;color:var(--mute);display:grid;place-items:center;opacity:0}
+.editing-grid .slot:hover{opacity:1}
+.ev{position:absolute;left:4px;right:4px;border-radius:9px;padding:6px 8px;font-size:12px;line-height:1.3;border:0;text-align:left;display:flex;flex-direction:column;gap:1px;
+  background:color-mix(in oklch,var(--c) var(--tint),var(--bg));color:var(--fg);box-shadow:inset 3px 0 0 var(--c)}
+.ev:hover{background:color-mix(in oklch,var(--c) calc(var(--tint) + 8%),var(--bg))}
+.ev .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:12.5px;color:color-mix(in oklch,var(--c) 70%,var(--fg))}
+.ev .h{color:var(--mute);font-size:11px;font-variant-numeric:tabular-nums}
+.ev .ico{position:absolute;right:7px;bottom:6px;color:var(--mute);display:grid}
+.ev .ico svg{width:15px;height:15px}
+.ev.s-seguita .ico{color:var(--learned)} .ev.s-nonseguita .ico{color:var(--danger)}
+.ev.s-annullata{background:var(--soft);box-shadow:inset 3px 0 0 var(--border)} .ev.s-annullata .t{text-decoration:line-through;color:var(--mute)}
+.ev.s-saltare{background:repeating-linear-gradient(135deg,color-mix(in oklch,var(--c) var(--tint),var(--bg)) 0 8px,var(--bg) 8px 12px)}
+.ev.mod::after{content:"";position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--learning)}
+.ev.sel{outline:2px solid var(--acc);outline-offset:1px}
+.ev .x{display:none;position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;background:var(--bg);place-items:center;color:var(--mute)}
+.ev .x svg{width:14px;height:14px}
+.editing-grid .ev .x{display:grid} .editing-grid .ev.mod::after{display:none} .editing-grid .ev{cursor:grab}
+.ring{width:15px;height:15px}
+.now{position:absolute;left:0;right:0;height:2px;background:var(--danger);z-index:3}
+.now::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--danger)}
+.pop{position:absolute;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:12px;display:grid;gap:10px;width:260px}
+.pop .ttl{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px}
+.pop .ttl .dot{width:9px;height:9px;border-radius:3px;background:var(--c)}
+.pop .sub{color:var(--mute);font-size:12.5px;font-variant-numeric:tabular-nums;margin-top:-6px}
+.pop .row{display:flex;align-items:center;gap:6px}
+.pop .row.st{gap:2px}
+.pop .row.st .ib.on{background:var(--acc-soft);color:var(--acc)}
+.pop .row.st .ib[disabled]{opacity:.35;cursor:not-allowed}
+.pop .les{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:10px;font-size:13px;min-width:0}
+.pop .les .m{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pop .les .m.mute{color:var(--mute)}
+.pop .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.pop .kv span:nth-child(odd){color:var(--mute)} .pop .kv b{font-variant-numeric:tabular-nums;font-weight:600}
+.pop .lst{display:grid;gap:4px;font-size:13px;border-top:1px solid var(--line);padding-top:8px}
+.pop .lst .li{display:flex;gap:8px;align-items:center} .pop .lst .d{margin-left:auto;color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+.pop .lst .dot{width:8px;height:8px;border-radius:2px;background:var(--c)}
+.pop .eb{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.form{display:grid;gap:8px}
+.form label{display:grid;gap:3px;font-size:12px;color:var(--mute)}
+.form input,.form select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:5px 8px;min-width:0}
+.form .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pop .acts{display:flex;justify-content:flex-end;gap:2px}
+/* iPhone */
+.phones{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+.phone{width:340px;max-width:100%;height:600px;background:var(--bg);border:1px solid var(--border);border-radius:34px;padding:14px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.ph-h{padding:6px 14px 8px 18px;display:flex;align-items:center;gap:2px}
+.ph-h b{font-size:20px;flex:1}
+.days{display:flex;gap:4px;padding:0 12px 10px;border-bottom:1px solid var(--line)}
+.days button{flex:1;border:0;background:transparent;border-radius:10px;padding:4px 0;display:grid;justify-items:center;font-size:11px;color:var(--mute)}
+.days button .n{font-size:16px;font-weight:600;color:var(--fg)}
+.days button.on{background:var(--acc-soft)} .days button.on .n{color:var(--acc)}
+.days .dots{display:flex;gap:2px;height:5px} .days .dots i{width:4px;height:4px;border-radius:50%;background:var(--c)}
+.ph-list{flex:1;overflow:auto;padding:10px 14px;display:grid;gap:8px;align-content:start}
+.ph-ev{display:grid;grid-template-columns:44px 1fr;gap:10px}
+.ph-ev .hh{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums;padding-top:6px;line-height:1.3}
+.ph-ev .ev{position:relative;left:0;right:0;min-height:58px}
+.ph-tab{border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:10px 0 18px;color:var(--mute)}
+.ph-tab .on{color:var(--acc)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="top"><h1>Calendario</h1><span class="meta">Wireframe CA1 v2 per RT 4.2.5 · dati d'esempio dall'orario del 3° anno MedTO, ottobre 2026 · oggi = lunedì 12 ottobre</span></div>
+<div class="wrap">
+  <section class="notes" aria-label="Note">
+    <h2>Novità della v2</h2>
+    <ul>
+      <li>Barra laterale: <b>Importa</b> da solo in alto, sotto <b>Lezioni</b> (nuova icona) e <b>Calendario</b>, in basso <b>Job</b> e <b>Impostazioni</b>.</li>
+      <li>Solo icone con tooltip. Il riepilogo della settimana (ore, registrate, da recuperare) è nel bottone ⓘ, come nello Studio.</li>
+      <li>Nei blocchi solo materia, orario e un'icona di stato: passa col mouse per i dettagli, clic per il pannellino con stati e lezione.</li>
+      <li>Matita: passandoci sopra si apre in due icone, <b>solo questa settimana</b> e <b>settimana tipo</b>. In modifica: + sulle ore vuote, × sui blocchi, ✓ per finire.</li>
+      <li>Clic sul giorno: segna tutto il giorno.</li>
+    </ul>
+  </section>
+  <div class="stage">
+  <div class="app" id="app">
+    <nav class="rail" aria-label="Barra laterale">
+      <div class="grp"><button class="ri" data-tip="Importa lezione" aria-label="Importa lezione"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
+      <div class="sep"></div>
+      <div class="grp"><button class="ri" data-tip="Lezioni" aria-label="Lezioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></button><button class="ri on" data-tip="Calendario" aria-label="Calendario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></button></div>
+      <div class="fill"></div>
+      <div class="grp"><button class="ri" data-tip="Job in corso" aria-label="Job in corso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></button><button class="ri" data-tip="Impostazioni" aria-label="Impostazioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
+    </nav>
+    <div class="main" id="main">
+      <header class="hdr">
+        <h2>Calendario</h2>
+        <button class="ib" id="prev" data-tip="Settimana precedente" aria-label="Settimana precedente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+        <span class="lab" id="wklab"></span>
+        <button class="ib" id="next" data-tip="Settimana successiva" aria-label="Settimana successiva"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+        <button class="ib" id="today" data-tip="Oggi" aria-label="Oggi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="12" cy="16" r="2"/></svg></button>
+        <div class="sp"></div>
+        <button class="ib" id="info" data-tip="Riepilogo della settimana" data-tip-pos="left" aria-label="Riepilogo della settimana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
+        <div class="split" id="split">
+          <button class="ib" data-tip="Modifica orario" data-tip-pos="left" aria-label="Modifica orario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+          <div class="more">
+            <button class="ib" data-scope="week" data-tip="Modifica solo questa settimana" aria-label="Modifica solo questa settimana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 15h8"/></svg></button>
+            <button class="ib" data-scope="tpl" data-tip="Modifica la settimana tipo,&#10;da questa settimana in poi" data-tip-pos="left" aria-label="Modifica la settimana tipo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></button>
+          </div>
+          <button class="ib done" id="done" data-tip="Fatto" data-tip-pos="left" aria-label="Fatto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
+        </div>
+        <div class="vsel" role="group" aria-label="Vista"><button class="ib on" data-tip="Settimana" aria-label="Settimana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></button><button class="ib" data-tip="Giorno (vedi iPhone sotto)" data-tip-pos="left" aria-label="Giorno"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg></button></div>
+      </header>
+      <div class="body"><div class="grid-wrap" id="gw"><div class="grid" id="grid"></div></div></div>
+      <div class="pop" id="pop" hidden></div>
+    </div>
+  </div>
+  </div>
+  <section class="notes"><h2>Su iPhone</h2><div class="hint" style="font-size:14px;color:var(--mute)">Vista giorno con la striscia dei giorni (swipe); i pallini dicono quali materie ci sono. Tocco su un'ora = stesso pannellino, dal basso.</div></section>
+  <div class="phones" id="phones"></div>
+</div>
+<script>
+const M={DM:['Data mining','--m1'],EM:['Elettromagnetismo','--m2'],GOQS:['GOQS','--m3'],PGSS:['PGSS','--m4'],GEN:['Generale','--m5'],DIR:['Diritto','--m6'],CLI:['Clinica','--m7']};
+const DOC={DM:'Prof. Ferraris',EM:'Prof.ssa Bassi',GOQS:'Prof. Lanza',PGSS:'Prof.ssa Greco',GEN:'Prof. Rinaldi',DIR:'Prof. Conte',CLI:'Prof.ssa Villa'};
+const DAYS=['Lun','Mar','Mer','Gio','Ven'],DAYL=['lunedì','martedì','mercoledì','giovedì','venerdì'],T0=8.5;
+const TPL=[[0,'DM',9.5,11.5],[0,'EM',11.5,13.5],[0,'GEN',16.5,18.5],[1,'DM',8.5,10.5],[1,'GOQS',10.5,13.5],[1,'PGSS',14.5,16.5],
+ [2,'DM',8.5,11.5],[2,'EM',11.5,13.5],[2,'PGSS',14.5,16.5],[2,'GEN',16.5,18.5],[3,'PGSS',9.5,11.5],[3,'GEN',11.5,13.5],[4,'CLI',8.5,11.5],[4,'GEN',11.5,13.5]];
+const WEEKS=[{n:'02',from:5,to:9,extra:[[0,'DIR',14.5,16.5],[3,'DIR',14.5,17.5]]},{n:'03',from:12,to:16,extra:[[0,'DIR',14.5,16.5],[3,'DIR',14.5,16.5]]},{n:'04',from:19,to:23,extra:[]},{n:'05',from:26,to:30,extra:[]}];
+const ST={'02|0|DM|9.5':{s:'seguita',rec:{t:'Clustering gerarchico',p:5,of:8}},'02|0|EM|11.5':{s:'seguita',rec:{t:'Legge di Gauss',p:8,of:8}},'02|0|DIR|14.5':{s:'seguita',rec:{t:'Fonti del diritto',p:2,of:6}},
+ '02|1|DM|8.5':{s:'seguita',rec:{t:'Regole associative',p:3,of:9}},'02|1|GOQS|10.5':{s:'nonseguita'},'02|2|DM|8.5':{s:'seguita',rec:{t:'Alberi di decisione',p:0,of:11}},'02|2|GEN|16.5':{s:'saltare'},
+ '02|3|DIR|14.5':{s:'annullata'},'02|4|CLI|8.5':{s:'nonseguita'},'02|4|GEN|11.5':{s:'seguita',rec:{t:'Ciclo cellulare',p:1,of:7}},'03|0|DM|9.5':{s:'seguita',rec:{t:'k-means',p:0,of:0}},'03|3|DIR|14.5':{s:'saltare'}};
+const SL={seguire:'Da seguire',seguita:'Seguita',nonseguita:'Non seguita',saltare:'Da saltare',annullata:'Annullata'};
+const P={seguita:'<path d="M20 6 9 17l-5-5"/>',nonseguita:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>',saltare:'<path d="m5 4 10 8-10 8z"/><path d="M19 5v14"/>',
+ annullata:'<circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/>',seguire:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/>',
+ open:'<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',study:'<path d="M2 10 12 5l10 5-10 5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/>',link:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+ note:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',x:'<path d="M18 6 6 18M6 6l12 12"/>',plus:'<path d="M12 5v14M5 12h14"/>',
+ cal:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',book:'<path d="M12 7v14M3 18V4h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5v14h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'};
+const ic=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${P[k]}</svg>`;
+let wi=1,sel=null,edit=null,dayState={};
+const fmt=h=>{const H=Math.floor(h),m=Math.round((h-H)*60);return String(H).padStart(2,'0')+':'+String(m).padStart(2,'0')};
+const ring=(p,of)=>{const r=6,c=2*Math.PI*r,f=of?p/of:0;return `<svg class="ring" viewBox="0 0 16 16"><circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--track)" stroke-width="2.4"/><circle cx="8" cy="8" r="${r}" fill="none" stroke="${f>=1?'var(--learned)':'var(--learning)'}" stroke-width="2.4" stroke-dasharray="${c*f} ${c}" transform="rotate(-90 8 8)" stroke-linecap="round"/></svg>`};
+function evs(w){return TPL.concat(w.extra).map(([d,m,a,b])=>{const k=`${w.n}|${d}|${m}|${a}`;const past=(+w.n<3)||(+w.n==3&&d==0&&b<=10);
+  let st=ST[k]||{s:past?'nonseguita':'seguire'};const ds=dayState[w.n+'|'+d];if(ds&&!st.rec)st={...st,s:ds};
+  return {k,d,m,a,b,...st,mod:w.extra.some(e=>e[0]==d&&e[1]==m&&e[2]==a)}}).sort((x,y)=>x.d-y.d||x.a-y.a)}
+function tip(e){let t=`${M[e.m][0]} · ${fmt(e.a)}–${fmt(e.b)}\n${e.rec?(e.rec.of?`Seguita · ${e.rec.p}/${e.rec.of} unità apprese`:'Seguita · in rielaborazione'):SL[e.s]}`;if(e.mod)t+='\nSolo questa settimana';return t}
+function evHTML(e,abs){const pos=abs?`top:${(e.a-T0)*46+2}px;height:${(e.b-e.a)*46-4}px;`:'';
+  const i=e.rec?(e.rec.of?ring(e.rec.p,e.rec.of):ic('mic')):ic(e.s);
+  return `<button class="ev s-${e.s} ${e.mod?'mod':''} ${sel===e.k?'sel':''}" style="--c:var(${M[e.m][1]});${pos}" data-k="${e.k}" data-tip="${tip(e)}" aria-label="${tip(e).replace(/\n/g,', ')}"><span class="t">${M[e.m][0].toUpperCase()}</span><span class="h">${fmt(e.a)}–${fmt(e.b)}</span><span class="ico">${i}</span><span class="x" data-tip="Togli quest'ora">${ic('x')}</span></button>`}
+function render(){const w=WEEKS[wi],list=evs(w);
+  document.getElementById('wklab').textContent=`${w.from}–${w.to} ottobre`;
+  let h='<div class="corner"></div>';
+  for(let d=0;d<5;d++){const ds=dayState[w.n+'|'+d];h+=`<div class="dh ${w.n=='03'&&d==0?'today':''}"><button data-day="${d}" data-tip="Segna tutto il giorno">${DAYS[d]} <span class="n">${w.from+d}</span>${ds?`<span class="flag">${ic(ds)}</span>`:''}</button></div>`}
+  h+='<div class="times">'+Array.from({length:10},(_,i)=>`<div>${fmt(T0+i)}</div>`).join('')+'</div>';
+  for(let d=0;d<5;d++){const mine=list.filter(e=>e.d==d);let slots='';
+    if(edit)for(let t=T0;t<18.5;t++){if(t==13.5||mine.some(e=>t>=e.a&&t<e.b))continue;slots+=`<button class="slot" style="top:${(t-T0)*46+2}px" data-add="${d}|${t}" data-tip="Aggiungi alle ${fmt(t)}">${ic('plus')}</button>`}
+    h+=`<div class="col">${slots}${mine.map(e=>evHTML(e,true)).join('')}${w.n=='03'&&d==0?`<div class="now" style="top:${(9.83-T0)*46}px"></div>`:''}</div>`}
+  const g=document.getElementById('grid');g.innerHTML=h;document.getElementById('gw').classList.toggle('editing-grid',!!edit);
+  const sp=document.getElementById('split');sp.classList.toggle('editing',!!edit);sp.querySelectorAll('[data-scope]').forEach(b=>b.classList.toggle('on',b.dataset.scope==edit));
+  phones()}
+const pop=document.getElementById('pop'),main=document.getElementById('main');
+function place(anchor,w=260){const r=anchor.getBoundingClientRect(),a=main.getBoundingClientRect();let x=r.right-a.left+8;if(x+w>a.width-8)x=r.left-a.left-w-8;if(x<8)x=8;
+  let y=Math.max(60,Math.min(r.top-a.top,a.height-pop.offsetHeight-10));pop.style.left=x+'px';pop.style.top=y+'px'}
+function openEv(btn){const e=evs(WEEKS[wi]).find(x=>x.k===btn.dataset.k);sel=e.k;const w=WEEKS[wi];
+  pop.innerHTML=`<div class="ttl" style="--c:var(${M[e.m][1]})"><span class="dot"></span>${M[e.m][0]}</div><div class="sub">${DAYL[e.d]} ${w.from+e.d} ott · ${fmt(e.a)}–${fmt(e.b)} · ${DOC[e.m]}</div>
+   <div class="row st">${Object.keys(SL).map(s=>`<button class="ib ${e.s==s?'on':''}" data-st="${s}" data-tip="${SL[s]}" aria-label="${SL[s]}" ${e.rec&&s!='seguita'?'disabled':''}>${ic(s)}</button>`).join('')}<span class="sp"></span><button class="ib" data-tip="Note" data-tip-pos="left" aria-label="Note">${ic('note')}</button></div>
+   ${e.rec?`<div class="les">${e.rec.of?ring(e.rec.p,e.rec.of):ic('mic')}<span class="m">${e.rec.t}</span>${e.rec.of?`<button class="ib" data-tip="Studia" aria-label="Studia">${ic('study')}</button>`:''}<button class="ib" data-tip="Apri lezione" data-tip-pos="left" aria-label="Apri lezione">${ic('open')}</button></div>`
+   :`<div class="les"><span class="m mute">Nessuna registrazione</span><button class="ib" data-tip="Collega una lezione" data-tip-pos="left" aria-label="Collega una lezione">${ic('link')}</button></div>`}`;
+  pop.hidden=false;place(btn);render()}
+function openDay(btn){const d=+btn.dataset.day;sel=null;
+  pop.innerHTML=`<div class="eb">${DAYL[d]} ${WEEKS[wi].from+d} ottobre · tutto il giorno</div><div class="row st">${['nonseguita','saltare','annullata'].map(s=>`<button class="ib" data-ds="${s}" data-d="${d}" data-tip="${SL[s]}" aria-label="${SL[s]}">${ic(s)}</button>`).join('')}<button class="ib" data-ds="" data-d="${d}" data-tip="Come da orario" aria-label="Come da orario">${ic('seguire')}</button></div>`;
+  pop.hidden=false;place(btn,200)}
+function openInfo(btn){const list=evs(WEEKS[wi]);const hrs=list.reduce((s,e)=>s+(e.s=='annullata'?0:e.b-e.a),0);
+  const todo=evs(WEEKS[0]).concat(evs(WEEKS[1])).filter(x=>x.s=='nonseguita');const mods=list.filter(e=>e.mod).length;
+  pop.innerHTML=`<div class="eb">Settimana ${WEEKS[wi].n} · ${WEEKS[wi].from}–${WEEKS[wi].to} ottobre</div>
+   <div class="kv"><span>Ore</span><b>${hrs}</b><span>Registrate</span><b>${list.filter(e=>e.rec).length}</b><span>Da saltare</span><b>${list.filter(e=>e.s=='saltare').length}</b><span>Settimana tipo</span><b>${mods?mods+' ore diverse':'uguale'}</b></div>
+   <div class="lst"><div class="eb">Da recuperare</div>${todo.map(x=>`<div class="li" style="--c:var(${M[x.m][1]})"><span class="dot"></span>${M[x.m][0]}<span class="d">${DAYS[x.d]} ${WEEKS[+x.k.slice(0,2)-2].from+x.d}/10</span></div>`).join('')}</div>`;
+  pop.hidden=false;const r=btn.getBoundingClientRect(),a=main.getBoundingClientRect();pop.style.left=(r.right-a.left-260)+'px';pop.style.top=(r.bottom-a.top+6)+'px'}
+function openAdd(btn){const [d,t]=btn.dataset.add.split('|');sel=null;
+  pop.innerHTML=`<div class="eb">${edit=='week'?'Solo settimana '+WEEKS[wi].n:'Settimana tipo, da qui in poi'}</div><div class="form">
+   <label>Materia<select id="f-m">${Object.keys(M).map(k=>`<option>${M[k][0]}</option>`).join('')}</select></label>
+   <div class="two"><label>Inizio<input id="f-s" value="${fmt(+t)}"></label><label>Fine<input id="f-e" value="${fmt(+t+2)}"></label></div>
+   <label>Docente<input id="f-doc" placeholder="Facoltativo"></label></div>
+   <div class="acts"><button class="ib" data-close data-tip="Annulla" aria-label="Annulla">${ic('x')}</button><button class="ib" data-close data-tip="Aggiungi" data-tip-pos="left" aria-label="Aggiungi" style="background:var(--acc);color:var(--bg)">${ic('seguita')}</button></div>`;
+  pop.hidden=false;place(btn)}
+document.getElementById('app').addEventListener('click',ev=>{const t=ev.target;
+  if(t.closest('.x')){pop.hidden=true;return}
+  const b=t.closest('.ev');if(b&&!edit){openEv(b);return}
+  const st=t.closest('[data-st]');if(st&&!st.disabled){ST[sel]={...(ST[sel]||{}),s:st.dataset.st};const k=sel;render();openEv(document.querySelector(`.ev[data-k="${k}"]`));return}
+  const dy=t.closest('[data-day]');if(dy){openDay(dy);return}
+  const ds=t.closest('[data-ds]');if(ds){const k=WEEKS[wi].n+'|'+ds.dataset.d;if(ds.dataset.ds)dayState[k]=ds.dataset.ds;else delete dayState[k];pop.hidden=true;render();return}
+  const ad=t.closest('[data-add]');if(ad){openAdd(ad);return}
+  if(t.closest('#info')){openInfo(t.closest('#info'));return}
+  const sc=t.closest('[data-scope]');if(sc){edit=sc.dataset.scope;pop.hidden=true;sel=null;render();return}
+  if(t.closest('#done')){edit=null;pop.hidden=true;render();return}
+  if(t.closest('[data-close]')||!t.closest('.pop')){pop.hidden=true;if(sel){sel=null;render()}}});
+document.getElementById('prev').addEventListener('click',e=>{e.stopPropagation();wi=Math.max(0,wi-1);pop.hidden=true;sel=null;render()});
+document.getElementById('next').addEventListener('click',e=>{e.stopPropagation();wi=Math.min(3,wi+1);pop.hidden=true;sel=null;render()});
+document.getElementById('today').addEventListener('click',e=>{e.stopPropagation();wi=1;pop.hidden=true;sel=null;render()});
+function phones(){const w=WEEKS[1],list=evs(w);const mk=d=>`<div class="phone"><div class="ph-h"><b>Calendario</b><button class="ib" aria-label="Riepilogo">${ic('info')}</button><button class="ib" aria-label="Oggi">${ic('cal')}</button></div>
+  <div class="days">${DAYS.map((n,i)=>`<button class="${i==d?'on':''}"><span>${n}</span><span class="n">${w.from+i}</span><span class="dots">${list.filter(e=>e.d==i).map(e=>`<i style="--c:var(${M[e.m][1]})"></i>`).join('')}</span></button>`).join('')}</div>
+  <div class="ph-list">${list.filter(e=>e.d==d).map(e=>`<div class="ph-ev"><div class="hh">${fmt(e.a)}<br>${fmt(e.b)}</div>${evHTML(e,false)}</div>`).join('')}</div>
+  <div class="ph-tab"><span>${ic('plus')}</span><span>${ic('book')}</span><span class="on">${ic('cal')}</span></div></div>`;
+  document.getElementById('phones').innerHTML=mk(0)+mk(3)}
+const tipEl=document.createElement('div');tipEl.className='tip';tipEl.hidden=true;document.body.append(tipEl);
+function showTip(el){const t=el.dataset.tip;if(!t)return;tipEl.textContent=t;tipEl.hidden=false;const r=el.getBoundingClientRect(),w=tipEl.offsetWidth,h=tipEl.offsetHeight;
+  let x,y;if(el.closest('.rail')){x=r.right+8;y=r.top+r.height/2-h/2}else{x=r.left+r.width/2-w/2;y=r.bottom+6;if(y+h>innerHeight-4)y=r.top-h-6}
+  x=Math.max(4,Math.min(x,innerWidth-w-4));tipEl.style.left=x+'px';tipEl.style.top=y+'px'}
+document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-tip]');if(el)showTip(el);else tipEl.hidden=true});
+document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tip]');if(el)showTip(el)});
+document.addEventListener('focusout',()=>{tipEl.hidden=true});
+document.addEventListener('click',()=>{tipEl.hidden=true},true);
+document.addEventListener('scroll',()=>{tipEl.hidden=true},true);
+render();
+</script>

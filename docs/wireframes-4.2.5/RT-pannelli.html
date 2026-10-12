@@ -1,0 +1,109 @@
+<title>Pannelli RT 4.2.5</title>
+<style>
+/* Layout: note in alto, cornice dell'app (rail + pagina Calendario) al centro, vista iPhone sotto; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --danger:#d4382a; --rail:#fafafa;
+  --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --m1:#2f6fd0; --m2:#8a4fc8; --m3:#c0542b; --m4:#14806e; --m5:#5d6b7a; --m6:#b0397a; --m7:#9a7a12;
+  --tint:12%; --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0} h2{font-size:17px;margin:0 0 4px}
+button{font:inherit;color:inherit;cursor:pointer} svg{width:18px;height:18px;flex:none}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px}.notes ul{margin:0;padding-left:20px;display:grid;gap:6px}.notes li{font-size:14px}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--mute)}
+.ctl button{border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:3px 12px;font-size:13px}.ctl button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--acc);font-weight:600}
+.stage{overflow-x:auto}
+.app{width:1000px;height:620px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:14px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.hdr{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;padding:0 12px 0 18px;flex:none}
+.hdr b{flex:1;font-size:15px}
+.ib{width:34px;height:34px;border:0;border-radius:8px;background:transparent;display:grid;place-items:center;color:var(--fg)}.ib:hover{background:var(--soft)}.ib.on{background:var(--acc-soft);color:var(--acc)}
+.doc{flex:1;overflow:auto;padding:24px 40px}.doc .c{max-width:560px}
+.doc h3{margin:0 0 8px;font-size:20px}.doc p{margin:0 0 14px;line-height:1.75;color:color-mix(in oklch,var(--fg) 85%,var(--bg))}
+/* pannello attuale */
+.panel{position:absolute;z-index:10;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+.panel.old{top:52px;right:0;bottom:0;width:384px;border-left:1px solid var(--border);box-shadow:-6px 0 18px rgb(0 0 0/.06)}
+/* pannello nuovo */
+.panel.new{top:60px;right:8px;bottom:8px;width:384px;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);transform-origin:top right}
+.panel.new.in{animation:pin var(--d) cubic-bezier(.2,.8,.2,1) both}
+.panel.new.out{animation:pout calc(var(--d)*.7) ease-in both}
+@keyframes pin{from{opacity:0;transform:translateX(24px) scale(.98)}}
+@keyframes pout{to{opacity:0;transform:translateX(24px) scale(.98)}}
+.ph{display:flex;align-items:center;gap:6px;padding:12px 10px 8px 18px;flex:none}
+.ph b{flex:1;font-size:15px}
+.tabs{display:flex;gap:2px;padding:0 12px 10px;flex:none;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:transparent;border-radius:8px;padding:4px 10px;font-size:13px;color:var(--mute)}
+.tabs button.on{background:var(--soft);color:var(--fg);font-weight:600}
+.pb{flex:1;overflow:auto;padding:12px 12px 16px;display:grid;gap:8px;align-content:start}
+.new .pb.sw{animation:sw var(--d) ease-out both} @keyframes sw{from{opacity:0;transform:translateY(6px)}}
+.sec{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);padding:8px 6px 2px}
+/* voci */
+.it{border-bottom:1px solid var(--line);padding:10px 4px;display:grid;gap:4px;font-size:13.5px}
+.it .r1{display:flex;align-items:center;gap:8px}.it .r1 b{flex:1;font-weight:600}
+.it .q{color:var(--mute);font-size:12.5px}
+.it .more{display:grid;gap:6px;overflow:hidden;font-size:13px}
+.it .more{display:none}.it.open .more{display:grid}
+.it .acts{display:flex;gap:2px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.badge{font-size:11px;border-radius:999px;padding:1px 8px;background:var(--soft);color:var(--mute)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;padding:4px 6px}.kv span:nth-child(odd){color:var(--mute)}
+.sk{height:58px;border-radius:12px;background:linear-gradient(90deg,var(--soft) 0,color-mix(in oklch,var(--soft) 40%,var(--bg)) 50%,var(--soft) 100%);background-size:200% 100%;animation:sk 1.2s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+.empty{display:grid;justify-items:center;gap:6px;color:var(--mute);font-size:13px;padding:40px 10px;text-align:center}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<div class="top"><h1>Pannelli</h1><span class="meta">Wireframe PN1 per RT 4.2.5 · elementi comuni dei pannelli della lezione · dati d'esempio</span></div>
+<div class="wrap">
+<section class="notes"><ul>
+<li><b>Nuovo</b>: cambiano solo il contenitore e il movimento. Il pannello si stacca dai bordi (8 px), ha gli angoli stondati e un'ombra, la X è nello stesso posto. Entra scorrendo da destra con una dissolvenza, esce allo stesso modo, e passando da un pannello all'altro il contenuto si dissolve.</li>
+<li>Il contenuto interno di ogni pannello resta com'è oggi: quello qui dentro è solo un segnaposto.</li>
+<li><b>Attuale</b> per confronto: attaccato al bordo, voci separate da righe, nessuna animazione.</li>
+<li>Vale per tutti i pannelli (Dettagli, Verifica con LLM, Domande, Classificatore, Arricchimento, Verifiche e domande). Su iPhone resta il foglio dal basso, con l'animazione dal basso.</li>
+</ul>
+<div class="ctl">Stile: <button data-s="new" class="on">Nuovo</button><button data-s="old">Attuale</button> · Velocità: <button data-v="160">Veloce</button><button data-v="240" class="on">Normale</button><button data-v="400">Lenta</button> · Contenuto: <button data-c="list" class="on">Voci</button><button data-c="kv">Dettagli</button><button data-c="load">Caricamento</button><button data-c="empty">Vuoto</button></div></section>
+<div class="stage"><div class="app" id="app" style="--d:240ms">
+<div class="hdr"><b>Data mining · Clustering gerarchico</b>
+<button class="ib" data-p="Dettagli" aria-label="Dettagli" title="Dettagli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></button>
+<button class="ib" data-p="Verifica con LLM" aria-label="Verifica con LLM" title="Verifica con LLM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg></button>
+<button class="ib" data-p="Domande" aria-label="Domande" title="Domande"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg></button></div>
+<div class="doc"><div class="c"><h3>2. Dendrogramma e soglie</h3><p>Il dendrogramma rappresenta la sequenza delle fusioni: l'altezza a cui due rami si uniscono è la distanza fra i cluster al momento della fusione. Tagliando l'albero a una soglia si ottiene una partizione.</p><p>La scelta della soglia dipende dal problema: un salto ampio nelle altezze di fusione suggerisce un numero naturale di gruppi.</p><p>Il criterio di collegamento cambia la forma dei cluster: il collegamento singolo tende a creare catene, quello completo gruppi compatti.</p></div></div>
+<aside class="panel" id="panel" hidden></aside>
+</div></div></div>
+<script>
+const app=document.getElementById('app'),panel=document.getElementById('panel');let style='new',cont='list',title=null;
+const X='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+const OK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const ITEMS=[['--danger','Soglia invertita','Unità 2 · alta','«un salto ridotto nelle altezze suggerisce»','Correzione: «un salto ampio nelle altezze suggerisce»'],['--learning','Termine impreciso','Unità 3 · media','«il collegamento singolo crea gruppi compatti»','Correzione: «il collegamento completo crea gruppi compatti»'],['--learned','Definizione corretta','Unità 1 · log','«il clustering gerarchico costruisce una gerarchia»','Nessun problema trovato.']];
+function body(){if(cont=='load')return '<div class="sk"></div><div class="sk"></div><div class="sk"></div>';
+ if(cont=='empty')return '<div class="empty">'+OK.replace('<svg','<svg style="width:28px;height:28px"')+'<span>Nessun problema da rivedere.</span></div>';
+ if(cont=='kv')return '<div class="sec">Lezione</div><div class="kv"><span>Materia</span><span>Data mining</span><span>Docente</span><span>Prof. Ferraris</span><span>Data</span><span>12 ott 2026, 09:30</span><span>Durata</span><span>1 h 58 min</span></div><div class="sec">Costi</div><div class="kv"><span>Rielaborazione</span><span>0,42 €</span><span>Verifica</span><span>0,11 €</span></div>';
+ return '<div class="sec">Da rivedere · 2</div>'+ITEMS.map((x,i)=>(i==2?'<div class="sec">Log</div>':'')+'<div class="it" data-i="'+i+'"><div class="r1"><span class="dot" style="--c:var('+x[0]+')"></span><b>'+x[1]+'</b><span class="badge">'+x[2]+'</span></div><div class="q">'+x[3]+'</div><div class="more"><span>'+x[4]+'</span>'+(i<2?'<div class="acts"><button class="ib" title="Applica" aria-label="Applica">'+OK+'</button><button class="ib" title="Ignora" aria-label="Ignora">'+X+'</button></div>':'')+'</div></div>').join('')}
+function render(sw){panel.className='panel '+style;panel.innerHTML='<div class="ph"><b>'+title+'</b><button class="ib" id="close" aria-label="Chiudi" title="Chiudi">'+X+'</button></div><div class="tabs"><button class="on">Tutte</button><button>Unità 2</button><button>Log</button></div><div class="pb '+(sw&&style=='new'?'sw':'')+'">'+body()+'</div>';}
+function open(t){const was=!panel.hidden;title=t;panel.hidden=false;render(was);if(!was&&style=='new'){panel.classList.add('in')}
+ document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on',b.dataset.p==t))}
+function close(){document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('on'));if(style=='new'){panel.classList.remove('in');panel.classList.add('out');setTimeout(()=>{panel.hidden=true},parseInt(app.style.getPropertyValue('--d'))*.7)}else panel.hidden=true;title=null}
+document.addEventListener('click',e=>{const t=e.target;const p=t.closest('[data-p]');if(p){title==p.dataset.p?close():open(p.dataset.p);return}
+ if(t.closest('#close')){close();return}
+ const it=t.closest('.it');if(it&&!t.closest('.acts')){it.classList.toggle('open');return}
+ const s=t.closest('[data-s]');if(s){style=s.dataset.s;sel('[data-s]',s);if(title)render();return}
+ const v=t.closest('[data-v]');if(v){app.style.setProperty('--d',v.dataset.v+'ms');sel('[data-v]',v);return}
+ const c=t.closest('[data-c]');if(c){cont=c.dataset.c;sel('[data-c]',c);if(title)render(true);return}});
+function sel(q,b){document.querySelectorAll(q).forEach(x=>x.classList.toggle('on',x==b))}
+open('Verifica con LLM');
+</script>
