@@ -97,8 +97,10 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     legacy = next((s for s in sources if s.id == "src_000001"), None)
     if legacy and legacy.id not in cache and previous:
         originals = [s.model_copy(update={"source_file": legacy.id}) for s in previous]
-        cache[legacy.id] = {"segments": [s.model_dump() for s in originals],
-                            "duration": _duration(os.path.join(lesson_dir, legacy.file))}
+        legacy_path = os.path.join(lesson_dir, legacy.file)
+        # Audio storico mancante: la durata è la fine dell'ultimo segmento già preparato.
+        duration = _duration(legacy_path) if fs.isfile(legacy_path) else previous[-1].end_seconds
+        cache[legacy.id] = {"segments": [s.model_dump() for s in originals], "duration": duration}
     offset = 0.0
     ordered = []
     for source in sources:
@@ -106,7 +108,8 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             ctx.check_cancelled()
         path = os.path.join(lesson_dir, source.file)
         from rt.core.idempotency import compute_file_sha256
-        if source.impronta and compute_file_sha256(path) != source.impronta:
+        missing_but_prepared = source.id in cache and not fs.isfile(path)
+        if source.impronta and not missing_but_prepared and compute_file_sha256(path) != source.impronta:
             raise ValueError("Una fonte originale è cambiata: aggiungila come nuova fonte")
         if source.id not in cache:
             if source.tipo == "audio":
@@ -166,18 +169,60 @@ def changed_units(previous_outline, previous_segments, outline, segments):
     return [uid for uid, signature in signatures(outline, segments).items() if old.get(uid) != signature]
 
 
+def _check_extend_keeps_units(lesson_dir, outline):
+    """Prima di scrivere qualsiasi cosa: Estendi non può svuotare un'unità esistente."""
+    from rt.pipeline.validator import ValidationError
+    segment_path = lesson_path(lesson_dir, "segments.json")
+    previous = load_segments_json(segment_path).segments if fs.isfile(segment_path) else []
+    cache = _read_state(lesson_dir)["sources"]
+    surviving = set()
+    for source in load_sources(lesson_dir):
+        if source.id in cache:
+            surviving.update(item["id"] for item in cache[source.id]["segments"])
+        elif source.id == "src_000001":
+            # Come in prepare_source_update: la prima volta i segmenti storici sono della fonte originale.
+            surviving.update(s.id for s in previous)
+    positions = {s.id: i for i, s in enumerate(previous)}
+    for macro in outline.macro_sections:
+        for unit in macro.units:
+            if unit.start_segment_id not in positions or unit.end_segment_id not in positions:
+                continue
+            owned = previous[positions[unit.start_segment_id]:positions[unit.end_segment_id] + 1]
+            if not any(s.id in surviving for s in owned):
+                raise ValidationError("Una fonte rimossa svuota un'unità: usa Ricostruisci")
+
+
 def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
+    from rt.pipeline.outline import load_outline
+    from rt.core.update_history import begin_update, finish_update, abort_update
+    if mode not in ("extend", "rebuild"):
+        raise ValueError("Modalità di aggiornamento non valida")
+    old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
+    load_sources(lesson_dir)
+    if mode == "extend" and old_outline:
+        _check_extend_keeps_units(lesson_dir, old_outline)
+    previous_snapshot = begin_update(lesson_dir)
+    try:
+        result = _run_source_update(lesson_dir, old_outline, mode=mode, mock=mock, ctx=ctx)
+    except BaseException:
+        # Qualsiasi errore (anche annullamento) riporta la lezione com'era prima dell'aggiornamento:
+        # fonti nuove ancora da usare e fotografia dell'aggiornamento precedente per Annulla.
+        try:
+            abort_update(lesson_dir, previous_snapshot)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Ripristino dopo aggiornamento fallito non riuscito")
+        raise
+    finish_update(lesson_dir, previous_snapshot)
+    return result
+
+
+def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
     from rt.pipeline.outline import load_outline, run_outline
     from rt.pipeline.outline_extension import extend_outline
     from rt.pipeline.rewrite import run_rewrite
     from rt.core.idempotency import compute_source_fingerprint, compute_file_sha256, record_phase_fingerprint
     from rt.core.state import transition_to, WorkflowState
-    if mode not in ("extend", "rebuild"):
-        raise ValueError("Modalità di aggiornamento non valida")
-    old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
-    from rt.core.update_history import snapshot_update
-    load_sources(lesson_dir)
-    snapshot_update(lesson_dir)
     prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx)
     from rt.core.manifest import init_or_update_manifest, save_manifest
     from rt.core.state import read_info_yaml
@@ -207,5 +252,7 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     selected = changed_units(old_outline, prepared["previous_segments"], outline, prepared["segments"])
     result = run_rewrite(lesson_dir, force_mock=mock, ctx=ctx,
                          changed_unit_ids=selected if mode == "extend" else None, force=mode == "rebuild")
+    if result["status"] != "draft_validated" or result.get("failed_units"):
+        raise RuntimeError("Aggiornamento incompleto: la lezione è tornata com'era, puoi riprovare.")
     result["changed_units"] = selected
     return result

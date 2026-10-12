@@ -79,3 +79,18 @@ def test_force_prepare_after_undo_preserves_legacy_duration_and_pending_sources(
     assert [s.id for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["seg_000001"]
     assert sources_pending(lesson)
     assert _read_state(lesson)["next_segment"] >= 3
+
+
+def test_legacy_lesson_with_missing_audio_can_add_notes(tmp_path, monkeypatch):
+    from rt.pipeline.source_update import run_source_update, _read_state
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    from rt.core.sources import load_sources
+    load_sources(lesson)
+    (tmp_path / "original.wav").unlink()
+    add_source(lesson, "appunti", "notes.txt", b"notes")
+    monkeypatch.setattr("rt.services.classifier.classify_units", lambda *a, **k: None)
+    result = run_source_update(lesson, mode="rebuild", mock=True)
+    assert result["status"] == "draft_validated"
+    assert _read_state(lesson)["sources"]["src_000001"]["duration"] == 1
+    assert [s.text_raw for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["original", "notes"]
