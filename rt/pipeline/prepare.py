@@ -49,6 +49,8 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
         raise FileNotFoundError(f"File critico 'info.yaml' mancante in '{lesson_dir}'")
 
     info = read_info_yaml(yaml_path)
+    from rt.core.sources import load_sources
+    load_sources(lesson_dir)
     current_state_raw = info.get("fase_corrente", "") or info.get("stato", "")
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")

@@ -1,5 +1,9 @@
 # Novità di RT
 
+## 4.2.5b1
+
+- Le lezioni conservano un elenco ordinato delle fonti originali, senza spostare i file delle lezioni esistenti.
+
 ## 4.2.4 — 2026-10-12
 
 ### Novità
