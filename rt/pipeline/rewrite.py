@@ -20,7 +20,7 @@ from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import load_manifest, init_or_update_manifest
 from rt.core.config import load_config
 from rt.llm.client import LLMClient
-from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt, build_rewrite_prefix
+from rt.llm.prompts import REWRITE_SYSTEM_PROMPT, build_rewrite_user_prompt, build_rewrite_prefix_parts
 from rt.services.prompt_settings import append_extra, effective_system
 from rt.pipeline.outline import load_outline
 from rt.pipeline.validator import validate_draft
@@ -46,15 +46,18 @@ from rt.storage import fs
 LOG = logging.getLogger(__name__)
 
 
-def previous_context_for_usage(units, context_length, usage):
-    """Non sottrae token stimati per unità: un superamento osservato svuota il contesto."""
+def previous_context_for_usage(units, context_length, usage, max_output_tokens=None):
+    """Senza stime: la risposta precedente entra nel prossimo prefisso, quindi se
+    prompt + completion osservati + output riservato superano il contesto si toglie
+    l'unità più vecchia (una per chiamata). Se manca un dato non si taglia."""
     if type(context_length) is not int or context_length <= 0 or not isinstance(usage, dict):
         return units
     prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
     if type(prompt) is not int or type(completion) is not int or prompt < 0 or completion < 0:
         return units
-    if prompt + completion > context_length:
-        return []
+    reserved = max_output_tokens if type(max_output_tokens) is int and max_output_tokens > 0 else 0
+    if prompt + completion + reserved > context_length:
+        return units[1:]
     return units
 
 
@@ -265,6 +268,8 @@ def _run_rewrite(
     failures = UnitFailureTracker()
     stopped_early = False
     context_floor = 0
+    # Ultimo uso osservato (modello, usage, output riservato): una chiamata fallita senza usage non lo azzera.
+    observed = (None, None, None)
 
     for idx, u in enumerate(units_to_process, start=1):
         # Posizione nella lezione (es. 8/31), anche quando si riprende da un checkpoint
@@ -293,25 +298,22 @@ def _run_rewrite(
             max_segments=20
         )
         prev_text = "\n".join(s.text_raw for s in prev_segs)
+        next_text = "\n".join(s.text_raw for s in next_segs)
         current_position = outline_position[u.id] - 1
-        future_segment_ids = set()
-        for future in all_outline_units[current_position + 1:]:
-            future_segment_ids.update(s.id for s in all_segments[
-                seg_by_id[future.start_segment_id].index - 1:seg_by_id[future.end_segment_id].index])
-        next_text = "\n".join(s.text_raw for s in next_segs if s.id not in future_segment_ids)
         previous_units = [draft_units_map[unit.id] for unit in all_outline_units[context_floor:current_position]
                           if unit.id in draft_units_map]
+        if getattr(client, "last_usage", None):
+            observed = (client.last_context_model, client.last_usage, getattr(client, "last_max_tokens", None))
         from rt.llm.pricing import get_model_context_length
-        model = getattr(client, "last_context_model", None)
-        usage = getattr(client, "last_usage", None)
+        model, usage, max_output = observed
         limit = get_model_context_length(model["provider"], model["model"]) if model and usage else None
-        retained = previous_context_for_usage(previous_units, limit, usage)
-        if previous_units and not retained:
-            # Le chiamate successive ricominciano dall'unità attuale, senza reinserire
-            # quelle già tolte e senza stimare la dimensione del nuovo prompt.
-            context_floor = current_position
-        previous_text = "\n\n".join(f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained)
-        prefix = build_rewrite_prefix(outline_summary, previous_text)
+        retained = previous_context_for_usage(previous_units, limit, usage, max_output)
+        if len(retained) < len(previous_units):
+            # La finestra avanza di una unità: le chiamate successive non reinseriscono
+            # quelle già tolte e non si stima la dimensione del nuovo prompt.
+            context_floor = outline_position[previous_units[0].unit_id]
+        prefix = build_rewrite_prefix_parts(outline_summary, [
+            f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained])
         
         prompt = build_rewrite_user_prompt(
             unit_id=u.id,

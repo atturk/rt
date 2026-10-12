@@ -7,7 +7,7 @@ Prompt specializzati, istruzioni di sistema e contratti per i job cognitivi LLM:
 """
 
 import json
-from typing import ClassVar, List, Optional, Dict, Any, Literal
+from typing import ClassVar, List, Optional, Dict, Any, Literal, Sequence
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from rt.core.models import ScienceIssue, RecallOutcome
 
@@ -156,17 +156,36 @@ OBIETTIVI DI SCRITTURA:
 7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi)."""
 
 
+class PromptPrefix(str):
+    """Testo del prefisso con i suoi blocchi: la cache Anthropic legge solo ai confini di blocco."""
+    parts: tuple = ()
+
+    def __new__(cls, parts):
+        value = super().__new__(cls, "".join(parts))
+        value.parts = tuple(parts)
+        return value
+
+
+def build_rewrite_prefix_parts(outline_summary: str, previous_units: Sequence[str] = (),
+                               materials_text: str = "", glossary_text: str = "") -> PromptPrefix:
+    """Blocco fisso (scaletta, materiali, glossario), poi un blocco per unità precedente."""
+    fixed = f"CONTESTO GLOBALE DELLA LEZIONE:\n{outline_summary}\n\n"
+    if materials_text:
+        fixed += f"MATERIALI DELLA LEZIONE:\n{materials_text}\n\n"
+    if glossary_text:
+        fixed += f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n\n"
+    parts = [fixed]
+    if previous_units:
+        parts.append("UNITÀ PRECEDENTI GIÀ RIELABORATE (in ordine, solo per mantenere il filo):\n")
+        parts.extend(f"{unit}\n\n" for unit in previous_units)
+    return PromptPrefix(parts)
+
+
 def build_rewrite_prefix(outline_summary: str, previous_units_text: str = "",
                          materials_text: str = "", glossary_text: str = "") -> str:
     """Prefisso nell'ordine di cache; materials_text è il punto di innesto per b2."""
-    prefix = f"CONTESTO GLOBALE DELLA LEZIONE:\n{outline_summary}\n\n"
-    if materials_text:
-        prefix += f"MATERIALI DELLA LEZIONE:\n{materials_text}\n\n"
-    if glossary_text:
-        prefix += f"GLOSSARIO / TERMINI CHIAVE:\n{glossary_text}\n\n"
-    if previous_units_text:
-        prefix += f"UNITÀ PRECEDENTI GIÀ RIELABORATE (in ordine, solo per mantenere il filo):\n{previous_units_text}\n\n"
-    return prefix
+    units = [previous_units_text] if previous_units_text else []
+    return str(build_rewrite_prefix_parts(outline_summary, units, materials_text, glossary_text))
 
 
 def build_rewrite_user_prompt(
@@ -195,7 +214,7 @@ SEGMENTI PRINCIPALI DELL'UNITÀ (da rielaborare integralmente):
 {main_segments_text}
 ---
 CONTESTO SUCCESSIVO (prossimi 1-2 minuti, solo per continuità):
-{next_context if next_context else "_Nessun contesto successivo disponibile_"}
+{next_context if next_context else "_Fine lezione_"}
 ---
 
 Genera l'oggetto JSON conforme allo schema DraftUnit con:
