@@ -1,5 +1,31 @@
 # Novità di RT
 
+## 4.2.4 — 2026-10-12
+
+### Novità
+
+- Nello Studio arrivano Verifica (V) e Chiedi (C): selezioni un passaggio e chiedi se è corretto o di spiegartelo; le correzioni si applicano con un clic e si annullano. In Dettagli il pannello "Verifiche e domande" raccoglie risposte e passaggi per unità.
+- Tipi di domanda personalizzati per materia, creati in Impostazioni › Domande o copiati dalla galleria (Caso clinico, Esercizio, Query SQL), da provare su un'unità e scambiare come file JSON.
+- Pannello Verifica nuovo: un solo elenco di unità con la gravità delle issue, ✓ e ✗ per decidere, Annulla e "Mostra decise". Le unità già verificate si decidono mentre la verifica continua.
+- Il documento finale e gli Errori concettuali si aggiornano da soli dopo ogni decisione o modifica a mano.
+- "Verifica questa parte" nel menu contestuale dell'editor verifica solo il testo selezionato.
+- Modalità zen nello Studio, linguetta e frecce per passare alla lezione vicina, swipe su iPhone.
+- Classificatore unico nelle Impostazioni, con modalità e modello per ciascun job, e pannello Classificatore a griglia con una riga per tipo di domanda.
+- Novità delle versioni in Impostazioni › Info, con le voci da spuntare.
+
+### Correzioni
+
+- Una decisione non fa più ripetere la verifica dell'unità e le correzioni si applicano solo al passaggio giusto.
+- Il ripasso riprende per prime le domande senza risposta.
+- Qualità ASR mostra tutti i tratti incerti, con ascolto del solo tratto e "Ho controllato".
+- Menu a icona interi nello schermo anche sul telefono; colori Irlen leggibili nel tema scuro.
+
+### Cambiamenti
+
+- Caso ed esercizio diventano tipi personalizzati modificabili: le vecchie domande di questi tipi vengono tolte.
+- Le lezioni esistenti passano al nuovo formato della verifica alla prima apertura, senza chiamate al modello.
+- Tasti dello Studio: Z zen, D domande, E evidenziatore, G gomma, ⇧E colore.
+
 ## 4.2.4b3 — 2026-10-12
 
 ### Novità
