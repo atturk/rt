@@ -1,0 +1,152 @@
+"""Preparazione incrementale richiesta dall'utente; gli originali restano intatti."""
+import json
+import os
+import re
+import subprocess
+import tempfile
+from contextlib import ExitStack
+from uuid import uuid4
+
+from rt.core.models import Segment
+from rt.core.segments import (load_segments_json, parse_segments_from_json,
+                              save_segments_json, export_normalized_transcript_md)
+from rt.core.lesson_paths import lesson_path
+from rt.core.sources import load_sources
+from rt.core.timestamp import format_timestamp
+from rt.core.state import update_info_yaml
+from rt.storage import fs
+
+
+def _read_state(lesson_dir):
+    path = lesson_path(lesson_dir, "source_update.json")
+    if not fs.isfile(path):
+        return {"next_segment": 1, "sources": {}}
+    with fs.open(path, encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def _write_state(lesson_dir, state):
+    path = lesson_path(lesson_dir, "source_update.json")
+    with fs.open(path + ".tmp", "w", encoding="utf-8") as stream:
+        json.dump(state, stream, ensure_ascii=False, indent=2)
+    fs.replace(path + ".tmp", path)
+
+
+def _duration(path):
+    with fs.materialize(path) as real:
+        result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                 "-of", "default=noprint_wrappers=1:nokey=1", real],
+                                capture_output=True, text=True, check=True, timeout=60)
+    duration = float(result.stdout.strip())
+    if duration <= 0:
+        raise ValueError("Audio senza durata valida")
+    return duration
+
+
+def _transcribe(path, mock=False):
+    """Riusa motore e comando dell'import, soltanto per il nuovo file."""
+    from rt.core.config import load_config, load_env_file
+    from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
+                                   generate_deterministic_mock_asr, _run_transcribe_with_spinner)
+    stt = load_config().transcription
+    with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
+        if mock:
+            raw_path, _ = generate_deterministic_mock_asr(real, "2026-01-01", "Appunti", "", temp)
+        elif stt.engine == "custom":
+            from rt.core.custom_stt import transcribe_custom
+            load_env_file()
+            data = transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds)
+            raw_path = os.path.join(temp, "raw.json")
+            with open(raw_path, "w", encoding="utf-8") as stream:
+                json.dump(data, stream)
+        else:
+            binary = find_macparakeet_binary()
+            if not binary:
+                raise ValueError("macparakeet-cli non disponibile")
+            result = _run_transcribe_with_spinner(
+                [binary, "transcribe", "--format", "json", "--no-diarize", "--output-dir", temp,
+                 "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte")
+            candidates = [os.path.join(temp, f) for f in os.listdir(temp) if f.endswith(".json")]
+            if result.returncode or not candidates:
+                raise ValueError("Trascrizione della nuova fonte fallita")
+            raw_path = candidates[0]
+        return parse_segments_from_json(raw_path)
+
+
+def sources_pending(lesson_dir):
+    sources = load_sources(lesson_dir)
+    state = _read_state(lesson_dir)
+    used = state.get("used")
+    if used is None:
+        used = ["src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
+    return used != [s.id for s in sources]
+
+
+def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
+    sources = load_sources(lesson_dir)
+    if not sources:
+        raise ValueError("La lezione deve avere almeno una fonte")
+    if any(s.tipo == "materiale" for s in sources):
+        raise ValueError("I materiali saranno disponibili nel prossimo lotto")
+    state = _read_state(lesson_dir)
+    cache = state["sources"]
+    segment_path = lesson_path(lesson_dir, "segments.json")
+    previous = load_segments_json(segment_path).segments if fs.isfile(segment_path) else []
+    state["next_segment"] = max(state["next_segment"], max((int(s.id[4:]) for s in previous), default=0) + 1)
+    # Una sola volta: attribuisce alla prima fonte i segmenti storici già preparati.
+    legacy = next((s for s in sources if s.id == "src_000001"), None)
+    if legacy and legacy.id not in cache and previous:
+        originals = [s.model_copy(update={"source_file": legacy.id}) for s in previous]
+        cache[legacy.id] = {"segments": [s.model_dump() for s in originals],
+                            "duration": _duration(os.path.join(lesson_dir, legacy.file))}
+    offset = 0.0
+    ordered = []
+    for source in sources:
+        if ctx:
+            ctx.check_cancelled()
+        path = os.path.join(lesson_dir, source.file)
+        if source.id not in cache:
+            if source.tipo == "audio":
+                incoming = _transcribe(path, mock)
+                duration = _duration(path)
+            else:
+                with fs.open(path, encoding="utf-8") as stream:
+                    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stream.read()) if p.strip()]
+                if not paragraphs:
+                    raise ValueError("Gli appunti sono vuoti")
+                incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
+                                    start_formatted="00:00", end_formatted="00:00", text_raw=p,
+                                    flags=["appunti"]) for p in paragraphs]
+                duration = 0.0
+            assigned = []
+            for segment in incoming:
+                assigned.append(segment.model_copy(update={"id": f"seg_{state['next_segment']:06d}", "source_file": source.id}))
+                state["next_segment"] += 1
+            cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
+            # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
+            _write_state(lesson_dir, state)
+        for item in cache[source.id]["segments"]:
+            segment = Segment.model_validate(item)
+            start, end = segment.start_seconds + offset, segment.end_seconds + offset
+            ordered.append(segment.model_copy(update={"index": len(ordered) + 1,
+                           "start_seconds": start, "end_seconds": end,
+                           "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end)}))
+        offset += cache[source.id]["duration"]
+    audio_sources = [s for s in sources if s.tipo == "audio"]
+    audio_file = ""
+    if audio_sources:
+        from rt.pipeline.setup import merge_audio_for_transcription
+        if len(audio_sources) == 1:
+            audio_file = audio_sources[0].file
+        else:
+            audio_file = "audio-" + uuid4().hex + ".m4a"
+            with ExitStack() as stack:
+                paths = [stack.enter_context(fs.materialize(os.path.join(lesson_dir, s.file))) for s in audio_sources]
+                target = stack.enter_context(fs.external_output(os.path.join(lesson_dir, audio_file)))
+                merge_audio_for_transcription(paths, target)
+    save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir))
+    export_normalized_transcript_md(ordered, lesson_path(lesson_dir, "transcript_normalized.md"))
+    update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
+    state["used"] = [s.id for s in sources]
+    _write_state(lesson_dir, state)
+    return {"previous_segments": previous, "segments": ordered}
