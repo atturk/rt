@@ -71,8 +71,11 @@ Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso 
 - `POST /subjects` body `{nome}` → 201 `{nome, lezioni}`; 409 `subject_exists` se c'è già.
 - `DELETE /subjects/{nome}` → 204; 409 `subject_in_use` se ha lezioni (le voci del calendario non bloccano).
 - `GET /lessons/{id}/sources`: ogni fonte ha in più `nome` (nome del file o "Appunti"), `durata_s` (audio), `pagine` (materiale), `parole` (appunti), `usata: bool`; la vista ha in più `ultimo_aggiornamento: {modo: "extend"|"rebuild", unita_nuove: int, unita_cambiate: int, il: str} | null`, che resta finché non si annulla o arriva un altro aggiornamento.
+- Ordine e fonte principale (LE1l): la vista delle fonti ha in più `principale: str` (id della fonte principale; con l'audio, l'id della prima parte audio), `ordine_usato: [str]` e `principale_usato: str | null` (com'erano all'ultimo aggiornamento riuscito) e `solo_ricostruzione: bool`, vero quando l'ordine delle parti audio già usate o la principale sono diversi da quelli usati. Si calcola confrontando, quindi rimettendo l'ordine o la principale di prima torna falso da solo.
+- `PUT /lessons/{id}/sources/order` body `{ids: [str]}` (tutte le fonti nel nuovo ordine; conta solo l'ordine dei file audio) → vista delle fonti. `PUT /lessons/{id}/sources/primary` body `{id}` → vista delle fonti. 409 `lesson_busy` come le altre modifiche.
+- `POST /lessons/{id}/update` con `mode: "extend"` mentre `solo_ricostruzione` è vero → 409 `rebuild_required`. Aggiungere fonti nuove, anche in mezzo alle parti audio, lascia sempre la scelta fra Estendi e Ricostruisci.
 - `POST /lessons/{id}/sources`: `tipo` accetta anche `materiale` (file PDF, PNG, JPG, HEIC, PPTX; più file in una chiamata con `file` ripetuto → lista di fonti).
-- `POST /lessons` (import): in più `materiali: List[UploadFile]` (facoltativi; con soli materiali e niente audio né appunti nasce la lezione solo da materiali), `allega_materiali: bool` (graffetta; default true se ci sono materiali), `calendar_entry_id: str` + `calendar_date: YYYY-MM-DD` (facoltativi: a lezione creata la collega a quell'ora).
+- `POST /lessons` (import): l'ordine dei file `audio` è quello scelto nel popup. In più `materiali: List[UploadFile]` (facoltativi; con soli materiali e niente audio né appunti nasce la lezione solo da materiali), `principale: str` (nome del file principale quando non c'è audio; di default il documento con più pagine), `allega_materiali: bool` (graffetta; default true se ci sono materiali), `calendar_entry_id: str` + `calendar_date: YYYY-MM-DD` (facoltativi: a lezione creata la collega a quell'ora).
 - `POST /lessons/{id}/recall/generate` con `qtype: "consigliato"` esiste già.
 - `GET /lessons/{id}/versions` → `[{id: str, il: str, modo: "import"|"extend"|"rebuild"|"restore", fonti_aggiunte: [str], unita_nuove: int, unita_cambiate: int, attuale: bool}]`, dalla più recente; al massimo 5 oltre all'attuale. Ogni versione è lo stato della lezione dopo quell'evento; le lezioni di prima della b2 mostrano solo quelle che hanno.
 - `POST /lessons/{id}/versions/{vid}/restore` → 202 job; prima fa una fotografia dello stato attuale (quindi si annulla anche il ripristino). 409 `lesson_busy` come le fonti.
@@ -84,8 +87,9 @@ Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso 
 - **DS1c · Graffetta.** Con `allega_materiali` acceso il classificatore di Arricchimento assegna ogni pagina a una macro unità o a nessuna (docs/ENRICHMENT.md) e le pagine assegnate vengono allegate all'unità come immagini, mai il testo. Spento, i materiali sono solo contesto.
 - **DS1d · Lezione solo da materiali.** Le pagine diventano segmenti con prefisso della fonte (come LE1) e la pipeline è la stessa; togliere il blocco "I materiali saranno disponibili nel prossimo lotto" in source_update.py. Se dopo arriva l'audio vale Estendi o Ricostruisci.
 - **DS1e · Import.** I nuovi campi di `POST /lessons` del contratto. Il collegamento al calendario usa la funzione che già collega a mano.
-- **LE1i · Vista delle fonti.** I campi in più di `GET /lessons/{id}/sources` del contratto.
+- **LE1i · Vista delle fonti.** I campi in più di `GET /lessons/{id}/sources` del contratto (tranne quelli di LE1l).
 - **LE1j · Versioni della lezione.** update_history tiene le ultime 5 fotografie invece di una (stessa cartella history/, stessi file), ciascuna con modo, fonti aggiunte e conteggi. Annulla aggiornamento = ripristino della più recente. Il ripristino non cancella mai dati di studio nel database. Endpoint del contratto.
+- **LE1l · Ordine e fonte principale.** Endpoint e campi del contratto. La fonte principale è quella su cui si costruisce la scaletta: l'audio (tutte le parti, in ordine) se c'è, altrimenti il materiale o gli appunti scelti; le altre fonti sono contesto e, per i materiali, si allegano alle unità. Quando arriva l'audio in una lezione nata dai materiali la principale non cambia da sola: la cambia l'utente. Cambiare ordine delle parti usate o principale vale solo per Ricostruisci.
 - **LE1k · Studio precedente.** Ogni aggiornamento riuscito registra per unità cambiata (o tutte, con Ricostruisci) l'ora del cambio; domande, evidenziazioni e note create prima di quell'ora su quell'unità hanno `precedente: true`. Niente migrazioni dei dati esistenti: si calcola al volo.
 
 ### Codex · MA1 backend (materie)
@@ -95,6 +99,8 @@ Cartella dati: chi avvia RT fuori dalla suite esporta prima `RT_DATA_DIR` verso 
 ### Antigravity · Import nuovo
 Wireframe RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggiunge:
 - un solo riquadro che accetta audio e materiali e li separa per tipo; miniature dei materiali con + e ×;
+- con più file audio: righe numerate con maniglia, riordino trascinando (e con le frecce della tastiera sulla maniglia); ordine di partenza per data di modifica del file, poi per nome; i materiali non hanno ordine;
+- senza audio: stellina sulla miniatura del documento principale (di partenza quello con più pagine), un clic la sposta; manda `principale`;
 - le ore del giorno dal calendario (`GET /calendar/day`) come scelte rapide, con l'ora in corso o appena finita già scelta, quelle già registrate spente, frecce per il giorno, matita per i campi a mano (i campi di oggi restano identici); la scelta manda `calendar_entry_id` e `calendar_date`;
 - la graffetta accanto a Revisione e Arricchimento (accesa di default; spenta e non cliccabile senza materiali; si accende da sola quando se ne caricano) → `allega_materiali`;
 - il menu delle materie legge `GET /subjects`.
@@ -102,6 +108,10 @@ Wireframe RT-import.html. Si parte da NewLessonDialog.tsx così com'è e si aggi
 ### Antigravity · Fonti nella lezione (LE1)
 Wireframe RT-fonti-materie.html, scene 1, 2 e 4.
 - Sezione **Fonti** in cima al pannello Dettagli, sopra Fasi: icona per tipo, nome, misura, puntino sulle fonti non ancora usate, × al passaggio del mouse (toglie con `DELETE`), + con menu Parte di registrazione / Appunti / Materiali.
+- Parti audio numerate con maniglia, riordino trascinando (una parte nuova si può mettere anche in mezzo). Stellina sulla fonte principale; al passaggio del mouse sulle altre fonti, stellina vuota per sceglierla.
+- Regola: ogni azione in Dettagli che obbliga a ricostruire una lezione già creata chiede prima conferma (popup del wireframe): spostare parti audio già usate e cambiare la principale. Aggiungere fonti non chiede conferma.
+- Con `solo_ricostruzione` la riga sopra il testo dice cosa è cambiato e offre solo Ricostruisci, più l'icona "Rimetti com'era" che rimanda `ordine_usato` e `principale_usato`. Se l'utente rimette tutto com'era, anche trascinando, la riga sparisce perché il server risponde `solo_ricostruzione: false`.
+- Audio aggiunto a una lezione nata dai materiali: la riga Aggiorna propone di rendere principale l'audio (stellina), ma si può tenere il documento, e restano Estendi e Ricostruisci.
 - Riga sopra il testo della lezione quando `has_unused_sources`: "Fonti nuove non ancora usate: …" e **Aggiorna**, che al passaggio del mouse si divide in Estendi e Ricostruisci (icone con tooltip, come la matita del calendario). Estendi parte subito; Ricostruisci chiede conferma avvisando che le unità cambiate perdono decisioni e stato di studio. Durante il job la riga mostra l'avanzamento.
 - Dopo l'aggiornamento (`ultimo_aggiornamento` e `can_undo`): riga "Lezione aggiornata · N unità nuove, M cambiate" con Annulla aggiornamento e ×. La × la nasconde solo nel browser.
 - Puntino sull'icona Dettagli quando ci sono fonti non usate.
@@ -116,6 +126,6 @@ Wireframe RT-fonti-materie.html, scene 1, 2 e 4.
 
 ### Antigravity · AP1, WS1, AU1, PN1 (dalla b3, completi)
 - **AP1:** API di sola lettura con la sua openapi.json, servita su 127.0.0.1 (Open WebUI gira sullo stesso Mac). Quattro operazioni: cerca nel testo delle lezioni (SQLite FTS5, filtri materia e date), elenco lezioni, scaletta di una lezione, testo di un'unità. Chiave separata di sola lettura, creata e revocata da Impostazioni (nuova riga nella sezione esistente). Guida breve in docs per collegare Open WebUI.
-- **WS1:** durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta e si vedono in una sezione Fonti nella voce di verifica del pannello Verifiche e domande. Senza SearXNG configurato la verifica funziona come oggi.
+- **WS1:** interruttore in Impostazioni › Ricerca web "Cerca sul web durante la verifica contestuale", spento di default (scena 5 di RT-fonti-materie.html). Quando è acceso, durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta e si vedono in una sezione Fonti nella voce di verifica del pannello Verifiche e domande. Spento o senza SearXNG configurato, la verifica funziona come oggi.
 - **AU1** (docs/wireframes-4.2.5/RT-audio-linea.html): nella pagina della lezione, linea verticale di 2 px a destra dell'unità che si ascolta, che avanza contando solo il parlato. Il lettore resta in basso. Solo pagina della lezione.
 - **PN1** (docs/wireframes-4.2.5/RT-pannelli.html): cambiano solo contenitore (staccato di 8 px, angoli stondati, ombra, X) e animazioni (entrata e uscita da destra con dissolvenza, dissolvenza al cambio di pannello; dal basso su iPhone). Il contenuto di ogni pannello resta identico.
