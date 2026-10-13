@@ -54,12 +54,15 @@ test('fonti: la sezione Fonti sta in cima a Dettagli e mostra la registrazione c
 
 test('domande: il chip Consigliato sta prima dei tipi e i tipi di prima restano', async ({ page }) => {
   await loginViaLink(page)
-  const lesson = await firstLesson(page)
+  const lessons = await apiGet<{ id: number; materia: string; phases: Record<string, string> }[]>(page.request, '/lessons')
+  const lesson = lessons.find(l => l.materia === 'BIOCHIMICA' && l.phases.rewrite === 'VALID')!
   await page.goto(`/lezioni/${lesson.id}?panel=domande`)
-  const group = page.getByTestId('questions-panel').getByRole('group').first()
-  await expect(group.getByRole('button', { name: 'Consigliato' })).toBeVisible()
-  await expect(group.getByRole('button', { name: 'Quiz' })).toBeVisible()
-  await expect(group.getByRole('button', { name: 'Mirata' })).toBeVisible()
+  const panel = page.getByTestId('questions-panel')
+  await panel.getByText('Genera altre domande').click()
+  const group = panel.getByRole('group', { name: 'Tipo di domanda' })
+  await expect(group.getByRole('button', { name: 'Consigliato', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: 'Quiz', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: 'Mirata', exact: true })).toBeVisible()
 })
 
 test('ricerca web: l\'interruttore della verifica è spento di default e non cancella l\'indirizzo', async ({ page }) => {

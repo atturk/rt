@@ -5,7 +5,7 @@ const CONNECTION = 'Server locale 422'
 const KEY = 'sk-e2e-chiave-422-0123456789abcdef'
 const BASE_URL = 'http://127.0.0.1:9/v1'
 const sections = [
-  ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
+  ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['materie', 'Materie'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
   ['modelli-connessioni', 'Modelli e connessioni'], ['telegram', 'Telegram'], ['accesso', 'Accesso da iPhone'], ['info-aggiornamenti', 'Info e aggiornamenti'],
 ]
 async function choose(root: Page | Locator, label: string, option: string) {
@@ -16,11 +16,11 @@ async function choose(root: Page | Locator, label: string, option: string) {
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 test.describe.configure({ mode: 'serial' })
 
-test('otto sezioni: desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
+test('nove sezioni: desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const nav = page.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
-  await expect(nav.getByRole('link')).toHaveCount(8)
+  await expect(nav.getByRole('link')).toHaveCount(9)
   await expect(page.getByRole('radiogroup', { name: 'Tema' })).toBeVisible()
   const navBox = (await nav.boundingBox())!
   const themeBox = (await page.getByRole('radiogroup', { name: 'Tema' }).boundingBox())!
