@@ -34,7 +34,7 @@ UPDATE_LESSON = "update_lesson"
 INGEST_NOTES = "ingest_notes"
 UNIT_RELEVANCE = "unit_relevance"
 STUDY_NOTE = "study_note"
-UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "add_images", IMPORT_LESSON_ZIPS)
+UPLOAD_JOB_TYPES = ("run_pipeline", "ingest_audio", "ingest_sources", "add_images", IMPORT_LESSON_ZIPS)
 
 
 def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
@@ -44,10 +44,20 @@ def _done(result: Dict[str, Any], lesson_path=None) -> JobOutcome:
 def update_lesson_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.source_update import run_source_update
     from rt.pipeline.build import write_automatic_documents
+    from rt.core.update_history import refresh_current_version
     with ctx.activate():
         result = run_source_update(job.lesson_path, mode=job.payload.get("mode", "extend"),
                                    mock=bool(job.payload.get("mock")), ctx=ctx)
         write_automatic_documents(job.lesson_path)
+        refresh_current_version(job.lesson_path)
+    return _done(result, lesson_path=job.lesson_path)
+
+
+def restore_version_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.core.update_history import restore_version
+    with ctx.activate():
+        ctx.check_cancelled()
+        result = restore_version(job.lesson_path, job.payload["version"])
     return _done(result, lesson_path=job.lesson_path)
 
 
@@ -61,9 +71,31 @@ def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir = lesson
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
+    from rt.services.materials_lesson_service import finish_import
     if job.payload.get("run"):
-        return outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx))
-    return _done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson)
+        return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx)), job.payload)
+    return finish_import(_done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson), job.payload)
+
+
+def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.materials_lesson_service import create_source_lesson, finish_import, link_imported_lesson
+    from rt.services.job_handlers import pipeline_options, outcome_from_pipeline
+    from rt.services.pipeline_service import run_pipeline
+    from rt.pipeline.prepare import run_prepare
+    options = job.payload.get("options") or {}
+    lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
+        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali")},
+        **{name: options.get(name, "") for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
+    ctx.lesson_dir, ctx.force_mock = lesson, bool(options.get("mock"))
+    ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
+    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"))
+    with ctx.activate():
+        run_prepare(lesson, ctx=ctx)
+        if job.payload.get("run"):
+            outcome = outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx))
+        else:
+            outcome = _done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson)
+    return finish_import(outcome, job.payload)
 
 
 def rewrite_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -526,7 +558,9 @@ def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 for _type, _handler in (
     (INGEST_NOTES, ingest_notes_job),
+    ("ingest_sources", ingest_sources_job),
     (UPDATE_LESSON, update_lesson_job),
+    ("restore_version", restore_version_job),
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),

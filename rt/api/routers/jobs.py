@@ -167,9 +167,57 @@ def create_lesson(
     with_enrichment: Optional[bool] = Form(None),
     auto_accept: bool = Form(False),
     appunti: str = Form("", description="Testo per creare una lezione senza audio"),
+    materiali: List[UploadFile] = File([], json_schema_extra=lambda schema: schema.pop("default", None)),
+    principale: Optional[str] = Form(None),
+    allega_materiali: Optional[bool] = Form(None),
+    calendar_entry_id: Optional[str] = Form(None),
+    calendar_date: Optional[str] = Form(None),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
+    calendar = {}
+    if calendar_entry_id or calendar_date:
+        from datetime import date as calendar_day
+        from rt.services.calendar_service import get_day_view
+        if not calendar_entry_id or not calendar_date:
+            raise ApiError(422, "validation_error", "Indica ora e data del calendario insieme.")
+        try:
+            if calendar_day.fromisoformat(calendar_date).isoformat() != calendar_date:
+                raise ValueError()
+            if not any(event.key == calendar_entry_id for event in get_day_view(calendar_date).events):
+                raise ValueError()
+        except ValueError:
+            raise ApiError(422, "validation_error", "Ora del calendario non trovata per questa data.") from None
+        calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date}
+    if materiali:
+        from rt.core.materials import MATERIAL_EXTENSIONS, page_count
+        if len(appunti.encode("utf-8")) > _max_upload_bytes():
+            raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
+        target = _upload_dir()
+        def _mixed():
+            # Un solo limite complessivo; l'ordine audio è quello ricevuto dal popup.
+            paths = _save_uploads([*audio, *materiali], SUPPORTED_AUDIO_EXTENSIONS | MATERIAL_EXTENSIONS, target)
+            for path in paths[:len(audio)]:
+                if os.path.splitext(path)[1].lower() not in SUPPORTED_AUDIO_EXTENSIONS:
+                    raise ApiError(415, "unsupported_media_type", "Tipo di file audio non ammesso.")
+            documents = paths[len(audio):]
+            for path in documents:
+                if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
+                    raise ApiError(415, "unsupported_media_type", "Tipo di materiale non ammesso.")
+                try:
+                    page_count(path)
+                except Exception:
+                    raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
+            if not audio and principale and principale not in {os.path.basename(p) for p in documents} | ({"Appunti", "appunti.txt"} if appunti.strip() else set()):
+                raise ApiError(422, "validation_error", "Fonte principale inesistente.")
+            options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),
+                "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
+                "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
+            return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
+                "appunti": appunti, "principale": principale,
+                "allega_materiali": True if allega_materiali is None else allega_materiali,
+                "run": run, "options": options, "upload_dir": target, **calendar}, actor)
+        return _with_upload_cleanup(target, _mixed)
     if not audio:
         if not appunti.strip():
             raise ApiError(422, "validation_error", "Carica un audio o inserisci gli appunti.")
@@ -178,7 +226,7 @@ def create_lesson(
         options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),
                    "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
                    "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
-        return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options}, actor)
+        return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options, **calendar}, actor)
     if appunti.strip():
         raise ApiError(422, "validation_error", "Importa l'audio e aggiungi gli appunti dalle fonti della lezione.")
     target = _upload_dir()
@@ -191,7 +239,7 @@ def create_lesson(
                    "auto_accept": auto_accept, "channel": "terminal"}
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,
-                           {"inputs": paths, "options": options, "upload_dir": target}, actor)
+                           {"inputs": paths, "options": options, "upload_dir": target, **calendar}, actor)
     return _with_upload_cleanup(target, _go)
 
 

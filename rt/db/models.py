@@ -401,3 +401,11 @@ class CalendarEntryState(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
+
+
+class Subject(Base):
+    """Materia registrata, conservando la grafia scelta dall'utente."""
+    __tablename__ = "subjects"
+
+    nome: Mapped[str] = mapped_column(String(256), primary_key=True)
+    creata_il: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -15,7 +15,9 @@ from rt.services.review_service import record_review_decision, undo_last_decisio
 
 
 def _row(n: StudyNote) -> dict[str, Any]:
+    from rt.services.previous_study import previous_for_lesson
     return {
+        "precedente": previous_for_lesson(n.lesson_id, n.unit_id, n.created_at),
         "id": n.id,
         "lesson_id": n.lesson_id,
         "unit_id": n.unit_id,

@@ -61,6 +61,15 @@ def previous_context_for_usage(units, context_length, usage, max_output_tokens=N
     return units
 
 
+def context_for_usage(units, materials, context_length, usage, max_output_tokens=None):
+    """Prima si tolgono le unità precedenti; solo dopo, una pagina di materiali."""
+    retained = previous_context_for_usage(units, context_length, usage, max_output_tokens)
+    if units:
+        return retained, materials
+    overflow = not previous_context_for_usage([True], context_length, usage, max_output_tokens)
+    return retained, materials[1:] if overflow else materials
+
+
 def get_draft_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "draft.json")
 
@@ -135,6 +144,10 @@ def run_rewrite(
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.classifier import classify_units
             classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
+            if result.get("status") == "draft_validated" and not result.get("failed_units"):
+                from rt.pipeline.material_attachments import attach_material_pages
+                from rt.pipeline.outline import load_outline
+                attach_material_pages(lesson_dir, load_outline(lesson_dir), mock=force_mock, ctx=ctx)
         return scope.complete(result)
 
 
@@ -268,6 +281,8 @@ def _run_rewrite(
     failures = UnitFailureTracker()
     stopped_early = False
     context_floor = 0
+    from rt.core.materials import material_context_parts
+    material_parts = material_context_parts(lesson_dir, mock=force_mock, ctx=ctx)
     # Ultimo uso osservato (modello, usage, output riservato): una chiamata fallita senza usage non lo azzera.
     observed = (None, None, None)
 
@@ -307,13 +322,14 @@ def _run_rewrite(
         from rt.llm.pricing import get_model_context_length
         model, usage, max_output = observed
         limit = get_model_context_length(model["provider"], model["model"]) if model and usage else None
-        retained = previous_context_for_usage(previous_units, limit, usage, max_output)
+        retained, material_parts = context_for_usage(previous_units, material_parts, limit, usage, max_output)
         if len(retained) < len(previous_units):
             # La finestra avanza di una unità: le chiamate successive non reinseriscono
             # quelle già tolte e non si stima la dimensione del nuovo prompt.
             context_floor = outline_position[previous_units[0].unit_id]
         prefix = build_rewrite_prefix_parts(outline_summary, [
-            f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained])
+            f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained],
+            materials_text="\n\n".join(material_parts))
         
         prompt = build_rewrite_user_prompt(
             unit_id=u.id,

@@ -216,14 +216,10 @@ def known_materie() -> List[str]:
     from rt.core.config import load_config
     found = {str(k).strip().upper() for k in (load_config().telegram.topics or {})}
     try:
-        from sqlalchemy import select
         from rt.db.engine import get_database
-        from rt.db.models import Lesson
-        from rt.db.session import session_scope
-        db = get_database()
-        if db is not None:
-            with session_scope(db) as s:
-                found |= {str(m).strip().upper() for m in s.scalars(select(Lesson.materia).distinct())}
+        from rt.services.subjects import list_subjects
+        if get_database() is not None:
+            found |= {row["nome"].upper() for row in list_subjects()}
     except Exception:  # noqa: BLE001 - senza DB bastano i topic salvati
         pass
     return sorted(m for m in found if m)

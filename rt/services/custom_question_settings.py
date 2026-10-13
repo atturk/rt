@@ -7,9 +7,9 @@ from rt.services.errors import NotFound
 
 
 def view():
-    from rt.services.lesson_service import list_lessons
+    from rt.services.subjects import list_subjects
     cfg = load_config()
-    subjects = sorted({row['materia'] for row in list_lessons() if row.get('materia')}, key=str.casefold)
+    subjects = [row["nome"] for row in list_subjects()]
     return {'types': cfg.recall.custom_types, 'templates': templates(), 'materie': subjects}
 
 

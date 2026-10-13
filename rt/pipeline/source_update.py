@@ -86,8 +86,6 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     sources = load_sources(lesson_dir)
     if not sources:
         raise ValueError("La lezione deve avere almeno una fonte")
-    if any(s.tipo == "materiale" for s in sources):
-        raise ValueError("I materiali saranno disponibili nel prossimo lotto")
     state = _read_state(lesson_dir)
     cache = state["sources"]
     segment_path = lesson_path(lesson_dir, "segments.json")
@@ -101,6 +99,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
         # Audio storico mancante: la durata è la fine dell'ultimo segmento già preparato.
         duration = _duration(legacy_path) if fs.isfile(legacy_path) else previous[-1].end_seconds
         cache[legacy.id] = {"segments": [s.model_dump() for s in originals], "duration": duration}
+    from rt.core.source_selection import selection
+    primary = selection(lesson_dir)["principale"]
+    primary_source = next(s for s in sources if s.id == primary)
     offset = 0.0
     ordered = []
     for source in sources:
@@ -115,6 +116,14 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             if source.tipo == "audio":
                 incoming = _transcribe(path, mock)
                 duration = _duration(path)
+            elif source.tipo == "materiale":
+                from rt.core.materials import material_pages
+                pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+                incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
+                    start_formatted="00:00", end_formatted="00:00",
+                    text_raw=page["testo"] or f"Pagina {page['numero']} senza testo leggibile",
+                    flags=["materiale"]) for page in pages]
+                duration = 0.0
             else:
                 with fs.open(path, encoding="utf-8") as stream:
                     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stream.read()) if p.strip()]
@@ -131,6 +140,12 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
             # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
             _write_state(lesson_dir, state)
+        # Con materiali la scaletta usa solo la principale; la b1 conserva le sue fonti.
+        select_main = any(s.tipo == "materiale" for s in sources) or (state.get("primary_explicit") and primary_source.tipo != "audio")
+        is_main = source.tipo == "audio" if primary_source.tipo == "audio" else source.id == primary
+        if select_main and not is_main:
+            offset += cache[source.id]["duration"]
+            continue
         for item in cache[source.id]["segments"]:
             segment = Segment.model_validate(item)
             start, end = segment.start_seconds + offset, segment.end_seconds + offset
@@ -155,6 +170,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
+    if any(s.tipo == "materiale" for s in sources):
+        from rt.core.source_selection import record_used_selection
+        record_used_selection(lesson_dir)
     return {"previous_segments": previous, "segments": ordered}
 
 
@@ -197,13 +215,22 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     from rt.core.update_history import begin_update, finish_update, abort_update
     if mode not in ("extend", "rebuild"):
         raise ValueError("Modalità di aggiornamento non valida")
+    from rt.core.source_selection import selection
+    if mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
+        raise ValueError("Ordine o principale cambiati: usa Ricostruisci")
     old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
     load_sources(lesson_dir)
     if mode == "extend" and old_outline:
         _check_extend_keeps_units(lesson_dir, old_outline)
+    previously_used = _read_state(lesson_dir).get("used", [s.id for s in load_sources(lesson_dir) if s.id == "src_000001"])
     previous_snapshot = begin_update(lesson_dir)
     try:
         result = _run_source_update(lesson_dir, old_outline, mode=mode, mock=mock, ctx=ctx)
+        from rt.core.update_history import record_version
+        summary = _read_state(lesson_dir)["ultimo_aggiornamento"]
+        record_version(lesson_dir, mode,
+            added=[s.id for s in load_sources(lesson_dir) if s.id not in previously_used],
+            new=summary["unita_nuove"], changed=summary["unita_cambiate"])
     except BaseException:
         # Qualsiasi errore (anche annullamento) riporta la lezione com'era prima dell'aggiornamento:
         # fonti nuove ancora da usare e fotografia dell'aggiornamento precedente per Annulla.
@@ -254,5 +281,9 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
                          changed_unit_ids=selected if mode == "extend" else None, force=mode == "rebuild")
     if result["status"] != "draft_validated" or result.get("failed_units"):
         raise RuntimeError("Aggiornamento incompleto: la lezione è tornata com'era, puoi riprovare.")
+    from rt.services.sources_view import record_update_summary
+    record_update_summary(lesson_dir, mode, old_outline, outline, selected)
+    from rt.core.source_selection import record_used_selection
+    record_used_selection(lesson_dir)
     result["changed_units"] = selected
     return result

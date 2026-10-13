@@ -596,6 +596,8 @@ STT_JOB_TYPES = ("ingest_audio", "run_pipeline", "transcribe_voice")
 def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path: Optional[str] = None) -> bool:
     """Il job deve trascrivere audio? Solo allora serve un worker con stt: macparakeet gira
     solo su macOS, quindi un worker in un container Linux senza motore STT non lo prende."""
+    if job_type == "ingest_sources":
+        return bool((payload or {}).get("audio")) and not bool(((payload or {}).get("options") or {}).get("mock"))
     if job_type == "update_lesson":
         if (payload or {}).get("mock") or (payload or {}).get("force_mock"):
             return False

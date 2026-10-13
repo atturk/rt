@@ -13,13 +13,20 @@ from rt.core.sources import Source, load_sources, add_source, remove_source
 from rt.core.update_history import has_update_snapshot, undo_update
 from rt.pipeline.source_update import sources_pending
 
+from rt.services.sources_view import SourceView, LastUpdate, sources_view
+
 router = APIRouter(tags=["lezioni"])
 
 
 class SourcesView(BaseModel):
-    sources: list[Source]
+    sources: list[SourceView]
     has_unused_sources: bool
     can_undo: bool
+    ultimo_aggiornamento: LastUpdate | None = None
+    principale: str
+    ordine_usato: list[str]
+    principale_usato: str | None
+    solo_ricostruzione: bool
 
 
 class UpdateRequest(BaseModel):
@@ -51,27 +58,47 @@ def source_mutation(lesson_id, lesson_dir, *, allow_documents=True):
 @router.get("/lessons/{lesson_id}/sources", response_model=SourcesView,
             summary="Fonti della lezione e stato delle fonti non ancora usate")
 def get_sources(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
-    return {"sources": load_sources(lesson_dir), "has_unused_sources": sources_pending(lesson_dir),
-            "can_undo": has_update_snapshot(lesson_dir)}
+    return sources_view(lesson_dir)
 
 
-@router.post("/lessons/{lesson_id}/sources", response_model=Source, status_code=201,
-             summary="Aggiunge audio o appunti senza aggiornare la lezione")
+@router.post("/lessons/{lesson_id}/sources", response_model=Source | list[Source], status_code=201,
+             summary="Aggiunge audio, appunti o materiali senza aggiornare la lezione")
 def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
-                tipo: Literal["audio", "appunti"] = Form(...),
-                file: Optional[UploadFile] = File(None), testo: Optional[str] = Form(None),
+                tipo: Literal["audio", "appunti", "materiale"] = Form(...),
+                file: Optional[list[UploadFile]] = File(None), testo: Optional[str] = Form(None),
                 ordine: Optional[int] = Form(None, ge=1)):
     from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
     import shutil
+    if tipo == "materiale":
+        from rt.core.materials import MATERIAL_EXTENSIONS, page_count
+        if not file or testo is not None:
+            raise ApiError(422, "validation_error", "Carica almeno un materiale.")
+        target = _upload_dir()
+        try:
+            saved = _save_uploads(file, MATERIAL_EXTENSIONS, target)
+            for path in saved:
+                try:
+                    page_count(path)
+                except Exception:
+                    raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
+            with source_mutation(lesson_id, lesson_dir):
+                if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
+                    raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
+                added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                    None if ordine is None else ordine + i, source_path=path)
+                         for i, path in enumerate(saved)]
+                return added[0] if len(added) == 1 else added
+        finally:
+            shutil.rmtree(target, ignore_errors=True)
     if tipo == "audio":
-        if file is None or testo is not None:
+        if not file or len(file) != 1 or testo is not None:
             raise ApiError(422, "validation_error", "Carica un file audio.")
         # A blocchi su disco con limite, come l'import: mai l'intero file in memoria.
         target = _upload_dir()
         try:
-            saved = _save_uploads([file], SUPPORTED_AUDIO_EXTENSIONS, target)[0]
+            saved = _save_uploads(file, SUPPORTED_AUDIO_EXTENSIONS, target)[0]
             return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved), None, ordine, saved)
         finally:
             shutil.rmtree(target, ignore_errors=True)
@@ -107,6 +134,9 @@ def update_lesson(lesson_id: int, body: UpdateRequest, lesson_dir: LessonDir, ac
     with source_mutation(lesson_id, lesson_dir):
         if not load_sources(lesson_dir):
             raise ApiError(422, "sources_empty", "Aggiungi almeno una fonte prima di aggiornare.")
+        from rt.core.source_selection import selection
+        if body.mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
+            raise ApiError(409, "rebuild_required", "Ordine o principale cambiati: usa Ricostruisci.")
         return enqueue_job("update_lesson", lesson_dir, body.model_dump(), actor)
 
 
@@ -119,3 +149,59 @@ def undo_lesson_update(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             return undo_update(lesson_dir)
         except ValueError as exc:
             raise ApiError(409, "update_snapshot_missing", str(exc)) from None
+
+
+class LessonVersion(BaseModel):
+    id: str
+    il: str
+    modo: Literal["import", "extend", "rebuild", "restore"]
+    fonti_aggiunte: list[str]
+    unita_nuove: int
+    unita_cambiate: int
+    attuale: bool
+
+
+@router.get("/lessons/{lesson_id}/versions", response_model=list[LessonVersion])
+def get_versions(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.update_history import list_versions
+    return list_versions(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/versions/{vid}/restore",
+             response_model=schemas.JobAccepted, status_code=202)
+def post_restore_version(lesson_id: int, vid: str, lesson_dir: LessonDir, actor: Actor):
+    from rt.core.update_history import list_versions
+    with source_mutation(lesson_id, lesson_dir, allow_documents=False):
+        if not any(v["id"] == vid for v in list_versions(lesson_dir)):
+            raise ApiError(404, "version_not_found", "Versione non trovata.")
+        return enqueue_job("restore_version", lesson_dir, {"version": vid}, actor)
+
+
+class SourceOrder(BaseModel):
+    ids: list[str]
+
+
+class SourcePrimary(BaseModel):
+    id: str
+
+
+@router.put("/lessons/{lesson_id}/sources/order", response_model=SourcesView)
+def put_source_order(lesson_id: int, body: SourceOrder, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import set_order
+    with source_mutation(lesson_id, lesson_dir):
+        try:
+            set_order(lesson_dir, body.ids)
+        except ValueError as exc:
+            raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)
+
+
+@router.put("/lessons/{lesson_id}/sources/primary", response_model=SourcesView)
+def put_source_primary(lesson_id: int, body: SourcePrimary, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import set_primary
+    with source_mutation(lesson_id, lesson_dir):
+        try:
+            set_primary(lesson_dir, body.id)
+        except ValueError as exc:
+            raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)

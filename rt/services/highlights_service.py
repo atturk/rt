@@ -8,7 +8,9 @@ from rt.services.errors import NotFound
 
 
 def _row(h: StudyHighlight) -> dict:
-    return {"id": h.id, "unit_id": h.unit_id, "color": h.color, "source": h.source}
+    from rt.services.previous_study import previous_for_lesson
+    return {"id": h.id, "unit_id": h.unit_id, "color": h.color, "source": h.source,
+            "precedente": previous_for_lesson(h.lesson_id, h.unit_id, h.created_at)}
 
 
 def list_highlights(lesson_id: int, unit_id: str | None) -> list[dict]:

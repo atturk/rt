@@ -147,7 +147,7 @@ def edit_question(lesson_id: int, question_id: str, body: schemas.RecallQuestion
                         correct_index=body.correct_index, explanation=body.explanation)
     except ValueError as exc:
         raise ApiError(422, "validation_error", str(exc))
-    return question_view(question, reveal=True)
+    return question_view(question, reveal=True, lesson_dir=lesson_dir)
 
 
 @router.post("/lessons/{lesson_id}/recall/questions/{question_id}/status", response_model=schemas.RecallQuestionDetail,
@@ -160,7 +160,7 @@ def set_question_status(lesson_id: int, question_id: str, body: schemas.RecallQu
         question = set_status(lesson_dir, question_id, body.status)
     except ValueError as exc:
         raise ApiError(422, "validation_error", str(exc))
-    return question_view(question, reveal=True)
+    return question_view(question, reveal=True, lesson_dir=lesson_dir)
 
 
 @router.post("/lessons/{lesson_id}/recall/questions/{question_id}/comment", response_model=schemas.JobAccepted,
