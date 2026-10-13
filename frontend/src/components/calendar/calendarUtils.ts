@@ -20,7 +20,7 @@ export function getEventTooltip(e: CalendarEventView): string {
   } else {
     desc = STATUS_LABELS[e.status] ?? 'Da seguire'
   }
-  let out = `${e.materia} · ${time}\n${desc}`
+  let out = `${e.materia} · ${time}${e.docente ? ` · ${e.docente}` : ''}\n${desc}`
   if (e.is_modified) {
     out += '\nSolo questa settimana'
   }

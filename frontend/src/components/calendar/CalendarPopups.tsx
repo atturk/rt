@@ -487,30 +487,45 @@ export function WeekInfoPopup({
 // 4. Popup Aggiungi Evento (in modalità modifica)
 // ---------------------------------------------------------------------------
 
+export type EventFormValues = {
+  materia: string
+  startTime: string
+  endTime: string
+  docente?: string
+}
+
+/**
+ * Aggiunge un'ora o, con `initial`, modifica quella esistente: stessi campi, precompilati, e
+ * Salva al posto di Aggiungi.
+ */
 export function AddEventPopup({
   scope,
   weekNumber,
-  defaultStartTime,
+  defaultStartTime = '09:00',
+  initial,
   anchor,
   onClose,
   onAdd,
 }: {
   scope: 'week' | 'tpl'
   weekNumber: string
-  defaultStartTime: string
+  defaultStartTime?: string
+  initial?: EventFormValues
   anchor: PopupAnchor
   onClose: () => void
-  onAdd: (data: { materia: string; startTime: string; endTime: string; docente?: string }) => void
+  onAdd: (data: EventFormValues) => void
 }) {
-  const [materia, setMateria] = useState('')
-  const [startTime, setStartTime] = useState(defaultStartTime)
+  const isEdit = !!initial
+  const [materia, setMateria] = useState(initial?.materia ?? '')
+  const [startTime, setStartTime] = useState(initial?.startTime ?? defaultStartTime)
   const defaultEndTime = () => {
+    if (initial) return initial.endTime
     const parts = defaultStartTime.split(':')
     const h = (parseInt(parts[0] || '9', 10) + 2) % 24
     return `${String(h).padStart(2, '0')}:${parts[1] || '00'}`
   }
   const [endTime, setEndTime] = useState(defaultEndTime)
-  const [docente, setDocente] = useState('')
+  const [docente, setDocente] = useState(initial?.docente ?? '')
   const popupRef = useRef<HTMLDivElement>(null)
   // Le materie delle lezioni come suggerimenti: il collegamento automatico confronta la materia.
   const lessonsQuery = useLessons()
@@ -545,11 +560,12 @@ export function AddEventPopup({
       ref={popupRef}
       style={style}
       role="dialog"
-      data-testid="calendar-add-event-popup"
-      aria-label="Aggiungi ora"
+      data-testid={isEdit ? 'calendar-edit-event-popup' : 'calendar-add-event-popup'}
+      aria-label={isEdit ? 'Modifica ora' : 'Aggiungi ora'}
       className="flex flex-col gap-2.5 rounded-xl border bg-background p-3 text-xs shadow-xl"
     >
       <div className="font-semibold uppercase tracking-wider text-muted-foreground">
+        {isEdit ? 'Modifica ora · ' : ''}
         {scope === 'week' ? `Solo settimana ${weekNumber}` : 'Settimana tipo, da qui in poi'}
       </div>
 
@@ -608,7 +624,7 @@ export function AddEventPopup({
       <div className="flex justify-end gap-1 pt-1">
         <IconButton label="Annulla" icon={X} side="top" onClick={onClose} />
         <IconButton
-          label="Aggiungi"
+          label={isEdit ? 'Salva' : 'Aggiungi'}
           icon={Check}
           side="top"
           className="bg-primary text-primary-foreground hover:opacity-90"

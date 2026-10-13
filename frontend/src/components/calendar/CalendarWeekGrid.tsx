@@ -11,6 +11,8 @@ import type { PopupAnchor } from './CalendarPopups'
 const T0 = 8.5
 const HOURS_COUNT = 10 // 08:30 .. 17:30
 const HOUR_HEIGHT = 46
+// Sotto quest'altezza (in ore) il blocco ha posto solo per materia e orario: il docente resta nel tooltip.
+const MIN_HOURS_FOR_DOCENTE = 1.5
 
 function fmtHour(h: number): string {
   const H = Math.floor(h)
@@ -26,6 +28,7 @@ export function CalendarWeekGrid({
   onOpenDayMenu,
   onOpenAdd,
   onRemoveEvent,
+  onEditEvent,
 }: {
   days: CalendarDayView[]
   editing: 'week' | 'tpl' | null
@@ -34,6 +37,8 @@ export function CalendarWeekGrid({
   onOpenDayMenu: (day: CalendarDayView, anchor: PopupAnchor) => void
   onOpenAdd: (day: CalendarDayView, hour: number, anchor: PopupAnchor) => void
   onRemoveEvent: (event: CalendarEventView) => void
+  /** In modalità modifica il clic su un'ora apre il popup per cambiarla. */
+  onEditEvent?: (event: CalendarEventView, anchor: PopupAnchor) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -175,6 +180,7 @@ export function CalendarWeekGrid({
               const height = (ev.end_hour - ev.start_hour) * HOUR_HEIGHT - 4
               const isSelected = selectedEventKey === ev.key
               const tooltip = getEventTooltip(ev)
+              const showDocente = !!ev.docente && ev.end_hour - ev.start_hour >= MIN_HOURS_FOR_DOCENTE
 
               return (
                 <div
@@ -182,7 +188,7 @@ export function CalendarWeekGrid({
                   className="absolute inset-x-1"
                   style={{ top: `${top}px`, height: `${height}px` }}
                 >
-                <Tooltip content={tooltip} side="top">
+                <Tooltip content={editing ? `Modifica quest'ora\n${tooltip}` : tooltip} side="top">
                   {(trigger) => (
                     <button
                       type="button"
@@ -191,7 +197,7 @@ export function CalendarWeekGrid({
                         backgroundColor: `color-mix(in oklch, ${color} var(--tint, 12%), var(--bg))`,
                         boxShadow: `inset 3px 0 0 ${color}`,
                       }}
-                      className={`group relative flex size-full flex-col justify-start gap-0.5 rounded-lg p-2 text-left text-xs transition-colors hover:brightness-95 ${
+                      className={`group relative flex size-full flex-col justify-start gap-0.5 overflow-hidden rounded-lg p-2 text-left text-xs transition-colors hover:brightness-95 ${
                         isSelected ? 'ring-2 ring-primary ring-offset-1' : ''
                       } ${
                         ev.status === 'annullata'
@@ -199,16 +205,17 @@ export function CalendarWeekGrid({
                           : ''
                       }`}
                       onClick={(e) => {
-                        if (editing) return
                         const rect = e.currentTarget.getBoundingClientRect()
-                        onOpenEvent(ev, {
+                        const anchor = {
                           x: rect.left,
                           y: rect.top,
                           width: rect.width,
                           height: rect.height,
-                        })
+                        }
+                        if (editing) onEditEvent?.(ev, anchor)
+                        else onOpenEvent(ev, anchor)
                       }}
-                      aria-label={tooltip.replace(/\n/g, ', ')}
+                      aria-label={`${editing ? 'Modifica: ' : ''}${tooltip.replace(/\n/g, ', ')}`}
                       {...trigger}
                     >
                       <span
@@ -220,6 +227,14 @@ export function CalendarWeekGrid({
                       <span className="font-mono text-[11px] text-muted-foreground">
                         {ev.start_time}–{ev.end_time}
                       </span>
+                      {showDocente && (
+                        <span
+                          data-testid={`calendar-event-docente-${ev.key}`}
+                          className="truncate pr-5 text-[11px] text-muted-foreground"
+                        >
+                          {ev.docente}
+                        </span>
+                      )}
 
                       {/* Icona di stato in basso a destra */}
                       <span className="absolute bottom-1.5 right-2">

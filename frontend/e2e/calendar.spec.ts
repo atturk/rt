@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { test, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 test('calendario: navigazione, settimana tipo, popup evento e riepilogo', async ({ page }) => {
   await loginViaLink(page)
@@ -116,6 +116,67 @@ test('calendario su iPhone: strip dei giorni ed elenco ore', async ({ page }) =>
     await expect(eventRow).toContainText('Elettromagnetismo', { ignoreCase: true })
     await expect(eventRow).toContainText('Prof.ssa Bassi')
   } finally {
+    await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
+  }
+})
+
+test('calendario: modifica di un\'ora solo per questa settimana', async ({ page }) => {
+  await loginViaLink(page)
+
+  // Ora di prova nella settimana tipo (mercoledì 10:30 - 12:30)
+  const addRes = await page.request.post('/api/v1/calendar/template', {
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    data: JSON.stringify({
+      day_of_week: 2,
+      start_time: '10:30',
+      end_time: '12:30',
+      materia: 'Prova Modifica Ora',
+      docente: 'Prof. Verdi',
+    }),
+  })
+  expect(addRes.ok()).toBeTruthy()
+  const createdTpl = (await addRes.json()) as { id: number }
+  const key = 'tpl_' + createdTpl.id
+
+  type WeekEvent = { key: string; end_time: string; is_modified: boolean; override_id?: number | null }
+  const readEvent = async () => {
+    const week = (await apiGet<{ days: { events: WeekEvent[] }[] }>(page.request, '/calendar/week'))
+    return week.days.flatMap((d) => d.events).find((e) => e.key === key)
+  }
+
+  try {
+    await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Calendario' }).click()
+    await expect(page).toHaveURL(/\/calendario/)
+
+    const slot = page.getByTestId('calendar-event-' + key)
+    await expect(slot).toContainText('10:30–12:30')
+    await expect(slot).toContainText('Prof. Verdi')
+
+    // Modalità modifica "solo questa settimana": il clic sull'ora apre il popup precompilato
+    // Le due opzioni compaiono al passaggio o al focus sulla matita
+    await page.getByRole('button', { name: 'Modifica orario' }).focus()
+    await page.getByRole('button', { name: 'Modifica solo questa settimana' }).click()
+    await slot.click()
+    const popup = page.getByTestId('calendar-edit-event-popup')
+    await expect(popup).toBeVisible()
+    await expect(popup.getByLabel('Materia')).toHaveValue('Prova Modifica Ora')
+    await expect(popup.getByLabel('Inizio')).toHaveValue('10:30')
+    await popup.getByLabel('Fine').fill('13:00')
+    await popup.getByRole('button', { name: 'Salva' }).click()
+    await expect(popup).toHaveCount(0)
+
+    await expect(slot).toContainText('10:30–13:00')
+    await expect.poll(async () => (await readEvent())?.end_time).toBe('13:00')
+    expect((await readEvent())?.is_modified).toBe(true)
+
+    // La settimana tipo resta com'era
+    const tpl = await apiGet<{ id: number; end_time: string }[]>(page.request, '/calendar/template')
+    expect(tpl.find((t) => t.id === createdTpl.id)?.end_time).toBe('12:30')
+  } finally {
+    const ev = await readEvent()
+    if (ev?.override_id) {
+      await page.request.delete(`/api/v1/calendar/override/${ev.override_id}`, { headers: authHeaders() })
+    }
     await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
   }
 })

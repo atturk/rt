@@ -34,6 +34,7 @@ import {
   DayMenuPopup,
   EventPopup,
   WeekInfoPopup,
+  type EventFormValues,
   type PopupAnchor,
 } from '@/components/calendar/CalendarPopups'
 import { CalendarWeekGrid } from '@/components/calendar/CalendarWeekGrid'
@@ -88,6 +89,10 @@ export function CalendarPage() {
     hour: number
     anchor: PopupAnchor
   } | null>(null)
+  const [editSlot, setEditSlot] = useState<{
+    event: CalendarEventView
+    anchor: PopupAnchor
+  } | null>(null)
 
   // API queries & mutations
   const weekQuery = useCalendarWeek(currentDate)
@@ -121,6 +126,7 @@ export function CalendarPage() {
     setActiveDayMenu(null)
     setInfoAnchor(null)
     setAddSlot(null)
+    setEditSlot(null)
   }
 
   function handlePrev() {
@@ -156,6 +162,52 @@ export function CalendarPage() {
       } else if (ev.override_id) {
         deleteOv.mutate(ev.override_id)
       }
+    }
+  }
+
+  // Modifica di un'ora: si crea la versione nuova e poi si toglie la vecchia, così un errore a metà
+  // non fa sparire l'ora.
+  async function handleEditEvent(ev: CalendarEventView, data: EventFormValues) {
+    if (!week) return
+    const unchanged =
+      data.materia === ev.materia &&
+      data.startTime === ev.start_time &&
+      data.endTime === ev.end_time &&
+      (data.docente ?? '') === (ev.docente ?? '')
+    if (unchanged) return
+    const fields = {
+      start_time: data.startTime,
+      end_time: data.endTime,
+      materia: data.materia,
+      docente: data.docente,
+    }
+    try {
+      if (editing === 'tpl' && ev.template_entry_id) {
+        // Da questa settimana in poi: le settimane prima conservano l'ora com'era.
+        await createTpl.mutateAsync({
+          ...fields,
+          day_of_week: ev.day_of_week,
+          valid_from: week.start_date,
+        })
+        await deleteTpl.mutateAsync({ id: ev.template_entry_id, from: week.start_date })
+      } else if (ev.template_entry_id) {
+        // Solo questa settimana: una modifica puntuale dell'ora della settimana tipo, che
+        // sostituisce quella eventualmente già presente per lo stesso giorno.
+        await createOv.mutateAsync({
+          ...fields,
+          date: ev.date,
+          action: 'modified',
+          template_entry_id: ev.template_entry_id,
+        })
+        if (ev.override_id) await deleteOv.mutateAsync(ev.override_id)
+      } else if (ev.override_id) {
+        // Ora aggiunta solo per questa settimana: si sostituisce con una nuova aggiunta.
+        await createOv.mutateAsync({ ...fields, date: ev.date, action: 'added' })
+        await deleteOv.mutateAsync(ev.override_id)
+      }
+    } catch {
+      // Come per aggiungere e togliere ore, l'errore non ha un avviso dedicato: la settimana
+      // mostrata resta quella salvata sul server.
     }
   }
 
@@ -336,6 +388,10 @@ export function CalendarPage() {
               setAddSlot({ day, hour, anchor })
             }}
             onRemoveEvent={handleRemoveEvent}
+            onEditEvent={(event, anchor) => {
+              closeAllPopups()
+              setEditSlot({ event, anchor })
+            }}
           />
         )}
 
@@ -445,6 +501,23 @@ export function CalendarPage() {
               })
             }
           }}
+        />
+      )}
+
+      {editSlot && editing && week && (
+        <AddEventPopup
+          key={`${editSlot.event.date}-${editSlot.event.key}`}
+          scope={editing}
+          weekNumber={week.week_number}
+          initial={{
+            materia: editSlot.event.materia,
+            startTime: editSlot.event.start_time,
+            endTime: editSlot.event.end_time,
+            docente: editSlot.event.docente ?? undefined,
+          }}
+          anchor={editSlot.anchor}
+          onClose={() => setEditSlot(null)}
+          onAdd={(data) => void handleEditEvent(editSlot.event, data)}
         />
       )}
     </div>
