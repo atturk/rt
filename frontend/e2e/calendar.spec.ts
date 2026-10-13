@@ -29,6 +29,7 @@ test('calendario: navigazione, settimana tipo, popup evento e riepilogo', async 
     await expect(page.getByRole('heading', { level: 1, name: 'Calendario' })).toBeVisible()
     const weekLabel = page.getByTestId('calendar-week-label')
     await expect(weekLabel).toBeVisible()
+    await expect(weekLabel).not.toHaveText('Caricamento…')
 
     // Navigazione settimane
     const initialText = await weekLabel.innerText()
