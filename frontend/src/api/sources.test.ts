@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './client'
-import { sourcesApi, type SourcesView, type LessonVersion } from './sources'
+import { sourcesApi, usedOrderIds, type LessonVersion, type SourceItem, type SourcesView } from './sources'
 
 describe('sourcesApi (Contratto 4.2.5b2)', () => {
   beforeEach(() => {
@@ -106,5 +106,28 @@ describe('sourcesApi (Contratto 4.2.5b2)', () => {
     const res = await sourcesApi.restoreVersion(42, 'v1')
     expect(res).toEqual({ job_id: 'job_restore_1' })
     expect(api.POST).toHaveBeenCalledWith('/api/v1/lessons/42/versions/v1/restore')
+  })
+})
+
+const src = (id: string, tipo: SourceItem['tipo']): SourceItem => ({
+  id, tipo, file: id, impronta: id, aggiunta_il: '', ordine: 0, nome: id, usata: true,
+})
+
+describe("usedOrderIds (Rimetti com'era)", () => {
+  it("rimette le parti usate nell'ordine usato e lascia ferme le altre fonti", () => {
+    const sources = [src('a3', 'audio'), src('m1', 'materiale'), src('a1', 'audio'), src('new', 'audio'), src('a2', 'audio')]
+    expect(usedOrderIds(sources, ['a1', 'm1', 'a2', 'a3'])).toEqual(['a1', 'm1', 'a2', 'new', 'a3'])
+  })
+
+  it('ignora le fonti tolte e tiene ogni fonte attuale una volta sola', () => {
+    const sources = [src('a2', 'audio'), src('a1', 'audio'), src('n1', 'appunti')]
+    const ids = usedOrderIds(sources, ['gone', 'a1', 'a2'])
+    expect(ids).toEqual(['a1', 'a2', 'n1'])
+    expect(new Set(ids)).toEqual(new Set(sources.map((s) => s.id)))
+  })
+
+  it('senza ordine usato lascia tutto com è', () => {
+    const sources = [src('a1', 'audio'), src('m1', 'materiale')]
+    expect(usedOrderIds(sources, [])).toEqual(['a1', 'm1'])
   })
 })

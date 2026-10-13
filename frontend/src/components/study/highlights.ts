@@ -101,16 +101,13 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
           h.addClass(`rt-hl-${row.color}`, source.id)
           ids.set(source.id, row.id)
           if (row.precedente) {
-            const doms = h.getDoms(source.id)
-            const lastDom = doms[doms.length - 1]
+            // L'icona è un ::after del contenitore dell'evidenziazione (classe rt-hl-prev): nessun
+            // nodo in più nel testo, e quando l'evidenziazione si toglie sparisce con lei.
+            const lastDom = h.getDoms(source.id).at(-1)
             if (lastDom) {
-              const iconSpan = document.createElement('span')
-              iconSpan.className = 'rt-hl-prev inline-flex items-center text-muted-foreground ml-1 align-baseline select-none cursor-default'
-              iconSpan.setAttribute('aria-label', "Precedente all'ultima aggiunta di fonti")
-              iconSpan.setAttribute('data-testid', 'highlight-precedente-icon')
-              iconSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
-              lastDom.appendChild(iconSpan)
-              mountDomTooltip(iconSpan, "Precedente all'ultima aggiunta di fonti")
+              lastDom.classList.add('rt-hl-prev')
+              lastDom.dataset.precedente = 'true'
+              mountDomTooltip(lastDom, "Precedente all'ultima aggiunta di fonti")
             }
           }
         } catch {

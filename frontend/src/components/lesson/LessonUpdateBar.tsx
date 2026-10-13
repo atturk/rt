@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Check, Info, Plus, RotateCw, Star, Undo2, X } from 'lucide-react'
+import { errorMessage } from '@/api/client'
 import {
+  useResetSelection,
   useSources,
+  useSourcesJob,
   useUpdateLesson,
   useUndoUpdate,
-  useReorderSources,
   useSetPrimarySource,
 } from '@/api/sources'
+import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -21,10 +24,15 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
   const sourcesQuery = useSources(lessonId)
   const updateMutation = useUpdateLesson(lessonId)
   const undoMutation = useUndoUpdate(lessonId)
-  const reorderMutation = useReorderSources(lessonId)
+  const resetMutation = useResetSelection(lessonId)
   const primaryMutation = useSetPrimarySource(lessonId)
+  const job = useSourcesJob(lessonId)
 
-  const [dismissedUndo, setDismissedUndo] = useState(false)
+  // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga.
+  const [dismissedAt, setDismissedAt] = useState<string | null>(null)
+  // Aperto col clic (anche al tocco, dove non c'è passaggio del mouse): mostra Estendi e Ricostruisci.
+  const [splitOpen, setSplitOpen] = useState(false)
+  const splitRef = useRef<HTMLDivElement>(null)
   const [confirmRebuildOpen, setConfirmRebuildOpen] = useState(false)
   const [confirmPrimary, setConfirmPrimary] = useState<{ open: boolean; audioId: string | null }>({
     open: false,
@@ -35,7 +43,26 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
   const data = sourcesQuery.data
   if (!data) return null
 
-  const isRunning = updateMutation.isPending || undoMutation.isPending
+  const isRunning = updateMutation.isPending || undoMutation.isPending || job.running
+  const runUpdate = (mode: 'extend' | 'rebuild') => {
+    setLastMode(mode)
+    setSplitOpen(false)
+    updateMutation.mutate(mode, { onSuccess: (accepted) => job.start(accepted.job_id) })
+  }
+
+  const failure = [updateMutation, undoMutation, resetMutation, primaryMutation]
+    .map((m) => (m.error ? errorMessage(m.error) : null))
+    .find(Boolean) ?? job.error
+  const withError = (bar: ReactNode) => (
+    <>
+      {failure && (
+        <Alert tone="danger" className={cn('mb-2', className)}>
+          {failure}
+        </Alert>
+      )}
+      {bar}
+    </>
+  )
 
   // 1. Stato durante l'aggiornamento
   if (isRunning) {
@@ -52,10 +79,21 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           <RotateCw className="size-4 animate-spin text-muted-foreground" aria-hidden />
           <span>
             Aggiornamento in corso · {lastMode === 'rebuild' ? 'Ricostruisci' : 'Estendi'}
+            {job.message ? ` · ${job.message}` : ''}
           </span>
         </div>
-        <div className="h-1.5 w-36 overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-2/3 animate-pulse rounded-full bg-primary" />
+        <div
+          className="h-1.5 w-36 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label="Avanzamento dell'aggiornamento"
+          aria-valuenow={job.percent ?? undefined}
+          data-testid="bar-progress"
+        >
+          {job.percent != null ? (
+            <div className="h-full rounded-full bg-primary" style={{ width: `${job.percent}%` }} />
+          ) : (
+            <div className="h-full w-2/3 animate-pulse rounded-full bg-primary" />
+          )}
         </div>
       </div>
     )
@@ -63,16 +101,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
 
   // 2. Stato solo ricostruzione (ordine o principale cambiati)
   if (data.solo_ricostruzione) {
-    const handleResetToUsed = () => {
-      if (data.ordine_usato?.length) {
-        reorderMutation.mutate(data.ordine_usato)
-      }
-      if (data.principale_usato) {
-        primaryMutation.mutate(data.principale_usato)
-      }
-    }
-
-    return (
+    return withError(
       <>
         <div
           className={cn(
@@ -90,7 +119,8 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
             <IconButton
               icon={Undo2}
               label="Rimetti com'era"
-              onClick={handleResetToUsed}
+              disabled={resetMutation.isPending}
+              onClick={() => resetMutation.mutate(data)}
               data-testid="bar-reset-btn"
             />
             <Button
@@ -112,9 +142,8 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           confirmLabel="Ricostruisci"
           onCancel={() => setConfirmRebuildOpen(false)}
           onConfirm={() => {
-            setLastMode('rebuild')
             setConfirmRebuildOpen(false)
-            updateMutation.mutate('rebuild')
+            runUpdate('rebuild')
           }}
         >
           <p>
@@ -123,7 +152,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
             studio resta, segnato come precedente dove l'unità cambia.
           </p>
         </ConfirmDialog>
-      </>
+      </>,
     )
   }
 
@@ -137,7 +166,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
     const audioNotPrimary = hasAudio && primarySource && primarySource.tipo !== 'audio'
     const firstAudio = data.sources.find((s) => s.tipo === 'audio')
 
-    return (
+    return withError(
       <>
         <div
           className={cn(
@@ -165,15 +194,19 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
             )}
           </div>
 
+          {/* Al passaggio del mouse Aggiorna si divide; al tocco o con la tastiera lo divide il clic,
+              che quindi non avvia mai Estendi da solo. */}
           <div className="group/split relative flex items-center gap-0.5">
-            <div className="flex group-hover/split:hidden group-focus-within/split:hidden">
+            <div className={cn('flex group-hover/split:hidden', splitOpen && 'hidden')}>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-7 gap-1.5 px-2.5 text-meta"
+                aria-expanded={splitOpen}
+                disabled={isRunning}
                 onClick={() => {
-                  setLastMode('extend')
-                  updateMutation.mutate('extend')
+                  setSplitOpen(true)
+                  requestAnimationFrame(() => splitRef.current?.querySelector('button')?.focus())
                 }}
                 data-testid="bar-update-main-btn"
               >
@@ -181,21 +214,24 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
                 Aggiorna
               </Button>
             </div>
-            <div className="hidden group-hover/split:flex group-focus-within/split:flex items-center gap-0.5">
+            <div
+              ref={splitRef}
+              className={cn('hidden items-center gap-0.5 group-hover/split:flex', splitOpen && 'flex')}
+              data-testid="bar-split"
+            >
               <IconButton
                 icon={Plus}
                 label="Estendi: aggiunge unità, non tocca quelle esistenti"
                 className="size-7"
-                onClick={() => {
-                  setLastMode('extend')
-                  updateMutation.mutate('extend')
-                }}
+                disabled={isRunning}
+                onClick={() => runUpdate('extend')}
                 data-testid="bar-extend-btn"
               />
               <IconButton
                 icon={RotateCw}
                 label="Ricostruisci: rifà la scaletta da zero"
                 className="size-7"
+                disabled={isRunning}
                 onClick={() => setConfirmRebuildOpen(true)}
                 data-testid="bar-rebuild-btn"
               />
@@ -209,9 +245,8 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           confirmLabel="Ricostruisci"
           onCancel={() => setConfirmRebuildOpen(false)}
           onConfirm={() => {
-            setLastMode('rebuild')
             setConfirmRebuildOpen(false)
-            updateMutation.mutate('rebuild')
+            runUpdate('rebuild')
           }}
         >
           <p>
@@ -238,17 +273,17 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
             studio resta, segnato come precedente dove l'unità cambia.
           </p>
         </ConfirmDialog>
-      </>
+      </>,
     )
   }
 
   // 4. Stato lezione appena aggiornata (con possibilità di annullamento)
-  if (data.ultimo_aggiornamento && data.can_undo && !dismissedUndo) {
-    const u = data.ultimo_aggiornamento
+  const u = data.ultimo_aggiornamento
+  if (u && data.can_undo && dismissedAt !== u.il) {
     const nuoveStr = `${u.unita_nuove} ${u.unita_nuove === 1 ? 'unità nuova' : 'unità nuove'}`
     const cambiateStr = `${u.unita_cambiate} ${u.unita_cambiate === 1 ? 'cambiata' : 'cambiate'}`
 
-    return (
+    return withError(
       <div
         className={cn(
           'mb-4 flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-body',
@@ -274,13 +309,13 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           <IconButton
             icon={X}
             label="Chiudi"
-            onClick={() => setDismissedUndo(true)}
+            onClick={() => setDismissedAt(u.il)}
             data-testid="bar-close-btn"
           />
         </div>
-      </div>
+      </div>,
     )
   }
 
-  return null
+  return withError(null)
 }

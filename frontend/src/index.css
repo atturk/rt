@@ -377,6 +377,15 @@
   }
 }
 
+@keyframes rt-panel-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @keyframes rt-panel-switch {
   from {
     transform: translateY(6px);
@@ -414,7 +423,8 @@
     border-right: none;
     border-bottom: none;
     border-top: 1px solid var(--border);
-    animation: none;
+    /* Sul telefono il pannello sale dal basso */
+    animation: rt-panel-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
 
@@ -747,6 +757,18 @@
 .rt-hl-4 { background: var(--hl-5); }
 [data-hl-mode="erase"] .rt-hl { cursor: pointer; }
 [data-hl-mode="erase"] .rt-hl:hover { outline: 1.5px dashed var(--muted-foreground); outline-offset: 1px; }
+/* Evidenziazione precedente all'ultima aggiunta di fonti: orologio piccolo in coda (4.2.5b2 LE1k) */
+.rt-hl-prev::after {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: 4px;
+  vertical-align: -2px;
+  background: var(--muted-foreground);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 
 /* Cursori e sottolineature di Verifica e Chiedi nello Studio (VC1) */
 .rt-sn {

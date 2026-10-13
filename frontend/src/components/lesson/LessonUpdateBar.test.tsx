@@ -9,13 +9,17 @@ const mockUpdateMutate = vi.fn()
 const mockUndoMutate = vi.fn()
 const mockReorderMutate = vi.fn()
 const mockPrimaryMutate = vi.fn()
+const mockStartJob = vi.fn()
+let mockJob = { running: false, percent: null as number | null, message: null as string | null, error: null as string | null }
+let mockUpdateError: Error | null = null
 
 vi.mock('@/api/sources', () => ({
   useSources: () => ({ data: mockSourcesData }),
-  useUpdateLesson: () => ({ mutate: mockUpdateMutate, isPending: false }),
-  useUndoUpdate: () => ({ mutate: mockUndoMutate, isPending: false }),
-  useReorderSources: () => ({ mutate: mockReorderMutate, isPending: false }),
-  useSetPrimarySource: () => ({ mutate: mockPrimaryMutate, isPending: false }),
+  useUpdateLesson: () => ({ mutate: mockUpdateMutate, isPending: false, error: mockUpdateError }),
+  useUndoUpdate: () => ({ mutate: mockUndoMutate, isPending: false, error: null }),
+  useResetSelection: () => ({ mutate: mockReorderMutate, isPending: false, error: null }),
+  useSetPrimarySource: () => ({ mutate: mockPrimaryMutate, isPending: false, error: null }),
+  useSourcesJob: () => ({ ...mockJob, start: mockStartJob }),
 }))
 
 function renderBar(lessonId = 1) {
@@ -31,6 +35,8 @@ describe('LessonUpdateBar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSourcesData = null
+    mockJob = { running: false, percent: null, message: null, error: null }
+    mockUpdateError = null
   })
 
   it('non mostra nulla se non ci sono fonti non usate né ricostruzione necessaria', () => {
@@ -98,20 +104,25 @@ describe('LessonUpdateBar', () => {
     expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'new')
     expect(screen.getByText(/Fonti nuove non ancora usate: Parte 2/i)).toBeInTheDocument()
 
-    // Clic su Aggiorna (default estendi)
+    // Clic (o tocco) su Aggiorna: apre Estendi e Ricostruisci, non avvia niente
+    expect(screen.getByTestId('bar-split')).toHaveClass('hidden')
     fireEvent.click(screen.getByTestId('bar-update-main-btn'))
-    expect(mockUpdateMutate).toHaveBeenCalledWith('extend')
+    expect(mockUpdateMutate).not.toHaveBeenCalled()
+    expect(screen.getByTestId('bar-split')).toHaveClass('flex')
+    expect(screen.getByTestId('bar-update-main-btn')).toHaveAttribute('aria-expanded', 'true')
 
-    // Clic su Estendi esplicito
+    // Clic su Estendi esplicito: a job accettato si segue il job
     fireEvent.click(screen.getByTestId('bar-extend-btn'))
-    expect(mockUpdateMutate).toHaveBeenCalledWith('extend')
+    expect(mockUpdateMutate).toHaveBeenCalledWith('extend', expect.anything())
+    mockUpdateMutate.mock.calls[0][1].onSuccess({ job_id: 'job-7' })
+    expect(mockStartJob).toHaveBeenCalledWith('job-7')
 
     // Clic su Ricostruisci: apre modale di conferma
     fireEvent.click(screen.getByTestId('bar-rebuild-btn'))
     const dialog = screen.getByRole('dialog')
     expect(dialog).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ricostruisci' }))
-    expect(mockUpdateMutate).toHaveBeenCalledWith('rebuild')
+    expect(mockUpdateMutate).toHaveBeenCalledWith('rebuild', expect.anything())
   })
 
   it('mostra opzione Rendi principale l audio se la lezione ha come principale un documento', () => {
@@ -197,17 +208,17 @@ describe('LessonUpdateBar', () => {
     expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'rebuild')
     expect(screen.getByText(/Ordine delle registrazioni cambiato: la lezione va ricostruita/i)).toBeInTheDocument()
 
-    // Rimetti com'era
+    // Rimetti com'era: una sola mutazione che rimanda ordine e principale in sequenza
     fireEvent.click(screen.getByTestId('bar-reset-btn'))
-    expect(mockReorderMutate).toHaveBeenCalledWith(['s1', 's2'])
-    expect(mockPrimaryMutate).toHaveBeenCalledWith('s1')
+    expect(mockReorderMutate).toHaveBeenCalledWith(mockSourcesData)
+    expect(mockPrimaryMutate).not.toHaveBeenCalled()
 
     // Ricostruisci con conferma
     fireEvent.click(screen.getByTestId('bar-solo-rebuild-btn'))
     const dialog = screen.getByRole('dialog')
     expect(dialog).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ricostruisci' }))
-    expect(mockUpdateMutate).toHaveBeenCalledWith('rebuild')
+    expect(mockUpdateMutate).toHaveBeenCalledWith('rebuild', expect.anything())
   })
 
   it('mostra stato Lezione aggiornata con Annulla e pulsante Chiudi', () => {
@@ -239,5 +250,47 @@ describe('LessonUpdateBar', () => {
     // Clic su Chiudi (X): nasconde la barra nel client
     fireEvent.click(screen.getByTestId('bar-close-btn'))
     expect(screen.queryByTestId('lesson-update-bar')).not.toBeInTheDocument()
+  })
+
+  it("durante il job mostra l'avanzamento e niente Aggiorna", () => {
+    mockSourcesData = {
+      sources: [], has_unused_sources: true, can_undo: false, ultimo_aggiornamento: null,
+      principale: '', ordine_usato: [], principale_usato: null, solo_ricostruzione: false,
+    }
+    mockJob = { running: true, percent: 40, message: 'Scaletta', error: null }
+    renderBar()
+    expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'run')
+    expect(screen.getByText(/Aggiornamento in corso · Estendi · Scaletta/)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40')
+    expect(screen.queryByTestId('bar-update-main-btn')).toBeNull()
+  })
+
+  it("mostra l'errore dell'aggiornamento (409)", () => {
+    mockSourcesData = {
+      sources: [], has_unused_sources: true, can_undo: false, ultimo_aggiornamento: null,
+      principale: '', ordine_usato: [], principale_usato: null, solo_ricostruzione: false,
+    }
+    mockUpdateError = new Error('La lezione è occupata.')
+    renderBar()
+    expect(screen.getByRole('alert')).toHaveTextContent('La lezione è occupata.')
+  })
+
+  it('la riga torna con un nuovo aggiornamento dopo la ×', () => {
+    const view = (il: string): SourcesView => ({
+      sources: [], has_unused_sources: false, can_undo: true,
+      ultimo_aggiornamento: { modo: 'extend', unita_nuove: 1, unita_cambiate: 0, il },
+      principale: '', ordine_usato: [], principale_usato: null, solo_ricostruzione: false,
+    })
+    mockSourcesData = view('2026-10-12T18:00:00Z')
+    const queryClient = new QueryClient()
+    const ui = () => <QueryClientProvider client={queryClient}><LessonUpdateBar lessonId={1} /></QueryClientProvider>
+    const { rerender } = render(ui())
+    fireEvent.click(screen.getByTestId('bar-close-btn'))
+    expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
+    rerender(ui())
+    expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
+    mockSourcesData = view('2026-10-13T09:00:00Z')
+    rerender(ui())
+    expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'done')
   })
 })

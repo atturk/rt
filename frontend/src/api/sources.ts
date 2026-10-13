@@ -1,6 +1,9 @@
 // Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, unwrap } from './client'
+import { api, errorMessage, unwrap } from './client'
+import { invalidateAfterJob } from './jobs'
+import { jobFinished, useJobStatus } from './jobStatus'
 
 export type SourceKind = 'audio' | 'appunti' | 'materiale'
 
@@ -177,4 +180,77 @@ export function useRestoreVersion(lessonId: number) {
       queryClient.invalidateQueries({ queryKey: sourcesKeys.versions(lessonId) })
     },
   })
+}
+
+/**
+ * Ordine completo per "Rimetti com'era": PUT order vuole ogni fonte attuale una volta sola,
+ * quindi le parti audio già usate tornano nell'ordine di ordine_usato dentro i posti che occupano
+ * ora, e tutte le altre fonti (anche le nuove) restano dove sono.
+ */
+export function usedOrderIds(sources: SourceItem[], ordineUsato: string[]): string[] {
+  const audio = new Set(sources.filter((s) => s.tipo === 'audio').map((s) => s.id))
+  const used = ordineUsato.filter((id) => audio.has(id))
+  const usedSet = new Set(used)
+  let next = 0
+  return sources.map((s) => (usedSet.has(s.id) ? used[next++] : s.id))
+}
+
+/**
+ * Rimette ordine e principale dell'ultimo aggiornamento. Le due PUT vanno in sequenza: il lucchetto
+ * della lezione non aspetta e due richieste insieme darebbero 409 lesson_busy.
+ */
+export function useResetSelection(lessonId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (view: SourcesView) => {
+      let current = view
+      const ids = usedOrderIds(view.sources, view.ordine_usato ?? [])
+      if (ids.length > 0 && ids.some((id, i) => id !== view.sources[i].id)) {
+        current = await sourcesApi.reorder(lessonId, ids)
+      }
+      const primary = view.principale_usato
+      if (primary && current.principale !== primary && current.sources.some((s) => s.id === primary)) {
+        current = await sourcesApi.setPrimary(lessonId, primary)
+      }
+      return current
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(sourcesKeys.all(lessonId), data)
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: sourcesKeys.all(lessonId) })
+    },
+  })
+}
+
+/**
+ * Segue il job di un aggiornamento o di un ripristino: avanzamento per la riga sopra il testo e,
+ * a job finito, rilettura di fonti, versioni e lezione.
+ */
+export function useSourcesJob(lessonId: number) {
+  const queryClient = useQueryClient()
+  const [jobId, setJobId] = useState<string | null>(null)
+  const job = useJobStatus(jobId)
+  const finished = jobFinished(job.data)
+  const notified = useRef<string | null>(null)
+  useEffect(() => {
+    if (!jobId || !finished || notified.current === jobId) return
+    notified.current = jobId
+    invalidateAfterJob(queryClient, lessonId)
+    void queryClient.invalidateQueries({ queryKey: ['lesson', lessonId] })
+  }, [jobId, finished, lessonId, queryClient])
+  const progress = job.data?.progress as { message?: string; current?: number; total?: number } | null | undefined
+  const failed = job.data?.state === 'failed'
+  return {
+    jobId,
+    start: setJobId,
+    running: !!jobId && !finished && !job.isError,
+    percent: progress?.total ? Math.round(((progress.current ?? 0) / progress.total) * 100) : null,
+    message: progress?.message ?? null,
+    error: job.isError
+      ? errorMessage(job.error)
+      : failed
+        ? (job.data?.error ?? 'Aggiornamento non riuscito.')
+        : null,
+  }
 }

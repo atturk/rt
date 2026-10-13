@@ -43,16 +43,8 @@ import { cn } from '@/lib/utils'
 const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
 const DROP_TEXT = "Trascina qui l'audio della lezione, slide, PDF o foto, oppure un pacchetto .zip. Clic per scegliere."
 
-const MATERIAL_EXTENSIONS = [
-  '.pdf',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-  '.tiff',
-  '.bmp',
-  '.gif',
-]
+// Stesso insieme di rt/core/materials.py (MATERIAL_EXTENSIONS): il server rifiuta il resto.
+const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx']
 
 function isAudioFile(file: File): boolean {
   const dot = file.name.lastIndexOf('.')
@@ -63,11 +55,33 @@ function isAudioFile(file: File): boolean {
 function isMaterialFile(file: File): boolean {
   const dot = file.name.lastIndexOf('.')
   const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
-  return (
-    MATERIAL_EXTENSIONS.includes(ext) ||
-    file.type.startsWith('image/') ||
-    file.type === 'application/pdf'
-  )
+  return MATERIAL_EXTENSIONS.includes(ext)
+}
+
+const minutesOf = (time: string) => {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + (m || 0)
+}
+
+/**
+ * Ora proposta all'apertura: oggi quella in corso o, se nessuna, l'ultima appena finita;
+ * negli altri giorni (o prima delle lezioni) la prima non ancora registrata.
+ */
+function pickSlot(hours: CalendarEventView[], date: string, now = new Date()) {
+  const free = hours.filter((h) => !h.is_recorded)
+  if (free.length === 0) return null
+  if (date === today()) {
+    const current = now.getHours() * 60 + now.getMinutes()
+    const running = free.find(
+      (h) => minutesOf(h.start_time) <= current && current < minutesOf(h.end_time),
+    )
+    if (running) return running
+    const ended = free.filter((h) => minutesOf(h.end_time) <= current)
+    if (ended.length > 0) {
+      return ended.reduce((a, b) => (minutesOf(b.end_time) > minutesOf(a.end_time) ? b : a))
+    }
+  }
+  return free[0]
 }
 
 function today(): string {
@@ -119,7 +133,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [primaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
   const [attachMaterials, setAttachMaterials] = useState(true)
   const [manualMode, setManualMode] = useState(false)
-  const [selectedSlot, setSelectedSlot] = useState<CalendarEventView | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState('')
@@ -165,21 +179,22 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     [calendarDayQuery.data],
   )
 
+  // La scelta si confronta per chiave (tpl_N/ovr_N): dopo un nuovo fetch gli oggetti cambiano.
+  const selectedSlot = hours.find((h) => h.key === selectedKey && !h.is_recorded) ?? null
+  // Tutte registrate: niente da scegliere, restano i campi a mano.
+  const allRecorded = hours.length > 0 && hours.every((h) => h.is_recorded)
+
   // Selezione automatica dello slot al cambio data o al caricamento ore
   useEffect(() => {
-    if (manualMode || hours.length === 0) return
-    if (!selectedSlot) {
-      const unrecorded = hours.filter((h) => !h.is_recorded)
-      if (unrecorded.length > 0) {
-        const pick = unrecorded[0]
-        // oxlint-disable-next-line react/set-state-in-effect
-        setSelectedSlot(pick)
-        setMateria(pick.materia)
-        setDocente(pick.docente ?? '')
-        setTime(pick.start_time)
-      }
-    }
-  }, [hours, manualMode, selectedSlot])
+    if (manualMode || hours.length === 0 || selectedSlot) return
+    const pick = pickSlot(hours, date)
+    if (!pick) return
+    // oxlint-disable-next-line react/set-state-in-effect
+    setSelectedKey(pick.key)
+    setMateria(pick.materia)
+    setDocente(pick.docente ?? '')
+    setTime(pick.start_time)
+  }, [hours, manualMode, selectedSlot, date])
 
   const choose = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
@@ -204,7 +219,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
     const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
     if (unsupported) {
-      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o PDF/immagini.`)
+      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`)
       return
     }
 
@@ -215,16 +230,8 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
     setZipFiles([])
     setAudioFiles((prev) => [...prev, ...sortedAuds])
-    setMaterialFiles((prev) => {
-      const combined = [...prev, ...mats]
-      if (combined.length > 0) {
-        setAttachMaterials(true)
-        if (!primaryMaterialName) {
-          setPrimaryMaterialName(combined[0].name)
-        }
-      }
-      return combined
-    })
+    setMaterialFiles((prev) => [...prev, ...mats])
+    if (mats.length > 0) setAttachMaterials(true)
     setProblem(null)
     setZipJob(null)
     create.reset()
@@ -233,16 +240,8 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
     const mats = chosen.filter(isMaterialFile)
-    setMaterialFiles((prev) => {
-      const combined = [...prev, ...mats]
-      if (combined.length > 0) {
-        setAttachMaterials(true)
-        if (!primaryMaterialName) {
-          setPrimaryMaterialName(combined[0].name)
-        }
-      }
-      return combined
-    })
+    setMaterialFiles((prev) => [...prev, ...mats])
+    if (mats.length > 0) setAttachMaterials(true)
   }
 
   const removeMaterial = (index: number) => {
@@ -250,7 +249,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     const updated = materialFiles.filter((_, i) => i !== index)
     setMaterialFiles(updated)
     if (primaryMaterialName === toRemove?.name) {
-      setPrimaryMaterialName(updated[0]?.name ?? null)
+      setPrimaryMaterialName(null)
     }
     if (updated.length === 0) {
       setAttachMaterials(false)
@@ -271,12 +270,12 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     const d = new Date(parts[0], parts[1] - 1, parts[2] + delta)
     const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     setDate(newDate)
-    setSelectedSlot(null)
+    setSelectedKey(null)
   }
 
   const handleSelectSlot = (h: CalendarEventView) => {
     if (h.is_recorded) return
-    setSelectedSlot(h)
+    setSelectedKey(h.key)
     setMateria(h.materia)
     setDocente(h.docente ?? '')
     setTime(h.start_time)
@@ -332,21 +331,17 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
     setProblem(null)
 
-    const chosenSlot = !manualMode && hours.length > 0 ? selectedSlot : null
-    const slotEntryId = chosenSlot?.template_entry_id
-      ? String(chosenSlot.template_entry_id)
-      : chosenSlot?.override_id
-        ? String(chosenSlot.override_id)
-        : undefined
+    const chosenSlot = manualMode ? null : selectedSlot
 
     create.mutate(
       {
         files: audioFiles,
         materiali: materialFiles.length > 0 ? materialFiles : undefined,
+        // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
         principale:
           audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
         allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
-        calendar_entry_id: slotEntryId,
+        calendar_entry_id: chosenSlot?.key,
         calendar_date: chosenSlot ? date : undefined,
         date,
         materia: materia.trim(),
@@ -397,7 +392,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const stepsList =
     steps.length > 1 ? `${steps.slice(0, -1).join(', ')} e ${steps[steps.length - 1]}` : steps[0]
   let sentence = solo ? "Dopo l'importazione: solo trascrizione" : `Dopo l'importazione: ${stepsList}`
-  if (!manualMode && selectedSlot && !selectedSlot.is_recorded) {
+  if (!manualMode && selectedSlot) {
     sentence += ` · collegata a ${selectedSlot.materia} delle ${selectedSlot.start_time}`
   }
 
@@ -419,7 +414,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
           type="file"
           multiple
           hidden
-          accept={['audio/*', '.zip', '.pdf', 'image/*', ...AUDIO_EXTENSIONS].join(',')}
+          accept={['audio/*', '.zip', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
           aria-label="Audio o pacchetto della lezione"
           onChange={(event) => {
             choose(Array.from(event.target.files ?? []))
@@ -433,7 +428,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
           type="file"
           multiple
           hidden
-          accept=".pdf,image/*"
+          accept={MATERIAL_EXTENSIONS.join(',')}
           aria-label="Altri documenti"
           onChange={(event) => {
             chooseAdditionalMaterials(Array.from(event.target.files ?? []))
@@ -607,16 +602,29 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                     <Plus className="size-4" />
                   </button>
                 </div>
-                {audioFiles.length === 0 && primaryMaterialName && (
+                {audioFiles.length === 0 && (
                   <div
                     className="mt-1 flex items-center gap-1.5 text-meta text-muted-foreground"
                     data-testid="materials-hint"
                   >
-                    <Star className="size-3.5 fill-amber-500 text-amber-500 shrink-0" />
-                    <span>
-                      Senza audio la scaletta segue <b>{primaryMaterialName}</b>; gli altri
-                      materiali sono contesto.
-                    </span>
+                    <Star
+                      className={cn(
+                        'size-3.5 shrink-0',
+                        primaryMaterialName && 'fill-amber-500 text-amber-500',
+                      )}
+                      aria-hidden
+                    />
+                    {primaryMaterialName ? (
+                      <span>
+                        Senza audio la scaletta segue <b>{primaryMaterialName}</b>; gli altri
+                        materiali sono contesto.
+                      </span>
+                    ) : (
+                      <span>
+                        Senza audio la scaletta segue il documento con più pagine; la stellina
+                        sceglie un altro materiale.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -672,10 +680,10 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
                 <div className="flex flex-wrap gap-2" data-testid="calendar-slots-list">
                   {hours.map((h, i) => {
-                    const isSelected = selectedSlot === h
+                    const isSelected = selectedSlot?.key === h.key
                     return (
                       <button
-                        key={`${h.materia}-${h.start_time}-${i}`}
+                        key={h.key}
                         type="button"
                         disabled={h.is_recorded}
                         onClick={() => handleSelectSlot(h)}
@@ -708,7 +716,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             <div
               className={cn(
                 'mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4',
-                showSlots && 'hidden',
+                showSlots && !allRecorded && 'hidden',
               )}
               data-testid="manual-fields"
             >

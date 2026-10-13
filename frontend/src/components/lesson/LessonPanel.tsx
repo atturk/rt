@@ -70,7 +70,7 @@ export function LessonPanel({
       aria-label={panelTitle}
       data-testid="lesson-panel"
       data-view={view}
-      className="fixed z-30 flex flex-col overflow-y-auto bg-background px-4 pb-6 pt-3 rt-panel-container max-md:max-h-[80dvh] max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
+      className="fixed z-10 flex flex-col overflow-y-auto bg-background px-4 pb-6 pt-3 rt-panel-container max-md:max-h-[80dvh] max-md:z-40 max-md:pb-[calc(80px+env(safe-area-inset-bottom))]"
     >
       <div className="mb-3 flex items-center gap-2">
         <h2 className="min-w-0 flex-1 text-body font-semibold">{panelTitle}</h2>

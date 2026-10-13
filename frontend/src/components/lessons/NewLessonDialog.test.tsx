@@ -227,17 +227,25 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       target: { files: [pdf1, pdf2] },
     })
 
-    // Senza audio mostra l'avviso con la stellina
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/Senza audio la scaletta segue/)
+    // Senza audio mostra l'avviso: di default decide il server (documento con più pagine)
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/Senza audio la scaletta segue il documento con più pagine/)
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'false')
 
-    // Stellina sulla prima miniatura attiva
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
+    // Senza clic sulla stellina principale non si manda
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+    expect(mutateCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ principale: undefined }),
+      expect.anything(),
+    )
 
     // Clic sulla stellina della seconda miniatura
     fireEvent.click(screen.getByTestId('material-star-1'))
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('Senza audio la scaletta segue slide.pdf')
 
-    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
     fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
 
     expect(mutateCreate).toHaveBeenCalledWith(
@@ -275,5 +283,73 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       }),
       expect.anything(),
     )
+  })
+})
+
+describe('Materiali accettati e ore dal calendario', () => {
+  const hour = (key: string, materia: string, start: string, end: string, recorded = false) => ({
+    key, materia, start_time: start, end_time: end, start_hour: 0, end_hour: 0, date: '', day_of_week: 0,
+    status: 'scheduled', is_modified: false, is_recorded: recorded, docente: null,
+  })
+  function mockDay(hours: unknown[]) {
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(
+      path === '/api/v1/calendar/day' ? ok({ date: '', day_name: '', day_number: 0, day_of_week: 0, is_today: true, hours }) : ok([]),
+    )) as never)
+  }
+  afterEach(() => vi.useRealTimers())
+
+  it('accetta solo i materiali che il server sa leggere', () => {
+    renderDialog()
+    for (const accept of [screen.getByLabelText('Audio o pacchetto della lezione'), screen.getByLabelText('Altri documenti')]) {
+      for (const ext of ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx']) expect(accept.getAttribute('accept')).toContain(ext)
+      expect(accept.getAttribute('accept')).not.toContain('image/*')
+    }
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [new File(['x'], 'foto.webp', { type: 'image/webp' })] },
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Formato non supportato: foto.webp')
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [new File(['x'], 'lezione.pptx', { type: '' }), new File(['x'], 'lavagna.HEIC', { type: '' })] },
+    })
+    expect(screen.getByText('lezione.pptx')).toBeInTheDocument()
+    expect(screen.getByText('lavagna.HEIC')).toBeInTheDocument()
+  })
+
+  it("oggi sceglie l'ora appena finita e manda la chiave della voce", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 13, 10, 40))
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('ovr_5', 'FISIOLOGIA', '09:30', '10:30'),
+      hour('tpl_3', 'CHIMICA', '11:00', '12:00'),
+    ])
+    renderDialog()
+    await waitFor(() => expect(screen.getByTestId('pipeline-sentence')).toHaveTextContent('collegata a FISIOLOGIA delle 09:30'))
+    expect(screen.getByTestId('manual-fields')).toHaveClass('hidden')
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [new File(['a'], 'lezione.mp3', { type: 'audio/mpeg' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ materia: 'FISIOLOGIA', ora: '09:30', calendar_entry_id: 'ovr_5', calendar_date: '2026-10-13' }),
+      expect.anything(),
+    )
+  })
+
+  it("oggi preferisce l'ora in corso", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 13, 11, 15))
+    mockDay([hour('tpl_1', 'ANATOMIA', '08:30', '09:30'), hour('tpl_3', 'CHIMICA', '11:00', '12:00')])
+    renderDialog()
+    await waitFor(() => expect(screen.getByTestId('pipeline-sentence')).toHaveTextContent('collegata a CHIMICA delle 11:00'))
+  })
+
+  it('con tutte le ore registrate mostra i campi a mano', async () => {
+    mockDay([hour('tpl_1', 'ANATOMIA', '08:30', '09:30', true)])
+    renderDialog()
+    await screen.findByTestId('calendar-slots-section')
+    expect(screen.getByTestId('manual-fields')).not.toHaveClass('hidden')
+    expect(screen.getByLabelText('Materia')).toHaveValue('')
+    expect(screen.getByTestId('pipeline-sentence')).not.toHaveTextContent('collegata')
   })
 })

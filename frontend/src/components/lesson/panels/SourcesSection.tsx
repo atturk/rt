@@ -15,9 +15,11 @@ import {
   sourcesApi,
   useDeleteSource,
   useReorderSources,
+  useResetSelection,
   useRestoreVersion,
   useSetPrimarySource,
   useSources,
+  useSourcesJob,
   useVersions,
   type LessonVersion,
   type SourceItem,
@@ -35,6 +37,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const setPrimaryMutation = useSetPrimarySource(lessonId)
   const deleteMutation = useDeleteSource(lessonId)
   const restoreMutation = useRestoreVersion(lessonId)
+  const resetMutation = useResetSelection(lessonId)
+  const restoreJob = useSourcesJob(lessonId)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -59,8 +63,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
   const sourcesView = sourcesQuery.data
   const sources = sourcesView?.sources ?? []
-  const hasAudio = sources.some((s) => s.tipo === 'audio')
   const audioSources = sources.filter((s) => s.tipo === 'audio')
+  const audioIsPrimary = audioSources.some((s) => s.id === sourcesView?.principale)
 
   // Upload handlers
   const handleAudioSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,15 +206,13 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
     }
   }
 
-  // Reset to original used order and primary
+  // Ordine e principale dell'ultimo aggiornamento, in sequenza (vedi useResetSelection)
   const handleResetToUsed = () => {
     if (!sourcesView) return
-    if (sourcesView.ordine_usato) {
-      reorderMutation.mutate(sourcesView.ordine_usato)
-    }
-    if (sourcesView.principale_usato) {
-      setPrimaryMutation.mutate(sourcesView.principale_usato)
-    }
+    setActionError(null)
+    resetMutation.mutate(sourcesView, {
+      onError: (err) => setActionError(errorMessage(err)),
+    })
   }
 
   // Restore version confirmation
@@ -223,7 +225,9 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       confirmLabel: 'Ripristina',
       onConfirm: () => {
         setConfirmDialog(null)
+        setActionError(null)
         restoreMutation.mutate(v.id, {
+          onSuccess: (accepted) => restoreJob.start(accepted.job_id),
           onError: (err) => setActionError(errorMessage(err)),
         })
       },
@@ -301,6 +305,14 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       </div>
 
       {actionError && <Alert tone="danger">{actionError}</Alert>}
+      {restoreJob.error && <Alert tone="danger">{restoreJob.error}</Alert>}
+      {restoreJob.running && (
+        <p className="flex items-center gap-1.5 text-meta text-muted-foreground" role="status" data-testid="restore-progress">
+          <RotateCw className="size-3.5 animate-spin" aria-hidden />
+          Ripristino in corso{restoreJob.percent != null ? ` · ${restoreJob.percent}%` : ''}
+          {restoreJob.message ? ` · ${restoreJob.message}` : ''}
+        </p>
+      )}
 
       {/* Banner solo ricostruzione con pulsante "Rimetti com'era" */}
       {sourcesView?.solo_ricostruzione && (
@@ -312,6 +324,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           <IconButton
             icon={Undo2}
             label="Rimetti com'era"
+            disabled={resetMutation.isPending}
             onClick={handleResetToUsed}
           />
         </div>
@@ -330,9 +343,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         {sources.map((s) => {
           const isAudio = s.tipo === 'audio'
           const audioIdx = isAudio ? audioCounter++ : -1
-          const isPrimary = hasAudio
-            ? isAudio && audioIdx === 0
-            : sourcesView?.principale === s.id
+          // Con l'audio principale il server indica la prima parte audio: basta il confronto.
+          const isPrimary = sourcesView?.principale === s.id
           const sizeText = formatSourceSize(s)
 
           return (
@@ -376,12 +388,12 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
               {isPrimary ? (
                 <span
                   className="flex size-4 shrink-0 items-center justify-center text-amber-500"
-                  title={hasAudio ? 'Principale: la registrazione' : 'Materiale principale'}
+                  title={isAudio ? 'Principale: la registrazione' : 'Fonte principale'}
                   data-testid="star-primary"
                 >
                   <Star className="size-3.5 fill-current" />
                 </span>
-              ) : !hasAudio ? (
+              ) : !(isAudio && audioIsPrimary) ? (
                 <button
                   type="button"
                   className="flex size-4 shrink-0 cursor-pointer items-center justify-center text-muted-foreground opacity-0 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -391,7 +403,9 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 >
                   <Star className="size-3.5" />
                 </button>
-              ) : null}
+              ) : (
+                <span className="size-4 shrink-0" aria-hidden />
+              )}
 
               {/* Nome */}
               <span className="min-w-0 flex-1 truncate font-medium">{s.nome}</span>
@@ -456,7 +470,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 </span>
               )
 
-            const added = v.fonti_aggiunte.length ? ` · ${v.fonti_aggiunte.join(', ')}` : ''
+            const names = v.fonti_aggiunte.map((id) => sources.find((s) => s.id === id)?.nome ?? id)
+            const added = names.length ? ` · ${names.join(', ')}` : ''
 
             return (
               <div
@@ -478,7 +493,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                     icon={Undo2}
                     label="Ripristina questa versione"
                     className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    disabled={restoreMutation.isPending}
+                    disabled={restoreMutation.isPending || restoreJob.running}
                     onClick={() => handleRestoreVersionClick(v)}
                   />
                 )}

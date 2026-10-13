@@ -78,7 +78,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
       id: 'v_2',
       il: '2026-10-12T18:40:00',
       modo: 'extend',
-      fonti_aggiunte: ['parte 2', 'Slide_anemie.pdf'],
+      fonti_aggiunte: ['s_aud_2', 's_mat_1'],
       unita_nuove: 2,
       unita_cambiate: 1,
       attuale: true,
@@ -126,8 +126,10 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     expect(screen.getByText('Slide_anemie.pdf')).toBeInTheDocument()
     expect(screen.getByText('34 pagine')).toBeInTheDocument()
 
-    // Stellina sulla principale
-    expect(screen.getByTestId('star-primary')).toBeInTheDocument()
+    // Stellina sulla principale (con l'audio, la prima parte) e nessuna stellina vuota sull'audio
+    expect(screen.getByTestId('source-row-s_aud_1')).toContainElement(screen.getByTestId('star-primary'))
+    expect(screen.queryByTestId('star-choose-s_aud_2')).toBeNull()
+    expect(screen.getByTestId('star-choose-s_mat_1')).toBeInTheDocument()
     // Puntini sulle fonti non ancora usate
     const unusedDots = screen.getAllByTestId('source-unused-dot')
     expect(unusedDots).toHaveLength(2)
@@ -161,10 +163,14 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
   })
 
   it('con solo_ricostruzione mostra avviso e bottone Rimetti com\'era', async () => {
+    // Parte 2 spostata davanti alla 1 (entrambe usate) e appunti diventati principale
+    const [aud1, aud2, doc, mat] = mockView.sources
     const customView: SourcesView = {
       ...mockView,
+      sources: [aud2, doc, aud1, mat],
+      principale: 's_doc_1',
       solo_ricostruzione: true,
-      ordine_usato: ['s_aud_1', 's_aud_2'],
+      ordine_usato: ['s_aud_1', 's_old', 's_aud_2', 's_doc_1'],
       principale_usato: 's_aud_1',
     }
     vi.spyOn(api, 'GET').mockImplementation((path: string) => {
@@ -178,22 +184,74 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
       return Promise.resolve({ data: [], response: new Response('[]') } as never)
     })
 
-    const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
-      data: mockView,
-      error: undefined,
-      response: new Response('{}', { status: 200 }),
-    } as never)
+    let releaseOrder!: () => void
+    const putSpy = vi.spyOn(api, 'PUT').mockImplementation(((path: string) => {
+      const body = path.endsWith('/order')
+        ? { ...customView, sources: [aud1, doc, aud2, mat] }
+        : { ...mockView, solo_ricostruzione: false }
+      const response = { data: body, error: undefined, response: new Response('{}', { status: 200 }) }
+      return path.endsWith('/order')
+        ? new Promise((resolve) => { releaseOrder = () => resolve(response) })
+        : Promise.resolve(response)
+    }) as never)
 
     renderComponent()
     expect(await screen.findByTestId('rebuild-required-notice')).toBeInTheDocument()
     const resetBtn = screen.getByRole('button', { name: "Rimetti com'era" })
     fireEvent.click(resetBtn)
 
+    // Tutte le fonti attuali una volta sola, con le parti usate nell'ordine di ordine_usato
     await waitFor(() => {
       expect(putSpy).toHaveBeenCalledWith('/api/v1/lessons/42/sources/order', {
-        body: { ids: ['s_aud_1', 's_aud_2'] },
+        body: { ids: ['s_aud_1', 's_doc_1', 's_aud_2', 's_mat_1'] },
       })
     })
+    // La principale parte solo dopo la risposta dell'ordine (lucchetto senza attesa)
+    expect(putSpy).toHaveBeenCalledTimes(1)
+    releaseOrder()
+    await waitFor(() => {
+      expect(putSpy).toHaveBeenLastCalledWith('/api/v1/lessons/42/sources/primary', { body: { id: 's_aud_1' } })
+    })
+    expect(putSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it("Rimetti com'era mostra l'errore del server", async () => {
+    const [aud1, aud2, doc, mat] = mockView.sources
+    const customView: SourcesView = { ...mockView, sources: [aud2, aud1, doc, mat], principale: 's_doc_1', solo_ricostruzione: true, ordine_usato: ['s_aud_1', 's_aud_2'] }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(
+      path === '/api/v1/lessons/42/sources'
+        ? { data: customView, error: undefined, response: new Response('{}', { status: 200 }) }
+        : { data: [], response: new Response('[]') },
+    )) as never)
+    const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
+      data: undefined,
+      error: { code: 'lesson_busy', message: 'La lezione è occupata.' },
+      response: new Response('{}', { status: 409 }),
+    } as never)
+    renderComponent()
+    fireEvent.click(await screen.findByRole('button', { name: "Rimetti com'era" }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // L'errore dell'ordine ferma la sequenza: nessuna PUT della principale
+    expect(putSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('stellina piena dove indica il server e vuota sulle altre fonti, anche con l audio', async () => {
+    const docPrimary: SourcesView = { ...mockView, principale: 's_doc_1', principale_usato: 's_doc_1' }
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(
+      path === '/api/v1/lessons/42/sources'
+        ? { data: docPrimary, error: undefined, response: new Response('{}', { status: 200 }) }
+        : { data: [], response: new Response('[]') },
+    )) as never)
+    const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({ data: mockView, error: undefined, response: new Response('{}', { status: 200 }) } as never)
+    renderComponent()
+    await screen.findByText('Appunti di Giulia')
+    expect(screen.getByTestId('source-row-s_doc_1')).toContainElement(screen.getByTestId('star-primary'))
+    for (const id of ['s_aud_1', 's_aud_2', 's_mat_1']) expect(screen.getByTestId(`star-choose-${id}`)).toBeInTheDocument()
+    // La lezione è già costruita: cambiare principale chiede conferma
+    fireEvent.click(screen.getByTestId('star-choose-s_aud_1'))
+    expect(await screen.findByText("Usare un'altra fonte come principale?")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cambia' }))
+    await waitFor(() => expect(putSpy).toHaveBeenCalledWith('/api/v1/lessons/42/sources/primary', { body: { id: 's_aud_1' } }))
   })
 
   it('mostra le versioni con pulsante Ripristina che chiede conferma', async () => {
@@ -214,5 +272,12 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     await waitFor(() => {
       expect(postSpy).toHaveBeenCalledWith('/api/v1/lessons/42/versions/v_1/restore')
     })
+    // Poi segue il job del ripristino
+    await waitFor(() => expect(api.GET).toHaveBeenCalledWith('/api/v1/jobs/{job_id}', { params: { path: { job_id: 'restore_job_1' } } }))
+  })
+
+  it('le versioni mostrano i nomi delle fonti aggiunte', async () => {
+    renderComponent()
+    expect(await screen.findByTestId('version-row-v_2')).toHaveTextContent('Registrazione · parte 2, Slide_anemie.pdf')
   })
 })

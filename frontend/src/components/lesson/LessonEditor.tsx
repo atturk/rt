@@ -21,6 +21,7 @@ import { activeUnit } from '@/lib/audio'
 import { markdownBlocks, partOfRange } from '@/lib/documentParts'
 import { useLessonAudio } from './audio'
 import { DocumentMenu, type PartLocator } from './DocumentMenu'
+import { EditorAudioLines } from './EditorAudioLines'
 import { reviewSelection } from './reviewSelection'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonMath } from './lessonMath'
@@ -487,7 +488,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       <DocumentMenu lessonId={lessonId} unitIds={unitIds} ready={ready} locate={locate} beforeReview={flush} reviewUnavailable={locked ? 'Lavorazione in corso' : null}>
         <div
           ref={surface}
-          className="rt-lesson-editor"
+          className="rt-lesson-editor relative"
           data-testid="lesson-document"
           data-active-unit={current ?? ''}
           onMouseDownCapture={(e) => {
@@ -511,6 +512,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
             readOnly={locked}
             blurEditorOnMount
           />
+          {hasAudio && <EditorAudioLines view={editor?.view ?? null} sections={doc.sections} />}
         </div>
       </DocumentMenu>
       <EnrichmentPortals slots={slots} lessonId={lessonId} />
