@@ -32,13 +32,17 @@ def _save(lesson_dir: str, sources: list[Source]) -> None:
 
 @lesson_locked
 def load_sources(lesson_dir: str) -> list[Source]:
-    """Crea soltanto il registro se assente; non modifica i file storici."""
+    """Crea soltanto il registro se assente; non modifica i file storici.
+    Un registro vuoto non si salva: durante il setup info.yaml non ha ancora l'audio, e un
+    registro vuoto scritto allora lo avrebbe nascosto per sempre (lo si ricostruisce qui)."""
     path = lesson_path(lesson_dir, "sources.json")
-    if fs.isfile(path):
-        with fs.open(path, encoding="utf-8") as stream:
-            return [Source.model_validate(item) for item in json.load(stream)]
     info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
     audio = info.get("file_audio")
+    if fs.isfile(path):
+        with fs.open(path, encoding="utf-8") as stream:
+            items = json.load(stream)
+        if items or not audio or not fs.isfile(os.path.join(lesson_dir, audio)):
+            return [Source.model_validate(item) for item in items]
     sources = []
     if audio:
         sources.append(Source(
@@ -46,7 +50,8 @@ def load_sources(lesson_dir: str) -> list[Source]:
             impronta=compute_file_sha256(os.path.join(lesson_dir, audio)),
             aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=1,
         ))
-    _save(lesson_dir, sources)
+    if sources:
+        _save(lesson_dir, sources)
     return sources
 
 

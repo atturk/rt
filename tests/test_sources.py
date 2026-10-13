@@ -18,6 +18,27 @@ def test_legacy_registry_is_lazy_and_preserves_files(tmp_path):
     assert all((tmp_path / name).read_bytes() == data for name, data in before.items())
 
 
+def test_registry_read_during_setup_does_not_hide_the_audio(tmp_path):
+    # 4.2.5b2.1: aprendo Dettagli durante la trascrizione info.yaml non ha ancora l'audio;
+    # il registro non deve restare vuoto per sempre (fonti sparite e "va ricostruita").
+    from rt.core.source_selection import selection
+    (tmp_path / "info.yaml").write_text("materia: X\nfase_corrente: metadata_only\n", encoding="utf-8")
+    assert load_sources(str(tmp_path)) == []
+    assert not (tmp_path / "sources.json").exists()
+    (tmp_path / "unita.m4a").write_bytes(b"audio")
+    (tmp_path / "info.yaml").write_text("materia: X\nfile_audio: unita.m4a\n", encoding="utf-8")
+    (tmp_path / "segments.json").write_text("{}", encoding="utf-8")
+    assert [s.id for s in load_sources(str(tmp_path))] == ["src_000001"]
+    assert selection(str(tmp_path))["solo_ricostruzione"] is False
+
+
+def test_empty_registry_saved_by_older_versions_is_rebuilt(tmp_path):
+    (tmp_path / "info.yaml").write_text("file_audio: unita.m4a\n", encoding="utf-8")
+    (tmp_path / "unita.m4a").write_bytes(b"audio")
+    (tmp_path / "sources.json").write_text("[]", encoding="utf-8")
+    assert [s.file for s in load_sources(str(tmp_path))] == ["unita.m4a"]
+
+
 def test_add_remove_are_ordered_and_never_overwrite_sources(tmp_path):
     (tmp_path / "info.yaml").write_text("file_audio: original.wav\n")
     (tmp_path / "original.wav").write_bytes(b"original")

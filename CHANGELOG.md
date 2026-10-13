@@ -1,5 +1,10 @@
 # Novità di RT
 
+## 4.2.5b2.2 — 2026-10-13
+
+### Correzioni
+- Aprendo Dettagli mentre una lezione nuova veniva trascritta, le registrazioni sparivano dalle Fonti e compariva "la lezione va ricostruita" anche senza aver cambiato niente. Ora le Fonti mostrano sempre l'audio, e le lezioni già colpite si sistemano da sole.
+
 ## 4.2.5b2.1 — 2026-10-13
 
 ### Novità
