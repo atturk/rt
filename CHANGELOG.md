@@ -6,6 +6,8 @@
 - Calendario: in modalità modifica un clic su un'ora apre i suoi dati (materia, inizio, fine, docente) e li salva, solo per questa settimana o per la settimana tipo da questa settimana in poi.
 - Nei blocchi del calendario il docente compare in piccolo sotto l'orario.
 - Pagina della lezione sul computer: le frecce mandano avanti e indietro la registrazione di 5 secondi ovunque nella pagina (non mentre scrivi). Per cambiare lezione si passa col mouse accanto al titolo; sul telefono resta lo swipe.
+- Verifica con LLM: dopo una decisione compare per 5 secondi un avviso dal basso con Annulla; l'ultima decisione si annulla anche dopo, dall'icona in cima al pannello. "Ascolta da" è diventato un pulsante a icona accanto ad accetta e mantieni.
+- Verifica con LLM: nuova icona "Accetta tutte" in cima al pannello per accettare con una conferma tutte le correzioni da decidere; l'icona Annulla le riporta tutte da decidere.
 
 ### Correzioni
 - Con la finestra più stretta il pannello aperto non copre più il testo della lezione: il testo si stringe accanto al pannello, e anche il lettore audio.
