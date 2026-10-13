@@ -2,6 +2,7 @@ import { Pause, Play } from 'lucide-react'
 import { useEffect, useState, type CSSProperties } from 'react'
 
 import { Tooltip } from '@/components/ui/tooltip'
+import { pageArrowAllowed } from '@/lib/lessonNavigationKeys'
 import { formatTime, type TimedSection } from '@/lib/audio'
 import { clampRate, formatSpeed, nextSpeed, SPEEDS } from '@/lib/playbackRate'
 import { usePreference } from '@/lib/preferences'
@@ -35,13 +36,23 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
   const known = Number.isFinite(duration) && duration > 0
   const [hover, setHover] = useState(false)
 
-  // Con il mouse sul riquadro, le frecce saltano di 5 secondi (non mentre si scrive nel testo).
+  // Sul computer le frecce saltano di 5 secondi in tutta la pagina (non mentre si scrive nel testo o in un menu);
+  // sui dispositivi senza mouse solo con il riquadro sotto il puntatore, come prima.
+  const [pointer, setPointer] = useState(() => !!window.matchMedia?.('(hover: hover)').matches)
   useEffect(() => {
-    if (!hover) return
+    const media = window.matchMedia?.('(hover: hover)')
+    if (!media) return
+    const change = () => setPointer(media.matches)
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [])
+  useEffect(() => {
+    if (!hover && !pointer) return
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return
       const target = event.target as HTMLElement | null
       if (target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
+      if (!hover && !pageArrowAllowed(event)) return
       const audio = audioRef.current
       if (!audio) return
       event.preventDefault()
@@ -49,7 +60,7 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [hover, audioRef, seek])
+  }, [hover, pointer, audioRef, seek])
 
   // La velocità vale anche dopo un nuovo caricamento dell'audio (defaultPlaybackRate).
   useEffect(() => {

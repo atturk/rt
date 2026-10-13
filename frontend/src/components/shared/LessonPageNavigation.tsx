@@ -16,17 +16,10 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
   const show = navigation.show
   const neighbors = lessonNeighbors((all.data ?? []) as Lesson[], id, { readyOnly: false })
   const titleRef = useRef<HTMLDivElement>(null)
-  const [titleVisible, setTitleVisible] = useState(true)
   const [hover, setHover] = useState(false)
   const [touch, setTouch] = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const swipe = useRef<{ x: number; y: number; time: number; pointer: number } | null>(null)
-  useEffect(() => {
-    if (!titleRef.current || !globalThis.IntersectionObserver) return
-    const observer = new IntersectionObserver(([entry]) => setTitleVisible(entry.isIntersecting), { rootMargin: '-52px 0px 0px 0px' })
-    observer.observe(titleRef.current)
-    return () => observer.disconnect()
-  }, [])
   useEffect(() => {
     const media = window.matchMedia?.('(hover: none)')
     if (!media) return
@@ -37,15 +30,14 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
   }, [])
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!lessonArrowAllowed(event)) return
-      // Sul computer le frecce mostrano solo i pulsanti accanto al titolo: a pagina scorsa non compare niente.
-      if (!touch && !titleVisible) return
+      // Sul computer le frecce muovono la registrazione (AudioPlayer): qui servono solo con il tocco.
+      if (!touch || !lessonArrowAllowed(event)) return
       event.preventDefault()
       show(event.key === 'ArrowLeft' ? 'left' : 'right')
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [show, touch, titleVisible])
+  }, [show, touch])
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current) }, [])
   useEffect(() => {
     navigation.close()
