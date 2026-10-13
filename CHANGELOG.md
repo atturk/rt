@@ -1,5 +1,17 @@
 # Novità di RT
 
+## 4.2.5b2.1 — 2026-10-13
+
+### Novità
+- Calendario: in modalità modifica un clic su un'ora apre i suoi dati (materia, inizio, fine, docente) e li salva, solo per questa settimana o per la settimana tipo da questa settimana in poi.
+- Nei blocchi del calendario il docente compare in piccolo sotto l'orario.
+
+### Correzioni
+- Con la finestra più stretta il pannello aperto non copre più il testo della lezione: il testo si stringe accanto al pannello, e anche il lettore audio.
+- "Riesegui con opzioni" in Dettagli e "Cerca immagini sul web" in Arricchimento si aprono in un popup: i titoli lunghi delle unità non escono più dal pannello.
+- I menu ⋯ delle fasi e delle domande e "Aggiungi fonte" non vengono più tagliati in fondo al pannello.
+- Errori, correzioni e nomi lunghi vanno a capo invece di allargare il pannello.
+
 ## 4.2.5b2 — 2026-10-13
 
 ### Novità
