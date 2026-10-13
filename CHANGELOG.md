@@ -1,15 +1,22 @@
 # Novità di RT
 
-## 4.2.5b2 — 2026-10-12
+## 4.2.5b2 — 2026-10-13
 
 ### Novità
-- Le materie si possono registrare anche prima di creare lezioni; l’elenco riunisce lezioni e calendario senza duplicati e ricorda le materie delle nuove lezioni e ore.
-- Le fonti mostrano nome, durata, pagine o parole e indicano quali non sono ancora state usate. Dopo un aggiornamento resta il riepilogo delle unità nuove e cambiate.
-- Puoi aggiungere PDF, foto e PowerPoint a una lezione, oppure partire solo da materiali. Il loro contenuto aiuta la rielaborazione; con la graffetta accesa, le pagine pertinenti vengono allegate come immagini.
-- Puoi scegliere la fonte principale e riordinare le parti audio. Le parti nuove si possono estendere; cambiare l’ordine già usato o la principale richiede di ricostruire. Rimettendo tutto com’era torna disponibile Estendi.
-- Le ultime cinque versioni precedenti della lezione si possono ripristinare. Prima del ripristino viene salvato lo stato attuale; evidenziazioni, note, domande e avanzamento di studio restano nel database.
-- Note, evidenziazioni e domande create prima di un cambiamento dell’unità sono indicate come precedenti.
-- L’import accetta insieme audio e materiali, rispetta l’ordine delle registrazioni e può collegare la lezione all’ora scelta nel calendario.
+- Import in un solo riquadro: trascini insieme audio, PDF, foto e PowerPoint e RT li separa da solo. Le parti audio si riordinano trascinandole; senza audio la stellina sceglie il materiale che fa da filo della lezione.
+- Le ore del calendario del giorno compaiono nell'import come scelte rapide: un clic compila materia, docente e ora e collega la lezione a quell'ora.
+- I materiali aiutano la rielaborazione come contesto; con la graffetta accesa le pagine più legate a un'unità vengono allegate come immagini. Si può anche creare una lezione solo dai materiali.
+- In Dettagli la nuova sezione Fonti: aggiungi parti di registrazione, appunti o materiali anche giorni dopo, poi scegli Estendi o Ricostruisci. Spostare parti già usate o cambiare la fonte principale chiede conferma e si può rimettere com'era.
+- Versioni della lezione: le ultime cinque si ripristinano da Dettagli, e anche il ripristino si annulla. Evidenziazioni, note e domande non vengono mai cancellate; quelle nate prima di un cambiamento dell'unità hanno una piccola icona.
+- Nel pannello Domande il chip Consigliato genera per ogni unità il tipo che Jev le ha consigliato.
+- Nuova sezione Materie in Impostazioni: si aggiungono anche materie senza lezioni, che compaiono in import, calendario e tipi di domanda.
+- La verifica contestuale può cercare sul web con SearXNG e mostrare le fonti con i link (interruttore in Impostazioni › Lavorazione, spento di default).
+- Mentre ascolti l'audio, una linea sottile accanto al testo segue il parlato dell'unità.
+- Pannelli laterali staccati dal bordo, con angoli arrotondati e apertura animata; il contenuto resta lo stesso.
+- Accesso di sola lettura per assistenti come Open WebUI: chiave separata in Impostazioni › Accesso, ricerca nel testo delle lezioni e guida per collegarlo.
+
+### Correzioni
+- In Dettagli i pulsanti Classificatore e Verifiche e domande non escono più dal pannello.
 
 ## 4.2.5b1.1 — 2026-10-12
 
