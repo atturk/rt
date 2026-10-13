@@ -17,11 +17,13 @@ const SPEED_HINT = `Velocità: ${SPEEDS.map(formatSpeed).join(' · ')}`
  * Frecce sulla barra: ±5 secondi.
  */
 // `sections` resta nell'interfaccia: i timecode delle unità li gestisce il documento.
-export function AudioPlayer({ lessonId, inline = false, className }: {
+export function AudioPlayer({ lessonId, inline = false, panelOpen = false, className }: {
   lessonId: number
   sections?: TimedSection[]
   /** Dentro la pagina (revisione) invece che fissa in basso. */
   inline?: boolean
+  /** Pannello laterale aperto: da md in su la barra resta centrata nella colonna del testo, non sotto il pannello. */
+  panelOpen?: boolean
   className?: string
 }) {
   const { audioRef, currentTime, setCurrentTime, seek } = useLessonAudio()
@@ -83,6 +85,7 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
           : [
               'fixed bottom-4 left-1/2 z-20 -translate-x-1/2 shadow-panel',
               'md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)]',
+              panelOpen && 'md:left-[calc(50%+var(--rail-width)/2-12rem)] md:max-w-[calc(100vw-var(--rail-width)-24rem-32px)]',
               'max-md:bottom-[calc(76px+env(safe-area-inset-bottom))] max-md:w-[calc(100vw-24px)] max-md:gap-2 max-md:p-2',
             ],
         className,

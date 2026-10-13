@@ -132,7 +132,7 @@ export function StudyNotesPanel({
 
         <div>
           <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Testo di partenza</span>
-          <div className="mt-1 rounded-md border border-border/60 bg-muted/30 p-2.5 italic text-foreground" data-testid="detail-quote">
+          <div className="mt-1 min-w-0 rounded-md border border-border/60 bg-muted/30 p-2.5 italic text-foreground [overflow-wrap:anywhere]" data-testid="detail-quote">
             {quote}
           </div>
         </div>
@@ -156,7 +156,7 @@ export function StudyNotesPanel({
 
         <div>
           <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Risposta</span>
-          <div className="mt-1 whitespace-pre-wrap text-body leading-relaxed text-foreground" data-testid="detail-answer">
+          <div className="mt-1 whitespace-pre-wrap text-body leading-relaxed text-foreground [overflow-wrap:anywhere]" data-testid="detail-answer">
             {resp?.spiegazione}
           </div>
         </div>
@@ -186,7 +186,7 @@ export function StudyNotesPanel({
                 </Tooltip>
               )}
             </div>
-            <div className="font-mono text-[13px] text-foreground">{fix}</div>
+            <div className="min-w-0 font-mono text-[13px] text-foreground [overflow-wrap:anywhere]">{fix}</div>
           </div>
         )}
 
@@ -203,14 +203,14 @@ export function StudyNotesPanel({
                   className="flex items-center gap-1.5 text-meta text-primary hover:underline break-all"
                 >
                   <ExternalLink className="size-3 shrink-0" aria-hidden />
-                  <span>{src.title || src.url}</span>
+                  <span className="min-w-0">{src.title || src.url}</span>
                 </a>
               ))}
             </div>
           </div>
         )}
 
-        <div className="text-meta text-muted-foreground">
+        <div className="min-w-0 text-meta text-muted-foreground [overflow-wrap:anywhere]">
           {activeNote.created_at ? formatDateTime(activeNote.created_at) : ''}
           {activeNote.cost ? ` · $${activeNote.cost.toFixed(3)}` : ''}
           {activeNote.model ? ` · ${activeNote.model}` : ''}

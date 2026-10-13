@@ -179,10 +179,10 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     document.addEventListener('mousedown', outside)
     return () => document.removeEventListener('mousedown', outside)
   }, [editing, readOnly, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
-  return <Card className="flex flex-col gap-3 p-3" data-testid="issue-detail">
+  return <Card className="flex min-w-0 flex-col gap-3 p-3 [overflow-wrap:anywhere]" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
     <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground"><span>Unità {issue.unit_id}</span>{!paragraph && !readOnly && onSeek && item.context?.start_s != null && <Button size="sm" variant="link" onClick={() => onSeek(item.context!.start_s!)}>Ascolta da {item.context.timecode}</Button>}</div>
-    {phone && !paragraph && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="rounded-lg border border-warning p-3">{item.context?.unit_content ?? issue.claim}</p></div>}
+    {phone && !paragraph && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="min-w-0 rounded-lg border border-warning p-3 [overflow-wrap:anywhere]">{item.context?.unit_content ?? issue.claim}</p></div>}
     {issue.type === 'ERR_ASR_ST' && <ASRSegments segments={item.context?.asr_segments ?? [{ segment_id: issue.segment_id ?? '', text_raw: issue.claim, start_s: item.context?.start_s, end_s: item.context?.end_s }]} onSeek={!readOnly ? onSeek : undefined} />}
     {!paragraph && <div ref={box}>
       <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{paragraph ? 'Testo del paragrafo' : 'Correzione proposta'}</h3>
@@ -195,12 +195,12 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelEdit() }
           else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); apply() }
         }} className="resize-none overflow-hidden border-accent-foreground bg-background" /> :
-        <Tooltip content="Doppio clic per modificare" disabled={phone || readOnly || busy || cannotApply}>{trigger => <p {...trigger} data-testid="proposed-correction" className="cursor-text rounded-lg bg-muted p-3"
+        <Tooltip content="Doppio clic per modificare" disabled={phone || readOnly || busy || cannotApply}>{trigger => <p {...trigger} data-testid="proposed-correction" className="min-w-0 cursor-text rounded-lg bg-muted p-3 [overflow-wrap:anywhere]"
           onDoubleClick={() => { if (!busy && !readOnly && !cannotApply) onEditing(true) }} onClick={() => { if (phone && !busy && !readOnly && !cannotApply) onEditing(true) }}>{changed ? <s>{issue.claim}</s> : suggestion && !item.decision ? issue.suggested_fix : proposed}</p>}</Tooltip>}
     </div>}
     {failure && <Alert tone="danger">{failure}</Alert>}
-    <p className="text-meta">{issue.reason}</p>
-    {issue.source_quote && <p className="border-l-2 pl-2 text-meta text-muted-foreground">Docente: {issue.source_quote}</p>}
+    <p className="min-w-0 text-meta [overflow-wrap:anywhere]">{issue.reason}</p>
+    {issue.source_quote && <p className="min-w-0 border-l-2 pl-2 text-meta text-muted-foreground [overflow-wrap:anywhere]">Docente: {issue.source_quote}</p>}
     {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. {readOnly ? 'Il rifiuto è registrato.' : 'Puoi solo rifiutare questa issue.'}</p></>}
     {item.needs_reconfirmation && <><Badge tone="warning">Da riconfermare</Badge><p className="text-meta">La decisione precedente resta registrata. Puoi riconfermare la correzione se il passaggio è ritrovato oppure mantenere il testo attuale.</p></>}
     {changed && !paragraph && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}

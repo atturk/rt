@@ -19,7 +19,7 @@ export function ASRSegments({ segments, onSeek }: { segments: Segment[]; onSeek?
         cursor = word.end_char
         return [<Fragment key={j}>{prefix}<u className="decoration-danger decoration-wavy underline-offset-4">{characters.slice(word.start_char, word.end_char).join('')}</u></Fragment>]
       })
-      return <div key={`${part.segment_id}:${i}`} className="flex flex-col gap-2 rounded-lg bg-muted p-3 text-meta" data-testid="asr-segment">
+      return <div key={`${part.segment_id}:${i}`} className="flex min-w-0 flex-col gap-2 rounded-lg bg-muted p-3 text-meta" data-testid="asr-segment">
         <div className="flex flex-wrap items-center gap-2">
           {part.start_s != null && <span className="font-mono tabular-nums">{formatTime(part.start_s)}{part.end_s != null && ` – ${formatTime(part.end_s)}`}</span>}
           {onSeek && part.start_s != null && part.end_s != null && <Button size="sm" variant="link" onClick={() => onSeek(part.start_s!, true, part.end_s!)}><Play />Ascolta il tratto</Button>}
@@ -31,7 +31,7 @@ export function ASRSegments({ segments, onSeek }: { segments: Segment[]; onSeek?
           </div>
           <span className="text-muted-foreground">Confidenza {part.confidence.toLocaleString('it-IT', { maximumFractionDigits: 2 })}{part.threshold != null && ` · soglia della lezione ${part.threshold.toLocaleString('it-IT', { maximumFractionDigits: 2 })}`}</span>
         </div>}
-        <p className="font-mono">{text}{characters.slice(cursor).join('')}</p>
+        <p className="min-w-0 font-mono [overflow-wrap:anywhere]">{text}{characters.slice(cursor).join('')}</p>
       </div>
     })}
   </div>

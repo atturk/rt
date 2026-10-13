@@ -53,18 +53,20 @@ export function QuestionTypeChips({
           const chip = (
             <Chip
               aria-label={type.nome}
+              title={type.nome}
               size="sm"
+              className="max-w-full"
               active={value === type.id}
               aria-pressed={value === type.id}
               disabled={disabled || unavailable}
               onClick={() => onChange(type.id)}
             >
-              {type.custom && <TypeIcon name={type.icona} className="size-3.5" />}
-              {type.nome}
+              {type.custom && <TypeIcon name={type.icona} className="size-3.5 shrink-0" />}
+              <span className="min-w-0 truncate">{type.nome}</span>
               {suggested === type.id && (
                 <Tooltip content={hint}>
                   {(trigger) => (
-                    <span {...trigger} data-testid="question-type-advice" aria-label={hint}>
+                    <span {...trigger} data-testid="question-type-advice" aria-label={hint} className="shrink-0">
                       <Sparkles className="size-3.5 text-accent-foreground" aria-hidden />
                     </span>
                   )}
@@ -74,10 +76,10 @@ export function QuestionTypeChips({
           )
           return unavailable ? (
             <Tooltip key={type.id} content="Nessuna unità">
-              {(trigger) => <span {...trigger}>{chip}</span>}
+              {(trigger) => <span {...trigger} className="flex min-w-0 max-w-full">{chip}</span>}
             </Tooltip>
           ) : (
-            <span key={type.id}>{chip}</span>
+            <span key={type.id} className="flex min-w-0 max-w-full">{chip}</span>
           )
         })}
     </div>

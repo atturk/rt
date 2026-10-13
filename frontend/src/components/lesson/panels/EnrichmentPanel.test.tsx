@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 
@@ -119,6 +119,21 @@ describe('EnrichmentPanel', () => {
     // Clicca Cerca
     fireEvent.click(screen.getByRole('button', { name: /Cerca immagini sul web/i }))
     expect(screen.getByLabelText(/Immagini per unità/i)).toBeInTheDocument()
+  })
+
+  it('la ricerca web si apre in un popup: l’elenco delle unità non esce dal pannello', async () => {
+    mockApi()
+    renderPanel()
+    expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Cerca immagini sul web/i }))
+    const dialog = screen.getByRole('dialog', { name: 'Cerca immagini sul web' })
+    expect(within(dialog).getByLabelText(/Immagini per unità/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByLabelText('Scegli unità'))
+    const unit = await within(dialog).findByLabelText('1.3 U1.3')
+    expect(unit.closest('label')).toHaveClass('min-w-0')
+    expect(unit.closest('fieldset')).toHaveClass('min-w-0')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annulla' }))
+    expect(screen.queryByRole('dialog', { name: 'Cerca immagini sul web' })).not.toBeInTheDocument()
   })
 
   it('mostra le idee e permette di generare o ignorare', async () => {

@@ -1,6 +1,6 @@
 import { UnitStrip } from './UnitStrip'
 import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, Clock, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
 import { errorMessage } from '@/api/client'
@@ -31,6 +31,7 @@ import { buttonVariants } from '@/components/ui/button-variants'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
@@ -81,8 +82,6 @@ function questionMeta(q: RecallQuestionDetail, hideUnit: boolean, types: RecallT
   return parts.join(' · ')
 }
 
-const MENU_ITEM = 'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-meta hover:bg-muted focus-visible:bg-muted'
-
 function QuestionRowMenu({ asked, onDelete, onEdit, onStatus }: {
   /** La domanda è già stata posta (o risposta): il menu offre di rimetterla fra quelle da porre. */
   asked: boolean
@@ -90,72 +89,19 @@ function QuestionRowMenu({ asked, onDelete, onEdit, onStatus }: {
   onEdit: () => void
   onStatus: (status: 'pending' | 'asked') => void
 }) {
-  const [open, setOpen] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onPointer = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointer)
-    return () => document.removeEventListener('pointerdown', onPointer)
-  }, [open])
-
+  // Menu in un portale: non resta tagliato in fondo al pannello che scorre.
   return (
-    <div ref={root} className="relative shrink-0">
-      <IconButton
-        label="Azioni sulla domanda"
-        icon={MoreHorizontal}
-        className="size-7 min-w-7"
-        active={open}
-        onClick={() => setOpen(!open)}
-      />
-      {open && (
-        <div
-          role="menu"
-          aria-label="Azioni sulla domanda"
-          className="absolute right-0 top-full z-20 mt-1 min-w-32 rounded-lg border bg-card p-1 shadow-panel"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className={MENU_ITEM}
-            onClick={() => {
-              setOpen(false)
-              onEdit()
-            }}
-          >
-            <Pencil className="size-3.5 shrink-0" aria-hidden />
-            Modifica
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={MENU_ITEM}
-            onClick={() => {
-              setOpen(false)
-              onStatus(asked ? 'pending' : 'asked')
-            }}
-          >
-            {asked ? <CircleDashed className="size-3.5 shrink-0" aria-hidden /> : <CircleCheck className="size-3.5 shrink-0" aria-hidden />}
-            {asked ? 'Segna da porre' : 'Segna come posta'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={cn(MENU_ITEM, 'text-danger')}
-            onClick={() => {
-              setOpen(false)
-              onDelete()
-            }}
-          >
-            <Trash2 className="size-3.5 shrink-0" aria-hidden />
-            Elimina
-          </button>
-        </div>
-      )}
-    </div>
+    <LinkMenuButton
+      label="Azioni sulla domanda"
+      icon={MoreHorizontal}
+      className="shrink-0"
+      buttonClassName="size-7 min-w-7"
+      items={[
+        { label: 'Modifica', icon: Pencil, onSelect: onEdit },
+        { label: asked ? 'Segna da porre' : 'Segna come posta', icon: asked ? CircleDashed : CircleCheck, onSelect: () => onStatus(asked ? 'pending' : 'asked') },
+        { label: 'Elimina', icon: Trash2, className: 'text-danger', onSelect: onDelete },
+      ]}
+    />
   )
 }
 
@@ -366,7 +312,7 @@ export function QuestionsPanel({
             </summary>
             <form onSubmit={handleGlobalGenerate} className="mt-3 flex flex-col gap-2.5">
               <div className="flex gap-2">
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
                   <QuestionTypeChips lessonId={id} types={registry} value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} withConsigliato />
                   <p className="mt-1.5 text-meta text-muted-foreground" data-testid="question-type-hint">
@@ -375,7 +321,7 @@ export function QuestionsPanel({
                       : `Tutte le unità selezionate ricevono domande ${registry.find((t) => t.id === globalType)?.nome ?? globalType}, come oggi.`}
                   </p>
                 </div>
-                <div className="w-20">
+                <div className="w-20 shrink-0">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
                     Quante
                   </label>

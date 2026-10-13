@@ -27,6 +27,8 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
+import { LinkMenuButton } from '@/components/ui/menu'
+import { Modal } from '@/components/ui/modal'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +42,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const resetMutation = useResetSelection(lessonId)
   const restoreJob = useSourcesJob(lessonId)
 
-  const [menuOpen, setMenuOpen] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
@@ -78,7 +79,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       setActionError(errorMessage(err))
     } finally {
       if (audioInputRef.current) audioInputRef.current.value = ''
-      setMenuOpen(false)
     }
   }
 
@@ -93,7 +93,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       setActionError(errorMessage(err))
     } finally {
       if (materialsInputRef.current) materialsInputRef.current.value = ''
-      setMenuOpen(false)
     }
   }
 
@@ -108,8 +107,6 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       sourcesQuery.refetch()
     } catch (err) {
       setActionError(errorMessage(err))
-    } finally {
-      setMenuOpen(false)
     }
   }
 
@@ -243,50 +240,17 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
           Fonti
         </span>
-        <div className="relative">
-          <IconButton
-            id="plus-sources"
-            icon={Plus}
-            label="Aggiungi fonte"
-            aria-expanded={menuOpen}
-            active={menuOpen}
-            onClick={() => setMenuOpen(!menuOpen)}
-          />
-          {menuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-20 mt-1 flex min-w-56 flex-col gap-1 rounded-lg border bg-card p-1 shadow-lg text-body"
-            >
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted"
-                onClick={() => audioInputRef.current?.click()}
-              >
-                <Mic className="size-4 shrink-0 text-muted-foreground" />
-                Parte di registrazione
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted"
-                onClick={() => {
-                  setMenuOpen(false)
-                  setNotesModalOpen(true)
-                }}
-              >
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                Appunti
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted"
-                onClick={() => materialsInputRef.current?.click()}
-              >
-                <Paperclip className="size-4 shrink-0 text-muted-foreground" />
-                Materiali (PDF, slide, foto)
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Menu in un portale: non resta tagliato dal pannello che scorre. */}
+        <LinkMenuButton
+          testId="plus-sources"
+          icon={Plus}
+          label="Aggiungi fonte"
+          items={[
+            { label: 'Parte di registrazione', icon: Mic, onSelect: () => audioInputRef.current?.click() },
+            { label: 'Appunti', icon: FileText, onSelect: () => setNotesModalOpen(true) },
+            { label: 'Materiali (PDF, slide, foto)', icon: Paperclip, onSelect: () => materialsInputRef.current?.click() },
+          ]}
+        />
         <input
           ref={audioInputRef}
           type="file"
@@ -507,45 +471,35 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
       </details>
 
       {/* Modal inserimento appunti */}
-      {notesModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="notes-dialog-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="flex w-full max-w-md flex-col gap-3 rounded-xl border bg-card p-4 shadow-xl">
-            <b id="notes-dialog-title" className="text-body font-semibold">
-              Aggiungi appunti
-            </b>
-            <textarea
-              rows={5}
-              placeholder="Incolla o scrivi il testo degli appunti..."
-              value={notesText}
-              onChange={(e) => setNotesText(e.target.value)}
-              className="w-full rounded-md border bg-background p-2.5 text-body focus-visible:outline-2 focus-visible:outline-ring"
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border px-3 py-1.5 text-body hover:bg-muted"
-                onClick={() => setNotesModalOpen(false)}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                disabled={!notesText.trim()}
-                className="rounded-md bg-accent px-3 py-1.5 text-body font-semibold text-accent-foreground disabled:opacity-40"
-                onClick={handleNotesSubmit}
-              >
-                Aggiungi
-              </button>
-            </div>
+      <Modal open={notesModalOpen} onClose={() => setNotesModalOpen(false)} title="Aggiungi appunti" testId="notes-dialog" className="w-[min(448px,calc(100vw-32px))]">
+        <div className="mt-3 flex flex-col gap-3">
+          <textarea
+            rows={5}
+            placeholder="Incolla o scrivi il testo degli appunti..."
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            className="w-full rounded-md border bg-background p-2.5 text-body focus-visible:outline-2 focus-visible:outline-ring"
+            autoFocus
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-md border px-3 py-1.5 text-body hover:bg-muted"
+              onClick={() => setNotesModalOpen(false)}
+            >
+              Annulla
+            </button>
+            <button
+              type="button"
+              disabled={!notesText.trim()}
+              className="rounded-md bg-accent px-3 py-1.5 text-body font-semibold text-accent-foreground disabled:opacity-40"
+              onClick={handleNotesSubmit}
+            >
+              Aggiungi
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Confirm Dialog per azioni che rifanno la scaletta */}
       {confirmDialog && (

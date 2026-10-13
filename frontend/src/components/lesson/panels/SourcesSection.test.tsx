@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import type { SourcesView, LessonVersion } from '@/api/sources'
@@ -279,5 +279,25 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
   it('le versioni mostrano i nomi delle fonti aggiunte', async () => {
     renderComponent()
     expect(await screen.findByTestId('version-row-v_2')).toHaveTextContent('Registrazione · parte 2, Slide_anemie.pdf')
+  })
+
+  it('Aggiungi fonte apre un menu in un portale; Appunti apre il popup', async () => {
+    renderComponent()
+    await screen.findByText('Appunti di Giulia')
+    const section = screen.getByTestId('sources-section')
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi fonte' }))
+    const menu = screen.getByRole('menu', { name: 'Aggiungi fonte' })
+    expect(section).not.toContainElement(menu)
+    expect(Array.from(menu.querySelectorAll('[role=menuitem]')).map((item) => item.textContent)).toEqual([
+      'Parte di registrazione',
+      'Appunti',
+      'Materiali (PDF, slide, foto)',
+    ])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Appunti' }))
+    expect(screen.queryByRole('menu', { name: 'Aggiungi fonte' })).not.toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Aggiungi appunti' })
+    expect(screen.getByPlaceholderText('Incolla o scrivi il testo degli appunti...')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Annulla' }))
+    expect(screen.queryByRole('dialog', { name: 'Aggiungi appunti' })).not.toBeInTheDocument()
   })
 })
