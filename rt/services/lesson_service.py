@@ -481,12 +481,22 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     edits = load_document_edits(lesson_dir)
     from rt.services.unit_relevance import list_units
     relevance = {row["unit_id"]: row["effective"] for row in list_units(lesson_dir)["units"]}
-    by_id = {s.id: s for s in (segments.segments if segments else [])}
+    seg_list = segments.segments if segments else []
+    positions = {s.id: idx for idx, s in enumerate(seg_list)}
+    by_id = {s.id: s for s in seg_list}
     out = []
     for unit in draft.units:
         # un timecode spostato nell'anteprima vale anche per il player (RT4-FA3)
         start_id = unit_start_segment(edits, unit.unit_id, unit.start_segment_id)
         start, end = by_id.get(start_id), by_id.get(unit.end_segment_id)
+        speech_segments = None
+        s_idx = positions.get(start_id)
+        e_idx = positions.get(unit.end_segment_id)
+        if s_idx is not None and e_idx is not None and s_idx <= e_idx:
+            speech_segments = [
+                [round(s.start_seconds, 2), round(s.end_seconds, 2)]
+                for s in seg_list[s_idx:e_idx + 1]
+            ]
         out.append({
             "unit_id": unit.unit_id,
             "title": unit_title(edits, unit.unit_id, unit.title),
@@ -496,6 +506,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
             "end_seconds": end.end_seconds if end else None,
             "start_formatted": start.start_formatted if start else None,
             "relevance": relevance.get(unit.unit_id) if relevance.get(unit.unit_id) in ("organizational", "no_content") else None,
+            "speech_segments": speech_segments,
         })
     return out
 

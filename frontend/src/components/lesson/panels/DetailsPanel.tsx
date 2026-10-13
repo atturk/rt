@@ -31,6 +31,7 @@ import { PHASE_LABELS, PHASE_ORDER, STATE_LABELS, formatCost, formatDateTime, ph
 import { formatDuration } from '@/lib/lessonsPage'
 import { CostPanel } from '../CostPanel'
 import { JobsPanel } from '../JobsPanel'
+import { SourcesSection } from './SourcesSection'
 
 type Section = Schemas['DocumentSection']
 type Phase = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
@@ -303,6 +304,10 @@ export function DetailsPanel({
 
   return (
     <div className="flex flex-col gap-4 text-body" data-testid="details-panel">
+      {/* Sezione Fonti e Versioni */}
+      <SourcesSection lessonId={l.id} />
+      <hr className="border-border" />
+
       {/* Campi metadati */}
       <div className="grid grid-cols-2 gap-2.5">
         <div className="col-span-2 flex flex-col gap-1">

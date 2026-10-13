@@ -453,7 +453,10 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "connections": connections,
         "credentials": credentials,
         "pricing": general.get("pricing") or {},
-        "web_search": {"searxng_base_url": cfg.searxng_base_url or None},
+        "web_search": {
+            "searxng_base_url": cfg.searxng_base_url or None,
+            "contextual_verification": bool(getattr(cfg, "contextual_web_search", False)),
+        },
         "preferences": {
             "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
@@ -509,16 +512,18 @@ def save_pricing(project_root: Path, pricing: dict[str, dict[str, dict[str, Any]
     return clean
 
 
-def save_web_search(project_root: Path, searxng_base_url: str) -> str | None:
-    """URL base di SearXNG per la ricerca immagini web (vuoto lo rimuove). add_images lo legge
-    da load_config() a ogni job: nessun file da modificare a mano."""
+def save_web_search(project_root: Path, searxng_base_url: str, contextual_verification: bool | None = None) -> tuple[str | None, bool]:
+    """URL base di SearXNG per la ricerca immagini web e toggle verifica contestuale. add_images e
+    study_notes lo leggono da load_config() a ogni job: nessun file da modificare a mano."""
     from rt.services.probes import normalize_searxng_url
     url = normalize_searxng_url(searxng_base_url)
     path = general_config_path(project_root)
     data = _read_yaml(path)
     data["searxng_base_url"] = url or None
+    if contextual_verification is not None:
+        data["contextual_web_search"] = bool(contextual_verification)
     _atomic_yaml(path, data)
-    return url or None
+    return url or None, bool(data.get("contextual_web_search", False))
 
 
 def save_secret_by_name(project_root: Path, name: str, value: str) -> str:

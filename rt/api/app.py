@@ -62,6 +62,11 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
     app.include_router(system.router, prefix=API_PREFIX)
     for router in _domain_routers():
         app.include_router(router, prefix=API_PREFIX, responses=COMMON_RESPONSES)
+    try:
+        from rt.services.fts_service import ensure_fts_index
+        ensure_fts_index()
+    except Exception:
+        pass
     if serve_spa:
         from rt.api.spa import find_spa_dir, install_spa
         install_spa(app, spa_dir or find_spa_dir())
@@ -69,7 +74,7 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
 
 
 def _domain_routers() -> list:
-    from rt.api.routers import subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, mini_app, recall, review, settings, study_notes, study_progress
+    from rt.api.routers import subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, mini_app, readonly, recall, review, settings, study_notes, study_progress
     return [lessons.router, review.router, jobs.router, recall.router, settings.router, images.router,
             folders.router, mini_app.router, enrichment.router, highlights.router, study_progress.router,
-            study_notes.router, subjects.router, calendar.router, lesson_sources.router]
+            study_notes.router, subjects.router, calendar.router, lesson_sources.router, readonly.router]

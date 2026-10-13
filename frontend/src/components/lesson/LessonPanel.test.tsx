@@ -44,3 +44,12 @@ it('ricorda i nuovi pannelli e ignora valori sconosciuti', () => {
   render(<Panels />)
   expect(screen.queryByRole('complementary')).toBeNull()
 })
+
+it('usa il contenitore PN1 staccato con classe di animazione rt-panel-container', () => {
+  render(<Panels />)
+  fireEvent.click(screen.getByRole('button', { name: 'dettagli' }))
+  const panel = screen.getByTestId('lesson-panel')
+  expect(panel).toHaveClass('rt-panel-container')
+  expect(panel.querySelector('.rt-panel-body-switch')).toBeInTheDocument()
+})
+

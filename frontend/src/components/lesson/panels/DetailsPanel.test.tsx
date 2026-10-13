@@ -1,4 +1,5 @@
 vi.mock('@/api/classifier', () => ({ useClassifier: () => ({ data: { pending: 2 } }) }))
+vi.mock('./SourcesSection', () => ({ SourcesSection: () => <div data-testid="sources-section" /> }))
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { MemoryRouter } from 'react-router'

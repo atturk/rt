@@ -22,6 +22,48 @@ class WebImageResult:
     source_page_url: str
 
 
+@dataclass
+class WebSearchResult:
+    title: str
+    url: str
+    content: str = ""
+
+
+def search_web(base_url: str, query: str, count: int = 5, timeout: float = 15.0) -> List[WebSearchResult]:
+    """Interroga l'endpoint /search di SearXNG con categoria 'general' e format=json.
+    Solleva ValueError se base_url non è raggiungibile o risponde con errore. Ritorna al
+    massimo 'count' risultati."""
+    try:
+        resp = requests.get(
+            f"{base_url.rstrip('/')}/search",
+            params={"q": query, "categories": "general", "format": "json"},
+            timeout=timeout,
+        )
+    except Exception as e:
+        raise ValueError(f"Impossibile raggiungere SearXNG su '{base_url}': {e}")
+    if resp.status_code == 403:
+        raise ValueError(JSON_FORMAT_DISABLED)
+    if resp.status_code != 200:
+        raise ValueError(f"SearXNG ha risposto con status {resp.status_code}")
+    try:
+        data = resp.json()
+    except Exception:
+        raise ValueError(JSON_FORMAT_DISABLED)
+    if not isinstance(data, dict):
+        raise ValueError("Risposta di SearXNG non riconosciuta.")
+    results = []
+    for item in data.get("results", [])[:count]:
+        url = item.get("url")
+        if not url:
+            continue
+        results.append(WebSearchResult(
+            title=item.get("title", "") or url,
+            url=url,
+            content=item.get("content", "") or "",
+        ))
+    return results
+
+
 def search_images(base_url: str, query: str, count: int = 5, timeout: float = 15.0) -> List[WebImageResult]:
     """Interroga l'endpoint /search di SearXNG con categoria 'images' e format=json.
     Solleva ValueError se base_url non è raggiungibile o risponde con errore. Ritorna al

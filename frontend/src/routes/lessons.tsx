@@ -18,6 +18,8 @@ import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/le
 import { PageHeader } from '@/components/shell/PageHeader'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { useJob, useJobs, useOutline } from '@/api/jobs'
+import { useSources } from '@/api/sources'
+import { LessonUpdateBar } from '@/components/lesson/LessonUpdateBar'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
@@ -296,6 +298,8 @@ export function LessonPage() {
 /** Azioni della lezione nell’ordine del wireframe Main. */
 function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['LessonDetail']; panel: PanelView | null; onToggle: (view: PanelView) => void }) {
   const [exportStudy, setExportStudy] = usePreference('export.study', true)
+  const sourcesQuery = useSources(l.id)
+  const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
   return (
@@ -304,7 +308,22 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
       <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
       <IconButton label="Arricchimento" icon={Image} active={panel === 'arricchimento'} aria-expanded={panel === 'arricchimento'} aria-controls={PANEL_ID} onClick={() => onToggle('arricchimento')} />
       <IconButton label="Verifica con LLM" icon={ShieldCheck} active={panel === 'verifica'} aria-expanded={panel === 'verifica'} aria-controls={PANEL_ID} onClick={() => onToggle('verifica')} />
-      <IconButton label="Dettagli" icon={Info} active={panel === 'dettagli'} aria-expanded={panel === 'dettagli'} aria-controls={PANEL_ID} onClick={() => onToggle('dettagli')} />
+      <div className="relative">
+        <IconButton
+          label={hasDot ? 'Dettagli · fonti nuove' : 'Dettagli'}
+          icon={Info}
+          active={panel === 'dettagli'}
+          aria-expanded={panel === 'dettagli'}
+          aria-controls={PANEL_ID}
+          onClick={() => onToggle('dettagli')}
+        />
+        {hasDot && (
+          <span
+            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-amber-500 ring-2 ring-background pointer-events-none"
+            data-testid="details-dot"
+          />
+        )}
+      </div>
       <LinkMenuButton
         label="Esporta"
         icon={Download}
@@ -348,6 +367,7 @@ function DocumentCard({ lesson: l, outline, job, onEditingChange, actionsRef, re
       {writing && <DocumentSkeleton />}
       {doc && !writing && (
         <>
+          <LessonUpdateBar lessonId={id} />
           {!doc.final && !live && (
             <p className="mb-2 text-meta text-muted-foreground" data-testid="document-preview-note">
               Bozza

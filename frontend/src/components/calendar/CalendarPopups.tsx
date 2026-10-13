@@ -23,6 +23,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { getSubjectColor } from './subjectColor'
 import { STATUS_LABELS } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
+import { useSubjects } from '@/api/subjects'
 
 
 export type PopupAnchor = {
@@ -513,9 +514,12 @@ export function AddEventPopup({
   const popupRef = useRef<HTMLDivElement>(null)
   // Le materie delle lezioni come suggerimenti: il collegamento automatico confronta la materia.
   const lessonsQuery = useLessons()
-  const knownSubjects = [
-    ...new Set((lessonsQuery.data ?? []).map((l) => l.materia).filter((m): m is string => !!m)),
-  ].sort()
+  const subjectsQuery = useSubjects()
+  const knownSubjects = subjectsQuery.data
+    ? subjectsQuery.data.map((s) => s.nome)
+    : [
+        ...new Set((lessonsQuery.data ?? []).map((l) => l.materia).filter((m): m is string => !!m)),
+      ].sort()
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {

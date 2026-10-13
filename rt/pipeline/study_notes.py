@@ -55,11 +55,27 @@ def run_study_note(
         DEFAULT_VERIFICA_REQUEST if kind == "verifica" else DEFAULT_CHIEDI_REQUEST
     )
 
+    sources_data: list[dict[str, str]] = []
+    if kind == "verifica":
+        from rt.core.config import load_config
+        from rt.core.searxng_client import search_web
+        cfg = load_config()
+        if cfg.contextual_web_search and cfg.searxng_base_url:
+            try:
+                web_results = search_web(cfg.searxng_base_url, exact_anchor.quote, count=5)
+                for res in web_results:
+                    sources_data.append({"title": res.title, "url": res.url})
+            except Exception:
+                sources_data = []
+
     user_prompt = (
         f"UNITÀ {unit.unit_id} - {unit.title}:\n{unit.content}\n\n"
         f"TESTO SELEZIONATO:\n{exact_anchor.quote}\n\n"
         f"RICHIESTA DELLO STUDENTE:\n{effective_request}"
     )
+    if sources_data:
+        sources_text = "\n".join([f"- {s['title']} ({s['url']})" for s in sources_data])
+        user_prompt += f"\n\nFONTI CONSULTATE SUL WEB:\n{sources_text}"
 
     client = LLMClient(force_mock=force_mock)
     response_obj = client.call_structured(
@@ -91,6 +107,10 @@ def run_study_note(
     if lesson_id is None:
         raise ValueError(f"Lezione non trovata nel database per il percorso: {lesson_dir}")
 
+    response_dict = response_obj.model_dump()
+    if sources_data:
+        response_dict["sources"] = sources_data
+
     saved = add_study_note(
         lesson_id=lesson_id,
         unit_id=unit.unit_id,
@@ -98,7 +118,7 @@ def run_study_note(
         anchor=exact_anchor.model_dump(),
         unit_fingerprint=unit_fingerprint,
         request=request.strip(),
-        response=response_obj.model_dump(),
+        response=response_dict,
         model=model_name,
         cost=cost_usd,
     )
