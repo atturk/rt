@@ -19,6 +19,7 @@ Il branch beta claude/rt-4.2.5-beta nasce da main dopo la 4.2.4 stabile. Se Atti
 | b1 | LE1 backend + RC1 | CA1 calendario (completo) |
 | b2 | DS1, MA1, LE1i-k backend (40%) | Interfaccia di tutta la b2 + AP1, WS1, AU1, PN1 completi (60%) |
 | b3 | accorpata nella b2 (Attilio, 12 ott sera) | |
+| b3 (nuova, 13 ott) | Recall: tetto, varianti, voti, controlli locali (tutto) | — |
 
 I file sono divisi in modo che i due agenti dello stesso lotto non si tocchino. b2 parte dopo la fusione di b1, b3 dopo b2.
 
@@ -129,3 +130,68 @@ Wireframe RT-fonti-materie.html, scene 1, 2 e 4.
 - **WS1:** interruttore in Impostazioni › Ricerca web "Cerca sul web durante la verifica contestuale", spento di default (scena 5 di RT-fonti-materie.html). Quando è acceso, durante la verifica contestuale (VC1 Verifica) una ricerca SearXNG; le fonti con titolo e link si salvano con la risposta e si vedono in una sezione Fonti nella voce di verifica del pannello Verifiche e domande. Spento o senza SearXNG configurato, la verifica funziona come oggi.
 - **AU1** (docs/wireframes-4.2.5/RT-audio-linea.html): nella pagina della lezione, linea verticale di 2 px a destra dell'unità che si ascolta, che avanza contando solo il parlato. Il lettore resta in basso. Solo pagina della lezione.
 - **PN1** (docs/wireframes-4.2.5/RT-pannelli.html): cambiano solo contenitore (staccato di 8 px, angoli stondati, ombra, X) e animazioni (entrata e uscita da destra con dissolvenza, dissolvenza al cambio di pannello; dal basso su iPhone). Il contenuto di ogni pannello resta identico.
+
+---
+
+## 4.2.5b3 — recall
+
+13 ott 2026, approvato da Attilio nel thread "Raccolta feature 4.2.5". Tutto a Codex, branch `rt425b3/codex` da claude/rt-4.2.5-beta (v4.2.5b2.2). Niente wireframe: le parti di interfaccia sono piccole e si innestano su elementi che esistono già, descritti qui sotto.
+Obiettivo: il numero scelto dall'utente diventa un tetto e non una quota, le varianti degli esercizi riempiono il numero, i voti diventano regole per tipo e materia, e una serie di controlli locali (senza LLM) scarta le risposte insensate dei modelli gratuiti.
+Niente migrazioni: regole e voti stanno in file JSON nella cartella di stato, come recall_fewshot.json oggi. Se una servisse davvero: 0019 con down_revision 0018, idempotente.
+
+### Stato di oggi (per orientarsi)
+- `generate_recall_batch` (rt/pipeline/recall.py) fa una chiamata per unità (vaste: gruppi di 4). `count` è solo un obiettivo fra un gruppo e l'altro, non arriva al modello; con un'unità sola c'è una chiamata sola. Un esito vuoto è valido e viene ricordato come "exhausted".
+- `contextualize_recall_prompt` (rt/llm/prompts.py) aggiunge le domande già presenti **dello stesso tipo** sull'unità (ultime 30, ~12k caratteri).
+- Doppioni: si scartano solo i testi identici.
+- Tipi personalizzati con "Varianti verificate" (rt/pipeline/recall_special.py): gli originali salvano un "tipo" (scenario, variabili, obiettivo, procedimento) legato alle unità; `generate_variant` fa una chiamata per la variante e una di verifica indipendente, 2 tentativi; al massimo 2 varianti per job (`templates[:min(wanted, 2)]`).
+- Voti: `record_fewshot_vote` tiene per tipo gli ultimi 5 👍 e gli ultimi 5 👎/⚡ da tutte le lezioni, e `recall_fewshot_block` li incolla nel prompt come "ESEMPI BUONI DA SEGUIRE" / "ESEMPI DA EVITARE".
+- A fine job `recall_batch_job` (rt/services/api_jobs.py) manda un Notice "Recall …: obiettivo N, generate M."
+
+### RQ1 · Il numero è un tetto, con più giri
+- Il numero non va mai al modello. Nel prompt la libertà di fermarsi resta **una frase sola**, come oggi ("Genera zero, una o più domande… nessuna quota"): non aggiungere altre frasi che insistono, rischiano di inibire il modello.
+- Se dopo il primo passaggio sui gruppi non si è arrivati a N, si fa un altro passaggio sui gruppi che nel passaggio precedente hanno dato almeno una domanda. Ci si ferma quando: si arriva a N, nessun gruppo ha dato domande nuove, oppure dopo **3 passaggi**. Dal secondo passaggio il modello vede anche le domande appena create (sono già nel pool, quindi basta rileggerlo).
+- Niente tagli: se l'ultimo giro supera N le domande in più restano nel pool.
+- Vale per quiz, mirate, vaste e per gli originali dei tipi personalizzati.
+- I campi "Quante" (Study.tsx, QuestionsPanel.tsx, EmptyGeneration.tsx) diventano "Fino a". Nient'altro cambia nei popup.
+
+### RQ2 · Le domande già presenti di ogni tipo
+- `contextualize_recall_prompt` riceve le domande dell'unità di **tutti i tipi**, ognuna preceduta dal tipo (es. "[quiz] …"), con gli stessi limiti di oggi (ultime 30, ~12k caratteri, array JSON mai troncato a metà). Titolo: "DOMANDE GIÀ PRESENTI SULL'UNITÀ (di ogni tipo: cerca altri concetti, non parafrasi)".
+- Vale anche per gli originali dei tipi personalizzati.
+
+### RQ3 · Varianti fino al numero
+- Tolto il limite di 2. Dopo gli originali, il resto fino a N si riempie con varianti dei "tipi" delle unità richieste, distribuite a turno fra i tipi.
+- Per contenere i costi una chiamata crea più tracce dello stesso tipo (al massimo 5 per chiamata, nuovo modello di risposta con una lista), poi la verifica indipendente le risolve **una per una**, come oggi. Quelle che non la superano si scartano senza nuovo tentativo; se mancano ancora domande, il giro successivo (RQ1, max 3) ne chiede altre.
+- Prompt delle varianti: rendere esplicito che si può cambiare il contesto mantenendo struttura e procedimento, non solo i numeri (es. nei problemi di miscelazione: profumi, integratori, farmaci; nei casi clinici: età, sesso, situazione). Lo scenario di partenza resta quello del tipo della propria unità, come oggi.
+- Il conteggio di varianti scartate dalla verifica va nell'avviso finale (RQ6).
+
+### RQ4 · Voti: regole distillate, esempi pertinenti, interruttori
+- **Storico completo.** Ogni voto si salva con tipo, materia della lezione, lezione, unità, testo, motivi e commento, fino a 300 voti per tipo (si tolgono i più vecchi). Il file di oggi si legge ancora (compatibilità con l'elenco vecchio, come `_fewshot_groups`).
+- **Regole distillate per tipo e materia.** Una chiamata riassume i voti di quel tipo e materia (tutti, con motivi e commenti) in poche regole brevi (al massimo 8), per esempio "evita le date storiche". Si aggiornano:
+  - in automatico quando un tipo e materia ha almeno **5 voti nuovi** dall'ultimo aggiornamento, all'inizio della generazione successiva di quel tipo (niente processi in background);
+  - a mano con **Aggiorna ora** in Impostazioni › Domande.
+  Le regole modificate a mano restano così finché l'utente non preme Aggiorna ora; l'aggiornamento automatico non le sovrascrive.
+  Le regole si salvano in `<state_dir>/recall_rules.json`.
+- **Esempi scelti per pertinenza.** Al posto degli ultimi 5: prima quelli della stessa materia, poi gli altri; dentro ogni gruppo quelli con più parole in comune con l'unità (calcolo locale, niente LLM); 5 buoni e 5 da evitare come oggi.
+- **Forma, non contenuto.** `recall_fewshot_block` presenta gli esempi come esempi di forma e livello, non di argomento: lo scenario e i contenuti si prendono solo dall'unità. Le regole entrano nel prompt prima degli esempi.
+- **Controllo prima di salvare.** Una chiamata confronta le domande nuove di un gruppo con le regole del tipo e materia e scarta quelle che le violano (una chiamata per gruppo, non per domanda). Solo se ci sono regole. Le scartate contano nell'avviso finale come "scartate dai controlli".
+- **Impostazioni › Domande**, sezione nuova "Regole dai voti" sotto "Tipi personalizzati" (Section come le altre):
+  - due interruttori: **Voti** (acceso di default) e **Controllo prima di salvare** (acceso di default);
+  - per ogni tipo con voti, le materie con le loro regole in un campo modificabile, il numero di voti e la data dell'ultimo aggiornamento, icona **Aggiorna ora** con tooltip (job, si vede in Job come gli altri).
+  - Configurazione: `recall.votes_enabled: bool = True`, `recall.presave_check: bool = True` in RecallConfig.
+- **Voti spenti:** spariscono i pulsanti di voto in Study.tsx e LightweightSession.tsx, e nei prompt non entrano né esempi né regole; il controllo prima di salvare non parte. I voti già dati restano salvati.
+
+### RQ5 · Controlli locali (senza LLM)
+Un modulo nuovo (es. rt/pipeline/recall_checks.py) con soglie in costanti in cima. Ogni domanda che fallisce un controllo si scarta prima del salvataggio e conta nell'avviso finale.
+- **Forma:** lunghezza minima e massima della domanda; niente segnaposto ("[...]", "XXX", "Domanda 1:", "lorem"); niente testo che si ripete (stessa frase o n-gramma ripetuto molte volte); italiano, controllato con le parole più comuni (soglia bassa: i termini tecnici sono tanti); per le vaste, scaletta non vuota.
+- **Quiz:** 4 opzioni non vuote e tutte diverse, indice della corretta valido, corretta non molto più lunga delle altre (es. più di 1,8 volte la media e la più lunga di tutte).
+- **Pertinenza grezza:** almeno qualche parola chiave dell'unità (parole significative, senza le comuni) nella domanda o nel materiale. Non vale per le varianti, che cambiano contesto di proposito.
+- **Quasi doppioni:** somiglianza fra insiemi di parole con le domande già nel pool sulla stessa unità e con quelle dello stesso job; sopra soglia si scarta.
+- **Varianti:** i numeri della traccia devono essere diversi da quelli delle versioni già usate e stare negli intervalli dichiarati dal tipo quando l'intervallo è leggibile (es. "7,10–7,50"); se c'è una soluzione, deve contenere un risultato.
+- **Valutazioni delle risposte** (mirate, vaste, personalizzate): percentuali fra 0 e 100, commento non vuoto, esito coerente con le percentuali. Se non va, si rifà la chiamata una volta; se è ancora incoerente si mostra con l'esito ricavato dalle percentuali.
+
+### RQ6 · Avviso a fine generazione
+- `generate_recall_batch` e `generate_special_batch` raccolgono un riepilogo (richieste, generate, scartate dai controlli locali, scartate dal controllo prima di salvare, varianti che non hanno superato la verifica, motivo dello stop). Restituiscono sempre la lista come oggi; il riepilogo esce da un argomento in più o da un oggetto, a scelta di chi implementa, senza rompere i chiamanti.
+- Il Notice di `recall_batch_job` diventa, per esempio: "Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 esercizio non ha superato la verifica." Le parti a zero non si scrivono; con N raggiunto basta "Generate 10 su 10." Il Notice si vede dove si vede oggi.
+
+### Fuori dalla b3
+- Nessun cambiamento alla valutazione del classificatore, al rifornimento automatico (salvo che usa le stesse funzioni) e a Telegram (deprecato).
