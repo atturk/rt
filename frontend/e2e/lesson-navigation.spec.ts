@@ -31,8 +31,9 @@ test('pagina lezione: editor protetto, quattro bottoni al passaggio, timer e lin
   // La fixture è corta: aggiungiamo spazio per provare il titolo fuori vista.
   await page.getByTestId('lesson-title-box').evaluate(el => { document.body.style.minHeight = '2000px'; el.blur(); window.getSelection()?.removeAllRanges(); window.scrollTo(0, 500) })
   await expect(page.getByTestId('lesson-title-box')).not.toBeInViewport()
+  // Sul computer, a pagina scorsa, le frecce non aprono la linguetta (quella e' solo per il tocco).
   await page.keyboard.press('ArrowLeft')
-  await expect(page.getByTestId('lesson-jump-tab-left')).toBeVisible()
+  await expect(page.getByTestId('lesson-jump-tab-left')).toHaveCount(0)
 })
 
 test('iPhone: swipe CDP, linguetta a metà schermo dopo lo scroll', async ({ browser }) => {

@@ -5,6 +5,7 @@
 ### Novità
 - Calendario: in modalità modifica un clic su un'ora apre i suoi dati (materia, inizio, fine, docente) e li salva, solo per questa settimana o per la settimana tipo da questa settimana in poi.
 - Nei blocchi del calendario il docente compare in piccolo sotto l'orario.
+- Pagina della lezione sul computer: le frecce non aprono più la linguetta galleggiante; per cambiare lezione si passa col mouse accanto al titolo. Sul telefono resta lo swipe.
 
 ### Correzioni
 - Con la finestra più stretta il pannello aperto non copre più il testo della lezione: il testo si stringe accanto al pannello, e anche il lettore audio.

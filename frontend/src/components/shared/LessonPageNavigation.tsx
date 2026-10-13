@@ -38,12 +38,14 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!lessonArrowAllowed(event)) return
+      // Sul computer le frecce mostrano solo i pulsanti accanto al titolo: a pagina scorsa non compare niente.
+      if (!touch && !titleVisible) return
       event.preventDefault()
       show(event.key === 'ArrowLeft' ? 'left' : 'right')
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [show])
+  }, [show, touch, titleVisible])
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current) }, [])
   useEffect(() => {
     navigation.close()
@@ -64,7 +66,8 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
     navigate(`/lezioni/${lesson.id}${panel ? `?panel=${encodeURIComponent(panel)}` : ''}`)
     window.scrollTo({ top: 0 })
   }
-  const floating = touch || !titleVisible
+  // La linguetta galleggiante e' solo per il tocco (swipe); sul computer si usa il passaggio del mouse vicino al titolo.
+  const floating = touch
   return <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page"
     onTouchStart={event => {
       swipe.current = null
