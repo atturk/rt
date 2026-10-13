@@ -73,6 +73,8 @@ def link_imported_lesson(lesson_dir, entry_id, calendar_date):
 
 
 def record_import(lesson_dir):
+    """Prima versione della lezione, registrata a fine della prima build (mai al setup):
+    la fotografia contiene già scaletta, testo e documenti, quindi ripristinarla non svuota la lezione."""
     from rt.core.update_history import list_versions, record_version
     from rt.core.sources import load_sources
     from rt.pipeline.outline import load_outline
@@ -85,10 +87,7 @@ def record_import(lesson_dir):
 
 
 def finish_import(outcome, payload):
-    from rt.services.jobs import JobState
     lesson = outcome.lesson_path
     if lesson:
         link_imported_lesson(lesson, payload.get('calendar_entry_id'), payload.get('calendar_date'))
-        if outcome.state == JobState.SUCCEEDED:
-            record_import(lesson)
     return outcome

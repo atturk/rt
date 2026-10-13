@@ -100,6 +100,10 @@ def test_web_search_saved_and_read_by_add_images(api_client, api_token, ws):
     from rt.core.config import load_config
     assert load_config().searxng_base_url == "http://localhost:8088"
     assert load_config().contextual_web_search is True
+    # Il solo interruttore non tocca l'URL
+    assert api_client.put("/api/v1/settings/web-search", json={"contextual_verification": False}).status_code == 200
+    ws_data = fresh(api_token).get("/api/v1/settings").json()["web_search"]
+    assert ws_data["searxng_base_url"] and ws_data["contextual_verification"] is False
     assert api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": "localhost"}).status_code == 422
     assert api_client.put("/api/v1/settings/web-search", json={"searxng_base_url": "", "contextual_verification": False}).status_code == 200
     assert fresh(api_token).get("/api/v1/settings").json()["web_search"]["searxng_base_url"] is None

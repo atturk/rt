@@ -31,3 +31,37 @@ def test_trim_previous_before_materials_without_token_estimates():
     assert units == [] and materials == ['page2']
     assert context_for_usage([], materials, None, usage) == ([], materials)
     assert context_for_usage([], materials, 100, None) == ([], materials)
+
+
+def test_materials_capped_before_first_call():
+    from rt.pipeline.rewrite import cap_material_parts, MATERIALS_CHAR_CAP
+    pages = ['x' * 25_000 for _ in range(5)]
+    assert len(cap_material_parts(pages)) == MATERIALS_CHAR_CAP // 25_002
+    assert cap_material_parts(pages, 30_000) == pages[:1]
+    assert cap_material_parts(['a', 'b']) == ['a', 'b']
+
+
+def test_notes_in_segments_not_repeated_as_context(tmp_path):
+    from rt.core.materials import material_context_parts
+    from rt.pipeline.source_update import _read_state, _write_state, segment_source_ids
+    from rt.core.sources import load_sources
+    (tmp_path / 'info.yaml').write_text('materia: Test\ndata: 2026-10-12\nfile_audio: ""\n')
+    lesson = str(tmp_path)
+    audio = add_source(lesson, 'audio', 'a.m4a', b'audio')
+    notes = [add_source(lesson, 'appunti', f'n{i}.txt', f'NOTE {i}'.encode()) for i in range(2)]
+    doc = add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('DOC TEXT'))
+    state = _read_state(lesson)
+    for source in notes:
+        state['sources'][source.id] = {'segments': [{'text_raw': f'text {source.id}'}], 'duration': 0}
+    _write_state(lesson, state)
+    # Audio principale: audio e appunti nei segmenti come nella b1, solo il materiale escluso.
+    assert segment_source_ids(load_sources(lesson), state, audio.id) == {audio.id, *(n.id for n in notes)}
+    parts = material_context_parts(lesson, mock=True)
+    assert len(parts) == 1 and 'DOC TEXT' in parts[0]
+    # Principale scelta e non audio: solo lei nei segmenti, il resto è contesto una volta sola.
+    state.update(principale=doc.id, primary_explicit=True)
+    _write_state(lesson, state)
+    assert segment_source_ids(load_sources(lesson), state, doc.id) == {doc.id}
+    parts = material_context_parts(lesson, mock=True)
+    assert all('DOC TEXT' not in p for p in parts)
+    assert sum(f'text {notes[0].id}' in p for p in parts) == 1

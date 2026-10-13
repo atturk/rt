@@ -94,16 +94,7 @@ export function SettingsIndexPage() {
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
-export function QuestionsSettingsPage() {
-  return (
-    <div className="flex flex-col divide-y">
-      <QuestionsSettingsSection />
-      <div id="materie" className="pt-6">
-        <SubjectsSettingsSection />
-      </div>
-    </div>
-  )
-}
+export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {

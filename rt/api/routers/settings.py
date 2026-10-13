@@ -293,7 +293,7 @@ class ModelTestOut(BaseModel):
 
 
 class WebSearchIn(BaseModel):
-    searxng_base_url: str = Field("", description="Vuoto per rimuoverlo")
+    searxng_base_url: Optional[str] = Field(None, description="Vuoto per rimuoverlo; assente o null lo lascia invariato")
     contextual_verification: Optional[bool] = Field(None, description="Cerca sul web durante la verifica contestuale")
 
 

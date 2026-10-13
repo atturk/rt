@@ -462,8 +462,6 @@ def cmd_setup(args):
             interactive=True,
             prompter=terminal_setup_prompter(),
         )
-        from rt.services.materials_lesson_service import record_import
-        record_import(res["lesson_dir"])
         print(json.dumps(res, ensure_ascii=False, indent=2))
     except SetupCancelled:
         sys.exit(0)
@@ -851,9 +849,6 @@ def cmd_run(args):
     if result.status != PipelineStatus.COMPLETED:
         return
 
-    if is_audio:
-        from rt.services.materials_lesson_service import record_import
-        record_import(result.lesson_dir)
     summary_text = format_cost_summary(GLOBAL_TELEMETRY.get_summary())
     if summary_text:
         print(summary_text)

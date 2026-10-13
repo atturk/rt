@@ -83,6 +83,24 @@ def has_update_snapshot(lesson_dir):
     return fs.isfile(lesson_path(lesson_dir, POINTER))
 
 
+def _merge_newer_sources(restored, current):
+    """Le fonti caricate dopo la fotografia (ancora da usare) sopravvivono al ripristino:
+    si accodano al registro ripristinato e i loro file restano dove sono."""
+    if restored is None or current is None:
+        return restored
+    try:
+        restored_items = json.loads(restored)
+        known = {item["id"] for item in restored_items}
+        newer = [item for item in json.loads(current) if item["id"] not in known]
+    except (ValueError, TypeError, KeyError):
+        return restored
+    if not newer:
+        return restored
+    for position, item in enumerate(newer, len(restored_items) + 1):
+        restored_items.append({**item, "ordine": position})
+    return json.dumps(restored_items, ensure_ascii=False, indent=2).encode("utf-8")
+
+
 def _restore_snapshot(lesson_dir, snapshot):
     """Il chiamante tiene il lock della lezione; ripristino transazionale nel DB."""
     from rt.db.engine import get_database
@@ -110,6 +128,7 @@ def _restore_snapshot(lesson_dir, snapshot):
         else:
             current[name] = None
     highwater = _read_state(lesson_dir)["next_segment"]
+    content["sources.json"] = _merge_newer_sources(content.get("sources.json"), current.get("sources.json"))
     def restore(values):
         for name, data in values.items():
             path = lesson_path(lesson_dir, name)
@@ -143,6 +162,13 @@ def undo_update(lesson_dir, *, record_event=True):
     _restore_snapshot(lesson_dir, snapshot)
     fs.remove(lesson_path(lesson_dir, POINTER))
     fs.rmtree(os.path.join(lesson_dir, "history", snapshot["timestamp"]), ignore_errors=True)
+    if record_event:
+        # Annulla aggiornamento: il riepilogo dell'ultimo aggiornamento non vale più.
+        from rt.pipeline.source_update import _read_state, _write_state
+        state = _read_state(lesson_dir)
+        if state.get("ultimo_aggiornamento") is not None:
+            state["ultimo_aggiornamento"] = None
+            _write_state(lesson_dir, state)
     if record_event and _versions(lesson_dir):
         record_version(lesson_dir, "restore")
     return {"status": "update_undone"}

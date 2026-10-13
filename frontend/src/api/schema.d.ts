@@ -8117,10 +8117,9 @@ export interface components {
             contextual_verification?: boolean | null;
             /**
              * Searxng Base Url
-             * @description Vuoto per rimuoverlo
-             * @default
+             * @description Vuoto per rimuoverlo; assente o null lo lascia invariato
              */
-            searxng_base_url: string;
+            searxng_base_url?: string | null;
         };
         /** WebSearchSettings */
         WebSearchSettings: {

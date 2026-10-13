@@ -70,6 +70,34 @@ def context_for_usage(units, materials, context_length, usage, max_output_tokens
     return retained, materials[1:] if overflow else materials
 
 
+MATERIALS_CHAR_CAP = 60_000
+
+
+def cap_material_parts(parts, context_length=None):
+    """Tetto ai materiali già alla prima chiamata, quando l'uso del contesto non è ancora
+    noto: al massimo un quarto del contesto del modello (circa 4 caratteri per token),
+    altrimenti un tetto fisso. Si tolgono le pagine dalla fine."""
+    budget = MATERIALS_CHAR_CAP
+    if type(context_length) is int and context_length > 0:
+        budget = min(budget, context_length)  # ≈ un quarto del contesto in caratteri
+    kept, size = [], 0
+    for part in parts:
+        size += len(part) + 2
+        if size > budget:
+            break
+        kept.append(part)
+    return kept
+
+
+def _configured_context_length(client):
+    try:
+        route = client._get_job_routing_config("rewrite").primary
+        from rt.llm.pricing import get_model_context_length
+        return get_model_context_length(route.provider, route.model) if route.provider and route.model else None
+    except Exception:
+        return None
+
+
 def get_draft_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "draft.json")
 
@@ -283,6 +311,8 @@ def _run_rewrite(
     context_floor = 0
     from rt.core.materials import material_context_parts
     material_parts = material_context_parts(lesson_dir, mock=force_mock, ctx=ctx)
+    if material_parts:
+        material_parts = cap_material_parts(material_parts, _configured_context_length(client))
     # Ultimo uso osservato (modello, usage, output riservato): una chiamata fallita senza usage non lo azzera.
     observed = (None, None, None)
 

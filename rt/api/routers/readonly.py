@@ -226,11 +226,13 @@ def get_readonly_openapi(request: Request) -> Dict[str, Any]:
         title="RT Readonly API for Open WebUI",
         version="4.2.5",
         description="API di sola lettura su 127.0.0.1 per consultare lezioni, scalette e testo con Open WebUI.",
-        servers=[{"url": f"{request.base_url.scheme}://{request.base_url.netloc}/api/v1/readonly"}],
+        # Le rotte hanno già il prefisso /readonly: il server è la radice dell'API, così
+        # Open WebUI chiama /api/v1/readonly/... e non /api/v1/readonly/readonly/...
+        servers=[{"url": f"{request.base_url.scheme}://{request.base_url.netloc}/api/v1"}],
     )
     # Aggiungi le rotte
     for route in router.routes:
-        if route.path != "/openapi.json":
+        if route.path != f"{router.prefix}/openapi.json":
             mini_app.routes.append(route)
     return get_openapi(
         title=mini_app.title,

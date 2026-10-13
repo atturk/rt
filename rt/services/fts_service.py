@@ -1,7 +1,9 @@
 """
 rt.services.fts_service
 Indice di ricerca full-text SQLite FTS5 per le lezioni di RT (AP1).
-Dato derivato creato e mantenuto all'avvio con CREATE VIRTUAL TABLE IF NOT EXISTS.
+Dato derivato creato all'avvio con CREATE VIRTUAL TABLE IF NOT EXISTS e riallineato a ogni
+ricerca: una lezione si reindicizza quando cambia la sua impronta (bozza, decisioni, metadati) e
+si toglie quando viene eliminata.
 """
 from typing import Any, Dict, List, Optional
 from sqlalchemy import text
@@ -106,19 +108,81 @@ def reindex_all_lessons(db=None) -> int:
     return total
 
 
-def ensure_fts_index(db=None) -> None:
-    """Verifica e inizializza l'indice FTS5; se vuoto e ci sono lezioni, indicizza."""
+def _init_state_table(database) -> None:
+    """Impronta per lezione dell'ultimo indice: dato derivato come lessons_fts, niente migrazione."""
+    with database.engine.begin() as conn:
+        conn.execute(text("CREATE TABLE IF NOT EXISTS lessons_fts_state "
+                          "(lesson_id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL)"))
+
+
+def _lesson_fingerprint(path: str, subject, date, title) -> str:
+    """Stessa chiave della cache del testo risolto (bozza, verifiche, modifiche, decisioni)
+    più i metadati indicizzati: cambia quando pipeline, aggiornamento o ripristino riscrivono la bozza."""
+    import hashlib
+    from rt.pipeline.ledger import _resolved_key
+    try:
+        key = repr(_resolved_key(path))
+    except Exception:
+        key = "missing"
+    return hashlib.sha256(f"{key}|{subject}|{date}|{title}".encode("utf-8")).hexdigest()
+
+
+def sync_fts_index(db=None) -> int:
+    """Allinea l'indice alle lezioni: reindicizza quelle la cui impronta è cambiata e
+    toglie quelle eliminate. Restituisce il numero di lezioni reindicizzate."""
+    from rt.db.models import Lesson
+    from rt.db.session import read_scope
+    from sqlalchemy import select
+
+    database = _get_db(db)
+    if database is None:
+        return 0
+    init_fts_table(database)
+    _init_state_table(database)
+    with read_scope(database) as session:
+        lessons = [(l.id, l.path, l.materia, l.data, l.titolo) for l in session.scalars(select(Lesson)).all()]
+    with database.engine.begin() as conn:
+        known = dict(conn.execute(text("SELECT lesson_id, fingerprint FROM lessons_fts_state")).fetchall())
+        indexed = {int(r[0]) for r in conn.execute(text("SELECT DISTINCT lesson_id FROM lessons_fts")).fetchall()}
+    current = {lid for lid, *_ in lessons}
+    with database.engine.begin() as conn:
+        for lid in (set(known) | indexed) - current:
+            conn.execute(text("DELETE FROM lessons_fts WHERE lesson_id = :id"), {"id": lid})
+            conn.execute(text("DELETE FROM lessons_fts_state WHERE lesson_id = :id"), {"id": lid})
+    changed = 0
+    for lid, lpath, lmat, ldat, ltit in lessons:
+        fingerprint = _lesson_fingerprint(lpath, lmat, ldat, ltit)
+        if known.get(lid) == fingerprint:
+            continue
+        index_lesson_units(lid, lpath, lmat, ldat, ltit, db=database)
+        with database.engine.begin() as conn:
+            conn.execute(text("INSERT OR REPLACE INTO lessons_fts_state (lesson_id, fingerprint) "
+                              "VALUES (:id, :fp)"), {"id": lid, "fp": fingerprint})
+        changed += 1
+    return changed
+
+
+def remove_lesson_from_index(lesson_id: int, db=None) -> None:
     database = _get_db(db)
     if database is None:
         return
     init_fts_table(database)
+    _init_state_table(database)
+    with database.engine.begin() as conn:
+        conn.execute(text("DELETE FROM lessons_fts WHERE lesson_id = :id"), {"id": lesson_id})
+        conn.execute(text("DELETE FROM lessons_fts_state WHERE lesson_id = :id"), {"id": lesson_id})
+
+
+def ensure_fts_index(db=None) -> None:
+    """Verifica e inizializza l'indice FTS5 e lo tiene allineato alle lezioni (impronta per lezione)."""
+    database = _get_db(db)
+    if database is None:
+        return
     try:
-        with database.engine.begin() as conn:
-            count = conn.execute(text("SELECT count(*) FROM lessons_fts")).scalar() or 0
-        if count == 0:
-            reindex_all_lessons(database)
+        sync_fts_index(database)
     except Exception:
-        pass
+        import logging
+        logging.getLogger(__name__).exception("Aggiornamento dell'indice di ricerca non riuscito")
 
 
 def sanitize_fts5_query(query: str) -> str:

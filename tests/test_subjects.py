@@ -21,7 +21,9 @@ def test_subject_contract(api_client, rt_db, tmp_path):
     response = client.delete('/api/v1/subjects/BIOLOGIA')
     assert response.status_code == 409
     assert response.json()['error']['code'] == 'subject_in_use'
-    assert client.delete('/api/v1/subjects/Anatomia').status_code == 204
+    response = client.delete('/api/v1/subjects/Anatomia')
+    assert response.status_code == 409
+    assert response.json()['error']['code'] == 'subject_in_calendar'
     assert client.post('/api/v1/subjects', json={'nome': 'Chimica'}).status_code == 201
     assert client.delete('/api/v1/subjects/chimica').status_code == 204
 

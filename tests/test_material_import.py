@@ -58,7 +58,14 @@ def test_import_only_materials_defaults_longest_and_records_import(api_client, r
     assert view['principale'] == sources[1].id and view['principale_usato'] == sources[1].id
     assert [s['pagine'] for s in view['sources']] == [1, 2]
     assert all(s.source_file == sources[1].id for s in load_segments_json(lesson_path(lesson, 'segments.json')).segments)
-    assert list_versions(lesson)[0]['modo'] == 'import'
+    # La versione "import" nasce a fine della prima build, mai al setup.
+    if run:
+        version = list_versions(lesson)[0]
+        assert version['modo'] == 'import'
+        snapshot = os.path.join(lesson, 'history', version['id'])
+        assert all(fs.isfile(os.path.join(snapshot, name)) for name in ('outline.json', 'draft.json', 'rielaborato.md'))
+    else:
+        assert list_versions(lesson) == []
     assert read_info_yaml(lesson_path(lesson, 'info.yaml'))['allega_materiali'] == 'true'
     if run:
         assert images_for_document(lesson, load_outline(lesson))[0]

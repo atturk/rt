@@ -54,6 +54,12 @@ def delete_subject(nome, db=None):
             raise NotFound("subject_not_found", "Materia inesistente.")
         if match["lezioni"]:
             raise Conflict("subject_in_use", "La materia ha lezioni.")
+        # Una materia usata dal calendario resterebbe in elenco: niente 204 senza effetto.
+        if any((value or "").strip().casefold() == nome.casefold()
+               for model in (CalendarTemplateEntry, CalendarOverride)
+               for value in session.scalars(select(model.materia))):
+            raise Conflict("subject_in_calendar",
+                           "La materia è usata nel calendario: cambiala o toglila dalle ore del calendario per eliminarla.")
         registered = next((row for row in session.scalars(select(Subject))
                            if row.nome.casefold() == nome.casefold()), None)
         if registered is not None:

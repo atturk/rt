@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import io
 
 import fitz
@@ -54,7 +55,7 @@ def test_image_and_pptx_extract_text_and_embedded_images_without_quicklook(tmp_p
     from pptx.util import Inches
     calls = []
     monkeypatch.setattr('rt.core.materials._describe', lambda *args: calls.append(args) or 'image context')
-    monkeypatch.setattr('rt.core.materials._quicklook_slides', lambda *args: None)
+    monkeypatch.setattr('rt.core.materials._quicklook_slides', lambda *args: nullcontext())
     presentation = Presentation()
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
     slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1)).text = 'Slide native text'
@@ -76,14 +77,16 @@ def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):
     from rt.core.materials import _quicklook_slides
     monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda _: None)
-    assert _quicklook_slides('unused.pptx', 1) is None
+    with _quicklook_slides('unused.pptx', 1) as render:
+        assert render is None
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda _: '/usr/bin/qlmanage')
     def render(command, **kwargs):
         assert command[:2] == ['/usr/bin/qlmanage', '-p']
         from pathlib import Path
         Path(command[3], 'Preview.pdf').write_bytes(pdf_bytes())
     monkeypatch.setattr('rt.core.materials.subprocess.run', render)
-    assert len(_quicklook_slides('unused.pptx', 1)) == 1
+    with _quicklook_slides('unused.pptx', 1) as render:
+        assert render(0).startswith(b'\x89PNG')
 
 
 def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, monkeypatch):

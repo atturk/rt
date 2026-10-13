@@ -19,6 +19,9 @@ from tests.api_support import isolated_workspace
 from tests.test_document_edit import _synthetic_lesson
 
 
+LOCAL = ("127.0.0.1", 50000)
+
+
 def test_readonly_key_lifecycle(tmp_path, monkeypatch, rt_db):
     isolated_workspace(tmp_path, monkeypatch)
 
@@ -49,7 +52,7 @@ def test_readonly_key_lifecycle(tmp_path, monkeypatch, rt_db):
 
 def test_readonly_api_endpoints_and_fts(tmp_path, monkeypatch, rt_db):
     app = create_app(auth_disabled=False, serve_spa=False)
-    client = TestClient(app)
+    client = TestClient(app, client=LOCAL)
 
     # Crea lezione sintetica con due unità
     text_1 = "La respirazione cellulare avviene nei mitocondri attraverso la glicolisi e il ciclo di Krebs."
@@ -153,3 +156,53 @@ def test_readonly_key_settings_endpoints(api_client, api_token):
 
     # Info dopo revoca
     assert api_client.get("/api/v1/settings/readonly-key").json()["configured"] is False
+
+
+def test_readonly_openapi_paths_resolve_and_proxy_rejected(tmp_path, monkeypatch, rt_db):
+    """Ogni percorso dello schema per Open WebUI, unito all'URL del server, risponde davvero."""
+    from urllib.parse import urlsplit
+    isolated_workspace(tmp_path, monkeypatch)
+    client = TestClient(create_app(auth_disabled=False, serve_spa=False), client=LOCAL)
+    key = create_readonly_key(rt_db)
+    headers = {"Authorization": f"Bearer {key}"}
+    schema = client.get("/api/v1/readonly/openapi.json").json()
+    base = urlsplit(schema["servers"][0]["url"]).path
+    assert base == "/api/v1"
+    samples = {"lesson_id": "999999", "unit_id": "1.1"}
+    assert schema["paths"]
+    for path in schema["paths"]:
+        url = base + path.format(**samples)
+        response = client.get(url, headers=headers, params={"q": "x"})
+        # 404 solo per la lezione inesistente, mai per il percorso
+        assert response.status_code in (200, 404), (url, response.status_code)
+        if response.status_code == 404:
+            assert response.json()["error"]["code"] == "lesson_not_found", url
+    # Tailscale Serve e i proxy arrivano da 127.0.0.1 ma con header di inoltro
+    for header in ({"X-Forwarded-For": "100.64.0.2"}, {"Tailscale-User-Login": "a@b.c"},
+                   {"X-Forwarded-Host": "mac.tailnet.ts.net"}):
+        response = client.get("/api/v1/readonly/lessons", headers={**headers, **header})
+        assert response.status_code == 403
+    # Il client finto "testclient" non è loopback
+    assert TestClient(client.app).get("/api/v1/readonly/lessons", headers=headers).status_code == 403
+
+
+def test_fts_index_follows_draft_changes_and_deletion(tmp_path, monkeypatch, rt_db):
+    from sqlalchemy import select
+    from rt.db.models import Lesson
+    from rt.db.session import read_scope, session_scope
+    from rt.pipeline.rewrite import load_draft, save_draft
+    from rt.services.fts_service import search_lessons_fts
+    lesson_dir = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch),
+                                   {"1.1": "I mitocondri producono ATP.", "1.2": "Il nucleo contiene DNA."})
+    write_ledger_file(DecisionLedger(schema_version="2.0"), lesson_dir)
+    assert [h["unit_id"] for h in search_lessons_fts("mitocondri", db=rt_db)] == ["1.1"]
+    draft = load_draft(lesson_dir)
+    draft.units[0].content = "I ribosomi sintetizzano proteine."
+    import time
+    time.sleep(0.01)
+    save_draft(draft, lesson_dir)
+    assert search_lessons_fts("mitocondri", db=rt_db) == []
+    assert [h["unit_id"] for h in search_lessons_fts("ribosomi", db=rt_db)] == ["1.1"]
+    with session_scope(rt_db) as session:
+        session.delete(session.scalar(select(Lesson).where(Lesson.path == lesson_dir)))
+    assert search_lessons_fts("ribosomi", db=rt_db) == []

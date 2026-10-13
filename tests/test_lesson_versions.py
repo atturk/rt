@@ -90,3 +90,25 @@ def test_rebuild_then_restore_previous_version_preserves_highlights(api_client, 
     assert list_highlights(lid, None) == [highlight]
     assert highlight['source']['text'] in load_draft(lesson).units[0].content
     assert api_client.get(url + '/versions').json()[0]['modo'] == 'restore'
+
+
+def test_restore_keeps_sources_added_after_the_snapshot_and_undo_clears_summary(tmp_path):
+    from rt.core.sources import add_source, load_sources
+    from rt.pipeline.source_update import _read_state, _write_state
+    (tmp_path / 'info.yaml').write_text('materia: Test\ndata: 2026-10-12\nfile_audio: ""\n')
+    lesson = str(tmp_path)
+    first = add_source(lesson, 'appunti', 'a.txt', b'uno')
+    write(lesson, 'draft.json', 'original')
+    version = record_version(lesson, 'import')
+    later = add_source(lesson, 'appunti', 'b.txt', b'due')
+    restore_version(lesson, version)
+    sources = load_sources(lesson)
+    assert [s.id for s in sources] == [first.id, later.id] and sources[1].ordine == 2
+    assert fs.isfile(lesson_path(lesson, later.file))
+    state = _read_state(lesson)
+    state['ultimo_aggiornamento'] = {'modo': 'extend', 'unita_nuove': 1, 'unita_cambiate': 0, 'il': 'x'}
+    _write_state(lesson, state)
+    from rt.core.update_history import snapshot_update
+    snapshot_update(lesson)
+    undo_update(lesson)
+    assert _read_state(lesson)['ultimo_aggiornamento'] is None

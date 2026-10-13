@@ -512,14 +512,16 @@ def save_pricing(project_root: Path, pricing: dict[str, dict[str, dict[str, Any]
     return clean
 
 
-def save_web_search(project_root: Path, searxng_base_url: str, contextual_verification: bool | None = None) -> tuple[str | None, bool]:
+def save_web_search(project_root: Path, searxng_base_url: str | None, contextual_verification: bool | None = None) -> tuple[str | None, bool]:
     """URL base di SearXNG per la ricerca immagini web e toggle verifica contestuale. add_images e
-    study_notes lo leggono da load_config() a ogni job: nessun file da modificare a mano."""
+    study_notes lo leggono da load_config() a ogni job: nessun file da modificare a mano.
+    searxng_base_url None lascia l'URL com'è (salvataggio del solo interruttore)."""
     from rt.services.probes import normalize_searxng_url
-    url = normalize_searxng_url(searxng_base_url)
     path = general_config_path(project_root)
     data = _read_yaml(path)
-    data["searxng_base_url"] = url or None
+    if searxng_base_url is not None:
+        data["searxng_base_url"] = normalize_searxng_url(searxng_base_url) or None
+    url = data.get("searxng_base_url")
     if contextual_verification is not None:
         data["contextual_web_search"] = bool(contextual_verification)
     _atomic_yaml(path, data)

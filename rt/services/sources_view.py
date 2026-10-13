@@ -43,8 +43,9 @@ def sources_view(lesson_dir):
             with fs.open(path, encoding="utf-8") as stream:
                 values["parole"] = len(stream.read().split())
         elif source.tipo == "materiale":
-            from rt.core.materials import page_count
-            values["pagine"] = page_count(path)
+            from rt.core.materials import cached_pages, page_count
+            cached = cached_pages(lesson_dir, source)
+            values["pagine"] = len(cached) if cached is not None else page_count(path)
         elif source.tipo == "audio":
             values["durata_s"] = state.get("sources", {}).get(source.id, {}).get("duration")
             if values["durata_s"] is None:

@@ -10720,10 +10720,16 @@
             "title": "Contextual Verification"
           },
           "searxng_base_url": {
-            "default": "",
-            "description": "Vuoto per rimuoverlo",
-            "title": "Searxng Base Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Vuoto per rimuoverlo; assente o null lo lascia invariato",
+            "title": "Searxng Base Url"
           }
         },
         "title": "WebSearchIn",

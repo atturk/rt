@@ -7,9 +7,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 
 from rt.core.idempotency import compute_file_sha256
-from rt.core.lesson_lock import lesson_locked
+from rt.core.lesson_lock import lesson_lock
 from rt.storage import fs
 
 MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx'}
@@ -58,26 +59,39 @@ def _describe(data, lesson_dir, mock):
     return '\n'.join(str(value) for value in (result.slide_title, result.ocr_text, result.visual_elements) if value)
 
 
+@contextmanager
 def _quicklook_slides(real, count):
-    """Quick Look è facoltativo; usa una resa solo se copre tutte le slide."""
+    """Quick Look è facoltativo; usa una resa solo se copre tutte le slide. Restituisce una
+    funzione che rende una slide alla volta, così non tiene in memoria tutte le immagini."""
     binary = shutil.which('qlmanage') if sys.platform == 'darwin' else None
     if not binary:
-        return None
-    try:
-        with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
+        yield None
+        return
+    with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
+        render = None
+        document = None
+        try:
             subprocess.run([binary, '-p', '-o', target, real], capture_output=True, check=True, timeout=60)
             from pathlib import Path
             import fitz
             for path in Path(target).rglob('*.pdf'):
-                with fitz.open(path) as document:
-                    if len(document) == count:
-                        return [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png') for page in document]
-            images = sorted(Path(target).rglob('*.png'))
-            if len(images) == count:
-                return [path.read_bytes() for path in images]
-    except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
-        pass
-    return None
+                candidate = fitz.open(path)
+                if len(candidate) == count:
+                    document = candidate
+                    render = lambda i: document[i].get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')
+                    break
+                candidate.close()
+            if render is None:
+                images = sorted(Path(target).rglob('*.png'))
+                if len(images) == count:
+                    render = lambda i: images[i].read_bytes()
+        except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
+            render = None
+        try:
+            yield render
+        finally:
+            if document is not None:
+                document.close()
 
 
 def _slide_content(slide):
@@ -106,10 +120,10 @@ def _extract(real):
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)
-        rendered = _quicklook_slides(real, len(presentation.slides))
-        for i, slide in enumerate(presentation.slides):
-            text, pictures = _slide_content(slide)
-            yield text, [rendered[i]] if rendered else [_png_image(data) for data in pictures]
+        with _quicklook_slides(real, len(presentation.slides)) as render:
+            for i, slide in enumerate(presentation.slides):
+                text, pictures = _slide_content(slide)
+                yield text, [render(i)] if render else [_png_image(data) for data in pictures]
     else:
         with open(real, 'rb') as stream:
             yield '', [_png_image(stream.read())]
@@ -124,8 +138,10 @@ def cached_pages(lesson_dir, source):
     return data['pages'] if data.get('impronta') == source.impronta else None
 
 
-@lesson_locked
 def material_pages(lesson_dir, source, *, mock=False, ctx=None):
+    """Estrazione e Vision senza lock della lezione (possono durare minuti); il lock copre
+    solo le scritture. La cache è per pagina e per impronta, quindi due lavori concorrenti
+    sulla stessa fonte scrivono lo stesso contenuto."""
     path = os.path.join(lesson_dir, source.file)
     if compute_file_sha256(path) != source.impronta:
         raise ValueError('Una fonte originale è cambiata: aggiungila come nuova fonte')
@@ -133,7 +149,8 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
     if cached is not None:
         return cached
     folder = os.path.join(lesson_dir, 'materials', source.impronta)
-    fs.makedirs(folder, exist_ok=True)
+    with lesson_lock(lesson_dir):
+        fs.makedirs(folder, exist_ok=True)
     pages = []
     # Cache per pagina: una ripresa dopo errore non ripete le chiamate Vision riuscite.
     with fs.materialize(path) as real:
@@ -145,43 +162,48 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
                 with fs.open(entry_path, encoding='utf-8') as stream:
                     pages.append(json.load(stream))
                 continue
-            filenames = []
-            for index, data in enumerate(images, 1):
-                relative = os.path.join('materials', source.impronta, f'page-{number}-{index}.png')
-                with fs.open(os.path.join(lesson_dir, relative), 'wb') as stream:
-                    stream.write(data)
-                filenames.append(relative)
             if not text:
                 text = '\n'.join(_describe(data, lesson_dir, mock) for data in images)
-            entry = {'numero': number, 'testo': text, 'immagini': filenames}
-            with fs.open(entry_path + '.tmp', 'w', encoding='utf-8') as stream:
-                json.dump(entry, stream, ensure_ascii=False)
-            fs.replace(entry_path + '.tmp', entry_path)
+            filenames = []
+            with lesson_lock(lesson_dir):
+                for index, data in enumerate(images, 1):
+                    relative = os.path.join('materials', source.impronta, f'page-{number}-{index}.png')
+                    with fs.open(os.path.join(lesson_dir, relative), 'wb') as stream:
+                        stream.write(data)
+                    filenames.append(relative)
+                entry = {'numero': number, 'testo': text, 'immagini': filenames}
+                with fs.open(entry_path + '.tmp', 'w', encoding='utf-8') as stream:
+                    json.dump(entry, stream, ensure_ascii=False)
+                fs.replace(entry_path + '.tmp', entry_path)
             pages.append(entry)
     if not pages:
         raise ValueError('Il materiale non ha pagine')
     cache_path = os.path.join(folder, 'pages.json')
-    with fs.open(cache_path + '.tmp', 'w', encoding='utf-8') as stream:
-        json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
-    fs.replace(cache_path + '.tmp', cache_path)
+    with lesson_lock(lesson_dir):
+        with fs.open(cache_path + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
+        fs.replace(cache_path + '.tmp', cache_path)
     return pages
 
 
 def material_context_parts(lesson_dir, *, mock=False, ctx=None):
+    """Contesto per la riscrittura: solo le fonti che non sono già nei segmenti, una volta sola."""
     from rt.core.sources import load_sources
     from rt.core.source_selection import selection
-    from rt.pipeline.source_update import _read_state
+    from rt.pipeline.source_update import _read_state, segment_source_ids
     sources = load_sources(lesson_dir)
     parts = []
     primary = selection(lesson_dir)['principale']
-    cache = _read_state(lesson_dir).get('sources', {})
+    state = _read_state(lesson_dir)
+    cache = state.get('sources', {})
+    in_segments = segment_source_ids(sources, state, primary)
     for source in sources:
+        if source.id in in_segments:
+            continue
         if source.tipo == 'materiale':
             for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
                 parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
-        elif source.id != primary and (
-                next((s.tipo for s in sources if s.id == primary), None) != 'audio'
-                or (any(s.tipo == 'materiale' for s in sources) and source.tipo == 'appunti')):
+        else:
             texts = [segment['text_raw'] for segment in cache.get(source.id, {}).get('segments', [])]
             if texts:
                 parts.append(f'[{source.id}, {os.path.basename(source.file)}]\n' + '\n'.join(texts))

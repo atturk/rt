@@ -21,11 +21,26 @@ READONLY_AUTH_KEY = "api.readonly_auth"
 readonly_bearer_scheme = HTTPBearer(auto_error=False, description="Chiave di sola lettura per Open WebUI")
 
 
+# Tailscale Serve e i proxy inoltrano da 127.0.0.1: questi header svelano un client remoto.
+FORWARDING_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto",
+                      "x-real-ip", "tailscale-user-login", "tailscale-user-name",
+                      "tailscale-user-profile-pic", "tailscale-headers-info")
+
+
 def _is_loopback(host: str) -> bool:
+    """Niente eccezioni per "testclient": i test usano TestClient(client=("127.0.0.1", ...))."""
     if not host:
         return False
     h = host.strip().lower()
-    return h in ("127.0.0.1", "localhost", "::1", "testclient") or h.startswith("127.")
+    return h in ("127.0.0.1", "localhost", "::1") or h.startswith("127.")
+
+
+def is_local_request(request: Request) -> bool:
+    if not request.client:
+        return False
+    if any(name in request.headers for name in FORWARDING_HEADERS):
+        return False
+    return _is_loopback(request.client.host)
 
 
 def get_readonly_key_info(db=None) -> Dict[str, Any]:
@@ -107,11 +122,11 @@ def require_readonly_auth(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(readonly_bearer_scheme),
 ) -> str:
-    """Verifica che la richiesta provenga da loopback (127.0.0.1) e abbia una chiave valida."""
-    # Controllo loopback
-    client_host = request.client.host if request.client else "127.0.0.1"
-    if not _is_loopback(client_host):
-        raise ApiError(403, "forbidden_ip", "L'API di sola lettura è accessibile solo da 127.0.0.1.")
+    """Verifica che la richiesta provenga da loopback (127.0.0.1), senza header di inoltro
+    (Tailscale Serve, proxy), e abbia una chiave valida. Con l'autenticazione disattivata
+    (rt web --no-auth, solo sviluppo) vale come per l'API principale: nessuna chiave."""
+    if not is_local_request(request):
+        raise ApiError(403, "forbidden_ip", "L'API di sola lettura è accessibile solo da 127.0.0.1, senza proxy.")
 
     if getattr(request.app.state, "auth_disabled", False):
         return "readonly"

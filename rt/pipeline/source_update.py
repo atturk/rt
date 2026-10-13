@@ -82,6 +82,17 @@ def sources_pending(lesson_dir):
     return used != [s.id for s in sources]
 
 
+def segment_source_ids(sources, state, primary):
+    """Fonti che diventano segmenti della scaletta. Come nella b1 audio e appunti si
+    concatenano; i materiali restano contesto. Solo una principale non audio scelta
+    (appunti) o un materiale principale costruisce da sola la scaletta."""
+    primary_source = next((s for s in sources if s.id == primary), None)
+    if primary_source is not None and (primary_source.tipo == "materiale" or (
+            primary_source.tipo != "audio" and state.get("primary_explicit"))):
+        return {primary}
+    return {s.id for s in sources if s.tipo != "materiale"} or {primary}
+
+
 def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     sources = load_sources(lesson_dir)
     if not sources:
@@ -101,7 +112,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
         cache[legacy.id] = {"segments": [s.model_dump() for s in originals], "duration": duration}
     from rt.core.source_selection import selection
     primary = selection(lesson_dir)["principale"]
-    primary_source = next(s for s in sources if s.id == primary)
+    in_segments = segment_source_ids(sources, state, primary)
     offset = 0.0
     ordered = []
     for source in sources:
@@ -140,10 +151,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
             cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
             # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
             _write_state(lesson_dir, state)
-        # Con materiali la scaletta usa solo la principale; la b1 conserva le sue fonti.
-        select_main = any(s.tipo == "materiale" for s in sources) or (state.get("primary_explicit") and primary_source.tipo != "audio")
-        is_main = source.tipo == "audio" if primary_source.tipo == "audio" else source.id == primary
-        if select_main and not is_main:
+        if source.id not in in_segments:
             offset += cache[source.id]["duration"]
             continue
         for item in cache[source.id]["segments"]:

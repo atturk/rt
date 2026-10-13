@@ -46,5 +46,8 @@ Quando chiedi a Open WebUI informazioni su argomenti spiegati a lezione (es. *"C
 
 ## Sicurezza e vincoli di rete
 
-- **Loopback obbligatorio**: Per motivi di sicurezza l'endpoint `/api/v1/readonly` accetta connessioni esclusivamente da `127.0.0.1` / `::1` (il Mac locale).
+- **Loopback obbligatorio**: Per motivi di sicurezza l'endpoint `/api/v1/readonly` accetta connessioni esclusivamente da `127.0.0.1` / `::1` (il Mac locale). Le richieste che arrivano tramite Tailscale Serve o un proxy (header `X-Forwarded-For`, `X-Forwarded-Host`, `Forwarded`, `Tailscale-User-Login` e simili) sono rifiutate con 403 anche se il proxy le inoltra da `127.0.0.1`.
+- **Server nello schema**: lo schema OpenAPI dichiara come server `http://127.0.0.1:8765/api/v1` e i percorsi iniziano con `/readonly/...`, quindi Open WebUI chiama ad esempio `http://127.0.0.1:8765/api/v1/readonly/lessons/search`.
+- **Indice di ricerca**: l'indice FTS5 si riallinea a ogni ricerca; le lezioni modificate (pipeline, aggiornamento, ripristino, revisione) vengono reindicizzate e quelle eliminate tolte.
+- **Autenticazione disattivata**: con `rt web --no-auth` (solo sviluppo) la chiave non serve, come per l'API principale; il vincolo di loopback resta.
 - **Revoca immediata**: Dalla stessa schermata in Impostazioni puoi cliccare **Revoca** o **Rigenera chiave** in qualsiasi momento per invalidare la chiave precedente.
