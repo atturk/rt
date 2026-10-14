@@ -1,0 +1,248 @@
+<title>Immagini nel testo RT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: note in alto, poi quattro scene (striscia nella pagina, visore, modifica, export); token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c; --track:#e6e6e6;
+  --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff; --veil:rgb(10 10 10/.88);
+  --slide-h:#3a1850; --slide-bg:#ffffff; --slide-box:#f1e9f3; --slide-ln:#c9b7cf; --code:#f6f6f6;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --track:#3a3a3a;
+  --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; --veil:rgb(0 0 0/.9); --code:#202020; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a; --track:#3a3a3a;
+  --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717; --veil:rgb(0 0 0/.9); --code:#202020; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+h1{font-size:22px;margin:0;text-wrap:balance} h2{font-size:17px;margin:0 0 4px;text-wrap:balance}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:1080px;margin:0 auto}
+.meta{color:var(--mute);font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+.notes ul{margin:0;padding-left:20px;display:grid;gap:6px} .notes li{font-size:14px}
+.ask{background:var(--note);color:var(--note-fg);border-radius:8px;padding:8px 10px;font-size:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+svg{width:18px;height:18px;flex:none}
+.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.frame{background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-width:0}
+.scene{display:grid;gap:8px}
+.ib{position:relative;width:30px;height:30px;border:0;border-radius:8px;background:transparent;display:grid;place-items:center;color:var(--mute)}
+.ib:hover{background:var(--soft);color:var(--fg)}
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--tip);color:var(--tip-fg);font-size:12px;padding:3px 8px;border-radius:6px;white-space:nowrap;z-index:5}
+/* documento */
+.doc{padding:20px 20px 24px;display:grid;gap:12px;max-width:760px}
+.doc .title{font-size:21px;font-weight:700;line-height:1.25;text-wrap:balance}
+.doc .sub{color:var(--mute);font-size:13px;margin-top:-6px}
+.doc h3{margin:6px 0 0;font-size:18px;text-wrap:balance}
+.doc h4{margin:4px 0 0;font-size:15px}
+.doc p{margin:0;font-size:14px;color:var(--fg);max-width:65ch}
+/* striscia */
+.strip{display:grid;gap:6px}
+.strip-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
+.strip-head .name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
+.thumb{flex:none;width:136px;border:1px solid var(--border);border-radius:8px;padding:0;background:var(--slide-bg);overflow:hidden;scroll-snap-align:start;position:relative}
+.thumb:hover{border-color:var(--acc)}
+.thumb .pg{position:absolute;right:4px;bottom:4px;background:var(--tip);color:var(--tip-fg);font-size:10px;padding:0 5px;border-radius:4px;font-variant-numeric:tabular-nums}
+.strip.closed .thumbs{display:none}
+.strip.closed .chev{transform:rotate(-90deg)}
+.chev{transition:transform .15s}
+/* finta slide */
+.slide{aspect-ratio:16/10;width:100%;display:flex;flex-direction:column;background:var(--slide-bg)}
+.slide .h{background:var(--slide-h);height:24%;display:flex;align-items:center;padding:0 9%}
+.slide .h i{display:block;height:22%;width:62%;background:#fff;border-radius:2px;opacity:.9}
+.slide .b{flex:1;padding:7% 9%;display:grid;gap:6%;align-content:start}
+.slide .b i{display:block;height:5px;border-radius:2px;background:var(--slide-ln)}
+.slide .box{border:1px solid #c2416f;background:var(--slide-box);border-radius:3px;height:34%}
+/* modifica */
+.cm{font-family:var(--mono);font-size:12.5px;background:var(--code);border-radius:8px;padding:10px 12px;display:grid;gap:2px;overflow-x:auto}
+.cm .ln{white-space:pre;color:var(--mute)} .cm .ln b{color:var(--fg);font-weight:500}
+.cursor{display:inline-block;width:1.5px;height:1.1em;background:var(--acc);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.cursor{animation:none}.chev{transition:none}}
+/* export */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
+.reader{padding:14px;display:grid;gap:10px;align-content:start}
+.reader .slide{border:1px solid var(--border);border-radius:4px}
+/* visore */
+.viewer-demo{position:relative;background:var(--veil);border-radius:12px;padding:14px;display:grid;gap:10px;color:#fff;min-width:0}
+.vtop{display:flex;align-items:center;gap:8px;font-size:13px}
+.vtop .cap{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.9}
+.vtop .count{font-variant-numeric:tabular-nums;opacity:.75}
+.vb{width:34px;height:34px;border:0;border-radius:50%;background:rgb(255 255 255/.12);color:#fff;display:grid;place-items:center}
+.vb:hover{background:rgb(255 255 255/.24)}
+.vmain{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px}
+.vmain .slide{border-radius:6px;max-width:640px;margin:0 auto}
+.vstrip{display:flex;gap:6px;justify-content:center;overflow-x:auto}
+.vstrip button{flex:none;width:64px;border:2px solid transparent;border-radius:5px;padding:0;overflow:hidden;opacity:.55;background:none}
+.vstrip button.on{border-color:#fff;opacity:1}
+.overlay{position:fixed;inset:0;background:var(--veil);display:grid;place-items:center;z-index:20;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.overlay .viewer-demo{width:min(900px,100%);background:transparent}
+.hint{font-size:12px;color:var(--mute)}
+@media (max-width:520px){.vmain{grid-template-columns:minmax(0,1fr)}.vmain .vb{display:none}.thumb{width:112px}}
+</style>
+
+<div class="top">
+  <h1>Immagini nel testo</h1>
+  <span class="meta">Wireframe 4.2.5b3 · 14 ott 2026 · proposta da approvare</span>
+</div>
+
+<div class="wrap">
+  <section class="notes" aria-label="Note">
+    <span class="lbl">Cosa cambia</span>
+    <ul>
+      <li>Il file .md non cambia: restano normali link immagine <code>![…](assets/images/…)</code>, uno per riga, subito sotto il titolo dell'unità. Così ogni lettore markdown (Obsidian, Typora, GitHub, anteprima di VS Code) le vede.</li>
+      <li>Cambia solo come RT le <b>mostra</b>: le immagini consecutive diventano una striscia di miniature alta circa 90 px, che scorre di lato. Vale nell'editor, nella vista di sola lettura e nello Studio.</li>
+      <li>Clic su una miniatura: si apre il visore a schermo pieno, con frecce, tastiera (← → Esc), numero della pagina e nome del documento.</li>
+      <li>La freccina accanto al nome chiude la striscia in una riga sola. La scelta vale per tutte le lezioni e si ricorda.</li>
+      <li>In modifica, quando il cursore entra nella striscia, compaiono le righe markdown come per il resto del testo (come Obsidian). Si possono riordinare o cancellare a mano come oggi.</li>
+      <li>Le immagini singole incollate nel testo e i grafici di Arricchimento restano come sono.</li>
+    </ul>
+    <div class="ask">Prova a cliccare una miniatura e la freccina della striscia.</div>
+  </section>
+
+  <section class="scene" aria-labelledby="s1">
+    <h2 id="s1">1 · Pagina della lezione</h2>
+    <div class="frame">
+      <div class="doc">
+        <div class="title">Trombosi, tromboembolia e sepsi: basi fisiopatologiche, manifestazioni cliniche e principi di gestione</div>
+        <div class="sub">Patologia generale 2 · 14 ott · 22 unità · 1 h 37 min</div>
+        <h3>1. Trombosi: meccanismi patogenetici, fattori di rischio e tipologie</h3>
+        <div class="strip" id="strip">
+          <div class="strip-head">
+            <button class="ib" id="toggle" data-tip="Chiudi le immagini" aria-expanded="true" aria-controls="thumbs">
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span class="name">4 pagine · 4. Emostasi coagulazione trombosi embolia.pdf</span>
+          </div>
+          <div class="thumbs" id="thumbs"></div>
+        </div>
+        <h4>1.1 Un quarto sistema di difesa tissutale</h4>
+        <p>L'emostasi si aggiunge a danno cellulare, infiammazione e immunità come risposta dell'organismo al danno, in questo caso vascolare. La stessa cascata che previene l'emorragia, se disregolata, causa trombosi ed embolia.</p>
+        <h4>1.2 Le tre fasi dell'emostasi</h4>
+        <p>Spasmo vascolare, tappo piastrinico e coagulazione si susseguono in pochi minuti…</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" aria-labelledby="s2">
+    <h2 id="s2">2 · Visore</h2>
+    <p class="hint">Si apre al clic su una miniatura, sopra tutta la pagina. Sul telefono si scorre col dito e le frecce spariscono.</p>
+    <div class="viewer-demo" id="viewerStatic"></div>
+  </section>
+
+  <section class="scene" aria-labelledby="s3">
+    <h2 id="s3">3 · In modifica, cursore dentro la striscia</h2>
+    <div class="frame"><div class="doc">
+      <h3>1. Trombosi: meccanismi patogenetici, fattori di rischio e tipologie</h3>
+      <div class="cm" aria-label="Righe markdown">
+        <span class="ln"><b>![4. Emostasi coagulazione trombosi embolia.pdf, pagina 3](assets/images/9f1c2ab0.png)</b><span class="cursor"></span></span>
+        <span class="ln">![4. Emostasi coagulazione trombosi embolia.pdf, pagina 4](assets/images/3b77e10d.png)</span>
+        <span class="ln">![4. Emostasi coagulazione trombosi embolia.pdf, pagina 5](assets/images/c04d5a91.png)</span>
+        <span class="ln">![4. Emostasi coagulazione trombosi embolia.pdf, pagina 6](assets/images/71ee09fa.png)</span>
+      </div>
+      <p class="hint">Uscito il cursore, le righe tornano striscia. Nessun altro controllo nuovo.</p>
+    </div></div>
+  </section>
+
+  <section class="scene" aria-labelledby="s4">
+    <h2 id="s4">4 · Export markdown</h2>
+    <div class="cols">
+      <div class="frame">
+        <div class="reader">
+          <span class="lbl">File .md esportato</span>
+          <div class="cm">
+<span class="ln">## 1. Trombosi: meccanismi patogenetici…</span>
+<span class="ln"> </span>
+<span class="ln">![4. Emostasi…, pagina 3](assets/images/9f1c2ab0.png)</span>
+<span class="ln"> </span>
+<span class="ln">![4. Emostasi…, pagina 4](assets/images/3b77e10d.png)</span>
+<span class="ln"> </span>
+<span class="ln">…</span>
+<span class="ln"> </span>
+<span class="ln">### 1.1 Un quarto sistema di difesa tissutale</span>
+          </div>
+          <p class="hint">Una riga vuota fra le immagini: ogni lettore le mette una sotto l'altra, a tutta larghezza, senza incollarle sulla stessa riga. Le immagini sono nella cartella assets/images dello zip.</p>
+        </div>
+      </div>
+      <div class="frame">
+        <div class="reader" id="readerDemo">
+          <span class="lbl">Come lo vede un lettore markdown</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-label="Visore immagini">
+  <div class="viewer-demo" id="viewerLive"></div>
+</div>
+
+<script>
+const N = 4, FIRST = 3, DOC = '4. Emostasi coagulazione trombosi embolia.pdf'
+const slide = (i) => `<div class="slide" aria-hidden="true"><div class="h"><i style="width:${50 + (i * 9) % 30}%"></i></div><div class="b">${
+  i % 2 ? '<i style="width:70%"></i><i style="width:84%"></i><i style="width:58%"></i><div class="box"></div>'
+        : '<div class="box"></div><i style="width:76%"></i><i style="width:64%"></i>'}</div></div>`
+const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`
+const thumbs = document.getElementById('thumbs')
+for (let i = 0; i < N; i++) {
+  const b = document.createElement('button')
+  b.className = 'thumb'; b.setAttribute('aria-label', `Apri pagina ${FIRST + i}`)
+  b.innerHTML = slide(i) + `<span class="pg">p. ${FIRST + i}</span>`
+  b.onclick = () => openViewer(i)
+  thumbs.appendChild(b)
+}
+const strip = document.getElementById('strip'), toggle = document.getElementById('toggle')
+let closed = false
+try { closed = localStorage.getItem('rt-wf-strip') === '1' } catch (e) {}
+const applyClosed = () => {
+  strip.classList.toggle('closed', closed)
+  toggle.setAttribute('aria-expanded', String(!closed))
+  toggle.dataset.tip = closed ? 'Mostra le immagini' : 'Chiudi le immagini'
+}
+applyClosed()
+toggle.onclick = () => { closed = !closed; applyClosed(); try { localStorage.setItem('rt-wf-strip', closed ? '1' : '0') } catch (e) {} }
+
+function viewer(el, index, live) {
+  el.innerHTML = `
+    <div class="vtop"><span class="cap">${DOC}, pagina ${FIRST + index}</span><span class="count">${index + 1} / ${N}</span>
+      <button class="vb" data-act="close" aria-label="Chiudi">${icon('M18 6 6 18M6 6l12 12')}</button></div>
+    <div class="vmain"><button class="vb" data-act="prev" aria-label="Precedente">${icon('m15 18-6-6 6-6')}</button>
+      ${slide(index)}<button class="vb" data-act="next" aria-label="Successiva">${icon('m9 18 6-6-6-6')}</button></div>
+    <div class="vstrip">${Array.from({ length: N }, (_, i) => `<button class="${i === index ? 'on' : ''}" data-go="${i}" aria-label="Pagina ${FIRST + i}">${slide(i)}</button>`).join('')}</div>`
+  el.onclick = (e) => {
+    const t = e.target.closest('button'); if (!t) return
+    if (t.dataset.act === 'close') { if (live) closeViewer(); return }
+    if (t.dataset.act === 'prev') index = (index + N - 1) % N
+    if (t.dataset.act === 'next') index = (index + 1) % N
+    if (t.dataset.go) index = Number(t.dataset.go)
+    viewer(el, index, live)
+  }
+  el.dataset.index = index
+}
+viewer(document.getElementById('viewerStatic'), 1, false)
+const overlay = document.getElementById('overlay'), live = document.getElementById('viewerLive')
+function openViewer(i) { viewer(live, i, true); overlay.hidden = false; live.querySelector('[data-act=close]').focus() }
+function closeViewer() { overlay.hidden = true }
+overlay.addEventListener('click', (e) => { if (e.target === overlay) closeViewer() })
+document.addEventListener('keydown', (e) => {
+  if (overlay.hidden) return
+  const i = Number(live.dataset.index)
+  if (e.key === 'Escape') closeViewer()
+  if (e.key === 'ArrowLeft') viewer(live, (i + N - 1) % N, true)
+  if (e.key === 'ArrowRight') viewer(live, (i + 1) % N, true)
+})
+const reader = document.getElementById('readerDemo')
+for (let i = 0; i < 2; i++) reader.insertAdjacentHTML('beforeend', slide(i))
+reader.insertAdjacentHTML('beforeend', '<p class="hint">…e le altre due sotto.</p>')
+</script>
