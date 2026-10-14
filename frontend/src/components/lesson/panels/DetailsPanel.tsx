@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, Trash2, Tags, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, Trash2, Tags } from 'lucide-react'
+import { useId, useState, type FormEvent } from 'react'
 import { useClassifier } from '@/api/classifier'
 import { useStudyNotes } from '@/api/studyNotes'
 import { useNavigate } from 'react-router'
@@ -23,7 +23,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
-import { IconButton } from '@/components/ui/icon-button'
+import { LinkMenuButton } from '@/components/ui/menu'
+import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -31,6 +32,7 @@ import { PHASE_LABELS, PHASE_ORDER, STATE_LABELS, formatCost, formatDateTime, ph
 import { formatDuration } from '@/lib/lessonsPage'
 import { CostPanel } from '../CostPanel'
 import { JobsPanel } from '../JobsPanel'
+import { SourcesSection } from './SourcesSection'
 
 type Section = Schemas['DocumentSection']
 type Phase = 'prepare' | 'outline' | 'rewrite' | 'review' | 'build'
@@ -69,11 +71,11 @@ function Validation({ title, report }: { title: string; report: Record<string, u
         {title === 'outline' ? 'Validazione scaletta' : 'Validazione bozza'}
         <Badge tone={valid ? 'success' : 'danger'}>{valid ? 'valida' : 'non valida'}</Badge>
       </summary>
-      <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1">
+      <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] gap-x-3 gap-y-1">
         {rows.map(([key, value]) => (
           <div key={key} className="contents">
-            <dt className="text-muted-foreground">{VALIDATION_LABELS[key] ?? key}</dt>
-            <dd className="text-right tabular-nums">{formatValue(value)}</dd>
+            <dt className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">{VALIDATION_LABELS[key] ?? key}</dt>
+            <dd className="min-w-0 text-right tabular-nums [overflow-wrap:anywhere]">{formatValue(value)}</dd>
           </div>
         ))}
       </dl>
@@ -190,20 +192,6 @@ export function DetailsPanel({
   const [forcePhase, setForcePhase] = useState<Record<string, boolean>>({})
   const [confirmValidate, setConfirmValidate] = useState<Phase | null>(null)
 
-  const [openPhaseMenu, setOpenPhaseMenu] = useState<Phase | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!openPhaseMenu) return
-    const onPointer = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setOpenPhaseMenu(null)
-      }
-    }
-    document.addEventListener('pointerdown', onPointer)
-    return () => document.removeEventListener('pointerdown', onPointer)
-  }, [openPhaseMenu])
-
   const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
@@ -303,6 +291,10 @@ export function DetailsPanel({
 
   return (
     <div className="flex flex-col gap-4 text-body" data-testid="details-panel">
+      {/* Sezione Fonti e Versioni */}
+      <SourcesSection lessonId={l.id} />
+      <hr className="border-border" />
+
       {/* Campi metadati */}
       <div className="grid grid-cols-2 gap-2.5">
         <div className="col-span-2 flex flex-col gap-1">
@@ -320,12 +312,13 @@ export function DetailsPanel({
             }}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="details-subject" className="text-meta text-muted-foreground">
             Materia
           </label>
           <Select
             id="details-subject"
+            className="min-w-0"
             value={materia}
             disabled={busy}
             onChange={(e) => {
@@ -340,7 +333,7 @@ export function DetailsPanel({
             ))}
           </Select>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="details-datetime" className="text-meta text-muted-foreground">
             Data e ora
           </label>
@@ -373,7 +366,7 @@ export function DetailsPanel({
       </div>
 
       <p className="text-meta text-muted-foreground">
-        Cartella: <span className="font-mono text-foreground">{l.folder_name}</span>
+        Cartella: <span className="font-mono text-foreground [overflow-wrap:anywhere]">{l.folder_name}</span>
       </p>
 
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
@@ -402,31 +395,31 @@ export function DetailsPanel({
         </dd>
       </dl>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2">
         <Button
           variant="outline"
-          className="h-auto w-full justify-start gap-3 py-3"
+          className="h-auto w-full min-w-0 justify-start gap-3 overflow-hidden py-3"
           onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}
           data-testid="open-classifier-panel"
         >
-          <Tags size={18} aria-hidden />
-          <span className="flex flex-col items-start min-w-0">
-            <span className="text-body font-medium">Classificatore</span>
-            <span className="text-meta text-muted-foreground truncate">
+          <Tags size={18} className="shrink-0" aria-hidden />
+          <span className="flex min-w-0 flex-1 flex-col items-start">
+            <span className="max-w-full truncate text-body font-medium">Classificatore</span>
+            <span className="max-w-full text-meta text-muted-foreground truncate">
               {classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}
             </span>
           </span>
         </Button>
         <Button
           variant="outline"
-          className="relative h-auto w-full justify-start gap-3 py-3"
+          className="relative h-auto w-full min-w-0 justify-start gap-3 overflow-hidden py-3"
           onClick={() => navigate(`/lezioni/${l.id}?panel=note`)}
           data-testid="open-study-notes-panel"
         >
-          <MessageSquare size={18} aria-hidden />
-          <span className="flex flex-col items-start min-w-0">
-            <span className="text-body font-medium flex items-center gap-1.5">
-              Verifiche e domande
+          <MessageSquare size={18} className="shrink-0" aria-hidden />
+          <span className="flex min-w-0 flex-1 flex-col items-start">
+            <span className="flex max-w-full items-center gap-1.5 text-body font-medium">
+              <span className="truncate">Verifiche e domande</span>
               {changedCount > 0 && (
                 <span
                   className="size-2 rounded-full bg-warning inline-block"
@@ -435,7 +428,7 @@ export function DetailsPanel({
                 />
               )}
             </span>
-            <span className="text-meta text-muted-foreground truncate">
+            <span className="max-w-full text-meta text-muted-foreground truncate">
               {notesCount} {notesCount === 1 ? 'voce' : 'voci'}
               {changedCount > 0 ? ` · ${changedCount} da guardare` : ''}
             </span>
@@ -505,9 +498,6 @@ export function DetailsPanel({
               else statusLabel = 'aggiornato'
             }
 
-            const isMenuOpen = openPhaseMenu === phase
-            const isOptionsOpen = openOptionsPhase === phase
-
             return (
               <li key={phase} className="flex flex-col py-1.5" data-phase-row={phase} data-status={p.status}>
                 <div className="flex items-center gap-2.5">
@@ -516,146 +506,26 @@ export function DetailsPanel({
                   <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" title={statusLabel}>
                     {statusLabel}
                   </span>
-                  {phase !== 'build' && <div className="relative">
-                    <IconButton
+                  {phase !== 'build' && (
+                    <LinkMenuButton
                       label={`Azioni su ${PHASE_LABELS[phase] ?? phase}`}
                       icon={MoreHorizontal}
-                      className="size-7"
-                      active={isMenuOpen}
-                      disabled={busy}
-                      onClick={() => setOpenPhaseMenu(isMenuOpen ? null : phase)}
+                      buttonClassName="size-7 min-w-7"
+                      unavailable={busy ? 'Lavorazione in corso' : null}
+                      items={[
+                        { label: 'Riesegui', onSelect: () => runPhase(phase) },
+                        ...(phase === 'outline' || phase === 'rewrite' || phase === 'review'
+                          ? [{ label: 'Riesegui con opzioni…', onSelect: () => setOpenOptionsPhase(phase) }]
+                          : []),
+                        {
+                          label: 'Segna come valida',
+                          unavailable: VALIDATABLE_STATUSES.has(p.status) ? null : 'La fase non è parziale né da aggiornare',
+                          onSelect: () => setConfirmValidate(phase),
+                        },
+                      ]}
                     />
-                    {isMenuOpen && (
-                      <div
-                        ref={menuRef}
-                        role="menu"
-                        aria-label={`Azioni su ${PHASE_LABELS[phase] ?? phase}`}
-                        className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border bg-card p-1 text-body shadow-panel"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="flex min-h-8 w-full items-center rounded-md px-2.5 text-left hover:bg-muted"
-                          onClick={() => {
-                            setOpenPhaseMenu(null)
-                            runPhase(phase)
-                          }}
-                        >
-                          Riesegui
-                        </button>
-                        {(phase === 'outline' || phase === 'rewrite' || phase === 'review') && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            className="flex min-h-8 w-full items-center rounded-md px-2.5 text-left hover:bg-muted"
-                            onClick={() => {
-                              setOpenPhaseMenu(null)
-                              setOpenOptionsPhase(phase)
-                            }}
-                          >
-                            Riesegui con opzioni…
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={!VALIDATABLE_STATUSES.has(p.status)}
-                          className="flex min-h-8 w-full items-center rounded-md px-2.5 text-left hover:bg-muted disabled:opacity-50"
-                          onClick={() => {
-                            setOpenPhaseMenu(null)
-                            setConfirmValidate(phase)
-                          }}
-                        >
-                          Segna come valida
-                        </button>
-                      </div>
-                    )}
-                  </div>}
+                  )}
                 </div>
-
-                {/* Scheda opzioni avanzate in linea */}
-                {isOptionsOpen && (
-                  <Card className="my-2 flex flex-col gap-2.5 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-body font-semibold">
-                        Riesegui {PHASE_LABELS[phase].toLowerCase()}
-                      </span>
-                      <IconButton
-                        label="Chiudi opzioni"
-                        icon={X}
-                        className="size-6"
-                        onClick={() => setOpenOptionsPhase(null)}
-                      />
-                    </div>
-
-                    {(phase === 'rewrite' || phase === 'review') && unitsFor(phase).length > 0 && (
-                      <fieldset className="max-h-40 overflow-y-auto rounded-md border p-2 text-meta">
-                        <legend className="px-1 text-muted-foreground">Unità (nessuna = tutte)</legend>
-                        {unitsFor(phase).map((u) => {
-                          const isChecked = (selectedUnits[phase] ?? []).includes(u.id)
-                          return (
-                            <label key={u.id} className="flex items-center gap-2 py-0.5">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) =>
-                                  setSelectedUnits((old) => {
-                                    const current = old[phase] ?? []
-                                    return {
-                                      ...old,
-                                      [phase]: e.target.checked
-                                        ? [...current, u.id]
-                                        : current.filter((id) => id !== u.id),
-                                    }
-                                  })
-                                }
-                              />
-                              <span className="truncate">
-                                {u.id} {u.title}
-                              </span>
-                            </label>
-                          )
-                        })}
-                      </fieldset>
-                    )}
-
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor={`extra-${phase}`} className="text-meta text-muted-foreground">
-                        Istruzioni aggiuntive
-                      </label>
-                      <Textarea
-                        id={`extra-${phase}`}
-                        rows={3}
-                        className="p-2 text-meta"
-                        value={extraPrompts[phase] ?? ''}
-                        onChange={(e) => setExtraPrompts((old) => ({ ...old, [phase]: e.target.value }))}
-                        placeholder="Facoltativo"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <label className="flex items-center gap-1.5 text-meta text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={forcePhase[phase] ?? false}
-                          onChange={(e) => setForcePhase((old) => ({ ...old, [phase]: e.target.checked }))}
-                        />
-                        anche se è già valida
-                      </label>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => runPhase(phase, forcePhase[phase] ?? false)}
-                      >
-                        <Play className="size-3" />
-                        Riesegui
-                        {(selectedUnits[phase] ?? []).length > 0
-                          ? ` ${(selectedUnits[phase] ?? []).length} unità`
-                          : ''}
-                      </Button>
-                    </div>
-                  </Card>
-                )}
 
                 {p.manual_validation && (
                   <p className="mt-0.5 text-meta text-muted-foreground" data-testid={`manual-validation-${phase}`}>
@@ -675,6 +545,90 @@ export function DetailsPanel({
             )
           })}
         </ul>
+
+        {/* Opzioni avanzate della fase: popup centrale, così l'elenco delle unità non esce dal pannello. */}
+        {openOptionsPhase && (() => {
+          const phase = openOptionsPhase
+          return (
+            <Modal
+              open
+              onClose={() => setOpenOptionsPhase(null)}
+              title={`Riesegui ${PHASE_LABELS[phase].toLowerCase()}`}
+              testId="phase-options-dialog"
+              className="w-[min(440px,calc(100vw-32px))]"
+            >
+              <div className="mt-3 flex min-w-0 flex-col gap-2.5">
+                {(phase === 'rewrite' || phase === 'review') && unitsFor(phase).length > 0 && (
+                  <fieldset className="min-w-0 max-h-60 overflow-y-auto rounded-md border p-2 text-meta">
+                    <legend className="px-1 text-muted-foreground">Unità (nessuna = tutte)</legend>
+                    {unitsFor(phase).map((u) => {
+                      const isChecked = (selectedUnits[phase] ?? []).includes(u.id)
+                      return (
+                        <label key={u.id} className="flex min-w-0 items-center gap-2 py-0.5" title={`${u.id} ${u.title}`}>
+                          <input
+                            type="checkbox"
+                            className="shrink-0"
+                            checked={isChecked}
+                            onChange={(e) =>
+                              setSelectedUnits((old) => {
+                                const current = old[phase] ?? []
+                                return {
+                                  ...old,
+                                  [phase]: e.target.checked
+                                    ? [...current, u.id]
+                                    : current.filter((id) => id !== u.id),
+                                }
+                              })
+                            }
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {u.id} {u.title}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </fieldset>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <label htmlFor={`extra-${phase}`} className="text-meta text-muted-foreground">
+                    Istruzioni aggiuntive
+                  </label>
+                  <Textarea
+                    id={`extra-${phase}`}
+                    rows={3}
+                    className="p-2 text-meta"
+                    value={extraPrompts[phase] ?? ''}
+                    onChange={(e) => setExtraPrompts((old) => ({ ...old, [phase]: e.target.value }))}
+                    placeholder="Facoltativo"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <label className="flex items-center gap-1.5 text-meta text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={forcePhase[phase] ?? false}
+                      onChange={(e) => setForcePhase((old) => ({ ...old, [phase]: e.target.checked }))}
+                    />
+                    anche se è già valida
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => runPhase(phase, forcePhase[phase] ?? false)}
+                  >
+                    <Play className="size-3" />
+                    Riesegui
+                    {(selectedUnits[phase] ?? []).length > 0
+                      ? ` ${(selectedUnits[phase] ?? []).length} unità`
+                      : ''}
+                  </Button>
+                </div>
+              </div>
+            </Modal>
+          )
+        })()}
 
         {phases.data?.validation_error && <Alert tone="danger">{phases.data.validation_error}</Alert>}
         <Validation title="outline" report={phases.data?.outline_validation} />

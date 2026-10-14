@@ -261,7 +261,7 @@ def find_stale_questions(lesson_dir: str) -> List[Any]:
 # aperte passano da job (rt/services/api_jobs.py).
 # ---------------------------------------------------------------------------
 
-def question_view(question, reveal: bool = False, outcome=None) -> dict:
+def question_view(question, reveal: bool = False, outcome=None, *, lesson_dir=None) -> dict:
     """Domanda serializzabile; la risposta corretta del quiz solo dopo aver risposto."""
     data = {
         "id": question.id, "type": question.type.value, "custom_type": question.custom_type, "unit_ids": list(question.unit_ids),
@@ -269,6 +269,8 @@ def question_view(question, reveal: bool = False, outcome=None) -> dict:
         "status": question.status.value, "outcome": outcome,
         "discard_reasons": question.discard_reasons, "comment": question.comment,
     }
+    from rt.services.previous_study import is_previous
+    data["precedente"] = bool(lesson_dir and is_previous(lesson_dir, question.unit_ids, question.created_at))
     if reveal:
         data["correct_index"] = question.correct_index
         data["explanation"] = question.pregenerated_material
@@ -278,7 +280,7 @@ def question_view(question, reveal: bool = False, outcome=None) -> dict:
 
 def question_resume_view(lesson_dir, question, actor=None):
     """Riprende una valutazione salvata o un job ancora in corso, senza consumare la domanda."""
-    result = question_view(question)
+    result = question_view(question, lesson_dir=lesson_dir)
     if question.type == RecallQuestionType.QUIZ or question.status != RecallQuestionStatus.ASKED:
         return result
     from rt.pipeline.recall import load_recall_bank
@@ -330,7 +332,7 @@ def recall_history(lesson_dir: str) -> dict:
     from rt.pipeline.recall import load_recall_bank
     bank = load_recall_bank(lesson_dir)
     outcomes = _latest_outcomes(bank)
-    questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id)) for q in bank.questions]
+    questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id), lesson_dir=lesson_dir) for q in bank.questions]
     return {"questions": questions, "answers": [a.model_dump(mode="json") for a in bank.answers]}
 
 
@@ -349,7 +351,7 @@ def question_list(lesson_dir: str, reveal: bool = False) -> dict:
         titles = {}
     questions = []
     for q in bank.questions:
-        view = question_view(q, reveal=reveal or q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id))
+        view = question_view(q, reveal=reveal or q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id), lesson_dir=lesson_dir)
         view.update(created_at=q.created_at, classifier_level=q.classifier_level, vote=votes.get(q.id))
         questions.append(view)
     used = {uid for q in bank.questions for uid in q.unit_ids}
@@ -449,7 +451,7 @@ def answer_quiz(lesson_dir: str, question_id: str, choice: int) -> dict:
     answer = record_recall_answer(lesson_dir, question.id, question.options[choice], is_voice=False,
                                   evaluation=question.pregenerated_material,
                                   outcome='corretta' if question.correct_index == choice else 'sbagliata')
-    return {"question": question_view(find_question(lesson_dir, question_id), reveal=True, outcome=answer.outcome),
+    return {"question": question_view(find_question(lesson_dir, question_id), reveal=True, outcome=answer.outcome, lesson_dir=lesson_dir),
             "correct": question.correct_index == choice}
 
 
@@ -478,4 +480,4 @@ def answer_dont_know(lesson_dir: str, question_id: str) -> dict:
     if question is None or question.type != RecallQuestionType.QUIZ:
         raise ValueError('Quiz inesistente.')
     answer = record_recall_answer(lesson_dir, question_id, '[Non lo so]', evaluation=question.pregenerated_material)
-    return {'question': question_view(find_question(lesson_dir, question_id), reveal=True, outcome=answer.outcome), 'correct': False}
+    return {'question': question_view(find_question(lesson_dir, question_id), reveal=True, outcome=answer.outcome, lesson_dir=lesson_dir), 'correct': False}

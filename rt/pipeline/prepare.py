@@ -36,10 +36,10 @@ from rt.storage import fs
 def run_prepare(lesson_dir: str, force: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione (eventi su ctx, se dato)."""
     with phase_scope(ctx, "prepare") as scope:
-        return scope.complete(_run_prepare(lesson_dir, force=force))
+        return scope.complete(_run_prepare(lesson_dir, force=force, ctx=ctx))
 
 
-def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
+def _run_prepare(lesson_dir: str, force: bool = False, ctx=None) -> Dict[str, Any]:
     """Esegue la fase deterministica di preparazione della lezione."""
     if not fs.isdir(lesson_dir):
         raise FileNotFoundError(f"Directory della lezione non trovata: '{lesson_dir}'")
@@ -49,6 +49,8 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
         raise FileNotFoundError(f"File critico 'info.yaml' mancante in '{lesson_dir}'")
 
     info = read_info_yaml(yaml_path)
+    from rt.core.sources import load_sources
+    sources = load_sources(lesson_dir)
     current_state_raw = info.get("fase_corrente", "") or info.get("stato", "")
     date_val = info.get("data", "0000-00-00")
     subject_val = info.get("materia", "MATERIA")
@@ -96,9 +98,23 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
     
     source_type = None
     source_path = None
+    managed_segments = None
+    from rt.pipeline.source_update import _read_state
+    has_source_cache = fs.isfile(lesson_path(lesson_dir, "source_update.json")) and bool(_read_state(lesson_dir)["sources"])
+    if has_source_cache and fs.isfile(segments_json_path):
+        # Prepare non incorpora fonti pendenti e non rigenera gli ID della lezione
+        # espansa, neppure con force: l'aggiornamento usa il comando dedicato.
+        from rt.core.segments import load_segments_json
+        managed_segments = load_segments_json(segments_json_path).segments
+    elif sources and not fs.isfile(segments_json_path) and (all(s.tipo != "audio" for s in sources) or not audio_file):
+        from rt.pipeline.source_update import prepare_source_update
+        managed_segments = prepare_source_update(lesson_dir, mock=bool(ctx and ctx.force_mock), ctx=ctx)["segments"]
+    if managed_segments is not None:
+        source_type = "sources"
+        source_path = lesson_path(lesson_dir, "sources.json")
     
     for jc in json_candidates:
-        if fs.isfile(jc) and fs.getsize(jc) > 10:
+        if not source_path and fs.isfile(jc) and fs.getsize(jc) > 10:
             source_type = "json"
             source_path = jc
             break
@@ -114,7 +130,9 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
             )
             
     # 2. Parsing deterministico dei segmenti
-    if source_type == "json":
+    if source_type == "sources":
+        segments = managed_segments
+    elif source_type == "json":
         segments = parse_segments_from_json(source_path)
         # Se esiste anche il Markdown, verifichiamo la coerenza per trasparenza diagnostica
         if fs.isfile(md_path):
@@ -135,12 +153,19 @@ def _run_prepare(lesson_dir: str, force: bool = False) -> Dict[str, Any]:
         raise ValueError("Nessun segmento estratto dalla sorgente di trascrizione.")
         
     # 3. Salvataggio atomico di segments.json (Source of truth derivata dal JSON sorgente)
-    save_segments_json(segments, segments_json_path, lesson_id=lesson_id)
+    if source_type == "sources":
+        from rt.pipeline.source_update import _read_state
+        state = _read_state(lesson_dir)
+        # Conta soltanto fonti già usate: nuove fonti restano pendenti.
+        duration = sum(state["sources"][sid]["duration"] for sid in state.get("used", []) if sid in state["sources"])
+        save_segments_json(segments, segments_json_path, lesson_id=lesson_id, audio_duration_seconds=duration)
+    else:
+        save_segments_json(segments, segments_json_path, lesson_id=lesson_id)
     
     # 4. Esportazione atomica di transcript_normalized.md
     export_normalized_transcript_md(segments, norm_md_path)
     
-    duration = segments[-1].end_seconds if segments else 0.0
+    duration = duration if source_type == "sources" else (segments[-1].end_seconds if segments else 0.0)
     
     # 5. Registrazione fingerprint e invalidazione mirata downstream
     source_fp = compute_source_fingerprint(lesson_dir, "prepare")

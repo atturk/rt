@@ -139,14 +139,34 @@ def _with_json_reminder(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _cache_lesson_prefix(messages, provider, model, enabled):
-    """Marca solo il contesto fisso, senza alterare i messaggi dei fallback."""
+MAX_CACHE_BREAKPOINTS = 4
+
+
+def _cache_lesson_prefix(messages, provider, model, enabled, parts=None):
+    """Prefisso crescente in blocchi (fisso, poi una unità precedente per blocco): la cache
+    Anthropic legge solo ai confini di blocco. Marcatori sul blocco fisso e sull'ultimo."""
     clean_model = model.lower().strip().lstrip("~")
     if not enabled or provider != "openrouter" or not (
         clean_model.startswith("anthropic/") or clean_model.startswith("google/gemini")):
         return messages
+    if len(messages) < 2:
+        return messages
     out = [dict(message) for message in messages]
-    out[1]["content"] = [{"type": "text", "text": out[1]["content"], "cache_control": {"type": "ephemeral"}}]
+    content = out[1]["content"]
+    if isinstance(content, str):
+        # Stesso testo dei fallback, soltanto diviso nei blocchi dichiarati.
+        texts = list(parts) if parts and "".join(parts) == content else [content]
+        blocks = [{"type": "text", "text": text} for text in texts if text]
+    else:
+        blocks = [dict(block) for block in content]
+    used = sum(1 for message in out if isinstance(message.get("content"), list)
+               for block in message["content"] if isinstance(block, dict) and "cache_control" in block)
+    text_blocks = [block for block in blocks if block.get("type") == "text"]
+    marks = [text_blocks[0], text_blocks[-1]] if len(text_blocks) > 1 else text_blocks
+    budget = MAX_CACHE_BREAKPOINTS - used
+    for block in (marks[-budget:] if budget > 0 else []):
+        block["cache_control"] = {"type": "ephemeral"}
+    out[1]["content"] = blocks
     return out
 
 
@@ -236,6 +256,9 @@ class LLMClient:
         - Monitor a terminale con streaming live, costi stimati e redazione automatica dei secret;
         - Validazione Pydantic con meccanismo di auto-repair.
         """
+        self.last_usage = None
+        self.last_context_model = None
+        self.last_max_tokens = None
         job_routing_cfg = self._get_job_routing_config(job_name)
         primary_cfg = job_routing_cfg.primary
 
@@ -363,8 +386,9 @@ class LLMClient:
             f"Nessun commento prima o dopo il JSON."
         )
         messages = [{"role": "system", "content": full_system}]
+        prefix_parts = getattr(prompt_prefix, "parts", None)
         if prompt_prefix:
-            messages.append({"role": "user", "content": prompt_prefix})
+            messages.append({"role": "user", "content": str(prompt_prefix)})
         if history:
             messages.extend(history)
         if image_data_url:
@@ -497,7 +521,7 @@ class LLMClient:
                     model=model_name,
                     messages=_cache_lesson_prefix(
                         _with_json_reminder(messages) if schema_reminder else list(messages),
-                        provider_name, model_name, bool(prompt_prefix)),
+                        provider_name, model_name, bool(prompt_prefix), prefix_parts),
                     max_tokens=route.max_tokens,
                     thinking=(True if force_thinking_override else route.thinking),
                     reasoning_effort=route.reasoning_effort,
@@ -1011,6 +1035,9 @@ class LLMClient:
                         )
                         self.router.record_success(job_name, used_fallback=used_dedicated_fallback)
 
+                        self.last_usage = dict(final_usage) if final_usage else None
+                        self.last_context_model = {"provider": provider_name, "model": resolved_model or model_name}
+                        self.last_max_tokens = route.max_tokens
                         return validated_obj
 
                     except RunCancelled:
@@ -1071,6 +1098,9 @@ class LLMClient:
                             break
 
                 # Anche una risposta rifiutata dal validatore ha consumato token.
+                self.last_usage = dict(final_usage) if final_usage else None
+                self.last_context_model = {"provider": provider_name, "model": resolved_model or model_name}
+                self.last_max_tokens = route.max_tokens
                 if final_usage:
                     cached_t = cached_prompt_tokens(final_usage)
                     in_t = final_usage.get("prompt_tokens")
@@ -1262,7 +1292,7 @@ class LLMClient:
         model_name = response_model.__name__
 
         if model_name == "Outline":
-            seg_matches = re.findall(r"seg_\d{6}", prompt)
+            seg_matches = list(dict.fromkeys(re.findall(r"\[(seg_\d{6,})\]", prompt)))
             first_seg = seg_matches[0] if seg_matches else "seg_000001"
             last_seg = seg_matches[-1] if len(seg_matches) > 1 else first_seg
 

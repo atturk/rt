@@ -2,6 +2,7 @@ import { Pause, Play } from 'lucide-react'
 import { useEffect, useState, type CSSProperties } from 'react'
 
 import { Tooltip } from '@/components/ui/tooltip'
+import { pageArrowAllowed } from '@/lib/lessonNavigationKeys'
 import { formatTime, type TimedSection } from '@/lib/audio'
 import { clampRate, formatSpeed, nextSpeed, SPEEDS } from '@/lib/playbackRate'
 import { usePreference } from '@/lib/preferences'
@@ -17,11 +18,13 @@ const SPEED_HINT = `Velocità: ${SPEEDS.map(formatSpeed).join(' · ')}`
  * Frecce sulla barra: ±5 secondi.
  */
 // `sections` resta nell'interfaccia: i timecode delle unità li gestisce il documento.
-export function AudioPlayer({ lessonId, inline = false, className }: {
+export function AudioPlayer({ lessonId, inline = false, panelOpen = false, className }: {
   lessonId: number
   sections?: TimedSection[]
   /** Dentro la pagina (revisione) invece che fissa in basso. */
   inline?: boolean
+  /** Pannello laterale aperto: da md in su la barra resta centrata nella colonna del testo, non sotto il pannello. */
+  panelOpen?: boolean
   className?: string
 }) {
   const { audioRef, currentTime, setCurrentTime, seek } = useLessonAudio()
@@ -33,13 +36,23 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
   const known = Number.isFinite(duration) && duration > 0
   const [hover, setHover] = useState(false)
 
-  // Con il mouse sul riquadro, le frecce saltano di 5 secondi (non mentre si scrive nel testo).
+  // Sul computer le frecce saltano di 5 secondi in tutta la pagina (non mentre si scrive nel testo o in un menu);
+  // sui dispositivi senza mouse solo con il riquadro sotto il puntatore, come prima.
+  const [pointer, setPointer] = useState(() => !!window.matchMedia?.('(hover: hover)').matches)
   useEffect(() => {
-    if (!hover) return
+    const media = window.matchMedia?.('(hover: hover)')
+    if (!media) return
+    const change = () => setPointer(media.matches)
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [])
+  useEffect(() => {
+    if (!hover && !pointer) return
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return
       const target = event.target as HTMLElement | null
       if (target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
+      if (!hover && !pageArrowAllowed(event)) return
       const audio = audioRef.current
       if (!audio) return
       event.preventDefault()
@@ -47,7 +60,7 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [hover, audioRef, seek])
+  }, [hover, pointer, audioRef, seek])
 
   // La velocità vale anche dopo un nuovo caricamento dell'audio (defaultPlaybackRate).
   useEffect(() => {
@@ -83,6 +96,7 @@ export function AudioPlayer({ lessonId, inline = false, className }: {
           : [
               'fixed bottom-4 left-1/2 z-20 -translate-x-1/2 shadow-panel',
               'md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)]',
+              panelOpen && 'md:left-[calc(50%+var(--rail-width)/2-12rem)] md:max-w-[calc(100vw-var(--rail-width)-24rem-32px)]',
               'max-md:bottom-[calc(76px+env(safe-area-inset-bottom))] max-md:w-[calc(100vw-24px)] max-md:gap-2 max-md:p-2',
             ],
         className,

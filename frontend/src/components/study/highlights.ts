@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import Highlighter from 'web-highlighter'
 
 import { highlightsApi } from '@/api/highlights'
+import { mountDomTooltip } from '@/components/ui/dom-tooltip'
 
 export type HighlightMode = 'evidenzia' | 'gomma' | 'verifica' | 'chiedi' | null
 export const HIGHLIGHT_COLORS = ['giallo', 'verde', 'azzurro', 'rosa', 'arancio'] as const
@@ -99,6 +100,16 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
           }
           h.addClass(`rt-hl-${row.color}`, source.id)
           ids.set(source.id, row.id)
+          if (row.precedente) {
+            // L'icona è un ::after del contenitore dell'evidenziazione (classe rt-hl-prev): nessun
+            // nodo in più nel testo, e quando l'evidenziazione si toglie sparisce con lei.
+            const lastDom = h.getDoms(source.id).at(-1)
+            if (lastDom) {
+              lastDom.classList.add('rt-hl-prev')
+              lastDom.dataset.precedente = 'true'
+              mountDomTooltip(lastDom, "Precedente all'ultima aggiunta di fonti")
+            }
+          }
         } catch {
           // Il testo dell'unità è cambiato: l'evidenziazione non si ritrova e si salta.
         }

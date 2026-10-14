@@ -21,6 +21,20 @@ def make_segment_id(index: int) -> str:
     return f"seg_{index:06d}"
 
 
+def insert_source_segments(existing: List[Segment], incoming: List[Segment],
+                           source_id: str, position: int,
+                           next_number: Optional[int] = None) -> List[Segment]:
+    """Inserisce una fonte: solo i nuovi segmenti ricevono ID, index segue l'ordine."""
+    if not 0 <= position <= len(existing):
+        raise ValueError("Posizione dei segmenti non valida")
+    minimum = max((int(s.id.removeprefix("seg_")) for s in existing), default=0) + 1
+    counter = max(minimum, next_number or minimum)
+    new = [s.model_copy(update={"id": make_segment_id(counter + i), "source_file": source_id})
+           for i, s in enumerate(incoming)]
+    ordered = existing[:position] + new + existing[position:]
+    return [s.model_copy(update={"index": i}) for i, s in enumerate(ordered, 1)]
+
+
 def parse_segments_from_json(json_path: str) -> List[Segment]:
     """
     Parsa segmenti da un file JSON ASR.
@@ -267,9 +281,10 @@ def validate_and_refine_segments(segments: List[Segment]) -> List[Segment]:
     return segments
 
 
-def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Optional[str] = None) -> None:
+def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Optional[str] = None,
+                       audio_duration_seconds: Optional[float] = None) -> None:
     """Salva i segmenti strutturati in segments.json in modo atomico."""
-    duration = segments[-1].end_seconds if segments else 0.0
+    duration = audio_duration_seconds if audio_duration_seconds is not None else (segments[-1].end_seconds if segments else 0.0)
     data = SegmentsData(
         schema_version="1.0",
         lesson_id=lesson_id,

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
@@ -174,85 +175,81 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         )}
 
         {/* Scheda Cerca sul web */}
-        {openSearch && (
-          <Card className="flex flex-col gap-2.5 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-body font-semibold">Cerca immagini sul web</span>
-              <IconButton label="Chiudi" icon={X} className="size-6" onClick={() => setOpenSearch(false)} />
-            </div>
-            <form onSubmit={handleSearchSubmit} className="flex flex-col gap-2.5">
-              <div className="flex items-center gap-2">
-                <label htmlFor="search-per-unit" className="text-meta text-muted-foreground">
-                  Immagini per unità ({PER_UNIT_MIN}–{PER_UNIT_MAX}):
-                </label>
-                <Input
-                  id="search-per-unit"
-                  type="number"
-                  min={PER_UNIT_MIN}
-                  max={PER_UNIT_MAX}
-                  className="h-8 w-16 text-center text-meta"
-                  value={searchCount}
-                  onChange={(e) => setSearchCount(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center gap-3 text-meta">
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="scope"
-                    checked={searchScope === 'all'}
-                    onChange={() => setSearchScope('all')}
+        {/* Popup centrale: l'elenco delle unità non esce dal pannello. */}
+        <Modal open={openSearch} onClose={() => setOpenSearch(false)} title="Cerca immagini sul web" testId="image-search-dialog" className="w-[min(440px,calc(100vw-32px))]">
+              <form onSubmit={handleSearchSubmit} className="mt-3 flex min-w-0 flex-col gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="search-per-unit" className="text-meta text-muted-foreground">
+                    Immagini per unità ({PER_UNIT_MIN}–{PER_UNIT_MAX}):
+                  </label>
+                  <Input
+                    id="search-per-unit"
+                    type="number"
+                    min={PER_UNIT_MIN}
+                    max={PER_UNIT_MAX}
+                    className="h-8 w-16 text-center text-meta"
+                    value={searchCount}
+                    onChange={(e) => setSearchCount(e.target.value)}
                   />
-                  Tutte le unità
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="scope"
-                    checked={searchScope === 'some'}
-                    onChange={() => setSearchScope('some')}
-                  />
-                  Scegli unità
-                </label>
-              </div>
+                </div>
 
-              {searchScope === 'some' && outline.data && (
-                <fieldset className="max-h-36 overflow-y-auto rounded-md border p-2 text-meta">
-                  <legend className="px-1 text-muted-foreground">Unità selezionate</legend>
-                  {outline.data.macro_sections.flatMap((m) =>
-                    m.units.map((u) => (
-                      <label key={u.id} className="flex items-center gap-2 py-0.5">
-                        <input
-                          type="checkbox"
-                          checked={selectedUnits.has(u.id)}
-                          onChange={(e) => {
-                            const next = new Set(selectedUnits)
-                            if (e.target.checked) next.add(u.id)
-                            else next.delete(u.id)
-                            setSelectedUnits(next)
-                          }}
-                        />
-                        <span className="truncate">
-                          {u.id} {u.title}
-                        </span>
-                      </label>
-                    )),
-                  )}
-                </fieldset>
-              )}
+                <div className="flex flex-wrap items-center gap-3 text-meta">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="scope"
+                      checked={searchScope === 'all'}
+                      onChange={() => setSearchScope('all')}
+                    />
+                    Tutte le unità
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="scope"
+                      checked={searchScope === 'some'}
+                      onChange={() => setSearchScope('some')}
+                    />
+                    Scegli unità
+                  </label>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-1">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setOpenSearch(false)}>
-                  Annulla
-                </Button>
-                <Button size="sm" variant="default" type="submit" disabled={addImages.isPending}>
-                  Cerca
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
+                {searchScope === 'some' && outline.data && (
+                  <fieldset className="min-w-0 max-h-60 overflow-y-auto rounded-md border p-2 text-meta">
+                    <legend className="px-1 text-muted-foreground">Unità selezionate</legend>
+                    {outline.data.macro_sections.flatMap((m) =>
+                      m.units.map((u) => (
+                        <label key={u.id} className="flex min-w-0 items-center gap-2 py-0.5" title={`${u.id} ${u.title}`}>
+                          <input
+                            className="shrink-0"
+                            type="checkbox"
+                            checked={selectedUnits.has(u.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedUnits)
+                              if (e.target.checked) next.add(u.id)
+                              else next.delete(u.id)
+                              setSelectedUnits(next)
+                            }}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {u.id} {u.title}
+                          </span>
+                        </label>
+                      )),
+                    )}
+                  </fieldset>
+                )}
+
+                <div className="flex flex-wrap justify-end gap-2 pt-1">
+                  <Button size="sm" variant="ghost" type="button" onClick={() => setOpenSearch(false)}>
+                    Annulla
+                  </Button>
+                  <Button size="sm" variant="default" type="submit" disabled={addImages.isPending}>
+                    Cerca
+                  </Button>
+                </div>
+              </form>
+        </Modal>
 
         {addImages.isError && <Alert tone="danger">{errorMessage(addImages.error)}</Alert>}
         {activeJobId && (

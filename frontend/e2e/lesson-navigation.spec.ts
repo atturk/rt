@@ -15,10 +15,10 @@ test('pagina lezione: editor protetto, quattro bottoni al passaggio, timer e lin
   await page.keyboard.press('ArrowRight')
   await expect.poll(caret).not.toEqual(before)
   await expect(page.getByTestId('lesson-jump-buttons-right')).toBeHidden()
+  // Sul computer le frecce fuori dall'editor muovono la registrazione: i pulsanti di salto arrivano solo col mouse.
   await page.getByTestId('lesson-title-box').click({ position: { x: 100, y: 10 } })
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByTestId('lesson-jump-buttons-right')).toBeVisible()
-  await expect(page.getByTestId('lesson-jump-buttons-right')).toBeHidden({ timeout: 7000 })
+  await expect(page.getByTestId('lesson-jump-buttons-right')).toBeHidden()
   await page.getByTestId('lesson-jump-zone-left').hover({ position: { x: 72, y: 5 } })
   for (const side of ['left', 'right']) for (const group of ['sameDay', 'sameSubject']) {
     await expect(page.getByTestId(`lesson-jump-${side}-${group}`)).toBeVisible()
@@ -31,8 +31,9 @@ test('pagina lezione: editor protetto, quattro bottoni al passaggio, timer e lin
   // La fixture è corta: aggiungiamo spazio per provare il titolo fuori vista.
   await page.getByTestId('lesson-title-box').evaluate(el => { document.body.style.minHeight = '2000px'; el.blur(); window.getSelection()?.removeAllRanges(); window.scrollTo(0, 500) })
   await expect(page.getByTestId('lesson-title-box')).not.toBeInViewport()
+  // Sul computer, a pagina scorsa, le frecce non aprono la linguetta (quella e' solo per il tocco).
   await page.keyboard.press('ArrowLeft')
-  await expect(page.getByTestId('lesson-jump-tab-left')).toBeVisible()
+  await expect(page.getByTestId('lesson-jump-tab-left')).toHaveCount(0)
 })
 
 test('iPhone: swipe CDP, linguetta a metà schermo dopo lo scroll', async ({ browser }) => {
@@ -80,7 +81,7 @@ test('pagina lezione: include le non pronte e conserva il pannello nel cambio', 
     const zone = await page.getByTestId('lesson-jump-zone-right').boundingBox()
     const panel = await page.getByTestId('lesson-panel').boundingBox()
     expect(zone!.x + zone!.width).toBeLessThanOrEqual(panel!.x)
-    await page.keyboard.press('ArrowRight')
+    await page.getByTestId('lesson-jump-zone-right').hover({ position: { x: 5, y: 5 } })
     await page.getByTestId('lesson-jump-right-sameDay').click()
     await expect(page).toHaveURL(new RegExp(`/lezioni/${target.id}\\?panel=dettagli$`))
     await expect(page.getByTestId('lesson-details')).toBeVisible()
@@ -104,4 +105,19 @@ test('il player conserva le frecce quando il mouse è sul riquadro audio', async
   await expect.poll(() => player.locator('audio').evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(0)
   await expect(page.getByTestId('lesson-jump-tab-right')).toHaveCount(0)
   await expect(page.getByTestId('lesson-jump-right-sameDay')).not.toBeVisible()
+})
+
+test('sul computer le frecce muovono la registrazione anche col mouse fuori dal player', async ({ page }) => {
+  await loginViaLink(page)
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=BIOCHIMICA')
+  await page.goto(`/lezioni/${lesson.id}`)
+  const player = page.getByTestId('audio-player')
+  await expect(player).toBeVisible()
+  await expect.poll(() => player.locator('audio').evaluate((audio: HTMLAudioElement) => audio.duration)).toBeGreaterThan(5)
+  await page.getByTestId('lesson-title-box').click({ position: { x: 100, y: 10 } })
+  await page.mouse.move(400, 400)
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => player.locator('audio').evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(0)
+  await expect(page.getByTestId('lesson-jump-buttons-right')).toBeHidden()
+  await expect(page.getByTestId('lesson-jump-tab-right')).toHaveCount(0)
 })

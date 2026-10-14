@@ -466,3 +466,9 @@ it('finite le domande dell’unità: Genera consigliato con Quante 2 riprende da
   expect(await screen.findByTestId('recall-question')).toHaveAttribute('data-question-id', 'q100')
   expect(mockNextMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ qtype: 'mista', unitId: '1.2' }))
 })
+
+it('mostra icona precedente con tooltip se la domanda è precedente', async () => {
+  mockNextMutateAsync.mockResolvedValueOnce({ ...sampleQuestion, precedente: true })
+  renderUnitSession()
+  expect(await screen.findByTestId('question-precedente-icon')).toBeInTheDocument()
+})

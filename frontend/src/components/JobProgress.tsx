@@ -42,8 +42,8 @@ export function JobProgress({
   const percent = progress?.total ? Math.round(((progress.current ?? 0) / progress.total) * 100) : null
   const tone = state === 'failed' ? 'danger' : state === 'succeeded' ? 'neutral' : 'warning'
   return (
-    <div className="flex flex-col gap-2" data-testid="job-progress" data-state={state}>
-      <Alert tone={tone}>
+    <div className="flex min-w-0 flex-col gap-2" data-testid="job-progress" data-state={state}>
+      <Alert tone={tone} className="min-w-0 [overflow-wrap:anywhere]">
         <span className="font-medium">{label}:</span> {STATE_TEXT[state] ?? state}
         {progress?.message && !jobFinished(data) ? ` · ${progress.message}` : ''}
         {data?.error ? ` · ${data.error}` : ''}

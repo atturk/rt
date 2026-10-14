@@ -103,4 +103,23 @@ describe('AudioPlayer', () => {
     fireEvent.error(audio)
     expect(screen.getByText('Il browser non riesce a riprodurre questo audio.')).toBeInTheDocument()
   })
+
+  it('sul computer le frecce saltano di 5 secondi in tutta la pagina, non mentre si scrive', () => {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({ matches: query === '(hover: hover)', media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia
+    try {
+      const audio = renderPlayer()
+      fireEvent.loadedMetadata(audio)
+      audio.currentTime = 30
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      expect(audio.currentTime).toBe(35)
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      fireEvent.keyDown(input, { key: 'ArrowLeft' })
+      expect(audio.currentTime).toBe(35)
+      input.remove()
+    } finally {
+      window.matchMedia = original
+    }
+  })
 })

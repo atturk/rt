@@ -133,6 +133,7 @@ class NoticeIn(BaseModel):
 
 class WebSearchSettings(BaseModel):
     searxng_base_url: Optional[str] = Field(None, description="URL base di SearXNG per la ricerca immagini web")
+    contextual_verification: bool = Field(default=False, description="Cerca sul web durante la verifica contestuale")
 
 
 class PreferencesSettings(BaseModel):
@@ -292,7 +293,8 @@ class ModelTestOut(BaseModel):
 
 
 class WebSearchIn(BaseModel):
-    searxng_base_url: str = Field("", description="Vuoto per rimuoverlo")
+    searxng_base_url: Optional[str] = Field(None, description="Vuoto per rimuoverlo; assente o null lo lascia invariato")
+    contextual_verification: Optional[bool] = Field(None, description="Cerca sul web durante la verifica contestuale")
 
 
 class WebSearchTestIn(BaseModel):
@@ -813,10 +815,10 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
     return get_decision_model(_actor)
 
 
-@router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG")
+@router.put("/settings/web-search", response_model=Settings, summary="Ricerca web: URL base di SearXNG e verifica contestuale")
 def put_web_search(body: WebSearchIn, _actor: Actor):
     from rt.services.settings_service import save_web_search, snapshot
-    _call(save_web_search, _project_root(), body.searxng_base_url)
+    _call(save_web_search, _project_root(), body.searxng_base_url, body.contextual_verification)
     return snapshot(_project_root())
 
 
@@ -980,3 +982,42 @@ def put_classifier_settings(body: ClassifierConfig, actor: Actor):
     write_classifier(data, body)
     config_service.write_yaml_atomic(path, data)
     return body
+
+
+# ---------------------------------------------------------------- chiave sola lettura (AP1)
+
+class ReadonlyKeyInfo(BaseModel):
+    configured: bool
+    created_at: Optional[str] = None
+    key_preview: Optional[str] = None
+
+
+class ReadonlyKeyCreated(BaseModel):
+    key: str
+    created_at: str
+    key_preview: str
+
+
+class ReadonlyKeyRevoked(BaseModel):
+    ok: bool = True
+
+
+@router.get("/settings/readonly-key", response_model=ReadonlyKeyInfo, summary="Informazioni sulla chiave di sola lettura (AP1)")
+def get_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import get_readonly_key_info
+    return get_readonly_key_info()
+
+
+@router.post("/settings/readonly-key", response_model=ReadonlyKeyCreated, summary="Crea o rigenera la chiave di sola lettura (AP1)")
+def post_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import create_readonly_key, get_readonly_key_info
+    token = create_readonly_key()
+    info = get_readonly_key_info()
+    return ReadonlyKeyCreated(key=token, created_at=info["created_at"] or "", key_preview=info["key_preview"] or "")
+
+
+@router.delete("/settings/readonly-key", response_model=ReadonlyKeyRevoked, summary="Revoca la chiave di sola lettura (AP1)")
+def delete_readonly_key(_actor: Actor):
+    from rt.api.readonly_auth import revoke_readonly_key
+    revoke_readonly_key()
+    return ReadonlyKeyRevoked(ok=True)

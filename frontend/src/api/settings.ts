@@ -123,7 +123,12 @@ export function useSaveRoute() {
 }
 
 export function useSaveWebSearch() {
-  return useSettingsMutation((searxng_base_url: string) => unwrap(api.PUT('/api/v1/settings/web-search', { body: { searxng_base_url } })))
+  return useSettingsMutation(
+    (vars: { searxng_base_url?: string | null; contextual_verification?: boolean } | string) => {
+      const body = typeof vars === 'string' ? { searxng_base_url: vars } : vars
+      return unwrap(api.PUT('/api/v1/settings/web-search', { body: body as any }))
+    },
+  )
 }
 
 /** "Prova" di connessione e modello indicati nel form, anche prima di salvarli: chiamata minima
@@ -237,4 +242,46 @@ export function useTopicTest(topicId: string, materia: string) {
   const valid = /^\d+$/.test(topicId.trim()) && Number(topicId) > 0
   return { test, valid, run: () => test.mutate({ topic_id: Number(topicId.trim()), materia: materia.trim() }) }
 }
+
+// ---------------------------------------------------------------- chiave sola lettura (AP1)
+
+export interface ReadonlyKeyInfo {
+  configured: boolean
+  created_at?: string | null
+  key_preview?: string | null
+}
+
+export interface ReadonlyKeyCreated {
+  key: string
+  created_at: string
+  key_preview: string
+}
+
+export function useReadonlyKey() {
+  return useQuery({
+    queryKey: ['settings', 'readonly-key'],
+    queryFn: () => unwrap((api as any).GET('/api/v1/settings/readonly-key')) as Promise<ReadonlyKeyInfo>,
+  })
+}
+
+export function useCreateReadonlyKey() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap((api as any).POST('/api/v1/settings/readonly-key')) as Promise<ReadonlyKeyCreated>,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
+    },
+  })
+}
+
+export function useRevokeReadonlyKey() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap((api as any).DELETE('/api/v1/settings/readonly-key')),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
+    },
+  })
+}
+
 

@@ -340,6 +340,9 @@ def write_automatic_documents(lesson_dir: str) -> Dict[str, Any]:
         update_info_yaml(yaml_path, {"fase_corrente": state.value, "stato": state.value})
         init_or_update_manifest(lesson_dir=lesson_dir, lesson_id=os.path.basename(os.path.abspath(lesson_dir)),
             date=docs["date"], subject=docs["subject"], topics=docs["topics"], current_state=state.value)
+    # Prima build completata: versione "import" (solo se la lezione non ne ha ancora).
+    from rt.services.materials_lesson_service import record_import
+    record_import(lesson_dir)
     return {"status": "updated", "skipped": False, "lesson_dir": lesson_dir,
             "rielaborato": lesson_path(lesson_dir, "rielaborato.md"),
             "errori_concettuali": lesson_path(lesson_dir, "Errori concettuali.md"), "named_file": named_path}
@@ -452,6 +455,8 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     current_telemetry().export_to_file(telemetry_file)
     from rt.services.documents_service import mark_documents_written
     mark_documents_written(current_dir)
+    from rt.services.materials_lesson_service import record_import
+    record_import(current_dir)
 
     return {
         "status": "completed",

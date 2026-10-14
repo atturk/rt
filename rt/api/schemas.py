@@ -160,6 +160,7 @@ class DocumentSection(BaseModel):
     end_seconds: Optional[float] = None
     start_formatted: Optional[str] = None
     relevance: Optional[Literal["organizational", "no_content"]] = None
+    speech_segments: Optional[List[List[float]]] = Field(None, description="Tratti di parlato [inizio, fine] in secondi per la linea audio")
 
 
 class LessonDocument(BaseModel):
@@ -482,6 +483,7 @@ class RecallSavedEvaluation(BaseModel):
 
 
 class RecallQuestion(BaseModel):
+    precedente: bool = Field(False, json_schema_extra=lambda schema: schema.pop("default", None))
     saved_evaluation: Optional[RecallSavedEvaluation] = None
     evaluation_job_id: Optional[str] = None
     custom_type: Optional[str] = None
@@ -853,6 +855,7 @@ class StudyNoteCreate(BaseModel):
 
 
 class StudyNoteView(BaseModel):
+    precedente: bool = Field(False, json_schema_extra=lambda schema: schema.pop("default", None))
     id: int
     lesson_id: int
     unit_id: str
@@ -875,3 +878,28 @@ class StudyNoteApplyResponse(BaseModel):
     applied_decision_id: int
     issue_id: str
     note: StudyNoteView
+
+
+# ---------------------------------------------------------------------------
+# Calendario (4.2.5 CA1)
+# ---------------------------------------------------------------------------
+from rt.services.calendar_models import (  # noqa: F401
+    CalendarTemplateEntryCreate,
+    CalendarTemplateEntryView,
+    CalendarOverrideCreate,
+    CalendarOverrideView,
+    CalendarDayStateSet,
+    CalendarDayStateView,
+    CalendarEntryStateSet,
+    CalendarEntryStateView,
+    CalendarLinkLessonRequest,
+    CalendarLessonSummary,
+    CalendarEventView,
+    CalendarDayView,
+    CalendarToRecoverItem,
+    CalendarWeekSummary,
+    CalendarWeekView,
+    CalendarDayImportHour,
+    CalendarDayImportView,
+)
+

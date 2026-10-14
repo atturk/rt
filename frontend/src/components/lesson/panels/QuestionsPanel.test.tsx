@@ -51,6 +51,7 @@ vi.mock('@/api/recall', async (importOriginal) => {
           outcome: 'corretta',
           question_text: 'Come si calcola il gap anionico?',
           unit_ids: ['1.3'],
+          precedente: true,
         },
         {
           id: 'q3',
@@ -320,6 +321,18 @@ it.each([true, false])('Genera altre domande: voce consigliata solo con Jev (%s)
   expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: suggestions ? 'mirata' : 'quiz', count: 2 }), expect.anything())
 })
 
+it('chip Consigliato seleziona qtype consigliato e mostra il dettaglio per unità (QT1)', () => {
+  mockSuggestions = true
+  renderPanel()
+  const consigliatoChip = within(screen.getByRole('group', { name: 'Tipo di domanda' })).getByRole('button', { name: 'Consigliato' })
+  expect(consigliatoChip).toBeInTheDocument()
+  fireEvent.click(consigliatoChip)
+  expect(consigliatoChip).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('question-type-hint')).toHaveTextContent(/Ogni unità riceve il tipo che Jev le ha consigliato/)
+  fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
+  expect(mockGenerateMutate).toHaveBeenCalledWith(expect.objectContaining({ qtype: 'consigliato' }), expect.anything())
+})
+
 it('il footer Domande usa la striscia al posto delle righe di testo', () => {
   renderPanel()
   expect(screen.getByTestId('unit-strip-recaller')).toHaveTextContent('2/3')
@@ -335,4 +348,9 @@ it('conserva le domande di un tipo eliminato sotto un filtro dedicato', () => {
   expect(screen.getByText('Domanda del tipo rimosso')).toBeInTheDocument()
   expect(screen.queryByText('Quale valore definisce acidosi?')).not.toBeInTheDocument()
   expect(screen.getAllByText('Tipo eliminato').length).toBeGreaterThan(1)
+})
+
+it('mostra icona precedente con tooltip per le domande precedenti', () => {
+  renderPanel()
+  expect(screen.getByTestId('question-precedente-icon')).toBeInTheDocument()
 })

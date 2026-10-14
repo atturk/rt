@@ -64,3 +64,14 @@ it('i controlli nello Studio di una selezione leggono la lezione corrente già o
   expect(await screen.findByRole('button', { name: custom.nome })).toBeInTheDocument()
   expect(get).toHaveBeenCalledWith('/api/v1/recall/types', { params: { query: { lesson_id: 7, materia: undefined } } })
 })
+
+it('un tipo con un nome lungo si tronca dentro il pannello e mostra il nome intero al passaggio', () => {
+  const nome = 'Domande di farmacologia clinica sulle interazioni tra farmaci antiaritmici'
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter>
+    <QuestionTypeChips value="quiz" onChange={vi.fn()} types={[...BASE_RECALL_TYPES, { ...custom, nome }]} />
+  </MemoryRouter></QueryClientProvider>)
+  const chip = screen.getByRole('button', { name: nome })
+  expect(chip).toHaveAttribute('title', nome)
+  expect(chip).toHaveClass('max-w-full')
+  expect(chip.querySelector('.truncate')).toHaveTextContent(nome)
+})

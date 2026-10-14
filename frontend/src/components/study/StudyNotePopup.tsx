@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { AlertCircle, Check, CheckCircle2, Copy, HelpCircle, X } from 'lucide-react'
+import { AlertCircle, Check, CheckCircle2, Clock, Copy, ExternalLink, HelpCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -73,7 +73,7 @@ export function StudyNotePopup({
 
   if (!open) return null
 
-  const resp = note?.response as { esito?: string; spiegazione?: string; correzione?: string } | undefined
+  const resp = note?.response as { esito?: string; spiegazione?: string; correzione?: string; sources?: Array<{ title?: string; url?: string }> } | undefined
   const anchorObj = note?.anchor as { quote?: string } | undefined
 
   const handleSend = async () => {
@@ -130,6 +130,19 @@ export function StudyNotePopup({
           )}
           <span className="font-semibold text-foreground">{isVerifica ? 'Verifica' : 'Chiedi'}</span>
           <span className="text-meta text-muted-foreground">· unità {effectiveUnit}</span>
+          {note?.precedente && (
+            <Tooltip content="Precedente all'ultima aggiunta di fonti">
+              {(trigger) => (
+                <span
+                  {...trigger}
+                  className="inline-flex shrink-0 items-center text-muted-foreground"
+                  data-testid="note-precedente-icon"
+                >
+                  <Clock className="size-4" aria-hidden />
+                </span>
+              )}
+            </Tooltip>
+          )}
         </div>
         <IconButton label="Chiudi · Esc" icon={X} onClick={onClose} data-testid="study-note-close" />
       </div>
@@ -249,6 +262,26 @@ export function StudyNotePopup({
                 )}
               </div>
               <div className="font-mono text-[13px] text-foreground">{fix}</div>
+            </div>
+          )}
+
+          {resp?.sources && resp.sources.length > 0 && (
+            <div className="my-2.5" data-testid="study-note-sources">
+              <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Fonti</span>
+              <div className="mt-1 flex flex-col gap-1.5">
+                {resp.sources.map((src: { title?: string; url?: string }, idx: number) => (
+                  <a
+                    key={idx}
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-meta text-primary hover:underline break-all"
+                  >
+                    <ExternalLink className="size-3 shrink-0" aria-hidden />
+                    <span>{src.title || src.url}</span>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

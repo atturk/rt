@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
+import { useSubjects } from '@/api/subjects'
 import { useStudyLesson } from '@/api/recall'
 import { exportQuestionType, useQuestionSettings, useSaveQuestionType, useDeleteQuestionType, useImportQuestionType, useQuestionTrial, type QuestionDefinition, type QuestionSettings } from '@/api/questionSettings'
 import { TypeIcon } from '@/components/recall/TypeIcon'
@@ -27,6 +28,7 @@ function QuestionsSettings({ data }: { data: QuestionSettings }) {
   const save = useSaveQuestionType()
   const remove = useDeleteQuestionType()
   const importing = useImportQuestionType()
+  const subjectsQuery = useSubjects()
   const [editor, setEditor] = useState<{ definition: QuestionDefinition; id?: string } | null>(null)
   const [deleting, setDeleting] = useState<QuestionDefinition | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -74,7 +76,7 @@ function QuestionsSettings({ data }: { data: QuestionSettings }) {
         </li>)}</ul>
       </details>
     </Section>
-    {editor && <QuestionTypeEditor key={`${editor.id ?? 'new'}:${editor.definition.nome}`} initial={editor.definition} existing={Boolean(editor.id)} subjects={data.materie} onSave={submit} onCancel={() => setEditor(null)} pending={save.isPending} error={save.isError ? errorMessage(save.error) : null} />}
+    {editor && <QuestionTypeEditor key={`${editor.id ?? 'new'}:${editor.definition.nome}`} initial={editor.definition} existing={Boolean(editor.id)} subjects={Array.isArray(subjectsQuery.data) ? subjectsQuery.data.map((s) => s.nome) : data.materie} onSave={submit} onCancel={() => setEditor(null)} pending={save.isPending} error={save.error ? errorMessage(save.error) : null} />}
     <ConfirmDialog open={Boolean(deleting)} title="Elimina tipo" confirmLabel="Elimina" onCancel={() => setDeleting(null)} confirmDisabled={remove.isPending}
       onConfirm={() => { if (deleting?.id) remove.mutate(deleting.id, { onSuccess: () => { setDeleting(null); setEditor(null) } }) }}>
       Le domande già generate resteranno nello storico.

@@ -1,5 +1,79 @@
 # Novità di RT
 
+## 4.2.5 — 2026-10-14
+
+### Novità
+
+- Nuova pagina Calendario con l'orario delle lezioni: settimana tipo modificabile, stato e nota di ogni ora, riepilogo con le ore da recuperare. Una lezione registrata si collega da sola alla sua ora; in modifica un clic su un'ora ne cambia i dati, e il docente compare nel blocco.
+- Import in un solo riquadro: audio, PDF, foto e PowerPoint insieme, separati da RT; le ore del calendario del giorno compaiono come scelte rapide.
+- Lezioni che crescono nel tempo: in Dettagli › Fonti si aggiungono parti di registrazione, appunti o materiali anche giorni dopo, poi Estendi o Ricostruisci. Le ultime cinque versioni si ripristinano, e anche il ripristino si annulla.
+- I materiali aiutano la rielaborazione come contesto e, con la graffetta, le loro pagine vengono allegate alle unità. Si può creare una lezione solo dai materiali.
+- La rielaborazione tiene il filo delle unità già scritte, con le parti ripetute del prompt in cache.
+- Chip Consigliato nel pannello Domande, sezione Materie in Impostazioni, ricerca web con fonti nella verifica contestuale (spenta di default).
+- Linea sottile che segue l'audio accanto al testo, pannelli laterali staccati dal bordo con apertura animata.
+- Accesso di sola lettura per assistenti come Open WebUI, con chiave separata.
+- Sul computer le frecce mandano avanti e indietro la registrazione di 5 secondi.
+- Verifica con LLM: avviso a tempo con Annulla, "Accetta tutte" e Annulla nell'intestazione, Ascolta a icona.
+
+### Correzioni
+
+- Il pannello aperto non copre più il testo con la finestra stretta; opzioni lunghe e menu non escono più dai pannelli.
+- Le Fonti non si svuotano più aprendo Dettagli durante la trascrizione.
+- Il Calendario si apre anche se le sue tabelle erano state create da una versione di prova.
+
+## 4.2.5b2.2 — 2026-10-13
+
+### Correzioni
+- Aprendo Dettagli mentre una lezione nuova veniva trascritta, le registrazioni sparivano dalle Fonti e compariva "la lezione va ricostruita" anche senza aver cambiato niente. Ora le Fonti mostrano sempre l'audio, e le lezioni già colpite si sistemano da sole.
+
+## 4.2.5b2.1 — 2026-10-13
+
+### Novità
+- Calendario: in modalità modifica un clic su un'ora apre i suoi dati (materia, inizio, fine, docente) e li salva, solo per questa settimana o per la settimana tipo da questa settimana in poi.
+- Nei blocchi del calendario il docente compare in piccolo sotto l'orario.
+- Pagina della lezione sul computer: le frecce mandano avanti e indietro la registrazione di 5 secondi ovunque nella pagina (non mentre scrivi). Per cambiare lezione si passa col mouse accanto al titolo; sul telefono resta lo swipe.
+- Verifica con LLM: dopo una decisione compare per 5 secondi un avviso dal basso con Annulla; l'ultima decisione si annulla anche dopo, dall'icona in cima al pannello. "Ascolta da" è diventato un pulsante a icona accanto ad accetta e mantieni.
+- Verifica con LLM: nuova icona "Accetta tutte" in cima al pannello per accettare con una conferma tutte le correzioni da decidere; l'icona Annulla le riporta tutte da decidere.
+
+### Correzioni
+- Con la finestra più stretta il pannello aperto non copre più il testo della lezione: il testo si stringe accanto al pannello, e anche il lettore audio.
+- "Riesegui con opzioni" in Dettagli e "Cerca immagini sul web" in Arricchimento si aprono in un popup: i titoli lunghi delle unità non escono più dal pannello.
+- I menu ⋯ delle fasi e delle domande e "Aggiungi fonte" non vengono più tagliati in fondo al pannello.
+- Errori, correzioni e nomi lunghi vanno a capo invece di allargare il pannello.
+
+## 4.2.5b2 — 2026-10-13
+
+### Novità
+- Import in un solo riquadro: trascini insieme audio, PDF, foto e PowerPoint e RT li separa da solo. Le parti audio si riordinano trascinandole; senza audio la stellina sceglie il materiale che fa da filo della lezione.
+- Le ore del calendario del giorno compaiono nell'import come scelte rapide: un clic compila materia, docente e ora e collega la lezione a quell'ora.
+- I materiali aiutano la rielaborazione come contesto; con la graffetta accesa le pagine più legate a un'unità vengono allegate come immagini. Si può anche creare una lezione solo dai materiali.
+- In Dettagli la nuova sezione Fonti: aggiungi parti di registrazione, appunti o materiali anche giorni dopo, poi scegli Estendi o Ricostruisci. Spostare parti già usate o cambiare la fonte principale chiede conferma e si può rimettere com'era.
+- Versioni della lezione: le ultime cinque si ripristinano da Dettagli, e anche il ripristino si annulla. Evidenziazioni, note e domande non vengono mai cancellate; quelle nate prima di un cambiamento dell'unità hanno una piccola icona.
+- Nel pannello Domande il chip Consigliato genera per ogni unità il tipo che Jev le ha consigliato.
+- Nuova sezione Materie in Impostazioni: si aggiungono anche materie senza lezioni, che compaiono in import, calendario e tipi di domanda.
+- La verifica contestuale può cercare sul web con SearXNG e mostrare le fonti con i link (interruttore in Impostazioni › Lavorazione, spento di default).
+- Mentre ascolti l'audio, una linea sottile accanto al testo segue il parlato dell'unità.
+- Pannelli laterali staccati dal bordo, con angoli arrotondati e apertura animata; il contenuto resta lo stesso.
+- Accesso di sola lettura per assistenti come Open WebUI: chiave separata in Impostazioni › Accesso, ricerca nel testo delle lezioni e guida per collegarlo.
+
+### Correzioni
+- In Dettagli i pulsanti Classificatore e Verifiche e domande non escono più dal pannello.
+
+## 4.2.5b1.1 — 2026-10-12
+
+### Correzioni
+- Il Calendario non si apriva ("Errore interno del server") se le sue tabelle erano già state create da una versione di prova: ora il database viene completato all'avvio.
+
+## 4.2.5b1 — 2026-10-12
+
+### Novità
+- Nuova pagina Calendario, nella barra laterale sotto Lezioni (che ha una nuova icona) e nella barra in basso sull'iPhone. Mostra la settimana sul Mac e il giorno sull'iPhone, con l'orario delle lezioni colorato per materia.
+- L'orario si scrive una volta come settimana tipo e si modifica con la matita: solo questa settimana, oppure la settimana tipo da questa settimana in poi. Le settimane passate restano come erano.
+- Ogni ora ha uno stato (da seguire, seguita, non seguita, da saltare, annullata) e una nota; il menu del giorno segna tutto il giorno in un colpo. Il riepilogo della settimana è nel bottone ⓘ, con le ore da recuperare.
+- Una lezione registrata con la stessa data, ora e materia si collega da sola alla sua ora e la segna come seguita; dal popup dell'ora si può collegarne o scollegarne una a mano.
+- La rielaborazione tiene il filo delle unità già scritte prima di quella in corso, anche quando rigeneri una sola unità, senza passare al modello il trascritto delle unità successive. Le parti ripetute del prompt restano in cache, così le unità successive costano meno.
+- Prime basi per le lezioni che crescono nel tempo (aggiungere audio o appunti a una lezione esistente): i comandi arrivano nella prossima beta.
+
 ## 4.2.4 — 2026-10-12
 
 ### Novità

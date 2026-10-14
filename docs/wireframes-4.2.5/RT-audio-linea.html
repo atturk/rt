@@ -1,0 +1,64 @@
+<title>Linea audio fra unità</title>
+<style>
+/* Layout: note in alto, cornice dell'app (rail + pagina Calendario) al centro, vista iPhone sotto; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --note:#fff3df; --note-fg:#98620c;
+  --learned:#13896b; --learning:#e8a317; --track:#e6e6e6; --danger:#d4382a; --rail:#fafafa;
+  --shadow:0 8px 28px rgb(0 0 0/.16); --tip:#171717; --tip-fg:#ffffff;
+  --m1:#2f6fd0; --m2:#8a4fc8; --m3:#c0542b; --m4:#14806e; --m5:#5d6b7a; --m6:#b0397a; --m7:#9a7a12;
+  --tint:12%; --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --note:#3a2c14; --note-fg:#f1c27a;
+  --learned:#5cc79f; --learning:#f0b44a; --track:#3a3a3a; --danger:#ef6a5c; --rail:#131313; --shadow:0 8px 28px rgb(0 0 0/.5); --tip:#f2f2f2; --tip-fg:#171717;
+  --m1:#7aa8f0; --m2:#b993ec; --m3:#ee9370; --m4:#5cc7b2; --m5:#a9b6c3; --m6:#ea86bd; --m7:#e0c158; --tint:20%; color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding:0 16px;padding-block:0 48px;margin:0}
+h1{font-size:22px;margin:0} h2{font-size:17px;margin:0 0 4px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;padding-block:20px 12px;max-width:900px;margin:0 auto}.top .meta{color:var(--mute);font-size:13px}
+.wrap{max-width:900px;margin:0 auto;display:grid;gap:16px}
+.notes{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;gap:8px}.notes ul{margin:0;padding-left:20px;display:grid;gap:6px}.notes li{font-size:14px}
+.page{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;height:620px;display:flex;flex-direction:column}.page .doc{flex:1;overflow:auto;width:100%}
+.player{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--border);font-size:13px;flex:none;color:var(--mute);font-variant-numeric:tabular-nums}
+.player button{width:34px;height:34px;border:0;border-radius:50%;background:var(--acc);color:var(--bg);display:grid;place-items:center;cursor:pointer}
+.player svg{width:16px;height:16px;fill:currentColor}
+.player .bar{flex:1;height:4px;border-radius:2px;background:var(--track);position:relative}.player .bar i{position:absolute;inset:0 auto 0 0;background:var(--acc);border-radius:2px}
+.doc{max-width:680px;margin:0 auto;padding:20px 28px 40px}
+.unit{position:relative;padding-right:18px}
+.unit h3{font-size:19px;margin:22px 0 8px}.unit p{margin:0 0 12px;line-height:1.75}
+.line{position:absolute;right:0;top:30px;bottom:12px;width:2px;border-radius:1px;background:transparent}
+.line i{position:absolute;left:0;right:0;top:0;border-radius:1px;background:color-mix(in oklch,var(--acc) 55%,transparent);transition:height .25s linear}
+.unit.cur .line{background:var(--line, #e6e6e6)}
+.unit.done .line i{height:100%;background:color-mix(in oklch,var(--acc) 18%,transparent)}
+label{font-size:13px;color:var(--mute);display:flex;gap:6px;align-items:center}
+</style>
+<div class="top"><h1>Linea audio fra le unità</h1><span class="meta">Wireframe AU1 per RT 4.2.5 · testo d'esempio</span></div>
+<div class="wrap">
+<section class="notes"><ul>
+<li>Durante l'ascolto, a destra dell'unità che si sta ascoltando c'è una linea verticale di 2 px che si riempie dall'alto in basso. Le unità già ascoltate restano con una traccia appena visibile; le altre non hanno niente.</li>
+<li>La linea conta solo il parlato: i silenzi e i tratti senza trascritto non la fanno avanzare (nella demo, fra 0:40 e 0:55 c'è una pausa e la linea si ferma).</li>
+<li>Il lettore audio resta dov'è oggi, in basso: si aggiunge solo la linea.</li><li>È solo un'indicazione: il punto della linea non corrisponde a una frase precisa del testo rielaborato. Niente tooltip, niente clic.</li>
+</ul><label><input type="checkbox" id="fast" checked> demo accelerata</label></section>
+<div class="page">
+<div class="doc" id="doc"></div><div class="player"><button id="play" aria-label="Riproduci"><svg viewBox="0 0 24 24"><path id="pi" d="M7 4v16l13-8z"/></svg></button><span id="t">0:00</span><span class="bar"><i id="pb"></i></span><span>3:00</span></div></div></div>
+<script>
+const U=[['1. Clustering gerarchico',0,60,[[40,55]]],['2. Dendrogramma e soglie',60,120,[]],['3. Distanze fra cluster',120,180,[]]];
+const P='Il clustering gerarchico costruisce una gerarchia di gruppi unendo, passo dopo passo, i due cluster più vicini. A ogni passo la matrice delle distanze viene aggiornata secondo il criterio di collegamento scelto. ';
+document.getElementById('doc').innerHTML=U.map((u,i)=>'<div class="unit" id="u'+i+'"><span class="line"><i></i></span><h3>'+u[0]+'</h3><p>'+P+P+'</p><p>'+P+'</p></div>').join('');
+let t=0,run=false;
+function speech(a,b,gaps){let s=b-a;gaps.forEach(g=>s-=g[1]-g[0]);return s}
+function done(u,now){let s=Math.min(now,u[2])-u[1];u[3].forEach(g=>{if(now>g[0])s-=Math.min(now,g[1])-g[0]});return Math.max(0,s)}
+function draw(){U.forEach((u,i)=>{const el=document.getElementById('u'+i),cur=t>=u[1]&&t<u[2];el.classList.toggle('cur',cur);el.classList.toggle('done',t>=u[2]);
+ el.querySelector('i').style.height=cur?(100*done(u,t)/speech(u[1],u[2],u[3]))+'%':(t>=u[2]?'100%':'0')});
+ document.getElementById('t').textContent=Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');document.getElementById('pb').style.width=(t/180*100)+'%'}
+document.getElementById('play').onclick=()=>{run=!run;document.getElementById('pi').setAttribute('d',run?'M6 4h4v16H6zM14 4h4v16h-4z':'M7 4v16l13-8z')};
+setInterval(()=>{if(!run)return;t+=document.getElementById('fast').checked?1:.25;if(t>=180){t=0}draw()},250);
+document.documentElement.style.setProperty('--line','var(--track)');draw();
+</script>

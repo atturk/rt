@@ -596,6 +596,21 @@ STT_JOB_TYPES = ("ingest_audio", "run_pipeline", "transcribe_voice")
 def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path: Optional[str] = None) -> bool:
     """Il job deve trascrivere audio? Solo allora serve un worker con stt: macparakeet gira
     solo su macOS, quindi un worker in un container Linux senza motore STT non lo prende."""
+    if job_type == "ingest_sources":
+        return bool((payload or {}).get("audio")) and not bool(((payload or {}).get("options") or {}).get("mock"))
+    if job_type == "update_lesson":
+        if (payload or {}).get("mock") or (payload or {}).get("force_mock"):
+            return False
+        if not lesson_path:
+            return True
+        from rt.core.sources import load_sources
+        from rt.pipeline.source_update import _read_state
+        from rt.core.lesson_paths import lesson_path as artifact_path
+        from rt.storage import fs
+        cache = _read_state(lesson_path)["sources"]
+        return any(s.tipo == "audio" and s.id not in cache and not (
+            s.id == "src_000001" and fs.isfile(artifact_path(lesson_path, "segments.json")))
+            for s in load_sources(lesson_path))
     if job_type not in STT_JOB_TYPES:
         return False
     payload = payload or {}

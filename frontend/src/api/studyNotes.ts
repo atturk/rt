@@ -8,7 +8,18 @@ const fallbackClient = new QueryClient({
   },
 })
 
-export type StudyNote = Schemas['StudyNoteView']
+// Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
+export type StudyNoteWebSource = { title?: string; url?: string }
+export type StudyNoteResponse = {
+  esito?: string
+  spiegazione?: string
+  correzione?: string
+  sources?: StudyNoteWebSource[]
+}
+export type StudyNote = Omit<Schemas['StudyNoteView'], 'response'> & {
+  response?: StudyNoteResponse | null
+  precedente?: boolean
+}
 export type StudyNoteCreate = Schemas['StudyNoteCreate']
 export type StudyNoteApplyResponse = Schemas['StudyNoteApplyResponse']
 

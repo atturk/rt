@@ -1,4 +1,5 @@
 vi.mock('@/api/classifier', () => ({ useClassifier: () => ({ data: { pending: 2 } }) }))
+vi.mock('./SourcesSection', () => ({ SourcesSection: () => <div data-testid="sources-section" /> }))
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
@@ -119,12 +120,19 @@ describe('DetailsPanel', () => {
     const menuBtn = within(rewriteRow).getByRole('button', { name: /Azioni su Rielaborazione/i })
     fireEvent.click(menuBtn)
 
-    const optionsItem = screen.getByRole('menuitem', { name: /Riesegui con opzioni/i })
+    // Il menu sta in un portale fuori dal pannello (non viene tagliato in fondo).
+    const menu = screen.getByRole('menu', { name: 'Azioni su Rielaborazione' })
+    expect(rewriteRow).not.toContainElement(menu)
+    const optionsItem = within(menu).getByRole('menuitem', { name: /Riesegui con opzioni/i })
     fireEvent.click(optionsItem)
 
-    // Opzioni aperte
-    expect(screen.getByText('Riesegui rielaborazione')).toBeInTheDocument()
-    const checkbox12 = screen.getByLabelText('1.2 Due')
+    // Opzioni aperte in un popup, con l'elenco delle unità che tronca i titoli lunghi
+    const dialog = screen.getByRole('dialog', { name: 'Riesegui rielaborazione' })
+    expect(rewriteRow).not.toContainElement(dialog)
+    const checkbox12 = within(dialog).getByLabelText('1.2 Due')
+    expect(checkbox12.closest('label')).toHaveClass('min-w-0')
+    expect(within(dialog).getByLabelText('Istruzioni aggiuntive')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('anche se è già valida')).toBeInTheDocument()
     fireEvent.click(checkbox12)
 
     const runBtn = screen.getByRole('button', { name: /Riesegui 1 unità/i })
@@ -158,6 +166,7 @@ describe('DetailsPanel', () => {
     fireEvent.click(menuBtn)
 
     const validateItem = screen.getByRole('menuitem', { name: /Segna come valida/i })
+    expect(validateItem).not.toHaveAttribute('aria-disabled')
     fireEvent.click(validateItem)
 
     expect(screen.getByText(/senza eseguirla di nuovo/)).toBeInTheDocument()
@@ -214,4 +223,11 @@ it('il documento si aggiorna da solo: nessuna azione di build nei Dettagli', () 
   expect(within(row('build')).queryByRole('button')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Ricrea' })).not.toBeInTheDocument()
   expect(mutateRun).not.toHaveBeenCalled()
+})
+
+it('Segna come valida resta nel menu ma non è disponibile su una fase già valida', () => {
+  phases.list = [{ phase: 'outline', status: 'VALID', reason: '' }]
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  fireEvent.click(within(row('outline')).getByRole('button', { name: /Azioni su Scaletta/i }))
+  expect(screen.getByRole('menuitem', { name: /Segna come valida/i })).toHaveAttribute('aria-disabled', 'true')
 })

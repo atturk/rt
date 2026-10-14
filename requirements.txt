@@ -20,3 +20,5 @@ uvicorn>=0.30
 python-multipart>=0.0.9
 Pillow>=10
 playwright>=1.50
+python-pptx>=1.0
+pillow-heif>=1.0

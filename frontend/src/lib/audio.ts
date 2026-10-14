@@ -30,3 +30,47 @@ export function neighbourStart(sections: TimedSection[], t: number, direction: -
   const before = starts.filter((s) => s < t - 2)
   return before.length ? before[before.length - 1] : starts.length ? starts[0] : null
 }
+
+export type SpeechSection = {
+  unit_id: string
+  start_seconds?: number | null
+  end_seconds?: number | null
+  speech_segments?: [number, number][] | number[][] | null
+}
+
+/**
+ * AU1: calcola l'avanzamento della linea audio contando solo il parlato.
+ * Le pause o i tratti senza trascritto non fanno avanzare la linea.
+ */
+export function unitSpeechProgress(
+  section: SpeechSection,
+  currentTime: number,
+): { cur: boolean; done: boolean; percent: number } {
+  const start = section.start_seconds ?? 0
+  const end = section.end_seconds ?? start
+  if (currentTime < start) return { cur: false, done: false, percent: 0 }
+  if (currentTime >= end) return { cur: false, done: true, percent: 100 }
+  const cur = true
+  const segments = section.speech_segments
+  if (segments && segments.length > 0) {
+    let totalSpeech = 0
+    let spoken = 0
+    for (const seg of segments) {
+      const sStart = seg[0]
+      const sEnd = seg[1]
+      if (sStart == null || sEnd == null) continue
+      const dur = Math.max(0, sEnd - sStart)
+      totalSpeech += dur
+      if (currentTime > sStart) {
+        spoken += Math.max(0, Math.min(currentTime, sEnd) - sStart)
+      }
+    }
+    if (totalSpeech > 0) {
+      const p = Math.min(100, Math.max(0, (spoken / totalSpeech) * 100))
+      return { cur, done: false, percent: p }
+    }
+  }
+  const dur = end - start
+  const p = dur > 0 ? Math.min(100, Math.max(0, ((currentTime - start) / dur) * 100)) : 100
+  return { cur, done: false, percent: p }
+}

@@ -135,14 +135,17 @@ export function MenuButton({ label, icon, sections, className }: { label: string
 }
 
 export type LinkMenuItem = { label: string; href?: string; download?: boolean; title?: string; unavailable?: string | null;
-  checked?: boolean; onSelect?: () => void }
+  checked?: boolean; onSelect?: () => void; icon?: LucideIcon; testId?: string; className?: string }
 
 /**
  * Pulsante a icona con un menu di link (Esporta: Markdown, zip). Stessa tastiera di MenuButton;
  * una voce non disponibile resta nel menu con il motivo (aria-disabled).
  */
-export function LinkMenuButton({ label, icon, items, className, side = 'bottom', unavailable }: {
+export function LinkMenuButton({ label, icon, items, className, buttonClassName, testId, side = 'bottom', unavailable }: {
   label: string; icon: LucideIcon; items: LinkMenuItem[]; className?: string; side?: 'top' | 'bottom'; unavailable?: string | null
+  /** Classi del pulsante a icona (per esempio una misura più piccola nelle righe dei pannelli). */
+  buttonClassName?: string
+  testId?: string
 }) {
   const [open, setOpen] = useState(false)
   const menuId = useId()
@@ -177,24 +180,26 @@ export function LinkMenuButton({ label, icon, items, className, side = 'bottom',
   const itemClass = 'flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
   return (
     <div ref={root} className={cn('relative', className)}>
-      <IconButton label={label} icon={icon} side={side} unavailable={unavailable} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
+      <IconButton label={label} icon={icon} side={side} unavailable={unavailable} className={buttonClassName} data-testid={testId} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
       {open && createPortal(
         <div ref={menu} id={menuId} role="menu" aria-label={label} onKeyDown={onKeyDown}
           style={position.style}
           className="fixed z-50 max-h-[calc(100dvh-1rem)] w-60 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-card p-1.5 text-body shadow-panel">
           {items.map((item) =>
             item.unavailable ? (
-              <Tooltip key={item.label} content={item.unavailable}>{(trigger) => <span {...trigger} role="menuitem" aria-disabled="true" tabIndex={-1} className={cn(itemClass, 'cursor-default opacity-50 hover:bg-transparent')}>
+              <Tooltip key={item.label} content={item.unavailable}>{(trigger) => <span {...trigger} role="menuitem" aria-disabled="true" tabIndex={-1} data-testid={item.testId} className={cn(itemClass, 'cursor-default opacity-50 hover:bg-transparent')}>
+                {item.icon && <item.icon aria-hidden className="size-4 shrink-0" />}
                 {item.label}
                 <span className="sr-only">: {item.unavailable}</span>
               </span>}</Tooltip>
             ) : item.onSelect ? (
               <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-                aria-checked={item.checked} tabIndex={-1} className={itemClass} onClick={() => {
+                aria-checked={item.checked} tabIndex={-1} data-testid={item.testId} className={cn(itemClass, item.className)} onClick={() => {
                   item.onSelect?.()
                   if (item.checked === undefined) close(true)
                 }}>
                 {item.checked !== undefined && <Check aria-hidden className={cn('size-4 shrink-0', !item.checked && 'invisible')} />}
+                {item.icon && <item.icon aria-hidden className="size-4 shrink-0" />}
                 {item.label}
               </button>
             ) : (

@@ -3,6 +3,7 @@ import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
   Brain,
+  Clock,
   MessageSquare,
   Mic,
   SkipForward,
@@ -46,6 +47,7 @@ import { buttonVariants } from '@/components/ui/button-variants'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
+import { Tooltip } from '@/components/ui/tooltip'
 import { lessonTitle } from '@/lib/format'
 import { selectionSubject } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
@@ -633,8 +635,21 @@ export function LightweightSession({
                 <p className="text-meta text-muted-foreground">
                   {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
                 </p>
-                <h2 className="text-heading font-semibold leading-relaxed">
-                  {currentQuestion.question_text}
+                <h2 className="text-heading font-semibold leading-relaxed flex items-center gap-2">
+                  <span>{currentQuestion.question_text}</span>
+                  {currentQuestion.precedente && (
+                    <Tooltip content="Precedente all'ultima aggiunta di fonti">
+                      {(trigger) => (
+                        <span
+                          {...trigger}
+                          className="inline-flex shrink-0 items-center text-muted-foreground"
+                          data-testid="question-precedente-icon"
+                        >
+                          <Clock className="size-4" aria-hidden />
+                        </span>
+                      )}
+                    </Tooltip>
+                  )}
                 </h2>
               </div>
 
@@ -943,8 +958,21 @@ export function LightweightSession({
               <p className="text-muted-foreground">
                 {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
               </p>
-              <p className="mt-0.5 font-medium text-foreground">
-                {currentQuestion.question_text}
+              <p className="mt-0.5 font-medium text-foreground flex items-center gap-1.5">
+                <span>{currentQuestion.question_text}</span>
+                {currentQuestion.precedente && (
+                  <Tooltip content="Precedente all'ultima aggiunta di fonti">
+                    {(trigger) => (
+                      <span
+                        {...trigger}
+                        className="inline-flex shrink-0 items-center text-muted-foreground"
+                        data-testid="question-precedente-icon"
+                      >
+                        <Clock className="size-3.5" aria-hidden />
+                      </span>
+                    )}
+                  </Tooltip>
+                )}
               </p>
             </div>
 

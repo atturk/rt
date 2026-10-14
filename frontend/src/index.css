@@ -54,8 +54,18 @@
   --group-3: rgb(184 134 11 / 8%);
   --group-4: rgb(150 80 110 / 6%);
   --group-gray: color-mix(in oklch, var(--fg) 4%, transparent);
+  /* Materie nel calendario (CA1) */
+  --m1: #2f6fd0;
+  --m2: #8a4fc8;
+  --m3: #c0542b;
+  --m4: #14806e;
+  --m5: #5d6b7a;
+  --m6: #b0397a;
+  --m7: #9a7a12;
+  --tint: 12%;
 
   --size-meta: 12px;
+
   --size-body: 15px;
   --size-heading: 22px;
   --rail-width: 56px;
@@ -91,7 +101,17 @@
   --group-2: rgb(130 175 230 / 8%);
   --group-3: rgb(241 194 122 / 8%);
   --group-4: rgb(230 150 185 / 8%);
+  /* Materie nel calendario (CA1) */
+  --m1: #7aa8f0;
+  --m2: #b993ec;
+  --m3: #ee9370;
+  --m4: #5cc7b2;
+  --m5: #a9b6c3;
+  --m6: #ea86bd;
+  --m7: #e0c158;
+  --tint: 20%;
 }
+
 
 /* Telefono: aree da toccare di 44 px (linee guida §5). */
 @media (max-width: 767px) {
@@ -303,6 +323,35 @@
 .dark .rt-document .rt-unit-active {
   box-shadow: -12px 0 0 -9px var(--link);
 }
+/* AU1: Linea audio fra le unità (2px verticale a destra dell'unità in ascolto) */
+.rt-audio-line {
+  position: absolute;
+  right: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 5;
+}
+.rt-audio-line.cur {
+  background: var(--track, #e6e6e6);
+}
+.dark .rt-audio-line.cur {
+  background: var(--track, #3a3a3a);
+}
+.rt-audio-line i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--acc) 55%, transparent);
+  transition: height 0.25s linear;
+}
+.rt-audio-line.done i {
+  height: 100% !important;
+  background: color-mix(in oklch, var(--acc) 18%, transparent);
+}
 .rt-document mark.rt-claim {
   background: #fce9a8;
   color: #3c311b;
@@ -317,6 +366,82 @@
 .dark .rt-lesson-editor .atomic-cm-editor {
   --atomic-editor-selection-bg: color-mix(in oklch, var(--success) 35%, transparent);
 }
+
+/* PN1: Pannelli staccati dai bordi, angoli stondati 16px, ombra e animazioni */
+@keyframes rt-panel-in {
+  from {
+    transform: translateX(24px) scale(0.98);
+  }
+  to {
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes rt-panel-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes rt-panel-switch {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.rt-panel-container {
+  top: calc(var(--header-height) + 8px);
+  right: 8px;
+  bottom: 8px;
+  width: min(calc(24rem - 8px), calc(100vw - 16px));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  transform-origin: top right;
+  animation: rt-panel-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.rt-panel-body-switch {
+  animation: rt-panel-switch 240ms ease-out both;
+}
+
+@media (max-width: 767px) {
+  .rt-panel-container {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-top: 1px solid var(--border);
+    /* Sul telefono il pannello sale dal basso */
+    animation: rt-panel-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-panel-container,
+  .rt-panel-body-switch {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Avviso della decisione nella Verifica: sale dal basso, la barra si svuota in 5 s. */
+@keyframes rt-toast-up { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes rt-toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.rt-toast { animation: rt-toast-up 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.rt-toast-timer { transform-origin: left; animation: rt-toast-timer var(--rt-toast-duration, 5s) linear both; }
+.rt-toast:hover .rt-toast-timer, .rt-toast:focus-within .rt-toast-timer { animation-play-state: paused; }
 
 /* Campi segreti (components/ui/secret-input.tsx): testo mascherato senza type="password",
  * così Safari non propone le password del portachiavi. */
@@ -639,6 +764,18 @@
 .rt-hl-4 { background: var(--hl-5); }
 [data-hl-mode="erase"] .rt-hl { cursor: pointer; }
 [data-hl-mode="erase"] .rt-hl:hover { outline: 1.5px dashed var(--muted-foreground); outline-offset: 1px; }
+/* Evidenziazione precedente all'ultima aggiunta di fonti: orologio piccolo in coda (4.2.5b2 LE1k) */
+.rt-hl-prev::after {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: 4px;
+  vertical-align: -2px;
+  background: var(--muted-foreground);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='12 6 12 12 16 14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 
 /* Cursori e sottolineature di Verifica e Chiedi nello Studio (VC1) */
 .rt-sn {

@@ -16,17 +16,10 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
   const show = navigation.show
   const neighbors = lessonNeighbors((all.data ?? []) as Lesson[], id, { readyOnly: false })
   const titleRef = useRef<HTMLDivElement>(null)
-  const [titleVisible, setTitleVisible] = useState(true)
   const [hover, setHover] = useState(false)
   const [touch, setTouch] = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const swipe = useRef<{ x: number; y: number; time: number; pointer: number } | null>(null)
-  useEffect(() => {
-    if (!titleRef.current || !globalThis.IntersectionObserver) return
-    const observer = new IntersectionObserver(([entry]) => setTitleVisible(entry.isIntersecting), { rootMargin: '-52px 0px 0px 0px' })
-    observer.observe(titleRef.current)
-    return () => observer.disconnect()
-  }, [])
   useEffect(() => {
     const media = window.matchMedia?.('(hover: none)')
     if (!media) return
@@ -37,13 +30,14 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
   }, [])
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!lessonArrowAllowed(event)) return
+      // Sul computer le frecce muovono la registrazione (AudioPlayer): qui servono solo con il tocco.
+      if (!touch || !lessonArrowAllowed(event)) return
       event.preventDefault()
       show(event.key === 'ArrowLeft' ? 'left' : 'right')
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [show])
+  }, [show, touch])
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current) }, [])
   useEffect(() => {
     navigation.close()
@@ -64,7 +58,8 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
     navigate(`/lezioni/${lesson.id}${panel ? `?panel=${encodeURIComponent(panel)}` : ''}`)
     window.scrollTo({ top: 0 })
   }
-  const floating = touch || !titleVisible
+  // La linguetta galleggiante e' solo per il tocco (swipe); sul computer si usa il passaggio del mouse vicino al titolo.
+  const floating = touch
   return <article className="mx-auto w-full max-w-(--reading-width) pb-28 pt-7 max-md:pt-3" data-testid="lesson-page"
     onTouchStart={event => {
       swipe.current = null
@@ -84,8 +79,9 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
     <div ref={titleRef} className="relative" data-testid="lesson-title-box" tabIndex={-1}
       onPointerDown={event => { if (!(event.target as Element).closest('button, a')) event.currentTarget.focus({ preventScroll: true }) }}>
       {title}
+      {/* Con il pannello aperto sotto xl i margini laterali si stringono: le zone di salto restano solo da xl. */}
       {!floating && (['left', 'right'] as const).map(side => <div key={side}
-        className={`absolute top-0 hidden h-full min-h-24 w-[76px] [@media(hover:hover)]:block ${side === 'left' ? 'right-full' : 'left-full'}`}
+        className={`absolute top-0 hidden h-full min-h-24 w-[76px] ${panel ? 'xl:[@media(hover:hover)]:block' : '[@media(hover:hover)]:block'} ${side === 'left' ? 'right-full' : 'left-full'}`}
         data-testid={`lesson-jump-zone-${side}`} onMouseEnter={enter} onMouseLeave={leave}>
         <div className={hover || navigation.jump?.side === side ? '' : 'invisible'}>
           <LessonJumpButtons neighbors={neighbors} side={side} onJump={jump} dim={hover} sequence={navigation.jump?.side === side ? navigation.jump.sequence : undefined} paused={navigation.paused} />

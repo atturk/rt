@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { ApiError } from '@/api/client'
 import { MemoryRouter } from 'react-router'
@@ -363,7 +363,7 @@ it('la card dell’issue è dentro la sua unità e apre la successiva dopo una d
   await waitFor(() => expect(screen.getByTestId('issue-detail').closest('[data-unit]')).toHaveAttribute('data-unit', '1.2'))
   expect(screen.getByTestId('proposed-correction')).toHaveTextContent('Seconda correzione.')
   expect(screen.getByTestId('review-decision-message')).toHaveTextContent('Correzione accettata.')
-  expect(screen.queryByRole('button', { name: "Annulla l'ultima" })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: "Annulla l'ultima decisione" })).not.toHaveAttribute('aria-disabled')
   fireEvent.click(within(screen.getByTestId('review-decision-message')).getByRole('button', { name: 'Annulla' }))
   await waitFor(() => expect(screen.getByTestId('issue-detail').closest('[data-unit]')).toHaveAttribute('data-unit', '1.1'))
   expect(state.undo).toHaveBeenCalledWith('a')
@@ -534,4 +534,78 @@ it('l’icona dell’ordine passa da orologio a gravità col pulsante', () => {
   expect(button.querySelector('svg')).toHaveClass('lucide-triangle-alert')
   fireEvent.click(button)
   expect(button.querySelector('svg')).toHaveClass('lucide-clock')
+})
+it('l’avviso della decisione sale dal basso con la barra dei 5 s e poi sparisce; l’ultima decisione resta annullabile dall’intestazione', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    mount()
+    const header = screen.getByRole('button', { name: "Annulla l'ultima decisione" })
+    expect(header).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(header)
+    expect(state.undo).not.toHaveBeenCalled()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Accetta la correzione' })) })
+    const toast = screen.getByTestId('review-decision-message')
+    expect(toast).toHaveTextContent('Correzione accettata.')
+    expect(within(toast).getByTestId('review-decision-timer')).toBeInTheDocument()
+    expect(toast.closest('[data-testid="lesson-review-panel"]')).toBeNull()
+    act(() => { vi.advanceTimersByTime(4900) })
+    expect(screen.getByTestId('review-decision-message')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(200) })
+    expect(screen.queryByTestId('review-decision-message')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: "Annulla l'ultima decisione" })).not.toHaveAttribute('aria-disabled'))
+    fireEvent.click(screen.getByRole('button', { name: "Annulla l'ultima decisione" }))
+    await waitFor(() => expect(state.undo).toHaveBeenCalledWith('a'))
+    await waitFor(() => expect(screen.getByRole('button', { name: "Annulla l'ultima decisione" })).toHaveAttribute('aria-disabled', 'true'))
+  } finally { vi.useRealTimers() }
+})
+it('l’avviso resta mentre il puntatore ci passa sopra', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    mount()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mantieni il testo attuale' })) })
+    const toast = screen.getByTestId('review-decision-message')
+    fireEvent.mouseEnter(toast)
+    act(() => { vi.advanceTimersByTime(8000) })
+    expect(screen.getByTestId('review-decision-message')).toBeInTheDocument()
+    fireEvent.mouseLeave(toast)
+    act(() => { vi.advanceTimersByTime(5100) })
+    expect(screen.queryByTestId('review-decision-message')).not.toBeInTheDocument()
+  } finally { vi.useRealTimers() }
+})
+it('la card non mostra l’unità e Ascolta è un pulsante a icona accanto ad accetta e mantieni', () => {
+  mount(undefined, undefined, undefined, { has_audio: true })
+  const card = screen.getByTestId('issue-detail')
+  expect(card).not.toHaveTextContent('Unità')
+  const listen = within(card).getByRole('button', { name: 'Ascolta da 00:00' })
+  expect(listen.textContent).toBe('')
+  expect(listen.parentElement).toBe(within(card).getByRole('button', { name: 'Accetta la correzione' }).parentElement)
+  fireEvent.click(listen)
+})
+it('senza istante o senza audio non c’è il pulsante Ascolta', () => {
+  state.items = [{ ...issue, context: { timecode: '00:00', unit_content: 'Il pH è 6.' } }]
+  mount(undefined, undefined, undefined, { has_audio: true })
+  expect(screen.queryByRole('button', { name: /^Ascolta da/ })).not.toBeInTheDocument()
+})
+it('Accetta tutte chiede conferma, accetta solo le correzioni applicabili e l’annullamento le riporta tutte', async () => {
+  state.units = [unit('1.1', 'issues', 3), unit('1.2', 'issues', 1)]
+  state.items = [issue, { ...issue, issue: { ...issue.issue, id: 'b', unit_id: '1.2' } }, { ...issue, issue: { ...issue.issue, id: 'c', type: 'ERR_ASR_ST' } }, { ...issue, quote_status: 'changed', issue: { ...issue.issue, id: 'd' } }, { ...issue, fix_text: null, issue: { ...issue.issue, id: 'e' } }]
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: 'Accetta tutte le correzioni da decidere (2)' }))
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Accetta tutte le correzioni' })).getByRole('button', { name: 'Annulla' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Accetta tutte le correzioni da decidere (2)' }))
+  const dialog = screen.getByRole('dialog', { name: 'Accetta tutte le correzioni' })
+  expect(state.decide).not.toHaveBeenCalled()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Accetta 2' }))
+  await waitFor(() => expect(state.decide).toHaveBeenCalledTimes(2))
+  expect(state.decide.mock.calls.map(([body]) => body)).toEqual([{ issueId: 'a', decision: 'accepted' }, { issueId: 'b', decision: 'accepted' }])
+  expect(await screen.findByTestId('review-decision-message')).toHaveTextContent('2 correzioni accettate.')
+  fireEvent.click(screen.getByRole('button', { name: "Annulla l'ultima decisione" }))
+  await waitFor(() => expect(state.undo).toHaveBeenCalledTimes(2))
+  expect(state.undo.mock.calls.map(([id]) => id)).toEqual(['b', 'a'])
+})
+it('Accetta tutte è spenta senza correzioni da decidere', () => {
+  state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
+  mount()
+  expect(screen.getByRole('button', { name: 'Accetta tutte le correzioni da decidere (0)' })).toHaveAttribute('aria-disabled', 'true')
 })

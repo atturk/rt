@@ -63,7 +63,7 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
           const p = job.progress as { current?: number; total?: number } | null
           const progress = progressLabel(job.progress)
           return (
-            <li key={job.id} className="flex flex-col gap-1 text-xs" data-job-state={job.state} data-job-id={job.id}>
+            <li key={job.id} className="flex min-w-0 flex-col gap-1 text-xs" data-job-state={job.state} data-job-id={job.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{jobLabel(job.type, job.payload)}</span>
                 <Badge tone={tone}>{label}</Badge>
@@ -86,7 +86,7 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
               </div>
               {job.state === 'running' && p && (
                 <div>
-                  <span className="text-muted-foreground" data-testid="job-progress-label">
+                  <span className="text-muted-foreground [overflow-wrap:anywhere]" data-testid="job-progress-label">
                     {[progress.phase, progress.count, progress.detail].filter(Boolean).join(' · ')}
                   </span>
                   {p.total ? (
@@ -94,7 +94,7 @@ export function JobsPanel({ lessonId }: { lessonId: number }) {
                   ) : null}
                 </div>
               )}
-              {job.error && <span className="text-danger">{job.error}</span>}
+              {job.error && <span className="min-w-0 text-danger [overflow-wrap:anywhere]">{job.error}</span>}
             </li>
           )
         })}

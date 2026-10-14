@@ -70,4 +70,46 @@ describe("Accesso da un altro dispositivo", () => {
     await user.type(screen.getByLabelText("Indirizzo di RT per l'altro dispositivo"), 'http://127.0.0.1:8765')
     expect(screen.getByText(/raggiunge solo il Mac stesso/)).toBeInTheDocument()
   })
+
+  it("gestisce la generazione e la revoca della chiave di sola lettura (AP1)", async () => {
+    let hasKey = false
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/settings/readonly-key') {
+        return Promise.resolve(ok(hasKey ? { configured: true, key_preview: 'rt_ro_se…c123', created_at: '2026-10-12T22:00:00Z' } : { configured: false }))
+      }
+      return Promise.resolve(ok({}))
+    })
+    const post = vi.spyOn(api, 'POST').mockImplementation((path: string) => {
+      if (path === '/api/v1/settings/readonly-key') {
+        hasKey = true
+        return Promise.resolve(ok({ key: 'rt_ro_secret123', created_at: '2026-10-12T22:00:00Z', key_preview: 'rt_ro_se…c123' }))
+      }
+      return Promise.resolve(ok({}))
+    })
+    const del = vi.spyOn(api, 'DELETE').mockImplementation((path: string) => {
+      if (path === '/api/v1/settings/readonly-key') {
+        hasKey = false
+        return Promise.resolve(ok({ ok: true }))
+      }
+      return Promise.resolve(ok({}))
+    })
+
+    renderSection()
+    const user = userEvent.setup()
+
+    expect(await screen.findByTestId('readonly-key-status')).toHaveTextContent('Non configurata')
+
+    // Clicca Genera chiave
+    await user.click(screen.getByTestId('btn-create-readonly-key'))
+    expect(post).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
+    expect(await screen.findByTestId('readonly-key-created-box')).toHaveTextContent('rt_ro_secret123')
+
+    // Clicca Revoca
+    const revokeBtn = await screen.findByTestId('btn-revoke-readonly-key')
+    await user.click(revokeBtn)
+    expect(screen.getByText(/Revocare la chiave di sola lettura\?/)).toBeInTheDocument()
+    const dialogConfirm = screen.getAllByRole('button', { name: 'Revoca' }).slice(-1)[0]
+    await user.click(dialogConfirm)
+    expect(del).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
+  })
 })
