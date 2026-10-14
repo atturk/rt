@@ -3,7 +3,7 @@ import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemir
 import { buildImageStripDOM } from '@/components/images/imageStripDOM'
 import { parseImageAlt, type ImageItem } from '@/components/images/imageUtils'
 
-const MARKDOWN_IMAGE_LINE_RE = /^!\[([^\]]*)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)\s*$/
+const MARKDOWN_IMAGE_LINE_RE = /^!\[(.*)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)\s*$/
 
 class ImageStripWidget extends WidgetType {
   readonly images: ImageItem[]

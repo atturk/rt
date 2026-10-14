@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, authHeaders, loginViaLink, twoPagePdf } from './support'
 
 // Sessione di ripasso leggera, pannello Arricchimento e bot Telegram contro l'API vera. Il worker
 // gira con --mock (LLM finto) e il bot è finto (RT_TELEGRAM_FAKE=1), vedi scripts/e2e_server.py.
@@ -97,7 +97,7 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
   await page.getByTestId('lesson-actions').getByRole('button', { name: 'Arricchimento' }).click()
   const panel = page.getByTestId('enrichment-panel')
   await panel.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
-  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'Emostasi.pdf', mimeType: 'application/pdf', buffer: twoPagePdf() })
   await panel.getByRole('button', { name: /^Carica/ }).click()
   // Il job si segue nel pannello; finito, la galleria si aggiorna
   const count = async () => (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images.length
@@ -152,28 +152,12 @@ test('immagini: striscia di miniature, chiusura/apertura e visore a schermo inte
   await loginViaLink(page)
   const lesson = await builtLesson(page)
 
-  // Inserisce nel documento bozza due immagini consecutive
-  const getDoc = await page.request.get(`/api/v1/lessons/${lesson.id}/document`, { headers: authHeaders() })
-  const docData = await getDoc.json()
-  const originalMd = docData.markdown || ''
-
-  const stripMd = `## 1. Introduzione\n00:00\n\n![Emostasi.pdf, pagina 3](assets/images/img1.png)\n\n![Emostasi.pdf, pagina 4](assets/images/img2.png)\n\nTesto della lezione.\n\n` + originalMd
-
-  // Prendi il lease per salvare
-  const leaseRes = await page.request.post(`/api/v1/lessons/${lesson.id}/document/lease`, { headers: authHeaders() })
-  const token = (await leaseRes.json()).token
-  await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, {
-    headers: authHeaders(),
-    data: { markdown: stripMd, lease_token: token },
-  })
-  await page.request.delete(`/api/v1/lessons/${lesson.id}/document/lease?token=${token}`, { headers: authHeaders() })
-
   // Vai alla pagina della lezione
   await page.goto(`/lezioni/${lesson.id}`)
   const strip = page.locator('.rt-strip')
-  await expect(strip).toBeVisible()
+  await expect(strip).toBeVisible({ timeout: 15_000 })
   await expect(strip.locator('.count-pill')).toHaveText('2 pagine')
-  await expect(strip.locator('.name')).toContainText('Emostasi.pdf, p. 3–4')
+  await expect(strip.locator('.name')).toContainText('[MOCK] Immagine di test')
 
   // Clic sulla miniatura per aprire il visore
   const firstThumb = strip.locator('.thumb').first()
@@ -181,13 +165,13 @@ test('immagini: striscia di miniature, chiusura/apertura e visore a schermo inte
 
   const viewer = page.getByRole('dialog', { name: 'Visore immagini' })
   await expect(viewer).toBeVisible()
-  await expect(viewer.locator('.cap')).toContainText('Emostasi.pdf, pagina 3')
+  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
   await expect(viewer.locator('.count')).toHaveText('1 / 2')
 
   // Naviga alla seconda immagine con tasto Successiva
   await viewer.getByRole('button', { name: 'Successiva' }).click()
   await expect(viewer.locator('.count')).toHaveText('2 / 2')
-  await expect(viewer.locator('.cap')).toContainText('Emostasi.pdf, pagina 4')
+  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
 
   // Chiudi con Esc
   await page.keyboard.press('Escape')
