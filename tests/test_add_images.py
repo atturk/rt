@@ -346,7 +346,8 @@ def test_run_add_images_plain_markdown_links(drafted_synthetic_lesson, tmp_path)
     lines = rielab_content.splitlines()
     first = next(i for i, line in enumerate(lines) if f"assets/images/{h1[:16]}.png" in line)
     assert lines[first].startswith("![") and lines[first].endswith(f"(assets/images/{h1[:16]}.png)")
-    assert lines[first + 1].startswith("![") and lines[first + 1].endswith(f"(assets/images/{h2[:16]}.png)")
+    assert lines[first + 1] == ""
+    assert lines[first + 2].startswith("![") and lines[first + 2].endswith(f"(assets/images/{h2[:16]}.png)")
     with pytest.raises(TypeError):
         run_add_images(drafted_synthetic_lesson, input_path=str(photos_dir), carousel=True, force_mock=True)
 
