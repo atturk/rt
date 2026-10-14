@@ -2,6 +2,10 @@
 
 ## 4.2.6b1 — 2026-10-14
 
+- Il numero scelto per le domande è un tetto: RT cerca nuovi concetti in fino a tre passaggi e conserva le eventuali domande in più dell’ultimo giro. Il generatore vede le domande già presenti di ogni tipo.
+- Gli esercizi personalizzati possono riempire il tetto con varianti di contesto e dati, generate a lotti e verificate una per una.
+- Controlli locali scartano domande chiaramente rotte, fuori tema o quasi duplicate; le valutazioni incoerenti si riprovano una volta. L’avviso finale indica anche scarti e motivo dell’arresto.
+- In Impostazioni › Domande arrivano le regole dai voti, modificabili per tipo e materia, gli interruttori per voti e controllo prima di salvare e Aggiorna ora. Le modifiche manuali restano protette dall’aggiornamento automatico; gli esempi seguono materia e pertinenza.
 - Togliere una fonte chiede conferma e conserva il file e il registro. Le fonti già usate tolte richiedono Ricostruisci e si possono rimettere com’erano; quelle mai usate non risultano più come fonti nuove.
 
 ## 4.2.5 — 2026-10-14

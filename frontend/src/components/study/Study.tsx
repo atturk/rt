@@ -1168,7 +1168,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
           <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running} />
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Quante</label>
+          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Fino a</label>
           <Input
             id="study-gen-count"
             type="number"
