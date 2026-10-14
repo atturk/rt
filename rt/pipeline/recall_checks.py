@@ -14,6 +14,9 @@ MAX_NGRAM_REPEATS = 4
 # Somiglianza molto alta e almeno 8 parole: non confondere domande brevi sullo stesso tema.
 DUPLICATE_JACCARD = .94
 MIN_DUPLICATE_WORDS = 8
+# Tre lettere per parole comuni; due per sigle come pH e Na, che sono informative.
+MIN_KEYWORD_CHARS = 3
+MIN_ACRONYM_CHARS = 2
 # Una sola parola significativa in comune: controllo grezzo, volutamente permissivo.
 MIN_RELEVANT_WORDS = 1
 # 1,8 segnala una risposta insolitamente prolissa; ignoriamo opzioni sotto 40 caratteri.
@@ -35,7 +38,9 @@ def words(text):
 
 
 def keywords(text):
-    return {w for w in words(text) if len(w) >= 3 and w not in COMMON}
+    return {w.casefold() for w in WORD.findall(text)
+            if w.casefold() not in COMMON and (len(w) >= MIN_KEYWORD_CHARS
+                or (len(w) >= MIN_ACRONYM_CHARS and not w.islower()))}
 
 
 def numbers(text):

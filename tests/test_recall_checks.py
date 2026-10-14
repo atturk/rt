@@ -83,3 +83,11 @@ def test_generation_notice_omits_zero_parts_and_reports_stop_and_discards():
     text = recall_generation_notice({'local_discarded': 1, 'presave_discarded': 1, 'verification_discarded': 1}, 10, 6)
     assert text == 'Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli. 1 variante non ha superato la verifica.'
     assert 'tre passaggi' in recall_generation_notice({'stop_reason': 'max_rounds'}, 10, 3)
+
+
+@pytest.mark.parametrize('question, unit', [
+    ('Qual è il pH fisiologico?', 'Il pH del sangue varia fra 7,35 e 7,45.'),
+    ('Descrivi il ruolo di Na.', 'Na regola il volume extracellulare.'),
+])
+def test_short_medical_symbols_count_as_relevant_keywords(question, unit):
+    assert question_issue({'question_text': question}, unit) is None
