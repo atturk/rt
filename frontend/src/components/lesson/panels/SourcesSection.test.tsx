@@ -315,6 +315,6 @@ it('chiede conferma prima di togliere una fonte usata e permette di annullare', 
   fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
   expect(remove).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Togli Appunti' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Togli', exact: true }))
+  fireEvent.click(screen.getByRole('button', { name: 'Togli' }))
   await waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
 })

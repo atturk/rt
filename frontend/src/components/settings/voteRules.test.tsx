@@ -30,5 +30,5 @@ it('gli interruttori sono accesi e Aggiorna ora accoda un job', async () => {
   fireEvent.click(screen.getByRole('switch', { name: 'Voti' }))
   await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/settings/recall-votes', { body: { votes_enabled: false, presave_check: true } }))
   fireEvent.click(screen.getByRole('button', { name: 'Aggiorna ora' }))
-  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/settings/recall-rules/update', { body: { type: 'mirata', subject: 'Medicina' } }))
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/settings/recall-rules/update', { body: { type: 'mirata', subject: 'Medicina', mock: false } }))
 })

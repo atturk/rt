@@ -136,20 +136,19 @@ export function VoteRulesSettings() {
   const edit = useEditRecallRules()
   const update = useUpdateRecallRules()
   const [jobId, setJobId] = useState<string | null>(null)
-  const [jobFailure, setJobFailure] = useState<string | null>(null)
   const job = useJobStatus(jobId)
   const finished = jobFinished(job.data)
   const refetch = query.refetch
-  useEffect(() => { if (jobId && finished) { if (job.data?.state === 'failed') setJobFailure(job.data.error ?? 'Aggiornamento non riuscito.'); void refetch(); setJobId(null) } }, [jobId, finished, refetch, job.data])
+  useEffect(() => { if (jobId && finished) void refetch() }, [jobId, finished, refetch])
   const data = query.data
-  const error = query.error ?? settings.error ?? edit.error ?? update.error ?? (jobFailure ? new Error(jobFailure) : null) ?? (job.data?.state === 'failed' ? new Error(job.data.error ?? 'Aggiornamento non riuscito.') : job.error)
+  const error = query.error ?? settings.error ?? edit.error ?? update.error ?? (job.data?.state === 'failed' ? new Error(job.data.error ?? 'Aggiornamento non riuscito.') : job.error)
   return <Section id="vote-rules" title="Regole dai voti">
     {error && <Alert tone="danger">{errorMessage(error)}</Alert>}
     <Checkbox id="recall-votes" label="Voti" checked={data?.votes_enabled ?? true} disabled={settings.isPending} onChange={votes_enabled => settings.mutate({ votes_enabled, presave_check: data?.presave_check ?? true })} />
     <Checkbox id="recall-presave" label="Controllo prima di salvare" checked={data?.presave_check ?? true} disabled={settings.isPending} onChange={presave_check => settings.mutate({ votes_enabled: data?.votes_enabled ?? true, presave_check })} />
     {(data?.groups ?? []).map((group, index) => <div key={`${group.type}:${group.subject}`} className="flex flex-col gap-2 border-t py-3">
       <div className="flex items-center gap-2"><label htmlFor={`recall-rule-${index}`} className="flex-1 text-body font-semibold">{group.type} · {group.subject || 'Senza materia'}</label>
-        <IconButton icon={RotateCw} label="Aggiorna ora" disabled={update.isPending || Boolean(jobId)} onClick={() => update.mutate({ type: group.type, subject: group.subject }, { onSuccess: accepted => setJobId(accepted.job_id) })} />
+        <IconButton icon={RotateCw} label="Aggiorna ora" disabled={update.isPending || Boolean(jobId && !finished)} onClick={() => update.mutate({ type: group.type, subject: group.subject, mock: false }, { onSuccess: accepted => setJobId(accepted.job_id) })} />
       </div>
       <p className="text-meta text-muted-foreground">{group.votes} voti{group.updated_at ? ` · ${new Date(group.updated_at).toLocaleString('it-IT')}` : ''}</p>
       <textarea id={`recall-rule-${index}`} key={group.rules.join('\n')} defaultValue={group.rules.join('\n')} rows={3} maxLength={16000} className={textarea} onBlur={event => {
