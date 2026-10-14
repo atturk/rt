@@ -699,18 +699,18 @@ def build_recall_special_user_prompt(
 
 RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda già usata a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato la risposta.
 REGOLE:
-1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).
+1. Mantieni l'obiettivo e il procedimento del tipo; cambia valori negli intervalli plausibili e contesto (età, sesso, situazione clinica; miscele di profumi, integratori o farmaci), partendo dallo scenario dell'unità.
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
 3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.
 4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.
-OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
+OUTPUT JSON (conforme a VariantBatch): {"items": [{"question_text": "...", "pregenerated_material": "..."}]}"""
 
 
 RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
-Mantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.
+Mantieni l'obiettivo e il procedimento generale del tipo; varia dati e contesto (età, sesso, situazione) entro intervalli plausibili a partire dallo scenario dell'unità.
 La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
 Non generare pregenerated_material né una soluzione della domanda.
-OUTPUT JSON (conforme a GeneratedTextVariant): {"question_text": "..."}"""
+OUTPUT JSON (conforme a TextVariantBatch): {"items": [{"question_text": "..."}]}"""
 
 RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente una domanda personalizzata.
 Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
@@ -718,7 +718,7 @@ Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descr
 Non restituire una soluzione pregenerata: lascia soluzione vuota."""
 
 
-def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False) -> str:
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False, batch_size: int = 1) -> str:
     import json
     what = kind
     prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
@@ -726,8 +726,8 @@ def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, prob
         prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
-    model = "GeneratedTextVariant" if text_correction else "GeneratedVariant"
-    return prompt + f"\n\nCrea una nuova variante del {what} e restituisci {model}."
+    model = "TextVariantBatch" if text_correction else "VariantBatch"
+    return prompt + f"\n\nCrea varianti del {what} nel contenitore items conforme a {model}."
 
 
 RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di una domanda personalizzata prima di proporla a uno studente.

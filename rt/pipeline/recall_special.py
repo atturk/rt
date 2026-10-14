@@ -5,6 +5,7 @@ import random
 import time
 from datetime import datetime
 from typing import Callable, List, Optional
+from pydantic import BaseModel, Field
 
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
                             GeneratedVariant, GeneratedTextVariant, RecallTextGenerationResult,
@@ -14,7 +15,15 @@ from rt.services.prompt_settings import effective_system
 from rt.services.custom_question_types import find_type, active_types, type_key, question_key
 
 _LOG = logging.getLogger(__name__)
-VARIANT_ATTEMPTS = 2
+MAX_VARIANTS_PER_CALL = 5
+
+
+class TextVariantBatch(BaseModel):
+    items: list[GeneratedTextVariant] = Field(max_length=MAX_VARIANTS_PER_CALL)
+
+
+class VariantBatch(BaseModel):
+    items: list[GeneratedVariant] = Field(max_length=MAX_VARIANTS_PER_CALL)
 
 
 def _definition(qtype, lesson_dir=None):
@@ -278,9 +287,11 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     return results
 
 
-def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = False) -> Optional[RecallQuestion]:
-    """Una variante verificata del tipo, salvata nel pool; None se le verifiche falliscono."""
+def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mock=False,
+                      summary=None) -> List[RecallQuestion]:
+    """Un lotto per tipo, verifica indipendente per traccia e nessun nuovo tentativo."""
     from rt.llm import prompts
+    from rt.llm.cancel import raise_if_cancelled
     from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank, load_fewshot_examples
     from rt.services.recall_context import POLICY_VERSION
     mock = _mock(force_mock)
@@ -291,43 +302,53 @@ def generate_variant(lesson_dir: str, template_id: str, *, force_mock: bool = Fa
     previous = [q.question_text for q in bank.questions if q.template_id == template.id]
     tipo = template.tipo.model_dump()
     definition = _definition(template.custom_type, lesson_dir)
-    if not definition.varianti:
-        return None
+    if not definition.varianti or count <= 0:
+        return []
     text_correction = definition.correzione == "testo"
-    response_model = GeneratedTextVariant if text_correction else GeneratedVariant
+    model = TextVariantBatch if text_correction else VariantBatch
     system = prompts.RECALL_TEXT_VARIANT_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_SYSTEM_PROMPT
-    variant = None
+    count = min(count, MAX_VARIANTS_PER_CALL)
+    client = LLMClient(force_mock=mock)
+    raise_if_cancelled()
     if mock:
-        data = {'question_text': f"Variante mock n. {template.variants + 1} di {template.id}: {template.tipo.scenario}"}
-        if not text_correction:
-            data['pregenerated_material'] = template.tipo.procedimento
-        variant = response_model.model_validate(data)
+        items = []
+        for n in range(template.variants + 1, template.variants + count + 1):
+            data = {'question_text': f"Variante mock n. {n} di {template.id}: {template.tipo.scenario}"}
+            if not text_correction:
+                data['pregenerated_material'] = template.tipo.procedimento
+            items.append(data)
+        candidates = model.model_validate({'items': items}).items
     else:
-        client = LLMClient(force_mock=False)
-        problems = ""
-        for _ in range(VARIANT_ATTEMPTS):
-            candidate = client.call_structured(
-                prompt=prompts.recall_fewshot_block(load_fewshot_examples(template.custom_type)) + prompts.build_recall_variant_user_prompt(definition.nome, tipo, previous, problems, text_correction=text_correction),
-                system_prompt=effective_system("recall", definition.chiedi + "\n\n" + system + "\nLa risposta dello studente è testuale."),
-                response_model=response_model, job_name="recall", unit_id=", ".join(template.unit_ids),
-                lesson_dir=lesson_dir)
+        prompt = prompts.recall_fewshot_block(load_fewshot_examples(template.custom_type)) + prompts.build_recall_variant_user_prompt(
+            definition.nome, tipo, previous, text_correction=text_correction, batch_size=count)
+        candidates = client.call_structured(prompt=prompt,
+            system_prompt=effective_system("recall", definition.chiedi + "\n\n" + system + "\nLa risposta dello studente è testuale."),
+            response_model=model, job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir).items
+    saved = []
+    for candidate in candidates:
+        raise_if_cancelled()
+        if not mock:
             check = client.call_structured(
                 prompt=prompts.build_recall_variant_check_user_prompt(tipo, candidate.question_text,
-                                                                     None if text_correction else candidate.pregenerated_material),
-                system_prompt=prompts.RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT, response_model=VariantCheck,
-                job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir)
-            if check.coerente:
-                variant = candidate
-                break
-            problems = check.problemi or "La soluzione non coincide con quella ricavata in modo indipendente."
-            _LOG.info("Variante di %s scartata: %s", template.id, problems)
-    if variant is None:
-        return None
-    question = RecallQuestion(id="temporary", type=template.kind, custom_type=template.custom_type, unit_ids=template.unit_ids,
-                              question_text=variant.question_text, pregenerated_material=None if text_correction else variant.pregenerated_material,
-                              content_fingerprint=_compute_units_fingerprint(lesson_dir, template.unit_ids),
-                              generation_version=POLICY_VERSION, template_id=template.id)
-    saved = _persist(lesson_dir, [(question, None)], None, None)
+                    None if text_correction else candidate.pregenerated_material),
+                system_prompt=prompts.RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_CHECK_SYSTEM_PROMPT,
+                response_model=VariantCheck, job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir)
+            if not check.coerente:
+                if summary is not None:
+                    summary['verification_discarded'] = summary.get('verification_discarded', 0) + 1
+                _LOG.info("Variante di %s scartata: %s", template.id, check.problemi)
+                continue
+        question = RecallQuestion(id="temporary", type=template.kind, custom_type=template.custom_type,
+            unit_ids=template.unit_ids, question_text=candidate.question_text,
+            pregenerated_material=None if text_correction else candidate.pregenerated_material,
+            content_fingerprint=_compute_units_fingerprint(lesson_dir, template.unit_ids),
+            generation_version=POLICY_VERSION, template_id=template.id)
+        saved.extend(_persist(lesson_dir, [(question, None)], None, None))
+    return saved
+
+
+def generate_variant(lesson_dir: str, template_id: str, *, force_mock=False) -> Optional[RecallQuestion]:
+    saved = generate_variants(lesson_dir, template_id, 1, force_mock=force_mock)
     return saved[0] if saved else None
 
 
@@ -363,13 +384,21 @@ def generate_special_batch(
     templates = [t for t in load_recall_bank(lesson_dir).templates if t.custom_type == definition.id
                  and (unit_ids is None or set(t.unit_ids) <= set(unit_ids))]
     if wanted > 0 and templates and definition.varianti:
-        random.shuffle(templates)
-        for template in templates[:min(wanted, 2)]:  # ogni variante costa due chiamate
-            raise_if_cancelled()
-            report(None, None, f"{label}: nuova variante da {template.id}")
-            question = generate_variant(lesson_dir, template.id, force_mock=mock)
-            if question is not None:
-                results.append(question)
+        # Ogni passaggio distribuisce a turno i lotti fra i tipi della selezione.
+        for round_index in range(3):
+            found = 0
+            for position, template in enumerate(templates):
+                raise_if_cancelled()
+                remaining = count - len(results)
+                if remaining <= 0:
+                    break
+                size = min(MAX_VARIANTS_PER_CALL, max(1, -(-remaining // (len(templates) - position))))
+                report(None, None, f"{label}: nuove varianti da {template.id}")
+                saved = generate_variants(lesson_dir, template.id, size, force_mock=mock)
+                results.extend(saved)
+                found += len(saved)
+            if len(results) >= count or not found:
+                break
     return results
 
 
