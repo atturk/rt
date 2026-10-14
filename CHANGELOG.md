@@ -1,5 +1,26 @@
 # Novità di RT
 
+## 4.2.5 — 2026-10-14
+
+### Novità
+
+- Nuova pagina Calendario con l'orario delle lezioni: settimana tipo modificabile, stato e nota di ogni ora, riepilogo con le ore da recuperare. Una lezione registrata si collega da sola alla sua ora; in modifica un clic su un'ora ne cambia i dati, e il docente compare nel blocco.
+- Import in un solo riquadro: audio, PDF, foto e PowerPoint insieme, separati da RT; le ore del calendario del giorno compaiono come scelte rapide.
+- Lezioni che crescono nel tempo: in Dettagli › Fonti si aggiungono parti di registrazione, appunti o materiali anche giorni dopo, poi Estendi o Ricostruisci. Le ultime cinque versioni si ripristinano, e anche il ripristino si annulla.
+- I materiali aiutano la rielaborazione come contesto e, con la graffetta, le loro pagine vengono allegate alle unità. Si può creare una lezione solo dai materiali.
+- La rielaborazione tiene il filo delle unità già scritte, con le parti ripetute del prompt in cache.
+- Chip Consigliato nel pannello Domande, sezione Materie in Impostazioni, ricerca web con fonti nella verifica contestuale (spenta di default).
+- Linea sottile che segue l'audio accanto al testo, pannelli laterali staccati dal bordo con apertura animata.
+- Accesso di sola lettura per assistenti come Open WebUI, con chiave separata.
+- Sul computer le frecce mandano avanti e indietro la registrazione di 5 secondi.
+- Verifica con LLM: avviso a tempo con Annulla, "Accetta tutte" e Annulla nell'intestazione, Ascolta a icona.
+
+### Correzioni
+
+- Il pannello aperto non copre più il testo con la finestra stretta; opzioni lunghe e menu non escono più dai pannelli.
+- Le Fonti non si svuotano più aprendo Dettagli durante la trascrizione.
+- Il Calendario si apre anche se le sue tabelle erano state create da una versione di prova.
+
 ## 4.2.5b2.2 — 2026-10-13
 
 ### Correzioni
