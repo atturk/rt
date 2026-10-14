@@ -374,7 +374,8 @@ describe('Materiali accettati e ore dal calendario', () => {
     const slot0 = await screen.findByTestId('calendar-slot-0')
     const slot1 = screen.getByTestId('calendar-slot-1')
 
-    // tpl_2 è selezionato (ora finita più di recente)
+    // Cliccando su slot1, diventa selezionato
+    fireEvent.click(slot1)
     expect(slot1).toHaveClass('border-2', 'border-link', 'bg-primary/20')
     expect(slot1.querySelector('span')).toHaveClass('bg-link')
 
