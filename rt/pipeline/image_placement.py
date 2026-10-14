@@ -79,6 +79,39 @@ def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel
     return True
 
 
+def sort_images_document_order(lesson_dir: str, images: List[dict]) -> List[dict]:
+    """
+    Ordine sempre quello del documento: fonte nell'ordine delle Fonti,
+    poi numero di pagina; le immagini aggiunte a mano o dal web restano dopo,
+    nel loro ordine.
+    """
+    from rt.core.sources import load_sources
+    try:
+        sources = load_sources(lesson_dir)
+        source_order = {s.id: s.ordine for s in sources}
+    except Exception:
+        source_order = {}
+
+    def sort_key(item_idx: Tuple[int, dict]):
+        idx, img = item_idx
+        source_val = str(img.get("source", ""))
+        if source_val.startswith("material:"):
+            parts = source_val.split(":")
+            if len(parts) >= 3:
+                src_id = parts[1]
+                try:
+                    page_num = int(parts[2])
+                except ValueError:
+                    page_num = 0
+                ord_val = source_order.get(src_id, 900000)
+                return (0, ord_val, page_num, idx)
+        return (1, 0, 0, idx)
+
+    indexed = list(enumerate(images))
+    indexed.sort(key=sort_key)
+    return [img for _, img in indexed]
+
+
 def images_for_document(lesson_dir: str, outline: Any) -> DocumentImages:
     """(images_by_macro, carousel) arricchito con .by_unit: solo immagini descritte
     e sezioni/subunità che esistono ancora nella scaletta."""
@@ -96,7 +129,7 @@ def images_for_document(lesson_dir: str, outline: Any) -> DocumentImages:
             continue
         images = [descriptions[h] for h in hashes if h in descriptions]
         if images:
-            by_macro[macro_id] = images
+            by_macro[macro_id] = sort_images_document_order(lesson_dir, images)
 
     by_unit: Dict[str, List[dict]] = {}
     for unit_id, hashes in placement.get("units", {}).items():
@@ -104,6 +137,6 @@ def images_for_document(lesson_dir: str, outline: Any) -> DocumentImages:
             continue
         images = [descriptions[h] for h in hashes if h in descriptions]
         if images:
-            by_unit[unit_id] = images
+            by_unit[unit_id] = sort_images_document_order(lesson_dir, images)
 
     return DocumentImages(by_macro, placement["carousel"], by_unit)
