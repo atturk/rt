@@ -20,7 +20,8 @@ from rt.storage import fs
 class DocumentImages(tuple):
     """Tupla compatibile (by_macro, carousel) arricchita con by_unit."""
     def __new__(cls, by_macro, carousel, by_unit=None):
-        return super().__new__(cls, (by_macro, carousel))
+        combined = {**by_macro, **(by_unit or {})}
+        return super().__new__(cls, (combined, carousel))
 
     def __init__(self, by_macro, carousel, by_unit=None):
         self.by_macro = by_macro

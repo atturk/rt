@@ -186,7 +186,7 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
     return pages
 
 
-def material_context_parts(lesson_dir, *, mock=False, ctx=None):
+def material_context_parts(lesson_dir, *, mock=False, ctx=None, include_materials: bool = True):
     """Contesto per la riscrittura: solo le fonti che non sono già nei segmenti, una volta sola."""
     from rt.core.sources import load_sources
     from rt.core.source_selection import selection
@@ -201,8 +201,9 @@ def material_context_parts(lesson_dir, *, mock=False, ctx=None):
         if source.id in in_segments:
             continue
         if source.tipo == 'materiale':
-            for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
-                parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
+            if include_materials:
+                for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
+                    parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
         else:
             texts = [segment['text_raw'] for segment in cache.get(source.id, {}).get('segments', [])]
             if texts:

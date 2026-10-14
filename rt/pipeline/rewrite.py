@@ -172,10 +172,6 @@ def run_rewrite(
         if result.get("status") in ("draft_validated", "unit_regenerated"):
             from rt.services.classifier import classify_units
             classify_units(lesson_dir, ctx=ctx, force_mock=force_mock)
-            if result.get("status") == "draft_validated" and not result.get("failed_units"):
-                from rt.pipeline.material_attachments import attach_material_pages
-                from rt.pipeline.outline import load_outline
-                attach_material_pages(lesson_dir, load_outline(lesson_dir), mock=force_mock, ctx=ctx)
         return scope.complete(result)
 
 
@@ -284,6 +280,15 @@ def _run_rewrite(
     outline_summary = "\n".join(outline_summary_lines)
     
     client = LLMClient(force_mock=force_mock)
+
+    # MF1c: Assegnazione materiali prima della rielaborazione
+    from rt.pipeline.material_mapping import assign_material_pages, material_context_for_unit
+    try:
+        assign_material_pages(lesson_dir, outline, mock=force_mock, ctx=ctx)
+    except Exception as exc:
+        LOG.warning("Assegnazione materiali fallita o non disponibile: %s", exc)
+
+    unit_to_macro = {su.id: str(macro.id) for macro in outline.macro_sections for su in macro.units}
     
     # Raccogli le unità dell'outline che necessitano di generazione
     units_to_process = []
@@ -310,7 +315,7 @@ def _run_rewrite(
     stopped_early = False
     context_floor = 0
     from rt.core.materials import material_context_parts
-    material_parts = material_context_parts(lesson_dir, mock=force_mock, ctx=ctx)
+    material_parts = material_context_parts(lesson_dir, mock=force_mock, ctx=ctx, include_materials=False)
     if material_parts:
         material_parts = cap_material_parts(material_parts, _configured_context_length(client))
     # Ultimo uso osservato (modello, usage, output riservato): una chiamata fallita senza usage non lo azzera.
@@ -361,6 +366,9 @@ def _run_rewrite(
             f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained],
             materials_text="\n\n".join(material_parts))
         
+        u_macro_id = unit_to_macro.get(u.id, "")
+        unit_mat_text = material_context_for_unit(lesson_dir, u.id, u_macro_id)
+
         prompt = build_rewrite_user_prompt(
             unit_id=u.id,
             unit_title=u.title,
@@ -370,6 +378,7 @@ def _run_rewrite(
             next_context=next_text,
             outline_summary=outline_summary,
             include_prefix=False,
+            unit_materials_text=unit_mat_text,
         )
         
         u_title = u.title.strip() if getattr(u, "title", None) else ""

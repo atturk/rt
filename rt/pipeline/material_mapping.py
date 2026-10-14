@@ -521,6 +521,16 @@ def assign_material_pages(
                 if ctx:
                     ctx.check_cancelled()
                 candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
+                if not candidates and mock and corpus and page.get("testo", "").strip():
+                    candidates = [
+                        CandidateSubunit(
+                            unit_id=corpus[0].unit_id,
+                            macro_id=corpus[0].macro_id,
+                            title=corpus[0].title,
+                            transcript=corpus[0].transcript,
+                            score=1.0,
+                        )
+                    ]
                 if not candidates:
                     continue
 
@@ -622,6 +632,6 @@ def material_context_for_unit(lesson_dir: str, unit_id: str, macro_id: str) -> s
         if key in seen:
             continue
         seen.add(key)
-        parts.append(f"[{item.get('source_id')}, {item.get('source_file')}, pagina {item.get('page')}]\n{item.get('text', '')}")
+        parts.append(f"[Fonte: {item.get('source_file')}, pag. {item.get('page')}]\n{item.get('text', '')}")
 
     return "\n\n".join(parts)

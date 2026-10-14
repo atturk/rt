@@ -153,7 +153,8 @@ OBIETTIVI DI SCRITTURA:
 4. "Tenere il filo": mantieni la continuità concettuale della lezione senza salti logici.
 5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette). "Approfondita" significa esposizione completa e ben argomentata di ciò che il docente ha detto — non aggiunta di conoscenza enciclopedica esterna. Distingui sempre tra: (a) FATTO SORGENTE — ciò che il docente ha detto esplicitamente; (b) INFERENZA DIRETTA — collegamenti logici impliciti ma evidenti nel discorso del docente; ED EVITA (c) CONOSCENZA ESTERNA — nozioni non dette dal docente, anche se vere e pertinenti, che non vanno mai aggiunte.
 6. PROVENANCE: Nell'output JSON devi includere in "source_segment_ids" la lista degli ID dei segmenti principali utilizzati per redigere l'unità.
-7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi)."""
+7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi).
+8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano."""
 
 
 class PromptPrefix(str):
@@ -200,8 +201,10 @@ def build_rewrite_user_prompt(
     previous_units_text: str = "",
     materials_text: str = "",
     include_prefix: bool = True,
+    unit_materials_text: str = "",
 ) -> str:
     prefix = build_rewrite_prefix(outline_summary, previous_units_text, materials_text, glossary_text) if include_prefix else ""
+    materials_section = f"---\nPAGINE DEI MATERIALI ASSEGNATE A QUESTA UNITÀ:\n{unit_materials_text}\n" if unit_materials_text else ""
     return prefix + f"""Devi rielaborare l'unità didattica:
 ID: {unit_id}
 Titolo: {unit_title}
@@ -212,7 +215,7 @@ CONTESTO PRECEDENTE (ultimi 1-2 minuti, solo per mantenere il filo, non riscrive
 ---
 SEGMENTI PRINCIPALI DELL'UNITÀ (da rielaborare integralmente):
 {main_segments_text}
----
+{materials_section}---
 CONTESTO SUCCESSIVO (prossimi 1-2 minuti, solo per continuità):
 {next_context if next_context else "_Fine lezione_"}
 ---
