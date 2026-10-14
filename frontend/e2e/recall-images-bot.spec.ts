@@ -147,3 +147,61 @@ test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricaric
   await expect(panel).toHaveAttribute('data-running', 'false')
   expect((await apiGet<{ running: boolean }>(page.request, '/telegram/daemon')).running).toBe(false)
 })
+
+test('immagini: striscia di miniature, chiusura/apertura e visore a schermo intero', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+
+  // Inserisce nel documento bozza due immagini consecutive
+  const getDoc = await page.request.get(`/api/v1/lessons/${lesson.id}/document`, { headers: authHeaders() })
+  const docData = await getDoc.json()
+  const originalMd = docData.markdown || ''
+
+  const stripMd = `## 1. Introduzione\n00:00\n\n![Emostasi.pdf, pagina 3](assets/images/img1.png)\n\n![Emostasi.pdf, pagina 4](assets/images/img2.png)\n\nTesto della lezione.\n\n` + originalMd
+
+  // Prendi il lease per salvare
+  const leaseRes = await page.request.post(`/api/v1/lessons/${lesson.id}/document/lease`, { headers: authHeaders() })
+  const token = (await leaseRes.json()).token
+  await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, {
+    headers: authHeaders(),
+    data: { markdown: stripMd, lease_token: token },
+  })
+  await page.request.delete(`/api/v1/lessons/${lesson.id}/document/lease?token=${token}`, { headers: authHeaders() })
+
+  // Vai alla pagina della lezione
+  await page.goto(`/lezioni/${lesson.id}`)
+  const strip = page.locator('.rt-strip')
+  await expect(strip).toBeVisible()
+  await expect(strip.locator('.count-pill')).toHaveText('2 pagine')
+  await expect(strip.locator('.name')).toContainText('Emostasi.pdf, p. 3–4')
+
+  // Clic sulla miniatura per aprire il visore
+  const firstThumb = strip.locator('.thumb').first()
+  await firstThumb.click()
+
+  const viewer = page.getByRole('dialog', { name: 'Visore immagini' })
+  await expect(viewer).toBeVisible()
+  await expect(viewer.locator('.cap')).toContainText('Emostasi.pdf, pagina 3')
+  await expect(viewer.locator('.count')).toHaveText('1 / 2')
+
+  // Naviga alla seconda immagine con tasto Successiva
+  await viewer.getByRole('button', { name: 'Successiva' }).click()
+  await expect(viewer.locator('.count')).toHaveText('2 / 2')
+  await expect(viewer.locator('.cap')).toContainText('Emostasi.pdf, pagina 4')
+
+  // Chiudi con Esc
+  await page.keyboard.press('Escape')
+  await expect(viewer).not.toBeVisible()
+
+  // Prova la chiusura della striscia
+  const toggleBtn = strip.locator('.tg')
+  await toggleBtn.click()
+  await expect(strip).toHaveClass(/closed/)
+  await expect(strip.locator('.thumbs')).toBeHidden()
+
+  // Riapri
+  await toggleBtn.click()
+  await expect(strip).not.toHaveClass(/closed/)
+  await expect(strip.locator('.thumbs')).toBeVisible()
+})
+

@@ -11,6 +11,7 @@ import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
+import { ImageViewer } from '@/components/images/ImageViewer'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
@@ -174,6 +175,7 @@ export function Layout() {
         disabled={!!newLessonOptions}
         onDropFiles={(files) => openNewLesson({ initialFiles: files })}
       />
+      <ImageViewer />
       {newLessonOptions && (
         <Suspense fallback={null}>
           <NewLessonDialog
