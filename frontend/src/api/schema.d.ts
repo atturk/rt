@@ -4197,6 +4197,8 @@ export interface components {
             mode: "off" | "manual" | "observe" | "pipeline";
             /** Model */
             model?: string | null;
+            /** Threshold */
+            threshold?: number | null;
         };
         /** ClassifierJobView */
         ClassifierJobView: {
@@ -4258,6 +4260,11 @@ export interface components {
              * @enum {string}
              */
             request_type: "choice" | "noul" | "score";
+            /**
+             * Threshold
+             * @default 0.8
+             */
+            threshold: number | null;
             /** Timeout Seconds */
             timeout_seconds: number;
         };

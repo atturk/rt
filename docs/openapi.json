@@ -1944,6 +1944,19 @@
               }
             ],
             "title": "Model"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           }
         },
         "title": "ClassifierJobConfig",
@@ -2096,6 +2109,20 @@
             ],
             "title": "Request Type",
             "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.8,
+            "title": "Threshold"
           },
           "timeout_seconds": {
             "title": "Timeout Seconds",

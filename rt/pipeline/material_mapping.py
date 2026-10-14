@@ -7,12 +7,14 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
 
+import json
 import math
 import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from rt.core.lesson_paths import lesson_path
 from rt.core.models import Outline, Segment, SegmentsData
 from rt.storage import fs
 
@@ -277,3 +279,349 @@ def find_candidate_subunits_for_page(
             ))
 
     return candidates
+
+
+STATE_FILE = "material_attachments.json"
+CACHE_FILE = "material_decisions.json"
+
+
+def _read_json(lesson_dir: str, name: str) -> Dict[str, Any]:
+    path = lesson_path(lesson_dir, name)
+    if not fs.isfile(path):
+        return {}
+    try:
+        with fs.open(path, encoding="utf-8") as stream:
+            return json.load(stream)
+    except Exception:
+        return {}
+
+
+def _write_json(lesson_dir: str, name: str, data: Dict[str, Any]) -> None:
+    path = lesson_path(lesson_dir, name)
+    tmp_path = path + ".tmp"
+    with fs.open(tmp_path, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+    fs.replace(tmp_path, path)
+
+
+def classify_material_page(
+    page: Dict[str, Any],
+    candidates: List[CandidateSubunit],
+    source: Any,
+    lesson_dir: str,
+    cached: Dict[str, Any],
+    *,
+    mock: bool = False,
+    ctx: Any = None,
+) -> Tuple[List[str], List[str]]:
+    """
+    Classifica una pagina rispetto alle sottounità candidate usando Jev (MF1b).
+    Restituisce (assigned_unit_ids, assigned_macro_ids).
+    Se passa per 3 o più sottounità della stessa macro, va sotto la macro al posto loro.
+    Se il classificatore è spento o in errore: restituisce ([], []).
+    """
+    if not candidates:
+        return [], []
+
+    from rt.core.config import load_config, classifier_job
+    from rt.services.enrichment_service import digest, decision
+    from rt.llm.jev_client import JevNoulQuestion, JevNoulAnswer
+    from rt.llm.client import LLMClient
+
+    cfg = classifier_job(load_config(), "images")
+    if cfg.mode == "off":
+        return [], []
+
+    threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.8
+    force_mock = LLMClient(force_mock=mock).force_mock
+
+    # Domande noul, una per candidata
+    questions: Dict[str, JevNoulQuestion] = {}
+    for c in candidates:
+        q_key = f"unit_{c.unit_id.replace('.', '_')}"
+        questions[q_key] = JevNoulQuestion(
+            instructions=f"La pagina spiega o illustra un argomento trattato in modo specifico nella sottounità «{c.title}», non solo la stessa materia."
+        )
+
+    # Prompt state: pagina e candidate (~1.500 caratteri di trascritto ciascuna), mai la lezione intera
+    candidates_text = "\n\n".join(
+        f"### Sottounità {c.unit_id}: {c.title}\n"
+        f"Estratto del trascritto:\n{c.transcript[:1500]}"
+        for c in candidates
+    )
+    prompt_state = (
+        f"PAGINA DEL MATERIALE (pagina {page['numero']})\n"
+        f"{page['testo']}\n\n"
+        f"SOTTOUNITÀ CANDIDATE\n"
+        f"{candidates_text}"
+    )
+
+    pid = f"{source.id}:{page['numero']}"
+    key = digest([
+        source.impronta,
+        page["numero"],
+        page["testo"],
+        [c.unit_id for c in candidates],
+        {k: q.model_dump() for k, q in questions.items()},
+        cfg.model,
+        threshold,
+    ])
+
+    probabilities: Dict[str, float] = {}
+    entry = cached.get(pid, {})
+    if entry.get("key") == key and "probabilities" in entry:
+        probabilities = entry["probabilities"]
+    elif force_mock:
+        # Mock deterministico: prima candidata 0.9, le altre 0.1
+        for idx, c in enumerate(candidates):
+            q_key = f"unit_{c.unit_id.replace('.', '_')}"
+            probabilities[q_key] = 0.9 if idx == 0 else 0.1
+        cached[pid] = {"key": key, "probabilities": probabilities}
+        _write_json(lesson_dir, CACHE_FILE, cached)
+    else:
+        try:
+            if ctx:
+                ctx.check_cancelled()
+            resp = decision(
+                prompt_state,
+                questions,
+                lesson_dir=lesson_dir,
+                job_name="images",
+                unit_id=pid,
+            )
+            for k in questions:
+                ans = resp.answers.get(k)
+                if isinstance(ans, JevNoulAnswer):
+                    probabilities[k] = ans.noul
+                else:
+                    probabilities[k] = 0.0
+            cached[pid] = {"key": key, "probabilities": probabilities}
+            _write_json(lesson_dir, CACHE_FILE, cached)
+        except Exception:
+            # Il classificatore spento o in errore: nessuna pagina assegnata, la lezione si fa lo stesso
+            return [], []
+
+    # Sottounità approvate con probabilità >= soglia
+    approved_candidates: List[CandidateSubunit] = []
+    for c in candidates:
+        q_key = f"unit_{c.unit_id.replace('.', '_')}"
+        prob = probabilities.get(q_key, 0.0)
+        if prob >= threshold:
+            approved_candidates.append(c)
+
+    # Raggruppamento per macro-unità: se >= 3 sottounità della stessa macro, va sotto la macro
+    by_macro: Dict[str, List[CandidateSubunit]] = {}
+    for c in approved_candidates:
+        by_macro.setdefault(c.macro_id, []).append(c)
+
+    assigned_units: List[str] = []
+    assigned_macros: List[str] = []
+
+    for macro_id, c_list in by_macro.items():
+        if len(c_list) >= 3:
+            assigned_macros.append(macro_id)
+        else:
+            assigned_units.extend(c.unit_id for c in c_list)
+
+    return assigned_units, assigned_macros
+
+
+def assign_material_pages(
+    lesson_dir: str,
+    outline: Outline,
+    *,
+    mock: bool = False,
+    ctx: Any = None,
+) -> Dict[str, Any]:
+    """
+    Assegna le pagine dei materiali alle sottounità e macro sezioni (MF1c-MF1e).
+    Eseguita prima della rielaborazione.
+    """
+    from rt.core.sources import load_sources
+    from rt.core.state import read_info_yaml
+    from rt.core.materials import material_pages
+    from rt.core.source_selection import selection
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.add_images import (
+        compute_image_hash,
+        load_image_descriptions,
+        save_image_descriptions,
+        save_raw_image,
+    )
+    from rt.pipeline.image_placement import (
+        load_image_placement,
+        save_image_placement,
+    )
+
+    sources = [s for s in load_sources(lesson_dir) if s.tipo == "materiale"]
+    previous_state = _read_json(lesson_dir, STATE_FILE)
+    if not sources and not previous_state:
+        return {}
+
+    info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
+    enabled = str(info.get("allega_materiali", "true")).casefold() not in ("false", "0", "no")
+
+    primary_id = selection(lesson_dir).get("principale")
+    segment_path = lesson_path(lesson_dir, "segments.json")
+    segments_data = load_segments_json(segment_path) if fs.isfile(segment_path) else SegmentsData()
+
+    corpus, idf = build_subunit_corpus(outline, segments_data)
+    cached_decisions = _read_json(lesson_dir, CACHE_FILE)
+
+    units_placement: Dict[str, List[str]] = {}
+    macros_placement: Dict[str, List[str]] = {}
+    pages_by_unit: Dict[str, List[Dict[str, Any]]] = {}
+    pages_by_macro: Dict[str, List[Dict[str, Any]]] = {}
+
+    descriptions = load_image_descriptions(lesson_dir)
+
+    for source in sources:
+        is_primary = (source.id == primary_id)
+        pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+
+        if is_primary:
+            # MF1e: Le pagine del materiale principale diventano segmenti;
+            # le loro immagini vanno alla sottounità i cui segmenti le contengono, senza classificatore.
+            seg_by_id = {s.id: s for s in segments_data.segments}
+            seg_to_unit: Dict[str, str] = {}
+            for macro in outline.macro_sections:
+                for u in macro.units:
+                    start_seg = seg_by_id.get(u.start_segment_id)
+                    end_seg = seg_by_id.get(u.end_segment_id)
+                    if start_seg and end_seg:
+                        for s in segments_data.segments[start_seg.index - 1 : end_seg.index]:
+                            seg_to_unit[s.id] = u.id
+
+            source_segs = [s for s in segments_data.segments if getattr(s, "source_file", None) == source.id or "materiale" in getattr(s, "flags", [])]
+            for page in pages:
+                page_idx = page["numero"] - 1
+                target_unit_id = None
+                if page_idx < len(source_segs):
+                    seg_id = source_segs[page_idx].id
+                    target_unit_id = seg_to_unit.get(seg_id)
+
+                if target_unit_id and enabled and page.get("immagini"):
+                    for img_rel in page["immagini"]:
+                        img_path = os.path.join(lesson_dir, img_rel)
+                        if fs.isfile(img_path):
+                            with fs.open(img_path, "rb") as stream:
+                                data = stream.read()
+                            h = compute_image_hash(data)
+                            fn = save_raw_image(lesson_dir, data, h)
+                            descriptions.setdefault(h, {
+                                "filename": fn,
+                                "source": f"material:{source.id}:{page['numero']}",
+                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                            })
+                            if h not in units_placement.setdefault(target_unit_id, []):
+                                units_placement[target_unit_id].append(h)
+        else:
+            # Materiale non principale: MF1a candidate locali + MF1b classificatore
+            for page in pages:
+                if ctx:
+                    ctx.check_cancelled()
+                candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
+                if not candidates:
+                    continue
+
+                assigned_units, assigned_macros = classify_material_page(
+                    page, candidates, source, lesson_dir, cached_decisions, mock=mock, ctx=ctx
+                )
+
+                page_info = {
+                    "source_id": source.id,
+                    "source_file": os.path.basename(source.file),
+                    "page": page["numero"],
+                    "text": page["testo"],
+                }
+
+                for uid in assigned_units:
+                    pages_by_unit.setdefault(uid, []).append(page_info)
+                for mid in assigned_macros:
+                    pages_by_macro.setdefault(mid, []).append(page_info)
+
+                if enabled and page.get("immagini") and (assigned_units or assigned_macros):
+                    for img_rel in page["immagini"]:
+                        img_path = os.path.join(lesson_dir, img_rel)
+                        if fs.isfile(img_path):
+                            with fs.open(img_path, "rb") as stream:
+                                data = stream.read()
+                            h = compute_image_hash(data)
+                            fn = save_raw_image(lesson_dir, data, h)
+                            descriptions.setdefault(h, {
+                                "filename": fn,
+                                "source": f"material:{source.id}:{page['numero']}",
+                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                            })
+                            for uid in assigned_units:
+                                if h not in units_placement.setdefault(uid, []):
+                                    units_placement[uid].append(h)
+                            for mid in assigned_macros:
+                                if h not in macros_placement.setdefault(mid, []):
+                                    macros_placement[mid].append(h)
+
+    save_image_descriptions(lesson_dir, descriptions)
+
+    state = {
+        "units": units_placement,
+        "macros": macros_placement,
+        "pages_by_unit": pages_by_unit,
+        "pages_by_macro": pages_by_macro,
+    }
+    _write_json(lesson_dir, STATE_FILE, state)
+
+    placement = load_image_placement(lesson_dir) or {"macros": {}, "units": {}, "carousel": False}
+    new_macros = {**placement.get("macros", {})}
+    for mid, h_list in macros_placement.items():
+        existing = new_macros.get(mid, [])
+        for h in h_list:
+            if h not in existing:
+                existing.append(h)
+        new_macros[mid] = existing
+
+    new_units = {**placement.get("units", {})}
+    for uid, h_list in units_placement.items():
+        existing = new_units.get(uid, [])
+        for h in h_list:
+            if h not in existing:
+                existing.append(h)
+        new_units[uid] = existing
+
+    if enabled:
+        save_image_placement(lesson_dir, macros=new_macros, units=new_units, carousel=placement.get("carousel", False))
+    else:
+        save_image_placement(lesson_dir, macros={}, units={}, carousel=placement.get("carousel", False))
+
+    return state
+
+
+def material_context_for_unit(lesson_dir: str, unit_id: str, macro_id: str) -> str:
+    """
+    Restituisce il testo dei materiali assegnati a una sottounità (MF1d):
+    solo il testo delle sue pagine e di quelle assegnate alla sua unità madre.
+    """
+    state = _read_json(lesson_dir, STATE_FILE)
+    if not state:
+        return ""
+    pages_by_unit = state.get("pages_by_unit", {})
+    pages_by_macro = state.get("pages_by_macro", {})
+
+    items: List[Dict[str, Any]] = []
+    # Prima le pagine della macro unità
+    items.extend(pages_by_macro.get(str(macro_id), []))
+    # Poi le pagine specifiche della sottounità
+    items.extend(pages_by_unit.get(str(unit_id), []))
+
+    if not items:
+        return ""
+
+    seen = set()
+    parts = []
+    for item in items:
+        key = (item.get("source_id"), item.get("page"))
+        if key in seen:
+            continue
+        seen.add(key)
+        parts.append(f"[{item.get('source_id')}, {item.get('source_file')}, pagina {item.get('page')}]\n{item.get('text', '')}")
+
+    return "\n\n".join(parts)

@@ -148,3 +148,129 @@ def test_candidates_cap_at_five_and_half_max_threshold():
     best_score = candidates[0].score
     for c in candidates:
         assert c.score >= 0.5 * best_score
+
+
+def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch):
+    from rt.core.sources import Source
+    from rt.pipeline.material_mapping import (
+        CandidateSubunit,
+        classify_material_page,
+        material_context_for_unit,
+        _write_json,
+        STATE_FILE,
+    )
+
+    lesson_dir = str(tmp_path)
+    source = Source(id="src_mat1", tipo="materiale", file="sources/src_mat1/doc.pdf",
+                    impronta="abc123hash", aggiunta_il="2026-10-14T00:00:00Z", ordine=1)
+    page = {"numero": 3, "testo": "Contenuto pagina 3", "immagini": []}
+
+    candidates = [
+        CandidateSubunit(unit_id="1.1", macro_id="1", title="Titolo 1.1", transcript="testo", score=0.8),
+        CandidateSubunit(unit_id="1.2", macro_id="1", title="Titolo 1.2", transcript="testo", score=0.7),
+        CandidateSubunit(unit_id="1.3", macro_id="1", title="Titolo 1.3", transcript="testo", score=0.6),
+        CandidateSubunit(unit_id="2.1", macro_id="2", title="Titolo 2.1", transcript="testo", score=0.5),
+    ]
+
+    # 1. Deterministic mock: first candidate gets 0.9, others 0.1
+    units, macros = classify_material_page(page, candidates, source, lesson_dir, {}, mock=True)
+    assert units == ["1.1"]
+    assert macros == []
+
+    # 2. Macro aggregation when >= 3 subunits of same macro pass
+    cached_3_passed = {
+        f"{source.id}:{page['numero']}": {
+            "key": "some_key",
+            "probabilities": {
+                "unit_1_1": 0.85,
+                "unit_1_2": 0.90,
+                "unit_1_3": 0.82,
+                "unit_2_1": 0.20,
+            }
+        }
+    }
+    # When 3 pass in macro 1: aggregates to macro "1"
+    monkeypatch.setattr("rt.services.enrichment_service.digest", lambda *a: "some_key")
+    units, macros = classify_material_page(page, candidates, source, lesson_dir, cached_3_passed, mock=False)
+    assert units == []
+    assert macros == ["1"]
+
+    # 3. Only 2 pass in macro 1: stay at subunit level
+    cached_2_passed = {
+        f"{source.id}:{page['numero']}": {
+            "key": "some_key",
+            "probabilities": {
+                "unit_1_1": 0.85,
+                "unit_1_2": 0.90,
+                "unit_1_3": 0.50,
+                "unit_2_1": 0.85,
+            }
+        }
+    }
+    units, macros = classify_material_page(page, candidates, source, lesson_dir, cached_2_passed, mock=False)
+    assert set(units) == {"1.1", "1.2", "2.1"}
+    assert macros == []
+
+
+def test_classify_material_page_classifier_off_or_error(tmp_path, monkeypatch):
+    from rt.core.sources import Source
+    from rt.pipeline.material_mapping import CandidateSubunit, classify_material_page
+
+    lesson_dir = str(tmp_path)
+    source = Source(id="src_mat1", tipo="materiale", file="sources/src_mat1/doc.pdf",
+                    impronta="abc123hash", aggiunta_il="2026-10-14T00:00:00Z", ordine=1)
+    page = {"numero": 1, "testo": "Testo", "immagini": []}
+    candidates = [CandidateSubunit(unit_id="1.1", macro_id="1", title="Titolo", transcript="testo", score=0.8)]
+
+    # When classifier is off
+    from rt.core.config import ClassifierJob
+    monkeypatch.setattr("rt.core.config.classifier_job",
+                        lambda cfg, name: ClassifierJob(mode="off", model="m", credential="c", timeout_seconds=10))
+    units, macros = classify_material_page(page, candidates, source, lesson_dir, {})
+    assert units == []
+    assert macros == []
+
+    # When classifier call fails with an error: graceful fallback, no error thrown
+    monkeypatch.setattr("rt.core.config.classifier_job",
+                        lambda cfg, name: ClassifierJob(mode="manual", model="m", credential="c", timeout_seconds=10))
+    def mock_decision_error(*args, **kwargs):
+        raise RuntimeError("Network timeout or LLM failure")
+    monkeypatch.setattr("rt.services.enrichment_service.decision", mock_decision_error)
+    units, macros = classify_material_page(page, candidates, source, lesson_dir, {})
+    assert units == []
+    assert macros == []
+
+
+def test_material_context_for_unit(tmp_path):
+    from rt.pipeline.material_mapping import material_context_for_unit, _write_json, STATE_FILE
+    lesson_dir = str(tmp_path)
+
+    state = {
+        "pages_by_unit": {
+            "1.1": [
+                {"source_id": "src_1", "source_file": "slide.pdf", "page": 4, "text": "Testo pagina 4"}
+            ]
+        },
+        "pages_by_macro": {
+            "1": [
+                {"source_id": "src_1", "source_file": "slide.pdf", "page": 1, "text": "Testo panoramico pagina 1"}
+            ]
+        }
+    }
+    _write_json(lesson_dir, STATE_FILE, state)
+
+    # Unit 1.1 under macro 1 gets both macro 1 and unit 1.1 pages
+    context_1_1 = material_context_for_unit(lesson_dir, "1.1", "1")
+    assert "pagina 1" in context_1_1
+    assert "pagina 4" in context_1_1
+    assert "Testo panoramico pagina 1" in context_1_1
+    assert "Testo pagina 4" in context_1_1
+
+    # Unit 1.2 under macro 1 gets macro 1 page, but NOT unit 1.1 page
+    context_1_2 = material_context_for_unit(lesson_dir, "1.2", "1")
+    assert "pagina 1" in context_1_2
+    assert "pagina 4" not in context_1_2
+
+    # Unit 2.1 under macro 2 gets neither
+    assert material_context_for_unit(lesson_dir, "2.1", "2") == ""
+
