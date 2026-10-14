@@ -117,7 +117,21 @@ const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
  * - Graffetta per allegare i materiali alle unità (allega_materiali).
  * - Menu materie da GET /subjects.
  */
-export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export type NewLessonDialogProps = {
+  open: boolean
+  onClose: () => void
+  initialDate?: string
+  initialSlotKey?: string
+  initialFiles?: File[]
+}
+
+export function NewLessonDialog({
+  open,
+  onClose,
+  initialDate,
+  initialSlotKey,
+  initialFiles,
+}: NewLessonDialogProps) {
   const navigate = useNavigate()
   const client = useQueryClient()
   const lessons = useLessons()
@@ -133,12 +147,12 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [primaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
   const [attachMaterials, setAttachMaterials] = useState(true)
   const [manualMode, setManualMode] = useState(false)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState('')
   const [docente, setDocente] = useState('')
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(() => initialDate ?? today())
   const [time, setTime] = useState('')
   const [solo, setSolo] = useState(false)
   const [review, setReview] = useState(false)
@@ -186,7 +200,17 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
   // Selezione automatica dello slot al cambio data o al caricamento ore
   useEffect(() => {
-    if (manualMode || hours.length === 0 || selectedSlot) return
+    if (manualMode || hours.length === 0) return
+    if (selectedKey) {
+      const match = hours.find((h) => h.key === selectedKey && !h.is_recorded)
+      if (match && !materia) {
+        // oxlint-disable-next-line react/set-state-in-effect
+        setMateria(match.materia)
+        setDocente(match.docente ?? '')
+        setTime(match.start_time)
+      }
+      return
+    }
     const pick = pickSlot(hours, date)
     if (!pick) return
     // oxlint-disable-next-line react/set-state-in-effect
@@ -194,48 +218,61 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setMateria(pick.materia)
     setDocente(pick.docente ?? '')
     setTime(pick.start_time)
-  }, [hours, manualMode, selectedSlot, date])
+  }, [hours, manualMode, selectedKey, date, materia])
 
-  const choose = (chosen: File[]) => {
-    if (busy || chosen.length === 0) return
-    const zipsFound = chosen.filter(isZip)
-    if (zipsFound.length > 0) {
-      if (zipsFound.length !== chosen.length) {
-        setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+  const choose = useCallback(
+    (chosen: File[]) => {
+      if (busy || chosen.length === 0) return
+      const zipsFound = chosen.filter(isZip)
+      if (zipsFound.length > 0) {
+        if (zipsFound.length !== chosen.length) {
+          setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+          return
+        }
+        setZipFiles(zipsFound)
+        setAudioFiles([])
+        setMaterialFiles([])
+        setProblem(null)
+        setZipJob(null)
+        create.reset()
+        zips.reset()
         return
       }
-      setZipFiles(zipsFound)
-      setAudioFiles([])
-      setMaterialFiles([])
+
+      const auds = chosen.filter(isAudioFile)
+      const mats = chosen.filter(isMaterialFile)
+
+      const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
+      if (unsupported) {
+        setProblem(
+          `Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`,
+        )
+        return
+      }
+
+      // Ordinamento di partenza: data di modifica del file, poi per nome
+      const sortedAuds = [...auds].sort(
+        (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
+      )
+
+      setZipFiles([])
+      setAudioFiles((prev) => [...prev, ...sortedAuds])
+      setMaterialFiles((prev) => [...prev, ...mats])
+      if (mats.length > 0) setAttachMaterials(true)
       setProblem(null)
       setZipJob(null)
       create.reset()
-      zips.reset()
-      return
+    },
+    [busy, create, zips],
+  )
+
+  const initialFilesHandled = useRef(false)
+  useEffect(() => {
+    if (!initialFilesHandled.current && initialFiles && initialFiles.length > 0) {
+      initialFilesHandled.current = true
+      choose(initialFiles)
     }
-
-    const auds = chosen.filter(isAudioFile)
-    const mats = chosen.filter(isMaterialFile)
-
-    const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
-    if (unsupported) {
-      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`)
-      return
-    }
-
-    // Ordinamento di partenza: data di modifica del file, poi per nome
-    const sortedAuds = [...auds].sort(
-      (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
-    )
-
-    setZipFiles([])
-    setAudioFiles((prev) => [...prev, ...sortedAuds])
-    setMaterialFiles((prev) => [...prev, ...mats])
-    if (mats.length > 0) setAttachMaterials(true)
-    setProblem(null)
-    setZipJob(null)
-    create.reset()
-  }
+  }, [initialFiles, choose])
 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return

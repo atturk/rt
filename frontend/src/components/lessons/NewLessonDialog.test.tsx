@@ -30,12 +30,24 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>
 }
 
-function renderDialog(open = true, onClose = vi.fn()) {
+function renderDialog(
+  open = true,
+  onClose = vi.fn(),
+  initialDate?: string,
+  initialSlotKey?: string,
+  initialFiles?: File[],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <NewLessonDialog open={open} onClose={onClose} />
+        <NewLessonDialog
+          open={open}
+          onClose={onClose}
+          initialDate={initialDate}
+          initialSlotKey={initialSlotKey}
+          initialFiles={initialFiles}
+        />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -375,6 +387,17 @@ describe('Materiali accettati e ore dal calendario', () => {
     expect(slot0.querySelector('span')).toHaveClass('bg-link')
     expect(slot1).toHaveClass('border', 'border-border')
     expect(slot1.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+  })
+
+  it('UI1: accetta initialDate e initialSlotKey preselezionando lo slot e compilando i campi', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog(true, vi.fn(), '2026-10-13', 'tpl_1')
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    expect(slot0).toHaveClass('border-2', 'border-link')
+    await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('ANATOMIA'))
   })
 })
 
