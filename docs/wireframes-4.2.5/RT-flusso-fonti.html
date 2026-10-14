@@ -76,7 +76,7 @@ ol,ul{margin:0;padding-left:20px;display:grid;gap:6px}
 
     <div class="row"><span class="step">4 · Pagine → sottounità</span>
       <div class="box bad" data-k="Oggi"><b>Dopo la rielaborazione <span class="tag bad">costoso</span></b>Una chiamata al classificatore per pagina, con tutto il testo della lezione dentro. Sceglie una sola unità madre, o nessuna.</div>
-      <div class="box new" data-k="Proposta"><b>Prima della rielaborazione <span class="tag new">nuovo</span></b>Un filtro locale gratuito trova per ogni pagina le 3-4 sottounità più vicine (sul trascritto): toglie le parole vuote italiane (articoli, preposizioni, "quindi", "diciamo"…), riduce le parole alla radice (coagulazione, coagulare → coagul) e dà più peso ai termini rari nella lezione, come "trombomodulina", che a quelli che compaiono ovunque, come "paziente" (TF-IDF). Il classificatore riceve solo la pagina e quelle candidate, non la lezione intera, e sceglie la sottounità. Se una seconda sottounità ha una probabilità quasi pari, la pagina va anche lì; al massimo due. Pagina senza candidate: nessuna chiamata, non assegnata.</div></div>
+      <div class="box new" data-k="Proposta"><b>Prima della rielaborazione <span class="tag new">nuovo</span></b>Un filtro locale gratuito trova per ogni pagina le 3-4 sottounità più vicine (sul trascritto): toglie le parole vuote italiane (articoli, preposizioni, "quindi", "diciamo"…), riduce le parole alla radice (coagulazione, coagulare → coagul) e dà più peso ai termini rari nella lezione, come "trombomodulina", che a quelli che compaiono ovunque, come "paziente" (TF-IDF). Il classificatore riceve solo la pagina e quelle candidate, non la lezione intera, e risponde a una domanda sì/no per ciascuna candidata, tutte nella stessa chiamata: "la pagina spiega o illustra un argomento trattato in modo specifico in questa sottounità". La pagina va a ogni sottounità con probabilità ≥ 0,8. Se passa per 3 o più sottounità della stessa unità madre (indice, schema generale), va sotto l'unità madre. Pagina senza candidate: nessuna chiamata, non assegnata.</div></div>
 
     <div class="row"><span class="step">5 · Rielaborazione</span>
       <div class="box bad" data-k="Oggi"><b>Tutto il PDF a ogni unità <span class="tag bad">costoso</span></b>Ogni chiamata riceve tutte le pagine (fino a 60.000 caratteri), e il prompt non dice come usarle.</div>
@@ -98,7 +98,7 @@ ol,ul{margin:0;padding-left:20px;display:grid;gap:6px}
   <div class="tbl"><table>
     <tr><th>Voce</th><th>Oggi</th><th>Proposta</th></tr>
     <tr><td>PDF nella rielaborazione</td><td class="n">22 × ~20.000 car. ≈ 440.000 car.</td><td class="n">22 × ~1.500 car. ≈ 33.000 car.</td></tr>
-    <tr><td>Giudice immagini</td><td class="n">33 × lezione intera (~50.000 car.) ≈ 1,6 M car.</td><td class="n">≤ 33 × ~3.000 car. ≈ 100.000 car.</td></tr>
+    <tr><td>Giudice immagini (classificatore, ~0,04 $ per milione di token)</td><td class="n">33 × lezione intera ≈ 1,6 M car., meno di 2 centesimi</td><td class="n">≤ 33 × ~6.000 car., trascurabile</td></tr>
     <tr><td>Descrittore</td><td class="n">solo pagine senza testo</td><td class="n">uguale</td></tr>
   </table></div>
 </section>
@@ -106,7 +106,7 @@ ol,ul{margin:0;padding-left:20px;display:grid;gap:6px}
 <section class="card">
   <h2>Da decidere</h2>
   <div class="q"><b>1. Quanto prendere dai materiali</b><span>Proposta: la principale guida; dalle pagine assegnate entrano dettagli che approfondiscono gli argomenti trattati (definizioni, valori, classificazioni, esempi delle slide), mai argomenti nuovi. Con solo PDF il PDF è la principale e la regola non cambia.</span></div>
-  <div class="q"><b>2. Seconda sottounità</b><span>Proposta: la pagina va anche alla seconda solo se il classificatore la dà quasi alla pari con la prima (es. almeno 0,35 di probabilità e almeno il 70% della prima). Mai più di due.</span></div>
+  <div class="q"><b>2. Più sottounità</b><span>Le probabilità di una domanda a scelta sommano a 1, quindi le etichette si fanno concorrenza: con due sottounità ugualmente giuste ognuna prende 0,5. Per questo una domanda sì/no per candidata, indipendenti fra loro. Il limite non è un numero fisso: sono le candidate del filtro (fino a 5) e la soglia di 0,8, regolabile in Impostazioni › Classificatore.</span></div>
   <div class="q"><b>3. Lezioni già fatte</b><span>Proposta: restano come sono; il nuovo flusso vale per le lezioni nuove e per Ricostruisci.</span></div>
 </section>
 </div>
