@@ -48,10 +48,11 @@ def update(qtype, subject, *, manual=False, mock=False):
     if not history:
         return row.get('rules', [])
     watermark = max(v.get('voted_at', '') for v in history)
-    if mock:
+    client = LLMClient(force_mock=mock)
+    if client.force_mock:
         rules = ['Formula una domanda chiara e pertinente alla propria unità.']
     else:
-        result = LLMClient(force_mock=False).call_structured(
+        result = client.call_structured(
             system_prompt='Riassumi i voti in massimo 8 regole brevi di forma e livello. Non importare contenuti o scenari degli esempi. Restituisci DistilledRules.',
             prompt=json.dumps({'tipo': qtype, 'materia': subject, 'voti': history}, ensure_ascii=False),
             response_model=DistilledRules, job_name='recall')

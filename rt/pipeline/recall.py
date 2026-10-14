@@ -403,6 +403,8 @@ def record_fewshot_vote(qtype: RecallQuestionType, question_text: str, vote: str
 def load_fewshot_examples(qtype: RecallQuestionType, state_dir: Optional[str] = None,
                           *, subject='', unit_text='') -> List[dict]:
     from rt.pipeline.recall_checks import keywords
+    if not load_config().recall.votes_enabled:
+        return []
     rows = fewshot_history(_load_fewshot(state_dir).get(type_key(qtype), []))
     latest = {}
     for row in rows:

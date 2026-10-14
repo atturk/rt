@@ -109,3 +109,20 @@ def test_disabled_votes_omit_examples_and_rules_from_generation(cfg, tmp_path, m
     questions = recall.generate_recall_batch(path, 'mirata', 1, [{'question_text': 'ESEMPIO SPENTO', 'vote': 'up'}])
     assert len(questions) == 1
     assert all('NON DEVE APPARIRE' not in prompt and 'ESEMPIO SPENTO' not in prompt for prompt in prompts)
+
+
+def test_disabled_votes_hide_examples_for_all_callers_but_keep_history(cfg):
+    vote()
+    before = recall._load_fewshot()
+    cfg.recall.votes_enabled = False
+    assert recall.load_fewshot_examples('mirata') == []
+    assert recall._load_fewshot() == before
+
+
+def test_explicit_update_honors_configured_mock_mode(cfg, monkeypatch):
+    vote()
+    client = Mock(force_mock=True)
+    monkeypatch.setattr('rt.llm.client.LLMClient', lambda **kwargs: client)
+    rules = service.update('mirata', 'Medicina', manual=True)
+    assert rules == ['Formula una domanda chiara e pertinente alla propria unità.']
+    client.call_structured.assert_not_called()
