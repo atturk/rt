@@ -1,0 +1,112 @@
+<title>Flusso fonti RT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: oggi e proposta affiancati per passo (una riga per passo), poi costi e decisioni; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --warn:#98620c; --warn-soft:#fff3df; --bad:#b3261e; --bad-soft:#fbe7e5;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif; --mono:'SF Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2c14; --bad:#ff8a80; --bad-soft:#3a1714; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2c14; --bad:#ff8a80; --bad-soft:#3a1714; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:18px}
+header{padding-block:22px 4px;display:grid;gap:4px}
+h1{font-size:23px;margin:0;text-wrap:balance} h2{font-size:17px;margin:0;text-wrap:balance}
+.meta{color:var(--mute);font-size:13px}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;display:grid;gap:10px;min-width:0}
+.card p{margin:0;max-width:72ch}
+.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.flow{display:grid;gap:8px}
+.row{display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:stretch}
+.row.head{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.step{font-weight:600;font-size:14px;padding:10px 4px}
+.box{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;min-width:0}
+.box.bad{border-color:var(--bad);background:var(--bad-soft)}
+.box.new{border-color:var(--acc);background:var(--acc-soft)}
+.box b{display:block;margin-bottom:2px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:0 6px;border-radius:4px;margin-left:4px;vertical-align:1px}
+.tag.bad{background:var(--bad);color:var(--bg)} .tag.new{background:var(--acc);color:var(--bg)}
+code{font-family:var(--mono);font-size:12.5px;background:var(--soft);padding:0 4px;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--mute);font-weight:600;border-top:0}
+td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl{overflow-x:auto}
+ol,ul{margin:0;padding-left:20px;display:grid;gap:6px}
+.q{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 12px;border-radius:0 8px 8px 0;display:grid;gap:4px}
+@media (max-width:720px){.row{grid-template-columns:minmax(0,1fr)}.row.head{display:none}.step{padding:6px 0 0}
+  .box::before{content:attr(data-k);display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);font-weight:600}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Fonti, materiali e immagini</h1>
+  <span class="meta">RT 4.2.5 · 14 ott 2026 · come funziona oggi e proposta di rework</span>
+</header>
+
+<section class="card">
+  <span class="lbl">In breve</span>
+  <p>Oggi il PDF viene letto <b>due volte per intero</b>: lo riceve ogni unità durante la rielaborazione (fino a 60.000 caratteri a chiamata), e lo rilegge il giudice delle immagini, che per ogni pagina riceve <b>tutto il testo della lezione</b>. Le immagini vengono assegnate solo dopo la rielaborazione, quindi la rielaborazione non sa quali pagine c'entrano con la sua unità.</p>
+  <p>La proposta inverte l'ordine: <b>prima si decide quali pagine vanno con quali sottounità, poi ogni sottounità riceve solo le sue pagine</b>, sia come contesto sia come immagini. Una sola assegnazione serve a tutte e due le cose.</p>
+</section>
+
+<section class="card">
+  <h2>Passo per passo</h2>
+  <div class="flow">
+    <div class="row head"><span>Passo</span><span>Oggi</span><span>Proposta</span></div>
+
+    <div class="row"><span class="step">1 · Fonti</span>
+      <div class="box" data-k="Oggi"><b>Principale e contesto</b>La principale costruisce la scaletta: l'audio (tutte le parti), oppure il materiale o gli appunti scelti. Le altre fonti sono contesto. Gli audio caricati con un PDF restano wav.</div>
+      <div class="box new" data-k="Proposta"><b>Uguale, più leggero</b>Stessa logica. Audio convertiti in m4a e uniti se caricati insieme (bottone Unisci).</div></div>
+
+    <div class="row"><span class="step">2 · Pagine</span>
+      <div class="box" data-k="Oggi"><b>Una volta sola, in cache</b>Per ogni pagina: testo del PDF; se la pagina non ha testo (foto, scansione), il descrittore legge l'immagine e ne trascrive testo e contenuti. L'immagine della pagina si salva.</div>
+      <div class="box" data-k="Proposta"><b>Invariato</b>Il descrittore lavora solo dove serve: le pagine con testo non costano nulla.</div></div>
+
+    <div class="row"><span class="step">3 · Scaletta</span>
+      <div class="box" data-k="Oggi"><b>Solo dalla principale</b>Con l'audio principale, le parti del PDF non spiegate non diventano unità.</div>
+      <div class="box" data-k="Proposta"><b>Invariato</b>Con solo PDF la principale è il PDF stesso: la scaletta nasce dalle sue pagine e ogni unità ha già le sue pagine.</div></div>
+
+    <div class="row"><span class="step">4 · Pagine → sottounità</span>
+      <div class="box bad" data-k="Oggi"><b>Dopo la rielaborazione <span class="tag bad">costoso</span></b>Una chiamata al classificatore per pagina, con tutto il testo della lezione dentro. Sceglie una sola unità madre, o nessuna.</div>
+      <div class="box new" data-k="Proposta"><b>Prima della rielaborazione <span class="tag new">nuovo</span></b>Un filtro locale gratuito trova per ogni pagina le 3-4 sottounità con più parole in comune (sul trascritto). Il classificatore riceve solo la pagina e quelle candidate, non la lezione intera, e sceglie la sottounità. Se una seconda sottounità ha una probabilità quasi pari, la pagina va anche lì; al massimo due. Pagina senza candidate: nessuna chiamata, non assegnata.</div></div>
+
+    <div class="row"><span class="step">5 · Rielaborazione</span>
+      <div class="box bad" data-k="Oggi"><b>Tutto il PDF a ogni unità <span class="tag bad">costoso</span></b>Ogni chiamata riceve tutte le pagine (fino a 60.000 caratteri), e il prompt non dice come usarle.</div>
+      <div class="box new" data-k="Proposta"><b>Solo le pagine della sottounità</b>Ogni unità riceve il testo delle sue 0-3 pagine. Regola nel prompt: la guida è la principale; dalle pagine si prendono termini, valori e dettagli che approfondiscono ciò che la principale tratta in quell'unità; argomenti che la principale non tocca non entrano.</div></div>
+
+    <div class="row"><span class="step">6 · Immagini nel testo</span>
+      <div class="box bad" data-k="Oggi"><b>Ammassate sotto l'unità madre</b>Una riga per immagine, a tutta larghezza.</div>
+      <div class="box new" data-k="Proposta"><b>Striscia sotto la sottounità</b>Le stesse pagine del passo 4, nell'ordine del documento, come striscia di miniature (wireframe immagini).</div></div>
+
+    <div class="row"><span class="step">7 · Pagine non assegnate</span>
+      <div class="box" data-k="Oggi"><b>Visibili solo nel pannello media</b>Etichetta "non assegnata".</div>
+      <div class="box" data-k="Proposta"><b>Invariato</b>Restano nel pannello, fuori dal testo. Si possono sempre spostare a mano trascinando le righe nell'editor.</div></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Dove va il costo (stima)</h2>
+  <p class="meta">Stima per una lezione come la tua: 22 sottounità, PDF di 33 pagine, circa 600 caratteri di testo a pagina. Il dato vero è in Dettagli › Costi, voce per voce: se me lo mandi lo confronto.</p>
+  <div class="tbl"><table>
+    <tr><th>Voce</th><th>Oggi</th><th>Proposta</th></tr>
+    <tr><td>PDF nella rielaborazione</td><td class="n">22 × ~20.000 car. ≈ 440.000 car.</td><td class="n">22 × ~1.500 car. ≈ 33.000 car.</td></tr>
+    <tr><td>Giudice immagini</td><td class="n">33 × lezione intera (~50.000 car.) ≈ 1,6 M car.</td><td class="n">≤ 33 × ~3.000 car. ≈ 100.000 car.</td></tr>
+    <tr><td>Descrittore</td><td class="n">solo pagine senza testo</td><td class="n">uguale</td></tr>
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>Da decidere</h2>
+  <div class="q"><b>1. Quanto prendere dai materiali</b><span>Proposta: la principale guida; dalle pagine assegnate entrano dettagli che approfondiscono gli argomenti trattati (definizioni, valori, classificazioni, esempi delle slide), mai argomenti nuovi. Con solo PDF il PDF è la principale e la regola non cambia.</span></div>
+  <div class="q"><b>2. Seconda sottounità</b><span>Proposta: la pagina va anche alla seconda solo se il classificatore la dà quasi alla pari con la prima (es. almeno 0,35 di probabilità e almeno il 70% della prima). Mai più di due.</span></div>
+  <div class="q"><b>3. Lezioni già fatte</b><span>Proposta: restano come sono; il nuovo flusso vale per le lezioni nuove e per Ricostruisci.</span></div>
+</section>
+</div>
