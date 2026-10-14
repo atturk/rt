@@ -589,3 +589,14 @@ def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 register_handler("classifier",classifier_job_handler)
+
+
+def compact_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.audio_compaction import compact_audio_lessons
+    with ctx.activate():
+        result = compact_audio_lessons(lesson_dirs=job.payload.get("lesson_dirs"), ctx=ctx)
+    return _done(result)
+
+
+register_handler("compact_audio", compact_audio_job)
+

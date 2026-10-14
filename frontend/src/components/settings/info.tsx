@@ -81,12 +81,18 @@ function ChangelogItem({ version, text }: { version: string; text: string }) {
 }
 
 const cacheKey = ['system', 'cache'] as const
+const compactAudioPreviewKey = ['system', 'compact-audio', 'preview'] as const
 const cacheSize = (bytes: number) => bytes === 0 ? '0 B' : formatBytes(bytes)
 
 export function CacheSection() {
   const client = useQueryClient()
   const [confirm, setConfirm] = useState(false)
+  const [confirmCompact, setConfirmCompact] = useState(false)
   const cache = useQuery({ queryKey: cacheKey, queryFn: () => unwrap(api.GET('/api/v1/system/cache')) })
+  const compactPreview = useQuery({
+    queryKey: compactAudioPreviewKey,
+    queryFn: () => unwrap(api.GET('/api/v1/system/compact-audio/preview')),
+  })
   const clear = useMutation({
     mutationFn: () => unwrap(api.DELETE('/api/v1/system/cache')),
     onSuccess: async () => {
@@ -94,6 +100,15 @@ export function CacheSection() {
       await client.invalidateQueries({ queryKey: cacheKey })
     },
   })
+  const compact = useMutation({
+    mutationFn: () => unwrap(api.POST('/api/v1/system/compact-audio')),
+    onSuccess: async () => {
+      setConfirmCompact(false)
+      await client.invalidateQueries({ queryKey: compactAudioPreviewKey })
+    },
+  })
+  const liberabili = compactPreview.data?.spazio_stimato_liberato ?? 0
+
   return (
     <Section id="cache" title="Spazio e cache" description="La cache si rigenera da sola quando serve.">
       {cache.isPending && <p className="text-body text-muted-foreground">Calcolo lo spazio…</p>}
@@ -103,17 +118,43 @@ export function CacheSection() {
           <Row label="Audio">{cacheSize(cache.data.audio.bytes)} · {cache.data.audio.entries} file</Row>
           <Row label="Forme d’onda">{cacheSize(cache.data.waveform.bytes)} · {cache.data.waveform.entries} file</Row>
           <Row label="Totale"><span className="font-semibold tabular-nums">{cacheSize(cache.data.total.bytes)}</span></Row>
+          {compactPreview.data && (
+            <Row label="Audio convertibile">
+              {liberabili > 0 ? (
+                <span>
+                  ~{cacheSize(liberabili)} liberabili
+                  <span className="text-meta text-muted-foreground ml-2">
+                    ({compactPreview.data.file_convertibili} file da convertire
+                    {compactPreview.data.file_orfani > 0 ? `, ${compactPreview.data.file_orfani} orfani` : ''})
+                  </span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Tutti gli audio sono già compressi</span>
+              )}
+            </Row>
+          )}
         </dl>
       )}
-      <div>
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" disabled={!cache.data?.total.entries || clear.isPending}
           onClick={() => { clear.reset(); setConfirm(true) }}>Svuota la cache</Button>
+        <Button variant="outline" disabled={liberabili <= 0 || compact.isPending}
+          onClick={() => { compact.reset(); setConfirmCompact(true) }}>Alleggerisci l’audio delle lezioni</Button>
       </div>
       {clear.isSuccess && <p role="status" className="text-meta text-success">Liberati {cacheSize(clear.data.total.bytes)}.</p>}
+      {compact.isSuccess && <p role="status" className="text-meta text-success">Operazione avviata: controlla l’avanzamento nei Job.</p>}
       <ConfirmDialog open={confirm} title="Svuota la cache" confirmLabel="Svuota"
         confirmDisabled={clear.isPending} onCancel={() => setConfirm(false)} onConfirm={() => clear.mutate()}>
         <p>Svuotare la cache{cache.data ? ` (${cacheSize(cache.data.total.bytes)})` : ''}?</p>
         {clear.isError && <Alert tone="danger" className="mt-3">{errorMessage(clear.error)}</Alert>}
+      </ConfirmDialog>
+      <ConfirmDialog open={confirmCompact} title="Alleggerisci l’audio delle lezioni" confirmLabel="Alleggerisci"
+        confirmDisabled={compact.isPending} onCancel={() => setConfirmCompact(false)} onConfirm={() => compact.mutate()}>
+        <p>
+          Convertire in AAC (.m4a) i file WAV e FLAC delle fonti e rimuovere gli audio uniti non più utilizzati?
+          {liberabili > 0 && <> Si stima di liberare circa <strong>{cacheSize(liberabili)}</strong>.</>}
+        </p>
+        {compact.isError && <Alert tone="danger" className="mt-3">{errorMessage(compact.error)}</Alert>}
       </ConfirmDialog>
     </Section>
   )

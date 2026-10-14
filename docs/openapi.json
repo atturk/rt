@@ -2195,6 +2195,39 @@
         "title": "ClassifierUnit",
         "type": "object"
       },
+      "CompactAudioPreview": {
+        "properties": {
+          "bytes_convertibili": {
+            "title": "Bytes Convertibili",
+            "type": "integer"
+          },
+          "bytes_orfani": {
+            "title": "Bytes Orfani",
+            "type": "integer"
+          },
+          "file_convertibili": {
+            "title": "File Convertibili",
+            "type": "integer"
+          },
+          "file_orfani": {
+            "title": "File Orfani",
+            "type": "integer"
+          },
+          "spazio_stimato_liberato": {
+            "title": "Spazio Stimato Liberato",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_convertibili",
+          "bytes_convertibili",
+          "file_orfani",
+          "bytes_orfani",
+          "spazio_stimato_liberato"
+        ],
+        "title": "CompactAudioPreview",
+        "type": "object"
+      },
       "Connection": {
         "properties": {
           "base_url": {
@@ -30785,6 +30818,58 @@
           }
         ],
         "summary": "Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio": {
+      "post": {
+        "operationId": "start_compact_audio_api_v1_system_compact_audio_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Avvia il job per convertire in m4a i wav/flac e cancellare gli audio uniti orfani",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio/preview": {
+      "get": {
+        "operationId": "preview_compact_audio_endpoint_api_v1_system_compact_audio_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactAudioPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani",
         "tags": [
           "sistema"
         ]
