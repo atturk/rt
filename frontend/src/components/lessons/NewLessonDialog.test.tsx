@@ -352,4 +352,29 @@ describe('Materiali accettati e ore dal calendario', () => {
     expect(screen.getByLabelText('Materia')).toHaveValue('')
     expect(screen.getByTestId('pipeline-sentence')).not.toHaveTextContent('collegata')
   })
+
+  it('UI2: ora scelta ha bordo di 2px primario e barretta primaria, le altre bordo normale e barretta grigia', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog()
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    const slot1 = screen.getByTestId('calendar-slot-1')
+
+    // tpl_2 è selezionato (ora finita più di recente)
+    expect(slot1).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot1.querySelector('span')).toHaveClass('bg-link')
+
+    expect(slot0).toHaveClass('border', 'border-border')
+    expect(slot0.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+
+    // Cliccando su slot0, lo stile si inverte
+    fireEvent.click(slot0)
+    expect(slot0).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot0.querySelector('span')).toHaveClass('bg-link')
+    expect(slot1).toHaveClass('border', 'border-border')
+    expect(slot1.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+  })
 })
+

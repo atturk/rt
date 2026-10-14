@@ -688,14 +688,21 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                         disabled={h.is_recorded}
                         onClick={() => handleSelectSlot(h)}
                         className={cn(
-                          'flex items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left text-meta transition-all min-w-0',
-                          isSelected && 'border-primary ring-1 ring-primary bg-primary/10',
+                          'flex items-center gap-2 rounded-lg bg-card text-left text-meta transition-all min-w-0',
+                          isSelected
+                            ? 'border-2 border-link bg-primary/20 px-[9px] py-[5px]'
+                            : 'border border-border px-2.5 py-1.5',
                           h.is_recorded && 'opacity-50 cursor-not-allowed',
                         )}
                         aria-label={h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
                         data-testid={`calendar-slot-${i}`}
                       >
-                        <span className="w-1 self-stretch rounded-full bg-primary" />
+                        <span
+                          className={cn(
+                            'w-1 self-stretch rounded-full',
+                            isSelected ? 'bg-link' : 'bg-muted-foreground/30',
+                          )}
+                        />
                         <div className="flex flex-col leading-tight">
                           <span className="font-semibold text-foreground text-xs">{h.materia}</span>
                           <span className="text-[11px] text-muted-foreground tabular-nums">
