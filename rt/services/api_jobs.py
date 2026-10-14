@@ -84,7 +84,8 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.prepare import run_prepare
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
-        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali")},
+        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali", "unisci")
+           if job.payload.get(name) is not None},
         **{name: options.get(name, "") for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir, ctx.force_mock = lesson, bool(options.get("mock"))
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)

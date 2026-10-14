@@ -157,6 +157,7 @@ export function NewLessonDialog({
   const [solo, setSolo] = useState(false)
   const [review, setReview] = useState(false)
   const [enrichment, setEnrichment] = useState(false)
+  const [unisciAudio, setUnisciAudio] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
   const openedJob = useRef<string | null>(null)
@@ -298,6 +299,7 @@ export function NewLessonDialog({
     setMaterialFiles([])
     setZipFiles([])
     setPrimaryMaterialName(null)
+    setUnisciAudio(true)
     setProblem(null)
     setZipJob(null)
   }
@@ -378,6 +380,7 @@ export function NewLessonDialog({
         principale:
           audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
         allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
+        unisci: audioFiles.length > 1 ? unisciAudio : undefined,
         calendar_entry_id: chosenSlot?.key,
         calendar_date: chosenSlot ? date : undefined,
         date,
@@ -537,20 +540,36 @@ export function NewLessonDialog({
             {audioFiles.length > 1 ? (
               <div>
                 <AudioOrder files={audioFiles} disabled={busy} onChange={setAudioFiles} />
-                <p className="-mt-2 mb-1 flex items-center justify-between text-meta text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
+                <div className="-mt-2 mb-1 flex items-center justify-between gap-2 text-meta text-muted-foreground">
+                  <span className="flex items-center gap-1.5 min-w-0 truncate">
                     <FileAudio className="size-4 shrink-0" aria-hidden />
-                    <span>
-                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} · diventano un'unica registrazione, in quest'ordine
+                    <span className="truncate">
+                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} ·{' '}
+                      {unisciAudio
+                        ? "diventano un'unica registrazione, in quest'ordine"
+                        : 'fonti separate'}
                     </span>
                   </span>
-                  <IconButton
-                    label="Rimuovi tutti gli audio"
-                    icon={X}
-                    disabled={busy}
-                    onClick={() => setAudioFiles([])}
-                  />
-                </p>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      type="button"
+                      variant={unisciAudio ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      aria-pressed={unisciAudio}
+                      disabled={busy}
+                      onClick={() => setUnisciAudio((prev) => !prev)}
+                    >
+                      Unisci
+                    </Button>
+                    <IconButton
+                      label="Rimuovi tutti gli audio"
+                      icon={X}
+                      disabled={busy}
+                      onClick={() => setAudioFiles([])}
+                    />
+                  </div>
+                </div>
               </div>
             ) : audioFiles.length === 1 ? (
               <div className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-meta">

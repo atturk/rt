@@ -14,6 +14,23 @@ from rt.core.lesson_lock import lesson_locked
 from rt.storage import fs
 
 
+class SourcePart(BaseModel):
+    nome: str
+    durata: str | None = None
+    durata_s: float | None = None
+
+
+def format_source_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    m = round(seconds / 60)
+    h = m // 60
+    rem = m % 60
+    if h > 0:
+        return f"{h} h {rem} min" if rem > 0 else f"{h} h"
+    return f"{m} min"
+
+
 class Source(BaseModel):
     id: str
     tipo: Literal["audio", "appunti", "materiale"]
@@ -21,6 +38,8 @@ class Source(BaseModel):
     impronta: str
     aggiunta_il: str
     ordine: int = Field(ge=1)
+    parti: list[SourcePart] | None = None
+
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
@@ -58,7 +77,8 @@ def load_sources(lesson_dir: str) -> list[Source]:
 @lesson_locked
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes | None, ordine: int | None = None,
-               source_path: str | None = None) -> Source:
+               source_path: str | None = None,
+               parti: list[SourcePart] | list[dict] | None = None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
@@ -96,9 +116,11 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                 fs.remove(path)
                 relative = converted_relative
                 path = converted_path
+    parsed_parts = [SourcePart.model_validate(p) for p in parti] if parti else None
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
-                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position)
+                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
+                    parti=parsed_parts)
     sources.insert(position - 1, source)
     for index, item in enumerate(sources, 1):
         item.ordine = index

@@ -480,6 +480,11 @@
             "title": "Run",
             "type": "boolean"
           },
+          "unisci": {
+            "default": false,
+            "title": "Unisci",
+            "type": "boolean"
+          },
           "with_enrichment": {
             "anyOf": [
               {
@@ -569,6 +574,11 @@
             ],
             "title": "Tipo",
             "type": "string"
+          },
+          "unisci": {
+            "default": true,
+            "title": "Unisci",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8854,6 +8864,20 @@
             "title": "Ordine",
             "type": "integer"
           },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
+          },
           "tipo": {
             "enum": [
               "audio",
@@ -8889,6 +8913,41 @@
           "ids"
         ],
         "title": "SourceOrder",
+        "type": "object"
+      },
+      "SourcePart": {
+        "properties": {
+          "durata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata"
+          },
+          "durata_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata S"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nome"
+        ],
+        "title": "SourcePart",
         "type": "object"
       },
       "SourcePrimary": {
@@ -8963,6 +9022,20 @@
               }
             ],
             "title": "Parole"
+          },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
           },
           "tipo": {
             "enum": [

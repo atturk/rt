@@ -3685,6 +3685,11 @@ export interface components {
              * @default false
              */
             run: boolean;
+            /**
+             * Unisci
+             * @default false
+             */
+            unisci: boolean;
             /** With Enrichment */
             with_enrichment?: boolean | null;
             /**
@@ -3711,6 +3716,11 @@ export interface components {
              * @enum {string}
              */
             tipo: "audio" | "appunti" | "materiale";
+            /**
+             * Unisci
+             * @default true
+             */
+            unisci: boolean;
         };
         /** Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post */
         Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
@@ -7311,6 +7321,8 @@ export interface components {
             impronta: string;
             /** Ordine */
             ordine: number;
+            /** Parti */
+            parti?: components["schemas"]["SourcePart"][] | null;
             /**
              * Tipo
              * @enum {string}
@@ -7321,6 +7333,15 @@ export interface components {
         SourceOrder: {
             /** Ids */
             ids: string[];
+        };
+        /** SourcePart */
+        SourcePart: {
+            /** Durata */
+            durata?: string | null;
+            /** Durata S */
+            durata_s?: number | null;
+            /** Nome */
+            nome: string;
         };
         /** SourcePrimary */
         SourcePrimary: {
@@ -7347,6 +7368,8 @@ export interface components {
             pagine?: number | null;
             /** Parole */
             parole?: number | null;
+            /** Parti */
+            parti?: components["schemas"]["SourcePart"][] | null;
             /**
              * Tipo
              * @enum {string}

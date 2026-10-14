@@ -399,5 +399,40 @@ describe('Materiali accettati e ore dal calendario', () => {
     expect(slot0).toHaveClass('border-2', 'border-link')
     await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('ANATOMIA'))
   })
+
+  it('AU2b: con 2 audio mostra bottone Unisci acceso di default e invia unisci: true o false', async () => {
+    mockDay([])
+    const f1 = new File(['a1'], 'audio1.mp3', { type: 'audio/mp3' })
+    const f2 = new File(['a2'], 'audio2.mp3', { type: 'audio/mp3' })
+    renderDialog(true, vi.fn(), undefined, undefined, [f1, f2])
+
+    const unisciBtn = await screen.findByRole('button', { name: 'Unisci' })
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/diventano un'unica registrazione/)).toBeInTheDocument()
+
+    // Compila materia e invia
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'BIOCHIMICA' } })
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unisci: true,
+      }),
+      expect.anything(),
+    )
+
+    // Clic per spegnere Unisci
+    fireEvent.click(unisciBtn)
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(/fonti separate/)).toBeInTheDocument()
+
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+    expect(mutateCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        unisci: false,
+      }),
+      expect.anything(),
+    )
+  })
 })
 

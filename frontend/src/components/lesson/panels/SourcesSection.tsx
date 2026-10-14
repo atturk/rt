@@ -25,10 +25,12 @@ import {
   type SourceItem,
 } from '@/api/sources'
 import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
+import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
 
@@ -50,6 +52,11 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const [notesText, setNotesText] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
 
+  // Upload audio multipli
+  const [pendingAudios, setPendingAudios] = useState<File[]>([])
+  const [unisciAudio, setUnisciAudio] = useState(true)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
+
   // Dialog di conferma per azioni che richiedono ricostruzione
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
@@ -69,16 +76,35 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
   // Upload handlers
   const handleAudioSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    if (audioInputRef.current) audioInputRef.current.value = ''
+    if (files.length === 1) {
+      setActionError(null)
+      try {
+        await sourcesApi.addAudio(lessonId, files[0])
+        sourcesQuery.refetch()
+      } catch (err) {
+        setActionError(errorMessage(err))
+      }
+      return
+    }
+    setPendingAudios(files)
+    setUnisciAudio(true)
+  }
+
+  const handleUploadPendingAudios = async () => {
+    if (!pendingAudios.length) return
+    setUploadingAudio(true)
     setActionError(null)
     try {
-      await sourcesApi.addAudio(lessonId, file)
+      await sourcesApi.addAudio(lessonId, pendingAudios, undefined, unisciAudio)
+      setPendingAudios([])
       sourcesQuery.refetch()
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
-      if (audioInputRef.current) audioInputRef.current.value = ''
+      setUploadingAudio(false)
     }
   }
 
@@ -254,6 +280,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         <input
           ref={audioInputRef}
           type="file"
+          multiple
           accept=".mp3,.m4a,.wav,.ogg,.aac,.flac,audio/*"
           className="hidden"
           onChange={handleAudioSelected}
@@ -267,6 +294,47 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           onChange={handleMaterialsSelected}
         />
       </div>
+
+      {pendingAudios.length > 1 && (
+        <div
+          className="flex items-center justify-between gap-2 rounded-lg border bg-card p-2.5 text-meta"
+          data-testid="pending-audios-bar"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Mic className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="truncate font-medium">
+              {pendingAudios.length} parti · {formatBytes(pendingAudios.reduce((sum, f) => sum + f.size, 0))}
+            </span>
+            <Button
+              type="button"
+              variant={unisciAudio ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              aria-pressed={unisciAudio}
+              disabled={uploadingAudio}
+              onClick={() => setUnisciAudio((prev) => !prev)}
+            >
+              Unisci
+            </Button>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              disabled={uploadingAudio}
+              onClick={handleUploadPendingAudios}
+            >
+              {uploadingAudio ? 'Caricamento…' : 'Carica'}
+            </Button>
+            <IconButton
+              icon={X}
+              label="Annulla"
+              disabled={uploadingAudio}
+              onClick={() => setPendingAudios([])}
+            />
+          </div>
+        </div>
+      )}
 
       {actionError && <Alert tone="danger">{actionError}</Alert>}
       {restoreJob.error && <Alert tone="danger">{restoreJob.error}</Alert>}
@@ -371,8 +439,26 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 <span className="size-4 shrink-0" aria-hidden />
               )}
 
-              {/* Nome */}
-              <span className="min-w-0 flex-1 truncate font-medium">{s.nome}</span>
+              {/* Nome ed eventuali parti */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="truncate font-medium">{s.nome}</span>
+                {s.parti && s.parti.length > 0 && (
+                  <div
+                    className="mt-1 flex flex-col gap-0.5 text-meta text-muted-foreground"
+                    data-testid={`source-parts-${s.id}`}
+                  >
+                    {s.parti.map((p, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-xs">
+                        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold tabular-nums">
+                          {idx + 1}
+                        </span>
+                        <span className="truncate">{p.nome}</span>
+                        {p.durata && <span className="tabular-nums">· {p.durata}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Misura */}
               {sizeText && (
