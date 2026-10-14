@@ -275,7 +275,7 @@ def recall_generation_notice(summary, requested, generated):
         message += f" {discarded} scartate dai controlli."
     failed = summary.get('verification_discarded', 0)
     if failed:
-        message += f" {failed} {'esercizio non ha' if failed == 1 else 'esercizi non hanno'} superato la verifica."
+        message += f" {failed} {'variante non ha' if failed == 1 else 'varianti non hanno'} superato la verifica."
     return message
 
 
