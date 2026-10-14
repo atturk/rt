@@ -78,3 +78,50 @@ test('ricerca web: l\'interruttore della verifica è spento di default e non can
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
 })
+
+test('fonti: conferma, fonti usate tolte e ripristino; una fonte mai usata non lascia la riga', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await firstLesson(page)
+  const url = `/lessons/${lesson.id}/sources`
+  const initial = await apiGet<{ sources: { id: string; usata: boolean }[] }>(page.request, url)
+  const used = initial.sources.find(s => s.usata)!
+  expect(used).toBeTruthy()
+  await page.goto(`/lezioni/${lesson.id}`)
+  let panel = await openLessonDetails(page)
+  const row = panel.getByTestId(`source-row-${used.id}`)
+  await row.hover()
+  await row.getByRole('button', { name: /^Togli / }).click()
+  await expect(page.getByRole('dialog')).toContainText('Il testo della lezione contiene ancora questa parte')
+  await page.getByRole('button', { name: 'Annulla', exact: true }).click()
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: /^Togli / }).click()
+  await page.getByRole('button', { name: 'Togli', exact: true }).click()
+  try {
+    const bar = page.getByTestId('lesson-update-bar')
+    await expect(bar).toContainText('Hai tolto 1 fonti già usate')
+    await expect(bar.getByRole('button', { name: 'Ricostruisci', exact: true })).toBeVisible()
+    await expect(bar.getByTestId('bar-extend-btn')).toHaveCount(0)
+    await bar.getByRole('button', { name: "Rimetti com'era" }).click()
+    await expect(row).toBeVisible()
+    await expect(bar.getByText(/Hai tolto/)).toHaveCount(0)
+  } finally {
+    await page.request.post(`/api/v1${url}/restore-removed`, { headers: authHeaders() })
+  }
+  const added = await page.request.post(`/api/v1${url}`, { headers: authHeaders(), multipart: { tipo: 'appunti', testo: 'Fonte di prova mai usata' } })
+  expect(added.ok()).toBeTruthy()
+  const fresh = await added.json() as { id: string }
+  await page.reload()
+  panel = await openLessonDetails(page)
+  const freshRow = panel.getByTestId(`source-row-${fresh.id}`)
+  try {
+    await freshRow.hover()
+    await freshRow.getByRole('button', { name: /^Togli / }).click()
+    await expect(page.getByRole('dialog')).toContainText('Vuoi togliere questa fonte')
+    await page.getByRole('button', { name: 'Togli', exact: true }).click()
+    await expect(freshRow).toHaveCount(0)
+    await expect(page.getByTestId('lesson-update-bar').getByText(/Fonti nuove/)).toHaveCount(0)
+    await expect(page.getByTestId('lesson-update-bar').getByText(/Hai tolto/)).toHaveCount(0)
+  } finally {
+    await page.request.delete(`/api/v1${url}/${fresh.id}`, { headers: authHeaders() })
+  }
+})

@@ -8827,6 +8827,17 @@
             "title": "Ordine",
             "type": "integer"
           },
+          "rimossa_il": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rimossa Il"
+          },
           "tipo": {
             "enum": [
               "audio",
@@ -8937,6 +8948,17 @@
             ],
             "title": "Parole"
           },
+          "rimossa_il": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rimossa Il"
+          },
           "tipo": {
             "enum": [
               "audio",
@@ -8969,6 +8991,14 @@
           "can_undo": {
             "title": "Can Undo",
             "type": "boolean"
+          },
+          "fonti_tolte_usate": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fonti Tolte Usate",
+            "type": "array"
           },
           "has_unused_sources": {
             "title": "Has Unused Sources",
@@ -20926,6 +20956,95 @@
           }
         ],
         "summary": "Put Source Primary",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sources/restore-removed": {
+      "post": {
+        "operationId": "post_restore_removed_api_v1_lessons__lesson_id__sources_restore_removed_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rimette le fonti tolte già usate nel testo corrente",
         "tags": [
           "lezioni"
         ]

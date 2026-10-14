@@ -27,6 +27,7 @@ class SourcesView(BaseModel):
     ordine_usato: list[str]
     principale_usato: str | None
     solo_ricostruzione: bool
+    fonti_tolte_usate: list[str] = []
 
 
 class UpdateRequest(BaseModel):
@@ -204,4 +205,13 @@ def put_source_primary(lesson_id: int, body: SourcePrimary, lesson_dir: LessonDi
             set_primary(lesson_dir, body.id)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/sources/restore-removed", response_model=SourcesView,
+             summary="Rimette le fonti tolte già usate nel testo corrente")
+def post_restore_removed(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import restore_removed_used
+    with source_mutation(lesson_id, lesson_dir):
+        restore_removed_used(lesson_dir)
         return sources_view(lesson_dir)

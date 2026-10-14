@@ -1644,6 +1644,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/sources/restore-removed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rimette le fonti tolte già usate nel testo corrente */
+        post: operations["post_restore_removed_api_v1_lessons__lesson_id__sources_restore_removed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/sources/{sid}": {
         parameters: {
             query?: never;
@@ -7304,6 +7321,8 @@ export interface components {
             impronta: string;
             /** Ordine */
             ordine: number;
+            /** Rimossa Il */
+            rimossa_il?: string | null;
             /**
              * Tipo
              * @enum {string}
@@ -7340,6 +7359,8 @@ export interface components {
             pagine?: number | null;
             /** Parole */
             parole?: number | null;
+            /** Rimossa Il */
+            rimossa_il?: string | null;
             /**
              * Tipo
              * @enum {string}
@@ -7352,6 +7373,11 @@ export interface components {
         SourcesView: {
             /** Can Undo */
             can_undo: boolean;
+            /**
+             * Fonti Tolte Usate
+             * @default []
+             */
+            fonti_tolte_usate: string[];
             /** Has Unused Sources */
             has_unused_sources: boolean;
             /** Ordine Usato */
@@ -15372,6 +15398,74 @@ export interface operations {
                 "application/json": components["schemas"]["SourcePrimary"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcesView"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_restore_removed_api_v1_lessons__lesson_id__sources_restore_removed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

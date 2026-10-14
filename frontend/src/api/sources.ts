@@ -37,6 +37,7 @@ export type SourcesView = {
   ordine_usato: string[]
   principale_usato: string | null
   solo_ricostruzione: boolean
+  fonti_tolte_usate?: string[]
 }
 
 export type LessonVersion = {
@@ -83,6 +84,9 @@ export const sourcesApi = {
 
   deleteSource: (lessonId: number, sid: string): Promise<void> =>
     unwrap((api as any).DELETE(`/api/v1/lessons/${lessonId}/sources/${encodeURIComponent(sid)}`)),
+
+  restoreRemoved: (lessonId: number): Promise<SourcesView> =>
+    unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/sources/restore-removed`)),
 
   reorder: (lessonId: number, ids: string[]): Promise<SourcesView> =>
     unwrap((api as any).PUT(`/api/v1/lessons/${lessonId}/sources/order`, { body: { ids } })),
@@ -203,9 +207,9 @@ export function useResetSelection(lessonId: number) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (view: SourcesView) => {
-      let current = view
-      const ids = usedOrderIds(view.sources, view.ordine_usato ?? [])
-      if (ids.length > 0 && ids.some((id, i) => id !== view.sources[i].id)) {
+      let current = view.fonti_tolte_usate?.length ? await sourcesApi.restoreRemoved(lessonId) : view
+      const ids = usedOrderIds(current.sources, current.ordine_usato ?? [])
+      if (ids.length > 0 && ids.some((id, i) => id !== current.sources[i].id)) {
         current = await sourcesApi.reorder(lessonId, ids)
       }
       const primary = view.principale_usato

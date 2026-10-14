@@ -143,3 +143,17 @@ def test_undo_is_blocked_by_documents_job_but_sources_are_not(api_client, source
         response = api_client.post(url + "/update/undo")
         assert response.status_code == 409 and response.json()["error"]["code"] == "lesson_busy"
     assert api_client.post(url + "/update/undo").status_code == 200
+
+
+def test_remove_and_restore_used_source_api(api_client, source_lesson):
+    lid = lesson_id(api_client)
+    url = f'/api/v1/lessons/{lid}/sources'
+    first = api_client.get(url).json()['sources'][0]
+    assert api_client.delete(url + '/' + first['id']).status_code == 204
+    view = api_client.get(url).json()
+    assert view['sources'] == []
+    assert view['fonti_tolte_usate'] == [first['id']]
+    assert view['solo_ricostruzione'] and not view['has_unused_sources']
+    view = api_client.post(url + '/restore-removed').json()
+    assert view['sources'][0]['id'] == first['id']
+    assert not view['solo_ricostruzione'] and not view['has_unused_sources']

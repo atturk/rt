@@ -1,5 +1,9 @@
 # Novità di RT
 
+## 4.2.6b1 — 2026-10-14
+
+- Togliere una fonte chiede conferma e conserva il file e il registro. Le fonti già usate tolte richiedono Ricostruisci e si possono rimettere com’erano; quelle mai usate non risultano più come fonti nuove.
+
 ## 4.2.5 — 2026-10-14
 
 ### Novità
