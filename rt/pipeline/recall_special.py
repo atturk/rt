@@ -109,6 +109,14 @@ def available(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = 
     if section_labels.mode(force_mock) == "disabled":
         return False
     policy = _policy(qtype, _mock(force_mock))
+    from rt.services import recall_rules
+    from rt.core.config import load_config
+    from rt.services.recall_context import lesson_context
+    if load_config().recall.votes_enabled:
+        subject = lesson_context(lesson_dir).get('materia', '')
+        rules = recall_rules.load().get(type_key(qtype), {}).get(subject, {}).get('rules', [])
+        if rules:
+            policy['rules'] = rules
     sections = section_labels.sections(lesson_dir)
     current = section_labels.labels(lesson_dir, sections=sections)
     for group in groups(lesson_dir, qtype, sections=sections, labels=current):
@@ -207,6 +215,10 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     if shuffle:
         random.shuffle(todo)
     policy = _policy(qtype, mock)
+    from rt.services import recall_rules
+    rules = recall_rules.prepare(type_key(qtype), lesson_dir, mock=mock)
+    if rules:
+        policy['rules'] = rules
     context = lesson_context(lesson_dir)
     client = LLMClient(force_mock=mock)
     failures = UnitFailureTracker()
@@ -245,7 +257,9 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                     from rt.pipeline.recall import load_fewshot_examples, previous_questions_on_units
                     prompt += prompts.recall_previous_block(previous_questions_on_units(bank, all_units))
                     from rt.core.config import load_config
-                    prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
+                    examples = load_fewshot_examples(qtype, load_config().telegram.state_dir,
+                        subject=context.get('materia', ''), unit_text=' '.join(u.content for sec in group for u in sec['units'])) if load_config().recall.votes_enabled else []
+                    prompt = recall_rules.block(rules) + prompts.recall_fewshot_block(examples) + prompt
                     generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),
                                                        response_model=response_model, job_name="recall",
                                                        unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
@@ -279,6 +293,9 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                         summary['local_discarded'] = summary.get('local_discarded', 0) + 1
                     continue
                 pairs.append((question, template))
+            kept = recall_rules.filter_group([q for q, _ in pairs], rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
+            kept_ids = {id(q) for q in kept}
+            pairs = [(q, t) for q, t in pairs if id(q) in kept_ids]
             attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
                        "generated_at": datetime.now().isoformat(), "question_ids": []}
             saved = _persist(lesson_dir, pairs, key, attempt)
@@ -319,6 +336,10 @@ def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mo
     text_correction = definition.correzione == "testo"
     model = TextVariantBatch if text_correction else VariantBatch
     system = prompts.RECALL_TEXT_VARIANT_SYSTEM_PROMPT if text_correction else prompts.RECALL_VARIANT_SYSTEM_PROMPT
+    from rt.services import recall_rules
+    from rt.core.config import load_config
+    from rt.services.recall_context import lesson_context
+    rules = recall_rules.prepare(template.custom_type, lesson_dir, mock=mock)
     count = min(count, MAX_VARIANTS_PER_CALL)
     client = LLMClient(force_mock=mock)
     raise_if_cancelled()
@@ -331,11 +352,14 @@ def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mo
             items.append(data)
         candidates = model.model_validate({'items': items}).items
     else:
-        prompt = prompts.recall_fewshot_block(load_fewshot_examples(template.custom_type)) + prompts.build_recall_variant_user_prompt(
+        examples = load_fewshot_examples(template.custom_type, subject=lesson_context(lesson_dir).get('materia', ''),
+            unit_text=template.tipo.scenario) if load_config().recall.votes_enabled else []
+        prompt = recall_rules.block(rules) + prompts.recall_fewshot_block(examples) + prompts.build_recall_variant_user_prompt(
             definition.nome, tipo, previous, text_correction=text_correction, batch_size=count)
         candidates = client.call_structured(prompt=prompt,
             system_prompt=effective_system("recall", definition.chiedi + "\n\n" + system + "\nLa risposta dello studente è testuale."),
             response_model=model, job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir).items
+    candidates = recall_rules.filter_group(candidates, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
     saved = []
     for candidate in candidates:
         raise_if_cancelled()

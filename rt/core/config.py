@@ -522,6 +522,8 @@ class CustomQuestionType(BaseModel):
 
 
 class RecallConfig(BaseModel):
+    votes_enabled: bool = True
+    presave_check: bool = True
     custom_types: List[CustomQuestionType] = Field(default_factory=list)
     custom_type_threshold: float = Field(default=.25, ge=0, le=1)
     refill_thresholds: Dict[str, int] = Field(default_factory=dict)

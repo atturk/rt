@@ -377,27 +377,42 @@ def _fewshot_groups(value):
             'avoid': [row for row in rows if row.get('vote') in ('down', 'lightning')][-5:]}
 
 
+def fewshot_history(value):
+    rows = value if isinstance(value, list) else value.get('good', []) + value.get('avoid', [])
+    return sorted(rows, key=lambda row: row.get('voted_at', ''))
+
+
 def record_fewshot_vote(qtype: RecallQuestionType, question_text: str, vote: str,
-                        state_dir: Optional[str] = None, reasons=None, comment=None) -> None:
-    """Esempi buoni e da evitare separati, con motivi e commento; aggiornamento del voto."""
+                        state_dir: Optional[str] = None, reasons=None, comment=None,
+                        *, subject='', lesson=None, unit_ids=None) -> None:
+    """Storico completo, fino a 300 voti per tipo; legge entrambi i formati storici."""
     from rt.core.filelock import file_lock
     path = get_fewshot_path(state_dir)
     with file_lock(fs.lock_path(path + '.lock')):
         data = _load_fewshot(state_dir)
-        groups = _fewshot_groups(data.get(type_key(qtype), []))
-        for group in groups.values():
-            group[:] = [row for row in group if row['question_text'] != question_text]
-        entry = {'question_text': question_text, 'vote': vote, 'voted_at': datetime.now().isoformat(),
-                 'reasons': list(dict.fromkeys(reasons or [])), 'comment': comment}
-        key = 'good' if vote == 'up' else 'avoid'
-        groups[key] = (groups[key] + [entry])[-5:]
-        data[type_key(qtype)] = groups
+        rows = fewshot_history(data.get(type_key(qtype), []))
+        rows.append({'question_text': question_text, 'vote': vote, 'voted_at': datetime.now().isoformat(),
+            'type': type_key(qtype), 'subject': subject, 'lesson': lesson, 'unit_ids': unit_ids or [],
+            'reasons': list(dict.fromkeys(reasons or [])), 'comment': comment})
+        rows = rows[-300:]
+        data[type_key(qtype)] = {'good': [r for r in rows if r.get('vote') == 'up'],
+                                'avoid': [r for r in rows if r.get('vote') in ('down', 'lightning')]}
         _save_fewshot(data, state_dir)
 
 
-def load_fewshot_examples(qtype: RecallQuestionType, state_dir: Optional[str] = None) -> List[dict]:
-    groups = _fewshot_groups(_load_fewshot(state_dir).get(type_key(qtype), []))
-    return groups['good'] + groups['avoid']
+def load_fewshot_examples(qtype: RecallQuestionType, state_dir: Optional[str] = None,
+                          *, subject='', unit_text='') -> List[dict]:
+    from rt.pipeline.recall_checks import keywords
+    rows = fewshot_history(_load_fewshot(state_dir).get(type_key(qtype), []))
+    latest = {}
+    for row in rows:
+        latest[(row.get('lesson'), row.get('question_text'))] = row
+    rows = list(latest.values())
+    relevant = keywords(unit_text)
+    rows.sort(key=lambda row: (bool(subject and row.get('subject') == subject),
+        len(keywords(row.get('question_text', '')) & relevant), row.get('voted_at', '')), reverse=True)
+    return ([r for r in rows if r.get('vote') == 'up'][:5] +
+            [r for r in rows if r.get('vote') in ('down', 'lightning')][:5])
 
 # -----------------------------------------------------------------------
 # ID sequenziale (same schema as asr_NNNNNN / sci_NNNNNN)
@@ -471,8 +486,15 @@ def generation_available(lesson_dir: str, qtype: RecallQuestionType, *, force_mo
     from rt.services.recall_units import selected_units
     units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
-    examples = load_fewshot_examples(qtype, load_config().telegram.state_dir)
+    examples = load_fewshot_examples(qtype, load_config().telegram.state_dir) if load_config().recall.votes_enabled else []
     policy = _generation_policy(qtype, examples, force_mock)
+    from rt.services import recall_rules
+    from rt.services.recall_context import lesson_context
+    if load_config().recall.votes_enabled:
+        subject = lesson_context(lesson_dir).get('materia', '')
+        rules = recall_rules.load().get(type_key(qtype), {}).get(subject, {}).get('rules', [])
+        if rules:
+            policy['rules'] = rules
     for group in _generation_groups(units, bank, qtype):
         row = bank.generation_attempts.get(_generation_key(qtype, group), {})
         if not row.get("exhausted") or row.get("fingerprint") != _generation_digest(lesson_dir, group, policy):
@@ -575,7 +597,13 @@ def generate_recall_batch(
         units = selected_units(lesson_dir)
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
+    from rt.services import recall_rules
+    rules = recall_rules.prepare(type_key(qtype), lesson_dir, mock=mock)
+    if not load_config().recall.votes_enabled:
+        few_shot_examples = []
     policy = _generation_policy(qtype, few_shot_examples or [], mock)
+    if rules:
+        policy['rules'] = rules
     results = []
     failures = UnitFailureTracker()
     last_error = None
@@ -608,6 +636,10 @@ def generate_recall_batch(
             assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
                 "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
             previous = previous_questions_on_units(bank, ids)
+            examples = load_fewshot_examples(qtype, subject=context.get('materia', ''),
+                unit_text=' '.join(u.content for u in group)) if load_config().recall.votes_enabled else []
+            if few_shot_examples and not examples and load_config().recall.votes_enabled:
+                examples = few_shot_examples
             if mock:
                 # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
                 # così i refill successivi non sono duplicati e anche le lezioni corte
@@ -629,14 +661,14 @@ def generate_recall_batch(
             else:
                 if qtype == RecallQuestionType.VASTA:
                     prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],
-                             [u.content for u in group], few_shot_examples or [],
+                             [u.content for u in group], examples,
                              instructions=instructions, selection=selection)
                 else:
                     u = group[0]
                     builder = getattr(prompts, "build_recall_" + qtype.value + "_user_prompt")
-                    prompt = builder(u.unit_id, u.title, u.content, few_shot_examples or [],
+                    prompt = builder(u.unit_id, u.title, u.content, examples,
                                      instructions=instructions, selection=selection)
-                prompt = prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
+                prompt = recall_rules.block(rules) + prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
                 try:
                     generated = client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),
                         response_model=response_model, job_name="recall", unit_id=", ".join(ids), lesson_dir=lesson_dir).questions
@@ -671,6 +703,7 @@ def generate_recall_batch(
                     generation_version=POLICY_VERSION, generation_fingerprint=fingerprint,
                     classifier_level=assessment.get("level"))
                 group_results.append(question)
+            group_results = recall_rules.filter_group(group_results, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
             attempt = {"fingerprint": fingerprint, "exhausted": not group_results,
                        "outcome": "questions" if group_results else "empty",
                        "generated_at": datetime.now().isoformat(), "question_ids": []}

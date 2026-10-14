@@ -297,21 +297,21 @@ Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestam
 def recall_fewshot_block(examples: List[dict]) -> str:
     """Le domande bocciate orientano cosa evitare, mai cosa imitare."""
     parts = []
-    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE'), (('down', 'lightning'), 'ESEMPI DA EVITARE')]:
+    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE (forma e livello, non argomento)'), (('down', 'lightning'), 'ESEMPI DA EVITARE (forma e livello, non argomento)')]:
         rows = [ex for ex in examples if ex.get('vote') in votes]
         if not rows:
             continue
         parts.append(title + ':')
         for ex in rows:
             parts.append(ex.get('question_text', ''))
-            if title == 'ESEMPI DA EVITARE':
+            if title == 'ESEMPI DA EVITARE (forma e livello, non argomento)':
                 reasons = list(ex.get('reasons') or [])
                 if ex.get('vote') == 'lightning' and not reasons:
                     reasons = ['troppo facile o troppi indizi']
                 parts.append('Motivi: ' + (', '.join(reasons) or 'non specificati'))
                 if ex.get('comment'):
                     parts.append('Commento: ' + ex['comment'])
-    return '\n'.join(parts) + '\n\n' if parts else ''
+    return 'Scenario e contenuti si prendono solo dall’unità; gli esempi indicano forma e livello.\n\n' + '\n'.join(parts) + '\n\n' if parts else ''
 
 
 def build_recall_quiz_user_prompt(

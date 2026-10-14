@@ -604,3 +604,13 @@ def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 register_handler("classifier",classifier_job_handler)
+
+
+def recall_rules_update_job(job, ctx):
+    from rt.services.recall_rules import update, view
+    with ctx.activate():
+        update(job.payload['type'], job.payload['subject'], manual=True, mock=bool(job.payload.get('mock')))
+    return _done(view())
+
+
+register_handler('recall_rules_update', recall_rules_update_job)

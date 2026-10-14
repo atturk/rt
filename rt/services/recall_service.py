@@ -462,10 +462,14 @@ def vote_question(lesson_dir: str, question_id: str, vote: str, reasons=None, co
     question = find_question(lesson_dir, question_id)
     if question is None:
         raise ValueError("Domanda inesistente.")
+    if not load_config().recall.votes_enabled:
+        return
     record_recall_vote(lesson_dir, question_id, vote, reasons=reasons, comment=comment)
     state_dir = load_config().telegram.state_dir
     fs.makedirs(state_dir, exist_ok=True)
-    record_fewshot_vote(question_key(question), question.question_text, vote, state_dir=state_dir, reasons=reasons, comment=comment)
+    from rt.services.recall_context import lesson_context
+    record_fewshot_vote(question_key(question), question.question_text, vote, state_dir=state_dir, reasons=reasons, comment=comment,
+                        subject=lesson_context(lesson_dir).get('materia', ''), lesson=lesson_dir, unit_ids=question.unit_ids)
 
 
 def skip_question(lesson_dir: str, question_id: str) -> None:
