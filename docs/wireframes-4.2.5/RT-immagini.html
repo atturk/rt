@@ -55,6 +55,28 @@ svg{width:18px;height:18px;flex:none}
 .strip.closed .thumbs{display:none}
 .strip.closed .chev{transform:rotate(-90deg)}
 .chev{transition:transform .15s}
+/* scorrimento con molte immagini */
+.rail{position:relative}
+.rail .thumbs{scrollbar-width:thin}
+.rail::before,.rail::after{content:'';position:absolute;top:0;bottom:4px;width:28px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:1}
+.rail::before{left:0;background:linear-gradient(90deg,var(--bg),transparent)}
+.rail::after{right:0;background:linear-gradient(270deg,var(--bg),transparent)}
+.rail.l::before,.rail.r::after{opacity:1}
+.nav{position:absolute;top:calc(50% - 18px);z-index:2;width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--bg);color:var(--fg);display:none;place-items:center;box-shadow:var(--shadow)}
+.nav.prev{left:4px}.nav.next{right:4px}
+.rail:hover .nav.show{display:grid}
+@media (hover:none){.rail .nav{display:none!important}}
+.count-pill{font-variant-numeric:tabular-nums}
+/* import */
+.imp{padding:16px;display:grid;gap:10px;max-width:560px}
+.part{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px}
+.part .n{width:20px;height:20px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:11px;font-weight:600;flex:none}
+.part .f{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.part .d{color:var(--mute);font-variant-numeric:tabular-nums}
+.sum{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:var(--mute)}
+.sum .txt{flex:1;min-width:0}
+.tog{border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:3px 12px;font-size:13px;color:var(--mute)}
+.tog[aria-pressed="true"]{background:var(--acc-soft);border-color:var(--acc);color:var(--acc);font-weight:600}
 /* finta slide */
 .slide{aspect-ratio:16/10;width:100%;display:flex;flex-direction:column;background:var(--slide-bg)}
 .slide .h{background:var(--slide-h);height:24%;display:flex;align-items:center;padding:0 9%}
@@ -81,7 +103,8 @@ svg{width:18px;height:18px;flex:none}
 .vb:hover{background:rgb(255 255 255/.24)}
 .vmain{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px}
 .vmain .slide{border-radius:6px;max-width:640px;margin:0 auto}
-.vstrip{display:flex;gap:6px;justify-content:center;overflow-x:auto}
+.vstrip{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.vstrip button:first-child{margin-left:auto}.vstrip button:last-child{margin-right:auto}
 .vstrip button{flex:none;width:64px;border:2px solid transparent;border-radius:5px;padding:0;overflow:hidden;opacity:.55;background:none}
 .vstrip button.on{border-color:#fff;opacity:1}
 .overlay{position:fixed;inset:0;background:var(--veil);display:grid;place-items:center;z-index:20;
@@ -93,7 +116,7 @@ svg{width:18px;height:18px;flex:none}
 
 <div class="top">
   <h1>Immagini nel testo</h1>
-  <span class="meta">Wireframe 4.2.5b3 · 14 ott 2026 · proposta da approvare</span>
+  <span class="meta">Wireframe 4.2.5b3 · 14 ott 2026 · v2: molte immagini, sottounità, Unisci</span>
 </div>
 
 <div class="wrap">
@@ -105,9 +128,12 @@ svg{width:18px;height:18px;flex:none}
       <li>Clic su una miniatura: si apre il visore a schermo pieno, con frecce, tastiera (← → Esc), numero della pagina e nome del documento.</li>
       <li>La freccina accanto al nome chiude la striscia in una riga sola. La scelta vale per tutte le lezioni e si ricorda.</li>
       <li>In modifica, quando il cursore entra nella striscia, compaiono le righe markdown come per il resto del testo (come Obsidian). Si possono riordinare o cancellare a mano come oggi.</li>
+      <li><b>Con molte immagini</b> la striscia resta una riga sola, mai una griglia: scorre di lato col trackpad o col dito, con una sfumatura sul bordo dove c'è altro e, al passaggio del mouse, due frecce. Il conteggio dice quante sono. La pagina non si allunga mai più di una riga di miniature.</li>
+      <li><b>Ordine:</b> sempre quello del documento (prima per fonte, nell'ordine delle Fonti, poi per numero di pagina), anche se le pagine arrivano in giri diversi.</li>
+      <li><b>Sottounità:</b> ogni pagina va alla sottounità che spiega (1.1, 1.2…), subito sotto il suo titolo; resta sotto l'unità madre solo se riguarda tutta l'unità (indice, schema generale). Così ogni striscia ne ha poche e sta accanto al testo giusto.</li>
       <li>Le immagini singole incollate nel testo e i grafici di Arricchimento restano come sono.</li>
     </ul>
-    <div class="ask">Prova a cliccare una miniatura e la freccina della striscia.</div>
+    <div class="ask">Prova a scorrere la prima striscia (14 pagine), a cliccare una miniatura e la freccina.</div>
   </section>
 
   <section class="scene" aria-labelledby="s1">
@@ -117,19 +143,12 @@ svg{width:18px;height:18px;flex:none}
         <div class="title">Trombosi, tromboembolia e sepsi: basi fisiopatologiche, manifestazioni cliniche e principi di gestione</div>
         <div class="sub">Patologia generale 2 · 14 ott · 22 unità · 1 h 37 min</div>
         <h3>1. Trombosi: meccanismi patogenetici, fattori di rischio e tipologie</h3>
-        <div class="strip" id="strip">
-          <div class="strip-head">
-            <button class="ib" id="toggle" data-tip="Chiudi le immagini" aria-expanded="true" aria-controls="thumbs">
-              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <span class="name">4 pagine · 4. Emostasi coagulazione trombosi embolia.pdf</span>
-          </div>
-          <div class="thumbs" id="thumbs"></div>
-        </div>
+        <div class="strip" data-n="2" data-first="1" data-label="indice e schema dell'unità"></div>
         <h4>1.1 Un quarto sistema di difesa tissutale</h4>
+        <div class="strip" data-n="14" data-first="3"></div>
         <p>L'emostasi si aggiunge a danno cellulare, infiammazione e immunità come risposta dell'organismo al danno, in questo caso vascolare. La stessa cascata che previene l'emorragia, se disregolata, causa trombosi ed embolia.</p>
         <h4>1.2 Le tre fasi dell'emostasi</h4>
+        <div class="strip" data-n="3" data-first="17"></div>
         <p>Spasmo vascolare, tappo piastrinico e coagulazione si susseguono in pochi minuti…</p>
       </div>
     </div>
@@ -137,7 +156,7 @@ svg{width:18px;height:18px;flex:none}
 
   <section class="scene" aria-labelledby="s2">
     <h2 id="s2">2 · Visore</h2>
-    <p class="hint">Si apre al clic su una miniatura, sopra tutta la pagina. Sul telefono si scorre col dito e le frecce spariscono.</p>
+    <p class="hint">Si apre al clic su una miniatura e mostra solo le pagine di quella striscia, sopra tutta la pagina. Sul telefono si scorre col dito e le frecce spariscono.</p>
     <div class="viewer-demo" id="viewerStatic"></div>
   </section>
 
@@ -184,42 +203,86 @@ svg{width:18px;height:18px;flex:none}
   </section>
 </div>
 
+<div class="wrap" style="margin-top:16px">
+  <section class="scene" aria-labelledby="s5">
+    <h2 id="s5">5 · Popup di import con più audio</h2>
+    <div class="frame"><div class="imp">
+      <div class="part"><span class="n">1</span><span class="f">TX02_MIC002_20261014.wav</span><span class="d">30 min</span></div>
+      <div class="part"><span class="n">2</span><span class="f">TX02_MIC003_20261014.wav</span><span class="d">30 min</span></div>
+      <div class="part"><span class="n">3</span><span class="f">TX02_MIC004_20261014.wav</span><span class="d">2 min</span></div>
+      <div class="part"><span class="n">4</span><span class="f">TX02_MIC005_20261014.wav</span><span class="d">30 min</span></div>
+      <div class="sum"><span class="txt" id="mergeTxt"></span>
+        <button class="tog" id="merge" aria-pressed="true">Unisci</button></div>
+      <p class="hint">Il bottone c'è solo con 2 o più audio. Lo stesso bottone c'è in "Aggiungi fonte" nei Dettagli. In tutti e due i casi ogni audio viene salvato in formato leggero (m4a), mai il wav.</p>
+    </div></div>
+  </section>
+</div>
+
 <div class="overlay" id="overlay" hidden role="dialog" aria-modal="true" aria-label="Visore immagini">
   <div class="viewer-demo" id="viewerLive"></div>
 </div>
 
 <script>
-const N = 4, FIRST = 3, DOC = '4. Emostasi coagulazione trombosi embolia.pdf'
+const DOC = '4. Emostasi coagulazione trombosi embolia.pdf'
+let N = 4, FIRST = 3
 const slide = (i) => `<div class="slide" aria-hidden="true"><div class="h"><i style="width:${50 + (i * 9) % 30}%"></i></div><div class="b">${
   i % 2 ? '<i style="width:70%"></i><i style="width:84%"></i><i style="width:58%"></i><div class="box"></div>'
         : '<div class="box"></div><i style="width:76%"></i><i style="width:64%"></i>'}</div></div>`
 const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`
-const thumbs = document.getElementById('thumbs')
-for (let i = 0; i < N; i++) {
-  const b = document.createElement('button')
-  b.className = 'thumb'; b.setAttribute('aria-label', `Apri pagina ${FIRST + i}`)
-  b.innerHTML = slide(i) + `<span class="pg">p. ${FIRST + i}</span>`
-  b.onclick = () => openViewer(i)
-  thumbs.appendChild(b)
-}
-const strip = document.getElementById('strip'), toggle = document.getElementById('toggle')
 let closed = false
 try { closed = localStorage.getItem('rt-wf-strip') === '1' } catch (e) {}
-const applyClosed = () => {
+const strips = [...document.querySelectorAll('.strip[data-n]')]
+strips.forEach((strip, k) => {
+  const n = Number(strip.dataset.n), first = Number(strip.dataset.first)
+  const pages = n === 1 ? `pagina ${first}` : `${n} pagine`
+  strip.innerHTML = `<div class="strip-head">
+      <button class="ib tg" data-tip="Chiudi le immagini" aria-expanded="true">${icon('m6 9 6 6 6-6').replace('<svg', '<svg class="chev"')}</button>
+      ${icon('m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48')}
+      <span class="name"><span class="count-pill">${pages}</span> · ${strip.dataset.label || DOC + ', p. ' + first + (n > 1 ? '–' + (first + n - 1) : '')}</span></div>
+    <div class="rail"><button class="nav prev" aria-label="Scorri a sinistra">${icon('m15 18-6-6 6-6')}</button>
+      <div class="thumbs"></div>
+      <button class="nav next" aria-label="Scorri a destra">${icon('m9 18 6-6-6-6')}</button></div>`
+  const thumbs = strip.querySelector('.thumbs'), rail = strip.querySelector('.rail')
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('button')
+    b.className = 'thumb'; b.setAttribute('aria-label', `Apri pagina ${first + i}`)
+    b.innerHTML = slide(first + i) + `<span class="pg">p. ${first + i}</span>`
+    b.onclick = () => { N = n; FIRST = first; openViewer(i) }
+    thumbs.appendChild(b)
+  }
+  const prev = rail.querySelector('.prev'), next = rail.querySelector('.next')
+  const edges = () => {
+    const l = thumbs.scrollLeft > 2, r = thumbs.scrollLeft + thumbs.clientWidth < thumbs.scrollWidth - 2
+    rail.classList.toggle('l', l); rail.classList.toggle('r', r)
+    prev.classList.toggle('show', l); next.classList.toggle('show', r)
+  }
+  thumbs.addEventListener('scroll', edges); window.addEventListener('resize', edges); edges()
+  prev.onclick = () => thumbs.scrollBy({ left: -thumbs.clientWidth * .8, behavior: 'smooth' })
+  next.onclick = () => thumbs.scrollBy({ left: thumbs.clientWidth * .8, behavior: 'smooth' })
+})
+const applyClosed = () => strips.forEach((strip) => {
+  const t = strip.querySelector('.tg')
   strip.classList.toggle('closed', closed)
-  toggle.setAttribute('aria-expanded', String(!closed))
-  toggle.dataset.tip = closed ? 'Mostra le immagini' : 'Chiudi le immagini'
-}
+  t.setAttribute('aria-expanded', String(!closed))
+  t.dataset.tip = closed ? 'Mostra le immagini' : 'Chiudi le immagini'
+})
 applyClosed()
-toggle.onclick = () => { closed = !closed; applyClosed(); try { localStorage.setItem('rt-wf-strip', closed ? '1' : '0') } catch (e) {} }
+strips.forEach((strip) => strip.querySelector('.tg').onclick = () => {
+  closed = !closed; applyClosed(); try { localStorage.setItem('rt-wf-strip', closed ? '1' : '0') } catch (e) {}
+})
+const merge = document.getElementById('merge'), mergeTxt = document.getElementById('mergeTxt')
+const mergeState = () => { const on = merge.getAttribute('aria-pressed') === 'true'
+  mergeTxt.textContent = on ? "4 parti · 1 h 32 min · diventano un'unica registrazione, in quest'ordine" : '4 parti · 1 h 32 min · restano 4 fonti separate, in quest\'ordine' }
+merge.onclick = () => { merge.setAttribute('aria-pressed', String(merge.getAttribute('aria-pressed') !== 'true')); mergeState() }
+mergeState()
 
 function viewer(el, index, live) {
   el.innerHTML = `
     <div class="vtop"><span class="cap">${DOC}, pagina ${FIRST + index}</span><span class="count">${index + 1} / ${N}</span>
       <button class="vb" data-act="close" aria-label="Chiudi">${icon('M18 6 6 18M6 6l12 12')}</button></div>
     <div class="vmain"><button class="vb" data-act="prev" aria-label="Precedente">${icon('m15 18-6-6 6-6')}</button>
-      ${slide(index)}<button class="vb" data-act="next" aria-label="Successiva">${icon('m9 18 6-6-6-6')}</button></div>
-    <div class="vstrip">${Array.from({ length: N }, (_, i) => `<button class="${i === index ? 'on' : ''}" data-go="${i}" aria-label="Pagina ${FIRST + i}">${slide(i)}</button>`).join('')}</div>`
+      ${slide(FIRST + index)}<button class="vb" data-act="next" aria-label="Successiva">${icon('m9 18 6-6-6-6')}</button></div>
+    <div class="vstrip">${Array.from({ length: N }, (_, i) => `<button class="${i === index ? 'on' : ''}" data-go="${i}" aria-label="Pagina ${FIRST + i}">${slide(FIRST + i)}</button>`).join('')}</div>`
   el.onclick = (e) => {
     const t = e.target.closest('button'); if (!t) return
     if (t.dataset.act === 'close') { if (live) closeViewer(); return }
@@ -230,7 +293,7 @@ function viewer(el, index, live) {
   }
   el.dataset.index = index
 }
-viewer(document.getElementById('viewerStatic'), 1, false)
+N = 14; FIRST = 3; viewer(document.getElementById('viewerStatic'), 1, false)
 const overlay = document.getElementById('overlay'), live = document.getElementById('viewerLive')
 function openViewer(i) { viewer(live, i, true); overlay.hidden = false; live.querySelector('[data-act=close]').focus() }
 function closeViewer() { overlay.hidden = true }
