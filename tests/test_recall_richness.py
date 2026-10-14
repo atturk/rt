@@ -302,3 +302,21 @@ def test_previous_questions_include_other_types_and_complete_json():
     values = json.loads(encoded)
     assert len(values) <= 30 and len(encoded) <= 12000
     assert values[-1] == previous[-1]
+
+
+@pytest.mark.parametrize('sizes, expected, calls', [([1, 1, 1], 3, 3), ([1, 0], 1, 2), ([2], 2, 1)])
+def test_up_to_three_rounds_keep_excess_and_stop_on_empty(tmp_path, sizes, expected, calls):
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    seen = []
+    def generate(**kw):
+        seen.append(kw['prompt'])
+        batch = sizes[len(seen) - 1]
+        return kw['response_model'].model_validate({'questions': [
+            {'type': 'mirata', 'question_text': f'Concetto del giro {len(seen)} domanda {i}?'} for i in range(batch)]})
+    wanted = 1 if sizes == [2] else 10
+    with patch('rt.llm.client.LLMClient.call_structured', side_effect=generate):
+        results = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, wanted, [])
+    assert len(results) == expected and len(seen) == calls
+    if calls > 1:
+        assert '[mirata] Concetto del giro 1 domanda 0?' in seen[1]
+    assert all('obiettivo 10' not in prompt for prompt in seen)

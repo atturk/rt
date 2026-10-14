@@ -203,68 +203,76 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     failures = UnitFailureTracker()
     results, last_error, succeeded = [], None, False
     report(0, len(todo), f"{label}: {len(todo)} {'unità' if len(todo) != 1 else 'unità'} riconosciute dal classificatore")
-    for position, group in enumerate(todo):
-        raise_if_cancelled()
-        bank = load_recall_bank(lesson_dir)
-        key = group_key(qtype, group)
-        fingerprint = _digest(lesson_dir, group, policy)
-        old = bank.generation_attempts.get(key, {})
-        ids = [s["id"] for s in group]
-        head = f"{label} · unità {', '.join(ids)}"
-        where = {"unit_id": ", ".join(ids), "unit_title": group[0]["title"] if len(group) == 1 else None}
-        if not regenerate and old.get("fingerprint") == fingerprint:
-            report(position + 1, len(todo), f"{head}: già valutata", **where)
-            continue
-        all_units = [u.unit_id for s in group for u in s["units"]]
-        existing = [t for t in bank.templates if t.custom_type == definition.id and set(t.section_ids) & set(ids)]
-        started = time.monotonic()
-        report(position, len(todo), f"{head}: chiedo {label.lower()} al recaller", **where)
-        try:
-            response_model = RecallTextGenerationResult if definition.correzione == "testo" else RecallSpecialGenerationResult
-            if mock:
-                generated = response_model.model_validate(_mock_items(qtype, group, len(existing))).items
-            else:
-                prompt = prompts.build_recall_special_user_prompt(
-                    label, group, [t.tipo.model_dump() for t in existing], context,
-                    instructions=instructions, selection=selection, text_correction=definition.correzione == "testo",
-                    labels={s["id"]: "selezionata" if unit_ids is not None else "presente" for s in group})
-                from rt.pipeline.recall import load_fewshot_examples, previous_questions_on_units
-                prompt += prompts.recall_previous_block(previous_questions_on_units(bank, all_units))
-                from rt.core.config import load_config
-                prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
-                generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),
-                                                   response_model=response_model, job_name="recall",
-                                                   unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
-        except Exception as exc:
-            if not is_unit_failure(exc):
-                raise
-            failures.failed(", ".join(ids), type_key(qtype), exc)
-            report(position + 1, len(todo), f"{head}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
-                   failed=len(failures.failures), **where)
-            last_error = exc
-            if failures.too_many():
+    active = todo
+    for round_index in range(3):
+        next_groups = []
+        for position, group in enumerate(active):
+            raise_if_cancelled()
+            bank = load_recall_bank(lesson_dir)
+            key = group_key(qtype, group)
+            fingerprint = _digest(lesson_dir, group, policy)
+            old = bank.generation_attempts.get(key, {})
+            ids = [s["id"] for s in group]
+            head = f"{label} · unità {', '.join(ids)}"
+            where = {"unit_id": ", ".join(ids), "unit_title": group[0]["title"] if len(group) == 1 else None}
+            if round_index == 0 and not regenerate and old.get("fingerprint") == fingerprint:
+                report(position + 1, len(todo), f"{head}: già valutata", **where)
+                continue
+            all_units = [u.unit_id for s in group for u in s["units"]]
+            existing = [t for t in bank.templates if t.custom_type == definition.id and set(t.section_ids) & set(ids)]
+            started = time.monotonic()
+            report(position, len(todo), f"{head}: chiedo {label.lower()} al recaller", **where)
+            try:
+                response_model = RecallTextGenerationResult if definition.correzione == "testo" else RecallSpecialGenerationResult
+                if mock:
+                    generated = response_model.model_validate(_mock_items(qtype, group, len(existing))).items
+                else:
+                    prompt = prompts.build_recall_special_user_prompt(
+                        label, group, [t.tipo.model_dump() for t in existing], context,
+                        instructions=instructions, selection=selection, text_correction=definition.correzione == "testo",
+                        labels={s["id"]: "selezionata" if unit_ids is not None else "presente" for s in group})
+                    from rt.pipeline.recall import load_fewshot_examples, previous_questions_on_units
+                    prompt += prompts.recall_previous_block(previous_questions_on_units(bank, all_units))
+                    from rt.core.config import load_config
+                    prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
+                    generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),
+                                                       response_model=response_model, job_name="recall",
+                                                       unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
+            except Exception as exc:
+                if not is_unit_failure(exc):
+                    raise
+                failures.failed(", ".join(ids), type_key(qtype), exc)
+                report(position + 1, len(todo), f"{head}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
+                       failed=len(failures.failures), **where)
+                last_error = exc
+                if failures.too_many():
+                    break
+                continue
+            failures.succeeded()
+            succeeded = True
+            pairs = []
+            for item in generated:
+                item_units = [u for u in item.unit_ids if u in all_units] or all_units
+                template = RecallTemplate(id="temporary", kind=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, section_ids=ids, unit_ids=item_units,
+                                          tipo=item.tipo, fingerprint=fingerprint)
+                question = RecallQuestion(id="temporary", type=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, unit_ids=item_units, question_text=item.question_text,
+                                          pregenerated_material=None if definition.correzione == "testo" else item.pregenerated_material,
+                                          content_fingerprint=_compute_units_fingerprint(lesson_dir, item_units),
+                                          generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
+                pairs.append((question, template))
+            attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
+                       "generated_at": datetime.now().isoformat(), "question_ids": []}
+            saved = _persist(lesson_dir, pairs, key, attempt)
+            results.extend(saved)
+            if saved:
+                next_groups.append(group)
+            report(position + 1, len(todo), f"{head}: " + (f"{len(saved)} {'domanda nuova' if len(saved) == 1 else 'domande nuove'}"
+                   if saved else "nessuna domanda nuova") + f" ({time.monotonic() - started:.0f}s)", **where)
+            if count is not None and len(results) >= count:
                 break
-            continue
-        failures.succeeded()
-        succeeded = True
-        pairs = []
-        for item in generated:
-            item_units = [u for u in item.unit_ids if u in all_units] or all_units
-            template = RecallTemplate(id="temporary", kind=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, section_ids=ids, unit_ids=item_units,
-                                      tipo=item.tipo, fingerprint=fingerprint)
-            question = RecallQuestion(id="temporary", type=RecallQuestionType.PERSONALIZZATA, custom_type=definition.id, unit_ids=item_units, question_text=item.question_text,
-                                      pregenerated_material=None if definition.correzione == "testo" else item.pregenerated_material,
-                                      content_fingerprint=_compute_units_fingerprint(lesson_dir, item_units),
-                                      generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
-            pairs.append((question, template))
-        attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
-                   "generated_at": datetime.now().isoformat(), "question_ids": []}
-        saved = _persist(lesson_dir, pairs, key, attempt)
-        results.extend(saved)
-        report(position + 1, len(todo), f"{head}: " + (f"{len(saved)} {'domanda nuova' if len(saved) == 1 else 'domande nuove'}"
-               if saved else "nessuna domanda nuova") + f" ({time.monotonic() - started:.0f}s)", **where)
-        if count is not None and len(results) >= count:
+        if count is None or len(results) >= count or not next_groups or failures.too_many():
             break
+        active = next_groups
     if last_error is not None and not succeeded:
         raise last_error
     return results
