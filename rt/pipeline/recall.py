@@ -719,6 +719,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         return RecallEvaluation("[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.", "parziale")
 
     client = LLMClient(force_mock=force_mock)
+    from rt.pipeline.recall_checks import checked_evaluation
 
     if question.type == RecallQuestionType.MIRATA:
         draft = load_resolved_draft(lesson_dir)
@@ -732,7 +733,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             answer_text=answer_text,
             dont_know=is_dont_know,
         )
-        result: "RecallEvalMirataResult" = client.call_structured(
+        result: "RecallEvalMirataResult" = checked_evaluation(client, dont_know=is_dont_know,
             prompt=user_prompt,
             system_prompt=effective_system("recall", RECALL_EVAL_MIRATA_SYSTEM_PROMPT),
             response_model=RecallEvalMirataResult,
@@ -753,7 +754,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             answer_text=answer_text,
             dont_know=is_dont_know,
         )
-        result_v: "RecallEvalVastaResult" = client.call_structured(
+        result_v: "RecallEvalVastaResult" = checked_evaluation(client, dont_know=is_dont_know,
             prompt=user_prompt,
             system_prompt=effective_system("recall", RECALL_EVAL_VASTA_SYSTEM_PROMPT),
             response_model=RecallEvalVastaResult,

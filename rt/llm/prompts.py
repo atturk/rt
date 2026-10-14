@@ -535,7 +535,7 @@ Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResul
 # 9. RECALL EVAL VASTA JOB (Fase D3)
 # ----------------------------------------------------------------------
 
-class RecallEvalVastaResult(BaseModel):
+class RecallEvalVastaResult(RecallEvalMirataResult):
     outcome: Optional[RecallOutcome] = None
     commento: str = Field(..., description="Valutazione breve di correttezza concettuale e qualità organizzativa rispetto alla scaletta ideale")
 
@@ -547,7 +547,7 @@ REGOLE CATEGORICHE:
 2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
 3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
 4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente.
-5. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
+5. Riporta correttezza e completezza fra 0 e 100. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -563,7 +563,7 @@ SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento, outcome)."""
+Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (correttezza, completezza, commento, outcome)."""
 
 
 # ----------------------------------------------------------------------

@@ -59,3 +59,19 @@ def test_evaluation_coherence(c, f, outcome):
 def test_invalid_scores_and_outcome():
     assert evaluation_issue(dict(correttezza=101, completezza=50, commento='Ok', outcome='parziale')) == 'percentuali'
     assert evaluation_issue(dict(correttezza=0, completezza=0, commento='Errato', outcome='corretta')) == 'esito incoerente'
+
+
+def test_evaluation_retries_once_and_derives_outcome():
+    from unittest.mock import Mock
+    from rt.pipeline.recall_checks import checked_evaluation
+    from rt.llm.prompts import RecallEvalMirataResult
+    broken = RecallEvalMirataResult(correttezza=20, completezza=10, commento='Errata', outcome='corretta')
+    client = Mock()
+    client.call_structured.side_effect = [broken, broken.model_copy()]
+    result = checked_evaluation(client, response_model=RecallEvalMirataResult)
+    assert result.outcome == 'sbagliata' and client.call_structured.call_count == 2
+    client.call_structured.reset_mock()
+    valid = broken.model_copy(update={'outcome': 'sbagliata'})
+    client.call_structured.side_effect = [broken, valid]
+    assert checked_evaluation(client, response_model=RecallEvalMirataResult) == valid
+    assert client.call_structured.call_count == 2

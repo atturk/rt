@@ -138,3 +138,28 @@ def evaluation_issue(result):
     if data.get('outcome') != percentage_outcome(*scores):
         return 'esito incoerente'
     return None
+
+
+def checked_evaluation(client, *, dont_know=False, **kwargs):
+    """Riprova una volta; dopo deriva l'esito dai punteggi invece di fidarsi del modello."""
+    from pydantic import ValidationError
+    result = None
+    for _ in range(2):
+        try:
+            result = client.call_structured(**kwargs)
+        except ValidationError:
+            continue
+        if dont_know:
+            result.correttezza = result.completezza = 0
+            result.outcome = 'sbagliata'
+        if not evaluation_issue(result):
+            return result
+    if result is None:
+        result = kwargs['response_model'].model_construct(correttezza=0, completezza=0,
+            commento='Il modello non ha restituito una valutazione valida.', outcome='sbagliata')
+    result.correttezza = min(100, max(0, result.correttezza))
+    result.completezza = min(100, max(0, result.completezza))
+    result.outcome = percentage_outcome(result.correttezza, result.completezza)
+    if not result.commento.strip():
+        result.commento = 'Valutazione ricavata dalle percentuali restituite dal modello.'
+    return result
