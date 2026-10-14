@@ -199,5 +199,17 @@ Piccole modifiche di interfaccia, da fare dopo RQ1-RQ6. File: CalendarPopups.tsx
 - **UI2 · Contrasto dell'ora scelta nel popup di import.** Oggi l'ora scelta si distingue appena dalle altre (`border-primary ring-1 bg-primary/10`, e la barretta colorata è uguale su tutte). Nuovo stile, in tema chiaro e scuro: ora scelta con bordo di 2 px del colore primario, sfondo primario più pieno (circa /20) e barretta primaria; le altre ore con bordo normale e barretta grigia (muted). Il bordo dell'ora scelta deve avere un contrasto di almeno 3:1 con lo sfondo in entrambi i temi (controllarlo con i colori dei token). Le ore già registrate restano come oggi.
 - **UI3 · Trascinare file su tutta la pagina.** Quando si trascina sulla finestra di RT un file che l'import accetta (gli stessi tipi del campo del popup: audio, materiali, .zip), compare sopra tutta la pagina un velo con la scritta "Rilascia per importare". Rilasciando, si apre il popup di import con quei file già caricati, che li smista come se fossero stati trascinati nel suo riquadro (audio e materiali, oppure pacchetti .zip; stessa regola e stesso messaggio di oggi se sono mescolati). Il velo non compare per file non accettati, per testo o link trascinati, quando il popup di import è già aperto (lì vale il suo riquadro) e mentre si trascina dentro un editor o un pannello che accetta già file (es. Fonti in Dettagli). Si chiude se il trascinamento esce dalla finestra o con Esc.
 
+### FS1 · Togliere una fonte in sicurezza (14 ott)
+Oggi la × su una fonte in Dettagli la toglie subito, senza conferma (SourcesSection.tsx, `DELETE /lessons/{id}/sources/{sid}` → `remove_source`). Poi `sources_pending` (rt/pipeline/source_update.py) confronta solo gli id usati con quelli attuali, quindi una fonte tolta fa comparire "Fonti nuove non ancora usate" con Estendi, che non ha senso. Il file resta su disco ma non c'è modo di rimetterla.
+- **Conferma.** La × apre sempre il popup di conferma già usato per le azioni che obbligano a ricostruire. Se la fonte è già usata nel testo: "Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci." Se non è usata: conferma semplice.
+- **Fonti tolte, non cancellate.** Il registro tiene la fonte con `rimossa_il` (data) invece di eliminarla; le viste e la pipeline la ignorano, il file resta com'è oggi.
+- **Riga sopra il testo, distinta per caso:**
+  - solo fonti nuove → come oggi (Estendi o Ricostruisci);
+  - fonti già usate tolte → "Hai tolto N fonti già usate" con solo Ricostruisci, più l'icona "Rimetti com'era" (come per l'ordine) che le rimette al loro posto;
+  - fonti mai usate tolte → nessuna riga.
+  `sources_pending` e `selection()` vanno corretti di conseguenza: una fonte tolta non è mai "nuova".
+- **Storico.** Una Ricostruisci dopo una rimozione è una versione come le altre (LE1j), quindi si torna indietro dalle Versioni. Il ripristino di una versione rimette anche le fonti com'erano in quella versione.
+- Test: togli una fonte usata, la riga dice "tolte" e offre solo Ricostruisci; Rimetti com'era la riporta e la riga sparisce; togli una fonte mai usata, nessuna riga.
+
 ### Fuori dalla b3
 - Nessun cambiamento alla valutazione del classificatore, al rifornimento automatico (salvo che usa le stesse funzioni) e a Telegram (deprecato).
