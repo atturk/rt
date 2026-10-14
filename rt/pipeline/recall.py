@@ -515,6 +515,7 @@ def generate_recall_batch(
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
     progress: Optional[Callable[..., None]] = None, unit_ids: Optional[List[str]] = None,
     instructions: Optional[str] = None, selection: Optional[str] = None,
+    summary: Optional[dict] = None,
 ) -> List[RecallQuestion]:
     """Zero o più domande per chiamata dalle unità selezionate; count è un obiettivo, mai una
     quota del modello, e None vuol dire tutte le unità (il pool dell'intera lezione).
@@ -540,7 +541,7 @@ def generate_recall_batch(
         from rt.pipeline.recall_special import generate_special_batch
         return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
                                       shuffle=shuffle, progress=progress, unit_ids=unit_ids,
-                                      instructions=instructions, selection=selection)
+                                      instructions=instructions, selection=selection, summary=summary)
     if count is not None and count <= 0:
         return []
     label = qtype.value.capitalize()
@@ -599,7 +600,7 @@ def generate_recall_batch(
                 start = sum(1 for q in bank.questions if question_key(q) == type_key(qtype) and q.unit_ids == ids)
                 batch = []
                 for n in range(start + 1, start + 1 + min(wanted, 12)):
-                    data = {"type": qtype, "question_text": f"Domanda mock {qtype.value} n. {n} per unita' {', '.join(ids)}"}
+                    data = {"type": qtype, "question_text": f"Qual è il concetto mock {qtype.value} n. {n} per unità {', '.join(ids)}: {group[0].title}? {group[0].content[:200]}"}
                     if qtype == RecallQuestionType.QUIZ:
                         data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
                                     correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
@@ -636,6 +637,13 @@ def generate_recall_batch(
             known = {q.question_text.strip().casefold() for q in bank.questions if question_key(q) == type_key(qtype)}
             group_results = []
             for question in generated:
+                from rt.pipeline.recall_checks import question_issue
+                previous = [q for q in [*bank.questions, *group_results] if set(q.unit_ids) & set(ids)]
+                issue = question_issue(question, ' '.join(u.title + ' ' + u.content for u in group), previous)
+                if issue:
+                    if summary is not None:
+                        summary['local_discarded'] = summary.get('local_discarded', 0) + 1
+                    continue
                 text_key = question.question_text.strip().casefold()
                 if text_key in known:
                     continue

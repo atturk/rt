@@ -125,7 +125,7 @@ def _mock_items(qtype: RecallQuestionType, group: list, existing: int, *, defini
     definition = definition or _definition(qtype)
     what = definition.nome
     result = {"items": [{
-        "question_text": f"{what} mock n. {n} per l'unità {', '.join(s['id'] for s in group)}: interpreta i dati e motiva.",
+        "question_text": f"{what} mock n. {n} per l'unità {', '.join(s['id'] for s in group)}: qual è il ragionamento? Interpreta i dati e motiva. {' '.join(u.title for sec in group for u in sec['units'])}",
         "pregenerated_material": "Passaggi attesi: 1) lettura dei dati; 2) ragionamento; 3) conclusione.",
         "unit_ids": units,
         "tipo": {"scenario": f"{what} mock", "variabili": [{"nome": "valore", "valore": "1", "intervallo": "1-9"}],
@@ -177,7 +177,7 @@ def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional
 
 def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                unit_ids: Optional[List[str]] = None, instructions: Optional[str] = None,
-               selection: Optional[str] = None) -> List[RecallQuestion]:
+               selection: Optional[str] = None, summary=None) -> List[RecallQuestion]:
     from rt.llm import prompts
     from rt.llm.cancel import raise_if_cancelled
     from rt.pipeline.recall import _compute_units_fingerprint, load_recall_bank
@@ -268,6 +268,14 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                                           pregenerated_material=None if definition.correzione == "testo" else item.pregenerated_material,
                                           content_fingerprint=_compute_units_fingerprint(lesson_dir, item_units),
                                           generation_version=POLICY_VERSION, generation_fingerprint=fingerprint, variant=0)
+                from rt.pipeline.recall_checks import question_issue
+                previous = [q for q in bank.questions if set(q.unit_ids) & set(item_units)]
+                previous.extend(q for q, _ in pairs if set(q.unit_ids) & set(item_units))
+                unit_text = ' '.join(u.title + ' ' + u.content for sec in group for u in sec['units'])
+                if question_issue(question, unit_text, previous):
+                    if summary is not None:
+                        summary['local_discarded'] = summary.get('local_discarded', 0) + 1
+                    continue
                 pairs.append((question, template))
             attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
                        "generated_at": datetime.now().isoformat(), "question_ids": []}
@@ -313,9 +321,9 @@ def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mo
     if mock:
         items = []
         for n in range(template.variants + 1, template.variants + count + 1):
-            data = {'question_text': f"Variante mock n. {n} di {template.id}: {template.tipo.scenario}"}
+            data = {'question_text': f"Variante mock n. {n} di {template.id}: qual è il risultato nello scenario {template.tipo.scenario}?"}
             if not text_correction:
-                data['pregenerated_material'] = template.tipo.procedimento
+                data['pregenerated_material'] = 'Risultato mock: ' + template.tipo.procedimento
             items.append(data)
         candidates = model.model_validate({'items': items}).items
     else:
@@ -327,6 +335,12 @@ def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mo
     saved = []
     for candidate in candidates:
         raise_if_cancelled()
+        from rt.pipeline.recall_checks import variant_issue
+        previous = [q for q in load_recall_bank(lesson_dir).questions if q.template_id == template.id]
+        if variant_issue(candidate, tipo, previous):
+            if summary is not None:
+                summary['local_discarded'] = summary.get('local_discarded', 0) + 1
+            continue
         if not mock:
             check = client.call_structured(
                 prompt=prompts.build_recall_variant_check_user_prompt(tipo, candidate.question_text,
@@ -356,7 +370,7 @@ def generate_special_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], *, force_mock: bool = False,
     regenerate: bool = False, shuffle: bool = False, progress: Optional[Callable[..., None]] = None,
     unit_ids: Optional[List[str]] = None, instructions: Optional[str] = None,
-    selection: Optional[str] = None,
+    selection: Optional[str] = None, summary=None,
 ) -> List[RecallQuestion]:
     """Classifica le sezioni, genera dai gruppi nuovi e crea eventuali varianti verificate."""
     from rt.llm.cancel import raise_if_cancelled
@@ -378,7 +392,7 @@ def generate_special_batch(
         report(None, None, f"{label}: il classificatore valuta le unità")
         section_labels.refresh(lesson_dir, force_mock=mock)
     results = _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
-                         unit_ids=unit_ids, instructions=instructions, selection=selection) \
+                         unit_ids=unit_ids, instructions=instructions, selection=selection, summary=summary) \
         if (unit_ids is not None or section_labels.mode(force_mock) != "disabled") else []
     wanted = (count - len(results)) if count is not None else 0
     templates = [t for t in load_recall_bank(lesson_dir).templates if t.custom_type == definition.id
@@ -394,7 +408,7 @@ def generate_special_batch(
                     break
                 size = min(MAX_VARIANTS_PER_CALL, max(1, -(-remaining // (len(templates) - position))))
                 report(None, None, f"{label}: nuove varianti da {template.id}")
-                saved = generate_variants(lesson_dir, template.id, size, force_mock=mock)
+                saved = generate_variants(lesson_dir, template.id, size, force_mock=mock, summary=summary)
                 results.extend(saved)
                 found += len(saved)
             if len(results) >= count or not found:

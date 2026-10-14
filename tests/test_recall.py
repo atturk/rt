@@ -92,7 +92,7 @@ def test_real_batch_uses_distinct_ids_and_keeps_answers_with_their_question(less
 
     def generated(_client, **kwargs):
         return kwargs["response_model"].model_validate({"questions": [{
-            "type": "quiz", "question_text": kwargs["unit_id"],
+            "type": "quiz", "question_text": "Qual è il contenuto accademico dell’unità " + kwargs["unit_id"] + "?",
             "options": ["A", "B", "C", "D"], "correct_index": 0,
             "pregenerated_material": "Spiegazione corretta."}]})
 
@@ -588,7 +588,7 @@ class TestRecallUsesResolvedDraft:
         def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
             captured["prompt"] = prompt
             return response_model.model_validate({"questions": [{
-                "type": "mirata", "question_text": "Domanda di prova?"}]})
+                "type": "mirata", "question_text": "Qual è il contenuto accademico rivisto?"}]})
 
         from unittest.mock import patch
         with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
