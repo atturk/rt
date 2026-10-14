@@ -81,6 +81,21 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     else:
         with fs.open(path, "wb") as stream:
             stream.write(content)
+    if tipo == "audio":
+        from rt.pipeline.setup import transcode_audio_for_storage, EFFICIENT_AUDIO_EXTENSIONS
+        base_ext = os.path.splitext(name)[1].lower()
+        if base_ext not in EFFICIENT_AUDIO_EXTENSIONS:
+            converted_name = os.path.splitext(name)[0] + ".m4a"
+            converted_relative = os.path.join("sources", sid, converted_name)
+            converted_path = os.path.join(lesson_dir, converted_relative)
+            transcode_ok = False
+            with fs.materialize(path) as mat_in, fs.external_output(converted_path) as ext_out:
+                if transcode_audio_for_storage(mat_in, ext_out):
+                    transcode_ok = True
+            if transcode_ok:
+                fs.remove(path)
+                relative = converted_relative
+                path = converted_path
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
                     aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position)

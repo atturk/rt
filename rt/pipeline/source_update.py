@@ -161,6 +161,12 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                            "start_seconds": start, "end_seconds": end,
                            "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end)}))
         offset += cache[source.id]["duration"]
+    info_path = lesson_path(lesson_dir, "info.yaml")
+    old_audio = ""
+    if fs.isfile(info_path):
+        from rt.core.state import read_info_yaml
+        old_info = read_info_yaml(info_path)
+        old_audio = old_info.get("file_audio") or ""
     audio_sources = [s for s in sources if s.tipo == "audio"]
     audio_file = ""
     if audio_sources:
@@ -173,9 +179,15 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                 paths = [stack.enter_context(fs.materialize(os.path.join(lesson_dir, s.file))) for s in audio_sources]
                 target = stack.enter_context(fs.external_output(os.path.join(lesson_dir, audio_file)))
                 merge_audio_for_transcription(paths, target)
+    if old_audio and old_audio != audio_file:
+        is_source = any(s.file == old_audio for s in sources)
+        if not is_source and (old_audio.startswith("audio-") or old_audio == "audio completo.m4a"):
+            old_audio_path = os.path.join(lesson_dir, old_audio)
+            if fs.isfile(old_audio_path):
+                fs.remove(old_audio_path)
     save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir), audio_duration_seconds=offset)
     export_normalized_transcript_md(ordered, lesson_path(lesson_dir, "transcript_normalized.md"))
-    update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
+    update_info_yaml(info_path, {"file_audio": audio_file})
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
     if any(s.tipo == "materiale" for s in sources):

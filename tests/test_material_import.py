@@ -98,7 +98,7 @@ def test_mixed_audio_order_and_calendar_manual_link(api_client, rt_db, tmp_path,
     assert response.status_code == 202, response.text
     lesson = work(rt_db)
     sources = load_sources(lesson)
-    assert [os.path.basename(s.file) for s in sources if s.tipo == 'audio'] == ['z-first.wav', 'a-second.wav']
+    assert [os.path.basename(s.file) for s in sources if s.tipo == 'audio'] == ['z-first.m4a', 'a-second.m4a']
     lid = api_client.get('/api/v1/lessons').json()[0]['id']
     assert get_day_view('2026-10-12').events[0].lesson.id == lid
     from rt.db.models import CalendarEntryState
