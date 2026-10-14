@@ -213,6 +213,8 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     results, last_error, succeeded = [], None, False
     report(0, len(todo), f"{label}: {len(todo)} {'unità' if len(todo) != 1 else 'unità'} riconosciute dal classificatore")
     active = todo
+    round_index = 0
+    next_groups = []
     for round_index in range(3):
         next_groups = []
         for position, group in enumerate(active):
@@ -292,6 +294,8 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
         active = next_groups
     if last_error is not None and not succeeded:
         raise last_error
+    if summary is not None:
+        summary['_originals_max'] = round_index == 2 and bool(next_groups)
     return results
 
 
@@ -374,7 +378,8 @@ def generate_special_batch(
 ) -> List[RecallQuestion]:
     """Classifica le sezioni, genera dai gruppi nuovi e crea eventuali varianti verificate."""
     from rt.llm.cancel import raise_if_cancelled
-    from rt.pipeline.recall import load_recall_bank
+    from rt.pipeline.recall import load_recall_bank, generation_summary, finish_generation_summary
+    generation_summary(summary, count)
     from rt.services import section_labels
     report = progress or (lambda *args, **kwargs: None)
     if count is not None and count <= 0:
@@ -397,6 +402,8 @@ def generate_special_batch(
     wanted = (count - len(results)) if count is not None else 0
     templates = [t for t in load_recall_bank(lesson_dir).templates if t.custom_type == definition.id
                  and (unit_ids is None or set(t.unit_ids) <= set(unit_ids))]
+    round_index = 0
+    found = 0
     if wanted > 0 and templates and definition.varianti:
         # Ogni passaggio distribuisce a turno i lotti fra i tipi della selezione.
         for round_index in range(3):
@@ -413,6 +420,9 @@ def generate_special_batch(
                 found += len(saved)
             if len(results) >= count or not found:
                 break
+    originals_max = bool(summary and summary.pop('_originals_max', False))
+    finish_generation_summary(summary, count, results,
+        2 if originals_max else round_index, bool(found) or originals_max)
     return results
 
 

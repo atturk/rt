@@ -253,14 +253,30 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     count = int(p.get("count") or cfg.telegram.recall.refill_batch_size)
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
     with ctx.activate():
+        summary = {}
         generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
                                           regenerate=True, shuffle=True, progress=recall_progress(ctx),
                                           unit_ids=p.get("unit_ids"),
                                           instructions=p.get("instructions"),
-                                          selection=p.get("selection"))
-        ctx.emit(Notice(message=_recall_message(f"Recall {type_key(qtype)}: obiettivo {count}, generate {len(generated)}.",
-                                                len(generated), unit_rows(job.lesson_path))))
+                                          selection=p.get("selection"), summary=summary)
+        ctx.emit(Notice(message=recall_generation_notice(summary, count, len(generated))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def recall_generation_notice(summary, requested, generated):
+    message = f"Generate {generated} su {requested}"
+    if generated < requested:
+        reason = ("raggiunto il limite di tre passaggi" if summary.get('stop_reason') == 'max_rounds'
+                  else "il modello non ha trovato altri contenuti utili")
+        message += f": {reason}"
+    message += "."
+    discarded = summary.get('local_discarded', 0) + summary.get('presave_discarded', 0)
+    if discarded:
+        message += f" {discarded} scartate dai controlli."
+    failed = summary.get('verification_discarded', 0)
+    if failed:
+        message += f" {failed} {'esercizio non ha' if failed == 1 else 'esercizi non hanno'} superato la verifica."
+    return message
 
 
 def recall_progress(ctx: RunContext):

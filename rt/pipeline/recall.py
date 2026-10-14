@@ -510,6 +510,19 @@ def previous_questions_on_units(bank, ids):
             if set(q.unit_ids) & set(ids)]
 
 
+def generation_summary(summary, count):
+    if summary is not None:
+        summary.update(requested=count, generated=0, local_discarded=0,
+                       presave_discarded=0, verification_discarded=0, stop_reason='empty')
+
+
+def finish_generation_summary(summary, count, results, rounds=0, active=False):
+    if summary is not None:
+        summary['generated'] = len(results)
+        summary['stop_reason'] = ('limit' if count is not None and len(results) >= count
+                                  else 'max_rounds' if rounds == 2 and active else 'empty')
+
+
 def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
@@ -542,6 +555,7 @@ def generate_recall_batch(
         return generate_special_batch(lesson_dir, qtype, count, force_mock=force_mock, regenerate=regenerate,
                                       shuffle=shuffle, progress=progress, unit_ids=unit_ids,
                                       instructions=instructions, selection=selection, summary=summary)
+    generation_summary(summary, count)
     if count is not None and count <= 0:
         return []
     label = qtype.value.capitalize()
@@ -574,6 +588,8 @@ def generate_recall_batch(
     report(0, len(groups), f"{label}: {len(units)} unità selezionate, {len(groups)} "
            + ("gruppi" if qtype == RecallQuestionType.VASTA else "chiamate") + " al recaller")
     active = groups
+    round_index = 0
+    next_groups = []
     for round_index in range(3):
         next_groups = []
         for position, group in enumerate(active):
@@ -598,9 +614,11 @@ def generate_recall_batch(
                 # raggiungono l'obiettivo del batch.
                 wanted = 2 if count is None else max(1, -(-(count - len(results)) // (len(active) - position)))
                 start = sum(1 for q in bank.questions if question_key(q) == type_key(qtype) and q.unit_ids == ids)
+                from rt.pipeline.recall_checks import keywords
+                mock_topic = ' '.join(sorted(keywords(' '.join(u.content for u in group)))[:5])
                 batch = []
                 for n in range(start + 1, start + 1 + min(wanted, 12)):
-                    data = {"type": qtype, "question_text": f"Qual è il concetto mock {qtype.value} n. {n} per unità {', '.join(ids)}: {group[0].title}? {group[0].content[:200]}"}
+                    data = {"type": qtype, "question_text": f"Qual è il concetto mock {qtype.value} n. {n} per unità {', '.join(ids)}: {group[0].title}? {mock_topic}"}
                     if qtype == RecallQuestionType.QUIZ:
                         data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
                                     correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
@@ -673,6 +691,7 @@ def generate_recall_batch(
         _LOG.warning("Recall %s: %d gruppi non generati; restano riprovabili", qtype.value, len(failures.failures))
         if not succeeded:
             raise last_error
+    finish_generation_summary(summary, count, results, round_index, bool(next_groups))
     return results
 
 
