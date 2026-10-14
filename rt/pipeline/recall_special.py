@@ -228,7 +228,8 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                     label, group, [t.tipo.model_dump() for t in existing], context,
                     instructions=instructions, selection=selection, text_correction=definition.correzione == "testo",
                     labels={s["id"]: "selezionata" if unit_ids is not None else "presente" for s in group})
-                from rt.pipeline.recall import load_fewshot_examples
+                from rt.pipeline.recall import load_fewshot_examples, previous_questions_on_units
+                prompt += prompts.recall_previous_block(previous_questions_on_units(bank, all_units))
                 from rt.core.config import load_config
                 prompt = prompts.recall_fewshot_block(load_fewshot_examples(qtype, load_config().telegram.state_dir)) + prompt
                 generated = client.call_structured(prompt=prompt, system_prompt=_system(qtype),

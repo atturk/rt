@@ -504,6 +504,12 @@ def _persist_generation(lesson_dir, questions, key, attempt):
     return persisted
 
 
+def previous_questions_on_units(bank, ids):
+    """Ultime domande dell'unità, con il tipo, anche da altri generatori."""
+    return [f"[{question_key(q)}] {q.question_text}" for q in bank.questions
+            if set(q.unit_ids) & set(ids)]
+
+
 def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
@@ -581,7 +587,7 @@ def generate_recall_batch(
         started = time.monotonic()
         assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
             "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
-        previous = [q.question_text for q in bank.questions if question_key(q) == type_key(qtype) and set(q.unit_ids) & set(ids)]
+        previous = previous_questions_on_units(bank, ids)
         if mock:
             # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
             # così i refill successivi non sono duplicati e anche le lezioni corte

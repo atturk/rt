@@ -281,3 +281,24 @@ def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_p
         data = json.loads(prompt.split('VALUTAZIONE CLASSIFICATORE:\n')[1].split('\n')[0])
         assert data['level'] is None and [(u['unit_id'], u['level']) for u in data['units']] == [('1.1', 0), ('1.2', 2)]
         assert prompt.endswith(GROUP_GUIDANCE)
+
+
+def test_previous_questions_include_other_types_and_complete_json():
+    from rt.core.models import RecallBank, RecallQuestion
+    from rt.llm.prompts import recall_previous_block
+    bank = RecallBank(questions=[
+        RecallQuestion(id='q1', type='quiz', unit_ids=['1'], question_text='Qual è il ruolo di ADH?'),
+        RecallQuestion(id='q2', type='mirata', unit_ids=['1'], question_text='Descrivi il compenso respiratorio.'),
+        RecallQuestion(id='q3', type='vasta', unit_ids=['2'], question_text='Spiega la glicolisi.'),
+    ])
+    previous = recall.previous_questions_on_units(bank, ['1'])
+    assert previous == ['[quiz] Qual è il ruolo di ADH?', '[mirata] Descrivi il compenso respiratorio.']
+    block = recall_previous_block(previous)
+    assert 'di ogni tipo: cerca altri concetti, non parafrasi' in block
+    assert json.loads(block.split(':\n', 1)[1]) == previous
+    previous = [f'[quiz] Domanda {n} ' + 'x' * 900 for n in range(40)]
+    block = recall_previous_block(previous)
+    encoded = block.split(':\n', 1)[1]
+    values = json.loads(encoded)
+    assert len(values) <= 30 and len(encoded) <= 12000
+    assert values[-1] == previous[-1]

@@ -464,10 +464,8 @@ GROUP_GUIDANCE = "Usa le valutazioni delle singole unità come orientamento per 
 NEUTRAL_GUIDANCE = "Valutazione del classificatore assente o non utilizzabile. Decidi dal contenuto e dal contesto, restituendo zero o più domande pertinenti e distinte, senza quota obbligatoria."
 
 
-def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, previous_questions: list) -> str:
+def recall_previous_block(previous_questions: list) -> str:
     import json
-    before, separator, after = prompt.partition("Genera zero, una o più domande")
-    prompt = before + context_block(context) + "\n\n" + separator + after
     if previous_questions:
         # Mantieni un array completo; troncare una stringa JSON può tagliare una domanda.
         previous = []
@@ -476,7 +474,15 @@ def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, pr
             if len(json.dumps(candidate, ensure_ascii=False)) > 12000:
                 break
             previous = candidate
-        prompt += "\n\nDOMANDE GIÀ PRESENTI (cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
+        return "\n\nDOMANDE GIÀ PRESENTI SULL’UNITÀ (di ogni tipo: cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
+    return ""
+
+
+def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, previous_questions: list) -> str:
+    import json
+    before, separator, after = prompt.partition("Genera zero, una o più domande")
+    prompt = before + context_block(context) + "\n\n" + separator + after
+    prompt += recall_previous_block(previous_questions)
     return prompt + "\n\nVALUTAZIONE CLASSIFICATORE:\n" + json.dumps(assessment, ensure_ascii=False, sort_keys=True) + "\n" + (GROUP_GUIDANCE if assessment.get("state") == "group" else RICHNESS_GUIDANCE.get(assessment.get("level"), NEUTRAL_GUIDANCE))
 
 
