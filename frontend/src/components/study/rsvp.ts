@@ -129,7 +129,7 @@ export function formatRemaining(seconds: number): string {
   return m ? `${m} min ${seconds % 60} s` : `${seconds} s`
 }
 
-const SKIP = '.katex, .katex-display, math, img, picture, figure, table, svg, video, audio, pre'
+const SKIP = '.katex, .katex-display, math, img, picture, figure, table, svg, video, audio, pre, .rt-image-strip-slot'
 const BLOCK = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, dd, dt, td, th, figcaption, div'
 
 function skipLabel(el: Element): string {

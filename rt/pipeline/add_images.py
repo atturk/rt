@@ -208,7 +208,9 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
     from rt.llm.jev_client import JevChoiceQuestion, JevChoiceAnswer
     from rt.core.config import load_config
     from rt.llm.cancel import raise_if_cancelled, RunCancelled
-    descriptions = load_image_descriptions(lesson_dir)
+    # Le pagine dei materiali le colloca l'assegnazione dei materiali, non questo giudice.
+    descriptions = {h: d for h, d in load_image_descriptions(lesson_dir).items()
+                    if not str(d.get("source", "")).startswith("material:")}
     if not descriptions:
         return {}
     macros = list(getattr(outline, "macro_sections", []))
@@ -444,6 +446,12 @@ def run_add_images(
         if kept:
             placement[str(macro_id)] = kept
     assigned_hashes = {h for hashes in placement.values() for h in hashes}
+    # Le pagine dei materiali già sotto una macro restano dove sono.
+    from rt.pipeline.image_placement import load_image_placement
+    for macro_id, hashes in ((load_image_placement(lesson_dir) or {}).get("macros") or {}).items():
+        kept = [h for h in hashes if str(descriptions.get(h, {}).get("source", "")).startswith("material:")]
+        if kept:
+            placement.setdefault(str(macro_id), []).extend(h for h in kept if h not in placement.get(str(macro_id), []))
 
     changed = save_image_placement(lesson_dir, placement, False)
     build_stale = build_was_valid and check_phase_status(lesson_dir, "build")[0] != PhaseStatus.VALID

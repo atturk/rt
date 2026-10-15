@@ -48,7 +48,11 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
 
   const nameSpan = document.createElement('span')
   nameSpan.className = 'name'
-  nameSpan.innerHTML = `<span class="count-pill">${countPill}</span> · ${docLabel}`
+  // Nome del documento come testo: viene dall'alt dell'immagine (nome file o pagina web).
+  const pill = document.createElement('span')
+  pill.className = 'count-pill'
+  pill.textContent = String(countPill)
+  nameSpan.replaceChildren(pill, document.createTextNode(` · ${docLabel}`))
 
   head.innerHTML = ''
   head.append(toggleBtn)
@@ -246,7 +250,7 @@ export function mountDocumentImageStrips(root: HTMLElement, options?: StripOptio
   }
   flushGroup()
 
-  const mountedSlots: HTMLElement[] = []
+  const mountedSlots: { slot: HTMLElement; originals: HTMLElement[] }[] = []
 
   for (const group of groups) {
     const slot = document.createElement('div')
@@ -259,10 +263,14 @@ export function mountDocumentImageStrips(root: HTMLElement, options?: StripOptio
     group.elements.forEach((el) => {
       el.remove()
     })
-    mountedSlots.push(slot)
+    mountedSlots.push({ slot, originals: group.elements })
   }
 
+  // Smontando si rimettono i paragrafi originali, così un nuovo montaggio li ritrova.
   return () => {
-    mountedSlots.forEach((slot) => slot.remove())
+    mountedSlots.forEach(({ slot, originals }) => {
+      if (slot.isConnected) slot.replaceWith(...originals)
+      else slot.remove()
+    })
   }
 }

@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from rt.llm.cancel import RunCancelled
 from rt.core.lesson_paths import lesson_path
 from rt.core.models import Outline, Segment, SegmentsData
 from rt.storage import fs
@@ -364,7 +365,6 @@ def classify_material_page(
         [c.unit_id for c in candidates],
         {k: q.model_dump() for k, q in questions.items()},
         cfg.model,
-        threshold,
     ])
 
     probabilities: Dict[str, float] = {}
@@ -386,7 +386,7 @@ def classify_material_page(
                 prompt_state,
                 questions,
                 lesson_dir=lesson_dir,
-                job_name="images",
+                job_name="image_unit_judge",
                 unit_id=pid,
             )
             for k in questions:
@@ -397,6 +397,8 @@ def classify_material_page(
                     probabilities[k] = 0.0
             cached[pid] = {"key": key, "probabilities": probabilities}
             _write_json(lesson_dir, CACHE_FILE, cached)
+        except RunCancelled:
+            raise
         except Exception:
             # Il classificatore spento o in errore: nessuna pagina assegnata, la lezione si fa lo stesso
             return [], []
@@ -573,36 +575,40 @@ def assign_material_pages(
     save_image_descriptions(lesson_dir, descriptions)
 
     state = {
-        "units": units_placement,
-        "macros": macros_placement,
+        "units": units_placement if enabled else {},
+        "macros": macros_placement if enabled else {},
         "pages_by_unit": pages_by_unit,
         "pages_by_macro": pages_by_macro,
     }
     _write_json(lesson_dir, STATE_FILE, state)
 
     placement = load_image_placement(lesson_dir) or {"macros": {}, "units": {}, "carousel": False}
-    new_macros = {**placement.get("macros", {})}
-    for mid, h_list in macros_placement.items():
-        existing = new_macros.get(mid, [])
-        for h in h_list:
-            if h not in existing:
-                existing.append(h)
-        new_macros[mid] = existing
-
-    new_units = {**placement.get("units", {})}
-    for uid, h_list in units_placement.items():
-        existing = new_units.get(uid, [])
-        for h in h_list:
-            if h not in existing:
-                existing.append(h)
-        new_units[uid] = existing
-
+    # Si tolgono soltanto le immagini messe dall'assegnazione precedente (anche quella della
+    # 4.2.5, sotto le macro): le immagini a mano o dal web restano dove sono.
+    old_macros = previous_state.get("macros", {}) or {}
+    old_units = previous_state.get("units", {}) or {}
+    new_macros = {mid: [h for h in hashes if h not in old_macros.get(mid, [])]
+                  for mid, hashes in placement.get("macros", {}).items()}
+    new_units = {uid: [h for h in hashes if h not in old_units.get(uid, [])]
+                 for uid, hashes in placement.get("units", {}).items()}
     if enabled:
-        save_image_placement(lesson_dir, macros=new_macros, units=new_units, carousel=placement.get("carousel", False))
-    else:
-        save_image_placement(lesson_dir, macros={}, units={}, carousel=placement.get("carousel", False))
+        for mid, h_list in macros_placement.items():
+            existing = new_macros.setdefault(mid, [])
+            existing.extend(h for h in h_list if h not in existing)
+        for uid, h_list in units_placement.items():
+            existing = new_units.setdefault(uid, [])
+            existing.extend(h for h in h_list if h not in existing)
+    save_image_placement(lesson_dir, macros=new_macros, units=new_units, carousel=placement.get("carousel", False))
 
     return state
+
+
+def clear_material_context(lesson_dir: str) -> None:
+    """Assegnazione non riuscita: nessuna pagina va nel contesto (le immagini restano)."""
+    state = _read_json(lesson_dir, STATE_FILE)
+    if state.get("pages_by_unit") or state.get("pages_by_macro"):
+        state.update(pages_by_unit={}, pages_by_macro={})
+        _write_json(lesson_dir, STATE_FILE, state)
 
 
 def material_context_for_unit(lesson_dir: str, unit_id: str, macro_id: str) -> str:

@@ -282,11 +282,17 @@ def _run_rewrite(
     client = LLMClient(force_mock=force_mock)
 
     # MF1c: Assegnazione materiali prima della rielaborazione
-    from rt.pipeline.material_mapping import assign_material_pages, material_context_for_unit
-    try:
-        assign_material_pages(lesson_dir, outline, mock=force_mock, ctx=ctx)
-    except Exception as exc:
-        LOG.warning("Assegnazione materiali fallita o non disponibile: %s", exc)
+    # Rigenerando una sola unità si riusa l'assegnazione già fatta (niente immagini rimesse).
+    from rt.pipeline.material_mapping import assign_material_pages, clear_material_context, material_context_for_unit
+    from rt.llm.cancel import RunCancelled
+    if not target_unit_id:
+        try:
+            assign_material_pages(lesson_dir, outline, mock=force_mock, ctx=ctx)
+        except RunCancelled:
+            raise
+        except Exception as exc:
+            LOG.warning("Assegnazione materiali fallita o non disponibile: %s", exc)
+            clear_material_context(lesson_dir)
 
     unit_to_macro = {su.id: str(macro.id) for macro in outline.macro_sections for su in macro.units}
     

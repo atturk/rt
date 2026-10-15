@@ -10,7 +10,6 @@ import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
-import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
@@ -102,20 +101,6 @@ export function Layout() {
   const phone = useIsPhone()
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
-
-  // Strisce di immagini per i documenti resi (DocumentView, Studio, ecc.)
-  useEffect(() => {
-    const scan = () => {
-      document.querySelectorAll<HTMLElement>('.rt-document:not(.rt-strips-scanned)').forEach((docEl) => {
-        docEl.classList.add('rt-strips-scanned')
-        mountDocumentImageStrips(docEl)
-      })
-    }
-    scan()
-    const observer = new MutationObserver(scan)
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />

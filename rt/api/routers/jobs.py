@@ -172,7 +172,7 @@ def create_lesson(
     allega_materiali: Optional[bool] = Form(None),
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
-    unisci: bool = Form(False),
+    unisci: bool = Form(True),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root

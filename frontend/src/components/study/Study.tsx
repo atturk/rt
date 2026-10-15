@@ -30,6 +30,7 @@ import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
+import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { renderDelimitedMath } from '@/lib/math'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
@@ -906,6 +907,11 @@ function ReadingSkeleton() {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
+/** Il testo della striscia di immagini non fa parte della lezione: le ancore non lo contano. */
+const outsideImageStrips: NodeFilter = {
+  acceptNode: (node) => node.parentElement?.closest('.rt-image-strip-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+}
+
 function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, onSelection }: {
   lessonId: number
   unit: StudyUnit
@@ -917,6 +923,12 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Strisce di immagini consecutive, rimontate a ogni unità (prima di formule e lettura veloce).
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    return mountDocumentImageStrips(root)
+  }, [unit.html])
   useEffect(() => {
     const root = ref.current
     if (!root) return
@@ -949,7 +961,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
       const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
       if (!targetQuote) continue
 
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
       let node = walker.nextNode() as Text | null
       let found = false
       while (node && !found) {
@@ -988,7 +1000,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
     const root = ref.current
     if (!root || !root.contains(range.commonAncestorContainer)) return
 
-    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
     let offset = 0
     let startOffset = -1
     let endOffset = -1

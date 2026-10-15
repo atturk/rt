@@ -91,7 +91,7 @@ def test_mixed_audio_order_and_calendar_manual_link(api_client, rt_db, tmp_path,
     entry = create_template_entry(CalendarTemplateEntryCreate(day_of_week=0, start_time='09:00', end_time='10:00', materia='Biologia'))
     event = get_day_view('2026-10-12').events[0]
     response = api_client.post('/api/v1/lessons', data={'date': '2026-10-12', 'materia': 'Biologia',
-        'mock': 'true', 'calendar_entry_id': event.key, 'calendar_date': '2026-10-12'}, files=[
+        'mock': 'true', 'unisci': 'false', 'calendar_entry_id': event.key, 'calendar_date': '2026-10-12'}, files=[
         ('audio', ('z-first.wav', wav_bytes(), 'audio/wav')),
         ('audio', ('a-second.wav', wav_bytes(), 'audio/wav')),
         ('materiali', ('doc.pdf', pdf_bytes(), 'application/pdf'))])

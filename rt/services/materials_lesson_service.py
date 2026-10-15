@@ -1,5 +1,6 @@
 """Creazione di una lezione con fonti miste, mantenendo l'import storico separato."""
 import os
+import uuid
 from datetime import datetime, timezone
 
 import yaml
@@ -58,7 +59,7 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
                 "durata": format_source_duration(dur_s) if dur_s is not None else None,
                 "durata_s": dur_s,
             })
-        temp_merged = os.path.join(dest_dir, f"_temp_merged_{os.getpid()}.m4a")
+        temp_merged = os.path.join(dest_dir, f"_temp_merged_{uuid.uuid4().hex}.m4a")
         try:
             merge_audio_for_transcription(audio, temp_merged)
             audio_sources = [add_source(lesson_dir, 'audio', 'audio completo.m4a', None, source_path=temp_merged, parti=parts)]

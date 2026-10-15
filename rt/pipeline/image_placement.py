@@ -58,14 +58,17 @@ def load_image_placement(lesson_dir: str) -> Optional[Dict[str, Any]]:
 
 @lesson_locked
 def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel: bool, units: Optional[Dict[str, List[str]]] = None) -> bool:
-    """Scrive il posizionamento (atomico). True se è cambiato rispetto a prima."""
-    units_dict = {str(k): list(v) for k, v in (units or {}).items() if v}
+    """Scrive il posizionamento (atomico). True se è cambiato rispetto a prima.
+    units=None lascia com'erano le immagini delle sottounità (chi scrive solo le macro)."""
+    previous = load_image_placement(lesson_dir)
+    if units is None:
+        units = (previous or {}).get("units", {})
+    units_dict = {str(k): list(v) for k, v in units.items() if v}
     data = {
         "macros": {str(k): list(v) for k, v in macros.items() if v},
         "units": units_dict,
         "carousel": bool(carousel),
     }
-    previous = load_image_placement(lesson_dir)
     if previous == data:
         return False
     path = get_placement_path(lesson_dir)
