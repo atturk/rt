@@ -634,7 +634,7 @@ test('swipe ai limiti a 390 px: fascia e unità invariata', async ({ browser }) 
   } finally { await context.close() }
 })
 
-test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 riprende la sessione', async ({ page }) => {
+test('finite le domande dell’ultima unità: Genera consigliato con Fino a 2 riprende la sessione', async ({ page }) => {
   test.setTimeout(150_000)
   await loginViaLink(page)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -671,7 +671,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Quante 2 ri
       expect(box!.x + box!.width).toBeLessThanOrEqual(390)
       expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
     }
-    await page.getByLabel('Quante', { exact: true }).fill('2')
+    await page.getByLabel('Fino a', { exact: true }).fill('2')
     const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
     await page.getByRole('button', { name: 'Genera', exact: true }).click()
     expect((await request).postDataJSON()).toMatchObject({ qtype: unit.suggested_qtype, count: 2, unit_ids: [unit.id] })

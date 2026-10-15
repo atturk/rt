@@ -21,17 +21,24 @@ class Source(BaseModel):
     impronta: str
     aggiunta_il: str
     ordine: int = Field(ge=1)
+    rimossa_il: str | None = None
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
     path = lesson_path(lesson_dir, "sources.json")
+    # Le scritture delle fonti attive (aggiunta e riordino) conservano le tolte.
+    if fs.isfile(path):
+        with fs.open(path, encoding="utf-8") as stream:
+            removed = [Source.model_validate(item) for item in json.load(stream)
+                       if item.get("rimossa_il") and item["id"] not in {s.id for s in sources}]
+        sources = [*sources, *removed]
     with fs.open(path + ".tmp", "w", encoding="utf-8") as stream:
         json.dump([s.model_dump() for s in sources], stream, ensure_ascii=False, indent=2)
     fs.replace(path + ".tmp", path)
 
 
 @lesson_locked
-def load_sources(lesson_dir: str) -> list[Source]:
+def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Source]:
     """Crea soltanto il registro se assente; non modifica i file storici.
     Un registro vuoto non si salva: durante il setup info.yaml non ha ancora l'audio, e un
     registro vuoto scritto allora lo avrebbe nascosto per sempre (lo si ricostruisce qui)."""
@@ -42,7 +49,8 @@ def load_sources(lesson_dir: str) -> list[Source]:
         with fs.open(path, encoding="utf-8") as stream:
             items = json.load(stream)
         if items or not audio or not fs.isfile(os.path.join(lesson_dir, audio)):
-            return [Source.model_validate(item) for item in items]
+            return [Source.model_validate(item) for item in items
+                    if include_removed or not item.get("rimossa_il")]
     sources = []
     if audio:
         sources.append(Source(
@@ -103,11 +111,12 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
 
 @lesson_locked
 def remove_source(lesson_dir: str, source_id: str) -> None:
-    """Toglie dal registro; conserva la copia immutabile per l'annullamento."""
-    sources = load_sources(lesson_dir)
-    remaining = [s for s in sources if s.id != source_id]
-    if len(remaining) == len(sources):
+    """Segna la fonte come tolta; registro e file restano disponibili alle versioni."""
+    sources = load_sources(lesson_dir, include_removed=True)
+    source = next((s for s in sources if s.id == source_id and not s.rimossa_il), None)
+    if source is None:
         raise KeyError(source_id)
-    for index, item in enumerate(remaining, 1):
+    source.rimossa_il = datetime.now(timezone.utc).isoformat()
+    for index, item in enumerate((s for s in sources if not s.rimossa_il), 1):
         item.ordine = index
-    _save(lesson_dir, remaining)
+    _save(lesson_dir, sources)

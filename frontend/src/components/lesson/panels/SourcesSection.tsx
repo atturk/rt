@@ -396,7 +396,18 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 label={`Togli ${s.nome}`}
                 className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                 disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(s.id)}
+                onClick={() => setConfirmDialog({
+                  open: true,
+                  title: `Togliere ${s.nome}?`,
+                  description: s.usata
+                    ? 'Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.'
+                    : 'Vuoi togliere questa fonte dalla lezione?',
+                  confirmLabel: 'Togli',
+                  onConfirm: () => {
+                    setConfirmDialog(null)
+                    deleteMutation.mutate(s.id, { onError: (err) => setActionError(errorMessage(err)) })
+                  },
+                })}
               />
             </div>
           )

@@ -1,6 +1,8 @@
-import { useRef, useState, type FormEvent } from 'react'
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Download, Pencil, Plus, RotateCw, Trash2, Upload } from 'lucide-react'
 import { errorMessage } from '@/api/client'
+import { useRecallRules, useSaveRecallVotes, useEditRecallRules, useUpdateRecallRules } from '@/api/recallRules'
+import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { useLessons } from '@/api/hooks'
 import { useSubjects } from '@/api/subjects'
 import { useStudyLesson } from '@/api/recall'
@@ -12,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
-import { Field, Section, SettingsSelect } from './common'
+import { Checkbox, Field, Section, SettingsSelect } from './common'
 
 const empty: QuestionDefinition = { id: '', nome: '', icona: 'MessageSquare', materie: [], cerca: '', anche_adatti: false, continua: false, chiedi: '', correzione: 'testo', varianti: false }
 const textarea = 'w-full rounded-md border border-input bg-card px-3 py-2 text-body focus-visible:outline-2 focus-visible:outline-ring'
@@ -68,6 +70,7 @@ function QuestionsSettings({ data }: { data: QuestionSettings }) {
       {notice && <p role="status" className="text-meta text-success">{notice}</p>}
       {(error || importing.isError || remove.isError) && <Alert tone="danger">{error ?? errorMessage(importing.error ?? remove.error)}</Alert>}
     </Section>
+    <VoteRulesSettings />
     <Section id="question-gallery" title="Galleria dei modelli pronti">
       <details><summary className="cursor-pointer text-body">Scegli un modello da copiare</summary>
         <ul className="mt-3 grid gap-3 sm:grid-cols-2">{data.templates.map(template => <li key={template.id} className="flex items-center gap-3 rounded-md border p-3">
@@ -123,5 +126,35 @@ function QuestionTypeEditor({ initial, existing, subjects, onSave, onCancel, pen
         {trial.data && <div className="rounded-md border p-3" data-testid="question-trial-result"><p className="text-meta text-muted-foreground">{trial.data.label === 'presente' ? 'Presente' : 'Nessuno'} · Prova senza salvataggio</p><p className="mt-2 whitespace-pre-wrap text-body">{String(trial.data.example?.question_text ?? 'Nessun esempio per questa unità.')}</p>{Boolean(trial.data.example?.pregenerated_material) && <p className="mt-2 whitespace-pre-wrap text-body">{String(trial.data.example?.pregenerated_material)}</p>}</div>}
       </div>
     </details>
+  </Section>
+}
+
+
+export function VoteRulesSettings() {
+  const query = useRecallRules()
+  const settings = useSaveRecallVotes()
+  const edit = useEditRecallRules()
+  const update = useUpdateRecallRules()
+  const [jobId, setJobId] = useState<string | null>(null)
+  const job = useJobStatus(jobId)
+  const finished = jobFinished(job.data)
+  const refetch = query.refetch
+  useEffect(() => { if (jobId && finished) void refetch() }, [jobId, finished, refetch])
+  const data = query.data
+  const error = query.error ?? settings.error ?? edit.error ?? update.error ?? (job.data?.state === 'failed' ? new Error(job.data.error ?? 'Aggiornamento non riuscito.') : job.error)
+  return <Section id="vote-rules" title="Regole dai voti">
+    {error && <Alert tone="danger">{errorMessage(error)}</Alert>}
+    <Checkbox id="recall-votes" label="Voti" checked={data?.votes_enabled ?? true} disabled={settings.isPending} onChange={votes_enabled => settings.mutate({ votes_enabled, presave_check: data?.presave_check ?? true })} />
+    <Checkbox id="recall-presave" label="Controllo prima di salvare" checked={data?.presave_check ?? true} disabled={settings.isPending} onChange={presave_check => settings.mutate({ votes_enabled: data?.votes_enabled ?? true, presave_check })} />
+    {(data?.groups ?? []).map((group, index) => <div key={`${group.type}:${group.subject}`} className="flex flex-col gap-2 border-t py-3">
+      <div className="flex items-center gap-2"><label htmlFor={`recall-rule-${index}`} className="flex-1 text-body font-semibold">{group.type} · {group.subject || 'Senza materia'}</label>
+        <IconButton icon={RotateCw} label="Aggiorna ora" disabled={update.isPending || Boolean(jobId && !finished)} onClick={() => update.mutate({ type: group.type, subject: group.subject, mock: false }, { onSuccess: accepted => setJobId(accepted.job_id) })} />
+      </div>
+      <p className="text-meta text-muted-foreground">{group.votes} voti{group.updated_at ? ` · ${new Date(group.updated_at).toLocaleString('it-IT')}` : ''}</p>
+      <textarea id={`recall-rule-${index}`} key={group.rules.join('\n')} defaultValue={group.rules.join('\n')} rows={3} maxLength={16000} className={textarea} onBlur={event => {
+        const rules = event.target.value.split('\n').map(line => line.trim()).filter(Boolean)
+        if (rules.join('\n') !== group.rules.join('\n')) edit.mutate({ type: group.type, subject: group.subject, rules })
+      }} />
+    </div>)}
   </Section>
 }

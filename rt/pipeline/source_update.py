@@ -79,7 +79,7 @@ def sources_pending(lesson_dir):
     used = state.get("used")
     if used is None:
         used = [s.id for s in sources if s.id == "src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
-    return used != [s.id for s in sources]
+    return any(s.id not in used for s in sources)
 
 
 def segment_source_ids(sources, state, primary):

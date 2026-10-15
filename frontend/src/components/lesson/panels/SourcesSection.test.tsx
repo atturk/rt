@@ -301,3 +301,20 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     expect(screen.queryByRole('dialog', { name: 'Aggiungi appunti' })).not.toBeInTheDocument()
   })
 })
+
+it('chiede conferma prima di togliere una fonte usata e permette di annullare', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(async (path) => ({ data: String(path).endsWith('/versions') ? [] : {
+    sources: [{ id: 'used', tipo: 'appunti', file: 'note.txt', impronta: 'x', aggiunta_il: '2026-10-14', ordine: 1, nome: 'Appunti', usata: true }],
+    has_unused_sources: false, can_undo: false, principale: 'used', ordine_usato: ['used'], principale_usato: 'used', solo_ricostruzione: false,
+  }, response: new Response() } as never))
+  const remove = vi.spyOn(api, 'DELETE').mockResolvedValue({ data: undefined, response: new Response(null, { status: 204 }) } as never)
+  renderComponent()
+  fireEvent.click(await screen.findByRole('button', { name: 'Togli Appunti' }))
+  expect(screen.getByText('Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.')).toBeInTheDocument()
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Togli Appunti' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Togli' }))
+  await waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+})

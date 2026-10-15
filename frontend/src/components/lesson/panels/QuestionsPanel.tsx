@@ -323,7 +323,7 @@ export function QuestionsPanel({
                 </div>
                 <div className="w-20 shrink-0">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
-                    Quante
+                    Fino a
                   </label>
                   <Input
                     id="q-count"
@@ -384,7 +384,7 @@ export function QuestionsPanel({
               <QuestionTypeChips lessonId={id} types={selectionTypes} value={partType} onChange={setPartType} unit />
               <div className="ml-auto flex items-center gap-1.5">
                 <label htmlFor="p-count" className="text-meta text-muted-foreground">
-                  Quante
+                  Fino a
                 </label>
                 <Input
                   id="p-count"

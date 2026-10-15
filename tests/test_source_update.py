@@ -45,7 +45,7 @@ def test_audio_insertion_transcribes_only_new_source_and_shifts_times(tmp_path, 
     prepare_source_update(lesson)
     assert len(calls) == 1
     remove_source(lesson, source.id)
-    assert sources_pending(lesson)
+    assert not sources_pending(lesson)
     assert prepare_source_update(lesson)["segments"][0].start_seconds == 0
 
 
