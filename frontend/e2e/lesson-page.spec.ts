@@ -57,17 +57,21 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   const heading = doc.locator('[data-unit-id]').first()
   const unit = (await heading.getAttribute('data-unit-id'))!
 
-  // Il clic destro su un testo senza selezione lascia il menu del browser.
+  // Senza selezione il menu RT usa il paragrafo; Alt lascia quello del browser.
   const paragraph = doc.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h2):not(.cm-atomic-h3):not(:has(.rt-timecode-locked))', { hasText: /\S/ }).first()
   await paragraph.click({ button: 'right' })
+  await expect(page.getByTestId('document-menu')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await paragraph.click({ button: 'right', modifiers: ['Alt'] })
   await expect(page.getByTestId('document-menu')).toHaveCount(0)
+  await page.keyboard.press('Escape')
 
   // Clic destro sul titolo di una subunità: la parte è quella subunità.
   await heading.click({ button: 'right' })
   const menu = page.getByRole('menu', { name: 'Azioni sul testo' })
   await expect(menu).toBeVisible()
   await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da quiIn arrivo', 'Genera', `Domande sull'unità ${unit}`, 'Verifica questa parte'])
-  await expect(menu.getByRole('menuitem', { name: 'Verifica questa parte' })).toHaveAttribute('aria-disabled', 'true') // sul titolo manca un tratto selezionato
+  await expect(menu.getByRole('menuitem', { name: 'Verifica questa parte' })).not.toHaveAttribute('aria-disabled') // sul titolo si usa il testo dell’unità
   await expect(page.getByTestId('document-menu-part')).toHaveCount(0)
   await expect(menu.getByRole('menuitem', { name: 'Copia' })).toBeFocused()
   const later = menu.getByRole('menuitem', { name: 'Leggi da qui' })

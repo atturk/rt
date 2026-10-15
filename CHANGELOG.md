@@ -9,6 +9,7 @@
 
 ### Correzioni
 
+- Nel testo il clic destro apre sempre il menu di RT, anche senza selezione e con ctrl+clic su Mac; ⌥ + clic destro apre il menu del browser.
 - Le sottolineature di Verifica e Chiedi compaiono solo con il pannello delle note aperto; nello Studio si vede solo la nota del popup aperto.
 - Copertine, titoli e pagine quasi vuote senza figure restano fuori dalla collocazione automatica, senza chiamare i modelli; intestazioni e piè di pagina ripetuti non contano come contenuto. Gli schemi con poco testo usano la descrizione visiva.
 - Nell’import senza audio il primo documento è già selezionato come fonte principale; togliendolo, la scelta passa al primo rimasto.
