@@ -179,14 +179,16 @@ def create_lesson(
     calendar = {}
     if calendar_entry_id or calendar_date:
         from datetime import date as calendar_day
-        from rt.services.calendar_service import get_day_view
+        from rt.services.calendar_service import require_linkable_event
+        from rt.db.engine import get_database
+        from rt.db.session import read_scope
         if not calendar_entry_id or not calendar_date:
             raise ApiError(422, "validation_error", "Indica ora e data del calendario insieme.")
         try:
             if calendar_day.fromisoformat(calendar_date).isoformat() != calendar_date:
                 raise ValueError()
-            if not any(event.key == calendar_entry_id for event in get_day_view(calendar_date).events):
-                raise ValueError()
+            with read_scope(get_database()) as session:
+                require_linkable_event(calendar_date, calendar_entry_id, session)
         except ValueError:
             raise ApiError(422, "validation_error", "Ora del calendario non trovata per questa data.") from None
         calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date}

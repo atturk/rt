@@ -230,3 +230,47 @@ test('calendario: icona + nel popup ora apre popup di import con data e ora pres
   }
 })
 
+
+test('calendario: seguita senza lezione resta importabile e viene collegata', async ({ page }) => {
+  test.setTimeout(180_000)
+  await loginViaLink(page)
+  const created = await page.request.post('/api/v1/calendar/template', {
+    headers: authHeaders(), data: { day_of_week: 3, start_time: '07:00', end_time: '08:00', materia: 'Prova Seguita' },
+  })
+  expect(created.ok()).toBeTruthy()
+  const { id } = await created.json() as { id: number }
+  const key = `tpl_${id}`
+  let lessonId: number | undefined
+  try {
+    await page.goto('/calendario')
+    await page.getByTestId(`calendar-event-${key}`).click()
+    const popup = page.getByTestId('calendar-event-popup')
+    await popup.getByRole('button', { name: 'Seguita', exact: true }).click()
+    await expect(popup.getByRole('button', { name: "Importa una lezione per quest'ora" })).toBeVisible()
+    await popup.getByRole('button', { name: "Importa una lezione per quest'ora" }).click()
+    const dialog = page.getByTestId('new-lesson')
+    await expect(dialog.getByLabel('Materia')).toHaveValue('Prova Seguita')
+    const date = await dialog.getByLabel(/^Data/).inputValue()
+    await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({
+      name: 'seguita.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64'),
+    })
+    await dialog.getByRole('button', { name: 'Avvia' }).click()
+    await expect.poll(async () => {
+      const day = await apiGet<{ events: { key: string; lesson?: { id: number }; is_recorded: boolean; status: string }[] }>(page.request, `/calendar/day?date=${date}`)
+      const event = day.events.find((event) => event.key === key)
+      lessonId = event?.lesson?.id
+      return event?.is_recorded && event.status === 'seguita'
+    }, { timeout: 120_000 }).toBe(true)
+  } finally {
+    if (lessonId) {
+      const jobs = await apiGet<{ id: string; state: string }[]>(page.request, `/jobs?lesson_id=${lessonId}`)
+      for (const job of jobs.filter((job) => ['queued', 'running', 'waiting_for_decision'].includes(job.state))) {
+        await page.request.post(`/api/v1/jobs/${job.id}/cancel`, { headers: authHeaders() })
+        await expect.poll(async () => (await apiGet<{ state: string }>(page.request, `/jobs/${job.id}`)).state).toBe('cancelled')
+      }
+      await page.request.delete(`/api/v1/lessons/${lessonId}`, { headers: authHeaders() })
+    }
+    await page.request.delete(`/api/v1/calendar/template/${id}`, { headers: authHeaders() })
+  }
+})

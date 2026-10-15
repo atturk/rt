@@ -1,3 +1,10 @@
+## 4.2.6b3 — 2026-10-15
+
+### Correzioni
+- Le ore segnate come seguite senza una lezione si possono scegliere nell’import e collegare a una lezione. Le ore annullate rifiutano il collegamento; eliminare una lezione libera la sua ora senza cambiare lo stato “seguita”.
+
+### Novità
+
 # Novità di RT
 
 ## 4.2.6b2 — 2026-10-15

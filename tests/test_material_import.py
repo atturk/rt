@@ -154,3 +154,19 @@ def test_import_multiple_audio_merged_with_parts(api_client, rt_db, tmp_path, mo
     view_audio = [s for s in view['sources'] if s['tipo'] == 'audio'][0]
     assert len(view_audio['parti']) == 2
 
+
+
+def test_followed_hour_without_lesson_is_importable(api_client, rt_db, tmp_path, monkeypatch):
+    from rt.services import calendar_service as calendar
+    from rt.services import calendar_models as schemas
+    isolated_workspace(tmp_path, monkeypatch)
+    tpl = calendar.create_template_entry(schemas.CalendarTemplateEntryCreate(valid_from='2026-10-01',
+        day_of_week=0, start_time='09:00', end_time='10:00', materia='Prova'))
+    key = f'tpl_{tpl.id}'
+    calendar.set_entry_state(schemas.CalendarEntryStateSet(date='2026-10-12', entry_key=key, status='seguita'))
+    response = api_client.post('/api/v1/lessons', data={'date': '2026-10-12', 'materia': 'Prova', 'mock': 'true',
+        'calendar_entry_id': key, 'calendar_date': '2026-10-12'}, files=[('materiali', ('doc.pdf', pdf_bytes(), 'application/pdf'))])
+    assert response.status_code == 202, response.text
+    work(rt_db)
+    event = calendar.get_day_view('2026-10-12').events[0]
+    assert event.lesson is not None and event.is_recorded and event.status == 'seguita'

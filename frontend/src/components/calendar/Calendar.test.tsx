@@ -405,6 +405,14 @@ describe('CalendarPage: modifica di un\'ora', () => {
     expect(calendarMocks.createOverride).not.toHaveBeenCalled()
   })
 
+  it('nasconde collega e importa per una ora annullata', () => {
+    render(<EventPopup event={{ ...dummyEvent, lesson: null, is_recorded: false, status: 'annullata' }}
+      anchor={{ x: 100, y: 100, width: 50, height: 30 }} onClose={vi.fn()}
+      onStatusChange={vi.fn()} onNoteSave={vi.fn()} onLinkLesson={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Collega una lezione' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: "Importa una lezione per quest'ora" })).not.toBeInTheDocument()
+  })
+
   it("UI1: popup ora non registrata mostra + per importare e apre NewLessonContext con date e slotKey", () => {
     const openNewLesson = vi.fn()
     const onClose = vi.fn()
