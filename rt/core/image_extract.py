@@ -18,6 +18,7 @@ class ExtractedImage:
     text: str = ""
     page_number: int = 1
     file_fingerprint: str = ""
+    unit_id: Optional[str] = None
 
 
 def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional[Callable[[int, int], None]] = None) -> List[ExtractedImage]:

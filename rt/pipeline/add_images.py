@@ -375,7 +375,7 @@ def fetch_web_images(
         if force_mock:
             for i in range(per_unit):
                 extracted.append(ExtractedImage(image_bytes=_mock_png(f"{unit_id}#{i}"),
-                                                source_label=f"websearch:{query}#{i+1}"))
+                                                source_label=f"websearch:{query}#{i+1}", unit_id=unit_id))
                 found[unit_id] += 1
             continue
         try:
@@ -388,7 +388,7 @@ def fetch_web_images(
                 data = download_image(res.image_url)
             except Exception:
                 continue
-            extracted.append(ExtractedImage(image_bytes=data, source_label=f"websearch:{query}"))
+            extracted.append(ExtractedImage(image_bytes=data, source_label=f"websearch:{query}", unit_id=unit_id))
             found[unit_id] += 1
 
     if search_errors and len(search_errors) == len(queries):
@@ -536,11 +536,29 @@ def run_add_images(
         lesson_dir, outline, uploaded, force_mock=force_mock, ctx=ctx,
         progress=report(60, 25, "Colloco le immagini"),
     ) if uploaded else ({}, {})
+    # La ricerca nasce già da una sottounità: la provenienza non va persa nel giudice macro.
+    web_units = {}
+    without_origin = []
+    descriptions = load_image_descriptions(lesson_dir)
+    known_units = set(outline_unit_ids(outline))
+    for i, image in enumerate(extracted, 1):
+        image_hash = compute_image_hash(image.image_bytes)
+        if image.unit_id in known_units and image_hash in descriptions:
+            hashes = web_units.setdefault(image.unit_id, [])
+            if image_hash not in hashes:
+                hashes.append(image_hash)
+            origins = descriptions[image_hash].setdefault('origin_unit_ids', [])
+            if image.unit_id not in origins:
+                origins.append(image.unit_id)
+        elif image_hash in descriptions:
+            without_origin.append(image_hash)
+        report(85, 5, "Colloco le immagini")(i, len(extracted))
+    if extracted:
+        save_image_descriptions(lesson_dir, descriptions)
     assignments = judge_images_by_macro(
-        lesson_dir, outline, force_mock=force_mock,
-        image_hashes=[compute_image_hash(image.image_bytes) for image in extracted],
-        progress=report(85, 10, "Colloco le immagini"), **tolerant,
-    ) if extracted else {}
+        lesson_dir, outline, force_mock=force_mock, image_hashes=without_origin,
+        progress=report(90, 5, "Colloco le immagini"), **tolerant,
+    ) if without_origin else {}
 
     from rt.pipeline.image_placement import load_image_placement
     from rt.pipeline.material_mapping import append_page_placements
@@ -548,7 +566,7 @@ def run_add_images(
     placement = previous.get("macros", {})
     unit_placement = previous.get("units", {})
     assigned_hashes = set()
-    for added, section_kind in ((uploaded_units, 'units'), (uploaded_macros, 'macros'), (assignments, 'macros')):
+    for added, section_kind in ((uploaded_units, 'units'), (web_units, 'units'), (uploaded_macros, 'macros'), (assignments, 'macros')):
         for section_id, hashes in added.items():
             for image_hash in hashes:
                 append_page_placements(unit_placement, placement, image_hash,

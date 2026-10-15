@@ -11,6 +11,7 @@
 ### Novità
 
 - I PDF e le foto aggiunti in Arricchimento si collocano nelle sottounità pertinenti, come i materiali importati. I PDF usano il testo della pagina; la descrizione visiva serve alle pagine senza testo e alle foto. Le immagini già presenti restano al loro posto.
+- Le immagini trovate sul web per una sottounità vengono inserite direttamente in quella sottounità.
 
 ## 4.2.6b2 — 2026-10-15
 

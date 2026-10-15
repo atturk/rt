@@ -157,3 +157,40 @@ def test_rejected_page_remains_in_media_without_placement(lesson, tmp_path, monk
     assert len(load_image_descriptions(lesson)) == 1
     assert load_image_placement(lesson)['units'] == {}
     assert load_image_placement(lesson)['macros'] == {}
+
+
+def test_web_provenance_places_each_unit_without_macro_judge(lesson, monkeypatch):
+    def no_judge(*args, **kwargs):
+        pytest.fail('Le immagini trovate per una sottounità non passano dal giudice macro')
+    monkeypatch.setattr('rt.pipeline.add_images.judge_images_by_macro', no_judge)
+    result = run_add_images(lesson, web_search_count=2, force_mock=True)
+    placement = load_image_placement(lesson)
+    assert placement['macros'] == {}
+    assert {uid: len(hashes) for uid, hashes in placement['units'].items()} == {'1.1': 2, '1.2': 2}
+    descriptions = load_image_descriptions(lesson)
+    for uid, hashes in placement['units'].items():
+        assert all(descriptions[h]['origin_unit_ids'] == [uid] for h in hashes)
+    assert result['images_added'] == 4
+    run_add_images(lesson, web_search_count=2, force_mock=True)
+    assert load_image_placement(lesson) == placement
+
+
+def test_web_without_origin_keeps_macro_judge_and_existing_placements(lesson, monkeypatch):
+    from rt.core.image_extract import ExtractedImage
+    from rt.pipeline import add_images
+    known, unknown = _mock_png('known'), _mock_png('unknown')
+    monkeypatch.setattr(add_images, 'fetch_web_images', lambda **kwargs: ([
+        ExtractedImage(known, 'websearch:known', unit_id='1.2'),
+        ExtractedImage(unknown, 'websearch:unknown'),
+    ], {'1.2': 1}))
+    real_judge = add_images.judge_images_by_macro
+    calls = []
+    def judge(*args, **kwargs):
+        calls.append(kwargs['image_hashes'])
+        return real_judge(*args, **kwargs)
+    monkeypatch.setattr(add_images, 'judge_images_by_macro', judge)
+    run_add_images(lesson, web_search_count=1, force_mock=True)
+    assert calls == [[compute_image_hash(unknown)]]
+    placement = load_image_placement(lesson)
+    assert placement['units'] == {'1.2': [compute_image_hash(known)]}
+    assert placement['macros'] == {'1': [compute_image_hash(unknown)]}
