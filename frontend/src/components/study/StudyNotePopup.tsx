@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertCircle, Check, CheckCircle2, Clock, Copy, ExternalLink, HelpCircle, Maximize2, Minimize2, SendHorizontal, ChevronsUpDown, X } from 'lucide-react'
 import { IconAnchor, IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
 import { useIsPhone } from '@/lib/phone'
 import { useStudyNoteWindow } from './studyNoteWindow'
+import { useStudyNoteSheet } from './studyNoteSheet'
 import type { StudyNote } from '@/api/studyNotes'
 
 export interface StudyNotePopupProps {
@@ -47,6 +49,7 @@ export function StudyNotePopup({
   const [quoteExpanded, setQuoteExpanded] = useState(false)
   const windowState = useStudyNoteWindow(open, isPhone, anchorRect)
   const { ref: popupRef, frame } = windowState
+  const sheet = useStudyNoteSheet(open, isPhone, (note?.response?.spiegazione?.length ?? 0) > 600)
 
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
@@ -95,22 +98,28 @@ export function StudyNotePopup({
   const isApplied = !!note?.applied_decision_id
   const canApply = isVerifica && !!fix && note?.anchor_state === 'trovata' && !isApplied
 
-  return (
+  return createPortal(
     <div
       ref={popupRef}
       role="dialog"
       aria-label={isVerifica ? 'Verifica' : 'Chiedi'}
       data-testid="study-note-popup"
       data-kind={effectiveKind}
-      style={!isPhone ? { left: frame.x, top: frame.y, width: frame.width, height: frame.height ?? undefined, maxHeight: frame.docked ? '100dvh' : 'calc(100dvh - 24px)', minHeight: 'min(240px, calc(100dvh - 24px))' } : undefined}
+      data-sheet-level={isPhone ? sheet.level : undefined}
+      style={!isPhone ? { left: frame.x, top: frame.y, width: frame.width, height: frame.height ?? undefined, maxHeight: frame.docked ? '100dvh' : 'calc(100dvh - 24px)', minHeight: 'min(240px, calc(100dvh - 24px))' } : sheet.style}
       className={
         isPhone
-          ? 'fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col overflow-hidden rounded-t-2xl border-t bg-card shadow-panel animate-in slide-in-from-bottom'
+          ? 'fixed z-[55] flex flex-col overflow-hidden rounded-t-2xl border-t bg-card shadow-panel animate-in slide-in-from-bottom'
           : 'fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card shadow-panel'
       }
     >
       {/* Intestazione */}
-      <div className="flex shrink-0 touch-none select-none items-center justify-between gap-2 border-b border-border/60 p-3 md:cursor-move" data-testid="study-note-header" onPointerDown={(event) => windowState.begin(event)} onDoubleClick={windowState.reset}>
+      {isPhone && <div role="slider" tabIndex={0} aria-label="Altezza del foglio" aria-valuemin={0} aria-valuemax={2} aria-valuenow={sheet.level} aria-valuetext={['Bassa', 'Metà', 'Piena'][sheet.level]}
+        className="flex h-6 shrink-0 touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-ring" data-testid="study-note-handle" onPointerDown={sheet.begin}
+        onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); sheet.step(event.key === 'ArrowUp' ? 1 : -1) } }}>
+        <span className="h-1 w-9 rounded-full bg-muted-foreground/50" />
+      </div>}
+      <div className="flex shrink-0 touch-none select-none items-center justify-between gap-2 border-b border-border/60 p-3 md:cursor-move" data-testid="study-note-header" onPointerDown={(event) => windowState.begin(event)} onDoubleClick={() => { if (!isPhone) windowState.reset() }}>
         <div className="flex items-center gap-2">
           {isVerifica ? (
             <CheckCircle2 className="size-4.5 text-[#155f52]" aria-hidden />
@@ -268,6 +277,6 @@ export function StudyNotePopup({
         <div key={edge} aria-hidden data-testid={`study-note-resize-${edge}`} onPointerDown={(event) => windowState.begin(event, edge)}
           className={`absolute touch-none ${edge === 'n' ? 'inset-x-3 top-0 h-1 cursor-ns-resize' : edge === 's' ? 'inset-x-3 bottom-0 h-1 cursor-ns-resize' : edge === 'e' ? 'inset-y-3 right-0 w-1 cursor-ew-resize' : edge === 'w' ? 'inset-y-3 left-0 w-1 cursor-ew-resize' : 'bottom-0 right-0 size-3 cursor-nwse-resize border-b-2 border-r-2 border-muted-foreground/40'}`} />
       ))}
-    </div>
+    </div>, document.body,
   )
 }
