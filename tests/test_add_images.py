@@ -482,3 +482,26 @@ def test_run_add_images_web_search(drafted_synthetic_lesson):
     assert res["web_images_by_unit"] == {first: 1}
     with pytest.raises(ValueError):
         run_add_images(drafted_synthetic_lesson, web_search_count=1, unit_ids=["nessuna"], force_mock=True)
+
+
+def test_add_images_reports_increasing_progress(drafted_synthetic_lesson, tmp_path):
+    from rt.services.context import RunContext
+    from rt.services.events import ListReporter, PhaseProgress
+    photos = tmp_path / 'progress-photos'
+    photos.mkdir()
+    for i in range(3):
+        (photos / f'{i}.png').write_bytes(f'photo-{i}'.encode())
+    reporter = ListReporter()
+    from types import SimpleNamespace
+    from rt.services.job_handlers import add_images_job
+    add_images_job(SimpleNamespace(lesson_path=drafted_synthetic_lesson,
+        payload={"input_path": str(photos), "web_search_count": 1, "mock": True}),
+        RunContext(reporter=reporter))
+    events = [e for e in reporter.events if isinstance(e, PhaseProgress)]
+    values = [e.current / e.total for e in events]
+    assert values == sorted(values)
+    assert values[0] == 0 and values[-1] == 1
+    assert len(set(values)) > 5
+    assert any(e.message == 'Leggo le pagine 2/3' for e in events)
+    assert any(e.message == 'Cerco immagini sul web' for e in events)
+    assert any(e.message.startswith('Colloco le immagini ') for e in events)

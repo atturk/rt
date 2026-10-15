@@ -5,6 +5,8 @@
 
 - In Arricchimento puoi trascinare PDF e foto nel riquadro di caricamento, aggiungendoli ai file già scelti.
 
+- Il caricamento di PDF e foto mostra l’avanzamento durante la lettura e la collocazione delle immagini.
+
 ### Novità
 
 # Novità di RT

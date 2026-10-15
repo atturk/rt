@@ -15,7 +15,8 @@ import hashlib
 import base64
 from rt.services.prompt_settings import effective_system
 import re
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Callable, Dict, Any, Optional, List, Tuple
+from rt.services.context import RunContext
 from rt.core.lesson_paths import lesson_path
 from rt.core.image_extract import ExtractedImage, extract_images
 from rt.core.searxng_client import search_images, download_image
@@ -136,6 +137,7 @@ def describe_new_images(
     lesson_context: Optional[str] = None,
     force_mock: bool = False,
     failures: Optional[UnitFailureTracker] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
 ) -> None:
     """Per ogni immagine nuova (ExtractedImage, hash), genera la descrizione strutturata
     via LLM con o senza contesto a seconda della sorgente, salva l'immagine grezza e
@@ -149,7 +151,9 @@ def describe_new_images(
     client = LLMClient(force_mock=force_mock)
     existing_descriptions = load_image_descriptions(lesson_dir)
 
-    for img, img_hash in new_images:
+    for i, (img, img_hash) in enumerate(new_images, 1):
+        if progress:
+            progress(i - 1, len(new_images))
         mime_type, ext = _get_image_mime_type(img.source_label)
         b64_data = base64.b64encode(img.image_bytes).decode("utf-8")
         image_data_url = f"data:{mime_type};base64,{b64_data}"
@@ -195,10 +199,13 @@ def describe_new_images(
             "alt_text": desc.alt_text,
         }
         save_image_descriptions(lesson_dir, existing_descriptions)
+        if progress:
+            progress(i, len(new_images))
 
 
 def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = False,
-                          failures: Optional[UnitFailureTracker] = None) -> Dict[str, List[str]]:
+                          failures: Optional[UnitFailureTracker] = None,
+                          progress: Optional[Callable[[int, int], None]] = None) -> Dict[str, List[str]]:
     """One image per Decision API request, compared against the complete lesson.
 
     Choice labels map uniquely to macro IDs, never micro-units. The full lesson is
@@ -219,6 +226,9 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
         return results
     if LLMClient(force_mock=force_mock).force_mock:
         results[str(macros[0].id)] = list(descriptions)
+        if progress:
+            for i in range(len(descriptions) + 1):
+                progress(i, len(descriptions))
         return results
     if len(macros) > 254:
         raise ValueError("Il giudice immagini supporta al massimo 254 macro unità per lezione")
@@ -242,7 +252,9 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
             cached = json.load(f)
     else:
         cached = {}
-    for image_hash, description in descriptions.items():
+    for i, (image_hash, description) in enumerate(descriptions.items(), 1):
+        if progress:
+            progress(i - 1, len(descriptions))
         raise_if_cancelled()
         key = digest([description, lesson_text, question.model_dump(), cfg.model])
         entry = cached.get(image_hash, {})
@@ -275,6 +287,8 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
             failures.failed(image_hash, f"immagine {description.get('filename', image_hash)}", exc)
             if failures.too_many():
                 break
+        if progress:
+            progress(i, len(descriptions))
     return results
 
 
@@ -388,6 +402,7 @@ def run_add_images(
     force_mock: bool = False,
     unit_ids: Optional[List[str]] = None,
     tolerate_failures: bool = False,
+    ctx: Optional[RunContext] = None,
 ) -> Dict[str, Any]:
     """Orchestratore principale di 'rt add-images'. web_search_count: immagini da cercare sul
     web per ogni unità (unit_ids: solo quelle unità, None = tutte). Con tolerate_failures (job
@@ -413,10 +428,22 @@ def run_add_images(
     tracker = UnitFailureTracker() if tolerate_failures else None
     tolerant = {"failures": tracker} if tracker is not None else {}
 
+    def report(start, span, message):
+        def update(current, total):
+            if ctx:
+                ctx.check_cancelled()
+                ctx.progress("add_images", start + int(span * current / max(total, 1)), 100,
+                             f"{message} {current}/{total}")
+        return update
+
+    if ctx:
+        ctx.progress("add_images", 0, 100, "Leggo le pagine")
     if input_path:
-        extracted.extend(extract_images(input_path))
+        extracted.extend(extract_images(input_path, progress=report(0, 20, "Leggo le pagine")))
 
     if web_search_count and web_search_count > 0:
+        if ctx:
+            ctx.progress("add_images", 25, 100, "Cerco immagini sul web")
         from rt.core.config import load_config
         cfg = load_config()
         searxng_url = getattr(cfg, "searxng_base_url", None)
@@ -435,9 +462,10 @@ def run_add_images(
         if new_images:
             lesson_context = get_lesson_context(lesson_dir)
             describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock,
-                                **tolerant)
+                                progress=report(30, 30, "Leggo le pagine"), **tolerant)
 
-    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock, **tolerant)
+    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock,
+                                        progress=report(60, 35, "Colloco le immagini"), **tolerant)
 
     descriptions = load_image_descriptions(lesson_dir)
     placement: Dict[str, List[str]] = {}
@@ -456,6 +484,8 @@ def run_add_images(
     changed = save_image_placement(lesson_dir, placement, False)
     build_stale = build_was_valid and check_phase_status(lesson_dir, "build")[0] != PhaseStatus.VALID
 
+    if ctx:
+        ctx.progress("add_images", 100, 100, "Immagini collocate")
     return {
         "images_added": len(assigned_hashes),
         "macros_with_images": list(placement.keys()),
