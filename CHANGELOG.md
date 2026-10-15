@@ -3,6 +3,8 @@
 ### Correzioni
 - Le ore segnate come seguite senza una lezione si possono scegliere nell’import e collegare a una lezione. Le ore annullate rifiutano il collegamento; eliminare una lezione libera la sua ora senza cambiare lo stato “seguita”.
 
+- In Arricchimento puoi trascinare PDF e foto nel riquadro di caricamento, aggiungendoli ai file già scelti.
+
 ### Novità
 
 # Novità di RT

@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
+import { cn } from '@/lib/utils'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -53,6 +54,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [openUpload, setOpenUpload] = useState(false)
   const [openSearch, setOpenSearch] = useState(false)
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
+  const [draggingUpload, setDraggingUpload] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [searchCount, setSearchCount] = useState('1')
   const [searchScope, setSearchScope] = useState<'all' | 'some'>('all')
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
@@ -78,6 +81,14 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const ignoredCount = elements.filter(
     (e) => e.status === 'dismissed' && !e.asset_image,
   ).length
+
+  const chooseUploadFiles = (files: File[]) => {
+    const accepted = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' ||
+      ACCEPT.split(',').some((ext) => ext.startsWith('.') && file.name.toLowerCase().endsWith(ext)))
+    const unsupported = files.find((file) => !accepted.includes(file))
+    setUploadError(unsupported ? `Formato non supportato: ${unsupported.name}. Usa PDF o foto.` : null)
+    setUploadFiles((previous) => [...previous, ...accepted])
+  }
 
   const handleUploadSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -148,7 +159,24 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
         {/* Scheda Aggiungi immagini */}
         {openUpload && (
-          <Card className="flex flex-col gap-2.5 p-3">
+          <Card
+            data-file-drop-target
+            data-testid="enrichment-upload"
+            className={cn('flex flex-col gap-2.5 p-3', draggingUpload && 'border-foreground bg-muted')}
+            onDragOver={(event) => {
+              if (!Array.from(event.dataTransfer.types).includes('Files')) return
+              event.preventDefault()
+              setDraggingUpload(true)
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingUpload(false)
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              setDraggingUpload(false)
+              chooseUploadFiles(Array.from(event.dataTransfer.files))
+            }}
+          >
             <div className="flex items-center justify-between">
               <span className="text-body font-semibold">Aggiungi PDF o foto</span>
               <IconButton label="Chiudi" icon={X} className="size-6" onClick={() => setOpenUpload(false)} />
@@ -160,8 +188,12 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 multiple
                 accept={ACCEPT}
                 className="h-auto py-1 text-meta"
-                onChange={(e) => setUploadFiles(Array.from(e.target.files ?? []))}
+                onChange={(e) => {
+                  chooseUploadFiles(Array.from(e.target.files ?? []))
+                  e.target.value = ''
+                }}
               />
+              {uploadError && <Alert tone="danger">{uploadError}</Alert>}
               <div className="flex justify-end gap-2 pt-1">
                 <Button size="sm" variant="ghost" type="button" onClick={() => setOpenUpload(false)}>
                   Annulla
