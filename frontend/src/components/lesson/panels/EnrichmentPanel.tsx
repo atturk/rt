@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Search, Sparkles, Upload, X } from 'lucide-react'
+import { Search, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
@@ -21,6 +21,8 @@ import { Modal } from '@/components/ui/modal'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
+import { MediaGallery } from './MediaGallery'
+import { MediaSelectionBar } from './MediaSelectionBar'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -66,6 +68,9 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [showIgnored, setShowIgnored] = useState(false)
   const [mediaDragActive, setMediaDragActive] = useState(false)
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
+  const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
+  const [_activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
 
   const chooseUploadFiles = (files: File[]) => {
     const accepted = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' ||
@@ -88,22 +93,103 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       }
       setMediaDragActive(false)
     }
+    const onCursorState = (e: Event) => {
+      const custom = e as CustomEvent<{ hasCursor: boolean }>
+      if (custom.detail !== undefined) {
+        setCanInsertAtCursor(Boolean(custom.detail.hasCursor))
+      }
+    }
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
+    window.addEventListener('rt-editor-cursor-state', onCursorState)
     return () => {
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
+      window.removeEventListener('rt-editor-cursor-state', onCursorState)
     }
   }, [])
 
   if (!Number.isFinite(id)) return null
 
-  const imageList = images.data?.images ?? []
+  const rawImageList = images.data?.images ?? []
   const elements = enrichment.data?.elements ?? []
   const completedElements = elements.filter(
     (e) => e.status === 'ready' || Boolean(e.asset_image),
   )
-  const totalMedia = imageList.length + completedElements.length
+
+  const enrichmentImages: LessonImage[] = completedElements
+    .filter((el) => !rawImageList.some((img) => el.asset_image && img.url.includes(el.asset_image.split('/').pop()!)))
+    .map((el) => {
+      const kindText = kindLabel(el.kind)
+      const assetFileName = el.asset_image ? el.asset_image.split('/').pop()! : el.id
+      return {
+        name: assetFileName,
+        url: el.asset_image ? assetUrl(id, el.asset_image) : '',
+        source_name: 'Arricchimento',
+        source: 'enrichment',
+        alt_text: el.title || `${kindText} ${el.unit_id}`,
+        slide_title: el.title || '',
+        units: [el.unit_id],
+        in_document: true,
+        in_assets: true,
+        page: null,
+      }
+    })
+
+  const imageList: LessonImage[] = [...rawImageList, ...enrichmentImages].map((img) => {
+    const detected = findUnitForImage(img.name, docQuery.data?.markdown)
+    const units = img.units && img.units.length > 0
+      ? img.units
+      : detected
+        ? [detected]
+        : (img.macro_ids ?? [])
+    const inDoc = img.in_document || Boolean(detected)
+    return {
+      ...img,
+      units,
+      in_document: inDoc,
+    }
+  })
+
+  const totalMedia = imageList.length
+  const hasUsedSelected = imageList.some((img) => selectedNames.has(img.name) && img.in_document)
+
+  const handleOpenViewer = (flatIndex: number) => {
+    const viewerImages = imageList.map((img) => ({
+      src: img.url,
+      alt: img.alt_text || img.name,
+      docName: img.source_name || img.source || 'Media',
+      pageNumber: img.page ?? undefined,
+    }))
+    window.dispatchEvent(
+      new CustomEvent('rt-image-viewer-open', {
+        detail: { images: viewerImages, index: flatIndex },
+      }),
+    )
+  }
+
+  const handleInsertAtCursor = () => {
+    const selected = imageList.filter((i) => selectedNames.has(i.name))
+    window.dispatchEvent(new CustomEvent('rt-editor-insert-images', { detail: { images: selected } }))
+  }
+
+  const handleAutoPlace = () => {
+    // Triggered in MS1c
+    addImages.mutate(
+      { files: [], perUnit: 0, units: null },
+      {
+        onSuccess: (res) => {
+          setSelectedNames(new Set())
+          if (res?.job_id) setActiveJobId(res.job_id)
+        },
+      },
+    )
+  }
+
+  const handleRemoveFromText = () => {
+    const selected = imageList.filter((i) => selectedNames.has(i.name))
+    window.dispatchEvent(new CustomEvent('rt-editor-remove-images', { detail: { imageNames: selected.map((s) => s.name) } }))
+  }
 
   const visibleIdeas = elements.filter(
     (e) =>
@@ -333,84 +419,56 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         )}
 
         {/* Griglia della Galleria */}
-        <div className="grid grid-cols-3 gap-2.5 pt-1" role="group" aria-label="Media della lezione">
-          {imageList.map((img: LessonImage) => {
-            const detectedUnit = findUnitForImage(img.name, docQuery.data?.markdown)
-            const unitLabel =
-              detectedUnit ??
-              (img.in_document && (img.macro_ids ?? []).length > 0
-                ? (img.macro_ids ?? []).join(', ')
-                : img.source === 'pdf'
-                  ? 'da PDF'
-                  : 'non assegnata')
-            const targetUnit = detectedUnit ?? img.macro_ids?.[0] ?? null
-
-            return (
-              <button
-                key={img.name}
-                type="button"
-                className="group flex flex-col gap-1 text-left cursor-pointer"
-                aria-label={`Immagine ${unitLabel}: vai nel testo`}
-                onClick={() => scrollToMedia({ imageName: img.name, unitId: targetUnit })}
-              >
-                <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-lg border bg-muted transition-colors group-hover:border-primary">
-                  {img.url ? (
-                    <img
-                      src={img.url}
-                      alt={img.alt_text || img.slide_title || img.name}
-                      className="size-full object-contain"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <ImageIcon className="size-6 text-muted-foreground" aria-hidden />
-                  )}
-                </div>
-                <span className="truncate text-meta text-muted-foreground group-hover:text-foreground">
-                  Immagine · {unitLabel}
-                </span>
-              </button>
-            )
-          })}
-
-          {completedElements.map((el) => {
-            const kindText = kindLabel(el.kind)
-            const imgSrc = el.asset_image ? assetUrl(id, el.asset_image) : null
-            return (
-              <button
-                key={el.id}
-                type="button"
-                className="group flex flex-col gap-1 text-left cursor-pointer"
-                aria-label={`${kindText} ${el.unit_id}: vai nel testo`}
-                onClick={() =>
-                  scrollToMedia({
-                    unitId: el.unit_id,
-                    imageName: el.asset_image ? el.asset_image.split('/').pop() : undefined,
-                  })
+        {totalMedia > 0 && (
+          <MediaGallery
+            images={imageList}
+            selectedNames={selectedNames}
+            onToggleSelect={(name) =>
+              setSelectedNames((prev) => {
+                const next = new Set(prev)
+                if (next.has(name)) next.delete(name)
+                else next.add(name)
+                return next
+              })
+            }
+            onSelectRange={(names) =>
+              setSelectedNames((prev) => new Set([...prev, ...names]))
+            }
+            onSelectGroup={(groupImages) => {
+              const allIn =
+                groupImages.length > 0 &&
+                groupImages.every((i) => selectedNames.has(i.name))
+              setSelectedNames((prev) => {
+                const next = new Set(prev)
+                for (const i of groupImages) {
+                  if (allIn) next.delete(i.name)
+                  else next.add(i.name)
                 }
-              >
-                <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-lg border bg-muted transition-colors group-hover:border-primary">
-                  {imgSrc ? (
-                    <img
-                      src={imgSrc}
-                      alt={el.title || `${kindText} ${el.unit_id}`}
-                      className="size-full object-contain"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <Sparkles className="size-6 text-primary" aria-hidden />
-                  )}
-                </div>
-                <span className="truncate text-meta text-muted-foreground group-hover:text-foreground">
-                  {kindText} · {el.unit_id}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+                return next
+              })
+            }}
+            onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
+            onClearSelection={() => setSelectedNames(new Set())}
+            onOpenViewer={handleOpenViewer}
+            onCrop={(img) => setActiveCropImage(img)}
+            onScrollToMedia={scrollToMedia}
+          />
+        )}
 
         {totalMedia === 0 && (
           <p className="py-2 text-center text-meta text-muted-foreground">Nessun media presente nella lezione.</p>
         )}
+
+        <MediaSelectionBar
+          selectedCount={selectedNames.size}
+          hasUsedSelected={hasUsedSelected}
+          canInsertAtCursor={canInsertAtCursor}
+          onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
+          onInsertAtCursor={handleInsertAtCursor}
+          onAutoPlace={handleAutoPlace}
+          onRemoveFromText={handleRemoveFromText}
+          onClearSelection={() => setSelectedNames(new Set())}
+        />
       </div>
 
       <hr className="border-border" />

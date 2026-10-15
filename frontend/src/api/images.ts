@@ -54,3 +54,12 @@ export function uploadEditorImage(id: number, file: File, leaseToken: string) {
     bodySerializer: () => formData({ file, lease_token: leaseToken }),
   }))
 }
+
+/** Copia una pagina dei materiali in assets/images per l'inserimento nel documento. */
+export function copyMaterialPage(id: number, sourceId: string, page: number, leaseToken?: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/material-page', {
+    params: path(id),
+    body: { source_id: sourceId, page, lease_token: leaseToken },
+  }))
+}
+

@@ -993,6 +993,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/materials/{impronta}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** File di una pagina dei materiali */
+        get: operations["get_material_image_api_v1_lessons__lesson_id__materials__impronta___name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/media/images": {
         parameters: {
             query?: never;
@@ -1004,6 +1021,23 @@ export interface paths {
         put?: never;
         /** Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione */
         post: operations["upload_editor_image_api_v1_lessons__lesson_id__media_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/media/material-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copia una pagina dei materiali in assets/images */
+        post: operations["copy_material_page_api_v1_lessons__lesson_id__media_material_page_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5906,6 +5940,22 @@ export interface components {
              */
             alt_text: string;
             /**
+             * Crop Index
+             * @description Indice progressivo del ritaglio per la pagina
+             */
+            crop_index?: number | null;
+            /**
+             * Crop Of
+             * @description Hash o identificativo dell'immagine originale se ritaglio
+             */
+            crop_of?: string | null;
+            /**
+             * In Assets
+             * @description True se il file è già presente in assets/images
+             * @default true
+             */
+            in_assets: boolean;
+            /**
              * In Document
              * @description True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)
              */
@@ -5917,9 +5967,14 @@ export interface components {
             macro_ids?: string[];
             /**
              * Name
-             * @description Nome del file in assets/images
+             * @description Nome del file in assets/images o identificativo
              */
             name: string;
+            /**
+             * Page
+             * @description Numero di pagina per documenti multipagina
+             */
+            page?: number | null;
             /**
              * Slide Title
              * @default
@@ -5927,10 +5982,21 @@ export interface components {
             slide_title: string;
             /**
              * Source
-             * @description Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>
+             * @description Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>, material:...
              * @default
              */
             source: string;
+            /**
+             * Source Name
+             * @description Nome leggibile della fonte: nome del file, Dal web, Dall'editor
+             * @default
+             */
+            source_name: string;
+            /**
+             * Units
+             * @description Unità in cui compare nel documento
+             */
+            units?: string[];
             /**
              * Url
              * @description Percorso dell'API che serve il file
@@ -6269,6 +6335,15 @@ export interface components {
              * @description Stato della fase prima della validazione
              */
             previous_status?: string | null;
+        };
+        /** MaterialPageRequest */
+        MaterialPageRequest: {
+            /** Lease Token */
+            lease_token?: string | null;
+            /** Page */
+            page: number;
+            /** Source Id */
+            source_id: string;
         };
         /** Me */
         Me: {
@@ -12805,6 +12880,76 @@ export interface operations {
             };
         };
     };
+    get_material_image_api_v1_lessons__lesson_id__materials__impronta___name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                impronta: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
         parameters: {
             query?: never;
@@ -12818,6 +12963,78 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorImage"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    copy_material_page_api_v1_lessons__lesson_id__media_material_page_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialPageRequest"];
             };
         };
         responses: {

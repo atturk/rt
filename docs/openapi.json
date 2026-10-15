@@ -5377,6 +5377,36 @@
             "title": "Alt Text",
             "type": "string"
           },
+          "crop_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Indice progressivo del ritaglio per la pagina",
+            "title": "Crop Index"
+          },
+          "crop_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hash o identificativo dell'immagine originale se ritaglio",
+            "title": "Crop Of"
+          },
+          "in_assets": {
+            "default": true,
+            "description": "True se il file è già presente in assets/images",
+            "title": "In Assets",
+            "type": "boolean"
+          },
           "in_document": {
             "description": "True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)",
             "title": "In Document",
@@ -5391,9 +5421,21 @@
             "type": "array"
           },
           "name": {
-            "description": "Nome del file in assets/images",
+            "description": "Nome del file in assets/images o identificativo",
             "title": "Name",
             "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numero di pagina per documenti multipagina",
+            "title": "Page"
           },
           "slide_title": {
             "default": "",
@@ -5402,9 +5444,23 @@
           },
           "source": {
             "default": "",
-            "description": "Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>",
+            "description": "Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>, material:...",
             "title": "Source",
             "type": "string"
+          },
+          "source_name": {
+            "default": "",
+            "description": "Nome leggibile della fonte: nome del file, Dal web, Dall'editor",
+            "title": "Source Name",
+            "type": "string"
+          },
+          "units": {
+            "description": "Unità in cui compare nel documento",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
           },
           "url": {
             "description": "Percorso dell'API che serve il file",
@@ -6057,6 +6113,35 @@
           "at"
         ],
         "title": "ManualValidation",
+        "type": "object"
+      },
+      "MaterialPageRequest": {
+        "properties": {
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "page"
+        ],
+        "title": "MaterialPageRequest",
         "type": "object"
       },
       "Me": {
@@ -17254,6 +17339,109 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/materials/{impronta}/{name}": {
+      "get": {
+        "operationId": "get_material_image_api_v1_lessons__lesson_id__materials__impronta___name__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "impronta",
+            "required": true,
+            "schema": {
+              "title": "Impronta",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "File di una pagina dei materiali",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/media/images": {
       "post": {
         "operationId": "upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
@@ -17348,6 +17536,105 @@
           }
         ],
         "summary": "Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/material-page": {
+      "post": {
+        "operationId": "copy_material_page_api_v1_lessons__lesson_id__media_material_page_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copia una pagina dei materiali in assets/images",
         "tags": [
           "immagini"
         ]

@@ -163,3 +163,66 @@ def test_web_search_per_unit_on_selected_units(api_client, ws, rt_db):
     assert len(images) == 2 and all(i["source"].startswith("websearch:") for i in images)
     document = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
     assert "napkin-notes" not in document and document.count("](assets/images/") == 2
+
+
+def test_material_pages_list_serve_and_copy(api_client, ws, rt_db, tmp_path):
+    import json
+    from rt.core.sources import Source, _save
+    from rt.storage import fs
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # Crea una fonte materiale fittizia con due pagine
+    impronta = "a" * 64
+    source = Source(id="src-mat-1", tipo="materiale", file="slides.pdf", impronta=impronta, aggiunta_il="2026-10-15", ordine=1)
+    _save(lesson, [source])
+
+    mat_dir = os.path.join(lesson, "materials", impronta)
+    fs.makedirs(mat_dir, exist_ok=True)
+    _png(os.path.join(mat_dir, "page-1-1.png"))
+    _png(os.path.join(mat_dir, "page-2-1.png"))
+    pages = [
+        {"numero": 1, "testo": "Testo slide 1", "immagini": [f"materials/{impronta}/page-1-1.png"]},
+        {"numero": 2, "testo": "Testo slide 2", "immagini": [f"materials/{impronta}/page-2-1.png"]},
+    ]
+    with fs.open(os.path.join(mat_dir, "pages.json"), "w", encoding="utf-8") as f:
+        json.dump({"impronta": impronta, "pages": pages}, f)
+
+    # 1. Elenco include le pagine dei materiali non ancora in assets
+    res = api_client.get(f"/api/v1/lessons/{lid}/images").json()
+    images = res["images"]
+    assert len(images) == 2
+    img1 = images[0]
+    assert img1["source_name"] == "slides.pdf"
+    assert img1["page"] == 1
+    assert img1["in_assets"] is False
+    assert img1["in_document"] is False
+    assert img1["url"] == f"/api/v1/lessons/{lid}/materials/{impronta}/page-1-1.png"
+
+    # 2. Servire il file della pagina direttamente da materials/
+    served = api_client.get(img1["url"])
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "image/png"
+    assert served.content.startswith(b"\x89PNG")
+
+    # 3. Copia della pagina 1 in assets/images
+    copy_res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/material-page",
+        json={"source_id": "src-mat-1", "page": 1},
+    )
+    assert copy_res.status_code == 201
+    asset_img = copy_res.json()
+    assert asset_img["path"].startswith("assets/images/")
+    assert asset_img["alt_text"] == "slides.pdf, pagina 1"
+
+    # Ora la pagina 1 risulta in_assets=True
+    res2 = api_client.get(f"/api/v1/lessons/{lid}/images").json()
+    images2 = res2["images"]
+    assert len(images2) == 2
+    assert images2[0]["in_assets"] is True
+    assert images2[0]["source"].startswith("material:src-mat-1:1")
+    assert images2[0]["url"].endswith(asset_img["name"])
+    assert images2[1]["in_assets"] is False
+
