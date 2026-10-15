@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect } from '@playwright/test'
@@ -144,31 +145,50 @@ test('trascinamento su tutta la pagina: velo Rilascia per importare e apertura p
 
 test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) => {
   // L'audio unito sta fra le fonti (sources/<id>/): il player deve trovarlo (4.2.6b2.1).
+  // Con i materiali l'ingest misura l'audio con ffprobe: il job e2e della CI non ha ffmpeg
+  // (lo stesso caso lo copre il test pytest, che gira dove ffmpeg c'è).
+  test.skip(!hasFfprobe(), 'ffprobe non installato')
   test.setTimeout(3 * LONG)
   await loginViaLink(page)
   const materia = 'PLAYER UNITO'
-  const res = await page.request.post('/api/v1/lessons', {
-    headers: authHeaders(),
-    multipart: {
-      audio: { name: 'parte1.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
-      materiali: { name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() },
-      date: '2026-10-14', materia, mock: 'true', unisci: 'true', run: 'false',
-    },
-  })
-  expect(res.ok(), await res.text()).toBeTruthy()
-  const jobId = ((await res.json()) as { job_id: string }).job_id
-  await expect.poll(async () => {
-    const job = await apiGet<Job & { error?: string | null }>(page.request, `/jobs/${jobId}`)
-    return job.state === 'failed' ? `failed: ${job.error}` : job.state
-  }, { timeout: LONG }).toBe('succeeded')
   type Lesson = { id: number; materia: string; has_audio?: boolean }
-  await expect.poll(async () => (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)?.id,
-    { timeout: LONG }).toBeTruthy()
-  const id = (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)!.id
-  await expect.poll(async () => (await apiGet<Lesson>(page.request, `/lessons/${id}`)).has_audio, { timeout: LONG }).toBe(true)
-  await page.goto(`/lezioni/${id}`)
-  await expect(page.getByTestId('audio-player')).toBeVisible()
-  // Gli spec successivi prendono la prima lezione dell'elenco: questa non deve restare.
-  const del = await page.request.delete(`/api/v1/lessons/${id}`, { headers: authHeaders() })
-  expect(del.ok(), await del.text()).toBeTruthy()
+  // Gli spec successivi prendono la prima lezione dell'elenco: questa non deve restare, anche se il test fallisce.
+  const cleanup = async () => {
+    for (const l of (await apiGet<Lesson[]>(page.request, '/lessons')).filter((x) => x.materia === materia)) {
+      await page.request.delete(`/api/v1/lessons/${l.id}`, { headers: authHeaders() })
+    }
+  }
+  try {
+    const res = await page.request.post('/api/v1/lessons', {
+      headers: authHeaders(),
+      multipart: {
+        audio: { name: 'parte1.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+        materiali: { name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() },
+        date: '2026-10-14', materia, mock: 'true', unisci: 'true', run: 'false',
+      },
+    })
+    expect(res.ok(), await res.text()).toBeTruthy()
+    const jobId = ((await res.json()) as { job_id: string }).job_id
+    await expect.poll(async () => {
+      const job = await apiGet<Job & { error?: string | null }>(page.request, `/jobs/${jobId}`)
+      return job.state === 'failed' ? `failed: ${job.error}` : job.state
+    }, { timeout: LONG }).toBe('succeeded')
+    await expect.poll(async () => (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)?.id,
+      { timeout: LONG }).toBeTruthy()
+    const id = (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)!.id
+    await expect.poll(async () => (await apiGet<Lesson>(page.request, `/lessons/${id}`)).has_audio, { timeout: LONG }).toBe(true)
+    await page.goto(`/lezioni/${id}`)
+    await expect(page.getByTestId('audio-player')).toBeVisible()
+  } finally {
+    await cleanup()
+  }
 })
+
+function hasFfprobe(): boolean {
+  try {
+    execFileSync('ffprobe', ['-version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
