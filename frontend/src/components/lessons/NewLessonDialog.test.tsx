@@ -318,7 +318,7 @@ describe('Materiali accettati e ore dal calendario', () => {
     renderDialog(true, vi.fn(), '2026-10-12')
     const cancelled = await screen.findByTestId('calendar-slot-0')
     expect(cancelled).toBeDisabled()
-    expect(cancelled).toHaveAttribute('title', 'Ora annullata')
+    expect(cancelled).toHaveAccessibleName('ANNULLATA - Ora annullata')
     expect(screen.getByTestId('calendar-slot-1')).toBeEnabled()
     await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('SEGUITA'))
   })

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
   Check,
+  Ban,
   ChevronLeft,
   ChevronRight,
   FileAudio,
@@ -742,7 +743,6 @@ export function NewLessonDialog({
                         key={h.key}
                         type="button"
                         disabled={h.is_recorded || h.status === 'annullata'}
-                        title={h.status === 'annullata' ? 'Ora annullata' : undefined}
                         onClick={() => handleSelectSlot(h)}
                         className={cn(
                           'flex items-center gap-2 rounded-lg bg-card text-left text-meta transition-all min-w-0',
@@ -768,6 +768,9 @@ export function NewLessonDialog({
                         </div>
                         {h.is_recorded && (
                           <Check className="size-3.5 text-emerald-600 shrink-0 ml-1" />
+                        )}
+                        {!h.is_recorded && h.status === 'annullata' && (
+                          <Ban className="size-3.5 text-muted-foreground shrink-0 ml-1" aria-hidden />
                         )}
                       </button>
                     )
