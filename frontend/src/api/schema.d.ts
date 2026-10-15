@@ -3374,6 +3374,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/compact-audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avvia il job per convertire in m4a i wav/flac e cancellare gli audio uniti orfani */
+        post: operations["start_compact_audio_api_v1_system_compact_audio_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/compact-audio/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani */
+        get: operations["preview_compact_audio_endpoint_api_v1_system_compact_audio_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/folders": {
         parameters: {
             query?: never;
@@ -3754,6 +3788,11 @@ export interface components {
              * @default false
              */
             run: boolean;
+            /**
+             * Unisci
+             * @default false
+             */
+            unisci: boolean;
             /** With Enrichment */
             with_enrichment?: boolean | null;
             /**
@@ -3780,6 +3819,11 @@ export interface components {
              * @enum {string}
              */
             tipo: "audio" | "appunti" | "materiale";
+            /**
+             * Unisci
+             * @default true
+             */
+            unisci: boolean;
         };
         /** Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post */
         Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
@@ -4266,6 +4310,8 @@ export interface components {
             mode: "off" | "manual" | "observe" | "pipeline";
             /** Model */
             model?: string | null;
+            /** Threshold */
+            threshold?: number | null;
         };
         /** ClassifierJobView */
         ClassifierJobView: {
@@ -4327,6 +4373,11 @@ export interface components {
              * @enum {string}
              */
             request_type: "choice" | "noul" | "score";
+            /**
+             * Threshold
+             * @default 0.8
+             */
+            threshold: number | null;
             /** Timeout Seconds */
             timeout_seconds: number;
         };
@@ -4348,6 +4399,19 @@ export interface components {
             section_id: string;
             /** Title */
             title: string;
+        };
+        /** CompactAudioPreview */
+        CompactAudioPreview: {
+            /** Bytes Convertibili */
+            bytes_convertibili: number;
+            /** Bytes Orfani */
+            bytes_orfani: number;
+            /** File Convertibili */
+            file_convertibili: number;
+            /** File Orfani */
+            file_orfani: number;
+            /** Spazio Stimato Liberato */
+            spazio_stimato_liberato: number;
         };
         /** Connection */
         Connection: {
@@ -7435,6 +7499,8 @@ export interface components {
             impronta: string;
             /** Ordine */
             ordine: number;
+            /** Parti */
+            parti?: components["schemas"]["SourcePart"][] | null;
             /** Rimossa Il */
             rimossa_il?: string | null;
             /**
@@ -7447,6 +7513,15 @@ export interface components {
         SourceOrder: {
             /** Ids */
             ids: string[];
+        };
+        /** SourcePart */
+        SourcePart: {
+            /** Durata */
+            durata?: string | null;
+            /** Durata S */
+            durata_s?: number | null;
+            /** Nome */
+            nome: string;
         };
         /** SourcePrimary */
         SourcePrimary: {
@@ -7473,6 +7548,8 @@ export interface components {
             pagine?: number | null;
             /** Parole */
             parole?: number | null;
+            /** Parti */
+            parti?: components["schemas"]["SourcePart"][] | null;
             /** Rimossa Il */
             rimossa_il?: string | null;
             /**
@@ -23294,6 +23371,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    start_compact_audio_api_v1_system_compact_audio_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+        };
+    };
+    preview_compact_audio_endpoint_api_v1_system_compact_audio_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompactAudioPreview"];
                 };
             };
         };

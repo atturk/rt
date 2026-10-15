@@ -14,6 +14,23 @@ from rt.core.lesson_lock import lesson_locked
 from rt.storage import fs
 
 
+class SourcePart(BaseModel):
+    nome: str
+    durata: str | None = None
+    durata_s: float | None = None
+
+
+def format_source_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    m = round(seconds / 60)
+    h = m // 60
+    rem = m % 60
+    if h > 0:
+        return f"{h} h {rem} min" if rem > 0 else f"{h} h"
+    return f"{m} min"
+
+
 class Source(BaseModel):
     id: str
     tipo: Literal["audio", "appunti", "materiale"]
@@ -22,6 +39,7 @@ class Source(BaseModel):
     aggiunta_il: str
     ordine: int = Field(ge=1)
     rimossa_il: str | None = None
+    parti: list[SourcePart] | None = None
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
@@ -66,7 +84,8 @@ def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Sour
 @lesson_locked
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes | None, ordine: int | None = None,
-               source_path: str | None = None) -> Source:
+               source_path: str | None = None,
+               parti: list[SourcePart] | list[dict] | None = None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
@@ -89,9 +108,26 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     else:
         with fs.open(path, "wb") as stream:
             stream.write(content)
+    if tipo == "audio":
+        from rt.pipeline.setup import transcode_audio_for_storage, EFFICIENT_AUDIO_EXTENSIONS
+        base_ext = os.path.splitext(name)[1].lower()
+        if base_ext not in EFFICIENT_AUDIO_EXTENSIONS:
+            converted_name = os.path.splitext(name)[0] + ".m4a"
+            converted_relative = os.path.join("sources", sid, converted_name)
+            converted_path = os.path.join(lesson_dir, converted_relative)
+            transcode_ok = False
+            with fs.materialize(path) as mat_in, fs.external_output(converted_path) as ext_out:
+                if transcode_audio_for_storage(mat_in, ext_out):
+                    transcode_ok = True
+            if transcode_ok:
+                fs.remove(path)
+                relative = converted_relative
+                path = converted_path
+    parsed_parts = [SourcePart.model_validate(p) for p in parti] if parti else None
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
-                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position)
+                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
+                    parti=parsed_parts)
     sources.insert(position - 1, source)
     for index, item in enumerate(sources, 1):
         item.ordine = index

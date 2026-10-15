@@ -480,6 +480,11 @@
             "title": "Run",
             "type": "boolean"
           },
+          "unisci": {
+            "default": false,
+            "title": "Unisci",
+            "type": "boolean"
+          },
           "with_enrichment": {
             "anyOf": [
               {
@@ -569,6 +574,11 @@
             ],
             "title": "Tipo",
             "type": "string"
+          },
+          "unisci": {
+            "default": true,
+            "title": "Unisci",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1944,6 +1954,19 @@
               }
             ],
             "title": "Model"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           }
         },
         "title": "ClassifierJobConfig",
@@ -2097,6 +2120,20 @@
             "title": "Request Type",
             "type": "string"
           },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.8,
+            "title": "Threshold"
+          },
           "timeout_seconds": {
             "title": "Timeout Seconds",
             "type": "number"
@@ -2156,6 +2193,39 @@
           "section_id"
         ],
         "title": "ClassifierUnit",
+        "type": "object"
+      },
+      "CompactAudioPreview": {
+        "properties": {
+          "bytes_convertibili": {
+            "title": "Bytes Convertibili",
+            "type": "integer"
+          },
+          "bytes_orfani": {
+            "title": "Bytes Orfani",
+            "type": "integer"
+          },
+          "file_convertibili": {
+            "title": "File Convertibili",
+            "type": "integer"
+          },
+          "file_orfani": {
+            "title": "File Orfani",
+            "type": "integer"
+          },
+          "spazio_stimato_liberato": {
+            "title": "Spazio Stimato Liberato",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_convertibili",
+          "bytes_convertibili",
+          "file_orfani",
+          "bytes_orfani",
+          "spazio_stimato_liberato"
+        ],
+        "title": "CompactAudioPreview",
         "type": "object"
       },
       "Connection": {
@@ -8960,6 +9030,20 @@
             "title": "Ordine",
             "type": "integer"
           },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
+          },
           "rimossa_il": {
             "anyOf": [
               {
@@ -9006,6 +9090,41 @@
           "ids"
         ],
         "title": "SourceOrder",
+        "type": "object"
+      },
+      "SourcePart": {
+        "properties": {
+          "durata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata"
+          },
+          "durata_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata S"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nome"
+        ],
+        "title": "SourcePart",
         "type": "object"
       },
       "SourcePrimary": {
@@ -9080,6 +9199,20 @@
               }
             ],
             "title": "Parole"
+          },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
           },
           "rimossa_il": {
             "anyOf": [
@@ -31273,6 +31406,58 @@
           }
         ],
         "summary": "Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio": {
+      "post": {
+        "operationId": "start_compact_audio_api_v1_system_compact_audio_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Avvia il job per convertire in m4a i wav/flac e cancellare gli audio uniti orfani",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio/preview": {
+      "get": {
+        "operationId": "preview_compact_audio_endpoint_api_v1_system_compact_audio_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactAudioPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani",
         "tags": [
           "sistema"
         ]

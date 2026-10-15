@@ -8,7 +8,10 @@ import { useMe } from '@/api/hooks'
 import { useLiveUpdates } from '@/api/liveUpdates'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { PageBody } from '@/components/shell/PageHeader'
-import { NewLessonContext } from '@/components/shell/newLesson'
+import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
+import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
+import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
+import { ImageViewer } from '@/components/images/ImageViewer'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
@@ -87,12 +90,32 @@ export function Layout() {
     // oxlint-disable-next-line react/set-state-in-effect
     setReturnAddress(previous => rememberReturnAddress(previous, location))
   }, [location])
-  const [newLesson, setNewLesson] = useState(false)
-  const openNewLesson = useCallback(() => setNewLesson(true), [])
-  const closeNewLesson = useCallback(() => setNewLesson(false), [])
+  const [newLessonOptions, setNewLessonOptions] = useState<NewLessonOptions | null>(null)
+  const openNewLesson = useCallback((options?: NewLessonOptions | unknown) => {
+    if (options && typeof options === 'object' && ('nativeEvent' in options || 'preventDefault' in options)) {
+      setNewLessonOptions({})
+    } else {
+      setNewLessonOptions((options as NewLessonOptions) ?? {})
+    }
+  }, [])
+  const closeNewLesson = useCallback(() => setNewLessonOptions(null), [])
   const phone = useIsPhone()
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
+
+  // Strisce di immagini per i documenti resi (DocumentView, Studio, ecc.)
+  useEffect(() => {
+    const scan = () => {
+      document.querySelectorAll<HTMLElement>('.rt-document:not(.rt-strips-scanned)').forEach((docEl) => {
+        docEl.classList.add('rt-strips-scanned')
+        mountDocumentImageStrips(docEl)
+      })
+    }
+    scan()
+    const observer = new MutationObserver(scan)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -119,7 +142,7 @@ export function Layout() {
           aria-label="Navigazione" aria-hidden={layout.active || undefined} inert={layout.active || undefined}
           className="sticky top-0 hidden h-dvh w-(--rail-width) shrink-0 flex-col items-center gap-1.5 border-r bg-background py-3 md:flex"
         >
-          <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={openNewLesson} aria-haspopup="dialog" />
+          <IconButton label="Nuova lezione" icon={Plus} side="right" variant="solid" onClick={() => openNewLesson()} aria-haspopup="dialog" />
           <div className="h-2" aria-hidden />
           <NavItem section={LESSONS} path={path} side="right" variant="rail" />
           <NavItem section={CALENDAR} path={path} side="right" variant="rail" />
@@ -148,9 +171,20 @@ export function Layout() {
           ))}
         </nav>}
       </div>
-      {newLesson && (
+      <GlobalFileDrop
+        disabled={!!newLessonOptions}
+        onDropFiles={(files) => openNewLesson({ initialFiles: files })}
+      />
+      <ImageViewer />
+      {newLessonOptions && (
         <Suspense fallback={null}>
-          <NewLessonDialog open onClose={closeNewLesson} />
+          <NewLessonDialog
+            open
+            onClose={closeNewLesson}
+            initialDate={newLessonOptions.date}
+            initialSlotKey={newLessonOptions.slotKey}
+            initialFiles={newLessonOptions.initialFiles}
+          />
         </Suspense>
       )}
     </NewLessonContext></ZenContext></RsvpLayoutContext></StudyZenContext></ReturnAddressContext>

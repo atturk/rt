@@ -404,6 +404,7 @@ class ClassifierJobConfig(BaseModel):
     model: Optional[str] = None
     credential: Optional[str] = None
     base_url: Optional[str] = None
+    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
 class ClassifierJob(BaseModel):
@@ -412,6 +413,7 @@ class ClassifierJob(BaseModel):
     credential: str
     base_url: Optional[str] = None
     timeout_seconds: float
+    threshold: Optional[float] = Field(default=0.8, ge=0.0, le=1.0)
 
 
 class ClassifierConfig(BaseModel):
@@ -461,10 +463,12 @@ def classifier_job(cfg, name) -> ClassifierJob:
         raise ValueError("Job del classificatore non valido")
     classifier = cfg.classifier
     job = classifier.jobs.get(name, ClassifierJobConfig())
+    threshold = job.threshold if job.threshold is not None else 0.8
     return ClassifierJob(mode=job.mode, model=job.model or classifier.model,
         credential=job.credential or classifier.credential,
         base_url=job.base_url or classifier.base_url,
-        timeout_seconds=classifier.timeout_seconds)
+        timeout_seconds=classifier.timeout_seconds,
+        threshold=threshold)
 
 
 def classifier_jev(cfg, name):

@@ -181,3 +181,52 @@ test('calendario: modifica di un\'ora solo per questa settimana', async ({ page 
     await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
   }
 })
+
+test('calendario: icona + nel popup ora apre popup di import con data e ora preselezionate (UI1)', async ({ page }) => {
+  await loginViaLink(page)
+
+  // Crea uno slot di prova nella settimana tipo (giovedì 08:30 - 10:30)
+  const addRes = await page.request.post('/api/v1/calendar/template', {
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    data: JSON.stringify({
+      day_of_week: 3,
+      start_time: '08:30',
+      end_time: '10:30',
+      materia: 'Chirurgia Generale',
+      docente: 'Prof. De Luca',
+    }),
+  })
+  expect(addRes.ok()).toBeTruthy()
+  const createdTpl = (await addRes.json()) as { id: number }
+  const key = 'tpl_' + createdTpl.id
+
+  try {
+    await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Calendario' }).click()
+    await expect(page).toHaveURL(/\/calendario/)
+
+    const slot = page.getByTestId('calendar-event-' + key).first()
+    await expect(slot).toBeVisible()
+    await slot.click()
+
+    const eventPopup = page.getByTestId('calendar-event-popup')
+    await expect(eventPopup).toBeVisible()
+    await expect(eventPopup.getByText('Nessuna registrazione')).toBeVisible()
+
+    const plusBtn = eventPopup.getByRole('button', { name: "Importa una lezione per quest'ora" })
+    await expect(plusBtn).toBeVisible()
+    await plusBtn.click()
+
+    // Il popup evento si chiude e si apre il popup Nuova lezione
+    await expect(eventPopup).toHaveCount(0)
+    const newLessonDialog = page.getByTestId('new-lesson')
+    await expect(newLessonDialog).toBeVisible()
+
+    // La materia dello slot è preselezionata
+    await expect(newLessonDialog.getByLabel('Materia')).toHaveValue('Chirurgia Generale')
+    await page.keyboard.press('Escape')
+    await expect(newLessonDialog).toHaveCount(0)
+  } finally {
+    await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
+  }
+})
+

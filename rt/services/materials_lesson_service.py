@@ -13,13 +13,17 @@ from rt.storage import fs
 
 
 def create_source_lesson(*, audio, materiali, appunti='', principale=None, allega_materiali=True,
+                         unisci=True,
                          date, materia, argomenti='', docente='', ora='', dest_dir):
     date = parse_flexible_date(date)
-    materia = sanitize_filename_part(materia.strip().upper())
+    materia = sanitize_filename_part((materia or '').strip().upper())
     if not materia:
         raise ValueError('Indica la materia')
-    if not audio and not materiali and not appunti.strip():
+    if not audio and not materiali and not (appunti or '').strip():
         raise ValueError('Aggiungi almeno una fonte')
+    argomenti = argomenti or ''
+    docente = docente or ''
+    ora = ora or ''
     suffix = sanitize_filename_part(argomenti.strip())
     folder = f'[{date}] {materia}' + (f' - {suffix}' if suffix else '')
     lesson_dir = os.path.join(dest_dir, folder)
@@ -38,7 +42,31 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
         'allega_materiali': bool(materiali and allega_materiali)}
     with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
         yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
-    audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
+    if audio and len(audio) > 1 and unisci:
+        from rt.pipeline.setup import merge_audio_for_transcription
+        from rt.pipeline.source_update import _duration
+        from rt.core.sources import format_source_duration
+        parts = []
+        for p in audio:
+            dur_s = None
+            try:
+                dur_s = _duration(p)
+            except Exception:
+                pass
+            parts.append({
+                "nome": os.path.basename(p),
+                "durata": format_source_duration(dur_s) if dur_s is not None else None,
+                "durata_s": dur_s,
+            })
+        temp_merged = os.path.join(dest_dir, f"_temp_merged_{os.getpid()}.m4a")
+        try:
+            merge_audio_for_transcription(audio, temp_merged)
+            audio_sources = [add_source(lesson_dir, 'audio', 'audio completo.m4a', None, source_path=temp_merged, parti=parts)]
+        finally:
+            if fs.isfile(temp_merged):
+                fs.remove(temp_merged)
+    else:
+        audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
     notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
     documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path) for path in materiali]
     if audio_sources:

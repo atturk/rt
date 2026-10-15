@@ -300,6 +300,72 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Annulla' }))
     expect(screen.queryByRole('dialog', { name: 'Aggiungi appunti' })).not.toBeInTheDocument()
   })
+
+  it('mostra le parti con badge numerati e durata quando una fonte ha parti', async () => {
+    const viewWithParts: SourcesView = {
+      ...mockView,
+      sources: [
+        {
+          id: 's_aud_merged',
+          tipo: 'audio',
+          file: 'audio completo.m4a',
+          impronta: 'imp_m',
+          aggiunta_il: '2026-10-12',
+          ordine: 1,
+          nome: 'audio completo.m4a',
+          durata_s: 4800,
+          usata: true,
+          parti: [
+            { nome: 'registrazione 1.m4a', durata: '45 min', durata_s: 2700 },
+            { nome: 'registrazione 2.m4a', durata: '35 min', durata_s: 2100 },
+          ],
+        },
+      ],
+    }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/lessons/42/sources') {
+        return Promise.resolve({
+          data: viewWithParts,
+          error: undefined,
+          response: new Response(JSON.stringify(viewWithParts), { status: 200 }),
+        } as never)
+      }
+      if (path === '/api/v1/lessons/42/versions') {
+        return Promise.resolve({
+          data: [],
+          error: undefined,
+          response: new Response('[]', { status: 200 }),
+        } as never)
+      }
+      return Promise.resolve({ data: {}, response: new Response('{}') } as never)
+    })
+    renderComponent()
+    const partsContainer = await screen.findByTestId('source-parts-s_aud_merged')
+    expect(partsContainer).toHaveTextContent('registrazione 1.m4a')
+    expect(partsContainer).toHaveTextContent('45 min')
+    expect(partsContainer).toHaveTextContent('registrazione 2.m4a')
+    expect(partsContainer).toHaveTextContent('35 min')
+  })
+
+  it('selezione multipla di audio mostra la barra con il bottone Unisci acceso di default', async () => {
+    renderComponent()
+    await screen.findByText('Appunti di Giulia')
+    const input = document.querySelector('input[type="file"][multiple]') as HTMLInputElement
+    expect(input).toBeInTheDocument()
+
+    const file1 = new File(['a1'], 'rec1.mp3', { type: 'audio/mp3' })
+    const file2 = new File(['a2'], 'rec2.mp3', { type: 'audio/mp3' })
+    fireEvent.change(input, { target: { files: [file1, file2] } })
+
+    const bar = await screen.findByTestId('pending-audios-bar')
+    expect(bar).toHaveTextContent('2 parti')
+    const unisciBtn = within(bar).getByRole('button', { name: 'Unisci' })
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Clic per spegnerlo
+    fireEvent.click(unisciBtn)
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+  })
 })
 
 it('chiede conferma prima di togliere una fonte usata e permette di annullare', async () => {

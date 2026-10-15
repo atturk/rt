@@ -98,7 +98,7 @@ def test_mixed_audio_order_and_calendar_manual_link(api_client, rt_db, tmp_path,
     assert response.status_code == 202, response.text
     lesson = work(rt_db)
     sources = load_sources(lesson)
-    assert [os.path.basename(s.file) for s in sources if s.tipo == 'audio'] == ['z-first.wav', 'a-second.wav']
+    assert [os.path.basename(s.file) for s in sources if s.tipo == 'audio'] == ['z-first.m4a', 'a-second.m4a']
     lid = api_client.get('/api/v1/lessons').json()[0]['id']
     assert get_day_view('2026-10-12').events[0].lesson.id == lid
     from rt.db.models import CalendarEntryState
@@ -121,3 +121,36 @@ def test_invalid_primary_and_calendar_rejected_before_creation(api_client, rt_db
         'appunti': 'notes', 'calendar_entry_id': 'missing'})
     assert response.status_code == 422
     assert api_client.get('/api/v1/lessons').json() == []
+
+
+def test_import_multiple_audio_merged_with_parts(api_client, rt_db, tmp_path, monkeypatch):
+    isolated_workspace(tmp_path, monkeypatch)
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda path: 120.0 if "part1" in path else 60.0)
+    monkeypatch.setattr("rt.pipeline.setup.merge_audio_for_transcription",
+                        lambda audios, out: open(out, "wb").write(b"fake-merged"))
+    response = api_client.post('/api/v1/lessons', data={
+        'date': '2026-10-12', 'materia': 'Biologia', 'mock': 'true', 'unisci': 'true'
+    }, files=[
+        ('audio', ('part1.wav', wav_bytes(), 'audio/wav')),
+        ('audio', ('part2.wav', wav_bytes(), 'audio/wav')),
+    ])
+    assert response.status_code == 202, response.text
+    lesson = work(rt_db)
+    sources = load_sources(lesson)
+    audio_sources = [s for s in sources if s.tipo == 'audio']
+    assert len(audio_sources) == 1
+    merged = audio_sources[0]
+    assert merged.file.endswith('audio completo.m4a')
+    assert merged.parti is not None
+    assert len(merged.parti) == 2
+    assert merged.parti[0].nome == 'part1.wav'
+    assert merged.parti[0].durata == '2 min'
+    assert merged.parti[1].nome == 'part2.wav'
+    assert merged.parti[1].durata == '1 min'
+    # Verify GET /sources returns parti
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    view = api_client.get(f'/api/v1/lessons/{lid}/sources').json()
+    assert view['principale'] == merged.id
+    view_audio = [s for s in view['sources'] if s['tipo'] == 'audio'][0]
+    assert len(view_audio['parti']) == 2
+

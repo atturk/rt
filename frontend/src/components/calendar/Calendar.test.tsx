@@ -5,7 +5,8 @@ import { getSubjectColor } from './subjectColor'
 import { StatusIcon } from './StatusIcon'
 import { CalendarWeekGrid } from './CalendarWeekGrid'
 import { CalendarDayList } from './CalendarDayList'
-import { DayMenuPopup, WeekInfoPopup } from './CalendarPopups'
+import { DayMenuPopup, WeekInfoPopup, EventPopup } from './CalendarPopups'
+import { NewLessonContext } from '@/components/shell/newLesson'
 import type {
   CalendarDayView,
   CalendarEventView,
@@ -402,5 +403,34 @@ describe('CalendarPage: modifica di un\'ora', () => {
       valid_from: '2026-10-12',
     })
     expect(calendarMocks.createOverride).not.toHaveBeenCalled()
+  })
+
+  it("UI1: popup ora non registrata mostra + per importare e apre NewLessonContext con date e slotKey", () => {
+    const openNewLesson = vi.fn()
+    const onClose = vi.fn()
+    const unrecordedEvent: CalendarEventView = {
+      ...dummyEvent,
+      key: 'tpl_42',
+      date: '2026-10-14',
+      lesson: undefined,
+      is_recorded: false,
+    }
+    render(
+      <NewLessonContext value={openNewLesson}>
+        <EventPopup
+          event={unrecordedEvent}
+          anchor={{ x: 100, y: 100, width: 50, height: 30 }}
+          onClose={onClose}
+          onStatusChange={vi.fn()}
+          onNoteSave={vi.fn()}
+          onLinkLesson={vi.fn()}
+        />
+      </NewLessonContext>,
+    )
+    const plusBtn = screen.getByRole('button', { name: "Importa una lezione per quest'ora" })
+    expect(plusBtn).toBeInTheDocument()
+    fireEvent.click(plusBtn)
+    expect(onClose).toHaveBeenCalled()
+    expect(openNewLesson).toHaveBeenCalledWith({ date: '2026-10-14', slotKey: 'tpl_42' })
   })
 })

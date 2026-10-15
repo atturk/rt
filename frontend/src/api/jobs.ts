@@ -109,6 +109,7 @@ export type NewLesson = {
   auto_accept: boolean
   with_review: boolean
   with_enrichment?: boolean
+  unisci?: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. */
@@ -124,6 +125,7 @@ export function useCreateLesson() {
       }
       if (input.principale) form.append('principale', input.principale)
       if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
+      if (input.unisci !== undefined) form.append('unisci', String(input.unisci))
       if (input.calendar_entry_id) form.append('calendar_entry_id', input.calendar_entry_id)
       if (input.calendar_date) form.append('calendar_date', input.calendar_date)
       form.append('date', input.date)

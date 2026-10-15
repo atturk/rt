@@ -117,6 +117,7 @@ def test_launcher_passes_concurrency_to_worker(ws, monkeypatch):
 
     monkeypatch.setattr(launcher.subprocess, "Popen", FakePopen)
     monkeypatch.setattr(launcher, "worker_concurrency", lambda: 3)
+    monkeypatch.setattr(launcher, "_already_running", lambda *a: False)
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
     monkeypatch.setattr("rt.api.server.prepare", lambda **k: True)
     monkeypatch.setattr(launcher, "_open_when_ready", lambda *a: None)

@@ -117,7 +117,21 @@ const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
  * - Graffetta per allegare i materiali alle unità (allega_materiali).
  * - Menu materie da GET /subjects.
  */
-export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export type NewLessonDialogProps = {
+  open: boolean
+  onClose: () => void
+  initialDate?: string
+  initialSlotKey?: string
+  initialFiles?: File[]
+}
+
+export function NewLessonDialog({
+  open,
+  onClose,
+  initialDate,
+  initialSlotKey,
+  initialFiles,
+}: NewLessonDialogProps) {
   const navigate = useNavigate()
   const client = useQueryClient()
   const lessons = useLessons()
@@ -133,16 +147,17 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [primaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
   const [attachMaterials, setAttachMaterials] = useState(true)
   const [manualMode, setManualMode] = useState(false)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState('')
   const [docente, setDocente] = useState('')
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(() => initialDate ?? today())
   const [time, setTime] = useState('')
   const [solo, setSolo] = useState(false)
   const [review, setReview] = useState(false)
   const [enrichment, setEnrichment] = useState(false)
+  const [unisciAudio, setUnisciAudio] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
   const openedJob = useRef<string | null>(null)
@@ -186,7 +201,17 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
   // Selezione automatica dello slot al cambio data o al caricamento ore
   useEffect(() => {
-    if (manualMode || hours.length === 0 || selectedSlot) return
+    if (manualMode || hours.length === 0) return
+    if (selectedKey) {
+      const match = hours.find((h) => h.key === selectedKey && !h.is_recorded)
+      if (match && !materia) {
+        // oxlint-disable-next-line react/set-state-in-effect
+        setMateria(match.materia)
+        setDocente(match.docente ?? '')
+        setTime(match.start_time)
+      }
+      return
+    }
     const pick = pickSlot(hours, date)
     if (!pick) return
     // oxlint-disable-next-line react/set-state-in-effect
@@ -194,48 +219,61 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setMateria(pick.materia)
     setDocente(pick.docente ?? '')
     setTime(pick.start_time)
-  }, [hours, manualMode, selectedSlot, date])
+  }, [hours, manualMode, selectedKey, date, materia])
 
-  const choose = (chosen: File[]) => {
-    if (busy || chosen.length === 0) return
-    const zipsFound = chosen.filter(isZip)
-    if (zipsFound.length > 0) {
-      if (zipsFound.length !== chosen.length) {
-        setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+  const choose = useCallback(
+    (chosen: File[]) => {
+      if (busy || chosen.length === 0) return
+      const zipsFound = chosen.filter(isZip)
+      if (zipsFound.length > 0) {
+        if (zipsFound.length !== chosen.length) {
+          setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+          return
+        }
+        setZipFiles(zipsFound)
+        setAudioFiles([])
+        setMaterialFiles([])
+        setProblem(null)
+        setZipJob(null)
+        create.reset()
+        zips.reset()
         return
       }
-      setZipFiles(zipsFound)
-      setAudioFiles([])
-      setMaterialFiles([])
+
+      const auds = chosen.filter(isAudioFile)
+      const mats = chosen.filter(isMaterialFile)
+
+      const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
+      if (unsupported) {
+        setProblem(
+          `Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`,
+        )
+        return
+      }
+
+      // Ordinamento di partenza: data di modifica del file, poi per nome
+      const sortedAuds = [...auds].sort(
+        (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
+      )
+
+      setZipFiles([])
+      setAudioFiles((prev) => [...prev, ...sortedAuds])
+      setMaterialFiles((prev) => [...prev, ...mats])
+      if (mats.length > 0) setAttachMaterials(true)
       setProblem(null)
       setZipJob(null)
       create.reset()
-      zips.reset()
-      return
+    },
+    [busy, create, zips],
+  )
+
+  const initialFilesHandled = useRef(false)
+  useEffect(() => {
+    if (!initialFilesHandled.current && initialFiles && initialFiles.length > 0) {
+      initialFilesHandled.current = true
+      choose(initialFiles)
     }
-
-    const auds = chosen.filter(isAudioFile)
-    const mats = chosen.filter(isMaterialFile)
-
-    const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
-    if (unsupported) {
-      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`)
-      return
-    }
-
-    // Ordinamento di partenza: data di modifica del file, poi per nome
-    const sortedAuds = [...auds].sort(
-      (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
-    )
-
-    setZipFiles([])
-    setAudioFiles((prev) => [...prev, ...sortedAuds])
-    setMaterialFiles((prev) => [...prev, ...mats])
-    if (mats.length > 0) setAttachMaterials(true)
-    setProblem(null)
-    setZipJob(null)
-    create.reset()
-  }
+  }, [initialFiles, choose])
 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
@@ -261,6 +299,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setMaterialFiles([])
     setZipFiles([])
     setPrimaryMaterialName(null)
+    setUnisciAudio(true)
     setProblem(null)
     setZipJob(null)
   }
@@ -341,6 +380,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
         principale:
           audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
         allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
+        unisci: audioFiles.length > 1 ? unisciAudio : undefined,
         calendar_entry_id: chosenSlot?.key,
         calendar_date: chosenSlot ? date : undefined,
         date,
@@ -500,20 +540,36 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             {audioFiles.length > 1 ? (
               <div>
                 <AudioOrder files={audioFiles} disabled={busy} onChange={setAudioFiles} />
-                <p className="-mt-2 mb-1 flex items-center justify-between text-meta text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
+                <div className="-mt-2 mb-1 flex items-center justify-between gap-2 text-meta text-muted-foreground">
+                  <span className="flex items-center gap-1.5 min-w-0 truncate">
                     <FileAudio className="size-4 shrink-0" aria-hidden />
-                    <span>
-                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} · diventano un'unica registrazione, in quest'ordine
+                    <span className="truncate">
+                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} ·{' '}
+                      {unisciAudio
+                        ? "diventano un'unica registrazione, in quest'ordine"
+                        : 'fonti separate'}
                     </span>
                   </span>
-                  <IconButton
-                    label="Rimuovi tutti gli audio"
-                    icon={X}
-                    disabled={busy}
-                    onClick={() => setAudioFiles([])}
-                  />
-                </p>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      type="button"
+                      variant={unisciAudio ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      aria-pressed={unisciAudio}
+                      disabled={busy}
+                      onClick={() => setUnisciAudio((prev) => !prev)}
+                    >
+                      Unisci
+                    </Button>
+                    <IconButton
+                      label="Rimuovi tutti gli audio"
+                      icon={X}
+                      disabled={busy}
+                      onClick={() => setAudioFiles([])}
+                    />
+                  </div>
+                </div>
               </div>
             ) : audioFiles.length === 1 ? (
               <div className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-meta">
@@ -688,14 +744,21 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                         disabled={h.is_recorded}
                         onClick={() => handleSelectSlot(h)}
                         className={cn(
-                          'flex items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left text-meta transition-all min-w-0',
-                          isSelected && 'border-primary ring-1 ring-primary bg-primary/10',
+                          'flex items-center gap-2 rounded-lg bg-card text-left text-meta transition-all min-w-0',
+                          isSelected
+                            ? 'border-2 border-link bg-primary/20 px-[9px] py-[5px]'
+                            : 'border border-border px-2.5 py-1.5',
                           h.is_recorded && 'opacity-50 cursor-not-allowed',
                         )}
                         aria-label={h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
                         data-testid={`calendar-slot-${i}`}
                       >
-                        <span className="w-1 self-stretch rounded-full bg-primary" />
+                        <span
+                          className={cn(
+                            'w-1 self-stretch rounded-full',
+                            isSelected ? 'bg-link' : 'bg-muted-foreground/30',
+                          )}
+                        />
                         <div className="flex flex-col leading-tight">
                           <span className="font-semibold text-foreground text-xs">{h.materia}</span>
                           <span className="text-[11px] text-muted-foreground tabular-nums">

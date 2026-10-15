@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Link as LinkIcon,
   Mic,
+  Plus,
   SkipForward,
   X,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ import { getSubjectColor } from './subjectColor'
 import { STATUS_LABELS } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
 import { useSubjects } from '@/api/subjects'
+import { useOpenNewLesson } from '@/components/shell/newLesson'
 
 
 export type PopupAnchor = {
@@ -80,6 +82,7 @@ export function EventPopup({
   onLinkLesson: (lessonId: number | null) => void
 }) {
   const color = getSubjectColor(event.materia)
+  const openNewLesson = useOpenNewLesson()
   const [editingNote, setEditingNote] = useState(false)
   const [noteText, setNoteText] = useState(event.note ?? '')
   const [linking, setLinking] = useState(false)
@@ -264,6 +267,15 @@ export function EventPopup({
               side="top"
               active={linking}
               onClick={() => setLinking((prev) => !prev)}
+            />
+            <IconButton
+              label="Importa una lezione per quest'ora"
+              icon={Plus}
+              side="top"
+              onClick={() => {
+                onClose()
+                openNewLesson({ date: event.date, slotKey: event.key })
+              }}
             />
           </>
         )}

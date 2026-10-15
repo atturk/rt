@@ -106,3 +106,38 @@ test('più audio: la lista mostra l’ordine e lo si cambia con le frecce sulla 
   await expect(rows.first()).toContainText('parte2.wav')
   await expect(dialog.getByTestId('chosen-files')).toContainText("diventano un'unica registrazione")
 })
+
+test('trascinamento su tutta la pagina: velo Rilascia per importare e apertura popup (UI3)', async ({ page }) => {
+  await loginViaLink(page)
+
+  // 1. Simula dragenter con un file audio accettato
+  await page.evaluate(() => {
+    const dt = new DataTransfer()
+    const file = new File(['fake audio'], 'lezione.mp3', { type: 'audio/mpeg' })
+    dt.items.add(file)
+    window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, cancelable: true }))
+    window.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, cancelable: true }))
+  })
+
+  const veil = page.getByTestId('global-drop-veil')
+  await expect(veil).toBeVisible()
+  await expect(veil).toContainText('Rilascia per importare')
+
+  // 2. Simula drop sulla finestra
+  await page.evaluate(() => {
+    const dt = new DataTransfer()
+    const file = new File(['fake audio'], 'lezione.mp3', { type: 'audio/mpeg' })
+    dt.items.add(file)
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, cancelable: true }))
+  })
+
+  // Il velo scompare e si apre il popup Nuova lezione con il file caricato
+  await expect(veil).toHaveCount(0)
+  const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByTestId('chosen-files')).toContainText('lezione.mp3')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+})
+

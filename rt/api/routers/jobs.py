@@ -172,6 +172,7 @@ def create_lesson(
     allega_materiali: Optional[bool] = Form(None),
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
+    unisci: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
@@ -216,6 +217,7 @@ def create_lesson(
             return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
                 "appunti": appunti, "principale": principale,
                 "allega_materiali": True if allega_materiali is None else allega_materiali,
+                "unisci": unisci,
                 "run": run, "options": options, "upload_dir": target, **calendar}, actor)
         return _with_upload_cleanup(target, _mixed)
     if not audio:
@@ -237,6 +239,10 @@ def create_lesson(
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
                    "auto_accept": auto_accept, "channel": "terminal"}
+        if len(paths) > 1:
+            return enqueue_job("ingest_sources", None, {"audio": paths, "materiali": [],
+                "appunti": "", "principale": None, "allega_materiali": False, "unisci": unisci,
+                "run": run, "options": options, "upload_dir": target, **calendar}, actor)
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,
                            {"inputs": paths, "options": options, "upload_dir": target, **calendar}, actor)

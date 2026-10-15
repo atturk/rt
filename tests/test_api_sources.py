@@ -1,3 +1,4 @@
+import os
 import pytest
 
 from rt.core.lesson_paths import lesson_path
@@ -157,3 +158,40 @@ def test_remove_and_restore_used_source_api(api_client, source_lesson):
     view = api_client.post(url + '/restore-removed').json()
     assert view['sources'][0]['id'] == first['id']
     assert not view['solo_ricostruzione'] and not view['has_unused_sources']
+
+
+def test_post_source_multiple_audio_merged_with_parts(api_client, source_lesson, monkeypatch):
+    url = f"/api/v1/lessons/{lesson_id(api_client)}"
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda path: 120.0 if "part1" in path else 60.0)
+    monkeypatch.setattr("rt.pipeline.setup.merge_audio_for_transcription",
+                        lambda audios, out: open(out, "wb").write(b"fake-merged"))
+    files = [
+        ("file", ("part1.m4a", b"audio1", "audio/mp4")),
+        ("file", ("part2.m4a", b"audio2", "audio/mp4")),
+    ]
+    response = api_client.post(url + "/sources", data={"tipo": "audio", "unisci": "true"}, files=files)
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["tipo"] == "audio"
+    assert data["parti"] == [
+        {"nome": "part1.m4a", "durata": "2 min", "durata_s": 120.0},
+        {"nome": "part2.m4a", "durata": "1 min", "durata_s": 60.0},
+    ]
+    # Check GET /sources reflects the parts
+    view = api_client.get(url + "/sources").json()
+    merged = next(s for s in view["sources"] if s["id"] == data["id"])
+    assert merged["parti"] == data["parti"]
+
+
+def test_post_source_multiple_audio_separate_when_unisci_false(api_client, source_lesson):
+    url = f"/api/v1/lessons/{lesson_id(api_client)}"
+    files = [
+        ("file", ("partA.m4a", b"audioA", "audio/mp4")),
+        ("file", ("partB.m4a", b"audioB", "audio/mp4")),
+    ]
+    response = api_client.post(url + "/sources", data={"tipo": "audio", "unisci": "false"}, files=files)
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert isinstance(data, list) and len(data) == 2
+    assert [os.path.basename(s["file"]) for s in data] == ["partA.m4a", "partB.m4a"]
+    assert all(s["parti"] is None for s in data)

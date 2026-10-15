@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, authHeaders, loginViaLink, twoPagePdf } from './support'
 
 // Sessione di ripasso leggera, pannello Arricchimento e bot Telegram contro l'API vera. Il worker
 // gira con --mock (LLM finto) e il bot è finto (RT_TELEGRAM_FAKE=1), vedi scripts/e2e_server.py.
@@ -97,7 +97,7 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
   await page.getByTestId('lesson-actions').getByRole('button', { name: 'Arricchimento' }).click()
   const panel = page.getByTestId('enrichment-panel')
   await panel.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
-  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'Emostasi.pdf', mimeType: 'application/pdf', buffer: twoPagePdf() })
   await panel.getByRole('button', { name: /^Carica/ }).click()
   // Il job si segue nel pannello; finito, la galleria si aggiorna
   const count = async () => (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images.length
@@ -147,3 +147,45 @@ test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricaric
   await expect(panel).toHaveAttribute('data-running', 'false')
   expect((await apiGet<{ running: boolean }>(page.request, '/telegram/daemon')).running).toBe(false)
 })
+
+test('immagini: striscia di miniature, chiusura/apertura e visore a schermo intero', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await builtLesson(page)
+
+  // Vai alla pagina della lezione
+  await page.goto(`/lezioni/${lesson.id}`)
+  const strip = page.locator('.rt-strip')
+  await expect(strip).toBeVisible({ timeout: 15_000 })
+  await expect(strip.locator('.count-pill')).toHaveText('2 pagine')
+  await expect(strip.locator('.name')).toContainText('[MOCK] Immagine di test')
+
+  // Clic sulla miniatura per aprire il visore
+  const firstThumb = strip.locator('.thumb').first()
+  await firstThumb.click()
+
+  const viewer = page.getByRole('dialog', { name: 'Visore immagini' })
+  await expect(viewer).toBeVisible()
+  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
+  await expect(viewer.locator('.count')).toHaveText('1 / 2')
+
+  // Naviga alla seconda immagine con tasto Successiva
+  await viewer.getByRole('button', { name: 'Successiva' }).click()
+  await expect(viewer.locator('.count')).toHaveText('2 / 2')
+  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
+
+  // Chiudi con Esc
+  await page.keyboard.press('Escape')
+  await expect(viewer).not.toBeVisible()
+
+  // Prova la chiusura della striscia
+  const toggleBtn = strip.locator('.tg')
+  await toggleBtn.click()
+  await expect(strip).toHaveClass(/closed/)
+  await expect(strip.locator('.thumbs')).toBeHidden()
+
+  // Riapri
+  await toggleBtn.click()
+  await expect(strip).not.toHaveClass(/closed/)
+  await expect(strip.locator('.thumbs')).toBeVisible()
+})
+

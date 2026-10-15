@@ -30,12 +30,24 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>
 }
 
-function renderDialog(open = true, onClose = vi.fn()) {
+function renderDialog(
+  open = true,
+  onClose = vi.fn(),
+  initialDate?: string,
+  initialSlotKey?: string,
+  initialFiles?: File[],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <NewLessonDialog open={open} onClose={onClose} />
+        <NewLessonDialog
+          open={open}
+          onClose={onClose}
+          initialDate={initialDate}
+          initialSlotKey={initialSlotKey}
+          initialFiles={initialFiles}
+        />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -352,4 +364,76 @@ describe('Materiali accettati e ore dal calendario', () => {
     expect(screen.getByLabelText('Materia')).toHaveValue('')
     expect(screen.getByTestId('pipeline-sentence')).not.toHaveTextContent('collegata')
   })
+
+  it('UI2: ora scelta ha bordo di 2px primario e barretta primaria, le altre bordo normale e barretta grigia', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog()
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    const slot1 = screen.getByTestId('calendar-slot-1')
+
+    // Cliccando su slot1, diventa selezionato
+    fireEvent.click(slot1)
+    expect(slot1).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot1.querySelector('span')).toHaveClass('bg-link')
+
+    expect(slot0).toHaveClass('border', 'border-border')
+    expect(slot0.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+
+    // Cliccando su slot0, lo stile si inverte
+    fireEvent.click(slot0)
+    expect(slot0).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot0.querySelector('span')).toHaveClass('bg-link')
+    expect(slot1).toHaveClass('border', 'border-border')
+    expect(slot1.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+  })
+
+  it('UI1: accetta initialDate e initialSlotKey preselezionando lo slot e compilando i campi', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog(true, vi.fn(), '2026-10-13', 'tpl_1')
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    expect(slot0).toHaveClass('border-2', 'border-link')
+    await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('ANATOMIA'))
+  })
+
+  it('AU2b: con 2 audio mostra bottone Unisci acceso di default e invia unisci: true o false', async () => {
+    mockDay([])
+    const f1 = new File(['a1'], 'audio1.mp3', { type: 'audio/mp3' })
+    const f2 = new File(['a2'], 'audio2.mp3', { type: 'audio/mp3' })
+    renderDialog(true, vi.fn(), undefined, undefined, [f1, f2])
+
+    const unisciBtn = await screen.findByRole('button', { name: 'Unisci' })
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/diventano un'unica registrazione/)).toBeInTheDocument()
+
+    // Compila materia e invia
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'BIOCHIMICA' } })
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unisci: true,
+      }),
+      expect.anything(),
+    )
+
+    // Clic per spegnere Unisci
+    fireEvent.click(unisciBtn)
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(/fonti separate/)).toBeInTheDocument()
+
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+    expect(mutateCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        unisci: false,
+      }),
+      expect.anything(),
+    )
+  })
 })
+

@@ -26,6 +26,7 @@ import { reviewSelection } from './reviewSelection'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonImageStrips } from './lessonImageStrips'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issuePosition, lessonReview, setReview } from './lessonReview'
@@ -181,6 +182,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     lessonClassifier,
     lessonMath,
     lessonImages(lessonId),
+    lessonImageStrips(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
     // Anche il parsing in background cambia lo stato attivo della formattazione.
     EditorView.updateListener.of(update => setEditor({ view: update.view, state: update.state })),
