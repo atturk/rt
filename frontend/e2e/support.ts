@@ -95,7 +95,7 @@ export function tinyPdf(topic = 'Slide di prova: lipidi'): Buffer {
   return Buffer.from(pdf, 'latin1')
 }
 
-/** Due pagine con testo utile: il mapping non colloca più slide senza argomento. */
+/** Due pagine didattiche: oltre al titolo hanno contenuto sufficiente per il filtro AR4. */
 export function twoPagePdf(topic = 'Slide'): Buffer {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -108,7 +108,10 @@ export function twoPagePdf(topic = 'Slide'): Buffer {
   // Stringhe PDF letterali: parentesi e backslash vanno protetti.
   const safe = topic.replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7e]/g, ' ')
   for (let i = 0; i < 2; i++) {
-    const stream = `BT /F1 12 Tf 30 140 Td (${safe}) Tj 0 -22 Td (pagina ${i + 1}) Tj ET`
+    const stream = `BT /F1 12 Tf 30 180 Td (${safe}) Tj 0 -22 Td (pagina ${i + 1}) Tj
+0 -22 Td (Strutture molecolari, composizione e funzioni biologiche.) Tj
+0 -22 Td (Processi cellulari, meccanismi fisiologici e applicazioni.) Tj
+0 -22 Td (Definizioni, classificazioni ed esempi clinici commentati.) Tj ET`
     objects[4 + i] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
   }
   let pdf = '%PDF-1.4\n'
