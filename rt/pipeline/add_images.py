@@ -403,7 +403,7 @@ def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=No
     for i, image in enumerate(images, 1):
         image_hash = compute_image_hash(image.image_bytes)
         if image_hash not in descriptions:
-            if image.text:
+            if image.text or image.mapping_skip:
                 descriptions[image_hash] = {
                     "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash),
                     "source": image.source_label,
@@ -444,7 +444,7 @@ def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=
     for i, image in enumerate(images, 1):
         image_hash = compute_image_hash(image.image_bytes)
         description = descriptions.get(image_hash)
-        if description is not None:
+        if description is not None and not image.mapping_skip:
             text = image.text or '\n'.join(str(description.get(key) or '')
                 for key in ('slide_title', 'ocr_text', 'visual_elements', 'summary_keywords'))
             identity = image.file_fingerprint or image_hash

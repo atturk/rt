@@ -444,6 +444,9 @@ def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock
     """
     if ctx:
         ctx.check_cancelled()
+    if page.get("mapping_skip"):
+        return [], []
+    page = {**page, "testo": page.get("mapping_text", page.get("testo", ""))}
     candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
     if not candidates and mock and mock_fallback and corpus and page.get("testo", "").strip():
         entry = corpus[0]

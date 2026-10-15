@@ -19,6 +19,8 @@ class ExtractedImage:
     page_number: int = 1
     file_fingerprint: str = ""
     unit_id: Optional[str] = None
+    has_figures: bool = True
+    mapping_skip: bool = False
 
 
 def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional[Callable[[int, int], None]] = None) -> List[ExtractedImage]:
@@ -39,15 +41,21 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     basename = os.path.basename(pdf_path)
     results = []
     mat = fitz.Matrix(zoom, zoom)
+    from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_page_has_figures
+    texts = cleaned_page_texts([page.get_text().strip() for page in doc])
     for i in range(doc.page_count):
         page = doc.load_page(i)
+        has_figures = pdf_page_has_figures(page)
+        sparse = few_words(texts[i])
         pix = page.get_pixmap(matrix=mat)
         results.append(ExtractedImage(
             image_bytes=pix.tobytes("png"),
             source_label=f"pdf:{basename}#{i + 1}",
-            text=page.get_text().strip(),
+            text='' if sparse and has_figures else texts[i],
             page_number=i + 1,
             file_fingerprint=fingerprint,
+            has_figures=has_figures,
+            mapping_skip=sparse and not has_figures,
         ))
         if progress:
             progress(i + 1, doc.page_count)

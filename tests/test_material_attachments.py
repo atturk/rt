@@ -17,7 +17,7 @@ def test_clip_attaches_images_never_ocr_and_off_preserves_existing_images(multi_
     lesson = multi_unit_lesson
     from rt.pipeline.rewrite import _run_rewrite
     _run_rewrite(lesson, force=True, force_mock=True)
-    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('OCR SECRET CONTEXT'))
+    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('OCR SECRET CONTEXT\nUna descrizione completa illustra processi cellulari, strutture biologiche, meccanismi molecolari, funzioni fisiologiche e possibili alterazioni patologiche.'))
     outline = load_outline(lesson)
     mid = str(outline.macro_sections[0].id)
     save_image_descriptions(lesson, {'old': {'filename': 'assets/images/old.png', 'alt_text': 'Existing'}})
@@ -60,7 +60,7 @@ def test_pipeline_clip_and_versions_restore_image_placement(multi_unit_lesson, m
     lesson = multi_unit_lesson
     run_rewrite(lesson, force=True, force_mock=True)
     first = record_version(lesson, 'import')
-    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('MATERIAL CONTEXT'))
+    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('MATERIAL CONTEXT\nUna descrizione completa illustra processi cellulari, strutture biologiche, meccanismi molecolari, funzioni fisiologiche e possibili alterazioni patologiche.'))
     run_rewrite(lesson, force=True, force_mock=True)
     assert images_for_document(lesson, load_outline(lesson))[0]
     record_version(lesson, 'rebuild')

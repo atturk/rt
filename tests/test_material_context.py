@@ -7,7 +7,7 @@ from tests.test_materials import pdf_bytes
 
 def test_materials_enter_variable_prompt_not_prefix_and_are_cached(multi_unit_lesson, monkeypatch):
     lesson = multi_unit_lesson
-    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('MATERIAL CONTEXT'))
+    add_source(lesson, 'materiale', 'doc.pdf', pdf_bytes('MATERIAL CONTEXT\nUna descrizione completa illustra processi cellulari, strutture biologiche, meccanismi molecolari, funzioni fisiologiche e possibili alterazioni patologiche.'))
     captured = []
     original = LLMClient.call_structured
     def call(self, **kwargs):
