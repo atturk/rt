@@ -70,7 +70,7 @@ export async function exportItem(page: Page, name: string | RegExp) {
 }
 
 /** PDF di una pagina, abbastanza valido per PyMuPDF. */
-export function tinyPdf(topic = 'Slide di prova: lipidi'): Buffer {
+export function tinyPdf(topic = 'Slide di prova: lipidi', withContent = false): Buffer {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -80,7 +80,11 @@ export function tinyPdf(topic = 'Slide di prova: lipidi'): Buffer {
   ]
   const safe = topic.replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7e]/g, ' ')
   const fontSize = topic === 'Slide di prova: lipidi' ? 24 : 12
-  const stream = `BT /F1 ${fontSize} Tf 40 90 Td (${safe}) Tj ET`
+  const stream = withContent ? `BT /F1 9 Tf 20 150 Td (${safe}) Tj
+0 -22 Td (Strutture molecolari, composizione e funzioni biologiche.) Tj
+0 -22 Td (Processi cellulari, meccanismi fisiologici e applicazioni.) Tj
+0 -22 Td (Definizioni, classificazioni ed esempi clinici commentati.) Tj ET`
+    : `BT /F1 ${fontSize} Tf 40 90 Td (${safe}) Tj ET`
   objects[3] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
   let pdf = '%PDF-1.4\n'
   const offsets: number[] = []
