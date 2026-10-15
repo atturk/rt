@@ -28,10 +28,13 @@ class ReviewFindingList(BaseModel):
     issues: List[ReviewFinding]
 
 
+LATEX_WRITING_RULE = r"Formule, insiemi, variabili con indici, frazioni ed equazioni in LaTeX ($...$ in riga, $$...$$ a blocco), mai pedici/apici Unicode o <sub>/<sup>; chimica: reazioni in $$\mathrm{...}$$ con \rightarrow o \rightleftharpoons, specie in riga come $\mathrm{CO_2}$, mai \ce; testo normale e sigle non chimiche restano testo."
+
+
 STUDY_NOTE_VERIFICA_SYSTEM_PROMPT = """Sei un revisore accademico ed esperto della materia. Il tuo compito è verificare l'accuratezza scientifica e concettuale del passaggio selezionato rispetto all'unità didattica e al contesto della lezione.
 Valuta se il passaggio è corretto, impreciso, errato o non verificabile.
 Fornisci una spiegazione rigorosa e chiara in formato markdown.
-Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione."""
+Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione.""" + "\n" + LATEX_WRITING_RULE
 
 STUDY_NOTE_CHIEDI_SYSTEM_PROMPT = """Sei un tutor accademico chiaro, accurato e didattico. Il tuo compito è spiegare allo studente il passaggio selezionato tenendo conto dell'unità didattica e dell'intera lezione.
 Rispondi in formato markdown in modo chiaro, approfondito ma accessibile."""
@@ -154,7 +157,7 @@ OBIETTIVI DI SCRITTURA:
 5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette). "Approfondita" significa esposizione completa e ben argomentata di ciò che il docente ha detto — non aggiunta di conoscenza enciclopedica esterna. Distingui sempre tra: (a) FATTO SORGENTE — ciò che il docente ha detto esplicitamente; (b) INFERENZA DIRETTA — collegamenti logici impliciti ma evidenti nel discorso del docente; ED EVITA (c) CONOSCENZA ESTERNA — nozioni non dette dal docente, anche se vere e pertinenti, che non vanno mai aggiunte.
 6. PROVENANCE: Nell'output JSON devi includere in "source_segment_ids" la lista degli ID dei segmenti principali utilizzati per redigere l'unità.
 7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi).
-8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano."""
+8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano.""" + "\n9. " + LATEX_WRITING_RULE
 
 
 class PromptPrefix(str):

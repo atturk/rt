@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.2.6b5 — 2026-10-16
+
+### Novità
+
+- La rielaborazione e le correzioni di Verifica usano formule LaTeX, anche per le reazioni chimiche, leggibili nell’editor, nella lettura e nello Studio.
+
+### Correzioni
+
+- Le istruzioni ai modelli evitano pedici e apici Unicode o HTML nelle formule.
+
 ## 4.2.6b4 — 2026-10-15
 
 ### Correzioni
