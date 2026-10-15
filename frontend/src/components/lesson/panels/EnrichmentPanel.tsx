@@ -358,7 +358,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                     <img
                       src={img.url}
                       alt={img.alt_text || img.slide_title || img.name}
-                      className="size-full object-cover"
+                      className="size-full object-contain"
                       loading="lazy"
                     />
                   ) : (
@@ -393,7 +393,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                     <img
                       src={imgSrc}
                       alt={el.title || `${kindText} ${el.unit_id}`}
-                      className="size-full object-cover"
+                      className="size-full object-contain"
                       loading="lazy"
                     />
                   ) : (
