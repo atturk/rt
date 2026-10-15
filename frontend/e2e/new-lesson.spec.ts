@@ -144,6 +144,7 @@ test('trascinamento su tutta la pagina: velo Rilascia per importare e apertura p
 
 test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) => {
   // L'audio unito sta fra le fonti (sources/<id>/): il player deve trovarlo (4.2.6b2.1).
+  test.setTimeout(3 * LONG)
   await loginViaLink(page)
   const materia = 'PLAYER UNITO'
   const res = await page.request.post('/api/v1/lessons', {
@@ -155,6 +156,11 @@ test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) =>
     },
   })
   expect(res.ok(), await res.text()).toBeTruthy()
+  const jobId = ((await res.json()) as { job_id: string }).job_id
+  await expect.poll(async () => {
+    const job = await apiGet<Job & { error?: string | null }>(page.request, `/jobs/${jobId}`)
+    return job.state === 'failed' ? `failed: ${job.error}` : job.state
+  }, { timeout: LONG }).toBe('succeeded')
   type Lesson = { id: number; materia: string; has_audio?: boolean }
   await expect.poll(async () => (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)?.id,
     { timeout: LONG }).toBeTruthy()
@@ -162,4 +168,7 @@ test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) =>
   await expect.poll(async () => (await apiGet<Lesson>(page.request, `/lessons/${id}`)).has_audio, { timeout: LONG }).toBe(true)
   await page.goto(`/lezioni/${id}`)
   await expect(page.getByTestId('audio-player')).toBeVisible()
+  // Gli spec successivi prendono la prima lezione dell'elenco: questa non deve restare.
+  const del = await page.request.delete(`/api/v1/lessons/${id}`, { headers: authHeaders() })
+  expect(del.ok(), await del.text()).toBeTruthy()
 })
