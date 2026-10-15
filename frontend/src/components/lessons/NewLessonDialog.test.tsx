@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
 import { api } from '@/api/client'
+import { resetUploadsForTests, useUploads } from '@/lib/uploadQueue'
 import { NewLessonDialog } from './NewLessonDialog'
 
 const mutateCreate = vi.fn()
@@ -21,8 +22,9 @@ vi.mock('@/api/jobs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/jobs')>()
   return {
     ...actual,
-    useCreateLesson: () => ({ mutate: mutateCreate, isPending: false, error: null, reset: vi.fn(), progress: null }),
-    useImportLessonZips: () => ({ mutate: mutateZips, isPending: false, error: null, reset: vi.fn(), progress: null }),
+    // L'invio passa dalla coda dei caricamenti: qui risponde subito con un job accettato.
+    sendLesson: (input: unknown) => Promise.resolve(mutateCreate(input, {}) ?? { job_id: 'job-1' }),
+    sendLessonZips: (files: unknown) => Promise.resolve(mutateZips(files, {}) ?? { job_id: 'zip-1' }),
   }
 })
 
@@ -57,6 +59,7 @@ function renderDialog(
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  resetUploadsForTests()
   mutateCreate.mockReset()
   mutateZips.mockReset()
 })
@@ -134,7 +137,6 @@ const chooseZip = () => fireEvent.change(screen.getByLabelText('Audio o pacchett
 
 function mockImport(result: unknown, initialState = 'succeeded') {
   let state = initialState
-  mutateZips.mockImplementation((_files, options) => options.onSuccess({ job_id: 'zip-1' }))
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path === '/api/v1/workers' ? [{ worker_id: 'w' }] : {
     id: 'zip-1', state, progress: { current: 0, total: 3, message: 'Importo 1 su 3: prima.zip' }, result, error: state === 'failed' ? 'Importazione interrotta.' : null,
   }))) as never)
@@ -230,7 +232,7 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
     expect(screen.getByRole('button', { name: 'Allega documenti alle unità' })).toBeEnabled()
   })
 
-  it('senza audio gestisce la stellina del materiale principale e manda principale', () => {
+  it('senza audio gestisce la stellina del materiale principale e manda principale', async () => {
     renderDialog()
     const pdf1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
     const pdf2 = new File(['pdf2'], 'slide.pdf', { type: 'application/pdf' })
@@ -252,7 +254,8 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       expect.anything(),
     )
 
-    // Clic sulla stellina della seconda miniatura
+    // Clic sulla stellina della seconda miniatura, a primo invio uscito dalla coda
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled())
     fireEvent.click(screen.getByTestId('material-star-1'))
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
@@ -435,7 +438,8 @@ describe('Materiali accettati e ore dal calendario', () => {
       expect.anything(),
     )
 
-    // Clic per spegnere Unisci
+    // Il primo invio esce dalla coda dei caricamenti, poi si cambia e si rimanda
+    await waitFor(() => expect(unisciBtn).toBeEnabled())
     fireEvent.click(unisciBtn)
     expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText(/restano 2 fonti separate/)).toBeInTheDocument()
@@ -447,6 +451,38 @@ describe('Materiali accettati e ore dal calendario', () => {
       }),
       expect.anything(),
     )
+  })
+})
+
+describe('caricamento in background', () => {
+  it('chiusa la finestra il caricamento continua e a fine invio non si cambia pagina', async () => {
+    let accept!: (v: { job_id: string }) => void
+    mutateCreate.mockImplementation(() => new Promise((resolve) => { accept = resolve }))
+    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
+    const client = new QueryClient()
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NewLessonDialog open onClose={vi.fn()} initialFiles={[pdf]} />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'FISICA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+    expect(await screen.findByTestId('upload-status')).toHaveTextContent('Puoi chiudere la finestra')
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const { result } = renderHook(() => useUploads())
+    expect(result.current.map((u) => u.state)).toEqual(['uploading'])
+    accept({ job_id: 'job-9' })
+    await waitFor(() => expect(result.current).toEqual([]))
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
   })
 })
 

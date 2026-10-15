@@ -26,8 +26,9 @@ import { useSubjects } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
   invalidateAfterJob,
-  useCreateLesson,
-  useImportLessonZips,
+  sendLesson,
+  sendLessonZips,
+  type NewLesson,
   type ZipImportResult,
 } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
@@ -40,6 +41,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { AUDIO_EXTENSIONS, formatBytes } from '@/lib/jobs'
+import { cancelUpload, enqueueUpload, isUploadActive, useUpload, type UploadSend } from '@/lib/uploadQueue'
 import { cn } from '@/lib/utils'
 
 const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
@@ -137,8 +139,17 @@ export function NewLessonDialog({
   const navigate = useNavigate()
   const client = useQueryClient()
   const lessons = useLessons()
-  const create = useCreateLesson()
-  const zips = useImportLessonZips()
+  // Il caricamento sta nella coda (lib/uploadQueue): chiudendo la finestra continua.
+  const [uploadId, setUploadId] = useState<string | null>(null)
+  const upload = useUpload(uploadId)
+  const [uploadError, setUploadError] = useState<unknown>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const input = useRef<HTMLInputElement>(null)
   const materialsInput = useRef<HTMLInputElement>(null)
   const listId = useId()
@@ -176,7 +187,7 @@ export function NewLessonDialog({
 
   const zipFinished = !!zipJob && jobFinished(job.data)
   const busy =
-    create.isPending || zips.isPending || (!!zipJob && !job.isError && !jobFinished(job.data))
+    (!!upload && isUploadActive(upload)) || (!!zipJob && !job.isError && !jobFinished(job.data))
 
   const subjectsQuery = useSubjects()
   const subjects = Array.isArray(subjectsQuery.data)
@@ -237,8 +248,7 @@ export function NewLessonDialog({
         setMaterialFiles([])
         setProblem(null)
         setZipJob(null)
-        create.reset()
-        zips.reset()
+        setUploadError(null)
         return
       }
 
@@ -264,9 +274,9 @@ export function NewLessonDialog({
       if (mats.length > 0) setAttachMaterials(true)
       setProblem(null)
       setZipJob(null)
-      create.reset()
+      setUploadError(null)
     },
-    [busy, create, zips],
+    [busy],
   )
 
   const initialFilesHandled = useRef(false)
@@ -349,12 +359,16 @@ export function NewLessonDialog({
     if (busy || zipJob) return
 
     if (kind === 'zip') {
-      zips.mutate(zipFiles, {
-        onSuccess: (accepted) => {
+      const files = zipFiles
+      startUpload(
+        files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
+        files,
+        (onProgress, signal) => sendLessonZips(files, onProgress, signal),
+        (accepted) => {
           setZipJob(accepted.job_id)
           setZipFiles([])
         },
-      })
+      )
       return
     }
 
@@ -374,40 +388,69 @@ export function NewLessonDialog({
 
     const chosenSlot = manualMode ? null : selectedSlot
 
-    create.mutate(
-      {
-        files: audioFiles,
-        materiali: materialFiles.length > 0 ? materialFiles : undefined,
-        // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
-        principale:
-          audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
-        allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
-        unisci: audioFiles.length > 1 ? unisciAudio : undefined,
-        calendar_entry_id: chosenSlot?.key,
-        calendar_date: chosenSlot ? date : undefined,
-        date,
-        materia: materia.trim(),
-        argomenti: '',
-        docente: docente.trim(),
-        ora: time,
-        run: !solo,
-        mock: false,
-        auto_accept: false,
-        with_review: !solo && review,
-        with_enrichment: !solo && enrichment,
-      },
-      {
-        onSuccess: (accepted) => {
-          onClose()
-          navigate(`/lezioni/nuova/${accepted.job_id}`)
-        },
+    const input: NewLesson = {
+      files: audioFiles,
+      materiali: materialFiles.length > 0 ? materialFiles : undefined,
+      // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
+      principale:
+        audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
+      allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
+      unisci: audioFiles.length > 1 ? unisciAudio : undefined,
+      calendar_entry_id: chosenSlot?.key,
+      calendar_date: chosenSlot ? date : undefined,
+      date,
+      materia: materia.trim(),
+      argomenti: '',
+      docente: docente.trim(),
+      ora: time,
+      run: !solo,
+      mock: false,
+      auto_accept: false,
+      with_review: !solo && review,
+      with_enrichment: !solo && enrichment,
+    }
+    startUpload(
+      `${materia.trim()} · ${date}`,
+      [...audioFiles, ...materialFiles],
+      (onProgress, signal) => sendLesson(input, onProgress, signal),
+      (accepted) => {
+        onClose()
+        navigate(`/lezioni/nuova/${accepted.job_id}`)
       },
     )
   }
 
-  const upload = create.progress ?? zips.progress
+  /** Accoda l'invio. A finestra ancora aperta si prosegue come prima (pagina del job, esito
+   * dello zip); a finestra chiusa il job compare in Job e gli errori restano nella sua riga. */
+  function startUpload(
+    label: string,
+    files: File[],
+    send: UploadSend<{ job_id: string }>,
+    accepted: (value: { job_id: string }) => void,
+  ) {
+    setUploadError(null)
+    const { id, done } = enqueueUpload(label, files, send)
+    setUploadId(id)
+    done.then(
+      (value) => {
+        invalidateAfterJob(client)
+        if (!mounted.current) return
+        setUploadId(null)
+        accepted(value)
+      },
+      (reason: unknown) => {
+        if (!mounted.current) return
+        setUploadId(null)
+        if (reason instanceof DOMException && reason.name === 'AbortError') return
+        // L'errore si legge qui: la riga fallita non serve anche in Job.
+        cancelUpload(id)
+        setUploadError(reason)
+      },
+    )
+  }
+
   const percent = upload?.total ? Math.round((upload.loaded / upload.total) * 100) : null
-  const error = create.error ?? zips.error
+  const error = uploadError
   const errorText =
     error instanceof ApiError && error.code === 'payload_too_large'
       ? `${error.message} Dividi l'audio in più file più piccoli.`
@@ -840,7 +883,21 @@ export function NewLessonDialog({
 
         {problem && <Alert tone="danger">{problem}</Alert>}
         {errorText && <Alert tone="danger">{errorText}</Alert>}
-        {upload && <ProgressBar value={percent} label="Caricamento" className="my-3 h-1.5" />}
+        {upload && isUploadActive(upload) && (
+          <div className="my-3 flex flex-col gap-1.5" data-testid="upload-status">
+            {upload.state === 'queued' ? (
+              <p className="text-meta text-muted-foreground">In coda: parte quando finisce il caricamento in corso.</p>
+            ) : (
+              <ProgressBar value={percent} label="Caricamento" className="h-1.5" />
+            )}
+            <p className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
+              <span>Puoi chiudere la finestra: il caricamento continua e lo segui in Job. Tieni aperta la scheda di RT finché non finisce.</span>
+              <button type="button" className="underline" onClick={() => cancelUpload(upload.id)}>
+                Annulla il caricamento
+              </button>
+            </p>
+          </div>
+        )}
         {zipJob && (
           <div className="my-3">
             <JobProgress

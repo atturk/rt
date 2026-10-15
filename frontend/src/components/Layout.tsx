@@ -13,6 +13,7 @@ import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
+import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +63,7 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 }
 
 export function Layout() {
+  useUploadGuard()
   const studyZen = useState(false)
   const [rsvp, setRsvp] = useState<RsvpLayoutState>({ active: false, tint: null })
   const [zen, setZen] = useState<RsvpLayoutState>({ active: false, tint: null })
