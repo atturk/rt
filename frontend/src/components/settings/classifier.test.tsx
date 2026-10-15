@@ -20,3 +20,11 @@ it('salva modalità indipendenti e mostra il modello proprio', async () => {
  await userEvent.click(screen.getByRole('button',{name:'Salva classificatore'}))
  await waitFor(()=>expect(put).toHaveBeenCalledWith('/api/v1/settings/classifier',{body:{...initial,jobs:{relevance:{mode:'off'},question_types:{mode:'manual',model:'own'}}}}))
 })
+
+it.each([undefined, 0.65])('mostra il default immagini 0,7 e conserva la soglia scelta: %s', async (threshold) => {
+ const initial = { model: 'shared', credential: 'openrouter', timeout_seconds: 30, jobs: { images: { mode: 'manual', threshold } } }
+ vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path.endsWith('/classifier') ? initial : { credentials: [] }))) as never)
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ClassifierSettingsSection /></QueryClientProvider>)
+ await userEvent.click(await screen.findByRole('button', { name: 'Modello proprio Immagini' }))
+ expect(screen.getByLabelText('Soglia assegnazione')).toHaveValue(threshold ?? 0.7)
+})
