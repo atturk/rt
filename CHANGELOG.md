@@ -8,6 +8,7 @@
 
 ### Correzioni
 
+- Nell’import senza audio il primo documento è già selezionato come fonte principale; togliendolo, la scelta passa al primo rimasto.
 - Le istruzioni ai modelli evitano pedici e apici Unicode o HTML nelle formule.
 
 ## 4.2.6b4 — 2026-10-15

@@ -241,16 +241,16 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       target: { files: [pdf1, pdf2] },
     })
 
-    // Senza audio mostra l'avviso: di default decide il server (documento con più pagine)
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/Senza audio la scaletta segue il documento con più pagine/)
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
+    // Senza audio il primo documento è sempre scelto e mandato al server.
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/La scaletta segue «appunti.pdf»/)
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'false')
 
     fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
-    // Senza clic sulla stellina principale non si manda
+    // La principale si manda anche senza clic sulla stellina.
     fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
     expect(mutateCreate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ principale: undefined }),
+      expect.objectContaining({ principale: 'appunti.pdf' }),
       expect.anything(),
     )
 
@@ -259,7 +259,7 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
     fireEvent.click(screen.getByTestId('material-star-1'))
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent('Senza audio la scaletta segue slide.pdf')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('La scaletta segue «slide.pdf»')
 
     fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
 
@@ -272,6 +272,20 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       }),
       expect.anything(),
     )
+  })
+
+  it('togliendo la principale passa al primo materiale rimasto', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: ['uno.pdf', 'due.pdf', 'tre.pdf'].map((name) => new File(['pdf'], name, { type: 'application/pdf' })) },
+    })
+    fireEvent.click(screen.getByTestId('material-star-2'))
+    fireEvent.click(screen.getByTestId('material-remove-2'))
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«uno.pdf»')
+    fireEvent.click(screen.getByTestId('material-remove-0'))
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«due.pdf»')
   })
 
   it('l interruttore graffetta controlla allega_materiali', () => {
