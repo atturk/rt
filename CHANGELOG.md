@@ -1,6 +1,14 @@
 # Novità di RT
 
+## 4.2.6b1.1 — 2026-10-15
+
+### Correzioni
+
+- Le novità della 4.2.6b1 tornano visibili in Impostazioni (la sezione risultava vuota).
+
 ## 4.2.6b1 — 2026-10-15
+
+### Novità
 
 - I materiali vanno alle singole sottounità: ogni pagina viene confrontata con le parti della lezione che le somigliano di più e il classificatore conferma dove serve davvero. La rielaborazione di ogni sottounità riceve solo le sue pagine, e la fonte principale resta quella che guida. La soglia si regola in Impostazioni › Classificatore.
 - Le pagine allegate compaiono sotto la sottounità a cui appartengono, nell'ordine del documento. Più immagini di fila diventano una striscia di miniature che scorre di lato, con un visore a schermo pieno (frecce, tastiera, swipe sul telefono). Il markdown esportato resta pulito, un'immagine per riga.
