@@ -1,5 +1,5 @@
 import { Image as ImageIcon, Search, Sparkles, Upload, X } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -8,6 +8,10 @@ import { useLessonDocument } from '@/api/hooks'
 import { useAddImages, useLessonImages, useRefreshImages, type LessonImage } from '@/api/images'
 import { useOutline } from '@/api/jobs'
 import { JobProgress } from '@/components/JobProgress'
+import {
+  ENRICHMENT_MEDIA_DRAG_EVENT,
+  ENRICHMENT_MEDIA_DROP_EVENT,
+} from '@/components/shell/globalFileDropUtils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -61,6 +65,36 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [showIgnored, setShowIgnored] = useState(false)
+  const [mediaDragActive, setMediaDragActive] = useState(false)
+
+  const chooseUploadFiles = (files: File[]) => {
+    const accepted = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' ||
+      ACCEPT.split(',').some((ext) => ext.startsWith('.') && file.name.toLowerCase().endsWith(ext)))
+    const unsupported = files.find((file) => !accepted.includes(file))
+    setUploadError(unsupported ? `Formato non supportato: ${unsupported.name}. Usa PDF o foto.` : null)
+    setUploadFiles((previous) => [...previous, ...accepted])
+  }
+
+  useEffect(() => {
+    const onMediaDrag = (e: Event) => {
+      const custom = e as CustomEvent<{ active: boolean }>
+      setMediaDragActive(Boolean(custom.detail?.active))
+    }
+    const onMediaDrop = (e: Event) => {
+      const custom = e as CustomEvent<{ files: File[] }>
+      if (custom.detail?.files?.length) {
+        setOpenUpload(true)
+        chooseUploadFiles(custom.detail.files)
+      }
+      setMediaDragActive(false)
+    }
+    window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
+    window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
+    return () => {
+      window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
+      window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
+    }
+  }, [])
 
   if (!Number.isFinite(id)) return null
 
@@ -81,14 +115,6 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const ignoredCount = elements.filter(
     (e) => e.status === 'dismissed' && !e.asset_image,
   ).length
-
-  const chooseUploadFiles = (files: File[]) => {
-    const accepted = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' ||
-      ACCEPT.split(',').some((ext) => ext.startsWith('.') && file.name.toLowerCase().endsWith(ext)))
-    const unsupported = files.find((file) => !accepted.includes(file))
-    setUploadError(unsupported ? `Formato non supportato: ${unsupported.name}. Usa PDF o foto.` : null)
-    setUploadFiles((previous) => [...previous, ...accepted])
-  }
 
   const handleUploadSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -126,7 +152,18 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 text-body" data-testid="enrichment-panel">
+    <div className="relative flex flex-col gap-4 text-body" data-testid="enrichment-panel">
+      {mediaDragActive && (
+        <div
+          className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-primary/10 p-5 text-center font-semibold text-foreground pointer-events-none select-none animate-in fade-in duration-150"
+          data-testid="enrichment-drop-veil"
+          role="status"
+          aria-live="polite"
+        >
+          <Upload className="size-8 text-primary" aria-hidden />
+          <p>Rilascia per aggiungere ai media della lezione</p>
+        </div>
+      )}
       {/* Sezione Media della lezione */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">

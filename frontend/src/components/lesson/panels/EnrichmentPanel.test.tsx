@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 
@@ -201,4 +201,32 @@ it('aggiunge i file trascinati ai file scelti, ignora gli altri e impedisce il v
   const options = post.mock.calls[0][1] as { bodySerializer: () => FormData }
   const body = options.bodySerializer()
   expect(body.getAll('files').map((file) => (file as File).name)).toEqual(['slide.pdf', 'foto.HEIC'])
+})
+
+it('AR5: illumina il pannello al trascinamento di media e apre il riquadro di caricamento al rilascio', () => {
+  renderPanel()
+  expect(screen.queryByTestId('enrichment-drop-veil')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('enrichment-upload')).not.toBeInTheDocument()
+
+  // Drag attivo
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-enrichment-media-drag', { detail: { active: true } }),
+    )
+  })
+  expect(screen.getByTestId('enrichment-drop-veil')).toBeInTheDocument()
+  expect(screen.getByText('Rilascia per aggiungere ai media della lezione')).toBeInTheDocument()
+
+  // Rilascio di un PDF
+  const pdf = new File(['slide content'], 'lezione-slide.pdf', { type: 'application/pdf' })
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-enrichment-media-drop', { detail: { files: [pdf] } }),
+    )
+  })
+
+  // Il velo scompare e la scheda di caricamento si apre con il file
+  expect(screen.queryByTestId('enrichment-drop-veil')).not.toBeInTheDocument()
+  expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeInTheDocument()
 })

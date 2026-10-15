@@ -122,4 +122,71 @@ describe('GlobalFileDrop (UI3)', () => {
     expect(screen.queryByTestId('global-drop-veil')).not.toBeInTheDocument()
     vi.useRealTimers()
   })
+
+  describe('AR5 · Pannello Arricchimento aperto', () => {
+    it('non mostra il velo grande per PDF/foto se Arricchimento è aperto ed emette eventi media', () => {
+      const onDrop = vi.fn()
+      const mediaDragListener = vi.fn()
+      const mediaDropListener = vi.fn()
+      window.addEventListener('rt-enrichment-media-drag', mediaDragListener)
+      window.addEventListener('rt-enrichment-media-drop', mediaDropListener)
+
+      render(
+        <div>
+          <div data-testid="enrichment-panel">Arricchimento</div>
+          <GlobalFileDrop onDropFiles={onDrop} />
+        </div>,
+      )
+
+      const pdf = new File(['pdf data'], 'slide.pdf', { type: 'application/pdf' })
+      const dt = {
+        types: ['Files'],
+        files: [pdf],
+        items: [{ kind: 'file', type: 'application/pdf' }],
+      }
+
+      fireEvent.dragEnter(window, { dataTransfer: dt })
+      expect(screen.queryByTestId('global-drop-veil')).not.toBeInTheDocument()
+      expect(mediaDragListener).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: { active: true } }),
+      )
+
+      fireEvent.drop(window, { dataTransfer: dt })
+      expect(onDrop).not.toHaveBeenCalled()
+      expect(mediaDropListener).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: { files: [pdf] } }),
+      )
+
+      window.removeEventListener('rt-enrichment-media-drag', mediaDragListener)
+      window.removeEventListener('rt-enrichment-media-drop', mediaDropListener)
+    })
+
+    it('mostra il velo normale per audio o file misti anche con Arricchimento aperto', () => {
+      const onDrop = vi.fn()
+      render(
+        <div>
+          <div data-testid="enrichment-panel">Arricchimento</div>
+          <GlobalFileDrop onDropFiles={onDrop} />
+        </div>,
+      )
+
+      const pdf = new File(['pdf data'], 'slide.pdf', { type: 'application/pdf' })
+      const audio = new File(['audio data'], 'rec.mp3', { type: 'audio/mpeg' })
+      const dt = {
+        types: ['Files'],
+        files: [pdf, audio],
+        items: [
+          { kind: 'file', type: 'application/pdf' },
+          { kind: 'file', type: 'audio/mpeg' },
+        ],
+      }
+
+      fireEvent.dragEnter(window, { dataTransfer: dt })
+      expect(screen.getByTestId('global-drop-veil')).toBeInTheDocument()
+      expect(screen.getByText('Rilascia per importare')).toBeInTheDocument()
+
+      fireEvent.drop(window, { dataTransfer: dt })
+      expect(onDrop).toHaveBeenCalledWith([pdf, audio])
+    })
+  })
 })
