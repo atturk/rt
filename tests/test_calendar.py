@@ -540,3 +540,41 @@ def test_calendar_api_rejects_bad_input(client):
     assert client.post("/api/v1/calendar/template", json=bad_time).status_code == 422
     missing = {"date": "2026-10-12", "entry_key": "tpl_1", "lesson_id": 999}
     assert client.post("/api/v1/calendar/link-lesson", json=missing).status_code == 404
+
+
+@pytest.mark.parametrize('status', ['seguire', 'seguita', 'nonseguita', 'saltare'])
+def test_unrecorded_status_can_link(rt_db, tmp_path, status):
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import session_scope
+    tpl = calendar_service.create_template_entry(schemas.CalendarTemplateEntryCreate(
+        valid_from='2026-10-01', day_of_week=0, start_time='09:00', end_time='10:00', materia='Prova'), db=rt_db)
+    key = f'tpl_{tpl.id}'
+    calendar_service.set_entry_state(schemas.CalendarEntryStateSet(date='2026-10-12', entry_key=key, status=status), db=rt_db)
+    assert not calendar_service.get_day_view('2026-10-12', db=rt_db).events[0].is_recorded
+    with session_scope(rt_db) as session:
+        lid = LessonRepository(session).get_or_create(str(tmp_path / 'lesson')).id
+    linked = calendar_service.link_lesson(schemas.CalendarLinkLessonRequest(date='2026-10-12', entry_key=key, lesson_id=lid), db=rt_db)
+    assert linked.status == 'seguita'
+    assert calendar_service.get_day_view('2026-10-12', db=rt_db).events[0].is_recorded
+
+
+@pytest.mark.parametrize('whole_day', [False, True])
+def test_cancelled_hour_rejects_import_and_link(client, rt_db, tmp_path, whole_day):
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import session_scope
+    tpl = calendar_service.create_template_entry(schemas.CalendarTemplateEntryCreate(
+        valid_from='2026-10-01', day_of_week=0, start_time='09:00', end_time='10:00', materia='Prova'), db=rt_db)
+    key = f'tpl_{tpl.id}'
+    calendar_service.set_entry_state(schemas.CalendarEntryStateSet(
+        date='2026-10-12', entry_key=key, status='seguita' if whole_day else 'annullata'), db=rt_db)
+    if whole_day:
+        calendar_service.set_day_state(schemas.CalendarDayStateSet(date='2026-10-12', status='annullata'), db=rt_db)
+    assert calendar_service.get_day_view('2026-10-12', db=rt_db).events[0].status == 'annullata'
+    with session_scope(rt_db) as session:
+        lid = LessonRepository(session).get_or_create(str(tmp_path / 'lesson')).id
+    linked = client.post('/api/v1/calendar/link-lesson', json={'date': '2026-10-12', 'entry_key': key, 'lesson_id': lid})
+    imported = client.post('/api/v1/lessons', data={'date': '2026-10-12', 'materia': 'Prova',
+        'appunti': 'Appunti', 'calendar_entry_id': key, 'calendar_date': '2026-10-12'})
+    for response in [linked, imported]:
+        assert response.status_code == 422, response.text
+        assert 'Ora annullata' in response.text

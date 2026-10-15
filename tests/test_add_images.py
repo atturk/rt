@@ -302,7 +302,7 @@ def _add_one_image(lesson_dir, tmp_path, data: bytes):
     photos_dir.mkdir(exist_ok=True)
     (photos_dir / "slide1.png").write_bytes(data)
     h = compute_image_hash(data)
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=lambda *_a, **_k: {"1": [h]}):
+    with patch("rt.pipeline.add_images.place_uploaded_images", return_value=({"1.1": [h]}, {})):
         res = run_add_images(lesson_dir, input_path=str(photos_dir), force_mock=True)
     return h, res
 
@@ -316,7 +316,8 @@ def test_run_add_images_without_build_goes_in_preview_and_next_build(drafted_syn
 
     h, res = _add_one_image(lesson_dir, tmp_path, b"png slide bytes")
     assert res["images_added"] == 1
-    assert res["macros_with_images"] == ["1"]
+    assert res["macros_with_images"] == []
+    assert res["units_with_images"] == ["1.1"]
     assert res["build_stale"] is False
     assert not os.path.exists(lesson_path(lesson_dir, "rielaborato.md"))  # nessun documento finale scritto
     ref = f"assets/images/{h[:16]}.png"
@@ -338,7 +339,7 @@ def test_run_add_images_plain_markdown_links(drafted_synthetic_lesson, tmp_path)
     h1, h2 = compute_image_hash(b"png slide bytes 2"), compute_image_hash(b"png slide bytes 3")
 
     from unittest.mock import patch
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=lambda *_a, **_k: {"1": [h1, h2]}):
+    with patch("rt.pipeline.add_images.place_uploaded_images", return_value=({"1.1": [h1, h2]}, {})):
         run_add_images(drafted_synthetic_lesson, input_path=str(photos_dir), force_mock=True)
 
     rielab_content = _read(run_build(drafted_synthetic_lesson)["rielaborato"])
@@ -482,3 +483,26 @@ def test_run_add_images_web_search(drafted_synthetic_lesson):
     assert res["web_images_by_unit"] == {first: 1}
     with pytest.raises(ValueError):
         run_add_images(drafted_synthetic_lesson, web_search_count=1, unit_ids=["nessuna"], force_mock=True)
+
+
+def test_add_images_reports_increasing_progress(drafted_synthetic_lesson, tmp_path):
+    from rt.services.context import RunContext
+    from rt.services.events import ListReporter, PhaseProgress
+    photos = tmp_path / 'progress-photos'
+    photos.mkdir()
+    for i in range(3):
+        (photos / f'{i}.png').write_bytes(f'photo-{i}'.encode())
+    reporter = ListReporter()
+    from types import SimpleNamespace
+    from rt.services.job_handlers import add_images_job
+    add_images_job(SimpleNamespace(lesson_path=drafted_synthetic_lesson,
+        payload={"input_path": str(photos), "web_search_count": 1, "mock": True}),
+        RunContext(reporter=reporter))
+    events = [e for e in reporter.events if isinstance(e, PhaseProgress)]
+    values = [e.current / e.total for e in events]
+    assert values == sorted(values)
+    assert values[0] == 0 and values[-1] == 1
+    assert len(set(values)) > 5
+    assert any(e.message == 'Leggo le pagine 2/3' for e in events)
+    assert any(e.message == 'Cerco immagini sul web' for e in events)
+    assert any(e.message.startswith('Colloco le immagini ') for e in events)

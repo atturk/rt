@@ -1,5 +1,18 @@
 # Novità di RT
 
+## 4.2.6b3 — 2026-10-15
+
+### Correzioni
+
+- Le ore segnate come seguite senza una lezione si possono scegliere nell’import e collegare a una lezione. Le ore annullate rifiutano il collegamento; eliminare una lezione libera la sua ora senza cambiare lo stato “seguita”.
+- In Arricchimento puoi trascinare PDF e foto nel riquadro di caricamento, aggiungendoli ai file già scelti.
+- Il caricamento di PDF e foto mostra l’avanzamento durante la lettura e la collocazione delle immagini.
+
+### Novità
+
+- I PDF e le foto aggiunti in Arricchimento si collocano nelle sottounità pertinenti, come i materiali importati. I PDF usano il testo della pagina; la descrizione visiva serve alle pagine senza testo e alle foto. Le immagini già presenti restano al loro posto.
+- Le immagini trovate sul web per una sottounità vengono inserite direttamente in quella sottounità.
+
 ## 4.2.6b2.1 — 2026-10-15
 
 ### Correzioni

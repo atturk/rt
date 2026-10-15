@@ -97,7 +97,9 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
   await page.getByTestId('lesson-actions').getByRole('button', { name: 'Arricchimento' }).click()
   const panel = page.getByTestId('enrichment-panel')
   await panel.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
-  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'Emostasi.pdf', mimeType: 'application/pdf', buffer: twoPagePdf() })
+  const outline = await apiGet<{ macro_sections: { units: { title: string }[] }[] }>(page.request, `/lessons/${lesson.id}/outline`)
+  const topic = outline.macro_sections[0].units[0].title
+  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'Lipidi.pdf', mimeType: 'application/pdf', buffer: twoPagePdf(topic) })
   await panel.getByRole('button', { name: /^Carica/ }).click()
   // Il job si segue nel pannello; finito, la galleria si aggiorna
   const count = async () => (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images.length
@@ -157,19 +159,9 @@ test('immagini: striscia di miniature, chiusura/apertura e visore a schermo inte
   const strip = page.locator('.rt-strip')
   await expect(strip).toBeVisible({ timeout: 15_000 })
   await expect(strip.locator('.count-pill')).toHaveText('2 pagine')
-  await expect(strip.locator('.name')).toContainText('[MOCK] Immagine di test')
-  // Le pagine della striscia non compaiono anche a grandezza piena nell'editor: con una
-  // didascalia vera (senza parentesi quadre) l'editor disegnerebbe la sua anteprima sotto
-  // l'ultima riga immagine, subito dopo la striscia.
-  await page.route(/\/api\/v1\/lessons\/\d+\/document$/, async (route) => {
-    const response = await route.fetch()
-    const body = (await response.text()).replaceAll('[MOCK] Immagine di test', 'dispensa.pdf, pagina 1')
-    await route.fulfill({ response, body })
-  })
-  await page.reload()
-  await expect(strip).toBeVisible({ timeout: 15_000 })
+  await expect(strip.locator('.name')).toContainText('Lipidi.pdf')
+  // Le didascalie reali file/pagina (AR3d) non devono produrre anteprime grandi sotto la striscia.
   await expect(page.locator('.cm-atomic-image:visible')).toHaveCount(0)
-  await page.unroute(/\/api\/v1\/lessons\/\d+\/document$/)
   await page.reload()
   await expect(strip).toBeVisible({ timeout: 15_000 })
   // La striscia non allarga la pagina: le miniature scorrono al suo interno.
@@ -191,13 +183,13 @@ test('immagini: striscia di miniature, chiusura/apertura e visore a schermo inte
 
   const viewer = page.getByRole('dialog', { name: 'Visore immagini' })
   await expect(viewer).toBeVisible()
-  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
+  await expect(viewer.locator('.cap')).toContainText('Lipidi.pdf')
   await expect(viewer.locator('.count')).toHaveText('1 / 2')
 
   // Naviga alla seconda immagine con tasto Successiva
   await viewer.getByRole('button', { name: 'Successiva' }).click()
   await expect(viewer.locator('.count')).toHaveText('2 / 2')
-  await expect(viewer.locator('.cap')).toContainText('[MOCK] Immagine di test')
+  await expect(viewer.locator('.cap')).toContainText('Lipidi.pdf')
 
   // Chiudi con Esc
   await page.keyboard.press('Escape')

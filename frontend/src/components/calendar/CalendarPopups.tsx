@@ -261,6 +261,7 @@ export function EventPopup({
         ) : (
           <>
             <span className="flex-1 text-muted-foreground">Nessuna registrazione</span>
+            {event.status !== 'annullata' && <>
             <IconButton
               label="Collega una lezione"
               icon={LinkIcon}
@@ -277,12 +278,13 @@ export function EventPopup({
                 openNewLesson({ date: event.date, slotKey: event.key })
               }}
             />
+            </>}
           </>
         )}
       </div>
 
       {/* Scegli lezione da collegare */}
-      {linking && !isRecorded && (
+      {linking && !isRecorded && event.status !== 'annullata' && (
         <div className="flex max-h-40 flex-col gap-1 overflow-auto rounded border bg-muted/40 p-1.5 text-xs">
           <span className="font-semibold text-muted-foreground">Seleziona una lezione:</span>
           {lessonsQuery.data?.map((l) => (

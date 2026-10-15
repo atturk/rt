@@ -14,7 +14,7 @@ const LONG = 90_000
 
 type Job = { id: string; state: string; lesson_id: number | null; decision: { kind: string } | null }
 type Lesson = { id: number; materia: string; pending_issues: number; phases: Record<string, string> }
-type Outline = { approved: boolean }
+type Outline = { approved: boolean; macro_sections: { units: { title: string }[] }[] }
 type IssueList = { total: number }
 type Decision = { issue_id: string; decision: string }
 type Settings = { transcription: { engine: string; base_url: string | null; model: string | null } }
@@ -111,7 +111,8 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.goto(`/lezioni/${lessonId}?panel=arricchimento`)
   const enrichment = page.getByTestId('enrichment-panel')
   await enrichment.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
-  await enrichment.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  const imageOutline = await apiGet<Outline>(page.request, `/lessons/${lessonId}/outline`)
+  await enrichment.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf(imageOutline.macro_sections[0].units[0].title) })
   await enrichment.getByRole('button', { name: /^Carica/ }).click()
   await expect.poll(async () => (await apiGet<{ images: unknown[] }>(page.request, `/lessons/${lessonId}/images`)).images.length, { timeout: LONG }).toBeGreaterThan(0)
   await expect.poll(async () => (await apiGet<{ state: string }[]>(page.request, `/jobs?lesson_id=${lessonId}`)).some((j) => ['queued', 'running'].includes(j.state)), { timeout: 60_000 }).toBe(false)

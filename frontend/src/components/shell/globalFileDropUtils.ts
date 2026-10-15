@@ -68,6 +68,6 @@ export function hasAcceptedDrag(dt: DataTransfer): boolean {
 export function isExcludedTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) return false
   return !!target.closest(
-    '.cm-editor, .cm-content, [data-panel="dettagli"], [data-testid="lesson-details"], [data-testid="sources-section"], [data-testid="drop-zone"], [data-testid="chosen-files"]',
+    '[data-file-drop-target], .cm-editor, .cm-content, [data-panel="dettagli"], [data-testid="lesson-details"], [data-testid="sources-section"], [data-testid="drop-zone"], [data-testid="chosen-files"]',
   )
 }

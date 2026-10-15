@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
 
 // Popup Nuova lezione dalla barra a icone (schermate 00 e 00b): con l'audio materia, docente,
 // data e Avvia, poi la pagina della lezione con l'avanzamento; con lo zip solo Importa.
@@ -141,3 +141,25 @@ test('trascinamento su tutta la pagina: velo Rilascia per importare e apertura p
   await expect(dialog).toHaveCount(0)
 })
 
+
+test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) => {
+  // L'audio unito sta fra le fonti (sources/<id>/): il player deve trovarlo (4.2.6b2.1).
+  await loginViaLink(page)
+  const materia = 'PLAYER UNITO'
+  const res = await page.request.post('/api/v1/lessons', {
+    headers: authHeaders(),
+    multipart: {
+      audio: { name: 'parte1.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+      materiali: { name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() },
+      date: '2026-10-14', materia, mock: 'true', unisci: 'true', run: 'false',
+    },
+  })
+  expect(res.ok(), await res.text()).toBeTruthy()
+  type Lesson = { id: number; materia: string; has_audio?: boolean }
+  await expect.poll(async () => (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)?.id,
+    { timeout: LONG }).toBeTruthy()
+  const id = (await apiGet<Lesson[]>(page.request, '/lessons')).find((l) => l.materia === materia)!.id
+  await expect.poll(async () => (await apiGet<Lesson>(page.request, `/lessons/${id}`)).has_audio, { timeout: LONG }).toBe(true)
+  await page.goto(`/lezioni/${id}`)
+  await expect(page.getByTestId('audio-player')).toBeVisible()
+})

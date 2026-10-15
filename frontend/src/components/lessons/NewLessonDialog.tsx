@@ -68,7 +68,7 @@ const minutesOf = (time: string) => {
  * negli altri giorni (o prima delle lezioni) la prima non ancora registrata.
  */
 function pickSlot(hours: CalendarEventView[], date: string, now = new Date()) {
-  const free = hours.filter((h) => !h.is_recorded)
+  const free = hours.filter((h) => !h.is_recorded && h.status !== 'annullata')
   if (free.length === 0) return null
   if (date === today()) {
     const current = now.getHours() * 60 + now.getMinutes()
@@ -195,7 +195,7 @@ export function NewLessonDialog({
   )
 
   // La scelta si confronta per chiave (tpl_N/ovr_N): dopo un nuovo fetch gli oggetti cambiano.
-  const selectedSlot = hours.find((h) => h.key === selectedKey && !h.is_recorded) ?? null
+  const selectedSlot = hours.find((h) => h.key === selectedKey && !h.is_recorded && h.status !== 'annullata') ?? null
   // Tutte registrate: niente da scegliere, restano i campi a mano.
   const allRecorded = hours.length > 0 && hours.every((h) => h.is_recorded)
 
@@ -203,7 +203,7 @@ export function NewLessonDialog({
   useEffect(() => {
     if (manualMode || hours.length === 0) return
     if (selectedKey) {
-      const match = hours.find((h) => h.key === selectedKey && !h.is_recorded)
+      const match = hours.find((h) => h.key === selectedKey && !h.is_recorded && h.status !== 'annullata')
       if (match && !materia) {
         // oxlint-disable-next-line react/set-state-in-effect
         setMateria(match.materia)
@@ -313,7 +313,7 @@ export function NewLessonDialog({
   }
 
   const handleSelectSlot = (h: CalendarEventView) => {
-    if (h.is_recorded) return
+    if (h.is_recorded || h.status === 'annullata') return
     setSelectedKey(h.key)
     setMateria(h.materia)
     setDocente(h.docente ?? '')
@@ -741,16 +741,17 @@ export function NewLessonDialog({
                       <button
                         key={h.key}
                         type="button"
-                        disabled={h.is_recorded}
+                        disabled={h.is_recorded || h.status === 'annullata'}
+                        title={h.status === 'annullata' ? 'Ora annullata' : undefined}
                         onClick={() => handleSelectSlot(h)}
                         className={cn(
                           'flex items-center gap-2 rounded-lg bg-card text-left text-meta transition-all min-w-0',
                           isSelected
                             ? 'border-2 border-link bg-primary/20 px-[9px] py-[5px]'
                             : 'border border-border px-2.5 py-1.5',
-                          h.is_recorded && 'opacity-50 cursor-not-allowed',
+                          (h.is_recorded || h.status === 'annullata') && 'opacity-50 cursor-not-allowed',
                         )}
-                        aria-label={h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
+                        aria-label={h.status === 'annullata' ? `${h.materia} - Ora annullata` : h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
                         data-testid={`calendar-slot-${i}`}
                       >
                         <span

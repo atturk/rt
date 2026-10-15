@@ -43,8 +43,11 @@ def test_mock_payload_forces_mock_everywhere():
     assert mock_payload({})["mock"] is True
 
 
-def test_images_list_and_file(api_client, ws, rt_db, tmp_path):
-    run_mock_pipeline(make_lesson(ws))
+def test_images_list_and_file(api_client, ws, rt_db, tmp_path, monkeypatch):
+    from tests.api_support import mock_image_description_for_unit
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    mock_image_description_for_unit(monkeypatch, lesson)
     lid = _lesson_id(api_client)
     assert api_client.get(f"/api/v1/lessons/{lid}/images").json() == {"images": []}
 
@@ -60,7 +63,7 @@ def test_images_list_and_file(api_client, ws, rt_db, tmp_path):
     image = images[0]
     assert image["source"].startswith("folder:") and image["url"].endswith("/assets/images/" + image["name"])
     document = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
-    # in mock il giudice mette le immagini nella prima macro-sezione del documento
+    # La descrizione mock è pertinente: il mapping la mette nella sottounità candidata.
     assert image["in_document"] is True and f"assets/images/{image['name']}" in document
 
     served = api_client.get(image["url"])

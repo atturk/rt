@@ -86,3 +86,20 @@ def test_concurrent_lesson_list_does_not_resurrect_a_folder_being_deleted(api_cl
     assert api_client.delete(f"/api/v1/lessons/{lesson_id}").status_code == 204
     assert not os.path.exists(path)
     assert not any(name.startswith(".rt-deleting-") for name in os.listdir(workspace))
+
+
+def test_delete_clears_manual_calendar_link_preserving_status(api_client, workspace, rt_db):
+    from rt.services import calendar_service as calendar
+    from rt.services import calendar_models as schemas
+    from rt.db.models import CalendarEntryState
+    path = make_lesson(workspace)
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    tpl = calendar.create_template_entry(schemas.CalendarTemplateEntryCreate(valid_from='2026-10-01',
+        day_of_week=0, start_time='09:00', end_time='10:00', materia='Prova'))
+    linked = calendar.link_lesson(schemas.CalendarLinkLessonRequest(date='2026-10-12', entry_key=f'tpl_{tpl.id}', lesson_id=lid))
+    assert api_client.delete(f'/api/v1/lessons/{lid}').status_code == 204
+    with session_scope(rt_db) as session:
+        row = session.get(CalendarEntryState, linked.id)
+        assert row.lesson_id is None
+        assert row.status == 'seguita'
+    assert not calendar.get_day_view('2026-10-12').events[0].is_recorded

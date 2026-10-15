@@ -310,6 +310,19 @@ describe('Materiali accettati e ore dal calendario', () => {
   }
   afterEach(() => vi.useRealTimers())
 
+  it('sceglie una seguita senza lezione e disabilita le ore annullate', async () => {
+    mockDay([
+      { ...hour('tpl_1', 'ANNULLATA', '08:00', '09:00'), status: 'annullata' },
+      { ...hour('tpl_2', 'SEGUITA', '09:00', '10:00'), status: 'seguita' },
+    ])
+    renderDialog(true, vi.fn(), '2026-10-12')
+    const cancelled = await screen.findByTestId('calendar-slot-0')
+    expect(cancelled).toBeDisabled()
+    expect(cancelled).toHaveAttribute('title', 'Ora annullata')
+    expect(screen.getByTestId('calendar-slot-1')).toBeEnabled()
+    await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('SEGUITA'))
+  })
+
   it('accetta solo i materiali che il server sa leggere', () => {
     renderDialog()
     for (const accept of [screen.getByLabelText('Audio o pacchetto della lezione'), screen.getByLabelText('Altri documenti')]) {
