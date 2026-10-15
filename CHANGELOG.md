@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.2.6b2.1 — 2026-10-15
+
+### Correzioni
+
+- Il player audio è di nuovo visibile nelle lezioni importate con più audio uniti (o con un audio e dei materiali): non trovava l'audio salvato fra le fonti. Le lezioni già importate tornano a funzionare da sole.
+
 ## 4.2.6b2 — 2026-10-15
 
 ### Correzioni

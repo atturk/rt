@@ -154,3 +154,20 @@ def test_import_multiple_audio_merged_with_parts(api_client, rt_db, tmp_path, mo
     view_audio = [s for s in view['sources'] if s['tipo'] == 'audio'][0]
     assert len(view_audio['parti']) == 2
 
+
+
+def test_merged_audio_with_materials_keeps_the_player(api_client, rt_db, tmp_path, monkeypatch):
+    # L'audio unito sta in sources/<id>/: il player (has_audio e /audio) deve trovarlo anche
+    # quando il manifest non lo riporta.
+    isolated_workspace(tmp_path, monkeypatch)
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda path: 60.0)
+    response = api_client.post('/api/v1/lessons', data={
+        'date': '2026-10-12', 'materia': 'Biologia', 'mock': 'true', 'unisci': 'true', 'run': 'true',
+        'auto_accept': 'true', 'with_enrichment': 'false'
+    }, files=[('audio', ('part1.wav', wav_bytes(), 'audio/wav')), ('audio', ('part2.wav', wav_bytes(), 'audio/wav')),
+              ('materiali', ('d.pdf', pdf_bytes(), 'application/pdf'))])
+    assert response.status_code == 202, response.text
+    work(rt_db)
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    assert api_client.get(f'/api/v1/lessons/{lid}').json()['has_audio'] is True
+    assert api_client.get(f'/api/v1/lessons/{lid}/audio').status_code == 200
