@@ -522,6 +522,9 @@
 .rt-lesson-editor .cm-activeLine {
   background: transparent;
 }
+.rt-lesson-editor .cm-dropCursor {
+  border-left: 2px dashed var(--primary) !important;
+}
 /* Timecode bloccato: l'etichetta della lettura. Clic ascolta, triplo clic modifica. */
 .rt-lesson-editor .rt-timecode-locked {
   display: inline-block;

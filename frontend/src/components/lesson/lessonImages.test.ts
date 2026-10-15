@@ -72,3 +72,121 @@ it('propaga gli errori senza inserire riferimenti e ignora un editor smontato', 
   await task
   expect(unmounted.view.state.doc.toString()).toBe(markdown)
 })
+
+describe('MS1c: Inserisci al cursore e collegamento editor', () => {
+  it('notifica lo stato del cursore quando l’editor è attivo o smontato', () => {
+    const listener = vi.fn()
+    window.addEventListener('rt-editor-cursor-state', listener)
+
+    const { view, parent } = mount(async () => image)
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { hasCursor: true } }),
+    )
+
+    // Richiesta esplicita dello stato
+    listener.mockClear()
+    window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { hasCursor: true } }),
+    )
+
+    // Allo smontaggio
+    listener.mockClear()
+    view.destroy()
+    parent.remove()
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { hasCursor: false } }),
+    )
+
+    window.removeEventListener('rt-editor-cursor-state', listener)
+  })
+
+  it('inserisce al cursore più immagini come striscia (righe consecutive)', () => {
+    const { view, parent } = mount(async () => image)
+    const pos = markdown.indexOf('Testo.')
+    view.dispatch({ selection: { anchor: pos } })
+
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-insert-images', {
+        detail: {
+          items: [
+            { path: 'assets/images/pag1.png', alt_text: 'Pagina 1' },
+            { path: 'assets/images/pag2.png', alt_text: 'Pagina 2' },
+          ],
+        },
+      }),
+    )
+
+    const doc = view.state.doc.toString()
+    expect(doc).toContain(
+      '\n\n![Pagina 1](assets/images/pag1.png)\n![Pagina 2](assets/images/pag2.png)\n\nTesto.',
+    )
+    view.destroy()
+    parent.remove()
+  })
+
+  it('non inserisce sopra i titoli o timecode: sposta la posizione a fine riga / dopo il timecode', () => {
+    const { view, parent } = mount(async () => image)
+    // Cursore sul titolo ### 1.1 Unità
+    const titlePos = markdown.indexOf('### 1.1') + 2
+    view.dispatch({ selection: { anchor: titlePos } })
+
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-insert-images', {
+        detail: {
+          items: [{ path: 'assets/images/pag1.png', alt_text: 'Pagina 1' }],
+        },
+      }),
+    )
+
+    const doc = view.state.doc.toString()
+    // Il titolo e timecode restano intatti prima dell'immagine
+    expect(doc).toContain('### 1.1 Unità\n00:00')
+    expect(doc).toContain('![Pagina 1](assets/images/pag1.png)\n\nTesto.')
+    view.destroy()
+    parent.remove()
+  })
+
+  it('trascina una miniatura x-rt-media-image nel testo', () => {
+    const { view, parent } = mount(async () => image)
+    const at = markdown.indexOf('Testo.')
+    vi.spyOn(view, 'posAtCoords').mockReturnValue(at)
+
+    const event = new Event('drop', { bubbles: true, cancelable: true })
+    const mediaItem = {
+      path: 'assets/images/dropped.png',
+      alt_text: 'Pagina trascinata',
+      in_assets: true,
+    }
+    Object.defineProperty(event, 'dataTransfer', {
+      value: {
+        files: [],
+        getData: (type: string) => (type === 'application/x-rt-media-image' ? JSON.stringify(mediaItem) : ''),
+      },
+    })
+
+    view.contentDOM.dispatchEvent(event)
+    expect(view.state.doc.toString()).toContain('![Pagina trascinata](assets/images/dropped.png)')
+    view.destroy()
+    parent.remove()
+  })
+
+  it('toglie dal testo le immagini selezionate mantenendo intatto il resto', () => {
+    const docWithImages =
+      '## 1. Sezione\n### 1.1 Unità\n00:00\n\n![Foto 1](assets/images/to_remove.png)\nTesto normale.'
+    const { view, parent } = mount(async () => image, false, docWithImages)
+
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-remove-images', {
+        detail: { imageNames: ['to_remove.png'] },
+      }),
+    )
+
+    const doc = view.state.doc.toString()
+    expect(doc).not.toContain('to_remove.png')
+    expect(doc).toContain('Testo normale.')
+    view.destroy()
+    parent.remove()
+  })
+})
+

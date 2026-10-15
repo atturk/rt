@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { groupMediaImages } from './mediaGalleryUtils'
 
 interface MediaGalleryProps {
+  lessonId?: number
   images: LessonImage[]
   selectedNames: Set<string>
   onToggleSelect: (name: string) => void
@@ -20,6 +21,7 @@ interface MediaGalleryProps {
 }
 
 export function MediaGallery({
+  lessonId,
   images,
   selectedNames,
   onToggleSelect,
@@ -172,6 +174,23 @@ export function MediaGallery({
                     >
                       <button
                         type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(
+                            'application/x-rt-media-image',
+                            JSON.stringify({
+                              path: img.in_assets ? `assets/images/${img.name}` : img.url,
+                              alt_text:
+                                img.alt_text ||
+                                (img.page ? `${img.source_name}, pagina ${img.page}` : img.name),
+                              source_name: img.source_name,
+                              page: img.page,
+                              in_assets: img.in_assets,
+                              lessonId,
+                            }),
+                          )
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
                         aria-label={ariaLabel}
                         aria-pressed={isSelected}
                         className={cn(

@@ -5,7 +5,13 @@ import { useParams } from 'react-router'
 import { errorMessage, type Schemas } from '@/api/client'
 import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
 import { useLessonDocument } from '@/api/hooks'
-import { useAddImages, useLessonImages, useRefreshImages, type LessonImage } from '@/api/images'
+import {
+  copyMaterialPage,
+  useAddImages,
+  useLessonImages,
+  useRefreshImages,
+  type LessonImage,
+} from '@/api/images'
 import { useOutline } from '@/api/jobs'
 import { JobProgress } from '@/components/JobProgress'
 import {
@@ -102,6 +108,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
     window.addEventListener('rt-editor-cursor-state', onCursorState)
+    window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
     return () => {
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
@@ -168,9 +175,36 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
-  const handleInsertAtCursor = () => {
+  const handleInsertAtCursor = async () => {
     const selected = imageList.filter((i) => selectedNames.has(i.name))
-    window.dispatchEvent(new CustomEvent('rt-editor-insert-images', { detail: { images: selected } }))
+    if (!selected.length) return
+    const items: Array<{ path: string; alt_text: string }> = []
+    for (const img of selected) {
+      if (!img.in_assets && img.source_name && img.page != null) {
+        try {
+          const copied = await copyMaterialPage(id, img.source_name, img.page)
+          items.push({ path: copied.path, alt_text: copied.alt_text })
+        } catch {
+          items.push({
+            path: `assets/images/${img.name}`,
+            alt_text:
+              img.alt_text || (img.page ? `${img.source_name}, pagina ${img.page}` : img.name),
+          })
+        }
+      } else {
+        items.push({
+          path: img.url.includes('/assets/images/')
+            ? `assets/images/${img.url.split('/assets/images/').pop()}`
+            : `assets/images/${img.name}`,
+          alt_text: img.alt_text || img.name,
+        })
+      }
+    }
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-insert-images', { detail: { items } }),
+    )
+    setSelectedNames(new Set())
+    void refreshImages()
   }
 
   const handleAutoPlace = () => {
@@ -421,6 +455,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         {/* Griglia della Galleria */}
         {totalMedia > 0 && (
           <MediaGallery
+            lessonId={id}
             images={imageList}
             selectedNames={selectedNames}
             onToggleSelect={(name) =>
