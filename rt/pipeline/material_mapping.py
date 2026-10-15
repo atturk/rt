@@ -428,6 +428,38 @@ def classify_material_page(
     return assigned_units, assigned_macros
 
 
+@dataclass(frozen=True)
+class PageSourceIdentity:
+    """Identità minima della fonte per la cache, anche per file caricati senza registro fonti."""
+    id: str
+    impronta: str
+
+
+def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock=False, ctx=None,
+                          mock_fallback=False):
+    """Candidate TF-IDF e stessa decisione per import materiali e Arricchimento.
+
+    Il fallback serve soltanto a conservare i fixture storici dell'import in mock.
+    I caricamenti senza candidate restano non collocati, anche in mock.
+    """
+    if ctx:
+        ctx.check_cancelled()
+    candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
+    if not candidates and mock and mock_fallback and corpus and page.get("testo", "").strip():
+        entry = corpus[0]
+        candidates = [CandidateSubunit(entry.unit_id, entry.macro_id, entry.title, entry.transcript, 1.0)]
+    return classify_material_page(page, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx)
+
+
+def append_page_placements(units, macros, image_hash, assigned_units, assigned_macros):
+    """Aggiunge senza cancellare né duplicare le immagini già collocate."""
+    for target, ids in ((units, assigned_units), (macros, assigned_macros)):
+        for section_id in ids:
+            hashes = target.setdefault(section_id, [])
+            if image_hash not in hashes:
+                hashes.append(image_hash)
+
+
 def assign_material_pages(
     lesson_dir: str,
     outline: Outline,
@@ -522,22 +554,9 @@ def assign_material_pages(
             for page in pages:
                 if ctx:
                     ctx.check_cancelled()
-                candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
-                if not candidates and mock and corpus and page.get("testo", "").strip():
-                    candidates = [
-                        CandidateSubunit(
-                            unit_id=corpus[0].unit_id,
-                            macro_id=corpus[0].macro_id,
-                            title=corpus[0].title,
-                            transcript=corpus[0].transcript,
-                            score=1.0,
-                        )
-                    ]
-                if not candidates:
-                    continue
-
-                assigned_units, assigned_macros = classify_material_page(
-                    page, candidates, source, lesson_dir, cached_decisions, mock=mock, ctx=ctx
+                assigned_units, assigned_macros = place_page_in_outline(
+                    page, corpus, idf, source, lesson_dir, cached_decisions,
+                    mock=mock, ctx=ctx, mock_fallback=True,
                 )
 
                 page_info = {
@@ -565,12 +584,8 @@ def assign_material_pages(
                                 "source": f"material:{source.id}:{page['numero']}",
                                 "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
                             })
-                            for uid in assigned_units:
-                                if h not in units_placement.setdefault(uid, []):
-                                    units_placement[uid].append(h)
-                            for mid in assigned_macros:
-                                if h not in macros_placement.setdefault(mid, []):
-                                    macros_placement[mid].append(h)
+                            append_page_placements(units_placement, macros_placement, h,
+                                                   assigned_units, assigned_macros)
 
     save_image_descriptions(lesson_dir, descriptions)
 

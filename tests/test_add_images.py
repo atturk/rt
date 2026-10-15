@@ -302,7 +302,7 @@ def _add_one_image(lesson_dir, tmp_path, data: bytes):
     photos_dir.mkdir(exist_ok=True)
     (photos_dir / "slide1.png").write_bytes(data)
     h = compute_image_hash(data)
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=lambda *_a, **_k: {"1": [h]}):
+    with patch("rt.pipeline.add_images.place_uploaded_images", return_value=({"1.1": [h]}, {})):
         res = run_add_images(lesson_dir, input_path=str(photos_dir), force_mock=True)
     return h, res
 
@@ -316,7 +316,8 @@ def test_run_add_images_without_build_goes_in_preview_and_next_build(drafted_syn
 
     h, res = _add_one_image(lesson_dir, tmp_path, b"png slide bytes")
     assert res["images_added"] == 1
-    assert res["macros_with_images"] == ["1"]
+    assert res["macros_with_images"] == []
+    assert res["units_with_images"] == ["1.1"]
     assert res["build_stale"] is False
     assert not os.path.exists(lesson_path(lesson_dir, "rielaborato.md"))  # nessun documento finale scritto
     ref = f"assets/images/{h[:16]}.png"
@@ -338,7 +339,7 @@ def test_run_add_images_plain_markdown_links(drafted_synthetic_lesson, tmp_path)
     h1, h2 = compute_image_hash(b"png slide bytes 2"), compute_image_hash(b"png slide bytes 3")
 
     from unittest.mock import patch
-    with patch("rt.pipeline.add_images.judge_images_by_macro", side_effect=lambda *_a, **_k: {"1": [h1, h2]}):
+    with patch("rt.pipeline.add_images.place_uploaded_images", return_value=({"1.1": [h1, h2]}, {})):
         run_add_images(drafted_synthetic_lesson, input_path=str(photos_dir), force_mock=True)
 
     rielab_content = _read(run_build(drafted_synthetic_lesson)["rielaborato"])
