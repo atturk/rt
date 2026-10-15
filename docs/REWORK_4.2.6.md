@@ -127,3 +127,36 @@ File: CalendarPopups.tsx, NewLessonDialog.tsx, Layout.tsx e components/shell/new
 - **UI3 · Trascinare file su tutta la pagina.** Quando si trascina sulla finestra di RT un file che l'import accetta (gli stessi tipi del campo del popup: audio, materiali, .zip), compare sopra tutta la pagina un velo con la scritta "Rilascia per importare". Rilasciando, si apre il popup di import con quei file già caricati, che li smista come se fossero stati trascinati nel suo riquadro (audio e materiali, oppure pacchetti .zip; stessa regola e stesso messaggio di oggi se sono mescolati). Il velo non compare per file non accettati, per testo o link trascinati, quando il popup di import è già aperto (lì vale il suo riquadro) e mentre si trascina dentro un editor o un pannello che accetta già file (es. Fonti in Dettagli). Si chiude se il trascinamento esce dalla finestra o con Esc.
 
 
+
+---
+
+## 4.2.6b3 · Calendario e Arricchimento (Codex, branch rt426b3/codex)
+15 ott 2026, richiesto da Attilio dopo la prova della b2. Un solo agente, nessun conflitto previsto. Valgono le "Regole per tutti" (niente migrazioni; se servisse davvero: 0019, down 0018).
+
+### CA2 · Collegare una lezione alle ore seguite
+Oggi un'ora segnata "seguita" senza lezione (anche quando la lezione collegata è stata cancellata) risulta "già registrata": `is_recorded` in `_resolve_day_events` (rt/services/calendar_service.py, `lesson_summary is not None or effective_status == "seguita"`). Il popup di import (NewLessonDialog, GET /calendar/day) la mostra grigia e non selezionabile.
+- **CA2a.** Un'ora è registrata solo se ha una lezione (`is_recorded = lesson_summary is not None`). Un'ora "seguita" senza lezione si può scegliere nell'import e collegare dal popup dell'ora (Collega una lezione, +), come un'ora "da seguire". Collegando, lo stato resta "seguita".
+- **CA2b.** Le ore **annullate** (stato dell'ora o del giorno) non accettano una lezione: nel popup di import restano visibili ma non selezionabili, con tooltip "Ora annullata"; nel popup dell'ora non compaiono "Collega una lezione" e il +; l'API dell'import (`calendar_entry_id` in rt/api/routers/jobs.py) e `link_lesson` rifiutano un'ora annullata con un errore chiaro. Tutti gli altri stati (seguire, seguita, non seguita, saltare) accettano una lezione.
+- **CA2c.** Cancellando una lezione, il collegamento a mano della sua ora (`CalendarEntryState.lesson_id`) si azzera nella stessa transazione; lo stato "seguita" resta.
+- Test: backend (ora seguita senza lezione importabile e collegabile, annullata rifiutata da import e link, cancellazione che libera l'ora) e un e2e nello spec esistente del calendario/import (segno seguita → importo per quell'ora → collegata).
+
+### AR1 · Trascinare file in "Aggiungi PDF o foto"
+In Arricchimento › Media della lezione (frontend/src/components/lesson/panels/EnrichmentPanel.tsx) il riquadro "Aggiungi PDF o foto" accetta file trascinati sopra di sé (stessi tipi di ACCEPT), con lo stesso evidenziamento del riquadro delle Fonti; il campo "Scegli file" resta. I file trascinati si aggiungono a quelli scelti; tipi non accettati ignorati con lo stesso messaggio delle Fonti. Il velo globale "Rilascia per importare" (GlobalFileDrop) non compare mentre si trascina sul riquadro (come per le Fonti). Test vitest.
+
+### AR2 · Avanzamento di "Aggiungi PDF o foto"
+`run_add_images` e i suoi passi (rt/pipeline/add_images.py) non chiamano mai `ctx.progress`: la barra resta a 0% per tutto il job. Passare il contesto del job (`add_images_job` in rt/services/job_handlers.py) e segnalare i passi con conteggio, nello stesso stile degli altri job: "Leggo le pagine i/N" (estrazione e, solo dove serve, descrizione), "Cerco immagini sul web" (se c'è la ricerca), "Colloco le immagini i/N". La percentuale deve salire durante il job. Test che il job emette progressi crescenti.
+
+### AR3 · Arricchimento allineato all'import con materiali
+Oggi sono due flussi diversi:
+- **Import audio + PDF (MF1, rt/pipeline/material_mapping.py).** Ogni pagina del PDF va alle sottounità candidate (TF-IDF, `find_candidate_subunits_for_page`) con il sì/no del classificatore (`classify_material_page`, job image_unit_judge, soglia), sotto la macro solo se tocca 3 o più sottounità della stessa macro. Il testo della pagina viene dal PDF; la Vision serve solo per le pagine senza testo.
+- **Arricchimento › Aggiungi PDF o foto (rt/pipeline/add_images.py).** Ogni pagina viene descritta con il modello visivo (image_description), poi `judge_images_by_macro` sceglie UNA macro per immagine confrontandola con tutta la lezione: le immagini non arrivano mai alle sottounità e si ammassano dove il giudice preferisce (nella lezione di Attilio, l'unità 1).
+
+Cosa cambia:
+- **AR3a · PDF e foto caricati.** `run_add_images` con `input_path` legge le pagine come l'import: per un PDF il testo con `page.get_text()` e la pagina renderizzata (stesso rendering di oggi); la descrizione con il modello visivo solo per le pagine senza testo e per le foto singole (la descrizione fa da testo). Poi per ogni pagina: candidate con `find_candidate_subunits_for_page` e decisione con `classify_material_page` (stessa soglia, stesso job, stessa cache per pagina). Pagina approvata → sottounità, o macro se 3+ sottounità della stessa macro. Pagina senza candidate o rifiutata → non collocata (resta nei Media della lezione, come oggi le immagini "none"). Estrarre le parti comuni da material_mapping.py in funzioni riusabili invece di copiarle; `classify_material_page` oggi vuole una fonte (`source.id`, `source.impronta`): usare come identità l'impronta del file caricato.
+- **AR3b · Solo posizionamento.** Non si rifà la rielaborazione e le pagine non entrano nel contesto della riscrittura (`pages_by_unit`/`pages_by_macro` di material_mapping non cambiano). Il posizionamento si aggiunge a placement.json (`units` e `macros`) senza togliere le immagini delle fonti materiali, quelle messe a mano o dal web e quelle già collocate da caricamenti precedenti.
+- **AR3c · Immagini dal web.** Restano con il giudice di oggi (`judge_images_by_macro`) per non allargare il lavoro, ma la query è già per sottounità: un'immagine web trovata per una sottounità va a quella sottounità senza giudice. Il giudice per macro resta solo per le immagini senza unità di provenienza.
+- **AR3d · Descrizioni.** Le immagini collocate con AR3a hanno in descriptions.json `source` come oggi (`pdf:nome#pagina`, `folder:nome`) e `alt_text` "nome del file, pagina N"; la striscia e il visore le mostrano come quelle dei materiali.
+- Test: un PDF di prova con pagine di testo su argomenti di sottounità diverse finisce nelle sottounità giuste (mock del classificatore), una pagina senza testo passa dalla Vision, una foto passa dalla descrizione, nessuna immagine esistente (materiale, a mano, web) viene tolta, la riscrittura non viene toccata. Aggiornare i test di add_images che si aspettano il giudice per macro, scrivendo il motivo nel commit.
+
+### Ordine
+CA2, AR1, AR2, AR3 (a, b, d, poi c). Sezione "## 4.2.6b3" in cima a CHANGELOG.md con "### Correzioni" (CA2, AR1, AR2) e "### Novità" (AR3), scritta per l'utente.
