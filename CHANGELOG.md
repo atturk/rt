@@ -4,6 +4,7 @@
 
 ### Novità
 
+- Sul computer i popup Chiedi e Verifica si spostano e si ridimensionano, possono allargarsi a pannello e mantengono il campo d’invio visibile mentre la risposta scorre. Invio manda la richiesta, Maiusc+Invio va a capo.
 - La collocazione delle pagine confronta i passaggi pertinenti del parlato e verifica che il contenuto sia didattico. Ogni pagina va nel punto più adatto, con una soglia iniziale più permissiva.
 - La rielaborazione e le correzioni di Verifica usano formule LaTeX, anche per le reazioni chimiche, leggibili nell’editor, nella lettura e nello Studio.
 

@@ -4,6 +4,47 @@ import { StudyNotePopup } from './StudyNotePopup'
 import type { StudyNote } from '@/api/studyNotes'
 
 describe('StudyNotePopup', () => {
+  it('↵ invia e ⇧↵ lascia scrivere una nuova riga', () => {
+    const send = vi.fn()
+    render(<StudyNotePopup open onClose={vi.fn()} kind="chiedi" unitId="1.1" quote="Un passaggio" onSend={send} />)
+    const input = screen.getByTestId('study-note-input')
+    fireEvent.change(input, { target: { value: 'Una domanda' } })
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+    expect(send).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(send).toHaveBeenCalledWith('Una domanda')
+    expect(screen.getByTestId('study-note-composer').parentElement).toBe(screen.getByRole('dialog'))
+  })
+
+  it('misura dal vivo una citazione lunga e conserva il fondo fuori dallo scorrimento', () => {
+    let resized: () => void = () => undefined
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resized = callback } observe() {} disconnect() {} })
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return new DOMRect(0, 0, this.dataset.testid === 'study-note-popup' ? 440 : 0, this.dataset.testid === 'study-note-popup' ? 600 : 0)
+    })
+    const anchor = new DOMRect(950, 700, 30, 20)
+    const { unmount } = render(<StudyNotePopup open onClose={vi.fn()} kind="chiedi" unitId="1.1" quote={'Citazione lunga. '.repeat(100)} anchorRect={anchor} />)
+    const popup = screen.getByRole('dialog')
+    expect(Number.parseFloat(popup.style.top)).toBeGreaterThanOrEqual(12)
+    expect(Number.parseFloat(popup.style.top) + 600).toBeLessThanOrEqual(window.innerHeight - 12)
+    expect(screen.getByTestId('study-note-quote').querySelector('.line-clamp-2')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Mostra tutto' }))
+    expect(screen.getByTestId('study-note-quote').querySelector('.line-clamp-2')).toBeNull()
+    resized()
+    expect(screen.getByTestId('study-note-body')).toHaveClass('overflow-y-auto')
+    unmount()
+    rect.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('allarga a pannello e torna alla misura iniziale con doppio clic', () => {
+    render(<StudyNotePopup open onClose={vi.fn()} kind="verifica" unitId="1.1" quote="Una citazione" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Allarga a pannello' }))
+    expect(screen.getByRole('dialog')).toHaveStyle({ height: `${window.innerHeight}px`, top: '0px' })
+    fireEvent.doubleClick(screen.getByTestId('study-note-header'))
+    expect(screen.getByRole('dialog')).toHaveStyle({ width: '440px' })
+    expect(screen.getByRole('button', { name: 'Allarga a pannello' })).toBeInTheDocument()
+  })
   it('renders input mode for verifica and triggers onSend on button and ⌘↵', () => {
     const onSend = vi.fn()
     const onClose = vi.fn()
