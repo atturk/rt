@@ -301,7 +301,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     expect(screen.queryByRole('dialog', { name: 'Aggiungi appunti' })).not.toBeInTheDocument()
   })
 
-  it('mostra le parti con badge numerati e durata quando una fonte ha parti', async () => {
+  it('una registrazione unita mostra le parti a tutta larghezza quando si apre il chip', async () => {
     const viewWithParts: SourcesView = {
       ...mockView,
       sources: [
@@ -340,11 +340,21 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
       return Promise.resolve({ data: {}, response: new Response('{}') } as never)
     })
     renderComponent()
+    expect(await screen.findByText('Registrazione unita')).toBeInTheDocument()
+    const chip = await screen.findByRole('button', { name: '2 parti' })
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()
+    fireEvent.click(chip)
     const partsContainer = await screen.findByTestId('source-parts-s_aud_merged')
     expect(partsContainer).toHaveTextContent('registrazione 1.m4a')
     expect(partsContainer).toHaveTextContent('45 min')
     expect(partsContainer).toHaveTextContent('registrazione 2.m4a')
     expect(partsContainer).toHaveTextContent('35 min')
+    const segments = screen.getByTestId('source-parts-bar-s_aud_merged').children
+    expect(segments[0]).toHaveStyle({ flexGrow: '2700' })
+    expect(segments[1]).toHaveStyle({ flexGrow: '2100' })
+    fireEvent.click(chip)
+    expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()
   })
 
   it('selezione multipla di audio mostra la barra con il bottone Unisci acceso di default', async () => {

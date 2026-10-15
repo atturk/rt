@@ -4,6 +4,7 @@
 
 ### Novità
 
+- Le registrazioni unite hanno una riga compatta con durata totale, chip delle parti e barra proporzionale; aprendo il chip, nomi e durate usano tutta la larghezza del pannello anche sul telefono.
 - Le risposte e le correzioni di Chiedi/Verifica mostrano titoli, grassetti, elenchi e formule; il contenuto passa dallo stesso renderer sicuro dei documenti.
 - Sul computer i popup Chiedi e Verifica si spostano e si ridimensionano, possono allargarsi a pannello e mantengono il campo d’invio visibile mentre la risposta scorre. Invio manda la richiesta, Maiusc+Invio va a capo.
 - La collocazione delle pagine confronta i passaggi pertinenti del parlato e verifica che il contenuto sia didattico. Ogni pagina va nel punto più adatto, con una soglia iniziale più permissiva.
