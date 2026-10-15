@@ -1,5 +1,17 @@
 # Novità di RT
 
+## 4.2.6b4 — 2026-10-15
+
+### Correzioni
+
+- Trascinando un file sulla pagina, il riquadro di import resta visibile finché non lo lasci andare, anche se muovi il file sopra altri elementi.
+
+### Novità
+
+- Puoi scaricare solo le fonti di una lezione (audio unito e ottimizzato, PDF, foto e altri documenti) dal menu Esporta della lezione o, per più lezioni, dalla selezione con “Solo le fonti (zip)”.
+- Il pulsante Unisci è un’icona che cambia con lo stato: parti unite in un’unica registrazione o fonti separate.
+- Il caricamento dei file di una nuova lezione continua anche se chiudi la finestra di import: lo segui nella pagina Job, puoi annullarlo e avviare altri import, che partono uno dopo l’altro. Finché un caricamento è in corso, chiudere o ricaricare la scheda di RT chiede conferma.
+
 ## 4.2.6b3 — 2026-10-15
 
 ### Correzioni
