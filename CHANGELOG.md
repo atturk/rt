@@ -1,24 +1,33 @@
 # Novità di RT
 
-## 4.2.6b1.1 — 2026-10-15
+## 4.2.6b2 — 2026-10-15
 
 ### Correzioni
 
-- Le novità della 4.2.6b1 tornano visibili in Impostazioni (la sezione risultava vuota).
+- Striscia di immagini nell'editor: con molte pagine non allarga più l'editor e la pagina, le miniature scorrono dentro la striscia; sotto la striscia non compare più l'ultima pagina a grandezza piena.
+- Pannello Domande: tolta la frase sotto i chip del tipo ("Ogni unità riceve il tipo che Jev le ha consigliato…").
+- Le novità della 4.2.6b1 sono di nuovo visibili in Impostazioni (la sezione risultava vuota).
 
 ## 4.2.6b1 — 2026-10-15
 
 ### Novità
 
-- I materiali vanno alle singole sottounità: ogni pagina viene confrontata con le parti della lezione che le somigliano di più e il classificatore conferma dove serve davvero. La rielaborazione di ogni sottounità riceve solo le sue pagine, e la fonte principale resta quella che guida. La soglia si regola in Impostazioni › Classificatore.
-- Le pagine allegate compaiono sotto la sottounità a cui appartengono, nell'ordine del documento. Più immagini di fila diventano una striscia di miniature che scorre di lato, con un visore a schermo pieno (frecce, tastiera, swipe sul telefono). Il markdown esportato resta pulito, un'immagine per riga.
-- Audio più leggero: ogni registrazione aggiunta si salva in m4a. Più audio caricati insieme diventano una sola fonte con l'elenco delle parti (bottone Unisci). In Impostazioni › Spazio e cache, "Alleggerisci l'audio delle lezioni" converte i vecchi wav e cancella gli audio uniti che non servono più, senza rifare trascrizioni.
-- Calendario: il + su un'ora senza lezione apre l'import con quell'ora già scelta. Nel popup di import l'ora scelta si distingue meglio. Si possono trascinare i file su qualunque punto della finestra per importarli.
-- Il numero scelto per le domande è un tetto: RT cerca nuovi concetti in fino a tre passaggi e conserva le eventuali domande in più dell’ultimo giro. Il generatore vede le domande già presenti di ogni tipo.
-- Gli esercizi personalizzati possono riempire il tetto con varianti di contesto e dati, generate a lotti e verificate una per una.
-- Controlli locali scartano domande chiaramente rotte, fuori tema o quasi duplicate; le valutazioni incoerenti si riprovano una volta. L’avviso finale indica anche scarti e motivo dell’arresto.
-- In Impostazioni › Domande arrivano le regole dai voti, modificabili per tipo e materia, gli interruttori per voti e controllo prima di salvare e Aggiorna ora. Le modifiche manuali restano protette dall’aggiornamento automatico; gli esempi seguono materia e pertinenza.
-- Togliere una fonte chiede conferma e conserva il file e il registro. Le fonti già usate tolte richiedono Ricostruisci e si possono rimettere com’erano; quelle mai usate non risultano più come fonti nuove.
+- Domande, numero come tetto: nei popup "Quante" diventa "Fino a". Il modello genera solo le domande che trova utili; se non arriva al numero, RT riprova fino a tre passaggi sulle unità che danno ancora domande nuove. Le domande in più dell'ultimo passaggio restano.
+- Domande, niente ripetizioni: il generatore vede le domande già presenti sull'unità di ogni tipo (quiz, mirate, vaste, personalizzate), non solo dello stesso tipo, e cerca altri concetti.
+- Domande, varianti degli esercizi: i tipi con "Varianti verificate" riempiono il numero chiesto con varianti che cambiano dati e contesto (es. età e situazione clinica, profumi o farmaci nelle miscele), fino a 5 per chiamata, ciascuna controllata da una verifica indipendente. Non c'è più il limite di 2.
+- Domande, controlli senza modello: RT scarta da sé le domande chiaramente rotte (troppo corte o enormi, segnaposto, testo ripetuto, in inglese, quiz con opzioni doppie o risposta giusta molto più lunga, fuori tema, quasi doppioni, varianti con gli stessi numeri). Le valutazioni con esito in contraddizione con le percentuali si riprovano una volta.
+- Domande, avviso finale: a fine generazione dice quante ne ha create rispetto al numero e perché si è fermato, per esempio "Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 variante non ha superato la verifica."
+- Regole dai voti: in Impostazioni › Domande, sezione "Regole dai voti", per ogni tipo e materia con voti ci sono al massimo 8 regole ricavate dai voti, modificabili a mano, con numero di voti, data e l'icona Aggiorna ora. Si aggiornano da sole dopo 5 voti nuovi, ma quelle modificate a mano restano finché non premi Aggiorna ora. Interruttori Voti e Controllo prima di salvare, accesi di default: con i Voti spenti spariscono i pulsanti di voto e nei prompt non entrano né esempi né regole. Gli esempi dei voti si scelgono per materia e pertinenza con l'unità.
+- Fonti tolte in sicurezza: la × su una fonte in Dettagli chiede conferma (e avvisa se serve Ricostruisci). La fonte resta salvata: se era già usata compare "Hai tolto N fonti già usate" con Ricostruisci e l'icona Rimetti com'era; se non era mai usata non compare nessuna riga. Ripristinare una versione rimette le fonti di quella versione.
+- Materiali per sottounità: prima della rielaborazione ogni pagina dei materiali viene confrontata con il parlato delle sottounità (parole significative, senza intercalari) e il classificatore delle immagini conferma a quali appartiene davvero (soglia 0,8, regolabile in Impostazioni › Classificatore). Ogni sottounità riceve solo le sue pagine come contesto, e la fonte principale guida: dai materiali entrano termini, valori, definizioni ed esempi di ciò che il docente tratta. Le lezioni già fatte cambiano solo con Ricostruisci.
+- Immagini dei materiali: con la graffetta accesa le pagine assegnate compaiono sotto la loro sottounità (o sotto l'unità se servono a tre o più sottounità), nell'ordine del documento; le immagini aggiunte a mano o dal web restano dopo.
+- Striscia di immagini: due o più immagini di fila diventano una striscia di miniature in una riga che scorre di lato, nell'editor, nella lettura e nello Studio, con la freccina per chiuderle tutte. Un clic apre il visore a schermo pieno con frecce, tastiera (← → Esc) e swipe sul telefono. Il markdown esportato resta un'immagine per riga.
+- Audio leggero: ogni registrazione aggiunta (anche con i materiali o da Aggiungi fonte) si salva in m4a; il wav non si tiene.
+- Unisci: più audio caricati insieme diventano una sola fonte, con l'elenco delle parti e la loro durata sotto il nome in Fonti. Il bottone Unisci (acceso di default) sta nella riga delle parti dell'import e in Aggiungi fonte; spento, restano fonti separate.
+- Alleggerisci: in Impostazioni › Spazio e cache, "Alleggerisci l'audio delle lezioni" mostra quanto spazio si libera e, dopo la conferma, converte i vecchi wav e flac e cancella gli audio uniti che non servono più, senza rifare trascrizioni e senza rompere le versioni.
+- Calendario: in un'ora senza lezione c'è l'icona + che apre l'import con quella data e quell'ora già scelte; a import finito la lezione è collegata.
+- Import: l'ora scelta si distingue meglio (bordo pieno), le altre hanno la barretta grigia.
+- Trascinamento: si possono trascinare audio, materiali o .zip su qualunque punto della finestra; compare "Rilascia per importare" e si apre l'import con i file già caricati.
 
 ## 4.2.5 — 2026-10-14
 

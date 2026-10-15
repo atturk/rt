@@ -158,6 +158,32 @@ test('immagini: striscia di miniature, chiusura/apertura e visore a schermo inte
   await expect(strip).toBeVisible({ timeout: 15_000 })
   await expect(strip.locator('.count-pill')).toHaveText('2 pagine')
   await expect(strip.locator('.name')).toContainText('[MOCK] Immagine di test')
+  // Le pagine della striscia non compaiono anche a grandezza piena nell'editor: con una
+  // didascalia vera (senza parentesi quadre) l'editor disegnerebbe la sua anteprima sotto
+  // l'ultima riga immagine, subito dopo la striscia.
+  await page.route(/\/api\/v1\/lessons\/\d+\/document$/, async (route) => {
+    const response = await route.fetch()
+    const body = (await response.text()).replaceAll('[MOCK] Immagine di test', 'dispensa.pdf, pagina 1')
+    await route.fulfill({ response, body })
+  })
+  await page.reload()
+  await expect(strip).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('.cm-atomic-image:visible')).toHaveCount(0)
+  await page.unroute(/\/api\/v1\/lessons\/\d+\/document$/)
+  await page.reload()
+  await expect(strip).toBeVisible({ timeout: 15_000 })
+  // La striscia non allarga la pagina: le miniature scorrono al suo interno.
+  const overflow = await page.evaluate(() => {
+    const rail = document.querySelector('.rt-strip .thumbs') as HTMLElement
+    for (let i = 0; i < 30; i++) rail.appendChild(rail.firstElementChild!.cloneNode(true))
+    return { page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+             strip: (document.querySelector('.rt-strip') as HTMLElement).getBoundingClientRect().width,
+             content: (document.querySelector('.cm-content') as HTMLElement).getBoundingClientRect().width }
+  })
+  expect(overflow.page).toBeLessThanOrEqual(0)
+  expect(overflow.strip).toBeLessThanOrEqual(overflow.content)
+  await page.reload()
+  await expect(strip).toBeVisible({ timeout: 15_000 })
 
   // Clic sulla miniatura per aprire il visore
   const firstThumb = strip.locator('.thumb').first()

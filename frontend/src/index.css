@@ -1009,7 +1009,12 @@
 .rt-cls-sheet { margin: auto auto 0; width: min(640px, 100%); max-height: 80dvh; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }
 
 /* Striscia miniature immagini (IM1c) */
-.rt-strip { display: grid; gap: 6px; margin: 10px 0; }
+/* minmax(0, 1fr): la colonna resta larga quanto lo spazio disponibile e le miniature scorrono
+   dentro la striscia invece di allargare editor e pagina. */
+.rt-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 10px 0; min-width: 0; max-width: 100%; }
+/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine cade subito dopo la striscia:
+   le pagine si vedono già come miniature. */
+.cm-content > .rt-strip + .cm-atomic-image { display: none; }
 .rt-strip-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
 .rt-strip-head .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-strip-head .count-pill { font-variant-numeric: tabular-nums; }

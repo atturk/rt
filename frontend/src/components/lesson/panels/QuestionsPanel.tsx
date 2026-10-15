@@ -35,7 +35,7 @@ import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { mostSuggested, unitsAdviceBreakdown } from '@/lib/questionTypes'
+import { mostSuggested } from '@/lib/questionTypes'
 import { questionTypeId, typeLabel } from '@/lib/recall'
 import { isActive } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -315,11 +315,6 @@ export function QuestionsPanel({
                 <div className="min-w-0 flex-1">
                   <span className="mb-1 block text-meta text-muted-foreground">Tipo</span>
                   <QuestionTypeChips lessonId={id} types={registry} value={globalType} onChange={setGlobalType} suggested={suggestions && advice.count ? advice.type : null} hint={`Consigliato per ${advice.count} unità su ${advice.total}`} disabled={isGenerating} withConsigliato />
-                  <p className="mt-1.5 text-meta text-muted-foreground" data-testid="question-type-hint">
-                    {globalType === 'consigliato'
-                      ? unitsAdviceBreakdown((study?.units ?? []).filter((u) => selectedIds.has(u.id)), registry)
-                      : `Tutte le unità selezionate ricevono domande ${registry.find((t) => t.id === globalType)?.nome ?? globalType}, come oggi.`}
-                  </p>
                 </div>
                 <div className="w-20 shrink-0">
                   <label htmlFor="q-count" className="mb-1 block text-meta text-muted-foreground">
