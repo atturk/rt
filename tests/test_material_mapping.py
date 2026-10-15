@@ -182,6 +182,7 @@ def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch
         f"{source.id}:{page['numero']}": {
             "key": "some_key",
             "probabilities": {
+                "didactic_content": 0.95,
                 "unit_1_1": 0.85,
                 "unit_1_2": 0.90,
                 "unit_1_3": 0.82,
@@ -200,6 +201,7 @@ def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch
         f"{source.id}:{page['numero']}": {
             "key": "some_key",
             "probabilities": {
+                "didactic_content": 0.95,
                 "unit_1_1": 0.85,
                 "unit_1_2": 0.90,
                 "unit_1_3": 0.50,
