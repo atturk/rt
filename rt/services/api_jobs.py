@@ -271,12 +271,15 @@ def recall_generation_notice(summary, requested, generated):
                   else "il modello non ha trovato altri contenuti utili")
         message += f": {reason}"
     message += "."
+    tail = []
     discarded = summary.get('local_discarded', 0) + summary.get('presave_discarded', 0)
     if discarded:
-        message += f" {discarded} scartate dai controlli."
+        tail.append(f"{discarded} {'scartata' if discarded == 1 else 'scartate'} dai controlli")
     failed = summary.get('verification_discarded', 0)
     if failed:
-        message += f" {failed} {'variante non ha' if failed == 1 else 'varianti non hanno'} superato la verifica."
+        tail.append(f"{failed} {'esercizio non ha' if failed == 1 else 'esercizi non hanno'} superato la verifica")
+    if tail:
+        message += " " + ", ".join(tail) + "."
     return message
 
 

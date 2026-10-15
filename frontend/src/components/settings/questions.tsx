@@ -9,6 +9,7 @@ import { useStudyLesson } from '@/api/recall'
 import { exportQuestionType, useQuestionSettings, useSaveQuestionType, useDeleteQuestionType, useImportQuestionType, useQuestionTrial, type QuestionDefinition, type QuestionSettings } from '@/api/questionSettings'
 import { TypeIcon } from '@/components/recall/TypeIcon'
 import { TYPE_ICON_NAMES } from '@/lib/typeIcons'
+import { QUESTION_TYPE_LABELS } from '@/lib/questionTypes'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -132,6 +133,8 @@ function QuestionTypeEditor({ initial, existing, subjects, onSave, onCancel, pen
 
 export function VoteRulesSettings() {
   const query = useRecallRules()
+  const types = useQuestionSettings().data?.types ?? []
+  const typeName = (id: string) => QUESTION_TYPE_LABELS[id as keyof typeof QUESTION_TYPE_LABELS] ?? types.find(t => t.id === id)?.nome ?? id
   const settings = useSaveRecallVotes()
   const edit = useEditRecallRules()
   const update = useUpdateRecallRules()
@@ -147,7 +150,7 @@ export function VoteRulesSettings() {
     <Checkbox id="recall-votes" label="Voti" checked={data?.votes_enabled ?? true} disabled={settings.isPending} onChange={votes_enabled => settings.mutate({ votes_enabled, presave_check: data?.presave_check ?? true })} />
     <Checkbox id="recall-presave" label="Controllo prima di salvare" checked={data?.presave_check ?? true} disabled={settings.isPending} onChange={presave_check => settings.mutate({ votes_enabled: data?.votes_enabled ?? true, presave_check })} />
     {(data?.groups ?? []).map((group, index) => <div key={`${group.type}:${group.subject}`} className="flex flex-col gap-2 border-t py-3">
-      <div className="flex items-center gap-2"><label htmlFor={`recall-rule-${index}`} className="flex-1 text-body font-semibold">{group.type} · {group.subject || 'Senza materia'}</label>
+      <div className="flex items-center gap-2"><label htmlFor={`recall-rule-${index}`} className="flex-1 text-body font-semibold">{typeName(group.type)}{group.subject ? ` · ${group.subject}` : ''}</label>
         <IconButton icon={RotateCw} label="Aggiorna ora" disabled={update.isPending || Boolean(jobId && !finished)} onClick={() => update.mutate({ type: group.type, subject: group.subject, mock: false }, { onSuccess: accepted => setJobId(accepted.job_id) })} />
       </div>
       <p className="text-meta text-muted-foreground">{group.votes} voti{group.updated_at ? ` · ${new Date(group.updated_at).toLocaleString('it-IT')}` : ''}</p>

@@ -390,7 +390,9 @@ def record_fewshot_vote(qtype: RecallQuestionType, question_text: str, vote: str
     path = get_fewshot_path(state_dir)
     with file_lock(fs.lock_path(path + '.lock')):
         data = _load_fewshot(state_dir)
-        rows = fewshot_history(data.get(type_key(qtype), []))
+        # Un nuovo voto sulla stessa domanda sostituisce il precedente (niente doppioni nello storico).
+        rows = [r for r in fewshot_history(data.get(type_key(qtype), []))
+                if (r.get('lesson'), r.get('question_text')) != (lesson, question_text)]
         rows.append({'question_text': question_text, 'vote': vote, 'voted_at': datetime.now().isoformat(),
             'type': type_key(qtype), 'subject': subject, 'lesson': lesson, 'unit_ids': unit_ids or [],
             'reasons': list(dict.fromkeys(reasons or [])), 'comment': comment})

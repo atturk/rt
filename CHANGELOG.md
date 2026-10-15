@@ -1,7 +1,11 @@
 # Novità di RT
 
-## 4.2.6b1 — 2026-10-14
+## 4.2.6b1 — 2026-10-15
 
+- I materiali vanno alle singole sottounità: ogni pagina viene confrontata con le parti della lezione che le somigliano di più e il classificatore conferma dove serve davvero. La rielaborazione di ogni sottounità riceve solo le sue pagine, e la fonte principale resta quella che guida. La soglia si regola in Impostazioni › Classificatore.
+- Le pagine allegate compaiono sotto la sottounità a cui appartengono, nell'ordine del documento. Più immagini di fila diventano una striscia di miniature che scorre di lato, con un visore a schermo pieno (frecce, tastiera, swipe sul telefono). Il markdown esportato resta pulito, un'immagine per riga.
+- Audio più leggero: ogni registrazione aggiunta si salva in m4a. Più audio caricati insieme diventano una sola fonte con l'elenco delle parti (bottone Unisci). In Impostazioni › Spazio e cache, "Alleggerisci l'audio delle lezioni" converte i vecchi wav e cancella gli audio uniti che non servono più, senza rifare trascrizioni.
+- Calendario: il + su un'ora senza lezione apre l'import con quell'ora già scelta. Nel popup di import l'ora scelta si distingue meglio. Si possono trascinare i file su qualunque punto della finestra per importarli.
 - Il numero scelto per le domande è un tetto: RT cerca nuovi concetti in fino a tre passaggi e conserva le eventuali domande in più dell’ultimo giro. Il generatore vede le domande già presenti di ogni tipo.
 - Gli esercizi personalizzati possono riempire il tetto con varianti di contesto e dati, generate a lotti e verificate una per una.
 - Controlli locali scartano domande chiaramente rotte, fuori tema o quasi duplicate; le valutazioni incoerenti si riprovano una volta. L’avviso finale indica anche scarti e motivo dell’arresto.

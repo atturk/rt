@@ -98,7 +98,7 @@ test('fonti: conferma, fonti usate tolte e ripristino; una fonte mai usata non l
   await page.getByRole('button', { name: 'Togli', exact: true }).click()
   try {
     const bar = page.getByTestId('lesson-update-bar')
-    await expect(bar).toContainText('Hai tolto 1 fonti già usate')
+    await expect(bar).toContainText('Hai tolto una fonte già usata')
     await expect(bar.getByRole('button', { name: 'Ricostruisci', exact: true })).toBeVisible()
     await expect(bar.getByTestId('bar-extend-btn')).toHaveCount(0)
     await bar.getByRole('button', { name: "Rimetti com'era" }).click()

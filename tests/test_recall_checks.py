@@ -81,7 +81,7 @@ def test_generation_notice_omits_zero_parts_and_reports_stop_and_discards():
     from rt.services.api_jobs import recall_generation_notice
     assert recall_generation_notice({}, 10, 10) == 'Generate 10 su 10.'
     text = recall_generation_notice({'local_discarded': 1, 'presave_discarded': 1, 'verification_discarded': 1}, 10, 6)
-    assert text == 'Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli. 1 variante non ha superato la verifica.'
+    assert text == 'Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 esercizio non ha superato la verifica.'
     assert 'tre passaggi' in recall_generation_notice({'stop_reason': 'max_rounds'}, 10, 3)
 
 
@@ -91,3 +91,26 @@ def test_generation_notice_omits_zero_parts_and_reports_stop_and_discards():
 ])
 def test_short_medical_symbols_count_as_relevant_keywords(question, unit):
     assert question_issue({'question_text': question}, unit) is None
+
+
+@pytest.mark.parametrize('text', [
+    'Criteri diagnostici sindrome nefrosica?',
+    'Valori normali emoglobina glicata?',
+    'Classificazione NYHA scompenso cardiaco.',
+    'Sintomi tipici scompenso cardiaco destro?',
+    'Farmaci: ACE-inibitori, meccanismo?',
+])
+def test_short_medical_questions_pass_language_check(text):
+    assert question_issue({'question_text': text}) is None
+
+
+def test_long_english_question_is_rejected():
+    text = 'What is the main mechanism of action of the ACE inhibitors in heart failure?'
+    assert question_issue({'question_text': text}) == 'lingua'
+
+
+def test_evaluation_only_flags_clear_contradictions():
+    from rt.pipeline.recall_checks import evaluation_issue
+    assert evaluation_issue({'correttezza': 90, 'completezza': 80, 'commento': 'ok', 'outcome': 'corretta'}) is None
+    assert evaluation_issue({'correttezza': 30, 'completezza': 80, 'commento': 'ok', 'outcome': 'corretta'}) == 'esito incoerente'
+    assert evaluation_issue({'correttezza': 90, 'completezza': 90, 'commento': 'ok', 'outcome': 'sbagliata'}) == 'esito incoerente'

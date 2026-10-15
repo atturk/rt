@@ -1,11 +1,14 @@
 """Regole dai voti per tipo e materia, aggiornate solo su richiesta o all'inizio del job."""
 import json
+import logging
 import os
 from datetime import datetime
 from pydantic import BaseModel, Field
 from rt.core.config import load_config
 from rt.core.filelock import file_lock
 from rt.storage import fs
+
+_LOG = logging.getLogger(__name__)
 
 
 class DistilledRules(BaseModel):
@@ -54,7 +57,9 @@ def update(qtype, subject, *, manual=False, mock=False):
     else:
         result = client.call_structured(
             system_prompt='Riassumi i voti in massimo 8 regole brevi di forma e livello. Non importare contenuti o scenari degli esempi. Restituisci DistilledRules.',
-            prompt=json.dumps({'tipo': qtype, 'materia': subject, 'voti': history}, ensure_ascii=False),
+            prompt=json.dumps({'tipo': qtype, 'materia': subject, 'voti': [
+                {k: v[k] for k in ('question_text', 'vote', 'reasons', 'comment') if v.get(k)} for v in history]},
+                ensure_ascii=False),
             response_model=DistilledRules, job_name='recall')
         rules = [r.strip() for r in result.rules if r.strip()][:8]
     with file_lock(fs.lock_path(path() + '.lock')):
@@ -81,7 +86,15 @@ def prepare(qtype, lesson_dir, *, mock=False):
     from rt.services.recall_context import lesson_context
     if not load_config().recall.votes_enabled:
         return []
-    return update(qtype, lesson_context(lesson_dir).get('materia', ''), mock=mock)
+    subject = lesson_context(lesson_dir).get('materia', '')
+    try:
+        return update(qtype, subject, mock=mock)
+    except Exception as exc:  # un modello che sbaglia il JSON non ferma la generazione
+        from rt.llm.cancel import RunCancelled
+        if isinstance(exc, RunCancelled):
+            raise
+        _LOG.warning("Regole dai voti non aggiornate (%s, %s): %s", qtype, subject, exc)
+        return load().get(qtype, {}).get(subject, {}).get('rules', [])
 
 
 def block(rules):
@@ -93,10 +106,17 @@ def filter_group(questions, rules, *, mock=False, summary=None, lesson_dir=None)
     if not questions or not rules or not cfg.votes_enabled or not cfg.presave_check or mock:
         return questions
     from rt.llm.client import LLMClient
-    result = LLMClient(force_mock=False).call_structured(
-        system_prompt='Confronta le domande con le regole. Scarta solo violazioni chiare; restituisci RuleCheck con gli indici da scartare, a partire da zero.',
-        prompt=json.dumps({'regole': rules, 'domande': [q.model_dump(mode='json') for q in questions]}, ensure_ascii=False),
-        response_model=RuleCheck, job_name='recall', lesson_dir=lesson_dir)
+    from rt.llm.cancel import RunCancelled
+    try:
+        result = LLMClient(force_mock=False).call_structured(
+            system_prompt='Confronta le domande con le regole. Scarta solo violazioni chiare; restituisci RuleCheck con gli indici da scartare, a partire da zero.',
+            prompt=json.dumps({'regole': rules, 'domande': [q.model_dump(mode='json') for q in questions]}, ensure_ascii=False),
+            response_model=RuleCheck, job_name='recall', lesson_dir=lesson_dir)
+    except RunCancelled:
+        raise
+    except Exception as exc:  # controllo non riuscito: le domande generate si tengono
+        _LOG.warning("Controllo prima di salvare non riuscito: %s", exc)
+        return questions
     rejected = set(i for i in result.rejected if 0 <= i < len(questions))
     if summary is not None:
         summary['presave_discarded'] = summary.get('presave_discarded', 0) + len(rejected)

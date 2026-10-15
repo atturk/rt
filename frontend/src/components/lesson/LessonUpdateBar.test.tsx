@@ -298,7 +298,7 @@ describe('LessonUpdateBar', () => {
 it('le fonti usate tolte offrono solo Ricostruisci e Rimetti come era', () => {
   mockSourcesData = { sources: [], has_unused_sources: false, can_undo: false, principale: '', ordine_usato: ['s1'], principale_usato: 's1', solo_ricostruzione: true, fonti_tolte_usate: ['s1'] }
   renderBar()
-  expect(screen.getByText('Hai tolto 1 fonti già usate')).toBeInTheDocument()
+  expect(screen.getByText('Hai tolto una fonte già usata')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Ricostruisci' })).toBeInTheDocument()
   expect(screen.queryByTestId('bar-extend-btn')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: "Rimetti com'era" }))

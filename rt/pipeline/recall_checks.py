@@ -6,8 +6,11 @@ from collections import Counter
 MIN_QUESTION_CHARS = 8
 # Tracce cliniche e problemi possono essere lunghi: scartiamo solo output enormi.
 MAX_QUESTION_CHARS = 12000
-# Una parola italiana ogni 100 basta: sigle e lessico medico non sono un dizionario.
-MIN_ITALIAN_RATIO = .01
+# Lingua: si scarta solo un testo abbastanza lungo da giudicare, senza parole italiane comuni
+# e con almeno una parola inglese comune. Le domande telegrafiche («Valori normali HbA1c?»)
+# e il lessico medico passano sempre.
+MIN_LANGUAGE_WORDS = 5
+MIN_ENGLISH_MARKERS = 1
 # Quattro ripetizioni consecutive di un blocco di 5 parole indicano un loop evidente.
 REPEATED_NGRAM_SIZE = 5
 MAX_NGRAM_REPEATS = 4
@@ -22,12 +25,14 @@ MIN_RELEVANT_WORDS = 1
 # 1,8 segnala una risposta insolitamente prolissa; ignoriamo opzioni sotto 40 caratteri.
 MAX_CORRECT_OPTION_RATIO = 1.8
 MIN_LONG_OPTION_CHARS = 40
-# Esito coerente coi due punteggi: entrambi >=85 corretta, correttezza <40 sbagliata.
+# Solo contraddizioni nette fra esito e punteggi: «corretta» con correttezza sotto 40,
+# «sbagliata» con entrambi i punteggi da 85 in su. Gli stessi valori ricavano l'esito mancante.
 CORRECT_PERCENT = 85
 WRONG_PERCENT = 40
 
 COMMON = set("il lo la i gli le un uno una di del della dei delle da dal dalla in nel nella con su per tra fra e o ma che a al alla è sono si non come quale quali cosa cos perché quando quanto dove ha hanno essere viene vengono può possono questo questa questi queste descrivi spiega indica confronta descrivere spiegare caratterizza determina calcola ruolo rapporto secondo rispetto durante dopo prima senza ad ogni più meno se ed oppure sia anche nel negli nelle dell all d l".split())
 ITALIAN_MARKERS = COMMON - {"a", "in", "i", "come", "si", "non", "per", "e", "o", "ha", "su", "l", "d"}
+ENGLISH_MARKERS = set("the of which what is are and with for this that how why does from".split())
 WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 NUMBER = re.compile(r"(?<![\w])[-+]?\d+(?:[.,]\d+)?")
 PLACEHOLDER = re.compile(r"\[\s*\.\.\.\s*\]|\bXXX\b|\blorem\b|^\s*Domanda\s+\d+\s*:", re.I)
@@ -56,7 +61,10 @@ def question_issue(question, unit_text='', previous=(), *, variant=False):
     if PLACEHOLDER.search(text):
         return 'segnaposto'
     tokens = words(text)
-    if not tokens or sum(t in ITALIAN_MARKERS for t in tokens) / len(tokens) < MIN_ITALIAN_RATIO:
+    if not tokens:
+        return 'lingua'
+    if (len(tokens) >= MIN_LANGUAGE_WORDS and not any(t in ITALIAN_MARKERS for t in tokens)
+            and sum(t in ENGLISH_MARKERS for t in tokens) >= MIN_ENGLISH_MARKERS):
         return 'lingua'
     grams = Counter(tuple(tokens[i:i + REPEATED_NGRAM_SIZE])
                     for i in range(len(tokens) - REPEATED_NGRAM_SIZE + 1))
@@ -140,7 +148,9 @@ def evaluation_issue(result):
         return 'percentuali'
     if not data.get('commento', '').strip():
         return 'commento vuoto'
-    if data.get('outcome') != percentage_outcome(*scores):
+    outcome = data.get('outcome')
+    if ((outcome == 'corretta' and scores[0] < WRONG_PERCENT)
+            or (outcome == 'sbagliata' and min(scores) >= CORRECT_PERCENT)):
         return 'esito incoerente'
     return None
 
@@ -158,13 +168,16 @@ def checked_evaluation(client, *, dont_know=False, **kwargs):
             result.correttezza = result.completezza = 0
             result.outcome = 'sbagliata'
         if not evaluation_issue(result):
+            if result.outcome is None:  # esito mancante: si ricava dai punteggi, senza riprovare
+                result.outcome = percentage_outcome(result.correttezza, result.completezza)
             return result
     if result is None:
         result = kwargs['response_model'].model_construct(correttezza=0, completezza=0,
             commento='Il modello non ha restituito una valutazione valida.', outcome='sbagliata')
     result.correttezza = min(100, max(0, result.correttezza))
     result.completezza = min(100, max(0, result.completezza))
-    result.outcome = percentage_outcome(result.correttezza, result.completezza)
+    if result.outcome is None or evaluation_issue(result) == 'esito incoerente':
+        result.outcome = percentage_outcome(result.correttezza, result.completezza)
     if not result.commento.strip():
         result.commento = 'Valutazione ricavata dalle percentuali restituite dal modello.'
     return result

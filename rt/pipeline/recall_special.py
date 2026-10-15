@@ -5,7 +5,7 @@ import random
 import time
 from datetime import datetime
 from typing import Callable, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
                             GeneratedVariant, GeneratedTextVariant, RecallTextGenerationResult,
@@ -18,12 +18,19 @@ _LOG = logging.getLogger(__name__)
 MAX_VARIANTS_PER_CALL = 5
 
 
+def _first_variants(items):
+    """Un lotto troppo lungo non fa fallire il job: si tengono le prime varianti."""
+    return items[:MAX_VARIANTS_PER_CALL] if isinstance(items, list) else items
+
+
 class TextVariantBatch(BaseModel):
-    items: list[GeneratedTextVariant] = Field(max_length=MAX_VARIANTS_PER_CALL)
+    items: list[GeneratedTextVariant] = Field(default_factory=list)
+    _cap = field_validator("items", mode="before")(_first_variants)
 
 
 class VariantBatch(BaseModel):
-    items: list[GeneratedVariant] = Field(max_length=MAX_VARIANTS_PER_CALL)
+    items: list[GeneratedVariant] = Field(default_factory=list)
+    _cap = field_validator("items", mode="before")(_first_variants)
 
 
 def _definition(qtype, lesson_dir=None):
@@ -358,7 +365,7 @@ def generate_variants(lesson_dir: str, template_id: str, count: int, *, force_mo
             definition.nome, tipo, previous, text_correction=text_correction, batch_size=count)
         candidates = client.call_structured(prompt=prompt,
             system_prompt=effective_system("recall", definition.chiedi + "\n\n" + system + "\nLa risposta dello studente è testuale."),
-            response_model=model, job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir).items
+            response_model=model, job_name="recall", unit_id=", ".join(template.unit_ids), lesson_dir=lesson_dir).items[:count]
     candidates = recall_rules.filter_group(candidates, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
     saved = []
     for candidate in candidates:

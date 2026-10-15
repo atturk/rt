@@ -721,7 +721,7 @@ Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descr
 Non restituire una soluzione pregenerata: lascia soluzione vuota."""
 
 
-def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False, batch_size: int = 1) -> str:
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False, batch_size: int = 1, max_items: int = 5) -> str:
     import json
     what = kind
     prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
@@ -730,7 +730,8 @@ def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, prob
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
     model = "TextVariantBatch" if text_correction else "VariantBatch"
-    return prompt + f"\n\nCrea varianti del {what} nel contenitore items conforme a {model}."
+    # Tetto tecnico del lotto (mai il numero chiesto dall'utente).
+    return prompt + f"\n\nCrea fino a {max_items} varianti del {what}, diverse fra loro, nel contenitore items conforme a {model}."
 
 
 RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di una domanda personalizzata prima di proporla a uno studente.

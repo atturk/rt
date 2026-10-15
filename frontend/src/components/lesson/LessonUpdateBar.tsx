@@ -114,7 +114,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           <div className="flex items-center gap-2 text-meta text-foreground">
             <Info className="size-4 shrink-0 text-amber-500" aria-hidden />
             <span>{data.fonti_tolte_usate?.length
-              ? `Hai tolto ${data.fonti_tolte_usate.length} fonti già usate`
+              ? (data.fonti_tolte_usate.length === 1 ? 'Hai tolto una fonte già usata' : `Hai tolto ${data.fonti_tolte_usate.length} fonti già usate`)
               : 'Ordine delle registrazioni cambiato: la lezione va ricostruita'}</span>
           </div>
           <div className="flex items-center gap-1">

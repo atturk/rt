@@ -53,7 +53,7 @@ def test_fewshot_groups_and_prompt_keep_reasons(tmp_path):
     assert prompt.index('Buona?') < prompt.index('ESEMPI DA EVITARE') < prompt.index('Da evitare?')
     assert 'ambigua' in prompt and 'Due risposte' in prompt
     recall.record_fewshot_vote(RecallQuestionType.QUIZ, 'Da evitare?', 'up', state_dir=root)
-    assert len(recall._load_fewshot(root)['quiz']['avoid']) == 1  # Lo storico conserva anche il voto precedente.
+    assert not recall._load_fewshot(root)['quiz']['avoid']
     assert all(row['vote'] == 'up' for row in recall.load_fewshot_examples(RecallQuestionType.QUIZ, root))
 
 

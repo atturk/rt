@@ -14,7 +14,7 @@ function setup() {
 it('mostra materia, voti, data e salva le regole modificate a mano', async () => {
   const put = vi.spyOn(api, 'PUT').mockResolvedValue(result(data) as never)
   setup()
-  const field = await screen.findByLabelText('mirata · Medicina')
+  const field = await screen.findByLabelText('Mirata · Medicina')
   expect(screen.getByText(/7 voti/)).toBeInTheDocument()
   fireEvent.change(field, { target: { value: 'Evita le date\nChiedi il ragionamento' } })
   fireEvent.blur(field)
@@ -24,7 +24,7 @@ it('gli interruttori sono accesi e Aggiorna ora accoda un job', async () => {
   const put = vi.spyOn(api, 'PUT').mockResolvedValue(result(data) as never)
   const post = vi.spyOn(api, 'POST').mockResolvedValue(result({ job_id: 'rules-job' }) as never)
   setup()
-  await screen.findByLabelText('mirata · Medicina')
+  await screen.findByLabelText('Mirata · Medicina')
   expect(screen.getByRole('switch', { name: 'Voti' })).toHaveAttribute('aria-checked', 'true')
   expect(screen.getByRole('switch', { name: 'Controllo prima di salvare' })).toHaveAttribute('aria-checked', 'true')
   fireEvent.click(screen.getByRole('switch', { name: 'Voti' }))
