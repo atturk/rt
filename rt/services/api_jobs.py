@@ -277,7 +277,7 @@ def recall_generation_notice(summary, requested, generated):
         tail.append(f"{discarded} {'scartata' if discarded == 1 else 'scartate'} dai controlli")
     failed = summary.get('verification_discarded', 0)
     if failed:
-        tail.append(f"{failed} {'esercizio non ha' if failed == 1 else 'esercizi non hanno'} superato la verifica")
+        tail.append(f"{failed} {'variante non ha' if failed == 1 else 'varianti non hanno'} superato la verifica")
     if tail:
         message += " " + ", ".join(tail) + "."
     return message

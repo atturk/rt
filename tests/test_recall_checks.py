@@ -81,7 +81,7 @@ def test_generation_notice_omits_zero_parts_and_reports_stop_and_discards():
     from rt.services.api_jobs import recall_generation_notice
     assert recall_generation_notice({}, 10, 10) == 'Generate 10 su 10.'
     text = recall_generation_notice({'local_discarded': 1, 'presave_discarded': 1, 'verification_discarded': 1}, 10, 6)
-    assert text == 'Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 esercizio non ha superato la verifica.'
+    assert text == 'Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 variante non ha superato la verifica.'
     assert 'tre passaggi' in recall_generation_notice({'stop_reason': 'max_rounds'}, 10, 3)
 
 

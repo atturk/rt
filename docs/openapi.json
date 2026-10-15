@@ -481,7 +481,7 @@
             "type": "boolean"
           },
           "unisci": {
-            "default": false,
+            "default": true,
             "title": "Unisci",
             "type": "boolean"
           },
