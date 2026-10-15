@@ -1,6 +1,7 @@
 """Immagini inserite a mano: media della lezione, senza descrizione o collocazione LLM."""
 import io
 import os
+import re
 import warnings
 
 from PIL import Image, UnidentifiedImageError
@@ -157,4 +158,92 @@ def copy_material_page_to_assets(lesson_id: int, lesson_dir: str, source_id: str
         'alt_text': alt,
         'url': f'/api/v1/lessons/{lesson_id}/assets/images/{os.path.basename(relative)}',
     }
+
+
+def remove_images_from_lesson(
+    lesson_id: int,
+    lesson_dir: str,
+    image_names: list[str],
+    lease_token: str | None = None,
+) -> dict:
+    """Toglie dal documento e da placement.json i riferimenti alle immagini indicate.
+
+    Non toglie le immagini da descriptions.json né da assets/images/ (restano nei media
+    come 'non usata'). Non tocca mai history/. Rispetta il lock e il lease della lezione.
+    """
+    if not image_names:
+        return {'removed': []}
+
+    try:
+        with lesson_work_lock(lesson_dir):
+            with session_scope(_require_db()) as session:
+                lesson = session.get(Lesson, lesson_id)
+                if lesson is None or os.path.realpath(lesson_dir) != lesson.path:
+                    raise NotFound('lesson_not_found', 'Lezione non trovata.')
+                busy = session.scalar(
+                    select(Job.id).where(
+                        Job.lesson_path == lesson.path,
+                        Job.state.in_(['queued', 'running']),
+                        Job.type != 'documents',
+                    ).limit(1)
+                )
+                if busy:
+                    raise Conflict('lesson_busy', 'Un job sta lavorando sulla lezione.', {'job_id': busy})
+                lease = session.get(Setting, _key(lesson_id))
+                if lease and _active(lease.value) and lease.value.get('token') != lease_token:
+                    raise DocumentBeingEdited()
+                if lease_token and (not lease or not _active(lease.value) or lease.value.get('token') != lease_token):
+                    raise Conflict('document_edit_invalid', 'Sessione di modifica scaduta.')
+
+            # 1. Rimuovi da placement.json
+            from rt.pipeline.image_placement import load_image_placement, save_image_placement
+
+            placement = load_image_placement(lesson_dir)
+            strip_hashes = {
+                os.path.splitext(os.path.basename(n))[0] for n in image_names
+            }
+            strip_names = {os.path.basename(n) for n in image_names}
+
+            if placement:
+                macros = {
+                    k: [h for h in v if h not in strip_names and h not in strip_hashes]
+                    for k, v in placement.get('macros', {}).items()
+                }
+                units = {
+                    k: [h for h in v if h not in strip_names and h not in strip_hashes]
+                    for k, v in placement.get('units', {}).items()
+                }
+                save_image_placement(
+                    lesson_dir,
+                    macros,
+                    placement.get('carousel', False),
+                    units=units,
+                )
+
+            # 2. Rimuovi dal documento markdown (senza toccare history/*/)
+            doc_path = os.path.join(lesson_dir, 'document.md')
+            if fs.isfile(doc_path):
+                with fs.open(doc_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                lines = content.splitlines()
+                new_lines = []
+                for line in lines:
+                    match = re.search(r'!\[.*?\]\((?:assets/images/)?(.*?)\)', line)
+                    if match:
+                        target = os.path.basename(match.group(1))
+                        target_hash = os.path.splitext(target)[0]
+                        if target in strip_names or target in strip_hashes or target_hash in strip_hashes:
+                            continue
+                    new_lines.append(line)
+                new_content = '\n'.join(new_lines)
+                new_content = re.sub(r'\n{3,}', '\n\n', new_content).strip() + '\n'
+                tmp_path = doc_path + '.tmp'
+                with fs.open(tmp_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                fs.replace(tmp_path, doc_path)
+
+        return {'removed': image_names}
+    except LessonBusy:
+        raise Conflict('lesson_busy', 'La lezione è in lavorazione.') from None
+
 

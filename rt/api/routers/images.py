@@ -273,3 +273,25 @@ def get_material_image(lesson_id: int, impronta: str, name: str, lesson_dir: Les
     with fs.open(path, "rb") as f:
         return Response(content=f.read(), media_type="image/png", headers=headers)
 
+
+class RemoveFromTextRequest(BaseModel):
+    image_names: list[str]
+    lease_token: Optional[str] = None
+
+
+@router.post("/lessons/{lesson_id}/media/remove-from-text", summary="Toglie immagini dal testo e da placement")
+def remove_from_text(
+    lesson_id: int,
+    lesson_dir: LessonDir,
+    _actor: Actor,
+    req: RemoveFromTextRequest,
+):
+    from rt.services.editor_media_service import remove_images_from_lesson
+    return remove_images_from_lesson(
+        lesson_id=lesson_id,
+        lesson_dir=lesson_dir,
+        image_names=req.image_names,
+        lease_token=req.lease_token,
+    )
+
+

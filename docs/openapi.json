@@ -8532,6 +8532,33 @@
         "title": "RecallVoteSettings",
         "type": "object"
       },
+      "RemoveFromTextRequest": {
+        "properties": {
+          "image_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Names",
+            "type": "array"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          }
+        },
+        "required": [
+          "image_names"
+        ],
+        "title": "RemoveFromTextRequest",
+        "type": "object"
+      },
       "RevealIn": {
         "properties": {
           "field": {
@@ -17635,6 +17662,101 @@
           }
         ],
         "summary": "Copia una pagina dei materiali in assets/images",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/remove-from-text": {
+      "post": {
+        "operationId": "remove_from_text_api_v1_lessons__lesson_id__media_remove_from_text_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFromTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Toglie immagini dal testo e da placement",
         "tags": [
           "immagini"
         ]

@@ -7,6 +7,7 @@ import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
 import { useLessonDocument } from '@/api/hooks'
 import {
   copyMaterialPage,
+  removeFromText,
   useAddImages,
   useLessonImages,
   useRefreshImages,
@@ -220,9 +221,20 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
-  const handleRemoveFromText = () => {
+  const handleRemoveFromText = async () => {
     const selected = imageList.filter((i) => selectedNames.has(i.name))
-    window.dispatchEvent(new CustomEvent('rt-editor-remove-images', { detail: { imageNames: selected.map((s) => s.name) } }))
+    const names = selected.map((s) => s.name)
+    if (!names.length) return
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }),
+    )
+    try {
+      await removeFromText(id, names)
+    } catch {
+      // Ignora errori se il documento è modificato dall'editor
+    }
+    setSelectedNames(new Set())
+    void refreshImages()
   }
 
   const visibleIdeas = elements.filter(

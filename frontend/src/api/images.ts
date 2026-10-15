@@ -63,3 +63,12 @@ export function copyMaterialPage(id: number, sourceId: string, page: number, lea
   }))
 }
 
+/** Toglie dal documento e da placement i riferimenti alle immagini indicate. */
+export function removeFromText(id: number, imageNames: string[], leaseToken?: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/remove-from-text', {
+    params: path(id),
+    body: { image_names: imageNames, lease_token: leaseToken },
+  }))
+}
+
+

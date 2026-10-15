@@ -1044,6 +1044,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/media/remove-from-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toglie immagini dal testo e da placement */
+        post: operations["remove_from_text_api_v1_lessons__lesson_id__media_remove_from_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/metadata": {
         parameters: {
             query?: never;
@@ -7312,6 +7329,13 @@ export interface components {
              */
             votes_enabled: boolean;
         };
+        /** RemoveFromTextRequest */
+        RemoveFromTextRequest: {
+            /** Image Names */
+            image_names: string[];
+            /** Lease Token */
+            lease_token?: string | null;
+        };
         /** RevealIn */
         RevealIn: {
             /**
@@ -13045,6 +13069,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditorImage"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_from_text_api_v1_lessons__lesson_id__media_remove_from_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveFromTextRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */

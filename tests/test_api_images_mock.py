@@ -226,3 +226,64 @@ def test_material_pages_list_serve_and_copy(api_client, ws, rt_db, tmp_path):
     assert images2[0]["url"].endswith(asset_img["name"])
     assert images2[1]["in_assets"] is False
 
+
+def test_remove_from_text_removes_from_doc_and_placement_without_touching_history_or_assets(api_client, ws):
+    from rt.storage import fs
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+    from rt.pipeline.image_placement import save_image_placement
+
+    # Setup file assets/images
+    images_dir = os.path.join(lesson, "assets", "images")
+    fs.makedirs(images_dir, exist_ok=True)
+    img1_file = os.path.join(images_dir, "img_keep.png")
+    img2_file = os.path.join(images_dir, "img_remove.png")
+    _png(img1_file)
+    _png(img2_file)
+
+    # Setup document.md
+    doc_path = os.path.join(lesson, "document.md")
+    with fs.open(doc_path, "w", encoding="utf-8") as f:
+        f.write("# Titolo\n\n![Img1](assets/images/img_keep.png)\n\nTesto normale\n\n![Img2](assets/images/img_remove.png)\n")
+
+    # Setup placement.json
+    save_image_placement(lesson, macros={"1": ["img_keep", "img_remove"]}, carousel=False, units={"1.1": ["img_remove"]})
+
+    # Setup dummy history file
+    hist_dir = os.path.join(lesson, "history", "v1")
+    fs.makedirs(hist_dir, exist_ok=True)
+    hist_file = os.path.join(hist_dir, "snapshot.txt")
+    with fs.open(hist_file, "w", encoding="utf-8") as f:
+        f.write("history snapshot")
+
+    # Chiama remove-from-text
+    res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/remove-from-text",
+        json={"image_names": ["img_remove.png"]},
+    )
+    assert res.status_code == 200
+
+    # Verifica document.md
+    with fs.open(doc_path, "r", encoding="utf-8") as f:
+        new_doc = f.read()
+    assert "img_remove.png" not in new_doc
+    assert "img_keep.png" in new_doc
+    assert "Testo normale" in new_doc
+
+    # Verifica placement.json
+    from rt.pipeline.image_placement import load_image_placement
+    placement = load_image_placement(lesson)
+    assert "img_remove" not in placement["macros"].get("1", [])
+    assert "img_keep" in placement["macros"].get("1", [])
+    assert "img_remove" not in placement["units"].get("1.1", [])
+
+    # Verifica che il file originale in assets NON sia stato cancellato
+    assert fs.isfile(img2_file)
+
+    # Verifica che history sia intatta
+    assert fs.isfile(hist_file)
+    with fs.open(hist_file, "r", encoding="utf-8") as f:
+        assert f.read() == "history snapshot"
+
+
