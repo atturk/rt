@@ -198,6 +198,7 @@ it('aggiunge i file trascinati ai file scelti, ignora gli altri e impedisce il v
   expect(screen.getByRole('alert')).toHaveTextContent('Formato non supportato: audio.wav')
   fireEvent.click(screen.getByRole('button', { name: 'Carica (2)' }))
   await vi.waitFor(() => expect(post).toHaveBeenCalled())
-  const body = post.mock.calls[0][1]?.bodySerializer?.({}) as FormData
+  const options = post.mock.calls[0][1] as { bodySerializer: () => FormData }
+  const body = options.bodySerializer()
   expect(body.getAll('files').map((file) => (file as File).name)).toEqual(['slide.pdf', 'foto.HEIC'])
 })
