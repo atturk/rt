@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { GlobalFileDrop } from './GlobalFileDrop'
 
 describe('GlobalFileDrop (UI3)', () => {
@@ -101,7 +101,25 @@ describe('GlobalFileDrop (UI3)', () => {
     fireEvent.dragEnter(window, { dataTransfer: dt })
     expect(screen.getByTestId('global-drop-veil')).toBeInTheDocument()
 
-    fireEvent.dragLeave(window, { relatedTarget: null })
+    fireEvent.dragLeave(window, { relatedTarget: null, clientX: 0, clientY: 0 })
     expect(screen.queryByTestId('global-drop-veil')).not.toBeInTheDocument()
+  })
+
+  it('resta aperto passando da un elemento all\'altro, anche con relatedTarget null (Safari)', () => {
+    vi.useFakeTimers()
+    render(<GlobalFileDrop onDropFiles={vi.fn()} />)
+    const dt = { types: ['Files'], files: [new File(['a'], 'lezione.mp3', { type: 'audio/mpeg' })],
+      items: [{ kind: 'file', type: 'audio/mpeg' }] }
+    fireEvent.dragEnter(window, { dataTransfer: dt })
+    for (let i = 0; i < 5; i++) {
+      fireEvent.dragLeave(window, { relatedTarget: null, clientX: 200, clientY: 200 })
+      fireEvent.dragOver(window, { dataTransfer: dt, clientX: 210, clientY: 210 })
+      act(() => { vi.advanceTimersByTime(300) })
+    }
+    expect(screen.getByTestId('global-drop-veil')).toBeInTheDocument()
+    // Senza più dragover (trascinamento finito fuori dalla finestra) il velo si chiude.
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(screen.queryByTestId('global-drop-veil')).not.toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

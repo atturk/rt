@@ -359,7 +359,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
 
     const bar = await screen.findByTestId('pending-audios-bar')
     expect(bar).toHaveTextContent('2 parti')
-    const unisciBtn = within(bar).getByRole('button', { name: 'Unisci' })
+    const unisciBtn = within(bar).getByTestId('merge-audio-toggle')
     expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
 
     // Clic per spegnerlo

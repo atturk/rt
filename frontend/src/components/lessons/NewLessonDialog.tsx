@@ -33,6 +33,7 @@ import {
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
 import { AudioOrder } from '@/components/lessons/AudioOrder'
+import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -548,21 +549,11 @@ export function NewLessonDialog({
                       {audioFiles.length} parti · {formatBytes(totalAudioBytes)} ·{' '}
                       {unisciAudio
                         ? "diventano un'unica registrazione, in quest'ordine"
-                        : 'fonti separate'}
+                        : `restano ${audioFiles.length} fonti separate`}
                     </span>
                   </span>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Button
-                      type="button"
-                      variant={unisciAudio ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-7 px-2.5 text-xs"
-                      aria-pressed={unisciAudio}
-                      disabled={busy}
-                      onClick={() => setUnisciAudio((prev) => !prev)}
-                    >
-                      Unisci
-                    </Button>
+                    <MergeAudioToggle merged={unisciAudio} disabled={busy} onChange={setUnisciAudio} />
                     <IconButton
                       label="Rimuovi tutti gli audio"
                       icon={X}

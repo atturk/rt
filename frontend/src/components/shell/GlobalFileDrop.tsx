@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { hasAcceptedDrag, isAcceptedFile, isExcludedTarget } from './globalFileDropUtils'
 
+const DRAG_IDLE_MS = 700
+
 export function GlobalFileDrop({
   disabled,
   onDropFiles,
@@ -11,46 +13,52 @@ export function GlobalFileDrop({
 }) {
   const [active, setActive] = useState(false)
   const [excluded, setExcluded] = useState(false)
-  const dragCounter = useRef(0)
+  // Il velo resta finché arrivano dragover (il browser li manda di continuo, anche a mouse
+  // fermo): si chiude al rilascio, con Esc, quando il trascinamento esce dalla finestra o
+  // quando i dragover smettono. I dragleave fra un elemento e l'altro della pagina non
+  // contano (Safari li manda con relatedTarget null a ogni passaggio).
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (disabled) return
 
+    const close = () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+      idleTimer.current = null
+      setActive(false)
+      setExcluded(false)
+    }
+
+    const keepOpen = (e: DragEvent) => {
+      setActive(true)
+      setExcluded(isExcludedTarget((e.target as Element | null) ?? null))
+      if (idleTimer.current) clearTimeout(idleTimer.current)
+      idleTimer.current = setTimeout(close, DRAG_IDLE_MS)
+    }
+
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault()
       if (!e.dataTransfer || !hasAcceptedDrag(e.dataTransfer)) return
-      dragCounter.current++
-      setActive(true)
-      const target = (e.target as Element | null) ?? null
-      setExcluded(isExcludedTarget(target))
+      keepOpen(e)
     }
 
     const onDragOver = (e: DragEvent) => {
       e.preventDefault()
       if (!e.dataTransfer || !hasAcceptedDrag(e.dataTransfer)) return
-      const target = (e.target as Element | null) ?? null
-      setExcluded(isExcludedTarget(target))
+      keepOpen(e)
     }
 
     const onDragLeave = (e: DragEvent) => {
       e.preventDefault()
-      dragCounter.current--
-      if (
-        dragCounter.current <= 0 ||
-        e.relatedTarget === null ||
-        (e.clientX === 0 && e.clientY === 0)
-      ) {
-        dragCounter.current = 0
-        setActive(false)
-        setExcluded(false)
-      }
+      const x = e.clientX ?? 0
+      const y = e.clientY ?? 0
+      const outside = x <= 0 || y <= 0 || x >= window.innerWidth || y >= window.innerHeight
+      if (outside) close()
     }
 
     const onDrop = (e: DragEvent) => {
       e.preventDefault()
-      dragCounter.current = 0
-      setActive(false)
-      setExcluded(false)
+      close()
 
       const target = (e.target as Element | null) ?? null
       if (isExcludedTarget(target)) return
@@ -63,11 +71,7 @@ export function GlobalFileDrop({
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        dragCounter.current = 0
-        setActive(false)
-        setExcluded(false)
-      }
+      if (e.key === 'Escape') close()
     }
 
     window.addEventListener('dragenter', onDragEnter)
@@ -82,6 +86,7 @@ export function GlobalFileDrop({
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('keydown', onKeyDown)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
     }
   }, [disabled, onDropFiles])
 

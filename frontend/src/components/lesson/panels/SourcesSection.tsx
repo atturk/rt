@@ -30,6 +30,7 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
+import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
@@ -303,19 +304,10 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           <div className="flex items-center gap-2 min-w-0">
             <Mic className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <span className="truncate font-medium">
-              {pendingAudios.length} parti · {formatBytes(pendingAudios.reduce((sum, f) => sum + f.size, 0))}
+              {pendingAudios.length} parti · {formatBytes(pendingAudios.reduce((sum, f) => sum + f.size, 0))} ·{' '}
+              {unisciAudio ? "un'unica registrazione" : 'fonti separate'}
             </span>
-            <Button
-              type="button"
-              variant={unisciAudio ? 'default' : 'outline'}
-              size="sm"
-              className="h-7 px-2.5 text-xs"
-              aria-pressed={unisciAudio}
-              disabled={uploadingAudio}
-              onClick={() => setUnisciAudio((prev) => !prev)}
-            >
-              Unisci
-            </Button>
+            <MergeAudioToggle merged={unisciAudio} disabled={uploadingAudio} onChange={setUnisciAudio} />
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <Button
