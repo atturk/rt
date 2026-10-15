@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
 
 test('calendario: navigazione, settimana tipo, popup evento e riepilogo', async ({ page }) => {
   await loginViaLink(page)
@@ -252,10 +252,12 @@ test('calendario: seguita senza lezione resta importabile e viene collegata', as
     await expect(dialog.getByLabel('Materia')).toHaveValue('Prova Seguita')
     const date = await dialog.getByLabel(/^Data/).inputValue()
     await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({
-      name: 'seguita.png', mimeType: 'image/png',
-      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64'),
+      name: 'seguita.pdf', mimeType: 'application/pdf', buffer: tinyPdf(),
     })
+    const posted = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/lessons')
     await dialog.getByRole('button', { name: 'Avvia' }).click()
+    const imported = await posted
+    expect(imported.ok(), await imported.text()).toBeTruthy()
     await expect.poll(async () => {
       const day = await apiGet<{ events: { key: string; lesson?: { id: number }; is_recorded: boolean; status: string }[] }>(page.request, `/calendar/day?date=${date}`)
       const event = day.events.find((event) => event.key === key)

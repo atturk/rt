@@ -70,7 +70,7 @@ export async function exportItem(page: Page, name: string | RegExp) {
 }
 
 /** PDF di una pagina, abbastanza valido per PyMuPDF. */
-export function tinyPdf(): Buffer {
+export function tinyPdf(topic = 'Slide di prova: lipidi'): Buffer {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -78,7 +78,9 @@ export function tinyPdf(): Buffer {
     null,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
   ]
-  const stream = 'BT /F1 24 Tf 40 90 Td (Slide di prova: lipidi) Tj ET'
+  const safe = topic.replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7e]/g, ' ')
+  const fontSize = topic === 'Slide di prova: lipidi' ? 24 : 12
+  const stream = `BT /F1 ${fontSize} Tf 40 90 Td (${safe}) Tj ET`
   objects[3] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
   let pdf = '%PDF-1.4\n'
   const offsets: number[] = []
@@ -93,9 +95,33 @@ export function tinyPdf(): Buffer {
   return Buffer.from(pdf, 'latin1')
 }
 
-export function twoPagePdf(): Buffer {
-  const b64 = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDIvS2lkc1s0IDAgUiA4IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDwvRm9udDw8L2hlbHYgNSAwIFI+Pj4+CmVuZG9iagoKNCAwIG9iago8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDMyMCAxODBdL1JvdGF0ZSAwL1Jlc291cmNlcyAzIDAgUi9QYXJlbnQgMiAwIFIvQ29udGVudHNbNiAwIFJdPj4KZW5kb2JqCgo1IDAgb2JqCjw8L1R5cGUvRm9udC9TdWJ0eXBlL1R5cGUxL0Jhc2VGb250L0hlbHZldGljYS9FbmNvZGluZy9XaW5BbnNpRW5jb2Rpbmc+PgplbmRvYmoKCjYgMCBvYmoKPDwvTGVuZ3RoIDYyPj4Kc3RyZWFtCgpxCkJUCjEgMCAwIDEgNTAgMTMwIFRtCi9oZWx2IDExIFRmIFs8NTM2YzY5NjQ2NTIwMzE+XVRKCkVUClEKCmVuZHN0cmVhbQplbmRvYmoKCjcgMCBvYmoKPDwvRm9udDw8L2hlbHYgNSAwIFI+Pj4+CmVuZG9iagoKOCAwIG9iago8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDMyMCAxODBdL1JvdGF0ZSAwL1Jlc291cmNlcyA3IDAgUi9QYXJlbnQgMiAwIFIvQ29udGVudHNbOSAwIFJdPj4KZW5kb2JqCgo5IDAgb2JqCjw8L0xlbmd0aCA2Mj4+CnN0cmVhbQoKcQpCVAoxIDAgMCAxIDUwIDEzMCBUbQovaGVsdiAxMSBUZiBbPDUzNmM2OTY0NjUyMDMyPl1USgpFVApRCgplbmRzdHJlYW0KZW5kb2JqCgp4cmVmCjAgMTAKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3OCAwMDAwMCBuIAowMDAwMDAwMjE5IDAwMDAwIG4gCjAwMDAwMDAzMjYgMDAwMDAgbiAKMDAwMDAwMDQxNSAwMDAwMCBuIAowMDAwMDAwNTI2IDAwMDAwIG4gCjAwMDAwMDA1NjcgMDAwMDAgbiAKMDAwMDAwMDY3NCAwMDAwMCBuIAoKdHJhaWxlcgo8PC9TaXplIDEwL1Jvb3QgMSAwIFIvSURbPEMzOUVDMkE3MkYxQkMzODlDMzgxNTY2MUMyQkJDM0FBPjwxNDA3MEQzRjZBMjgzNkQwNUI1NEFGQ0YwQkU4QTc0MT5dPj4Kc3RhcnR4cmVmCjc4NQolJUVPRgo='
-  return Buffer.from(b64, 'base64')
+/** Due pagine con testo utile: il mapping non colloca più slide senza argomento. */
+export function twoPagePdf(topic = 'Slide'): Buffer {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 500 240] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 500 240] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>',
+    '', '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  // Stringhe PDF letterali: parentesi e backslash vanno protetti.
+  const safe = topic.replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7e]/g, ' ')
+  for (let i = 0; i < 2; i++) {
+    const stream = `BT /F1 12 Tf 30 140 Td (${safe}) Tj 0 -22 Td (pagina ${i + 1}) Tj ET`
+    objects[4 + i] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
+  }
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length)
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  pdf += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf, 'latin1')
 }
 
 /** Il documento della lezione è un editor (CodeMirror): disegna solo le righe vicine alla vista. Scorre finché l'elemento c'è. */
