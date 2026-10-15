@@ -212,8 +212,9 @@ def export_lesson(
     lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
     format: Literal["markdown", "zip"] = Query("markdown", description="markdown: solo il documento finale; "
                                                "zip: archivio con i file scelti da scope"),
-    scope: Literal["final", "all"] = Query("final", description="final: Markdown finale, errori concettuali e "
-                                           "immagini richiamate; all: tutti i file della lezione, audio compreso"),
+    scope: Literal["final", "all", "sources"] = Query("final", description="final: Markdown finale, errori concettuali e "
+                                           "immagini richiamate; all: tutti i file della lezione, audio compreso; "
+                                           "sources: solo le fonti (audio della lezione in m4a, PDF e altri file)"),
     study: bool = Query(False, description="Include lo stato di studio nello ZIP completo"),
 ):
     from urllib.parse import quote
@@ -224,7 +225,7 @@ def export_lesson(
             media_type = "text/markdown; charset=utf-8"
         else:
             path = export_zip_to_tempfile(lesson_dir, scope, study=study)
-            filename = zip_name(lesson_dir)
+            filename = zip_name(lesson_dir, scope)
             disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
             return FileResponse(path, media_type="application/zip", filename=filename,
                                 headers={"Content-Disposition": disposition},
@@ -240,8 +241,8 @@ def export_lesson(
 def export_lessons(
     _actor: Actor,
     ids: List[int] = Query(..., description="Id delle lezioni"),
-    format: Literal["markdown", "zip"] = Query("markdown", description="markdown: i documenti finali aggiornati; "
-                                               "zip: l'archivio completo di ogni lezione"),
+    format: Literal["markdown", "zip", "sources"] = Query("markdown", description="markdown: i documenti finali aggiornati; "
+                                               "zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione"),
     name: str = Query("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)"),
     study: bool = Query(False, description="Include lo stato di studio negli archivi completi"),
 ):

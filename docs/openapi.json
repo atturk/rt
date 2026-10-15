@@ -5335,7 +5335,8 @@
             "default": "markdown",
             "enum": [
               "markdown",
-              "zip"
+              "zip",
+              "sources"
             ],
             "title": "Format",
             "type": "string"
@@ -13232,16 +13233,17 @@
             }
           },
           {
-            "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+            "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione",
             "in": "query",
             "name": "format",
             "required": false,
             "schema": {
               "default": "markdown",
-              "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+              "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione",
               "enum": [
                 "markdown",
-                "zip"
+                "zip",
+                "sources"
               ],
               "title": "Format",
               "type": "string"
@@ -16269,16 +16271,17 @@
             }
           },
           {
-            "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+            "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file)",
             "in": "query",
             "name": "scope",
             "required": false,
             "schema": {
               "default": "final",
-              "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+              "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file)",
               "enum": [
                 "final",
-                "all"
+                "all",
+                "sources"
               ],
               "title": "Scope",
               "type": "string"

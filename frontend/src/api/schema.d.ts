@@ -5879,7 +5879,7 @@ export interface components {
              * @default markdown
              * @enum {string}
              */
-            format: "markdown" | "zip";
+            format: "markdown" | "zip" | "sources";
             /**
              * Ids
              * @description Id delle lezioni
@@ -9917,8 +9917,8 @@ export interface operations {
             query: {
                 /** @description Id delle lezioni */
                 ids: number[];
-                /** @description markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione */
-                format?: "markdown" | "zip";
+                /** @description markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione */
+                format?: "markdown" | "zip" | "sources";
                 /** @description Nome del file scaricato (senza estensione) */
                 name?: string;
                 /** @description Include lo stato di studio negli archivi completi */
@@ -12099,8 +12099,8 @@ export interface operations {
             query?: {
                 /** @description markdown: solo il documento finale; zip: archivio con i file scelti da scope */
                 format?: "markdown" | "zip";
-                /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso */
-                scope?: "final" | "all";
+                /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file) */
+                scope?: "final" | "all" | "sources";
                 /** @description Include lo stato di studio nello ZIP completo */
                 study?: boolean;
             };

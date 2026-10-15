@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
-    format: Literal["markdown", "zip"] = "markdown"
+    format: Literal["markdown", "zip", "sources"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
     study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
 

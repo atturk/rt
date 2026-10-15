@@ -379,7 +379,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const download = useRef<HTMLAnchorElement>(null)
   const downloaded = useRef<string | null>(null)
   const exporting = start.isPending || exportJob?.state === 'queued'
-  const runExport = (format: 'markdown' | 'zip') => {
+  const runExport = (format: 'markdown' | 'zip' | 'sources') => {
     start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate', study: format === 'zip' && exportStudy }, {
       onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
     })
@@ -431,6 +431,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           items={[
             { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
             { label: 'Scarica zip', onSelect: () => runExport('zip') },
+            { label: 'Solo le fonti (zip)', onSelect: () => runExport('sources') },
           ]} />
         <IconButton
           label="Elimina le lezioni selezionate"

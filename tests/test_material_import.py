@@ -187,3 +187,29 @@ def test_followed_hour_without_lesson_is_importable(api_client, rt_db, tmp_path,
     work(rt_db)
     event = calendar.get_day_view('2026-10-12').events[0]
     assert event.lesson is not None and event.is_recorded and event.status == 'seguita'
+
+
+def test_export_only_sources_single_and_group(api_client, rt_db, tmp_path, monkeypatch):
+    import zipfile as zf_mod
+    isolated_workspace(tmp_path, monkeypatch)
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda path: 60.0)
+    response = api_client.post('/api/v1/lessons', data={
+        'date': '2026-10-12', 'materia': 'Biologia', 'mock': 'true', 'unisci': 'true'
+    }, files=[('audio', ('part1.wav', wav_bytes(), 'audio/wav')), ('audio', ('part2.wav', wav_bytes(), 'audio/wav')),
+              ('materiali', ('slide.pdf', pdf_bytes(), 'application/pdf'))])
+    assert response.status_code == 202, response.text
+    work(rt_db)
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    single = api_client.get(f'/api/v1/lessons/{lid}/export?format=zip&scope=sources')
+    assert single.status_code == 200, single.text
+    assert 'fonti.zip' in single.headers['content-disposition']
+    with zf_mod.ZipFile(io.BytesIO(single.content)) as archive:
+        names = sorted(n.split('/', 1)[1] for n in archive.namelist())
+    # Un solo audio (quello unito della lezione) e il PDF col suo nome; niente documento o stato.
+    assert names == ['audio completo.m4a', 'slide.pdf']
+    accepted = api_client.post('/api/v1/lesson-exports', json={'ids': [lid], 'format': 'sources', 'name': 'oggi'}).json()
+    assert Worker(DbJobQueue(rt_db)).run_once() is not None
+    group = api_client.get(f"/api/v1/lesson-exports/{accepted['job_id']}/file")
+    assert group.status_code == 200
+    with zf_mod.ZipFile(io.BytesIO(group.content)) as archive:
+        assert sorted(n.split('/', 1)[1] for n in archive.namelist()) == ['audio completo.m4a', 'slide.pdf']
