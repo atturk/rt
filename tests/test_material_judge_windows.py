@@ -45,3 +45,22 @@ def test_content_question_shares_call_and_window_changes_invalidate_cache(tmp_pa
     candidate.transcript += ' La proteina C degrada i fattori attivati.'
     assert classify() == (placed, [])
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize('probabilities,expected', [
+    ([.71, .75, .4, .2], (['1.2'], [])),
+    ([.85, .9, .82, .2], ([], ['1'])),
+    ([.85, .86, .87, .95], (['2.1'], [])),
+])
+def test_one_destination_with_best_probability_and_macro_aggregation(tmp_path, monkeypatch, probabilities, expected):
+    monkeypatch.setattr('rt.llm.client.LLMClient', lambda **k: SimpleNamespace(force_mock=False))
+    candidates = [CandidateSubunit(uid, uid.split('.')[0], uid, 'Parlato.', 1.)
+                  for uid in ['1.1', '1.2', '1.3', '2.1']]
+    def decision(state, questions, **kwargs):
+        answers = {'didactic_content': JevNoulAnswer(noul=.95)}
+        answers.update({f"unit_{c.unit_id.replace('.', '_')}": JevNoulAnswer(noul=p)
+                        for c, p in zip(candidates, probabilities)})
+        return SimpleNamespace(answers=answers)
+    monkeypatch.setattr('rt.services.enrichment_service.decision', decision)
+    assert classify_material_page({'numero': 1, 'testo': 'Contenuto didattico'}, candidates,
+                                  PageSourceIdentity('src', 'hash'), str(tmp_path), {}) == expected

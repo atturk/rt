@@ -370,7 +370,7 @@ def classify_material_page(
     if cfg.mode == "off":
         return [], []
 
-    threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.8
+    threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.7
     force_mock = LLMClient(force_mock=mock).force_mock
 
     # Domande noul, una per candidata
@@ -461,16 +461,12 @@ def classify_material_page(
     for c in approved_candidates:
         by_macro.setdefault(c.macro_id, []).append(c)
 
-    assigned_units: List[str] = []
-    assigned_macros: List[str] = []
-
-    for macro_id, c_list in by_macro.items():
-        if len(c_list) >= 3:
-            assigned_macros.append(macro_id)
-        else:
-            assigned_units.extend(c.unit_id for c in c_list)
-
-    return assigned_units, assigned_macros
+    if not approved_candidates:
+        return [], []
+    best = max(approved_candidates, key=lambda c: probabilities[f"unit_{c.unit_id.replace('.', '_')}"])
+    if len(by_macro[best.macro_id]) >= 3:
+        return [], [best.macro_id]
+    return [best.unit_id], []
 
 
 @dataclass(frozen=True)
