@@ -111,6 +111,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash, state: routerState } = useLocation()
   const studyNotes = useStudyNotes(lessonId)
+  const notesPanelOpen = params.get('panel') === 'note'
   const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
@@ -348,7 +349,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   useEffect(() => {
     const view = viewOf(handle.current)
     if (!view) return
-    const notes = studyNotes.data ?? []
+    const notes = notesPanelOpen ? studyNotes.data ?? [] : []
     view.dispatch({ effects: setStudyNotes.of({ notes, selected: selectedNoteId }) })
     if (selectedNoteId) {
       const selectedNote = notes.find((n) => n.id === selectedNoteId)
@@ -357,7 +358,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
       }
     }
-  }, [studyNotes.data, selectedNoteId, source.key])
+  }, [studyNotes.data, selectedNoteId, source.key, notesPanelOpen])
 
   useEffect(() => {
     const node = surface.current

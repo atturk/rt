@@ -9,6 +9,7 @@
 
 ### Correzioni
 
+- Le sottolineature di Verifica e Chiedi compaiono solo con il pannello delle note aperto; nello Studio si vede solo la nota del popup aperto.
 - Copertine, titoli e pagine quasi vuote senza figure restano fuori dalla collocazione automatica, senza chiamare i modelli; intestazioni e piè di pagina ripetuti non contano come contenuto. Gli schemi con poco testo usano la descrizione visiva.
 - Nell’import senza audio il primo documento è già selezionato come fonte principale; togliendolo, la scelta passa al primo rimasto.
 - Le istruzioni ai modelli evitano pedici e apici Unicode o HTML nelle formule.
