@@ -18,6 +18,28 @@ from tests.api_support import isolated_workspace
 from tests.test_document_edit import _synthetic_lesson
 
 
+def test_note_markdown_uses_shared_safe_renderer_and_preserves_latex(tmp_path, monkeypatch, rt_db, api_client):
+    text = 'Un passaggio scientifico.'
+    lesson = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch), {'1.1': text})
+    write_ledger_file(DecisionLedger(schema_version='2.0'), lesson)
+    lid = api_client.get('/api/v1/lessons').json()[0]['id']
+    explanation = '### Titolo\n\n**Grassetto**\n\n- primo\n- secondo\n\n' + r'$a_1 * b_2$' + '\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))'
+    note = add_study_note(lesson_id=lid, unit_id='1.1', kind='verifica',
+                          anchor=make_anchor(text, 0, len(text)).model_dump(),
+                          response={'spiegazione': explanation, 'correzione': '**Correzione** <img src=x onerror=alert(1)>'})
+    view = api_client.get(f"/api/v1/lessons/{lid}/study-notes/{note['id']}").json()
+    from rt.core.markdown_render import render_markdown
+    assert view['spiegazione_html'] == render_markdown(explanation)
+    assert '<h3>Titolo</h3>' in view['spiegazione_html']
+    assert '<strong>Grassetto</strong>' in view['spiegazione_html']
+    assert '<li>primo</li>' in view['spiegazione_html']
+    assert r'$a_1 * b_2$' in view['spiegazione_html']
+    assert '<script' not in view['spiegazione_html']
+    assert 'href="javascript:' not in view['spiegazione_html']
+    assert '<img ' not in view['correzione_html']
+    assert view['response']['spiegazione'] == explanation
+
+
 def test_api_enqueue_and_worker_study_notes(tmp_path, monkeypatch, rt_db, api_client):
     text = "Il pH ematico si mantiene normale tra 7,36 e 7,45."
     lesson_dir = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch), {"1.1": text})

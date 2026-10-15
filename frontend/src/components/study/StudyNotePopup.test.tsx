@@ -1,9 +1,24 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { StudyNotePopup } from './StudyNotePopup'
 import type { StudyNote } from '@/api/studyNotes'
 
 describe('StudyNotePopup', () => {
+  it('rende il Markdown sanificato dell’API, con titoli, elenchi e formule', async () => {
+    const note = {
+      id: 1, lesson_id: 1, kind: 'chiedi', unit_id: '1.1',
+      response: { spiegazione: '### Titolo\n**Forte**\n- Primo\n$a_1 * b_2$\n<script>alert(1)</script>' },
+      spiegazione_html: '<h3>Titolo</h3><p><strong>Forte</strong></p><ul><li>Primo</li></ul><p>$a_1 * b_2$</p><p>&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+    } as StudyNote
+    render(<StudyNotePopup open onClose={vi.fn()} kind="chiedi" unitId="1.1" quote="Citazione" note={note} />)
+    const answer = screen.getByTestId('study-note-answer')
+    expect(screen.getByRole('heading', { name: 'Titolo' })).toBeInTheDocument()
+    expect(answer.querySelector('strong')).toHaveTextContent('Forte')
+    expect(answer.querySelector('li')).toHaveTextContent('Primo')
+    expect(answer.querySelector('script')).toBeNull()
+    await waitFor(() => expect(answer.querySelector('math')).not.toBeNull())
+  })
+
   it('↵ invia e ⇧↵ lascia scrivere una nuova riga', () => {
     const send = vi.fn()
     render(<StudyNotePopup open onClose={vi.fn()} kind="chiedi" unitId="1.1" quote="Un passaggio" onSend={send} />)

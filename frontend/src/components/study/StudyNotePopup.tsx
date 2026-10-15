@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, Check, CheckCircle2, Clock, Copy, ExternalLink, HelpCircle, Maximize2, Minimize2, SendHorizontal, ChevronsUpDown, X } from 'lucide-react'
 import { IconAnchor, IconButton } from '@/components/ui/icon-button'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { useIsPhone } from '@/lib/phone'
 import { useStudyNoteWindow } from './studyNoteWindow'
 import { useStudyNoteSheet } from './studyNoteSheet'
+import { renderDelimitedMath } from '@/lib/math'
 import type { StudyNote } from '@/api/studyNotes'
 
 export interface StudyNotePopupProps {
@@ -50,6 +51,10 @@ export function StudyNotePopup({
   const windowState = useStudyNoteWindow(open, isPhone, anchorRect)
   const { ref: popupRef, frame } = windowState
   const sheet = useStudyNoteSheet(open, isPhone, (note?.response?.spiegazione?.length ?? 0) > 600)
+  const resultRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open && resultRef.current) void renderDelimitedMath(resultRef.current)
+  }, [open, note?.spiegazione_html, note?.correzione_html, note?.response?.spiegazione])
 
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
@@ -196,7 +201,7 @@ export function StudyNotePopup({
 
       {/* Stato 3: Risposta pronta / visualizzazione nota */}
       {note && (
-        <div data-testid="study-note-result">
+        <div ref={resultRef} data-testid="study-note-result">
           {note.request && (
             <div className="mb-2.5 text-meta">
               <span className="font-semibold">Richiesta:</span> {note.request}
@@ -211,9 +216,8 @@ export function StudyNotePopup({
             </div>
           )}
 
-          <div className="my-2.5 text-body whitespace-pre-wrap leading-relaxed text-foreground" data-testid="study-note-answer">
-            {resp?.spiegazione}
-          </div>
+          <div className="rt-document rt-reading my-2.5 text-body leading-relaxed text-foreground" data-testid="study-note-answer"
+            {...(note.spiegazione_html ? { dangerouslySetInnerHTML: { __html: note.spiegazione_html } } : { children: resp?.spiegazione })} />
 
           {fix && (
             <div className={`my-3 rounded-lg border p-3 ${isApplied ? 'border-ok/40 bg-ok/5' : 'border-border bg-muted/30'}`} data-testid="study-note-fix-box">
@@ -225,7 +229,8 @@ export function StudyNotePopup({
                   <IconButton label="Applica la correzione al testo" icon={Check} unavailable={!canApply || isApplying ? 'Correzione non applicabile' : null} onClick={() => onApply && void onApply(note.id)} data-testid="study-note-apply" />
                 )}
               </div>
-              <div className="font-mono text-[13px] text-foreground">{fix}</div>
+              <div className="rt-document text-body text-foreground"
+                {...(note.correzione_html ? { dangerouslySetInnerHTML: { __html: note.correzione_html } } : { children: fix })} />
             </div>
           )}
 
