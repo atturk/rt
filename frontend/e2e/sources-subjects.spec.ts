@@ -77,7 +77,7 @@ test('registrazione unita: parti e barra restano dentro la card a 390 px', async
     await expect(row.getByTestId(`source-parts-${source.id}`)).toBeVisible()
     expect(await row.evaluate((root) => {
       const card = root.closest('[data-testid="sources-section"]')!.getBoundingClientRect()
-      return [root, ...root.querySelectorAll('*')].every((element) => {
+      return [root, ...Array.from(root.querySelectorAll('*'))].every((element) => {
         const box = element.getBoundingClientRect()
         return box.left >= card.left - 1 && box.right <= card.right + 1
       }) && root.scrollWidth <= root.clientWidth
