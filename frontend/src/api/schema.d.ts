@@ -7649,6 +7649,12 @@ export interface components {
             anchor_state: "trovata" | "cambiata" | "non_ritrovata";
             /** Applied Decision Id */
             applied_decision_id?: number | null;
+            /**
+             * Correzione Html
+             * @description Correzione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato
+             * @default
+             */
+            correzione_html: string;
             /** Cost */
             cost?: number | null;
             /** Created At */
@@ -7676,6 +7682,12 @@ export interface components {
             response: {
                 [key: string]: unknown;
             };
+            /**
+             * Spiegazione Html
+             * @description Spiegazione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato
+             * @default
+             */
+            spiegazione_html: string;
             /** Unit Fingerprint */
             unit_fingerprint: string;
             /** Unit Id */

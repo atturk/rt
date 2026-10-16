@@ -1,4 +1,6 @@
 import { expect, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test, apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
 
 // 4.2.5b2: Materie in Impostazioni, Fonti nel pannello Dettagli, chip Consigliato e interruttore
@@ -50,6 +52,39 @@ test('fonti: la sezione Fonti sta in cima a Dettagli e mostra la registrazione c
   }
   // Le fasi restano sotto, come prima.
   await expect(panel.getByText('Fasi', { exact: true })).toBeVisible()
+})
+
+test('registrazione unita: parti e barra restano dentro la card a 390 px', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await firstLesson(page)
+  const audio = readFileSync(fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url)))
+  const form = new FormData()
+  form.append('tipo', 'audio')
+  form.append('unisci', 'true')
+  for (const suffix of ['163453', '170453']) {
+    form.append('file', new File([new Uint8Array(audio)], `TX02_MIC002_registrazione_universitaria_molto_lunga_${suffix}.wav`, { type: 'audio/wav' }))
+  }
+  const response = await page.request.post(`/api/v1/lessons/${lesson.id}/sources`, { headers: authHeaders(), multipart: form })
+  expect(response.ok(), await response.text()).toBeTruthy()
+  const source = await response.json() as { id: string }
+  try {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/lezioni/${lesson.id}`)
+    const panel = await openLessonDetails(page)
+    const row = panel.getByTestId(`source-row-${source.id}`)
+    await expect(row).toContainText('Registrazione unita')
+    await row.getByRole('button', { name: '2 parti' }).click()
+    await expect(row.getByTestId(`source-parts-${source.id}`)).toBeVisible()
+    expect(await row.evaluate((root) => {
+      const card = root.closest('[data-testid="sources-section"]')!.getBoundingClientRect()
+      return [root, ...Array.from(root.querySelectorAll('*'))].every((element) => {
+        const box = element.getBoundingClientRect()
+        return box.left >= card.left - 1 && box.right <= card.right + 1
+      }) && root.scrollWidth <= root.clientWidth
+    })).toBe(true)
+  } finally {
+    await page.request.delete(`/api/v1/lessons/${lesson.id}/sources/${source.id}`, { headers: authHeaders() })
+  }
 })
 
 test('domande: il chip Consigliato sta prima dei tipi e i tipi di prima restano', async ({ page }) => {

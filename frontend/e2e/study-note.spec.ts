@@ -77,7 +77,10 @@ test('Verifica e Chiedi nello Studio: selezione, risposta in mock, Applica e sin
   await expect(editor).toContainText(selected)
   await expect(editor).toContainText('corretto')
 
-  // 10. La sottolineatura della nota è presente nell'editor
+  // Le note non segnano il testo finché il pannello non è aperto (SN1).
+  await expect(editor.locator('[data-study-note]')).toHaveCount(0)
+  await page.goto(`/lezioni/${l.id}?panel=note`)
+  // 10. La sottolineatura della nota è presente solo col pannello aperto
   const noteMark = editor.locator('[data-study-note]').first()
   await expect(noteMark).toBeVisible()
 
@@ -88,4 +91,36 @@ test('Verifica e Chiedi nello Studio: selezione, risposta in mock, Applica e sin
   await expect(panel).toHaveAttribute('data-view', 'note')
   await expect(page.getByTestId('study-notes-detail')).toBeVisible()
   await expect(page.getByTestId('detail-quote')).toHaveText(selected)
+})
+
+test('Chiedi a 390 px: invio visibile e cliccabile sopra la barra delle sezioni', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await loginViaLink(page)
+  const l = await getLesson(page, 'BIOCHIMICA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  const text = page.getByTestId('study-text')
+  await expect(text).toHaveText(/\S.{20,}/)
+  await page.getByTestId('highlight-chiedi').click()
+  await text.evaluate((root) => {
+    const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (node.textContent ?? '').trim().length > 20 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    }).nextNode()!
+    const range = document.createRange()
+    range.setStart(node, 0)
+    range.setEnd(node, 20)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+  })
+  const popup = page.getByTestId('study-note-popup')
+  await expect(popup).toHaveAttribute('data-sheet-level', '1')
+  await page.getByTestId('study-note-input').fill('Spiega questo passaggio')
+  const send = page.getByTestId('study-note-submit')
+  await expect(send).toBeInViewport()
+  expect(await send.evaluate((button) => {
+    const rect = button.getBoundingClientRect()
+    return button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2))
+  })).toBe(true)
+  await send.click()
+  await expect(page.getByTestId('study-note-answer')).toBeVisible({ timeout: 45_000 })
 })

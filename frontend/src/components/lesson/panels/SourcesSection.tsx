@@ -34,6 +34,7 @@ import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
+import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
   const sourcesQuery = useSources(lessonId)
@@ -378,10 +379,11 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
               onDragOver={isAudio ? (e) => handleDragOver(e, audioIdx) : undefined}
               onDrop={isAudio ? (e) => handleDrop(e, audioIdx) : undefined}
               className={cn(
-                'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
+                'group relative flex w-full min-w-0 flex-col gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
                 isAudio && dragOverIndex === audioIdx && 'border-2 border-accent',
               )}
             >
+              <div className="flex min-w-0 items-center gap-2">
               {/* Icona tipo */}
               {s.tipo === 'audio' && <Mic className="size-4 shrink-0 text-muted-foreground" />}
               {s.tipo === 'appunti' && <FileText className="size-4 shrink-0 text-muted-foreground" />}
@@ -433,28 +435,12 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
               {/* Nome ed eventuali parti */}
               <div className="flex flex-col min-w-0 flex-1">
-                <span className="truncate font-medium">{s.nome}</span>
-                {s.parti && s.parti.length > 0 && (
-                  <div
-                    className="mt-1 flex flex-col gap-0.5 text-meta text-muted-foreground"
-                    data-testid={`source-parts-${s.id}`}
-                  >
-                    {s.parti.map((p, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-xs">
-                        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold tabular-nums">
-                          {idx + 1}
-                        </span>
-                        <span className="truncate">{p.nome}</span>
-                        {p.durata && <span className="tabular-nums">· {p.durata}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? 'Registrazione unita' : s.nome}</span>
               </div>
 
               {/* Misura */}
               {sizeText && (
-                <span className="text-meta text-muted-foreground tabular-nums">{sizeText}</span>
+                <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>
               )}
 
               {/* Puntino fonte nuova non ancora usata */}
@@ -487,6 +473,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                   },
                 })}
               />
+              </div>
+              {isAudio && s.parti && s.parti.length > 1 && <SourceAudioParts sourceId={s.id} parts={s.parti} />}
             </div>
           )
         })}

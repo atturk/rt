@@ -46,7 +46,7 @@ def pdf(path, texts):
         for text in texts:
             page = document.new_page(width=500, height=240)
             if text:
-                page.insert_text((30, 60), text)
+                page.insert_textbox(fitz.Rect(30, 30, 470, 220), text)
         document.save(path)
     return str(path)
 
@@ -70,8 +70,8 @@ def test_pdf_text_mapping_preserves_every_placement_context_and_history(lesson, 
     history = Path(lesson) / 'history' / version
     old_snapshot = {p: p.read_bytes() for p in history.rglob('*') if p.is_file()}
     path = pdf(tmp_path / 'organelli.pdf', [
-        'Mitocondri membrana respirazione cellulare ATP energia',
-        'Cloroplasti fotosintesi clorofilla vegetale luce',
+        'Mitocondri membrana respirazione cellulare ATP energia. Gli organelli producono energia mediante reazioni ossidative accoppiate al trasporto elettronico.',
+        'Cloroplasti fotosintesi clorofilla vegetale luce. Questi organelli convertono energia luminosa mediante reazioni fotochimiche sulle membrane tilacoidali.',
         'Astronomia orbite galassie pianeti',
     ])
     def no_vision(*args, **kwargs):
@@ -85,8 +85,7 @@ def test_pdf_text_mapping_preserves_every_placement_context_and_history(lesson, 
     monkeypatch.setattr(mapping, 'classify_material_page', classify)
     result = run_add_images(lesson, input_path=path, force_mock=True)
     assert result['images_added'] == 2
-    assert calls == [(1, ['1.1'], compute_file_sha256(path)), (2, ['1.2'], compute_file_sha256(path)),
-                     (3, [], compute_file_sha256(path))]
+    assert calls == [(1, ['1.1'], compute_file_sha256(path)), (2, ['1.2'], compute_file_sha256(path))]
     descriptions = load_image_descriptions(lesson)
     by_page = {d['source']: h for h, d in descriptions.items() if d['source'].startswith('pdf:organelli')}
     placement = load_image_placement(lesson)
@@ -117,6 +116,9 @@ def test_blank_pdf_and_single_photo_use_vision_and_keep_unassigned_media(lesson,
         return ImageDescription(slide_title='Mitocondri', ocr_text='Mitocondri membrana respirazione ATP', alt_text='Vision')
     monkeypatch.setattr(LLMClient, 'call_structured', describe)
     blank = pdf(tmp_path / 'senza-testo.pdf', [''])
+    with fitz.open(blank) as document:
+        document[0].draw_rect(fitz.Rect(30, 30, 400, 200))
+        document.saveIncr()
     run_add_images(lesson, input_path=blank, force_mock=True)
     photo = tmp_path / 'foto.png'
     photo.write_bytes(_mock_png('photo'))
@@ -132,8 +134,8 @@ def test_blank_pdf_and_single_photo_use_vision_and_keep_unassigned_media(lesson,
 def test_multiple_pdfs_and_photos_are_all_read(lesson, tmp_path, monkeypatch):
     batch = tmp_path / 'batch'
     batch.mkdir()
-    pdf(batch / 'a.pdf', ['Mitocondri respirazione ATP'])
-    pdf(batch / 'b.pdf', ['Cloroplasti fotosintesi clorofilla'])
+    pdf(batch / 'a.pdf', ['Mitocondri respirazione ATP energia membrana cellulare. La catena respiratoria trasferisce elettroni attraverso complessi proteici producendo energia.'])
+    pdf(batch / 'b.pdf', ['Cloroplasti fotosintesi clorofilla vegetale luce. Questi organelli convertono energia luminosa mediante reazioni fotochimiche sulle membrane tilacoidali.'])
     (batch / 'foto.png').write_bytes(_mock_png('batch-photo'))
     monkeypatch.setattr(LLMClient, 'call_structured', lambda *a, **k: ImageDescription(
         slide_title='Estranea', ocr_text='Astronomia orbite galassie', alt_text='Estranea'))
@@ -150,7 +152,7 @@ def test_rejected_page_remains_in_media_without_placement(lesson, tmp_path, monk
         calls.append([c.unit_id for c in candidates])
         return [], []
     monkeypatch.setattr('rt.pipeline.material_mapping.classify_material_page', reject)
-    path = pdf(tmp_path / 'rifiutata.pdf', ['Mitocondri respirazione membrana ATP'])
+    path = pdf(tmp_path / 'rifiutata.pdf', ['Mitocondri respirazione membrana ATP. Gli organelli producono energia mediante reazioni ossidative accoppiate al trasporto elettronico cellulare.'])
     result = run_add_images(lesson, input_path=path, force_mock=True)
     assert calls == [['1.1']]
     assert result['images_added'] == 0

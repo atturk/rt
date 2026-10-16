@@ -16,6 +16,8 @@ from rt.services.review_service import record_review_decision, undo_last_decisio
 
 def _row(n: StudyNote) -> dict[str, Any]:
     from rt.services.previous_study import previous_for_lesson
+    from rt.core.markdown_render import render_markdown
+    response = n.response or {}
     return {
         "precedente": previous_for_lesson(n.lesson_id, n.unit_id, n.created_at),
         "id": n.id,
@@ -26,6 +28,8 @@ def _row(n: StudyNote) -> dict[str, Any]:
         "unit_fingerprint": n.unit_fingerprint,
         "request": n.request,
         "response": n.response,
+        "spiegazione_html": render_markdown(str(response.get('spiegazione') or '')),
+        "correzione_html": render_markdown(str(response.get('correzione') or '')),
         "model": n.model,
         "cost": n.cost,
         "created_at": n.created_at.isoformat() if n.created_at else None,

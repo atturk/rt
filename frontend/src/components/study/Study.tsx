@@ -656,6 +656,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             highlightMode={hlMode}
             onReady={setTextRoot}
             notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
+            activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
             onNoteClick={(note, rect) => {
               setPopupState({
                 open: true,
@@ -912,13 +913,14 @@ const outsideImageStrips: NodeFilter = {
   acceptNode: (node) => node.parentElement?.closest('.rt-image-strip-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
 }
 
-function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, onSelection }: {
+export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
   /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
   onReady: (root: HTMLElement | null) => void
   notes?: StudyNote[]
+  activeNoteId?: number | null
   onNoteClick?: (note: StudyNote, rect: DOMRect) => void
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
 }) {
@@ -942,7 +944,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
 
   useEffect(() => {
     const root = ref.current
-    if (!root || !notes || !notes.length) return
+    if (!root) return
 
     const existing = root.querySelectorAll('.rt-sn')
     existing.forEach((span) => {
@@ -955,7 +957,8 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
     })
     root.normalize()
 
-    for (const n of notes) {
+    for (const n of notes ?? []) {
+      if (n.id !== activeNoteId) continue
       if (n.anchor_state === 'non_ritrovata') continue
       // L'ancora è sul markdown: nel testo reso grassetto, corsivo e codice non hanno i segni.
       const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
@@ -987,7 +990,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
         node = walker.nextNode() as Text | null
       }
     }
-  }, [notes, unit.html])
+  }, [notes, activeNoteId, unit.html])
 
   const handleMouseUp = () => {
     if (highlightMode !== 'verifica' && highlightMode !== 'chiedi') return

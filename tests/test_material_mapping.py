@@ -182,6 +182,7 @@ def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch
         f"{source.id}:{page['numero']}": {
             "key": "some_key",
             "probabilities": {
+                "didactic_content": 0.95,
                 "unit_1_1": 0.85,
                 "unit_1_2": 0.90,
                 "unit_1_3": 0.82,
@@ -195,11 +196,12 @@ def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch
     assert units == []
     assert macros == ["1"]
 
-    # 3. Only 2 pass in macro 1: stay at subunit level
+    # AR4e: con due approvate vince una sola sottounità, quella più probabile.
     cached_2_passed = {
         f"{source.id}:{page['numero']}": {
             "key": "some_key",
             "probabilities": {
+                "didactic_content": 0.95,
                 "unit_1_1": 0.85,
                 "unit_1_2": 0.90,
                 "unit_1_3": 0.50,
@@ -208,7 +210,7 @@ def test_classify_material_page_mock_and_macro_aggregation(tmp_path, monkeypatch
         }
     }
     units, macros = classify_material_page(page, candidates, source, lesson_dir, cached_2_passed, mock=False)
-    assert set(units) == {"1.1", "1.2", "2.1"}
+    assert units == ["1.2"]
     assert macros == []
 
 

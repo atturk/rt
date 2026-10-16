@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { AlertCircle, Check, CheckCircle2, Clock, Copy, ExternalLink, HelpCircle, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { IconButton } from '@/components/ui/icon-button'
+import { createPortal } from 'react-dom'
+import { AlertCircle, Check, CheckCircle2, Clock, Copy, ExternalLink, HelpCircle, Maximize2, Minimize2, SendHorizontal, ChevronsUpDown, X } from 'lucide-react'
+import { IconAnchor, IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
 import { useIsPhone } from '@/lib/phone'
+import { useStudyNoteWindow } from './studyNoteWindow'
+import { useStudyNoteSheet } from './studyNoteSheet'
+import { renderDelimitedMath } from '@/lib/math'
 import type { StudyNote } from '@/api/studyNotes'
 
 export interface StudyNotePopupProps {
@@ -44,20 +47,14 @@ export function StudyNotePopup({
   const isPhone = useIsPhone()
   const [requestText, setRequestText] = useState('')
   const [copied, setCopied] = useState(false)
-  const popupRef = useRef<HTMLDivElement>(null)
-
-  const stylePos: { left?: number; top?: number } = {}
-  if (open && !isPhone && anchorRect) {
-    const width = Math.min(440, typeof window !== 'undefined' ? window.innerWidth - 24 : 440)
-    let left = anchorRect.left + anchorRect.width / 2 - width / 2
-    left = Math.max(12, Math.min(left, (typeof window !== 'undefined' ? window.innerWidth : 800) - width - 12))
-    let top = anchorRect.bottom + 8
-    if (typeof window !== 'undefined' && top + 340 > window.innerHeight) {
-      top = Math.max(60, anchorRect.top - 350)
-    }
-    stylePos.left = left
-    stylePos.top = top
-  }
+  const [quoteExpanded, setQuoteExpanded] = useState(false)
+  const windowState = useStudyNoteWindow(open, isPhone, anchorRect)
+  const { ref: popupRef, frame } = windowState
+  const sheet = useStudyNoteSheet(open, isPhone, (note?.response?.spiegazione?.length ?? 0) > 600)
+  const resultRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open && resultRef.current) void renderDelimitedMath(resultRef.current)
+  }, [open, note?.spiegazione_html, note?.correzione_html, note?.response?.spiegazione])
 
   useEffect(() => {
     const handleGlobalKey = (e: KeyboardEvent) => {
@@ -82,7 +79,7 @@ export function StudyNotePopup({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       void handleSend()
     }
@@ -106,22 +103,28 @@ export function StudyNotePopup({
   const isApplied = !!note?.applied_decision_id
   const canApply = isVerifica && !!fix && note?.anchor_state === 'trovata' && !isApplied
 
-  return (
+  return createPortal(
     <div
       ref={popupRef}
       role="dialog"
       aria-label={isVerifica ? 'Verifica' : 'Chiedi'}
       data-testid="study-note-popup"
       data-kind={effectiveKind}
-      style={!isPhone && stylePos.left !== undefined ? { left: `${stylePos.left}px`, top: `${stylePos.top}px` } : undefined}
+      data-sheet-level={isPhone ? sheet.level : undefined}
+      style={!isPhone ? { left: frame.x, top: frame.y, width: frame.width, height: frame.height ?? undefined, maxHeight: frame.docked ? '100dvh' : 'calc(100dvh - 24px)', minHeight: 'min(240px, calc(100dvh - 24px))' } : sheet.style}
       className={
         isPhone
-          ? 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t bg-card p-4 shadow-panel animate-in slide-in-from-bottom'
-          : 'fixed z-50 w-[440px] max-w-[calc(100vw-32px)] rounded-xl border bg-card p-4 shadow-panel'
+          ? 'fixed z-[55] flex flex-col overflow-hidden rounded-t-2xl border-t bg-card shadow-panel animate-in slide-in-from-bottom'
+          : 'fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card shadow-panel'
       }
     >
       {/* Intestazione */}
-      <div className="mb-3 flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+      {isPhone && <div role="slider" tabIndex={0} aria-label="Altezza del foglio" aria-valuemin={0} aria-valuemax={2} aria-valuenow={sheet.level} aria-valuetext={['Bassa', 'Metà', 'Piena'][sheet.level]}
+        className="flex h-6 shrink-0 touch-none items-center justify-center focus-visible:outline-2 focus-visible:outline-ring" data-testid="study-note-handle" onPointerDown={sheet.begin}
+        onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); sheet.step(event.key === 'ArrowUp' ? 1 : -1) } }}>
+        <span className="h-1 w-9 rounded-full bg-muted-foreground/50" />
+      </div>}
+      <div className="flex shrink-0 touch-none select-none items-center justify-between gap-2 border-b border-border/60 p-3 md:cursor-move" data-testid="study-note-header" onPointerDown={(event) => windowState.begin(event)} onDoubleClick={() => { if (!isPhone) windowState.reset() }}>
         <div className="flex items-center gap-2">
           {isVerifica ? (
             <CheckCircle2 className="size-4.5 text-[#155f52]" aria-hidden />
@@ -144,9 +147,13 @@ export function StudyNotePopup({
             </Tooltip>
           )}
         </div>
-        <IconButton label="Chiudi · Esc" icon={X} onClick={onClose} data-testid="study-note-close" />
+        <div className="flex items-center">
+          {!isPhone && <IconButton label={frame.docked ? 'Torna al popup' : 'Allarga a pannello'} icon={frame.docked ? Minimize2 : Maximize2} onClick={windowState.dock} />}
+          <IconButton label="Chiudi · Esc" icon={X} onClick={onClose} data-testid="study-note-close" />
+        </div>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3" data-testid="study-note-body">
       {/* Corpo: avvisi di ritrovamento se la nota è salvata */}
       {note && note.anchor_state === 'cambiata' && (
         <div className="mb-3 flex items-start gap-2 rounded-md bg-warning/10 p-2 text-meta text-warning">
@@ -168,33 +175,9 @@ export function StudyNotePopup({
         }`}
         data-testid="study-note-quote"
       >
-        {effectiveQuote}
+        <span className={quoteExpanded ? '' : 'line-clamp-2'}>{effectiveQuote}</span>
+        <IconButton label={quoteExpanded ? 'Riduci la citazione' : 'Mostra tutto'} icon={ChevronsUpDown} onClick={() => setQuoteExpanded((value) => !value)} className="float-right" />
       </div>
-
-      {/* Stato 1: Inserimento richiesta prima dell'invio */}
-      {!note && !isWaiting && (
-        <>
-          <div className="mb-3">
-            <textarea
-              className="w-full resize-none rounded-md border border-input bg-background p-2.5 text-body placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
-              rows={3}
-              placeholder={isVerifica ? 'Cosa vuoi verificare?' : 'Cosa vuoi chiedere?'}
-              aria-label="Richiesta facoltativa"
-              data-testid="study-note-input"
-              value={requestText}
-              onChange={(e) => setRequestText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-            />
-          </div>
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-meta text-muted-foreground">⌘↵ per inviare</span>
-            <Button size="sm" onClick={() => void handleSend()} data-testid="study-note-submit">
-              {isVerifica ? 'Verifica' : 'Chiedi'}
-            </Button>
-          </div>
-        </>
-      )}
 
       {/* Stato 2: Attesa risposta */}
       {!note && isWaiting && (
@@ -218,7 +201,7 @@ export function StudyNotePopup({
 
       {/* Stato 3: Risposta pronta / visualizzazione nota */}
       {note && (
-        <div data-testid="study-note-result">
+        <div ref={resultRef} data-testid="study-note-result">
           {note.request && (
             <div className="mb-2.5 text-meta">
               <span className="font-semibold">Richiesta:</span> {note.request}
@@ -233,9 +216,8 @@ export function StudyNotePopup({
             </div>
           )}
 
-          <div className="my-2.5 text-body whitespace-pre-wrap leading-relaxed text-foreground" data-testid="study-note-answer">
-            {resp?.spiegazione}
-          </div>
+          <div className="rt-document rt-reading my-2.5 text-body leading-relaxed text-foreground" data-testid="study-note-answer"
+            {...(note.spiegazione_html ? { dangerouslySetInnerHTML: { __html: note.spiegazione_html } } : { children: resp?.spiegazione })} />
 
           {fix && (
             <div className={`my-3 rounded-lg border p-3 ${isApplied ? 'border-ok/40 bg-ok/5' : 'border-border bg-muted/30'}`} data-testid="study-note-fix-box">
@@ -244,24 +226,11 @@ export function StudyNotePopup({
                   {isApplied ? 'Correzione applicata' : 'Correzione proposta'}
                 </span>
                 {!isApplied && (
-                  <Tooltip content="Applica la correzione al testo (come ✓ nella Verifica con LLM)">
-                    {(trigger) => (
-                      <Button
-                        {...trigger}
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1 px-2.5 text-ok hover:text-ok"
-                        disabled={!canApply || isApplying}
-                        onClick={() => onApply && void onApply(note.id)}
-                        data-testid="study-note-apply"
-                      >
-                        <Check className="size-3.5" aria-hidden /> Applica
-                      </Button>
-                    )}
-                  </Tooltip>
+                  <IconButton label="Applica la correzione al testo" icon={Check} unavailable={!canApply || isApplying ? 'Correzione non applicabile' : null} onClick={() => onApply && void onApply(note.id)} data-testid="study-note-apply" />
                 )}
               </div>
-              <div className="font-mono text-[13px] text-foreground">{fix}</div>
+              <div className="rt-document text-body text-foreground"
+                {...(note.correzione_html ? { dangerouslySetInnerHTML: { __html: note.correzione_html } } : { children: fix })} />
             </div>
           )}
 
@@ -285,18 +254,34 @@ export function StudyNotePopup({
             </div>
           )}
 
-          <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2 text-meta text-muted-foreground">
-            <span>
-              Salvata in Dettagli › Verifiche e domande
-              {note.cost ? ` · $${note.cost.toFixed(3)}` : ''}
-            </span>
-            <div className="flex items-center gap-1">
-              {copied && <span className="text-ok text-meta">Copiata!</span>}
-              <IconButton label="Copia la risposta" icon={Copy} onClick={handleCopy} data-testid="study-note-copy" />
-            </div>
-          </div>
+
         </div>
       )}
-    </div>
+      </div>
+      {/* Fondo fisso: resta raggiungibile mentre il centro scorre. */}
+      {!note && !isWaiting && (
+        <div className="shrink-0 border-t bg-card p-3" data-testid="study-note-composer">
+          <div className="flex items-end gap-2 rounded-lg border bg-muted/40 p-2">
+            <textarea className="min-w-0 flex-1 resize-none bg-transparent text-body focus-visible:outline-2 focus-visible:outline-ring"
+              rows={2} placeholder={isVerifica ? 'Cosa vuoi verificare?' : 'Cosa vuoi chiedere?'} aria-label="Richiesta facoltativa"
+              data-testid="study-note-input" value={requestText} onChange={(e) => setRequestText(e.target.value)} onKeyDown={handleKeyDown} autoFocus />
+            <IconButton label={isVerifica ? 'Verifica' : 'Chiedi'} icon={SendHorizontal} variant="solid" onClick={() => void handleSend()} data-testid="study-note-submit" />
+          </div>
+          <p className="mt-1 text-meta text-muted-foreground">↵ invia · ⇧↵ va a capo</p>
+        </div>
+      )}
+      {note && (
+        <div className="flex shrink-0 items-center justify-end gap-1 border-t bg-card px-3 py-2 text-meta text-muted-foreground">
+          {note.cost ? <span className="mr-auto">${note.cost.toFixed(3)}</span> : null}
+          {copied && <span className="text-ok">Copiata!</span>}
+          <IconAnchor label="Salvata in Dettagli › Verifiche e domande" icon={CheckCircle2} href={`/lezioni/${note.lesson_id}?panel=note&note=${note.id}`} />
+          <IconButton label="Copia la risposta" icon={Copy} onClick={handleCopy} data-testid="study-note-copy" />
+        </div>
+      )}
+      {!isPhone && !frame.docked && (['n', 'e', 's', 'w', 'se'] as const).map((edge) => (
+        <div key={edge} aria-hidden data-testid={`study-note-resize-${edge}`} onPointerDown={(event) => windowState.begin(event, edge)}
+          className={`absolute touch-none ${edge === 'n' ? 'inset-x-3 top-0 h-1 cursor-ns-resize' : edge === 's' ? 'inset-x-3 bottom-0 h-1 cursor-ns-resize' : edge === 'e' ? 'inset-y-3 right-0 w-1 cursor-ew-resize' : edge === 'w' ? 'inset-y-3 left-0 w-1 cursor-ew-resize' : 'bottom-0 right-0 size-3 cursor-nwse-resize border-b-2 border-r-2 border-muted-foreground/40'}`} />
+      ))}
+    </div>, document.body,
   )
 }

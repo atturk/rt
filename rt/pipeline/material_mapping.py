@@ -305,6 +305,42 @@ def _write_json(lesson_dir: str, name: str, data: Dict[str, Any]) -> None:
     fs.replace(tmp_path, path)
 
 
+def transcript_windows(page_text, transcript, idf=None):
+    """Due passaggi non sovrapposti, ordinati come nel parlato e vicini a 600 caratteri."""
+    sentences = re.split(r'(?<=[.!?])\s+|\n+', transcript.strip())
+    windows = []
+    current = ''
+    for sentence in sentences:
+        if current and len(current) + len(sentence) + 1 > 600:
+            windows.append(current)
+            current = ''
+        current = (current + ' ' + sentence).strip()
+    if current:
+        windows.append(current)
+    if len(windows) <= 2:
+        return windows
+    if idf is None:
+        counts = {}
+        for window in windows:
+            for token in set(tokenize_text(window)):
+                counts[token] = counts.get(token, 0) + 1
+        idf = {token: math.log((len(windows) + 1) / (count + 1)) + 1
+               for token, count in counts.items()}
+
+    def vector(text):
+        result = {}
+        for token in tokenize_text(text):
+            result[token] = result.get(token, 0) + idf.get(token, 0)
+        norm = math.sqrt(sum(v * v for v in result.values()))
+        return {token: weight / norm for token, weight in result.items()} if norm else {}
+
+    page_vector = vector(page_text)
+    scores = [(sum(value * page_vector.get(token, 0) for token, value in vector(text).items()), i)
+              for i, text in enumerate(windows)]
+    best = sorted(scores, key=lambda item: (-item[0], item[1]))[:2]
+    return [windows[i] for _, i in sorted(best, key=lambda item: item[1])]
+
+
 def classify_material_page(
     page: Dict[str, Any],
     candidates: List[CandidateSubunit],
@@ -314,6 +350,7 @@ def classify_material_page(
     *,
     mock: bool = False,
     ctx: Any = None,
+    idf: Optional[Dict[str, float]] = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Classifica una pagina rispetto alle sottounità candidate usando Jev (MF1b).
@@ -333,7 +370,7 @@ def classify_material_page(
     if cfg.mode == "off":
         return [], []
 
-    threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.8
+    threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.7
     force_mock = LLMClient(force_mock=mock).force_mock
 
     # Domande noul, una per candidata
@@ -343,11 +380,14 @@ def classify_material_page(
         questions[q_key] = JevNoulQuestion(
             instructions=f"La pagina spiega o illustra un argomento trattato in modo specifico nella sottounità «{c.title}», non solo la stessa materia."
         )
+    questions['didactic_content'] = JevNoulQuestion(instructions=(
+        "La pagina contiene contenuto didattico vero, da studiare, e non soltanto una copertina, "
+        "un titolo di sezione, un indice, una scaletta, ringraziamenti, vignette o immagini decorative?"))
 
-    # Prompt state: pagina e candidate (~1.500 caratteri di trascritto ciascuna), mai la lezione intera
+    # Due finestre pertinenti per candidata, mai la lezione intera.
     candidates_text = "\n\n".join(
         f"### Sottounità {c.unit_id}: {c.title}\n"
-        f"Estratto del trascritto:\n{c.transcript[:1500]}"
+        + "\n[…]\n".join(transcript_windows(page['testo'], c.transcript, idf))
         for c in candidates
     )
     prompt_state = (
@@ -365,6 +405,7 @@ def classify_material_page(
         [c.unit_id for c in candidates],
         {k: q.model_dump() for k, q in questions.items()},
         cfg.model,
+        candidates_text,
     ])
 
     probabilities: Dict[str, float] = {}
@@ -376,6 +417,7 @@ def classify_material_page(
         for idx, c in enumerate(candidates):
             q_key = f"unit_{c.unit_id.replace('.', '_')}"
             probabilities[q_key] = 0.9 if idx == 0 else 0.1
+        probabilities['didactic_content'] = 0.9
         cached[pid] = {"key": key, "probabilities": probabilities}
         _write_json(lesson_dir, CACHE_FILE, cached)
     else:
@@ -403,6 +445,9 @@ def classify_material_page(
             # Il classificatore spento o in errore: nessuna pagina assegnata, la lezione si fa lo stesso
             return [], []
 
+    if probabilities.get('didactic_content', 0.0) < threshold:
+        return [], []
+
     # Sottounità approvate con probabilità >= soglia
     approved_candidates: List[CandidateSubunit] = []
     for c in candidates:
@@ -416,16 +461,12 @@ def classify_material_page(
     for c in approved_candidates:
         by_macro.setdefault(c.macro_id, []).append(c)
 
-    assigned_units: List[str] = []
-    assigned_macros: List[str] = []
-
-    for macro_id, c_list in by_macro.items():
-        if len(c_list) >= 3:
-            assigned_macros.append(macro_id)
-        else:
-            assigned_units.extend(c.unit_id for c in c_list)
-
-    return assigned_units, assigned_macros
+    if not approved_candidates:
+        return [], []
+    best = max(approved_candidates, key=lambda c: probabilities[f"unit_{c.unit_id.replace('.', '_')}"])
+    if len(by_macro[best.macro_id]) >= 3:
+        return [], [best.macro_id]
+    return [best.unit_id], []
 
 
 @dataclass(frozen=True)
@@ -444,11 +485,14 @@ def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock
     """
     if ctx:
         ctx.check_cancelled()
+    if page.get("mapping_skip"):
+        return [], []
+    page = {**page, "testo": page.get("mapping_text", page.get("testo", ""))}
     candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
     if not candidates and mock and mock_fallback and corpus and page.get("testo", "").strip():
         entry = corpus[0]
         candidates = [CandidateSubunit(entry.unit_id, entry.macro_id, entry.title, entry.transcript, 1.0)]
-    return classify_material_page(page, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx)
+    return classify_material_page(page, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf)
 
 
 def append_page_placements(units, macros, image_hash, assigned_units, assigned_macros):

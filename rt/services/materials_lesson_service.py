@@ -8,7 +8,6 @@ import yaml
 from rt.core.lesson_paths import lesson_path
 from rt.core.sources import add_source
 from rt.core.source_selection import set_primary
-from rt.core.materials import page_count
 from rt.pipeline.setup import parse_flexible_date, sanitize_filename_part
 from rt.storage import fs
 
@@ -77,7 +76,7 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     elif principale:
         primary = next(s for s in documents if os.path.basename(s.file) == principale)
     elif documents:
-        primary = max(documents, key=lambda s: page_count(os.path.join(lesson_dir, s.file)))
+        primary = documents[0]
     else:
         primary = notes
     set_primary(lesson_dir, primary.id)

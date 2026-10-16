@@ -43,7 +43,7 @@ def work(rt_db):
 
 
 @pytest.mark.parametrize('run', [False, True])
-def test_import_only_materials_defaults_longest_and_records_import(api_client, rt_db, tmp_path, monkeypatch, run):
+def test_import_only_materials_defaults_first_and_records_import(api_client, rt_db, tmp_path, monkeypatch, run):
     isolated_workspace(tmp_path, monkeypatch)
     response = api_client.post('/api/v1/lessons', data={'date': '2026-10-12', 'materia': 'Biologia',
         'run': str(run).lower(), 'mock': 'true', 'auto_accept': 'true', 'with_enrichment': 'false'}, files=[
@@ -55,9 +55,9 @@ def test_import_only_materials_defaults_longest_and_records_import(api_client, r
     sources = load_sources(lesson)
     lid = api_client.get('/api/v1/lessons').json()[0]['id']
     view = api_client.get(f'/api/v1/lessons/{lid}/sources').json()
-    assert view['principale'] == sources[1].id and view['principale_usato'] == sources[1].id
+    assert view['principale'] == sources[0].id and view['principale_usato'] == sources[0].id
     assert [s['pagine'] for s in view['sources']] == [1, 2]
-    assert all(s.source_file == sources[1].id for s in load_segments_json(lesson_path(lesson, 'segments.json')).segments)
+    assert all(s.source_file == sources[0].id for s in load_segments_json(lesson_path(lesson, 'segments.json')).segments)
     # La versione "import" nasce a fine della prima build, mai al setup.
     if run:
         version = list_versions(lesson)[0]

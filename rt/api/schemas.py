@@ -864,6 +864,8 @@ class StudyNoteView(BaseModel):
     unit_fingerprint: str
     request: str
     response: Dict[str, Any]
+    spiegazione_html: str = Field('', description="Spiegazione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato")
+    correzione_html: str = Field('', description="Correzione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato")
     model: Optional[str] = None
     cost: Optional[float] = None
     created_at: Optional[str] = None

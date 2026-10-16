@@ -157,7 +157,10 @@ export function NewLessonDialog({
   const [audioFiles, setAudioFiles] = useState<File[]>([])
   const [materialFiles, setMaterialFiles] = useState<File[]>([])
   const [zipFiles, setZipFiles] = useState<File[]>([])
-  const [primaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
+  const [selectedPrimaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
+  const primaryMaterialName = materialFiles.some((file) => file.name === selectedPrimaryMaterialName)
+    ? selectedPrimaryMaterialName
+    : materialFiles[0]?.name ?? null
   const [attachMaterials, setAttachMaterials] = useState(true)
   const [manualMode, setManualMode] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
@@ -299,7 +302,7 @@ export function NewLessonDialog({
     const updated = materialFiles.filter((_, i) => i !== index)
     setMaterialFiles(updated)
     if (primaryMaterialName === toRemove?.name) {
-      setPrimaryMaterialName(null)
+      setPrimaryMaterialName(updated[0]?.name ?? null)
     }
     if (updated.length === 0) {
       setAttachMaterials(false)
@@ -705,17 +708,9 @@ export function NewLessonDialog({
                       )}
                       aria-hidden
                     />
-                    {primaryMaterialName ? (
-                      <span>
-                        Senza audio la scaletta segue <b>{primaryMaterialName}</b>; gli altri
-                        materiali sono contesto.
-                      </span>
-                    ) : (
-                      <span>
-                        Senza audio la scaletta segue il documento con più pagine; la stellina
-                        sceglie un altro materiale.
-                      </span>
-                    )}
+                    <span>
+                      La scaletta segue «{primaryMaterialName}»; la stellina sceglie un altro file
+                    </span>
                   </div>
                 )}
               </div>

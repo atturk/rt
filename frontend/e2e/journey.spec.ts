@@ -112,7 +112,8 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const enrichment = page.getByTestId('enrichment-panel')
   await enrichment.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
   const imageOutline = await apiGet<Outline>(page.request, `/lessons/${lessonId}/outline`)
-  await enrichment.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf(imageOutline.macro_sections[0].units[0].title) })
+  // AR4: per collocare una pagina servono contenuti didattici oltre al solo titolo.
+  await enrichment.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf(imageOutline.macro_sections[0].units[0].title, true) })
   await enrichment.getByRole('button', { name: /^Carica/ }).click()
   await expect.poll(async () => (await apiGet<{ images: unknown[] }>(page.request, `/lessons/${lessonId}/images`)).images.length, { timeout: LONG }).toBeGreaterThan(0)
   await expect.poll(async () => (await apiGet<{ state: string }[]>(page.request, `/jobs?lesson_id=${lessonId}`)).some((j) => ['queued', 'running'].includes(j.state)), { timeout: 60_000 }).toBe(false)

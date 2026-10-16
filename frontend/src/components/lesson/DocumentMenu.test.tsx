@@ -50,3 +50,30 @@ it('sui titoli senza selezione mantiene Verifica disattiva', () => {
   fireEvent.contextMenu(screen.getByText('Documento'))
   expect(screen.getByRole('menuitem', { name: 'Verifica questa parte' })).toHaveAttribute('aria-disabled', 'true')
 })
+
+it.each([{ button: 2 }, { button: 0, ctrlKey: true }])('senza selezione usa il paragrafo anche con ctrl+clic: %j', (mouse) => {
+  window.getSelection()?.removeAllRanges()
+  render(<MemoryRouter><DocumentMenu lessonId={1} unitIds={['1.1']} ready><article><h3 data-unit-id="1.1">Test</h3><p>Un intero paragrafo sotto il clic.</p></article></DocumentMenu></MemoryRouter>)
+  const paragraph = screen.getByText('Un intero paragrafo sotto il clic.')
+  fireEvent.mouseDown(paragraph, mouse)
+  // Safari seleziona una parola dopo mousedown: il contesto resta il paragrafo.
+  const range = document.createRange()
+  range.setStart(paragraph.firstChild!, 3)
+  range.setEnd(paragraph.firstChild!, 9)
+  window.getSelection()?.addRange(range)
+  fireEvent.contextMenu(paragraph, { ctrlKey: mouse.ctrlKey })
+  expect(screen.getByRole('menu', { name: 'Azioni sul testo' })).toBeInTheDocument()
+  expect(screen.getByRole('menuitem', { name: "Domande sull'unità 1.1" })).toBeInTheDocument()
+  expect(screen.getByText('⌥ + clic destro: menu del browser')).toBeInTheDocument()
+  window.getSelection()?.removeAllRanges()
+})
+
+it('con ⌥ lascia il menu del browser anche se una superficie editor sa localizzare il testo', () => {
+  const locate = vi.fn(() => ({ text: 'Testo', units: ['1.1'], anchor: { x: 0, y: 0 } }))
+  render(<MemoryRouter><DocumentMenu lessonId={1} unitIds={['1.1']} ready locate={locate}><p>Documento</p></DocumentMenu></MemoryRouter>)
+  const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, altKey: true })
+  fireEvent(screen.getByText('Documento'), event)
+  expect(event.defaultPrevented).toBe(false)
+  expect(locate).not.toHaveBeenCalled()
+  expect(screen.queryByRole('menu')).toBeNull()
+})

@@ -1,5 +1,24 @@
 # Novità di RT
 
+## 4.2.6b5 — 2026-10-16
+
+### Novità
+
+- Le registrazioni unite hanno una riga compatta con durata totale, chip delle parti e barra proporzionale; aprendo il chip, nomi e durate usano tutta la larghezza del pannello anche sul telefono.
+- Le risposte e le correzioni di Chiedi/Verifica mostrano titoli, grassetti, elenchi e formule; il contenuto passa dallo stesso renderer sicuro dei documenti.
+- Sul computer i popup Chiedi e Verifica si spostano e si ridimensionano, possono allargarsi a pannello e mantengono il campo d’invio visibile mentre la risposta scorre. Invio manda la richiesta, Maiusc+Invio va a capo.
+- La collocazione delle pagine confronta i passaggi pertinenti del parlato e verifica che il contenuto sia didattico. Ogni pagina va nel punto più adatto, con una soglia iniziale più permissiva.
+- La rielaborazione e le correzioni di Verifica usano formule LaTeX, anche per le reazioni chimiche, leggibili nell’editor, nella lettura e nello Studio.
+
+### Correzioni
+
+- Su iPhone il foglio Chiedi/Verifica resta sopra la barra delle sezioni e la tastiera; la maniglia sceglie tre altezze e le risposte lunghe aprono il foglio a piena altezza.
+- Nel testo il clic destro apre sempre il menu di RT, anche senza selezione e con ctrl+clic su Mac; ⌥ + clic destro apre il menu del browser.
+- Le sottolineature di Verifica e Chiedi compaiono solo con il pannello delle note aperto; nello Studio si vede solo la nota del popup aperto.
+- Copertine, titoli e pagine quasi vuote senza figure restano fuori dalla collocazione automatica, senza chiamare i modelli; intestazioni e piè di pagina ripetuti non contano come contenuto. Gli schemi con poco testo usano la descrizione visiva.
+- Nell’import senza audio il primo documento è già selezionato come fonte principale; togliendolo, la scelta passa al primo rimasto.
+- Le istruzioni ai modelli evitano pedici e apici Unicode o HTML nelle formule.
+
 ## 4.2.6b4 — 2026-10-15
 
 ### Correzioni
