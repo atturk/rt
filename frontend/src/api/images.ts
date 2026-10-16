@@ -21,16 +21,24 @@ export function useLessonImages(id: number) {
  *  scelte, null = tutte. */
 export function useAddImages(id: number) {
   return useMutation({
-    mutationFn: (vars: { files: File[]; perUnit: number; units: string[] | null }) =>
+    mutationFn: (vars: {
+      files?: File[]
+      perUnit?: number
+      units?: string[] | null
+      selected_images?: string[] | null
+      pages_only?: boolean
+    }) =>
       unwrap(
         api.POST('/api/v1/lessons/{lesson_id}/images', {
           params: path(id),
-          body: { mock: false },
+          body: { mock: false, pages_only: !!vars.pages_only },
           bodySerializer: () =>
             formData({
-              files: vars.files.length ? vars.files : null,
-              web_search: vars.perUnit > 0 ? vars.perUnit : null,
-              units: vars.perUnit > 0 && vars.units ? vars.units : null,
+              files: vars.files && vars.files.length ? vars.files : null,
+              web_search: vars.perUnit && vars.perUnit > 0 ? vars.perUnit : null,
+              units: vars.perUnit && vars.perUnit > 0 && vars.units ? vars.units : null,
+              selected_images: vars.selected_images && vars.selected_images.length ? vars.selected_images : null,
+              pages_only: vars.pages_only ? true : null,
             }),
         }),
       ),

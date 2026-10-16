@@ -310,6 +310,27 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "pages_only": {
+            "default": false,
+            "description": "Estrae solo le pagine nei media senza descriverle né collocarle",
+            "title": "Pages Only",
+            "type": "boolean"
+          },
+          "selected_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nomi o hash delle immagini selezionate da collocare",
+            "title": "Selected Images"
+          },
           "units": {
             "anyOf": [
               {
@@ -17672,10 +17693,12 @@
         "operationId": "remove_from_text_api_v1_lessons__lesson_id__media_remove_from_text_post",
         "parameters": [
           {
+            "description": "Id della lezione (da GET /lessons)",
             "in": "path",
             "name": "lesson_id",
             "required": true,
             "schema": {
+              "description": "Id della lezione (da GET /lessons)",
               "title": "Lesson Id",
               "type": "integer"
             }

@@ -209,9 +209,10 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   const handleAutoPlace = () => {
-    // Triggered in MS1c
+    if (selectedNames.size === 0) return
+    const names = Array.from(selectedNames)
     addImages.mutate(
-      { files: [], perUnit: 0, units: null },
+      { selected_images: names },
       {
         onSuccess: (res) => {
           setSelectedNames(new Set())

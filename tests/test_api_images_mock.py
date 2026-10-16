@@ -287,3 +287,115 @@ def test_remove_from_text_removes_from_doc_and_placement_without_touching_histor
         assert f.read() == "history snapshot"
 
 
+def test_auto_place_selected_images_preserves_existing_placements(api_client, ws):
+    import json
+    from rt.storage import fs
+    from rt.pipeline.image_placement import save_image_placement, load_image_placement
+    from rt.pipeline.add_images import (
+        run_add_images, load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+    from rt.core.sources import Source, _save
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # 1. Posizionamento pre-esistente
+    save_image_placement(
+        lesson,
+        macros={"1": ["preexisting_macro_hash"]},
+        carousel=False,
+        units={"1.1": ["preexisting_unit_hash"]},
+    )
+
+    # 2. Immagine già in assets con descrizione
+    from rt.pipeline.outline import load_outline
+    unit_title = load_outline(lesson).macro_sections[0].units[0].title
+    img_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    h1 = compute_image_hash(img_bytes)
+    rel1 = save_raw_image(lesson, img_bytes, h1)
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h1] = {
+        "filename": rel1,
+        "source": "editor:test.png",
+        "alt_text": "Test Image 1",
+        "ocr_text": unit_title,
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    # 3. Pagina dei materiali non ancora in assets
+    impronta = "b" * 64
+    source = Source(id="src-mat-2", tipo="materiale", file="slides2.pdf", impronta=impronta, aggiunta_il="2026-10-15", ordine=1)
+    _save(lesson, [source])
+    mat_dir = os.path.join(lesson, "materials", impronta)
+    fs.makedirs(mat_dir, exist_ok=True)
+    _png(os.path.join(mat_dir, "page-1-1.png"))
+    pages = [
+        {"numero": 1, "testo": unit_title, "immagini": [f"materials/{impronta}/page-1-1.png"]},
+    ]
+    with fs.open(os.path.join(mat_dir, "pages.json"), "w", encoding="utf-8") as f:
+        json.dump({"impronta": impronta, "pages": pages}, f)
+
+    # Colloca in automatico solo le selezionate (una in assets, una da materiale)
+    mat_page_name = f"materials/{impronta}/page-1-1.png"
+    res = run_add_images(
+        lesson,
+        selected_images=[os.path.basename(rel1), mat_page_name],
+        force_mock=True,
+    )
+    assert res["images_added"] >= 1
+
+    # Verifica placement: i preesistenti DEVONO rimanere intatti
+    placement = load_image_placement(lesson)
+    assert "preexisting_macro_hash" in placement["macros"].get("1", [])
+    assert "preexisting_unit_hash" in placement["units"].get("1.1", [])
+
+    # Verifica che la pagina del materiale sia stata copiata in assets/images
+    descriptions_after = load_image_descriptions(lesson)
+    mat_entry = next((d for d in descriptions_after.values() if "material:src-mat-2:1" in d.get("source", "")), None)
+    assert mat_entry is not None
+    assert fs.isfile(os.path.join(lesson, mat_entry["filename"]))
+
+    # 4. Verifica endpoint API POST /lessons/{lesson_id}/images con selected_images
+    api_res = api_client.post(
+        f"/api/v1/lessons/{lid}/images",
+        data={"selected_images": [os.path.basename(rel1)]},
+    )
+    assert api_res.status_code == 202
+    assert "job_id" in api_res.json()
+
+
+def test_pages_only_mode_without_llm_calls(ws, monkeypatch):
+    from rt.pipeline.add_images import run_add_images, load_image_descriptions
+    from rt.pipeline.image_placement import load_image_placement
+    import rt.llm.client as llm_client
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+
+    # Se un modello LLM venisse chiamato, solleva errore
+    def fake_llm(*args, **kwargs):
+        raise AssertionError("Nessun modello LLM deve essere chiamato in modalità Solo pagine!")
+    monkeypatch.setattr(llm_client.LLMClient, "call_structured", fake_llm)
+
+    # Crea un file immagine di prova
+    img_dir = os.path.join(lesson, "upload_test")
+    os.makedirs(img_dir, exist_ok=True)
+    _png(os.path.join(img_dir, "foto1.png"))
+
+    res = run_add_images(lesson, input_path=img_dir, pages_only=True)
+    assert res["images_added"] == 1
+    assert res["placement_changed"] is False
+
+    # Verifica che l'immagine sia salvata in assets/images
+    descriptions = load_image_descriptions(lesson)
+    assert len(descriptions) >= 1
+
+    # Verifica che placement.json NON sia stato modificato con nuove collocazioni
+    placement = load_image_placement(lesson) or {}
+    assert placement.get("macros", {}) == {}
+    assert placement.get("units", {}) == {}
+
+
+

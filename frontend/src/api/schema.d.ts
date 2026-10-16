@@ -3753,6 +3753,17 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Pages Only
+             * @description Estrae solo le pagine nei media senza descriverle né collocarle
+             * @default false
+             */
+            pages_only: boolean;
+            /**
+             * Selected Images
+             * @description Nomi o hash delle immagini selezionate da collocare
+             */
+            selected_images?: string[] | null;
+            /**
              * Units
              * @description Unità per cui cercare sul web (id dell'outline); vuoto = tutte
              */
@@ -13123,6 +13134,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Id della lezione (da GET /lessons) */
                 lesson_id: number;
             };
             cookie?: never;
