@@ -2,6 +2,7 @@
 RT4-G1: servizi launchd (rt.services.service_manager) e comandi pensati per girare come
 servizio ('rt api --service', 'rt web' con API già attiva).
 """
+import os
 import plistlib
 import subprocess
 
@@ -51,6 +52,7 @@ def test_render_plist(tmp_path, monkeypatch):
         sm.render_plist("bot")  # il bot sempre acceso non c'è più
 
 
+@pytest.mark.skipif(os.name == "nt", reason="launchd esiste solo sul Mac")
 def test_install_status_stop_uninstall(launchd, tmp_path):
     calls, loaded = launchd
     assert sm.install(["api", "worker"], say=lambda _m: None) == ["api", "worker"]
@@ -100,6 +102,7 @@ def test_services_unsupported_outside_macos(monkeypatch):
         sm.install(["api"])
 
 
+@pytest.mark.skipif(os.name == "nt", reason="launchd esiste solo sul Mac")
 def test_cli_service_status(launchd, capsys):
     from rt.cli import main
     main(["service", "install", "api"])

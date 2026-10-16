@@ -180,6 +180,98 @@
         "title": "Anchor",
         "type": "object"
       },
+      "AppUpdate": {
+        "properties": {
+          "asset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Name"
+          },
+          "asset_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Size"
+          },
+          "available": {
+            "description": "C'è una versione stabile più recente con l'installer per questo sistema",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "current": {
+            "title": "Current",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Controllo non riuscito (rete, GitHub)",
+            "title": "Error"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima versione stabile pubblicata (le beta non contano)",
+            "title": "Latest"
+          },
+          "notes_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes Url"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/UpdateProgress"
+          },
+          "releases_url": {
+            "description": "Pagina delle release: le beta si scaricano a mano da qui",
+            "title": "Releases Url",
+            "type": "string"
+          },
+          "supported": {
+            "description": "True per l'app installata (RT.app, setup per Windows): si aggiorna da qui. False per install.sh, git o Docker: 'rt -u'",
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "supported",
+          "current",
+          "available",
+          "releases_url",
+          "progress"
+        ],
+        "title": "AppUpdate",
+        "type": "object"
+      },
       "BatchIn": {
         "properties": {
           "lesson_ids": {
@@ -10103,6 +10195,61 @@
           }
         },
         "title": "UnitRelevanceSummary",
+        "type": "object"
+      },
+      "UpdateProgress": {
+        "properties": {
+          "downloaded": {
+            "default": 0,
+            "description": "Byte già scaricati",
+            "title": "Downloaded",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "phase": {
+            "description": "idle, downloading, installing o error",
+            "title": "Phase",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Versione in installazione",
+            "title": "Target"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dimensione dell'installer in byte",
+            "title": "Total"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "title": "UpdateProgress",
         "type": "object"
       },
       "UpdateRequest": {
@@ -27395,6 +27542,88 @@
           }
         ],
         "summary": "Indirizzo di RT per gli altri dispositivi della tailnet (es. iPhone)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/update": {
+      "get": {
+        "operationId": "system_update_api_v1_system_update_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aggiornamento dell'app: ultima versione stabile e stato dell'installazione",
+        "tags": [
+          "sistema"
+        ]
+      },
+      "post": {
+        "operationId": "start_system_update_api_v1_system_update_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica e installa l'ultima versione stabile (solo app installata)",
         "tags": [
           "sistema"
         ]

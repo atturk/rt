@@ -201,7 +201,8 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     assert not os.path.exists(os.path.join(out_dir, LESSON_NAME))  # nessuna cartella di lavoro
     # L'import a file singolo converte il wav in m4a dove c'è ffmpeg (4.2.2b4) e lo tiene
     # com'è dove non c'è: in un caso o nell'altro nei media sta un file solo.
-    stored = "L1_demo_lecture.m4a" if shutil.which("ffmpeg") else "L1_demo_lecture.wav"
+    from rt.core.media_tools import ffmpeg_path
+    stored = "L1_demo_lecture.m4a" if ffmpeg_path() else "L1_demo_lecture.wav"
     assert os.listdir(fs.media_dir(rt_db)) == [stored]
     assert check_all(rt_db, out_dir) == []
     with session_scope(rt_db) as s:

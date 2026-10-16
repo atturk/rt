@@ -63,3 +63,4 @@ Thumbs.db
 
 # Build della SPA inclusa nelle release (fase F)
 rt/spa/
+.stt-models/

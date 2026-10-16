@@ -146,21 +146,21 @@ def test_cli_single_job_commands_abort_when_unconfigured(tmp_path, monkeypatch, 
         cmd_outline(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "Il job 'outline' non ha alcun provider configurato in config/outline.yaml" in captured.err
+    assert f"Il job 'outline' non ha alcun provider configurato in {os.path.join('config', 'outline.yaml')}" in captured.err
 
     # rewrite
     with pytest.raises(SystemExit) as exc:
         cmd_rewrite(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "Il job 'rewrite' non ha alcun provider configurato in config/rewrite.yaml" in captured.err
+    assert f"Il job 'rewrite' non ha alcun provider configurato in {os.path.join('config', 'rewrite.yaml')}" in captured.err
 
     # review
     with pytest.raises(SystemExit) as exc:
         cmd_review(args)
     assert exc.value.code == 1
     captured = capsys.readouterr()
-    assert "Il job 'review' non ha alcun provider configurato in config/review.yaml" in captured.err
+    assert f"Il job 'review' non ha alcun provider configurato in {os.path.join('config', 'review.yaml')}" in captured.err
 
 
 def test_cli_cmd_run_reports_all_missing_jobs(tmp_path, monkeypatch, capsys):

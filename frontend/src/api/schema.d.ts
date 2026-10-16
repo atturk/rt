@@ -2792,6 +2792,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Aggiornamento dell'app: ultima versione stabile e stato dell'installazione */
+        get: operations["system_update_api_v1_system_update_get"];
+        put?: never;
+        /** Scarica e installa l'ultima versione stabile (solo app installata) */
+        post: operations["start_system_update_api_v1_system_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telegram/notifications": {
         parameters: {
             query?: never;
@@ -2931,6 +2949,43 @@ export interface components {
              * @default
              */
             suffix: string;
+        };
+        /** AppUpdate */
+        AppUpdate: {
+            /** Asset Name */
+            asset_name?: string | null;
+            /** Asset Size */
+            asset_size?: number | null;
+            /**
+             * Available
+             * @description C'è una versione stabile più recente con l'installer per questo sistema
+             */
+            available: boolean;
+            /** Current */
+            current: string;
+            /**
+             * Error
+             * @description Controllo non riuscito (rete, GitHub)
+             */
+            error?: string | null;
+            /**
+             * Latest
+             * @description Ultima versione stabile pubblicata (le beta non contano)
+             */
+            latest?: string | null;
+            /** Notes Url */
+            notes_url?: string | null;
+            progress: components["schemas"]["UpdateProgress"];
+            /**
+             * Releases Url
+             * @description Pagina delle release: le beta si scaricano a mano da qui
+             */
+            releases_url: string;
+            /**
+             * Supported
+             * @description True per l'app installata (RT.app, setup per Windows): si aggiorna da qui. False per install.sh, git o Docker: 'rt -u'
+             */
+            supported: boolean;
         };
         /** BatchIn */
         BatchIn: {
@@ -7247,6 +7302,32 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /** UpdateProgress */
+        UpdateProgress: {
+            /**
+             * Downloaded
+             * @description Byte già scaricati
+             * @default 0
+             */
+            downloaded: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Phase
+             * @description idle, downloading, installing o error
+             */
+            phase: string;
+            /**
+             * Target
+             * @description Versione in installazione
+             */
+            target?: string | null;
+            /**
+             * Total
+             * @description Dimensione dell'installer in byte
+             */
+            total?: number | null;
         };
         /** UpdateRequest */
         UpdateRequest: {
@@ -19859,6 +19940,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TailnetInfo"];
+                };
+            };
+        };
+    };
+    system_update_api_v1_system_update_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_system_update_api_v1_system_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

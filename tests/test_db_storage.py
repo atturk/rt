@@ -275,7 +275,7 @@ def test_export_final_markdown_with_images(folder_lesson, rt_db, tmp_path):
     assert rel(written, tmp_path / "dopo") == rel(folder_export, tmp_path / "prima")
     names = rel(written, tmp_path / "dopo" / LESSON_NAME)
     assert names[0] == "Errori concettuali.md" and names[1].startswith("[2026-09-05] BIOCHIMICA - ")
-    assert names[2:] == ["assets/images/a1.png"]
+    assert names[2:] == [os.path.join("assets", "images", "a1.png")]
     for a, b in zip(sorted(folder_export), sorted(written)):
         with open(a, "rb") as fa, open(b, "rb") as fb:
             assert fa.read() == fb.read()

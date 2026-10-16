@@ -18,3 +18,7 @@ Dockerfile export-ignore
 docker-compose.yml export-ignore
 .dockerignore export-ignore
 docker/ export-ignore
+packaging/ export-ignore
+# Su Windows git converte i fine riga in CRLF: i golden e le fixture si confrontano byte per byte
+tests/golden/** text eol=lf
+tests/fixtures/** -text

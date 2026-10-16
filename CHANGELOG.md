@@ -15,6 +15,8 @@
 - Nuovo motore di trascrizione Parakeet ONNX: lo stesso modello Parakeet v3, sulla CPU, anche su Windows e Linux. Sul Mac resta consigliato macparakeet; Parakeet ONNX è la seconda scelta. Il modello si scarica alla prima trascrizione (circa 700 MB).
 - ffmpeg non va più installato a parte: se manca, RT usa quello incluso.
 - Su Windows funzionano i lock dei file, i nomi delle lezioni e la resa delle slide PowerPoint (con LibreOffice, se installato).
+- RT si installa come un'app: un .dmg per il Mac (Apple Silicon) e un setup per Windows, con tutto incluso (niente Homebrew, Python o terminale). Si apre con un doppio clic e apre la web app nel browser.
+- L'app si aggiorna da Impostazioni › Info › Aggiornamenti, solo alle versioni stabili. Le beta si scaricano a mano dalla pagina delle release.
 
 ## 4.2.5 — 2026-10-14
 

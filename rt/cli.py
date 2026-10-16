@@ -893,7 +893,9 @@ def _cmd_db_check(args: argparse.Namespace, url: str, shown: str) -> None:
 _COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
                               # fase G: la cartella dati va migrata prima di aprire il DB, e diagnosi,
                               # servizi, ripristino e disinstallazione devono funzionare con un DB rotto
-                              "data", "service", "doctor", "restore", "uninstall"}
+                              "data", "service", "doctor", "restore", "uninstall",
+                              # l'app prepara da sé cartella dati e database (rt.desktop)
+                              "desktop"}
 
 
 def _ensure_database_or_exit(command: Optional[str]) -> None:
@@ -991,6 +993,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_web.add_argument("--spa", action="store_true", help=argparse.SUPPRESS)  # compatibilità: ora è il default
     p_web.add_argument("--verbose", action="store_true", help="Segui i log dei servizi già attivi fino a Ctrl+C")
     p_web.set_defaults(func=cmd_web)
+    from rt.desktop import cmd_desktop, configure_parser as configure_desktop_parser
+    p_desk = subparsers.add_parser("desktop", help=argparse.SUPPRESS)  # doppio clic sull'app (RT.app, menu Start)
+    configure_desktop_parser(p_desk)
+    p_desk.set_defaults(func=cmd_desktop)
 
     p_logs = subparsers.add_parser("logs", help="Mostra i log di API e worker")
     p_logs.add_argument("service", nargs="?", choices=["api", "worker"], help="Servizio (default: tutti)")
@@ -1254,6 +1260,9 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
 def main(argv: Optional[List[str]] = None) -> None:
     raw_args = sys.argv[1:] if argv is None else argv
+    from rt.core.bundle import apply_env, utf8_console
+    utf8_console()
+    apply_env()
     if raw_args and raw_args[0] in ("-v", "--version"):
         from rt.core.version import run_version
         run_version(_default_project_root())

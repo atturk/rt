@@ -19,6 +19,13 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     legge segreti reali né interroga il portachiavi. I test di rt.security usano il loro file."""
     # Stesso motore di trascrizione predefinito su Mac, Linux e Windows (vedi default_engine)
     os.environ["RT_DEFAULT_STT_ENGINE"] = "macparakeet"
+    # GET /api/v1/system/update non deve interrogare GitHub dai test (i test dell'updater
+    # sostituiscono _get_json con le loro release finte)
+    from rt.core import app_update
+
+    def _no_network(url, timeout):
+        raise app_update.urllib.error.URLError("rete disattivata nei test")
+    app_update._get_json = _no_network
     missing = tmp_path_factory.mktemp("secrets") / "absent-secrets.enc"
     previous = os.environ.get("RT_SECRETS_FILE")
     os.environ["RT_SECRETS_FILE"] = str(missing)

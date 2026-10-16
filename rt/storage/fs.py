@@ -382,6 +382,8 @@ def open(path, mode: str = "r", buffering: int = -1, encoding: Optional[str] = N
          errors: Optional[str] = None, newline: Optional[str] = None):
     t = resolve(path)
     if t is None:
+        if newline is None and "b" not in mode and mode.replace("t", "") != "r":
+            newline = "\n"  # file di testo con \n anche su Windows, come nel database
         return io.open(path, mode, buffering, encoding, errors, newline)
     if t.rel == "" or (not _is_file(t) and _has_prefix(t, t.rel)):
         raise IsADirectoryError(21, "Is a directory", os.fspath(path))
@@ -408,8 +410,9 @@ def open(path, mode: str = "r", buffering: int = -1, encoding: Optional[str] = N
         writer = _DbWriter(t, initial, append=kind.startswith("a"))
         if binary:
             return writer
+        # newline "\n" se non indicato: su Windows TextIOWrapper scriverebbe \r\n nel database
         return io.TextIOWrapper(writer, encoding=encoding or "utf-8", errors=errors,
-                                newline=newline, write_through=True)
+                                newline="\n" if newline is None else newline, write_through=True)
     raise ValueError(f"modo non supportato per una lezione nel database: {mode!r}")
 
 
@@ -495,7 +498,8 @@ unlink = remove
 def replace(src, dst) -> None:
     ts, td = resolve(src), resolve(dst)
     if ts is None and td is None:
-        os.replace(src, dst)
+        from rt.core.portable import replace_file
+        replace_file(src, dst)
         return
     if ts is not None and ts.rel == "":
         _rename_lesson(ts, dst)

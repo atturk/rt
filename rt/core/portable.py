@@ -5,6 +5,8 @@ lock esclusivo su un file aperto e controllo che un processo sia ancora vivo.
 """
 import errno
 import os
+import sys
+import time
 from typing import IO
 
 if os.name == "nt":
@@ -69,3 +71,17 @@ def pid_alive(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def replace_file(src, dst, attempts: int = 50) -> None:
+    """os.replace che regge le scritture concorrenti su Windows: lì la sostituzione fallisce
+    con "Access is denied" finché un altro processo o thread ha il file di destinazione aperto
+    o lo sta sostituendo a sua volta. Si riprova per qualche istante."""
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or attempt == attempts - 1:
+                raise
+            time.sleep(0.02)

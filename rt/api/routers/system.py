@@ -73,6 +73,59 @@ def system_info(_actor: Actor) -> SystemInfo:
                       platform=f"{platform.system()} {platform.release()} ({platform.machine()})")
 
 
+class UpdateProgress(BaseModel):
+    phase: str = Field(description="idle, downloading, installing o error")
+    downloaded: int = Field(0, description="Byte già scaricati")
+    total: Optional[int] = Field(None, description="Dimensione dell'installer in byte")
+    error: Optional[str] = None
+    target: Optional[str] = Field(None, description="Versione in installazione")
+
+
+class AppUpdate(BaseModel):
+    supported: bool = Field(description="True per l'app installata (RT.app, setup per Windows): si aggiorna da qui. "
+                                        "False per install.sh, git o Docker: 'rt -u'")
+    current: str
+    latest: Optional[str] = Field(None, description="Ultima versione stabile pubblicata (le beta non contano)")
+    available: bool = Field(description="C'è una versione stabile più recente con l'installer per questo sistema")
+    asset_name: Optional[str] = None
+    asset_size: Optional[int] = None
+    notes_url: Optional[str] = None
+    releases_url: str = Field(description="Pagina delle release: le beta si scaricano a mano da qui")
+    error: Optional[str] = Field(None, description="Controllo non riuscito (rete, GitHub)")
+    progress: UpdateProgress
+
+
+def _app_update(refresh: bool) -> AppUpdate:
+    from rt.core import app_update
+    info = app_update.cached_check(refresh=refresh)
+    data = app_update.as_dict(info)
+    data.pop("checked_at", None)
+    data.pop("asset_url", None)
+    return AppUpdate(**data, releases_url=app_update.RELEASES_PAGE,
+                     progress=UpdateProgress(**app_update.STATE.snapshot()))
+
+
+@router.get("/system/update", response_model=AppUpdate,
+            summary="Aggiornamento dell'app: ultima versione stabile e stato dell'installazione")
+def system_update(_actor: Actor, refresh: bool = False) -> AppUpdate:
+    return _app_update(refresh)
+
+
+@router.post("/system/update", response_model=AppUpdate, status_code=202,
+             summary="Scarica e installa l'ultima versione stabile (solo app installata)",
+             responses={409: {"model": ErrorResponse}})
+def start_system_update(_actor: Actor) -> AppUpdate:
+    from rt.core import app_update
+    info = app_update.cached_check(refresh=True)
+    if not info.supported:
+        raise ApiError(409, "update_unsupported", "Questa installazione si aggiorna da terminale con 'rt -u'.")
+    if not info.available:
+        raise ApiError(409, "no_update", info.error or "Nessuna versione stabile più recente da installare.")
+    if not app_update.start(info):
+        raise ApiError(409, "update_running", "Un aggiornamento è già in corso.")
+    return _app_update(False)
+
+
 class ChangelogGroup(BaseModel):
     title: str
     items: list[str]

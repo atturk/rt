@@ -82,6 +82,10 @@ _CONVERTED_AUDIO = re.compile(r"demo_lecture\.m4a")
 
 def normalize_text(text: str, root: str) -> str:
     """Rende confrontabile un testo: percorso temporaneo, timestamp ISO e hash SHA-256."""
+    if os.name == "nt":
+        # su Windows i percorsi nel JSON hanno le barre raddoppiate (\\): prima si
+        # riportano a una sola, poi tutte diventano "/" come sul Mac
+        text = text.replace("\\\\", "\\")
     for variant in {root, os.path.realpath(root)}:
         text = text.replace(variant, "<ROOT>")
     text = text.replace("\\", "/") if os.name == "nt" else text

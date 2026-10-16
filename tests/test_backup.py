@@ -3,6 +3,7 @@ RT4-G1: 'rt backup' / 'rt restore' (rt.services.backup_service): DB coerente, me
 incrementali per hash, configurazione e segreti cifrati, verifica dei media referenziati.
 """
 import hashlib
+import json
 import os
 import shutil
 
@@ -140,7 +141,7 @@ def test_doctor_ignores_missing_lessons_folder(data, tmp_path):
     general = data_dir / "config" / "general.yaml"
     assert doctor_service.check_config().status == doctor_service.OK
     general.write_text(general.read_text(encoding="utf-8")
-                       + f"\ntelegram:\n  lessons_root: {str(tmp_path / 'sparita')!r}\n", encoding="utf-8")
+                       + f"\ntelegram:\n  lessons_root: {json.dumps(str(tmp_path / 'sparita'))}\n", encoding="utf-8")
     from rt.core.config import load_config
     assert load_config().telegram.lessons_root == str(tmp_path / "sparita")
     assert doctor_service.check_config().status == doctor_service.OK

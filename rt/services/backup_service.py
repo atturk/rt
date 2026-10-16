@@ -303,6 +303,7 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
     if manifest["database"] == "rt.db":
         if not db_file:
             raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database.")
+        reset_database_cache()  # su Windows un file SQLite aperto non si può spostare
         for suffix in ("", "-wal", "-shm"):
             if os.path.exists(db_file + suffix):
                 shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))

@@ -17,8 +17,11 @@ permissions:
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
+  # .dmg e setup .exe, provati prima di pubblicare: l'app si aggiorna da qui (solo stabili)
+  app:
+    uses: ./.github/workflows/app.yml
   release:
-    needs: tests
+    needs: [tests, app]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -70,6 +73,14 @@ jobs:
           archive="rt-spa-${RELEASE_TAG#v}.tar.gz"
           tar -C frontend/dist -czf "dist/$archive" .
           (cd dist && shasum -a 256 "$archive" >> SHA256SUMS)
+      - name: Add the installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: app-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums of the installers
+        run: (cd dist && shasum -a 256 RT-*.dmg RT-*.exe >> SHA256SUMS && cat SHA256SUMS)
       - name: Release kind
         id: kind
         env:
@@ -92,5 +103,7 @@ jobs:
           body_path: dist/release-notes.md
           files: |
             dist/rt-*.tar.gz
+            dist/RT-*.dmg
+            dist/RT-*.exe
             dist/SHA256SUMS
           fail_on_unmatched_files: true
