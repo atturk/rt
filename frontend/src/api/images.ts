@@ -79,4 +79,24 @@ export function removeFromText(id: number, imageNames: string[], leaseToken?: st
   }))
 }
 
+/** Ritaglia un'immagine (come nuova immagine o sostituzione). */
+export function cropMediaImage(
+  id: number,
+  imageName: string,
+  rect: [number, number, number, number],
+  replace: boolean = false,
+  leaseToken?: string,
+) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/crop', {
+    params: path(id),
+    body: {
+      image_name: imageName,
+      rect,
+      replace,
+      lease_token: leaseToken ?? null,
+    },
+  }))
+}
+
+
 

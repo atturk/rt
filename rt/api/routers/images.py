@@ -295,3 +295,31 @@ def remove_from_text(
     )
 
 
+class CropImageRequest(BaseModel):
+    image_name: str = Field(..., description="Nome o identificativo dell'immagine da ritagliare")
+    rect: list[float] = Field(..., description="Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0")
+    replace: bool = Field(False, description="Se True, sostituisce la pagina nel documento e in placement")
+    lease_token: Optional[str] = Field(None, description="Token di lease dell'editor se aperto")
+
+
+@router.post("/lessons/{lesson_id}/media/crop", response_model=EditorImage, status_code=201,
+             summary="Ritaglia un'immagine o pagina (nuova immagine o sostituzione)")
+def crop_media(
+    lesson_id: int,
+    lesson_dir: LessonDir,
+    _actor: Actor,
+    req: CropImageRequest,
+) -> EditorImage:
+    from rt.services.editor_media_service import crop_image
+    res = crop_image(
+        lesson_id=lesson_id,
+        lesson_dir=lesson_dir,
+        image_name=req.image_name,
+        rect=req.rect,
+        replace=req.replace,
+        lease_token=req.lease_token,
+    )
+    return EditorImage(**res)
+
+
+

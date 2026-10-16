@@ -7,6 +7,7 @@ import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
 import { useLessonDocument } from '@/api/hooks'
 import {
   copyMaterialPage,
+  cropMediaImage,
   removeFromText,
   useAddImages,
   useLessonImages,
@@ -29,6 +30,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
+import { MediaCropView } from './MediaCropView'
 import { MediaGallery } from './MediaGallery'
 import { MediaSelectionBar } from './MediaSelectionBar'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
@@ -78,7 +80,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [mediaDragActive, setMediaDragActive] = useState(false)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
-  const [_activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
+  const [activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
 
   const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
     try {
@@ -520,6 +522,34 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             onFinished={() => {
               setActiveJobId(null)
               void refreshImages()
+            }}
+          />
+        )}
+
+        {/* Vista Ritaglio */}
+        {activeCropImage && (
+          <MediaCropView
+            image={activeCropImage}
+            onClose={() => setActiveCropImage(null)}
+            onSave={async (cropRect, replace) => {
+              try {
+                const res = await cropMediaImage(id, activeCropImage.name, cropRect, replace)
+                if (replace) {
+                  window.dispatchEvent(
+                    new CustomEvent('rt-editor-replace-image', {
+                      detail: {
+                        originalName: activeCropImage.name,
+                        newName: res.name,
+                        newAltText: res.alt_text,
+                      },
+                    }),
+                  )
+                }
+                setActiveCropImage(null)
+                await refreshImages()
+              } catch {
+                // ignore
+              }
             }}
           />
         )}

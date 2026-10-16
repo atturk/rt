@@ -2451,6 +2451,47 @@
         "title": "CredentialTest",
         "type": "object"
       },
+      "CropImageRequest": {
+        "properties": {
+          "image_name": {
+            "description": "Nome o identificativo dell'immagine da ritagliare",
+            "title": "Image Name",
+            "type": "string"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Token di lease dell'editor se aperto",
+            "title": "Lease Token"
+          },
+          "rect": {
+            "description": "Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0",
+            "items": {
+              "type": "number"
+            },
+            "title": "Rect",
+            "type": "array"
+          },
+          "replace": {
+            "default": false,
+            "description": "Se True, sostituisce la pagina nel documento e in placement",
+            "title": "Replace",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "image_name",
+          "rect"
+        ],
+        "title": "CropImageRequest",
+        "type": "object"
+      },
       "CustomQuestionType": {
         "additionalProperties": false,
         "properties": {
@@ -17485,6 +17526,105 @@
           }
         ],
         "summary": "File di una pagina dei materiali",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/crop": {
+      "post": {
+        "operationId": "crop_media_api_v1_lessons__lesson_id__media_crop_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CropImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ritaglia un'immagine o pagina (nuova immagine o sostituzione)",
         "tags": [
           "immagini"
         ]

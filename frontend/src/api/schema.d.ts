@@ -1010,6 +1010,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/media/crop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ritaglia un'immagine o pagina (nuova immagine o sostituzione) */
+        post: operations["crop_media_api_v1_lessons__lesson_id__media_crop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/media/images": {
         parameters: {
             query?: never;
@@ -4557,6 +4574,30 @@ export interface components {
             model: string;
             /** Provider */
             provider?: string | null;
+        };
+        /** CropImageRequest */
+        CropImageRequest: {
+            /**
+             * Image Name
+             * @description Nome o identificativo dell'immagine da ritagliare
+             */
+            image_name: string;
+            /**
+             * Lease Token
+             * @description Token di lease dell'editor se aperto
+             */
+            lease_token?: string | null;
+            /**
+             * Rect
+             * @description Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0
+             */
+            rect: number[];
+            /**
+             * Replace
+             * @description Se True, sostituisce la pagina nel documento e in placement
+             * @default false
+             */
+            replace: boolean;
         };
         /** CustomQuestionType */
         CustomQuestionType: {
@@ -12936,6 +12977,78 @@ export interface operations {
                 };
                 content: {
                     "image/png": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    crop_media_api_v1_lessons__lesson_id__media_crop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorImage"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

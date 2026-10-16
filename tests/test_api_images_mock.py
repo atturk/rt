@@ -398,4 +398,139 @@ def test_pages_only_mode_without_llm_calls(ws, monkeypatch):
     assert placement.get("units", {}) == {}
 
 
+def test_crop_media_image_as_new_image(api_client, ws):
+    from rt.storage import fs
+    from rt.pipeline.add_images import (
+        load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # 1. Crea immagine originale
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 100), (50, 100, 150)).save(buf, format="PNG")
+    img_bytes = buf.getvalue()
+    h1 = compute_image_hash(img_bytes)
+    rel1 = save_raw_image(lesson, img_bytes, h1)
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h1] = {
+        "filename": rel1,
+        "source": "material:src1:5",
+        "alt_text": "Pagina 5",
+        "ocr_text": "",
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    orig_filename = os.path.basename(rel1)
+
+    # 2. Primo ritaglio con replace=False
+    res1 = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_filename, "rect": [0.1, 0.1, 0.5, 0.5], "replace": False},
+    )
+    assert res1.status_code == 201
+    crop1_data = res1.json()
+    assert crop1_data["path"].startswith("assets/images/")
+    assert "ritaglio 1" in crop1_data["alt_text"]
+    assert crop1_data["name"] != orig_filename
+
+    # Verifica file su disco
+    crop1_path = os.path.join(lesson, crop1_data["path"])
+    assert fs.isfile(crop1_path)
+    # L'originale esiste ancora
+    assert fs.isfile(os.path.join(lesson, rel1))
+
+    # Verifica descriptions
+    desc1 = load_image_descriptions(lesson)
+    crop1_entry = next((v for k, v in desc1.items() if v["filename"] == crop1_data["path"]), None)
+    assert crop1_entry is not None
+    assert crop1_entry["crop_of"] == h1
+    assert crop1_entry["crop_index"] == 1
+
+    # 3. Secondo ritaglio dalla stessa immagine: indice cresce a 2
+    res2 = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_filename, "rect": [0.2, 0.2, 0.4, 0.4], "replace": False},
+    )
+    assert res2.status_code == 201
+    crop2_data = res2.json()
+    assert "ritaglio 2" in crop2_data["alt_text"]
+    desc2 = load_image_descriptions(lesson)
+    crop2_entry = next((v for k, v in desc2.items() if v["filename"] == crop2_data["path"]), None)
+    assert crop2_entry is not None
+    assert crop2_entry["crop_index"] == 2
+
+
+def test_crop_media_image_replace(api_client, ws):
+    from rt.storage import fs
+    from rt.pipeline.add_images import (
+        load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+    from rt.pipeline.image_placement import save_image_placement, load_image_placement
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # Immagine originale
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 100), (200, 80, 80)).save(buf, format="PNG")
+    img_bytes = buf.getvalue()
+    h_orig = compute_image_hash(img_bytes)
+    rel_orig = save_raw_image(lesson, img_bytes, h_orig)
+    orig_name = os.path.basename(rel_orig)
+
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h_orig] = {
+        "filename": rel_orig,
+        "source": "material:src1:3",
+        "alt_text": "Pagina 3",
+        "ocr_text": "",
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    # Inserisci nel document.md e nel placement.json
+    doc_path = os.path.join(lesson, "document.md")
+    with fs.open(doc_path, "w", encoding="utf-8") as f:
+        f.write(f"# Documento\n\n![Pagina 3](assets/images/{orig_name})\n\nAltro testo.\n")
+
+    save_image_placement(lesson, macros={"1": [h_orig]}, carousel=False, units={"1.1": [h_orig]})
+
+    # Esegui ritaglio con replace=True
+    res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_name, "rect": [0.0, 0.0, 0.8, 0.8], "replace": True},
+    )
+    assert res.status_code == 201
+    crop_data = res.json()
+    new_name = crop_data["name"]
+    new_hash = os.path.splitext(new_name)[0]
+
+    # 1. File originale resta su disco
+    assert fs.isfile(os.path.join(lesson, rel_orig))
+    # Nuovo file ritagliato esiste
+    assert fs.isfile(os.path.join(lesson, crop_data["path"]))
+
+    # 2. Documento aggiornato con la nuova immagine
+    with fs.open(doc_path, "r", encoding="utf-8") as f:
+        updated_doc = f.read()
+    assert orig_name not in updated_doc
+    assert new_name in updated_doc
+
+    # 3. Placement aggiornato con il nuovo hash
+    placement = load_image_placement(lesson)
+    assert h_orig not in placement["macros"].get("1", [])
+    assert any(h.startswith(new_hash) for h in placement["macros"].get("1", []))
+    assert any(h.startswith(new_hash) for h in placement["units"].get("1.1", []))
+
+
+
 

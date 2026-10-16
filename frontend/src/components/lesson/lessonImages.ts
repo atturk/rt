@@ -7,6 +7,7 @@ import { timecodeSpans } from './timecodeLock'
 
 export const EDITOR_INSERT_IMAGES_EVENT = 'rt-editor-insert-images'
 export const EDITOR_REMOVE_IMAGES_EVENT = 'rt-editor-remove-images'
+export const EDITOR_REPLACE_IMAGE_EVENT = 'rt-editor-replace-image'
 export const EDITOR_CURSOR_STATE_EVENT = 'rt-editor-cursor-state'
 export const EDITOR_REQUEST_CURSOR_STATE_EVENT = 'rt-editor-request-cursor-state'
 export const RT_MEDIA_DRAG_TYPE = 'application/x-rt-media-image'
@@ -83,6 +84,39 @@ export function removeImagesFromDocument(view: EditorView, imageNames: string[])
   return true
 }
 
+export function replaceImageInDocument(
+  view: EditorView,
+  originalName: string,
+  newName: string,
+  newAltText?: string,
+): boolean {
+  const origClean = originalName.split('/').pop()!
+  const newClean = newName.split('/').pop()!
+  const doc = view.state.doc
+  const changes: Array<{ from: number; to: number; insert: string }> = []
+
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i)
+    const text = line.text
+    const regex = /!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)/g
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(text)) !== null) {
+      if (match[2] === origClean) {
+        const from = line.from + match.index
+        const to = from + match[0].length
+        const alt = newAltText !== undefined ? newAltText.replace(/[\\[\]\r\n]/g, ' ') : match[1]
+        const replacement = `![${alt}](assets/images/${newClean})`
+        changes.push({ from, to, insert: replacement })
+      }
+    }
+  }
+
+  if (changes.length === 0) return false
+  changes.reverse()
+  view.dispatch({ changes })
+  return true
+}
+
 /** Incolla e trascina file: nel documento entra soltanto il riferimento relativo restituito dall'API. */
 export function lessonImageUploads(options: Options) {
   const insert = (view: EditorView, files: File[], position: number) => {
@@ -147,6 +181,7 @@ export function lessonImageUploads(options: Options) {
       private view: EditorView
       private onInsert: (e: Event) => void
       private onRemove: (e: Event) => void
+      private onReplace: (e: Event) => void
       private onRequestCursor: () => void
 
       constructor(view: EditorView) {
@@ -168,12 +203,19 @@ export function lessonImageUploads(options: Options) {
           if (!names || names.length === 0 || this.view.state.readOnly) return
           removeImagesFromDocument(this.view, names)
         }
+        this.onReplace = (e: Event) => {
+          const custom = e as CustomEvent<{ originalName: string; newName: string; newAltText?: string }>
+          const { originalName, newName, newAltText } = custom.detail || {}
+          if (!originalName || !newName || this.view.state.readOnly) return
+          replaceImageInDocument(this.view, originalName, newName, newAltText)
+        }
         this.onRequestCursor = () => {
           this.notifyCursorState()
         }
 
         window.addEventListener(EDITOR_INSERT_IMAGES_EVENT, this.onInsert)
         window.addEventListener(EDITOR_REMOVE_IMAGES_EVENT, this.onRemove)
+        window.addEventListener(EDITOR_REPLACE_IMAGE_EVENT, this.onReplace)
         window.addEventListener(EDITOR_REQUEST_CURSOR_STATE_EVENT, this.onRequestCursor)
         this.notifyCursorState()
       }
@@ -187,6 +229,7 @@ export function lessonImageUploads(options: Options) {
       destroy() {
         window.removeEventListener(EDITOR_INSERT_IMAGES_EVENT, this.onInsert)
         window.removeEventListener(EDITOR_REMOVE_IMAGES_EVENT, this.onRemove)
+        window.removeEventListener(EDITOR_REPLACE_IMAGE_EVENT, this.onReplace)
         window.removeEventListener(EDITOR_REQUEST_CURSOR_STATE_EVENT, this.onRequestCursor)
         window.dispatchEvent(
           new CustomEvent(EDITOR_CURSOR_STATE_EVENT, { detail: { hasCursor: false } }),

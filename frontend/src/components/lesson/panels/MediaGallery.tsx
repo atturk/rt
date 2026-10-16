@@ -223,6 +223,15 @@ export function MediaGallery({
                         >
                           ✓
                         </span>
+                        {Boolean(img.crop_of || img.crop_index) && (
+                          <span
+                            className="absolute right-1.5 bottom-1.5 flex size-5 items-center justify-center rounded-md bg-accent text-accent-foreground shadow-sm pointer-events-none"
+                            data-testid="crop-badge"
+                            aria-label="Ritaglio"
+                          >
+                            <Scissors className="size-3" aria-hidden />
+                          </span>
+                        )}
                       </button>
 
                       <Tooltip content="Ritaglia" side="top">

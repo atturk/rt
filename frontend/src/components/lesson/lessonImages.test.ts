@@ -188,5 +188,28 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
     view.destroy()
     parent.remove()
   })
+
+  it('sostituisce un’immagine nel documento con il ritaglio mantenendo la posizione', () => {
+    const docWithImage =
+      '## 1. Sezione\n### 1.1 Unità\n00:00\n\n![Foto Originale](assets/images/orig.png)\nTesto normale.'
+    const { view, parent } = mount(async () => image, false, docWithImage)
+
+    window.dispatchEvent(
+      new CustomEvent('rt-editor-replace-image', {
+        detail: {
+          originalName: 'orig.png',
+          newName: 'crop123.png',
+          newAltText: 'Foto Ritagliata',
+        },
+      }),
+    )
+
+    const doc = view.state.doc.toString()
+    expect(doc).not.toContain('orig.png')
+    expect(doc).toContain('![Foto Ritagliata](assets/images/crop123.png)')
+    expect(doc).toContain('Testo normale.')
+    view.destroy()
+    parent.remove()
+  })
 })
 
