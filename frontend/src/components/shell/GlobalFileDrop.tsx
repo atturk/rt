@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
-import { hasAcceptedDrag, isAcceptedFile, isExcludedTarget } from './globalFileDropUtils'
+import {
+  ENRICHMENT_MEDIA_DRAG_EVENT,
+  ENRICHMENT_MEDIA_DROP_EVENT,
+  hasAcceptedDrag,
+  isAcceptedFile,
+  isEnrichmentPanelOpen,
+  isExcludedTarget,
+  isMediaFile,
+  isMediaOnlyDrag,
+} from './globalFileDropUtils'
 
 const DRAG_IDLE_MS = 700
 
@@ -27,11 +36,22 @@ export function GlobalFileDrop({
       idleTimer.current = null
       setActive(false)
       setExcluded(false)
+      window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DRAG_EVENT, { detail: { active: false } }))
     }
 
     const keepOpen = (e: DragEvent) => {
-      setActive(true)
-      setExcluded(isExcludedTarget((e.target as Element | null) ?? null))
+      const isMediaDragForEnrichment =
+        e.dataTransfer ? isEnrichmentPanelOpen() && isMediaOnlyDrag(e.dataTransfer) : false
+
+      if (isMediaDragForEnrichment) {
+        setActive(false)
+        setExcluded(false)
+        window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DRAG_EVENT, { detail: { active: true } }))
+      } else {
+        setActive(true)
+        setExcluded(isExcludedTarget((e.target as Element | null) ?? null))
+        window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DRAG_EVENT, { detail: { active: false } }))
+      }
       if (idleTimer.current) clearTimeout(idleTimer.current)
       idleTimer.current = setTimeout(close, DRAG_IDLE_MS)
     }
@@ -64,8 +84,13 @@ export function GlobalFileDrop({
       if (isExcludedTarget(target)) return
 
       if (!e.dataTransfer || !hasAcceptedDrag(e.dataTransfer)) return
-      const files = Array.from(e.dataTransfer.files ?? [])
-      if (files.length === 0 || !files.some(isAcceptedFile)) return
+      const files = Array.from(e.dataTransfer.files ?? []).filter(isAcceptedFile)
+      if (files.length === 0) return
+
+      if (isEnrichmentPanelOpen() && files.length > 0 && files.every(isMediaFile)) {
+        window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DROP_EVENT, { detail: { files } }))
+        return
+      }
 
       onDropFiles(files)
     }

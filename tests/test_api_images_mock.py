@@ -163,3 +163,374 @@ def test_web_search_per_unit_on_selected_units(api_client, ws, rt_db):
     assert len(images) == 2 and all(i["source"].startswith("websearch:") for i in images)
     document = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
     assert "napkin-notes" not in document and document.count("](assets/images/") == 2
+
+
+def test_material_pages_list_serve_and_copy(api_client, ws, rt_db, tmp_path):
+    import json
+    from rt.core.sources import Source, _save
+    from rt.storage import fs
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # Crea una fonte materiale fittizia con due pagine
+    impronta = "a" * 64
+    source = Source(id="src-mat-1", tipo="materiale", file="slides.pdf", impronta=impronta, aggiunta_il="2026-10-15", ordine=1)
+    _save(lesson, [source])
+
+    mat_dir = os.path.join(lesson, "materials", impronta)
+    fs.makedirs(mat_dir, exist_ok=True)
+    _png(os.path.join(mat_dir, "page-1-1.png"))
+    _png(os.path.join(mat_dir, "page-2-1.png"))
+    pages = [
+        {"numero": 1, "testo": "Testo slide 1", "immagini": [f"materials/{impronta}/page-1-1.png"]},
+        {"numero": 2, "testo": "Testo slide 2", "immagini": [f"materials/{impronta}/page-2-1.png"]},
+    ]
+    with fs.open(os.path.join(mat_dir, "pages.json"), "w", encoding="utf-8") as f:
+        json.dump({"impronta": impronta, "pages": pages}, f)
+
+    # 1. Elenco include le pagine dei materiali non ancora in assets
+    res = api_client.get(f"/api/v1/lessons/{lid}/images").json()
+    images = res["images"]
+    assert len(images) == 2
+    img1 = images[0]
+    assert img1["source_name"] == "slides.pdf"
+    assert img1["page"] == 1
+    assert img1["in_assets"] is False
+    assert img1["in_document"] is False
+    assert img1["url"] == f"/api/v1/lessons/{lid}/materials/{impronta}/page-1-1.png"
+
+    # 2. Servire il file della pagina direttamente da materials/
+    served = api_client.get(img1["url"])
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "image/png"
+    assert served.content.startswith(b"\x89PNG")
+
+    # 3. Copia della pagina 1 in assets/images
+    copy_res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/material-page",
+        json={"source_id": "src-mat-1", "page": 1},
+    )
+    assert copy_res.status_code == 201
+    asset_img = copy_res.json()
+    assert asset_img["path"].startswith("assets/images/")
+    assert asset_img["alt_text"] == "slides.pdf, pagina 1"
+
+    # Ora la pagina 1 risulta in_assets=True
+    res2 = api_client.get(f"/api/v1/lessons/{lid}/images").json()
+    images2 = res2["images"]
+    assert len(images2) == 2
+    assert images2[0]["in_assets"] is True
+    assert images2[0]["source"].startswith("material:src-mat-1:1")
+    assert images2[0]["url"].endswith(asset_img["name"])
+    assert images2[1]["in_assets"] is False
+
+
+def test_remove_from_text_removes_from_doc_and_placement_without_touching_history_or_assets(api_client, ws):
+    from rt.storage import fs
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+    from rt.pipeline.image_placement import save_image_placement
+
+    # Setup file assets/images
+    images_dir = os.path.join(lesson, "assets", "images")
+    fs.makedirs(images_dir, exist_ok=True)
+    img1_file = os.path.join(images_dir, "img_keep.png")
+    img2_file = os.path.join(images_dir, "img_remove.png")
+    _png(img1_file)
+    _png(img2_file)
+
+    # Setup document.md
+    doc_path = os.path.join(lesson, "document.md")
+    with fs.open(doc_path, "w", encoding="utf-8") as f:
+        f.write("# Titolo\n\n![Img1](assets/images/img_keep.png)\n\nTesto normale\n\n![Img2](assets/images/img_remove.png)\n")
+
+    # Setup placement.json
+    save_image_placement(lesson, macros={"1": ["img_keep", "img_remove"]}, carousel=False, units={"1.1": ["img_remove"]})
+
+    # Setup dummy history file
+    hist_dir = os.path.join(lesson, "history", "v1")
+    fs.makedirs(hist_dir, exist_ok=True)
+    hist_file = os.path.join(hist_dir, "snapshot.txt")
+    with fs.open(hist_file, "w", encoding="utf-8") as f:
+        f.write("history snapshot")
+
+    # Chiama remove-from-text
+    res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/remove-from-text",
+        json={"image_names": ["img_remove.png"]},
+    )
+    assert res.status_code == 200
+
+    # Verifica document.md
+    with fs.open(doc_path, "r", encoding="utf-8") as f:
+        new_doc = f.read()
+    assert "img_remove.png" not in new_doc
+    assert "img_keep.png" in new_doc
+    assert "Testo normale" in new_doc
+
+    # Verifica placement.json
+    from rt.pipeline.image_placement import load_image_placement
+    placement = load_image_placement(lesson)
+    assert "img_remove" not in placement["macros"].get("1", [])
+    assert "img_keep" in placement["macros"].get("1", [])
+    assert "img_remove" not in placement["units"].get("1.1", [])
+
+    # Verifica che il file originale in assets NON sia stato cancellato
+    assert fs.isfile(img2_file)
+
+    # Verifica che history sia intatta
+    assert fs.isfile(hist_file)
+    with fs.open(hist_file, "r", encoding="utf-8") as f:
+        assert f.read() == "history snapshot"
+
+
+def test_auto_place_selected_images_preserves_existing_placements(api_client, ws):
+    import json
+    from rt.storage import fs
+    from rt.pipeline.image_placement import save_image_placement, load_image_placement
+    from rt.pipeline.add_images import (
+        run_add_images, load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+    from rt.core.sources import Source, _save
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # 1. Posizionamento pre-esistente
+    save_image_placement(
+        lesson,
+        macros={"1": ["preexisting_macro_hash"]},
+        carousel=False,
+        units={"1.1": ["preexisting_unit_hash"]},
+    )
+
+    # 2. Immagine già in assets con descrizione
+    from rt.pipeline.outline import load_outline
+    unit_title = load_outline(lesson).macro_sections[0].units[0].title
+    img_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    h1 = compute_image_hash(img_bytes)
+    rel1 = save_raw_image(lesson, img_bytes, h1)
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h1] = {
+        "filename": rel1,
+        "source": "editor:test.png",
+        "alt_text": "Test Image 1",
+        "ocr_text": unit_title,
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    # 3. Pagina dei materiali non ancora in assets
+    impronta = "b" * 64
+    source = Source(id="src-mat-2", tipo="materiale", file="slides2.pdf", impronta=impronta, aggiunta_il="2026-10-15", ordine=1)
+    _save(lesson, [source])
+    mat_dir = os.path.join(lesson, "materials", impronta)
+    fs.makedirs(mat_dir, exist_ok=True)
+    _png(os.path.join(mat_dir, "page-1-1.png"))
+    pages = [
+        {"numero": 1, "testo": unit_title, "immagini": [f"materials/{impronta}/page-1-1.png"]},
+    ]
+    with fs.open(os.path.join(mat_dir, "pages.json"), "w", encoding="utf-8") as f:
+        json.dump({"impronta": impronta, "pages": pages}, f)
+
+    # Colloca in automatico solo le selezionate (una in assets, una da materiale)
+    mat_page_name = f"materials/{impronta}/page-1-1.png"
+    res = run_add_images(
+        lesson,
+        selected_images=[os.path.basename(rel1), mat_page_name],
+        force_mock=True,
+    )
+    assert res["images_added"] >= 1
+
+    # Verifica placement: i preesistenti DEVONO rimanere intatti
+    placement = load_image_placement(lesson)
+    assert "preexisting_macro_hash" in placement["macros"].get("1", [])
+    assert "preexisting_unit_hash" in placement["units"].get("1.1", [])
+
+    # Verifica che la pagina del materiale sia stata copiata in assets/images
+    descriptions_after = load_image_descriptions(lesson)
+    mat_entry = next((d for d in descriptions_after.values() if "material:src-mat-2:1" in d.get("source", "")), None)
+    assert mat_entry is not None
+    assert fs.isfile(os.path.join(lesson, mat_entry["filename"]))
+
+    # 4. Verifica endpoint API POST /lessons/{lesson_id}/images con selected_images
+    api_res = api_client.post(
+        f"/api/v1/lessons/{lid}/images",
+        data={"selected_images": [os.path.basename(rel1)]},
+    )
+    assert api_res.status_code == 202
+    assert "job_id" in api_res.json()
+
+
+def test_pages_only_mode_without_llm_calls(ws, monkeypatch):
+    from rt.pipeline.add_images import run_add_images, load_image_descriptions
+    from rt.pipeline.image_placement import load_image_placement
+    import rt.llm.client as llm_client
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+
+    # Se un modello LLM venisse chiamato, solleva errore
+    def fake_llm(*args, **kwargs):
+        raise AssertionError("Nessun modello LLM deve essere chiamato in modalità Solo pagine!")
+    monkeypatch.setattr(llm_client.LLMClient, "call_structured", fake_llm)
+
+    # Crea un file immagine di prova
+    img_dir = os.path.join(lesson, "upload_test")
+    os.makedirs(img_dir, exist_ok=True)
+    _png(os.path.join(img_dir, "foto1.png"))
+
+    res = run_add_images(lesson, input_path=img_dir, pages_only=True)
+    assert res["images_added"] == 1
+    assert res["placement_changed"] is False
+
+    # Verifica che l'immagine sia salvata in assets/images
+    descriptions = load_image_descriptions(lesson)
+    assert len(descriptions) >= 1
+
+    # Verifica che placement.json NON sia stato modificato con nuove collocazioni
+    placement = load_image_placement(lesson) or {}
+    assert placement.get("macros", {}) == {}
+    assert placement.get("units", {}) == {}
+
+
+def test_crop_media_image_as_new_image(api_client, ws):
+    from rt.storage import fs
+    from rt.pipeline.add_images import (
+        load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # 1. Crea immagine originale
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 100), (50, 100, 150)).save(buf, format="PNG")
+    img_bytes = buf.getvalue()
+    h1 = compute_image_hash(img_bytes)
+    rel1 = save_raw_image(lesson, img_bytes, h1)
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h1] = {
+        "filename": rel1,
+        "source": "material:src1:5",
+        "alt_text": "Pagina 5",
+        "ocr_text": "",
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    orig_filename = os.path.basename(rel1)
+
+    # 2. Primo ritaglio con replace=False
+    res1 = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_filename, "rect": [0.1, 0.1, 0.5, 0.5], "replace": False},
+    )
+    assert res1.status_code == 201
+    crop1_data = res1.json()
+    assert crop1_data["path"].startswith("assets/images/")
+    assert "ritaglio 1" in crop1_data["alt_text"]
+    assert crop1_data["name"] != orig_filename
+
+    # Verifica file su disco
+    crop1_path = os.path.join(lesson, crop1_data["path"])
+    assert fs.isfile(crop1_path)
+    # L'originale esiste ancora
+    assert fs.isfile(os.path.join(lesson, rel1))
+
+    # Verifica descriptions
+    desc1 = load_image_descriptions(lesson)
+    crop1_entry = next((v for k, v in desc1.items() if v["filename"] == crop1_data["path"]), None)
+    assert crop1_entry is not None
+    assert crop1_entry["crop_of"] == h1
+    assert crop1_entry["crop_index"] == 1
+
+    # 3. Secondo ritaglio dalla stessa immagine: indice cresce a 2
+    res2 = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_filename, "rect": [0.2, 0.2, 0.4, 0.4], "replace": False},
+    )
+    assert res2.status_code == 201
+    crop2_data = res2.json()
+    assert "ritaglio 2" in crop2_data["alt_text"]
+    desc2 = load_image_descriptions(lesson)
+    crop2_entry = next((v for k, v in desc2.items() if v["filename"] == crop2_data["path"]), None)
+    assert crop2_entry is not None
+    assert crop2_entry["crop_index"] == 2
+
+
+def test_crop_media_image_replace(api_client, ws):
+    from rt.storage import fs
+    from rt.pipeline.add_images import (
+        load_image_descriptions, save_image_descriptions,
+        compute_image_hash, save_raw_image,
+    )
+    from rt.pipeline.image_placement import save_image_placement, load_image_placement
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # Immagine originale
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 100), (200, 80, 80)).save(buf, format="PNG")
+    img_bytes = buf.getvalue()
+    h_orig = compute_image_hash(img_bytes)
+    rel_orig = save_raw_image(lesson, img_bytes, h_orig)
+    orig_name = os.path.basename(rel_orig)
+
+    descriptions = load_image_descriptions(lesson)
+    descriptions[h_orig] = {
+        "filename": rel_orig,
+        "source": "material:src1:3",
+        "alt_text": "Pagina 3",
+        "ocr_text": "",
+    }
+    save_image_descriptions(lesson, descriptions)
+
+    # Inserisci nel document.md e nel placement.json
+    doc_path = os.path.join(lesson, "document.md")
+    with fs.open(doc_path, "w", encoding="utf-8") as f:
+        f.write(f"# Documento\n\n![Pagina 3](assets/images/{orig_name})\n\nAltro testo.\n")
+
+    save_image_placement(lesson, macros={"1": [h_orig]}, carousel=False, units={"1.1": [h_orig]})
+
+    # Esegui ritaglio con replace=True
+    res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/crop",
+        json={"image_name": orig_name, "rect": [0.0, 0.0, 0.8, 0.8], "replace": True},
+    )
+    assert res.status_code == 201
+    crop_data = res.json()
+    new_name = crop_data["name"]
+    new_hash = os.path.splitext(new_name)[0]
+
+    # 1. File originale resta su disco
+    assert fs.isfile(os.path.join(lesson, rel_orig))
+    # Nuovo file ritagliato esiste
+    assert fs.isfile(os.path.join(lesson, crop_data["path"]))
+
+    # 2. Documento aggiornato con la nuova immagine
+    with fs.open(doc_path, "r", encoding="utf-8") as f:
+        updated_doc = f.read()
+    assert orig_name not in updated_doc
+    assert new_name in updated_doc
+
+    # 3. Placement aggiornato con il nuovo hash
+    placement = load_image_placement(lesson)
+    assert h_orig not in placement["macros"].get("1", [])
+    assert any(h.startswith(new_hash) for h in placement["macros"].get("1", []))
+    assert any(h.startswith(new_hash) for h in placement["units"].get("1.1", []))
+
+
+
+

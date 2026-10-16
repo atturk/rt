@@ -458,12 +458,143 @@ def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=
     return by_unit, by_macro
 
 
+def resolve_selected_images(
+    lesson_dir: str,
+    selected_images: List[str],
+    force_mock: bool = False,
+    failures: Optional[UnitFailureTracker] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
+) -> List[ExtractedImage]:
+    """Risolve le immagini selezionate (file in assets/images o materiali delle fonti) in ExtractedImage."""
+    import re
+    from rt.core.sources import load_sources
+    from rt.core.materials import cached_pages, material_pages
+
+    descriptions = load_image_descriptions(lesson_dir)
+    extracted: List[ExtractedImage] = []
+
+    by_hash = dict(descriptions)
+    by_file = {desc["filename"]: (h, desc) for h, desc in descriptions.items() if "filename" in desc}
+    by_base = {os.path.basename(desc["filename"]): (h, desc) for h, desc in descriptions.items() if "filename" in desc}
+
+    sources = None
+
+    for i, item in enumerate(selected_images, 1):
+        target_hash = None
+        target_desc = None
+
+        if item in by_hash:
+            target_hash = item
+            target_desc = by_hash[item]
+        elif item in by_file:
+            target_hash, target_desc = by_file[item]
+        elif item in by_base:
+            target_hash, target_desc = by_base[item]
+
+        if target_hash and target_desc:
+            full_path = os.path.join(lesson_dir, target_desc["filename"])
+            if fs.isfile(full_path):
+                with fs.open(full_path, "rb") as f:
+                    data = f.read()
+                page_num = 1
+                source_str = target_desc.get("source", "")
+                alt_str = target_desc.get("alt_text", "")
+                m = re.search(r"pagina\s+(\d+)", alt_str, re.IGNORECASE) or re.search(r":(\d+)$", source_str)
+                if m:
+                    page_num = int(m.group(1))
+                text = target_desc.get("ocr_text") or target_desc.get("slide_title") or ""
+                if not text and not target_desc.get("visual_elements") and not LLMClient(force_mock=force_mock).force_mock:
+                    img_obj = ExtractedImage(image_bytes=data, page_number=page_num, source_label=source_str)
+                    describe_new_images(lesson_dir, [(img_obj, target_hash)],
+                                        lesson_context=get_lesson_context(lesson_dir),
+                                        force_mock=force_mock, failures=failures)
+                    descriptions = load_image_descriptions(lesson_dir)
+                    target_desc = descriptions.get(target_hash, target_desc)
+                    text = target_desc.get("ocr_text") or target_desc.get("slide_title") or ""
+                extracted.append(ExtractedImage(
+                    image_bytes=data,
+                    page_number=page_num,
+                    source_label=source_str or f"asset:{target_hash}",
+                    text=text,
+                    file_fingerprint=target_hash,
+                ))
+                if progress:
+                    progress(i, len(selected_images))
+                continue
+
+        # Non ancora in descriptions: pagina dei materiali (es. materials/<impronta>/page-1-1.png)
+        if sources is None:
+            sources = load_sources(lesson_dir)
+
+        mat_match = None
+        for s in sources:
+            if s.impronta in item or s.id in item:
+                mat_match = s
+                break
+        if mat_match is None and sources:
+            for s in sources:
+                candidate = os.path.join(lesson_dir, "materials", s.impronta, os.path.basename(item))
+                if fs.isfile(candidate):
+                    mat_match = s
+                    break
+
+        if mat_match:
+            m = re.search(r"page-(\d+)", item) or re.search(r":(\d+)$", item)
+            page_num = int(m.group(1)) if m else 1
+            pages = cached_pages(lesson_dir, mat_match)
+            if not pages:
+                try:
+                    pages = material_pages(lesson_dir, mat_match, mock=True)
+                except Exception:
+                    pages = None
+            page_text = ""
+            img_rel = None
+            if pages:
+                p = next((p for p in pages if int(p.get("numero", 0)) == page_num), None)
+                if p:
+                    page_text = p.get("testo", "")
+                    if p.get("immagini"):
+                        img_rel = p["immagini"][0]
+            if not img_rel:
+                cand = os.path.join("materials", mat_match.impronta, f"page-{page_num}-1.png")
+                if fs.isfile(os.path.join(lesson_dir, cand)):
+                    img_rel = cand
+            if img_rel and fs.isfile(os.path.join(lesson_dir, img_rel)):
+                with fs.open(os.path.join(lesson_dir, img_rel), "rb") as f:
+                    data = f.read()
+                h = compute_image_hash(data)
+                rel = save_raw_image(lesson_dir, data, h)
+                src_name = os.path.basename(mat_match.file)
+                descriptions = load_image_descriptions(lesson_dir)
+                if h not in descriptions:
+                    descriptions[h] = {
+                        "filename": rel,
+                        "source": f"material:{mat_match.id}:{page_num}",
+                        "alt_text": f"{src_name}, pagina {page_num}",
+                        "ocr_text": page_text,
+                    }
+                    save_image_descriptions(lesson_dir, descriptions)
+                extracted.append(ExtractedImage(
+                    image_bytes=data,
+                    page_number=page_num,
+                    source_label=f"material:{mat_match.id}:{page_num}",
+                    text=page_text,
+                    file_fingerprint=mat_match.impronta,
+                ))
+        if progress:
+            progress(i, len(selected_images))
+
+    return extracted
+
+
 def run_add_images(
     lesson_dir: str,
     input_path: Optional[str] = None,
     web_search_count: Optional[int] = None,
     force_mock: bool = False,
     unit_ids: Optional[List[str]] = None,
+    selected_images: Optional[List[str]] = None,
+    pages_only: bool = False,
     tolerate_failures: bool = False,
     ctx: Optional[RunContext] = None,
 ) -> Dict[str, Any]:
@@ -471,7 +602,8 @@ def run_add_images(
     web per ogni unità (unit_ids: solo quelle unità, None = tutte). Con tolerate_failures (job
     del worker) un'immagine o una sezione che il modello non riesce a elaborare non ferma le
     altre: il posizionamento si scrive con le immagini riuscite e il risultato elenca le non
-    riuscite (failed_units)."""
+    riuscite (failed_units). Con pages_only=True estrae solo le immagini nei media senza
+    chiamare modelli né collocarle. Con selected_images colloca solo quelle selezionate."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.pipeline.image_placement import get_placement_path, save_image_placement
     from rt.pipeline.outline import load_outline
@@ -500,9 +632,47 @@ def run_add_images(
                              f"{message} {current}/{total}")
         return update
 
+    # Modalità Solo pagine: salva le immagini e descrizioni minime senza modelli né collocazione
+    if pages_only:
+        if ctx:
+            ctx.progress("add_images", 0, 100, "Estraggo le pagine")
+        if input_path:
+            uploaded = extract_images(input_path, progress=report(0, 80, "Estraggo le pagine"))
+        descriptions = load_image_descriptions(lesson_dir)
+        for i, img in enumerate(uploaded, 1):
+            h = compute_image_hash(img.image_bytes)
+            if h not in descriptions:
+                rel = save_raw_image(lesson_dir, img.image_bytes, h)
+                descriptions[h] = {
+                    "filename": rel,
+                    "source": img.source_label,
+                    "ocr_text": img.text or "",
+                }
+            if img.source_label.startswith("pdf:"):
+                source_name = img.source_label.split(":", 1)[-1].rsplit("#", 1)[0]
+                descriptions[h]["alt_text"] = f"{source_name}, pagina {img.page_number}"
+            report(80, 20, "Salvo le pagine")(i, len(uploaded))
+        save_image_descriptions(lesson_dir, descriptions)
+        if ctx:
+            ctx.progress("add_images", 100, 100, "Pagine aggiunte ai media")
+        return {
+            "images_added": len(uploaded),
+            "macros_with_images": [],
+            "units_with_images": [],
+            "web_images_by_unit": {},
+            "placement": get_placement_path(lesson_dir),
+            "placement_changed": False,
+            "build_stale": False,
+            "failed_units": [],
+        }
+
     if ctx:
         ctx.progress("add_images", 0, 100, "Leggo le pagine")
-    if input_path:
+
+    if selected_images:
+        uploaded = resolve_selected_images(lesson_dir, selected_images, force_mock=force_mock,
+                                           failures=tracker, progress=report(0, 30, "Leggo le pagine"))
+    elif input_path:
         uploaded = extract_images(input_path, progress=report(0, 20, "Leggo le pagine"))
 
     if web_search_count and web_search_count > 0:
@@ -521,7 +691,7 @@ def run_add_images(
         )
         extracted.extend(web_extracted)
 
-    if uploaded:
+    if uploaded and not selected_images:
         prepare_uploaded_images(lesson_dir, uploaded, force_mock=force_mock,
                                 progress=report(30, 20, "Leggo le pagine"), **tolerant)
 

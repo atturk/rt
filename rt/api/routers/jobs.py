@@ -305,11 +305,13 @@ def add_images(
     files: Optional[List[UploadFile]] = File(None, description="PDF o immagini"),
     web_search: Optional[int] = Form(None, ge=1, le=10, description="Immagini da cercare sul web per ogni unità"),
     units: Optional[List[str]] = Form(None, description="Unità per cui cercare sul web (id dell'outline); vuoto = tutte"),
+    selected_images: Optional[List[str]] = Form(None, description="Nomi o hash delle immagini selezionate da collocare"),
+    pages_only: bool = Form(False, description="Estrae solo le pagine nei media senza descriverle né collocarle"),
     mock: bool = Form(False),
 ):
     from rt.services.images_service import ImagesError, check_web_search
-    if not files and not web_search:
-        raise ApiError(422, "validation_error", "Carica almeno un file o chiedi una ricerca web.")
+    if not files and not web_search and not selected_images:
+        raise ApiError(422, "validation_error", "Carica almeno un file, chiedi una ricerca web o seleziona immagini da collocare.")
     unit_ids = [u.strip() for u in units or [] if u.strip()] or None
     if web_search:
         try:
@@ -325,8 +327,15 @@ def add_images(
             # un PDF da solo si passa com'è; le immagini come cartella (come 'rt add-images -i')
             single_pdf = len(saved) == 1 and saved[0].lower().endswith(".pdf")
             input_path = saved[0] if single_pdf else target
-        payload = {"input_path": input_path, "web_search_count": web_search, "unit_ids": unit_ids if web_search else None,
-                   "mock": mock, "upload_dir": target}
+        payload = {
+            "input_path": input_path,
+            "web_search_count": web_search,
+            "unit_ids": unit_ids if web_search else None,
+            "selected_images": selected_images,
+            "pages_only": pages_only,
+            "mock": mock,
+            "upload_dir": target,
+        }
         return enqueue_job("add_images", lesson_dir, payload, actor)
     return _with_upload_cleanup(target, _go) if target else _go()
 
