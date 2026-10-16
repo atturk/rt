@@ -3,6 +3,8 @@ import json
 import os
 from unittest.mock import patch
 
+import pytest
+
 import yaml
 
 from rt.core.lesson_paths import lesson_path
@@ -30,6 +32,7 @@ def test_without_docente_info_yaml_has_no_key(tmp_path):
         assert "docente" not in yaml.safe_load(f)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="script finto in sh; la CLI di macparakeet c'è solo sul Mac")
 def test_transcription_percent_reported_once_per_change(tmp_path):
     script = tmp_path / "fake.sh"
     script.write_text("#!/bin/sh\necho 'Transcribing 10%'\necho 'Transcribing 10%'\necho 'chunk'\necho 'Transcribing 55%'\necho 'done 100%'\n")

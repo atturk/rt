@@ -178,8 +178,9 @@ def _rekey_state_documents(session, lesson_path: str) -> None:
         session.delete(doc)
 
 
-def migrate_lesson(db, lesson_dir: str, backup_dir: str) -> List[str]:
-    """Migra una lezione; restituisce gli errori (lista vuota = migrata)."""
+def migrate_lesson(db, lesson_dir: str, backup_dir: str, move_folder: bool = True) -> List[str]:
+    """Migra una lezione; restituisce gli errori (lista vuota = migrata). Con move_folder=False
+    la cartella resta dov'è e la sposta move_to_backup (vedi migrate_storage)."""
     from rt.db.repositories import LessonRepository
     from rt.db.session import session_scope
     from rt.db.sync import sync_lesson
@@ -202,7 +203,12 @@ def migrate_lesson(db, lesson_dir: str, backup_dir: str) -> List[str]:
         s.get(Lesson, lesson_id).storage = fs.STORAGE_DB
         _rekey_state_documents(s, lesson_path)
     fs.forget(lesson_path)
-    target = os.path.join(backup_dir, os.path.basename(lesson_path))
+    return move_to_backup(lesson_dir, backup_dir) if move_folder else []
+
+
+def move_to_backup(lesson_dir: str, backup_dir: str) -> List[str]:
+    """Sposta la cartella di una lezione già migrata nel backup della migrazione."""
+    target = os.path.join(backup_dir, os.path.basename(os.path.abspath(lesson_dir)))
     try:
         os.makedirs(backup_dir, exist_ok=True)
         shutil.move(lesson_dir, target)
@@ -239,10 +245,14 @@ def migrate_storage(
         from rt.core.process_lock import LessonBusy, lesson_work_lock
         try:
             with lesson_work_lock(plan.lesson_dir):  # nessun job o 'rt run' sulla lezione
-                errors = migrate_lesson(db, plan.lesson_dir, lessons_backup)
+                errors = migrate_lesson(db, plan.lesson_dir, lessons_backup, move_folder=False)
         except LessonBusy:
             report.errors.append(f"{name}: lezione in lavorazione, non migrata (rilancia il comando più tardi)")
             continue
+        if not errors:
+            # dopo aver rilasciato il lock: su Windows una cartella con un file aperto
+            # (.rt.job.lock) non si può spostare
+            errors = move_to_backup(plan.lesson_dir, lessons_backup)
         if errors and not fs.is_db_lesson(plan.lesson_dir):
             report.errors.extend(f"{name}: {e}" for e in errors)
             continue

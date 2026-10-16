@@ -483,6 +483,7 @@ def test_run_update_refuses_modified_git_install_before_network(tmp_path):
     remote.assert_not_called()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="lo script di aggiornamento storico è in bash, solo Mac")
 def test_legacy_upgrade_script_migrates_clean_git_install(tmp_path):
     upstream = tmp_path / "upstream"
     upstream.mkdir()
@@ -526,6 +527,7 @@ def test_legacy_upgrade_script_migrates_clean_git_install(tmp_path):
     assert calls.read_text(encoding="utf-8").splitlines() == ["called"]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="lo script di aggiornamento storico è in bash, solo Mac")
 def test_legacy_upgrade_script_uses_safe_updater_for_archive_install(tmp_path):
     install = tmp_path / "install"
     (install / "rt" / "core").mkdir(parents=True)

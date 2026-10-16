@@ -1,4 +1,5 @@
 """Chiamate condivise, impronte indipendenti e letture del contesto."""
+import os
 from unittest.mock import patch
 from rt.core.config import RTConfig, JevConfig
 from rt.llm.jev_client import JevResponse, JevChoiceAnswer
@@ -43,7 +44,7 @@ def test_context_files_opened_once_for_ten_units(tmp_path, monkeypatch):
     counts = {}
     original = fs.open
     def counted(path, *args, **kwargs):
-        name = str(path).split("/")[-1]
+        name = os.path.basename(str(path))
         if name in ("info.yaml", "outline.json"):
             counts[name] = counts.get(name, 0) + 1
         return original(path, *args, **kwargs)
