@@ -17,3 +17,6 @@ Pillow>=10
 playwright>=1.50
 python-pptx>=1.0
 pillow-heif>=1.0
+# Trascrizione locale Parakeet ONNX (Windows, Linux; seconda scelta sul Mac) e ffmpeg incluso
+onnx-asr[cpu,hub]>=0.12
+imageio-ffmpeg>=0.6

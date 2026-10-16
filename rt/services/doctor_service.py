@@ -46,7 +46,8 @@ def check_python() -> Check:
 
 
 def check_ffmpeg() -> Check:
-    if shutil.which("ffmpeg"):
+    from rt.core.media_tools import ffmpeg_path
+    if ffmpeg_path():
         return Check("ffmpeg", OK, "installato")
     return Check("ffmpeg", FAIL, "non trovato: serve per audio e trascrizione.", "brew install ffmpeg")
 
@@ -56,10 +57,17 @@ def check_transcription() -> Check:
     engine = load_config().transcription.engine
     if engine == "custom":
         return Check("Trascrizione", OK, "motore personalizzato (custom)")
+    if engine == "parakeet":
+        from rt.core import onnx_stt
+        if not onnx_stt.available():
+            return Check("Trascrizione", FAIL, "Parakeet ONNX scelto ma il pacchetto onnx-asr non è installato.",
+                         "Reinstalla RT oppure scegli un altro motore in Impostazioni.")
+        if not onnx_stt.model_ready():
+            return Check("Trascrizione", OK, "Parakeet ONNX: il modello si scarica alla prima trascrizione (circa 700 MB)")
+        return Check("Trascrizione", OK, "Parakeet ONNX pronto")
     if sys.platform != "darwin":
-        return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS: su questa macchina i worker "
-                     "non trascrivono (i job audio aspettano un worker sul Mac).",
-                     "Configura un motore compatibile (docs/ALTERNATIVE_TRANSCRIPTION.md).")
+        return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS.",
+                     "In Impostazioni scegli Parakeet ONNX (locale) o un server compatibile.")
     if shutil.which("macparakeet-cli"):
         return Check("Trascrizione", OK, "macparakeet-cli installato")
     return Check("Trascrizione", WARN, "macparakeet-cli non trovato: le lezioni da audio non si trascrivono.",

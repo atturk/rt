@@ -28,7 +28,7 @@ cp -r config.example config
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
 | `telegram.enabled` | Notifiche Telegram nella chat personale (predefinito `false`): lezione pronta, decisione da prendere, errore. Si cambia da Impostazioni › Telegram. `RT_TELEGRAM_ENABLED=1`/`0` lo forza. Token (`RT_TELEGRAM_BOT_TOKEN`) e chat (`RT_TELEGRAM_CHAT_ID`) stanno nei segreti e nel `.env`. Le chiavi delle versioni precedenti (`default_channel`, `topics`, `misc_topic_id`) vengono ignorate. |
 | `telegram.lessons_root` | Solo installazioni 3.x: cartella delle lezioni a cartelle da convertire (`rt db migrate-storage`) e prefisso dei loro percorsi nel database. Non si configura più: senza questa chiave il prefisso è `<cartella dati>/lessons`, che non deve esistere su disco. |
-| `transcription.engine` | `macparakeet` oppure `custom` per un server STT OpenAI-compatible. |
+| `transcription.engine` | `macparakeet` (solo macOS, predefinito sul Mac), `parakeet` (Parakeet ONNX locale, predefinito su Windows e Linux) oppure `custom` per un server STT OpenAI-compatible. |
 | `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
 | `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
 

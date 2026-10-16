@@ -9623,6 +9623,15 @@
             "title": "Engine",
             "type": "string"
           },
+          "macparakeet_available": {
+            "description": "macparakeet può girare qui (solo macOS)",
+            "title": "Macparakeet Available",
+            "type": "boolean"
+          },
+          "macparakeet_installed": {
+            "title": "Macparakeet Installed",
+            "type": "boolean"
+          },
           "model": {
             "anyOf": [
               {
@@ -9633,11 +9642,30 @@
               }
             ],
             "title": "Model"
+          },
+          "parakeet_available": {
+            "description": "Parakeet ONNX installato (il modello si scarica al primo uso)",
+            "title": "Parakeet Available",
+            "type": "boolean"
+          },
+          "parakeet_model_ready": {
+            "title": "Parakeet Model Ready",
+            "type": "boolean"
+          },
+          "recommended": {
+            "description": "Motore consigliato su questo sistema",
+            "title": "Recommended",
+            "type": "string"
           }
         },
         "required": [
           "engine",
-          "api_key_set"
+          "api_key_set",
+          "recommended",
+          "macparakeet_available",
+          "macparakeet_installed",
+          "parakeet_available",
+          "parakeet_model_ready"
         ],
         "title": "Transcription",
         "type": "object"
@@ -9664,6 +9692,7 @@
           "engine": {
             "enum": [
               "macparakeet",
+              "parakeet",
               "custom"
             ],
             "title": "Engine",

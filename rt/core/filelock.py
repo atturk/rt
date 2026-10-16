@@ -21,12 +21,8 @@ def _expired(lock_path: str, stale_sec: float) -> bool:
             owner = json.load(file)
         if owner["host"] != socket.gethostname():
             return True
-        os.kill(int(owner["pid"]), 0)
-        return False
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
+        from rt.core.portable import pid_alive
+        return not pid_alive(int(owner["pid"]))
     except (ValueError, KeyError, TypeError):
         # I vecchi lock non contenevano il proprietario.
         return True

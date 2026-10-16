@@ -17,6 +17,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     Sulla macchina di sviluppo quel file contiene le chiavi vere e la chiave master sta nel
     portachiavi: la suite punta RT_SECRETS_FILE a un percorso inesistente, così nessun test
     legge segreti reali né interroga il portachiavi. I test di rt.security usano il loro file."""
+    # Stesso motore di trascrizione predefinito su Mac, Linux e Windows (vedi default_engine)
+    os.environ["RT_DEFAULT_STT_ENGINE"] = "macparakeet"
     missing = tmp_path_factory.mktemp("secrets") / "absent-secrets.enc"
     previous = os.environ.get("RT_SECRETS_FILE")
     os.environ["RT_SECRETS_FILE"] = str(missing)

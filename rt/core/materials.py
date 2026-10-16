@@ -59,19 +59,43 @@ def _describe(data, lesson_dir, mock):
     return '\n'.join(str(value) for value in (result.slide_title, result.ocr_text, result.visual_elements) if value)
 
 
+def _soffice():
+    """LibreOffice, se installato: nel PATH o nella cartella standard di Windows."""
+    found = shutil.which('soffice') or shutil.which('libreoffice')
+    if found or os.name != 'nt':
+        return found
+    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
+        candidate = os.path.join(base or '', 'LibreOffice', 'program', 'soffice.exe')
+        if base and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _slide_command(real, target):
+    """Quick Look su macOS, altrimenti LibreOffice; None se nessuno dei due c'è."""
+    quicklook = shutil.which('qlmanage') if sys.platform == 'darwin' else None
+    if quicklook:
+        return [quicklook, '-p', '-o', target, real]
+    soffice = _soffice()
+    if soffice:
+        return [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]
+    return None
+
+
 @contextmanager
 def _quicklook_slides(real, count):
-    """Quick Look è facoltativo; usa una resa solo se copre tutte le slide. Restituisce una
-    funzione che rende una slide alla volta, così non tiene in memoria tutte le immagini."""
-    binary = shutil.which('qlmanage') if sys.platform == 'darwin' else None
-    if not binary:
-        yield None
-        return
+    """La resa delle slide (Quick Look o LibreOffice) è facoltativa; si usa solo se copre tutte
+    le slide. Restituisce una funzione che rende una slide alla volta, così non tiene in
+    memoria tutte le immagini."""
     with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
+        command = _slide_command(real, target)
+        if not command:
+            yield None
+            return
         render = None
         document = None
         try:
-            subprocess.run([binary, '-p', '-o', target, real], capture_output=True, check=True, timeout=60)
+            subprocess.run(command, capture_output=True, check=True, timeout=120)
             from pathlib import Path
             import fitz
             for path in Path(target).rglob('*.pdf'):

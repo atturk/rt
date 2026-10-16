@@ -17,6 +17,8 @@ import sys
 import threading
 from typing import Dict, List, Optional
 
+from rt.core.media_tools import require_ffmpeg
+
 CACHE_KINDS = ("audio", "waveform")
 WAVEFORM_BARS = 300
 _computing: Dict[str, threading.Thread] = {}
@@ -91,7 +93,7 @@ def playable_audio(path: str) -> str:
         return target
     temporary = target + ".tmp.m4a"
     try:
-        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", path, "-c:a", "copy",
+        subprocess.run([require_ffmpeg(), "-nostdin", "-v", "error", "-y", "-i", path, "-c:a", "copy",
                         "-movflags", "+faststart", temporary], check=True, capture_output=True, timeout=300)
         os.replace(temporary, target)
         return target
@@ -128,7 +130,7 @@ def levels_from_samples(samples: "array.array", bars: int = WAVEFORM_BARS) -> Li
 
 def compute_waveform(path: str) -> List[int]:
     try:
-        result = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-ac", "1", "-ar", "200",
+        result = subprocess.run([require_ffmpeg(), "-nostdin", "-v", "error", "-i", path, "-ac", "1", "-ar", "200",
                                  "-f", "s16le", "pipe:1"], capture_output=True, check=True, timeout=300)
     except (OSError, subprocess.SubprocessError):
         return []

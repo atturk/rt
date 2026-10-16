@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Dict
 from urllib.parse import urlparse
 
 
@@ -218,11 +218,28 @@ def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
     return "Notifiche Telegram attivate." if enabled else "Notifiche Telegram disattivate."
 
 
+def transcription_engines() -> Dict[str, Any]:
+    """Quali motori locali girano qui e quale consigliare (macparakeet sul Mac, Parakeet ONNX
+    altrove)."""
+    import shutil
+    import sys
+
+    from rt.core import onnx_stt
+    from rt.core.config import default_engine
+    return {
+        "recommended": default_engine(),
+        "macparakeet_available": sys.platform == "darwin",
+        "macparakeet_installed": sys.platform == "darwin" and bool(shutil.which("macparakeet-cli")),
+        "parakeet_available": onnx_stt.available(),
+        "parakeet_model_ready": onnx_stt.model_ready(),
+    }
+
+
 def save_transcription(project_root: Path, engine: str, base_url: str,
                        model: str, api_key: str) -> str:
     if api_key.strip():
         _validate_secret(api_key.strip())
-    if engine not in {"macparakeet", "custom"}:
+    if engine not in {"macparakeet", "parakeet", "custom"}:
         raise ValueError("Motore STT non riconosciuto.")
     base_url, model = base_url.strip().rstrip("/"), model.strip()
     if engine == "custom":
@@ -337,6 +354,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
         "transcription": {
             "engine": cfg.transcription.engine, "base_url": cfg.transcription.base_url,
             "model": cfg.transcription.model, "api_key_set": secret_is_set("RT_STT_API_KEY"),
+            **transcription_engines(),
         },
         "telegram": {
             "enabled": cfg.telegram.enabled,
