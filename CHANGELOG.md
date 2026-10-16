@@ -4,6 +4,9 @@
 
 ### Novità
 
+- In Arricchimento › Media della lezione vedi tutte le pagine e le foto delle fonti, raggruppate per fonte, con l'unità in cui compaiono o “non usata”. Puoi selezionarne una, un intervallo con Maiusc o tutte, e inserirle nel testo al punto del cursore (più pagine diventano una striscia), trascinarle nel testo, collocarle in automatico solo quelle scelte o toglierle dal testo lasciandole nei media.
+- Ogni miniatura ha l'icona Ritaglia: il ritaglio si salva come nuova immagine (“Pag. N · ritaglio K”) oppure sostituisce la pagina nel testo, dopo una conferma che dice in quali unità compare.
+- Aggiungendo PDF o foto puoi scegliere “Solo pagine”: il file viene diviso in pagine nei media, senza modelli e senza costi, e le collochi quando vuoi.
 - Le registrazioni unite hanno una riga compatta con durata totale, chip delle parti e barra proporzionale; aprendo il chip, nomi e durate usano tutta la larghezza del pannello anche sul telefono.
 - Le risposte e le correzioni di Chiedi/Verifica mostrano titoli, grassetti, elenchi e formule; il contenuto passa dallo stesso renderer sicuro dei documenti.
 - Sul computer i popup Chiedi e Verifica si spostano e si ridimensionano, possono allargarsi a pannello e mantengono il campo d’invio visibile mentre la risposta scorre. Invio manda la richiesta, Maiusc+Invio va a capo.
@@ -12,6 +15,8 @@
 
 ### Correzioni
 
+- Trascinando PDF o foto con il pannello Arricchimento aperto, il pannello si illumina e il rilascio apre il caricamento dei media, invece del riquadro di import di una nuova lezione.
+- Miniature e immagini nel testo si vedono intere, senza tagli, anche quando sono molto larghe o molto alte.
 - Su iPhone il foglio Chiedi/Verifica resta sopra la barra delle sezioni e la tastiera; la maniglia sceglie tre altezze e le risposte lunghe aprono il foglio a piena altezza.
 - Nel testo il clic destro apre sempre il menu di RT, anche senza selezione e con ctrl+clic su Mac; ⌥ + clic destro apre il menu del browser.
 - Le sottolineature di Verifica e Chiedi compaiono solo con il pannello delle note aperto; nello Studio si vede solo la nota del popup aperto.
