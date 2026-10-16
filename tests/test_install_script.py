@@ -11,13 +11,12 @@ import subprocess
 
 import pytest
 
-# install.sh è lo script di installazione per il Mac: su Windows 'bash' è lo stub di WSL
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="install.sh è solo per il Mac")
-
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INSTALL_SH = os.path.join(PROJECT_ROOT, "install.sh")
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash non disponibile")
+# install.sh è lo script di installazione per il Mac: su Windows 'bash' è lo stub di WSL
+pytestmark = pytest.mark.skipif(os.name == "nt" or shutil.which("bash") is None,
+                                reason="install.sh è solo per il Mac e serve bash")
 
 
 def _functions() -> str:
