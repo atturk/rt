@@ -78,7 +78,7 @@ export function TelegramSection({ settings }: { settings: Settings }) {
         riesce.
       </p>
       <TelegramEnabledToggle enabled={tg.enabled ?? false} />
-      {tg.enabled && <TelegramChatSetup key={`${tg.bot_token_preview}-${tg.chat_id_preview}`} settings={settings} />}
+      {tg.enabled && <TelegramChatSetup settings={settings} />}
     </Section>
   )
 }
@@ -119,7 +119,7 @@ function TelegramChatSetup({ settings }: { settings: Settings }) {
         />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => find.mutate({ bot_token: token.trim() || null })} disabled={!canFind || find.isPending}>
+        <Button onClick={() => find.mutate({ bot_token: token.trim() || null }, { onSuccess: (r) => r.found && setToken('') })} disabled={!canFind || find.isPending}>
           <Link2 /> Collega la chat
         </Button>
         <Button
