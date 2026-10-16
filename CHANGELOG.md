@@ -17,6 +17,7 @@
 - Su Windows funzionano i lock dei file, i nomi delle lezioni e la resa delle slide PowerPoint (con LibreOffice, se installato).
 - RT si installa come un'app: un .dmg per il Mac (Apple Silicon) e un setup per Windows, con tutto incluso (niente Homebrew, Python o terminale). Si apre con un doppio clic e apre la web app nel browser.
 - L'app si aggiorna da Impostazioni › Info › Aggiornamenti, solo alle versioni stabili. Le beta si scaricano a mano dalla pagina delle release.
+- Se la porta 8765 è occupata da un altro programma, l'app ne sceglie una libera e la ricorda: niente più avvio fallito.
 
 ## 4.2.5 — 2026-10-14
 

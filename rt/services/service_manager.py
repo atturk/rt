@@ -12,6 +12,7 @@ chi lo installa. Su Linux (Docker) i servizi sono i container di docker-compose.
 """
 import os
 import plistlib
+import socket
 import subprocess
 import sys
 import urllib.request
@@ -28,6 +29,8 @@ SERVICES: Dict[str, List[str]] = {
 DESCRIPTIONS = {"api": "API e web app", "worker": "worker dei job"}
 AGENTS_DIR_ENV = "RT_LAUNCH_AGENTS_DIR"
 PORT_ENV = "RT_API_PORT"
+DEFAULT_PORT = 8765
+PORT_FILE = "api-port"  # nella cartella dati: la porta scelta dall'app quando la 8765 è occupata
 DEFAULT_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
@@ -61,11 +64,69 @@ def plist_path(name: str) -> str:
     return os.path.join(agents_dir(), label(name) + ".plist")
 
 
-def api_port() -> int:
+def _port_file() -> str:
+    return os.path.join(paths.default_data_dir(), PORT_FILE)
+
+
+def _valid_port(value) -> Optional[int]:
     try:
-        return int(os.environ.get(PORT_ENV) or 8765)
-    except ValueError:
-        return 8765
+        port = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return port if 0 < port < 65536 else None
+
+
+def api_port() -> int:
+    """RT_API_PORT, altrimenti la porta ricordata dall'app (vedi choose_port), altrimenti 8765."""
+    from_env = _valid_port(os.environ.get(PORT_ENV))
+    if from_env:
+        return from_env
+    try:
+        with open(_port_file(), encoding="utf-8") as f:
+            return _valid_port(f.read()) or DEFAULT_PORT
+    except OSError:
+        return DEFAULT_PORT
+
+
+def port_busy(port: int) -> bool:
+    """Qualcuno ascolta su 127.0.0.1:<porta> (RT o un altro programma)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _free_port(after: int) -> int:
+    """La prima porta libera dopo <after> (fino a 50 tentativi), altrimenti una scelta dal sistema."""
+    for candidate in range(after + 1, min(after + 51, 65536)):
+        if port_busy(candidate):
+            continue
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", candidate))
+            except OSError:
+                continue
+        return candidate
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def choose_port(say: Callable[[str], None] = print) -> int:
+    """La porta per l'app: quella solita se è libera o c'è già RT; se la occupa un altro
+    programma ne sceglie una libera e la ricorda, così 'rt web' e i servizi la ritrovano.
+    Con RT_API_PORT decide l'utente e non si cambia niente."""
+    port = api_port()
+    if _valid_port(os.environ.get(PORT_ENV)) or api_is_up(port) or not port_busy(port):
+        return port
+    chosen = _free_port(port)
+    try:
+        os.makedirs(os.path.dirname(_port_file()), exist_ok=True)
+        with open(_port_file(), "w", encoding="utf-8") as f:
+            f.write(f"{chosen}\n")
+    except OSError as exc:
+        say(f"⚠️  Porta {chosen} non ricordata: {exc}")
+    say(f"ℹ️  La porta {port} è occupata da un altro programma: RT usa la {chosen}.")
+    return chosen
 
 
 def _python() -> str:
