@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
-from rt.api import auth
+from rt.api import auth, schemas
 from rt.api.deps import Actor
 from rt.api.errors import ApiError, ErrorResponse
 
@@ -57,6 +57,28 @@ def system_cache(_actor: Actor) -> CacheInfo:
 def clear_system_cache(_actor: Actor) -> CacheInfo:
     from rt.services.audio_service import clear_cache
     return CacheInfo(**clear_cache())
+
+
+class CompactAudioPreview(BaseModel):
+    file_convertibili: int
+    bytes_convertibili: int
+    file_orfani: int
+    bytes_orfani: int
+    spazio_stimato_liberato: int
+
+
+@router.get("/system/compact-audio/preview", response_model=CompactAudioPreview,
+            summary="Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani")
+def preview_compact_audio_endpoint(_actor: Actor) -> CompactAudioPreview:
+    from rt.services.audio_compaction import preview_compact_audio
+    return CompactAudioPreview(**preview_compact_audio())
+
+
+@router.post("/system/compact-audio", response_model=schemas.JobAccepted, status_code=202,
+             summary="Avvia il job per convertire in m4a i wav/flac e cancellare gli audio uniti orfani")
+def start_compact_audio(actor: Actor):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job("compact_audio", None, {}, actor)
 
 
 @router.get("/system/info", response_model=SystemInfo, summary="Versione, canale di aggiornamento e cartelle di RT")

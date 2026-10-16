@@ -34,7 +34,10 @@ def parse_changelog(text: str) -> list[dict]:
             if line.startswith('### '):
                 current = {'title': line[4:].strip(), 'items': []}
                 groups.append(current)
-            elif current is not None and line.startswith('- '):
+            elif line.startswith('- '):
+                if current is None:  # punti senza titolo di gruppo: valgono come Novità
+                    current = {'title': 'Novità', 'items': []}
+                    groups.append(current)
                 current['items'].append(line[2:].strip())
             elif current is not None and line.startswith('  ') and current['items']:
                 current['items'][-1] += ' ' + line.strip()

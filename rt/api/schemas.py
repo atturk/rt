@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
-    format: Literal["markdown", "zip"] = "markdown"
+    format: Literal["markdown", "zip", "sources"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
     study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
 
@@ -840,6 +840,8 @@ class StudyNoteView(BaseModel):
     unit_fingerprint: str
     request: str
     response: Dict[str, Any]
+    spiegazione_html: str = Field('', description="Spiegazione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato")
+    correzione_html: str = Field('', description="Correzione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato")
     model: Optional[str] = None
     cost: Optional[float] = None
     created_at: Optional[str] = None

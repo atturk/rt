@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, loginViaLink, twoPagePdf } from './support'
 
 // Sessione di ripasso leggera e pannello Arricchimento contro l'API vera. Il worker gira con
 // --mock (LLM finto), vedi scripts/e2e_server.py.
@@ -97,7 +97,9 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
   await page.getByTestId('lesson-actions').getByRole('button', { name: 'Arricchimento' }).click()
   const panel = page.getByTestId('enrichment-panel')
   await panel.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }).click()
-  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() })
+  const outline = await apiGet<{ macro_sections: { units: { title: string }[] }[] }>(page.request, `/lessons/${lesson.id}/outline`)
+  const topic = outline.macro_sections[0].units[0].title
+  await panel.getByLabel('PDF o foto', { exact: true }).setInputFiles({ name: 'Lipidi.pdf', mimeType: 'application/pdf', buffer: twoPagePdf(topic) })
   await panel.getByRole('button', { name: /^Carica/ }).click()
   // Il job si segue nel pannello; finito, la galleria si aggiorna
   const count = async () => (await apiGet<{ images: Image[] }>(page.request, `/lessons/${lesson.id}/images`)).images.length

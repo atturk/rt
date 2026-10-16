@@ -562,6 +562,7 @@ def lesson_audio_file(lesson_dir: str) -> Optional[str]:
     try:
         raw = read_info_yaml(lesson_path(lesson_dir, "info.yaml")).get("file_audio")
         if raw:
+            candidates.append(os.path.join(lesson_dir, str(raw)))
             candidates.append(os.path.join(lesson_dir, os.path.basename(str(raw))))
     except Exception:
         pass
@@ -571,7 +572,10 @@ def lesson_audio_file(lesson_dir: str) -> Optional[str]:
             if cand and os.path.splitext(cand)[1].lower() in AUDIO_SUFFIXES:
                 if os.path.dirname(cand) == fs.media_dir() and os.path.isfile(cand):
                     return cand
-                real = fs.real_path(os.path.join(lesson_dir, os.path.basename(cand)))
+                inside = os.path.commonpath([os.path.abspath(lesson_dir), os.path.abspath(cand)]) == os.path.abspath(lesson_dir)
+                # Le fonti stanno in sources/<id>/: si tiene il percorso dentro la lezione.
+                rel = os.path.relpath(cand, lesson_dir) if inside else os.path.basename(cand)
+                real = fs.real_path(os.path.join(lesson_dir, rel))
                 if real:
                     return real
         return None

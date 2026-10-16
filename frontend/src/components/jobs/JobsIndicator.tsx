@@ -5,6 +5,7 @@ import { useJobs, useWorkers } from '@/api/jobs'
 import { ClassificationNotice } from '@/components/ClassificationNotice'
 import { Alert } from '@/components/ui/alert'
 import { decisionLabel, decisionLink, isActive } from '@/lib/jobs'
+import { isUploadActive, useUploads } from '@/lib/uploadQueue'
 import { cn } from '@/lib/utils'
 
 /**
@@ -16,17 +17,19 @@ export function JobsNavBadge() {
   const workers = useWorkers()
   const active = (jobs.data ?? []).filter((j) => isActive(j.state)).length
   const waiting = (jobs.data ?? []).filter((j) => j.state === 'waiting_for_decision').length
+  const uploading = useUploads().filter(isUploadActive).length
   const noWorker = workers.data?.length === 0 && active > 0
   const label = [
     active ? `${active} job attivi` : 'Nessun job attivo',
+    uploading ? `${uploading} caricamenti in corso` : '',
     waiting ? `${waiting} in attesa di una tua decisione` : '',
     noWorker ? 'nessun worker attivo' : '',
   ]
     .filter(Boolean)
     .join(', ')
-  const count = active + waiting
+  const count = active + waiting + uploading
   return (
-    <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} className="inline-flex">
+    <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} data-uploading={uploading} className="inline-flex">
       <span className="sr-only">: {label}</span>
       {(count > 0 || noWorker) && (
         <span

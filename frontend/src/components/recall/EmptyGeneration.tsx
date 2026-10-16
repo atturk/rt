@@ -43,7 +43,7 @@ export function EmptyGeneration({ lessonId, unit, available = true, onGenerated 
       })
     }} />}
     {!running && <div className="rt-empty-generation flex flex-wrap items-center justify-center gap-2">
-      <label htmlFor="empty-gen-count" className="text-meta text-muted-foreground">Quante</label>
+      <label htmlFor="empty-gen-count" className="text-meta text-muted-foreground">Fino a</label>
       <Input id="empty-gen-count" type="number" min="1" max="20" value={count} onChange={e => setCount(e.target.value)} className="h-9 w-16 text-center" />
       <QuestionTypeChips lessonId={lessonId} types={types} value={customType} onChange={setCustomType} suggested={suggested} unit={!!unit} disabled={generate.isPending} groupLabel="Tipo di domanda da generare" />
       <Button disabled={generate.isPending || (!unit && types.some(t => t.id === customType && t.custom && !t.available))} onClick={() => start(customType)}>Genera</Button>

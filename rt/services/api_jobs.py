@@ -82,7 +82,8 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.prepare import run_prepare
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
-        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali")},
+        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali", "unisci")
+           if job.payload.get(name) is not None},
         **{name: options.get(name, "") for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir, ctx.force_mock = lesson, bool(options.get("mock"))
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
@@ -250,14 +251,33 @@ def recall_batch_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     count = int(p.get("count") or cfg.telegram.recall.refill_batch_size)
     examples = load_fewshot_examples(qtype, state_dir=cfg.telegram.state_dir)
     with ctx.activate():
+        summary = {}
         generated = generate_recall_batch(job.lesson_path, qtype, count, examples, force_mock=bool(p.get("mock")),
                                           regenerate=True, shuffle=True, progress=recall_progress(ctx),
                                           unit_ids=p.get("unit_ids"),
                                           instructions=p.get("instructions"),
-                                          selection=p.get("selection"))
-        ctx.emit(Notice(message=_recall_message(f"Recall {type_key(qtype)}: obiettivo {count}, generate {len(generated)}.",
-                                                len(generated), unit_rows(job.lesson_path))))
+                                          selection=p.get("selection"), summary=summary)
+        ctx.emit(Notice(message=recall_generation_notice(summary, count, len(generated))))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
+
+
+def recall_generation_notice(summary, requested, generated):
+    message = f"Generate {generated} su {requested}"
+    if generated < requested:
+        reason = ("raggiunto il limite di tre passaggi" if summary.get('stop_reason') == 'max_rounds'
+                  else "il modello non ha trovato altri contenuti utili")
+        message += f": {reason}"
+    message += "."
+    tail = []
+    discarded = summary.get('local_discarded', 0) + summary.get('presave_discarded', 0)
+    if discarded:
+        tail.append(f"{discarded} {'scartata' if discarded == 1 else 'scartate'} dai controlli")
+    failed = summary.get('verification_discarded', 0)
+    if failed:
+        tail.append(f"{failed} {'variante non ha' if failed == 1 else 'varianti non hanno'} superato la verifica")
+    if tail:
+        message += " " + ", ".join(tail) + "."
+    return message
 
 
 def recall_progress(ctx: RunContext):
@@ -529,3 +549,24 @@ def classifier_job_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 register_handler("classifier",classifier_job_handler)
+
+
+def recall_rules_update_job(job, ctx):
+    from rt.services.recall_rules import update, view
+    with ctx.activate():
+        update(job.payload['type'], job.payload['subject'], manual=True, mock=bool(job.payload.get('mock')))
+    return _done(view())
+
+
+register_handler('recall_rules_update', recall_rules_update_job)
+
+
+def compact_audio_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    from rt.services.audio_compaction import compact_audio_lessons
+    with ctx.activate():
+        result = compact_audio_lessons(lesson_dirs=job.payload.get("lesson_dirs"), ctx=ctx)
+    return _done(result)
+
+
+register_handler("compact_audio", compact_audio_job)
+

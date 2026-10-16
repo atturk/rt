@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
 import { api } from '@/api/client'
+import { resetUploadsForTests, useUploads } from '@/lib/uploadQueue'
 import { NewLessonDialog } from './NewLessonDialog'
 
 const mutateCreate = vi.fn()
@@ -21,8 +22,9 @@ vi.mock('@/api/jobs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/jobs')>()
   return {
     ...actual,
-    useCreateLesson: () => ({ mutate: mutateCreate, isPending: false, error: null, reset: vi.fn(), progress: null }),
-    useImportLessonZips: () => ({ mutate: mutateZips, isPending: false, error: null, reset: vi.fn(), progress: null }),
+    // L'invio passa dalla coda dei caricamenti: qui risponde subito con un job accettato.
+    sendLesson: (input: unknown) => Promise.resolve(mutateCreate(input, {}) ?? { job_id: 'job-1' }),
+    sendLessonZips: (files: unknown) => Promise.resolve(mutateZips(files, {}) ?? { job_id: 'zip-1' }),
   }
 })
 
@@ -30,12 +32,24 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().pathname}</span>
 }
 
-function renderDialog(open = true, onClose = vi.fn()) {
+function renderDialog(
+  open = true,
+  onClose = vi.fn(),
+  initialDate?: string,
+  initialSlotKey?: string,
+  initialFiles?: File[],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <NewLessonDialog open={open} onClose={onClose} />
+        <NewLessonDialog
+          open={open}
+          onClose={onClose}
+          initialDate={initialDate}
+          initialSlotKey={initialSlotKey}
+          initialFiles={initialFiles}
+        />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -45,6 +59,7 @@ function renderDialog(open = true, onClose = vi.fn()) {
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  resetUploadsForTests()
   mutateCreate.mockReset()
   mutateZips.mockReset()
 })
@@ -122,7 +137,6 @@ const chooseZip = () => fireEvent.change(screen.getByLabelText('Audio o pacchett
 
 function mockImport(result: unknown, initialState = 'succeeded') {
   let state = initialState
-  mutateZips.mockImplementation((_files, options) => options.onSuccess({ job_id: 'zip-1' }))
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path === '/api/v1/workers' ? [{ worker_id: 'w' }] : {
     id: 'zip-1', state, progress: { current: 0, total: 3, message: 'Importo 1 su 3: prima.zip' }, result, error: state === 'failed' ? 'Importazione interrotta.' : null,
   }))) as never)
@@ -218,7 +232,7 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
     expect(screen.getByRole('button', { name: 'Allega documenti alle unità' })).toBeEnabled()
   })
 
-  it('senza audio gestisce la stellina del materiale principale e manda principale', () => {
+  it('senza audio gestisce la stellina del materiale principale e manda principale', async () => {
     renderDialog()
     const pdf1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
     const pdf2 = new File(['pdf2'], 'slide.pdf', { type: 'application/pdf' })
@@ -227,24 +241,25 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       target: { files: [pdf1, pdf2] },
     })
 
-    // Senza audio mostra l'avviso: di default decide il server (documento con più pagine)
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/Senza audio la scaletta segue il documento con più pagine/)
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
+    // Senza audio il primo documento è sempre scelto e mandato al server.
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/La scaletta segue «appunti.pdf»/)
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'false')
 
     fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
-    // Senza clic sulla stellina principale non si manda
+    // La principale si manda anche senza clic sulla stellina.
     fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
     expect(mutateCreate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ principale: undefined }),
+      expect.objectContaining({ principale: 'appunti.pdf' }),
       expect.anything(),
     )
 
-    // Clic sulla stellina della seconda miniatura
+    // Clic sulla stellina della seconda miniatura, a primo invio uscito dalla coda
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled())
     fireEvent.click(screen.getByTestId('material-star-1'))
     expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent('Senza audio la scaletta segue slide.pdf')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('La scaletta segue «slide.pdf»')
 
     fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
 
@@ -257,6 +272,20 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       }),
       expect.anything(),
     )
+  })
+
+  it('togliendo la principale passa al primo materiale rimasto', () => {
+    renderDialog()
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: ['uno.pdf', 'due.pdf', 'tre.pdf'].map((name) => new File(['pdf'], name, { type: 'application/pdf' })) },
+    })
+    fireEvent.click(screen.getByTestId('material-star-2'))
+    fireEvent.click(screen.getByTestId('material-remove-2'))
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«uno.pdf»')
+    fireEvent.click(screen.getByTestId('material-remove-0'))
+    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«due.pdf»')
   })
 
   it('l interruttore graffetta controlla allega_materiali', () => {
@@ -297,6 +326,19 @@ describe('Materiali accettati e ore dal calendario', () => {
     )) as never)
   }
   afterEach(() => vi.useRealTimers())
+
+  it('sceglie una seguita senza lezione e disabilita le ore annullate', async () => {
+    mockDay([
+      { ...hour('tpl_1', 'ANNULLATA', '08:00', '09:00'), status: 'annullata' },
+      { ...hour('tpl_2', 'SEGUITA', '09:00', '10:00'), status: 'seguita' },
+    ])
+    renderDialog(true, vi.fn(), '2026-10-12')
+    const cancelled = await screen.findByTestId('calendar-slot-0')
+    expect(cancelled).toBeDisabled()
+    expect(cancelled).toHaveAccessibleName('ANNULLATA - Ora annullata')
+    expect(screen.getByTestId('calendar-slot-1')).toBeEnabled()
+    await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('SEGUITA'))
+  })
 
   it('accetta solo i materiali che il server sa leggere', () => {
     renderDialog()
@@ -352,4 +394,109 @@ describe('Materiali accettati e ore dal calendario', () => {
     expect(screen.getByLabelText('Materia')).toHaveValue('')
     expect(screen.getByTestId('pipeline-sentence')).not.toHaveTextContent('collegata')
   })
+
+  it('UI2: ora scelta ha bordo di 2px primario e barretta primaria, le altre bordo normale e barretta grigia', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog()
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    const slot1 = screen.getByTestId('calendar-slot-1')
+
+    // Cliccando su slot1, diventa selezionato
+    fireEvent.click(slot1)
+    expect(slot1).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot1.querySelector('span')).toHaveClass('bg-link')
+
+    expect(slot0).toHaveClass('border', 'border-border')
+    expect(slot0.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+
+    // Cliccando su slot0, lo stile si inverte
+    fireEvent.click(slot0)
+    expect(slot0).toHaveClass('border-2', 'border-link', 'bg-primary/20')
+    expect(slot0.querySelector('span')).toHaveClass('bg-link')
+    expect(slot1).toHaveClass('border', 'border-border')
+    expect(slot1.querySelector('span')).toHaveClass('bg-muted-foreground/30')
+  })
+
+  it('UI1: accetta initialDate e initialSlotKey preselezionando lo slot e compilando i campi', async () => {
+    mockDay([
+      hour('tpl_1', 'ANATOMIA', '08:30', '09:30'),
+      hour('tpl_2', 'FISIOLOGIA', '09:30', '10:30'),
+    ])
+    renderDialog(true, vi.fn(), '2026-10-13', 'tpl_1')
+    const slot0 = await screen.findByTestId('calendar-slot-0')
+    expect(slot0).toHaveClass('border-2', 'border-link')
+    await waitFor(() => expect(screen.getByLabelText('Materia')).toHaveValue('ANATOMIA'))
+  })
+
+  it('AU2b: con 2 audio mostra bottone Unisci acceso di default e invia unisci: true o false', async () => {
+    mockDay([])
+    const f1 = new File(['a1'], 'audio1.mp3', { type: 'audio/mp3' })
+    const f2 = new File(['a2'], 'audio2.mp3', { type: 'audio/mp3' })
+    renderDialog(true, vi.fn(), undefined, undefined, [f1, f2])
+
+    const unisciBtn = await screen.findByTestId('merge-audio-toggle')
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText(/parti · .*diventano un'unica registrazione, in quest'ordine/)).toBeInTheDocument()
+
+    // Compila materia e invia
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'BIOCHIMICA' } })
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unisci: true,
+      }),
+      expect.anything(),
+    )
+
+    // Il primo invio esce dalla coda dei caricamenti, poi si cambia e si rimanda
+    await waitFor(() => expect(unisciBtn).toBeEnabled())
+    fireEvent.click(unisciBtn)
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(/restano 2 fonti separate/)).toBeInTheDocument()
+
+    fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+    expect(mutateCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        unisci: false,
+      }),
+      expect.anything(),
+    )
+  })
 })
+
+describe('caricamento in background', () => {
+  it('chiusa la finestra il caricamento continua e a fine invio non si cambia pagina', async () => {
+    let accept!: (v: { job_id: string }) => void
+    mutateCreate.mockImplementation(() => new Promise((resolve) => { accept = resolve }))
+    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
+    const client = new QueryClient()
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NewLessonDialog open onClose={vi.fn()} initialFiles={[pdf]} />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'FISICA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+    expect(await screen.findByTestId('upload-status')).toHaveTextContent('Puoi chiudere la finestra')
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const { result } = renderHook(() => useUploads())
+    expect(result.current.map((u) => u.state)).toEqual(['uploading'])
+    accept({ job_id: 'job-9' })
+    await waitFor(() => expect(result.current).toEqual([]))
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
+  })
+})
+

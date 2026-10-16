@@ -68,3 +68,49 @@ def test_source_registry_in_database(rt_db, tmp_path):
     assert load_sources(lesson) == [source]
     with fs.open(lesson + "/" + source.file, "rb") as stream:
         assert stream.read() == b"test"
+
+
+def test_add_source_audio_transcodes_non_efficient_to_m4a(tmp_path, monkeypatch):
+    from rt.storage import fs
+    lesson = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("materia: Test\n", encoding="utf-8")
+
+    def mock_transcode(inp, out):
+        with open(out, "wb") as f:
+            f.write(b"transcoded_m4a_content")
+        return True
+
+    monkeypatch.setattr("rt.pipeline.setup.transcode_audio_for_storage", mock_transcode)
+
+    source = add_source(lesson, "audio", "recording.wav", b"wav_raw_data")
+    assert source.file.endswith(".m4a")
+    assert fs.exists(str(tmp_path / source.file))
+    # Original wav must have been deleted
+    assert not fs.exists(str(tmp_path / "sources" / source.id / "recording.wav"))
+    # Impronta must match transcoded file
+    assert source.impronta == hashlib.sha256(b"transcoded_m4a_content").hexdigest()
+
+
+def test_add_source_audio_keeps_original_if_transcoding_fails(tmp_path, monkeypatch):
+    from rt.storage import fs
+    lesson = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("materia: Test\n", encoding="utf-8")
+
+    monkeypatch.setattr("rt.pipeline.setup.transcode_audio_for_storage", lambda inp, out: False)
+
+    source = add_source(lesson, "audio", "recording.wav", b"wav_raw_data")
+    assert source.file.endswith(".wav")
+    assert fs.exists(str(tmp_path / source.file))
+    assert source.impronta == hashlib.sha256(b"wav_raw_data").hexdigest()
+
+
+def test_add_source_audio_efficient_skips_transcoding(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr("rt.pipeline.setup.transcode_audio_for_storage", lambda inp, out: called.append(True))
+    lesson = str(tmp_path)
+    (tmp_path / "info.yaml").write_text("materia: Test\n", encoding="utf-8")
+
+    source = add_source(lesson, "audio", "recording.m4a", b"already_m4a")
+    assert not called
+    assert source.file.endswith(".m4a")
+

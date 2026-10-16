@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 
 import { api } from '@/api/client'
+import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { EnrichmentPanel } from './EnrichmentPanel'
 
 const ok = (data: unknown) => ({ data, error: undefined, response: new Response('{}', { status: 200 }) })
@@ -173,4 +174,59 @@ describe('EnrichmentPanel', () => {
     expect(screen.getByText('Diagramma di flusso')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ripristina' })).toBeInTheDocument()
   })
+})
+
+it('aggiunge i file trascinati ai file scelti, ignora gli altri e impedisce il velo globale', async () => {
+  const post = mockApi()
+  const globalDrop = vi.fn()
+  renderPanel()
+  render(<GlobalFileDrop onDropFiles={globalDrop} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }))
+  const selected = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
+  const photo = new File(['photo'], 'foto.HEIC', { type: '' })
+  const ignored = new File(['audio'], 'audio.wav', { type: 'audio/wav' })
+  fireEvent.change(screen.getByLabelText('PDF o foto'), { target: { files: [selected] } })
+  const card = screen.getByTestId('enrichment-upload')
+  const dataTransfer = { types: ['Files'], files: [photo, ignored] }
+  fireEvent.dragEnter(card, { dataTransfer })
+  fireEvent.dragOver(card, { dataTransfer })
+  expect(card).toHaveClass('border-foreground', 'bg-muted')
+  expect(screen.queryByTestId('global-drop-veil')).not.toBeInTheDocument()
+  fireEvent.drop(card, { dataTransfer })
+  expect(card).not.toHaveClass('border-foreground')
+  expect(globalDrop).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Formato non supportato: audio.wav')
+  fireEvent.click(screen.getByRole('button', { name: 'Carica (2)' }))
+  await vi.waitFor(() => expect(post).toHaveBeenCalled())
+  const options = post.mock.calls[0][1] as { bodySerializer: () => FormData }
+  const body = options.bodySerializer()
+  expect(body.getAll('files').map((file) => (file as File).name)).toEqual(['slide.pdf', 'foto.HEIC'])
+})
+
+it('AR5: illumina il pannello al trascinamento di media e apre il riquadro di caricamento al rilascio', () => {
+  renderPanel()
+  expect(screen.queryByTestId('enrichment-drop-veil')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('enrichment-upload')).not.toBeInTheDocument()
+
+  // Drag attivo
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-enrichment-media-drag', { detail: { active: true } }),
+    )
+  })
+  expect(screen.getByTestId('enrichment-drop-veil')).toBeInTheDocument()
+  expect(screen.getByText('Rilascia per aggiungere ai media della lezione')).toBeInTheDocument()
+
+  // Rilascio di un PDF
+  const pdf = new File(['slide content'], 'lezione-slide.pdf', { type: 'application/pdf' })
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-enrichment-media-drop', { detail: { files: [pdf] } }),
+    )
+  })
+
+  // Il velo scompare e la scheda di caricamento si apre con il file
+  expect(screen.queryByTestId('enrichment-drop-veil')).not.toBeInTheDocument()
+  expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeInTheDocument()
 })

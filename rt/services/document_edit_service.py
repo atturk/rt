@@ -71,6 +71,7 @@ class _Unit:
     title_line: int
     timecode: Optional[str] = None
     timecode_line: Optional[int] = None
+    images: List[Tuple[int, str]] = field(default_factory=list)
     content_lines: List[Tuple[int, str]] = field(default_factory=list)
 
 
@@ -121,10 +122,15 @@ def _parse_structure(markdown: str) -> Tuple[List[_Macro], List[Dict[str, Any]]]
             macros[-1].units.append(unit)
             continue
         if unit is not None:
-            if unit.timecode is None and not unit.content_lines:
+            if unit.timecode is None and not unit.content_lines and not unit.images:
                 if not stripped:
                     continue
                 unit.timecode, unit.timecode_line = stripped, n
+                continue
+            if not unit.content_lines and IMAGE_LINE_RE.match(stripped):
+                unit.images.append((n, stripped))
+                continue
+            if not stripped and not unit.content_lines:
                 continue
             unit.content_lines.append((n, line))
             continue
@@ -184,6 +190,7 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
     new_edits: Dict[str, Any] = {"macros": {}, "units": {}}
     content_changes: Dict[str, str] = {}
     placement: Dict[str, List[str]] = {}
+    unit_placement: Dict[str, List[str]] = {}
     previous_start: Optional[float] = None
     previous_label = ""
     structure_ok = True
@@ -226,6 +233,14 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
             unit_edit: Dict[str, Any] = {}
             if unit.title != out_unit.title:
                 unit_edit["title"] = unit.title
+
+            for n, image_line in unit.images:
+                target = IMAGE_LINE_RE.match(image_line).group(2)
+                h = hash_by_file.get(target)
+                if h is None:
+                    errors.append({"line": n, "message": f"Immagine non trovata nella lezione: {target}."})
+                else:
+                    unit_placement.setdefault(uid, []).append(h)
 
             # timecode
             start_id = unit_start_segment(edits, uid, out_unit.start_segment_id)
@@ -299,9 +314,13 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
         errors.sort(key=lambda e: (e.get("line") is None, e.get("line") or 0))
         raise DocumentEditError(errors)
 
-    old_placement = load_image_placement(lesson_dir)
-    placement_changed = (old_placement or {"macros": {}}).get("macros", {}) != placement
-    if old_placement is None and not placement:
+    old_placement = load_image_placement(lesson_dir) or {"macros": {}, "units": {}}
+    old_macros = {k: v for k, v in old_placement.get("macros", {}).items() if v}
+    old_units = {k: v for k, v in old_placement.get("units", {}).items() if v}
+    new_macros = {k: v for k, v in placement.items() if v}
+    new_units = {k: v for k, v in unit_placement.items() if v}
+    placement_changed = (old_macros != new_macros) or (old_units != new_units)
+    if load_image_placement(lesson_dir) is None and not placement and not unit_placement:
         placement_changed = False
     return {
         "content_changes": content_changes,
@@ -309,6 +328,7 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
         "edits_changed": new_edits != {"macros": {k: v for k, v in edits["macros"].items() if v},
                                        "units": {k: v for k, v in edits["units"].items() if v}},
         "placement": placement,
+        "unit_placement": unit_placement,
         "placement_changed": placement_changed,
         "carousel": bool((old_placement or {}).get("carousel")),
     }
@@ -336,7 +356,7 @@ def save_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
         save_draft(draft, lesson_dir, manual=True)
     edits_changed = save_document_edits(lesson_dir, plan["edits"]) if plan["edits_changed"] else False
     if plan["placement_changed"]:
-        save_image_placement(lesson_dir, plan["placement"], plan["carousel"])
+        save_image_placement(lesson_dir, plan["placement"], plan["carousel"], units=plan.get("unit_placement"))
     changed = bool(changed_units or edits_changed or plan["placement_changed"])
     if changed:
         from rt.services.documents_service import request_documents

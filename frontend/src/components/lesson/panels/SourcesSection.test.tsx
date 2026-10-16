@@ -300,4 +300,97 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Annulla' }))
     expect(screen.queryByRole('dialog', { name: 'Aggiungi appunti' })).not.toBeInTheDocument()
   })
+
+  it('una registrazione unita mostra le parti a tutta larghezza quando si apre il chip', async () => {
+    const viewWithParts: SourcesView = {
+      ...mockView,
+      sources: [
+        {
+          id: 's_aud_merged',
+          tipo: 'audio',
+          file: 'audio completo.m4a',
+          impronta: 'imp_m',
+          aggiunta_il: '2026-10-12',
+          ordine: 1,
+          nome: 'audio completo.m4a',
+          durata_s: 4800,
+          usata: true,
+          parti: [
+            { nome: 'registrazione 1.m4a', durata: '45 min', durata_s: 2700 },
+            { nome: 'registrazione 2.m4a', durata: '35 min', durata_s: 2100 },
+          ],
+        },
+      ],
+    }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) => {
+      if (path === '/api/v1/lessons/42/sources') {
+        return Promise.resolve({
+          data: viewWithParts,
+          error: undefined,
+          response: new Response(JSON.stringify(viewWithParts), { status: 200 }),
+        } as never)
+      }
+      if (path === '/api/v1/lessons/42/versions') {
+        return Promise.resolve({
+          data: [],
+          error: undefined,
+          response: new Response('[]', { status: 200 }),
+        } as never)
+      }
+      return Promise.resolve({ data: {}, response: new Response('{}') } as never)
+    })
+    renderComponent()
+    expect(await screen.findByText('Registrazione unita')).toBeInTheDocument()
+    const chip = await screen.findByRole('button', { name: '2 parti' })
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()
+    fireEvent.click(chip)
+    const partsContainer = await screen.findByTestId('source-parts-s_aud_merged')
+    expect(partsContainer).toHaveTextContent('registrazione 1.m4a')
+    expect(partsContainer).toHaveTextContent('45 min')
+    expect(partsContainer).toHaveTextContent('registrazione 2.m4a')
+    expect(partsContainer).toHaveTextContent('35 min')
+    const segments = screen.getByTestId('source-parts-bar-s_aud_merged').children
+    expect(segments[0]).toHaveStyle({ flexGrow: '2700' })
+    expect(segments[1]).toHaveStyle({ flexGrow: '2100' })
+    fireEvent.click(chip)
+    expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()
+  })
+
+  it('selezione multipla di audio mostra la barra con il bottone Unisci acceso di default', async () => {
+    renderComponent()
+    await screen.findByText('Appunti di Giulia')
+    const input = document.querySelector('input[type="file"][multiple]') as HTMLInputElement
+    expect(input).toBeInTheDocument()
+
+    const file1 = new File(['a1'], 'rec1.mp3', { type: 'audio/mp3' })
+    const file2 = new File(['a2'], 'rec2.mp3', { type: 'audio/mp3' })
+    fireEvent.change(input, { target: { files: [file1, file2] } })
+
+    const bar = await screen.findByTestId('pending-audios-bar')
+    expect(bar).toHaveTextContent('2 parti')
+    const unisciBtn = within(bar).getByTestId('merge-audio-toggle')
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Clic per spegnerlo
+    fireEvent.click(unisciBtn)
+    expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
+it('chiede conferma prima di togliere una fonte usata e permette di annullare', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(async (path) => ({ data: String(path).endsWith('/versions') ? [] : {
+    sources: [{ id: 'used', tipo: 'appunti', file: 'note.txt', impronta: 'x', aggiunta_il: '2026-10-14', ordine: 1, nome: 'Appunti', usata: true }],
+    has_unused_sources: false, can_undo: false, principale: 'used', ordine_usato: ['used'], principale_usato: 'used', solo_ricostruzione: false,
+  }, response: new Response() } as never))
+  const remove = vi.spyOn(api, 'DELETE').mockResolvedValue({ data: undefined, response: new Response(null, { status: 204 }) } as never)
+  renderComponent()
+  fireEvent.click(await screen.findByRole('button', { name: 'Togli Appunti' }))
+  expect(screen.getByText('Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.')).toBeInTheDocument()
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Togli Appunti' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Togli' }))
+  await waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
 })

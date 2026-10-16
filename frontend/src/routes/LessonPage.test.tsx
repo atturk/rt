@@ -37,6 +37,7 @@ it('la preferenza sul server controlla lo stato di studio nel link ZIP', async (
   await waitFor(() => expect(zip).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=all'))
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'export.study' } }, body: false })
   expect(screen.getByRole('menuitem', { name: 'Markdown' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=markdown')
+  expect(screen.getByRole('menuitem', { name: 'Solo le fonti (zip)' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=sources')
 })
 
 it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {

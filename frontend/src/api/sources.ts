@@ -7,6 +7,12 @@ import { jobFinished, useJobStatus } from './jobStatus'
 
 export type SourceKind = 'audio' | 'appunti' | 'materiale'
 
+export type SourcePartItem = {
+  nome: string
+  durata?: string | null
+  durata_s?: number | null
+}
+
 export type SourceItem = {
   id: string
   tipo: SourceKind
@@ -19,6 +25,7 @@ export type SourceItem = {
   pagine?: number | null
   parole?: number | null
   usata: boolean
+  parti?: SourcePartItem[] | null
 }
 
 export type LastUpdateInfo = {
@@ -37,6 +44,7 @@ export type SourcesView = {
   ordine_usato: string[]
   principale_usato: string | null
   solo_ricostruzione: boolean
+  fonti_tolte_usate?: string[]
 }
 
 export type LessonVersion = {
@@ -58,10 +66,17 @@ export const sourcesApi = {
   getSources: (lessonId: number): Promise<SourcesView> =>
     unwrap((api as any).GET(`/api/v1/lessons/${lessonId}/sources`)),
 
-  addAudio: (lessonId: number, file: File, ordine?: number): Promise<SourceItem> => {
+  addAudio: (
+    lessonId: number,
+    file: File | File[],
+    ordine?: number,
+    unisci: boolean = true,
+  ): Promise<SourceItem | SourceItem[]> => {
     const form = new FormData()
     form.append('tipo', 'audio')
-    form.append('file', file, file.name)
+    const files = Array.isArray(file) ? file : [file]
+    for (const f of files) form.append('file', f, f.name)
+    form.append('unisci', String(unisci))
     if (ordine !== undefined) form.append('ordine', String(ordine))
     return unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/sources`, { bodySerializer: () => form, body: form }))
   },
@@ -83,6 +98,9 @@ export const sourcesApi = {
 
   deleteSource: (lessonId: number, sid: string): Promise<void> =>
     unwrap((api as any).DELETE(`/api/v1/lessons/${lessonId}/sources/${encodeURIComponent(sid)}`)),
+
+  restoreRemoved: (lessonId: number): Promise<SourcesView> =>
+    unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/sources/restore-removed`)),
 
   reorder: (lessonId: number, ids: string[]): Promise<SourcesView> =>
     unwrap((api as any).PUT(`/api/v1/lessons/${lessonId}/sources/order`, { body: { ids } })),
@@ -203,9 +221,9 @@ export function useResetSelection(lessonId: number) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (view: SourcesView) => {
-      let current = view
-      const ids = usedOrderIds(view.sources, view.ordine_usato ?? [])
-      if (ids.length > 0 && ids.some((id, i) => id !== view.sources[i].id)) {
+      let current = view.fonti_tolte_usate?.length ? await sourcesApi.restoreRemoved(lessonId) : view
+      const ids = usedOrderIds(current.sources, current.ordine_usato ?? [])
+      if (ids.length > 0 && ids.some((id, i) => id !== current.sources[i].id)) {
         current = await sourcesApi.reorder(lessonId, ids)
       }
       const primary = view.principale_usato

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from rt.api.deps import Actor
 from rt.api.errors import ApiError
-from rt.api.schemas import Message
+from rt.api.schemas import Message, JobAccepted
 from rt.core.config import CustomQuestionType
 from rt.services import custom_question_settings as service
 
@@ -87,3 +87,59 @@ def export(identifier: str, _actor: Actor):
     item = service.get(identifier)
     return Response(json.dumps(item.model_dump(mode='json'), ensure_ascii=False, indent=2),
                     media_type='application/json', headers={'Content-Disposition': f'attachment; filename="{item.id}.json"'})
+
+
+class RecallVoteSettings(BaseModel):
+    votes_enabled: bool = True
+    presave_check: bool = True
+
+
+class RecallRuleGroup(BaseModel):
+    type: str
+    subject: str
+    rules: list[str]
+    votes: int
+    updated_at: str | None = None
+
+
+class RecallRulesView(RecallVoteSettings):
+    groups: list[RecallRuleGroup]
+
+
+class RecallRuleEdit(BaseModel):
+    type: str
+    subject: str
+    rules: list[str]
+
+
+class RecallRuleUpdate(BaseModel):
+    type: str
+    subject: str
+    mock: bool = False
+
+
+@router.get('/settings/recall-rules', response_model=RecallRulesView)
+def recall_rules(_actor: Actor):
+    from rt.services.recall_rules import view
+    return view()
+
+
+@router.put('/settings/recall-votes', response_model=RecallRulesView)
+def recall_votes(body: RecallVoteSettings, _actor: Actor):
+    from rt.services.recall_rules import settings
+    return settings(body.votes_enabled, body.presave_check)
+
+
+@router.put('/settings/recall-rules', response_model=RecallRulesView)
+def edit_recall_rules(body: RecallRuleEdit, _actor: Actor):
+    from rt.services.recall_rules import edit, view
+    if len(body.rules) > 8 or any(len(r) > 2000 for r in body.rules):
+        raise ApiError(422, 'validation_error', 'Indica al massimo 8 regole brevi.')
+    edit(body.type, body.subject, body.rules)
+    return view()
+
+
+@router.post('/settings/recall-rules/update', response_model=JobAccepted, status_code=202)
+def update_recall_rules(body: RecallRuleUpdate, _actor: Actor):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job('recall_rules_update', None, body.model_dump(), _actor)

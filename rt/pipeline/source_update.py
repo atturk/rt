@@ -75,7 +75,7 @@ def sources_pending(lesson_dir):
     used = state.get("used")
     if used is None:
         used = [s.id for s in sources if s.id == "src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
-    return used != [s.id for s in sources]
+    return any(s.id not in used for s in sources)
 
 
 def segment_source_ids(sources, state, primary):
@@ -157,6 +157,12 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                            "start_seconds": start, "end_seconds": end,
                            "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end)}))
         offset += cache[source.id]["duration"]
+    info_path = lesson_path(lesson_dir, "info.yaml")
+    old_audio = ""
+    if fs.isfile(info_path):
+        from rt.core.state import read_info_yaml
+        old_info = read_info_yaml(info_path)
+        old_audio = old_info.get("file_audio") or ""
     audio_sources = [s for s in sources if s.tipo == "audio"]
     audio_file = ""
     if audio_sources:
@@ -171,7 +177,15 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                 merge_audio_for_transcription(paths, target)
     save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir), audio_duration_seconds=offset)
     export_normalized_transcript_md(ordered, lesson_path(lesson_dir, "transcript_normalized.md"))
-    update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"file_audio": audio_file})
+    update_info_yaml(info_path, {"file_audio": audio_file})
+    if old_audio and old_audio != audio_file:
+        # Gli audio uniti vecchi si cancellano solo quando nessuna fotografia (Annulla,
+        # Versioni) li indica più: così ripristinare una versione ritrova il suo audio.
+        from rt.services.audio_compaction import _orphan_candidates, referenced_audio_files
+        referenced = referenced_audio_files(lesson_dir)
+        for candidate in _orphan_candidates(lesson_dir):
+            if os.path.normpath(candidate) not in referenced and fs.isfile(os.path.join(lesson_dir, candidate)):
+                fs.remove(os.path.join(lesson_dir, candidate))
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
     if any(s.tipo == "materiale" for s in sources):

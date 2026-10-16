@@ -14,20 +14,32 @@ const filled: Schemas['CacheInfo'] = {
 const empty: Schemas['CacheInfo'] = {
   audio: { entries: 0, bytes: 0 }, waveform: { entries: 0, bytes: 0 }, total: { entries: 0, bytes: 0 },
 }
+const emptyCompact: Schemas['CompactAudioPreview'] = {
+  file_convertibili: 0, bytes_convertibili: 0, file_orfani: 0, bytes_orfani: 0, spazio_stimato_liberato: 0,
+}
+const filledCompact: Schemas['CompactAudioPreview'] = {
+  file_convertibili: 3, bytes_convertibili: 40 * 1024 * 1024, file_orfani: 1, bytes_orfani: 10 * 1024 * 1024,
+  spazio_stimato_liberato: 35 * 1024 * 1024,
+}
 
 function result(data: unknown) { return { data, response: new Response('{}', { status: 200 }) } }
-function renderCache(data = filled, fullInfo = false) {
+function renderCache(data = filled, fullInfo = false, compactData = emptyCompact) {
   let current = data
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
-    path === '/api/v1/system/cache' ? current : path === '/api/v1/system/changelog' ? [] : {},
+    path === '/api/v1/system/cache' ? current :
+    path === '/api/v1/system/compact-audio/preview' ? compactData :
+    path === '/api/v1/system/changelog' ? [] : {},
   ))) as never)
   const remove = vi.spyOn(api, 'DELETE').mockImplementation((() => {
     current = empty
     return Promise.resolve(result(data))
   }) as never)
+  const post = vi.spyOn(api, 'POST').mockImplementation((() => {
+    return Promise.resolve(result({ id: 'job-1', type: 'compact_audio', status: 'queued' }))
+  }) as never)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}>{fullInfo ? <InfoSection /> : <CacheSection />}</QueryClientProvider>)
-  return remove
+  return { remove, post }
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -42,7 +54,7 @@ describe('Spazio e cache', () => {
   })
 
   it('chiede conferma e non cancella quando si annulla', async () => {
-    const remove = renderCache()
+    const { remove } = renderCache()
     const button = screen.getByRole('button', { name: 'Svuota la cache' })
     await waitFor(() => expect(button).toBeEnabled())
     await userEvent.click(button)
@@ -55,7 +67,7 @@ describe('Spazio e cache', () => {
   })
 
   it('alla conferma chiama DELETE e aggiorna dimensione e spazio liberato', async () => {
-    const remove = renderCache()
+    const { remove } = renderCache()
     const button = screen.getByRole('button', { name: 'Svuota la cache' })
     await waitFor(() => expect(button).toBeEnabled())
     await userEvent.click(button)
@@ -74,7 +86,7 @@ describe('Spazio e cache', () => {
   })
 
   it('se DELETE fallisce tiene aperta la conferma e mostra l’errore', async () => {
-    const remove = renderCache()
+    const { remove } = renderCache()
     remove.mockResolvedValue({ error: { error: { code: 'cache_error', message: 'Cache non svuotata.' } },
       response: new Response('{}', { status: 500 }) } as never)
     const button = screen.getByRole('button', { name: 'Svuota la cache' })
@@ -85,6 +97,27 @@ describe('Spazio e cache', () => {
     expect(await within(dialog).findByText('Cache non svuotata.')).toBeVisible()
     expect(dialog).toBeVisible()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('mostra stima spazio audio e avvia il job di alleggerimento su conferma', async () => {
+    const { post } = renderCache(filled, false, filledCompact)
+    expect(await screen.findByText(/35\.0 MB liberabili/)).toBeVisible()
+    expect(screen.getByText('(3 file da convertire, 1 orfani)')).toBeVisible()
+    const button = screen.getByRole('button', { name: 'Alleggerisci l’audio delle lezioni' })
+    expect(button).toBeEnabled()
+    await userEvent.click(button)
+    const dialog = screen.getByRole('dialog', { name: 'Alleggerisci l’audio delle lezioni' })
+    expect(within(dialog).getByText(/Si stima di liberare circa/)).toBeVisible()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Alleggerisci' }))
+    await waitFor(() => expect(post).toHaveBeenCalledExactlyOnceWith('/api/v1/system/compact-audio'))
+    expect(await screen.findByText('Operazione avviata: controlla l’avanzamento nei Job.')).toBeVisible()
+  })
+
+  it('disabilita alleggerimento se non ci sono audio da convertire', async () => {
+    renderCache(filled, false, emptyCompact)
+    expect(await screen.findByText('Tutti gli audio sono già compressi')).toBeVisible()
+    const button = screen.getByRole('button', { name: 'Alleggerisci l’audio delle lezioni' })
+    expect(button).toBeDisabled()
   })
 })
 

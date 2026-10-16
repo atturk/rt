@@ -57,17 +57,21 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   const heading = doc.locator('[data-unit-id]').first()
   const unit = (await heading.getAttribute('data-unit-id'))!
 
-  // Il clic destro su un testo senza selezione lascia il menu del browser.
+  // Senza selezione il menu RT usa il paragrafo; Alt lascia quello del browser.
   const paragraph = doc.locator('.cm-line:not([data-unit-id]):not(.cm-atomic-h2):not(.cm-atomic-h3):not(:has(.rt-timecode-locked))', { hasText: /\S/ }).first()
   await paragraph.click({ button: 'right' })
+  await expect(page.getByTestId('document-menu')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await paragraph.click({ button: 'right', modifiers: ['Alt'] })
   await expect(page.getByTestId('document-menu')).toHaveCount(0)
+  await page.keyboard.press('Escape')
 
   // Clic destro sul titolo di una subunità: la parte è quella subunità.
   await heading.click({ button: 'right' })
   const menu = page.getByRole('menu', { name: 'Azioni sul testo' })
   await expect(menu).toBeVisible()
   await expect(menu.getByRole('menuitem')).toHaveText(['Copia', 'Leggi da quiIn arrivo', 'Genera', `Domande sull'unità ${unit}`, 'Verifica questa parte'])
-  await expect(menu.getByRole('menuitem', { name: 'Verifica questa parte' })).toHaveAttribute('aria-disabled', 'true') // sul titolo manca un tratto selezionato
+  await expect(menu.getByRole('menuitem', { name: 'Verifica questa parte' })).not.toHaveAttribute('aria-disabled') // sul titolo si usa il testo dell’unità
   await expect(page.getByTestId('document-menu-part')).toHaveCount(0)
   await expect(menu.getByRole('menuitem', { name: 'Copia' })).toBeFocused()
   const later = menu.getByRole('menuitem', { name: 'Leggi da qui' })
@@ -131,16 +135,15 @@ test('menu contestuale: Copia, Leggi da qui in arrivo, Genera col regista e Veri
   expect(element?.kind).toBe('infographic')
   expect(element?.context_unit_ids).toEqual([unit])
 
-  // Sul titolo senza selezione manca un tratto da verificare.
+  // Finita la generazione, senza selezione le azioni sul titolo usano tutta l'unità (CM1).
+  await expect.poll(async () => (await apiGet<{ state: string }[]>(page.request, `/jobs?lesson_id=${id}`))
+    .some((job) => ['queued', 'running'].includes(job.state)), { timeout: 60_000 }).toBe(false)
   await selected.click()
   await page.keyboard.press('ArrowRight')
   await heading.click({ button: 'right' })
   const verifica = menu.getByRole('menuitem', { name: /Verifica questa parte/ })
-  await expect(verifica).toHaveAttribute('aria-disabled', 'true')
-  await verifica.hover()
-  await expect(page.getByRole('tooltip')).toContainText("Seleziona il testo di un'unità")
-  await verifica.click({ force: true })
-  await expect(page.getByTestId('part-review')).toHaveCount(0)
+  await expect(verifica).not.toHaveAttribute('aria-disabled')
+  await page.keyboard.press('Escape')
 
 })
 

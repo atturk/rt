@@ -26,6 +26,7 @@ import { reviewSelection } from './reviewSelection'
 import { EnrichmentPortals } from './Enrichment'
 import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonImageStrips } from './lessonImageStrips'
 import type { UnitTask } from './lessonWorkflow'
 import { lessonClassifier, setClassifier } from './lessonClassifier'
 import { ISSUE_EVENT, issuePosition, lessonReview, setReview } from './lessonReview'
@@ -38,6 +39,9 @@ import { editorKeymap, type ShortcutPreferences } from './markdownShortcuts'
 import { usePreference } from '@/lib/preferences'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
+
+// Solo su Mac ctrl+clic è un clic destro; altrove ctrl+clic aggiunge un cursore.
+const macCtrlClick = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
 type Problem = Schemas['DocumentEditProblem']
 type Status =
@@ -110,6 +114,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash, state: routerState } = useLocation()
   const studyNotes = useStudyNotes(lessonId)
+  const notesPanelOpen = params.get('panel') === 'note'
   const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
 
   // Il testo che l'editor mostra al montaggio; cambia (e l'editor riparte) solo se il documento
@@ -181,6 +186,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     lessonClassifier,
     lessonMath,
     lessonImages(lessonId),
+    lessonImageStrips(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
     // Anche il parsing in background cambia lo stato attivo della formattazione.
     EditorView.updateListener.of(update => setEditor({ view: update.view, state: update.state })),
@@ -346,7 +352,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   useEffect(() => {
     const view = viewOf(handle.current)
     if (!view) return
-    const notes = studyNotes.data ?? []
+    const notes = notesPanelOpen ? studyNotes.data ?? [] : []
     view.dispatch({ effects: setStudyNotes.of({ notes, selected: selectedNoteId }) })
     if (selectedNoteId) {
       const selectedNote = notes.find((n) => n.id === selectedNoteId)
@@ -355,7 +361,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
         if (range) view.dispatch({ effects: EditorView.scrollIntoView(range.from, { y: 'center' }) })
       }
     }
-  }, [studyNotes.data, selectedNoteId, source.key])
+  }, [studyNotes.data, selectedNoteId, source.key, notesPanelOpen])
 
   useEffect(() => {
     const node = surface.current
@@ -419,7 +425,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     return () => window.removeEventListener(EDITOR_SCROLL_EVENT, handler)
   }, [hash, routerState, source.key])
 
-  // Il clic destro su una parola la seleziona (macOS): conta solo una selezione già fatta prima.
+  // La selezione esplicita resta; senza selezione si usa il paragrafo sotto il clic.
   const selectedBefore = useRef(false)
   const locate: PartLocator = useCallback((event: MouseEvent) => {
     const view = viewOf(handle.current)
@@ -438,12 +444,30 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
     if (pos == null) return null
     const line = state.doc.lineAt(pos)
-    if (!/^#{2,3}\s/.test(line.text)) return null
+    let from = line.from, to = line.to
+    const heading = /^(#{1,3})\s/.exec(line.text)
+    if (heading) {
+      let end = line.number + 1
+      const nextHeading = new RegExp(`^#{1,${heading[1].length}}\\s`)
+      while (end <= state.doc.lines && !nextHeading.test(state.doc.line(end).text)) end++
+      to = state.doc.line(end - 1).to
+    } else if (!line.text.trim() || /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(line.text.trim())) {
+      const unit = unitRanges(state).find((unit) => unit.from <= pos && unit.to >= pos)
+      if (unit) { from = unit.from; to = unit.to }
+    } else {
+      let first = line.number, last = line.number
+      const boundary = (text: string) => !text.trim() || /^#{1,3}\s/.test(text) || /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(text.trim())
+      while (first > 1 && !boundary(state.doc.line(first - 1).text)) first--
+      while (last < state.doc.lines && !boundary(state.doc.line(last + 1).text)) last++
+      from = state.doc.line(first).from
+      to = state.doc.line(last).to
+    }
     const rect = view.coordsAtPos(line.from) ?? { left: event.clientX, bottom: event.clientY }
     return {
-      text: line.text.replace(/^#+\s*/, ''),
-      units: partOfRange(blocks, line.number - 1, line.number - 1, unitIds),
+      text: state.sliceDoc(from, to).replace(/^#+\s*/, ''),
+      units: partOfRange(blocks, state.doc.lineAt(from).number - 1, state.doc.lineAt(to).number - 1, unitIds),
       anchor: { x: rect.left, y: rect.bottom },
+      reviewParts: reviewSelection(state, from, to, unitIds),
     }
   }, [unitIds])
 
@@ -492,7 +516,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
           data-testid="lesson-document"
           data-active-unit={current ?? ''}
           onMouseDownCapture={(e) => {
-            if (e.button !== 2) return
+            if (e.altKey || !(e.button === 2 || (e.button === 0 && e.ctrlKey && macCtrlClick()))) return
             selectedBefore.current = !(viewOf(handle.current)?.state.selection.main.empty ?? true)
             // il clic destro non sposta il cursore: niente scorrimento che chiuderebbe il menu
             e.preventDefault()
