@@ -1,4 +1,4 @@
-import { Search, Sparkles, Upload, X } from 'lucide-react'
+import { Layers, Search, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
@@ -25,6 +25,7 @@ import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { Tooltip } from '@/components/ui/tooltip'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
@@ -78,6 +79,27 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const [_activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
+
+  const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('rt-media-upload-mode')
+      return saved !== 'pages_only'
+    } catch {
+      return true
+    }
+  })
+
+  const toggleAutoPlaceMode = () => {
+    setAutoPlaceMode((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('rt-media-upload-mode', next ? 'auto' : 'pages_only')
+      } catch {
+        // Ignora errori di localStorage
+      }
+      return next
+    })
+  }
 
   const chooseUploadFiles = (files: File[]) => {
     const accepted = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' ||
@@ -253,7 +275,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     e.preventDefault()
     if (!uploadFiles.length) return
     addImages.mutate(
-      { files: uploadFiles, perUnit: 0, units: null },
+      { files: uploadFiles, perUnit: 0, units: null, pages_only: !autoPlaceMode },
       {
         onSuccess: (res) => {
           setUploadFiles([])
@@ -364,6 +386,43 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 }}
               />
               {uploadError && <Alert tone="danger">{uploadError}</Alert>}
+              <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 p-2">
+                <Tooltip
+                  content={autoPlaceMode ? 'Clic per tenere solo le pagine' : 'Clic per collocarle in automatico'}
+                  side="top"
+                >
+                  {(trigger) => (
+                    <button
+                      type="button"
+                      aria-pressed={autoPlaceMode}
+                      aria-label={
+                        autoPlaceMode
+                          ? 'Collocazione automatica: clic per tenere solo le pagine'
+                          : 'Solo pagine: clic per collocarle in automatico'
+                      }
+                      className={cn(
+                        'flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors cursor-pointer',
+                        autoPlaceMode
+                          ? 'border-accent/40 bg-accent/15 text-accent-foreground'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                      )}
+                      {...trigger}
+                      onClick={toggleAutoPlaceMode}
+                    >
+                      {autoPlaceMode ? (
+                        <Sparkles className="size-4" aria-hidden />
+                      ) : (
+                        <Layers className="size-4" aria-hidden />
+                      )}
+                    </button>
+                  )}
+                </Tooltip>
+                <p className="text-meta text-muted-foreground leading-snug">
+                  {autoPlaceMode
+                    ? 'Le pagine vengono descritte e collocate in automatico nelle sottounità.'
+                    : 'Le pagine restano nei media: le inserisci tu, o le fai collocare dopo.'}
+                </p>
+              </div>
               <div className="flex justify-end gap-2 pt-1">
                 <Button size="sm" variant="ghost" type="button" onClick={() => setOpenUpload(false)}>
                   Annulla
