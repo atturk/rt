@@ -76,7 +76,7 @@ cambia l'impronta e la lezione si ricalcola. Con 20 lezioni la prima richiesta c
 ### Impostazioni (RT4-E4)
 
 La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
-(spostati da `rt/web/`, che li reimporta per Gradio). Nessuna risposta contiene un valore
+(spostati dalla vecchia web Gradio, rimossa). Nessuna risposta contiene un valore
 segreto: solo `set: true/false` (per token e Chat ID di Telegram anche un'anteprima con primi e
 ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 

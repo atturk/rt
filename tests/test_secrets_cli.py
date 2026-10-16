@@ -223,7 +223,7 @@ def test_wizard_saves_to_store(workdir):
 
 
 def test_web_telegram_settings_keep_chat_id_in_env(workdir):
-    from rt.web import settings
+    from rt.services import settings_service as settings
     secrets_service.init_store()
     settings.save_telegram(workdir, "999:token-dal-web-abcdef", "-100555", [], "")
     env_text = (workdir / ".env").read_text(encoding="utf-8")

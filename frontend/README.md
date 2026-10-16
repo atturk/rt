@@ -3,7 +3,7 @@
 Interfaccia web di RT 4.0: React + TypeScript + Vite, Tailwind CSS, componenti in stile
 shadcn/ui (`src/components/ui`), TanStack Query, React Router. Parla solo con l'API
 (`rt api`, `/api/v1`, vedi `docs/API.md`). Da RT4-F8 è la web di RT (`rt web`, vedi
-`docs/WEB.md`); la web Gradio (`rt/web`) resta solo con `rt web --legacy`.
+`docs/WEB.md`).
 
 ## Avvio
 

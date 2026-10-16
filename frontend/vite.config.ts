@@ -8,17 +8,7 @@ import { defineConfig } from 'vite'
 // origine come in produzione, dove FastAPI serve la build.
 const API = process.env.RT_API_URL ?? 'http://127.0.0.1:8765'
 
-export default defineConfig(({ mode }) => ({
-  build: {
-    rolldownOptions: {
-      input: mode === 'mini' ? {
-        miniApp: fileURLToPath(new URL('./mini-app.html', import.meta.url)),
-      } : {
-        app: fileURLToPath(new URL('./index.html', import.meta.url)),
-        miniApp: fileURLToPath(new URL('./mini-app.html', import.meta.url)),
-      },
-    },
-  },
+export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
@@ -37,4 +27,4 @@ export default defineConfig(({ mode }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     globals: true,
   },
-}))
+})

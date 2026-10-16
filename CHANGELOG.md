@@ -1,5 +1,12 @@
 # Novità di RT
 
+## Prossima versione
+
+### Cambiamenti
+
+- Tolta la mini app di Telegram: lo studio e il recall dal telefono passano dalla web app.
+- Tolta la vecchia interfaccia Gradio (`rt web --legacy`), già deprecata: la web di RT è quella che si apre con `rt web`.
+
 ## 4.2.5 — 2026-10-14
 
 ### Novità

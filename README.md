@@ -128,9 +128,6 @@ configuri provider, modelli e Telegram. Al primo avvio una configurazione guidat
 modelli e Telegram. `install.sh` e `rt -u` installano la web app compilata dalla
 release. Dettagli in [Web app di RT](docs/WEB.md).
 
-La vecchia interfaccia Gradio resta per questa release con `rt web --legacy` (deprecata; richiede
-`./.venv/bin/python -m pip install -r requirements-web.txt`).
-
 ### 2. Esecuzione End-to-End di una Lezione
 
 ```bash

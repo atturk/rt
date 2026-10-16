@@ -1,7 +1,7 @@
 """
 rt.services.connections_service
-Connessioni LLM e assegnazioni delle sei fasi, condivise da web e API. Spostato da
-rt/web/connections.py (RT4-E4).
+Connessioni LLM e assegnazioni delle sei fasi, condivise da web e API. Spostato
+dalla vecchia web Gradio (RT4-E4).
 """
 from __future__ import annotations
 

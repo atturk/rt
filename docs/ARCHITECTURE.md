@@ -270,7 +270,7 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
   progetto, `.env` accanto), lettura/validazione (`validate_config`) e scrittura atomica di
   YAML e testo, `set_env_var` e `set_secret` (archivio cifrato se inizializzato, altrimenti `.env` con
   chmod 600). Il wizard `rt config` è in `rt/tui/configure/` e, come le
-  impostazioni web (`rt/web/settings.py`), scrive attraverso il servizio.
+  impostazioni della web (via API), scrive attraverso il servizio.
 - **Segreti** (`rt/security/secrets.py`, fase C): porta `SecretStore` con
   `EnvSecretStore` (sola lettura) ed `EncryptedFileSecretStore` (`config/secrets.enc`,
   Fernet/MultiFernet, chiave master da `RT_MASTER_KEY` o dal portachiavi). `load_env_file`
@@ -413,7 +413,7 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   `docs/API.md`, schema in `docs/openapi.json` (`scripts/export_openapi.py`).
 - **Solo servizi**: i router chiamano `rt/services` e `rt/db`; nessuna logica di dominio in
   `rt/api`. Per l'API sono passati in `rt/services` anche impostazioni e connessioni
-  (`settings_service`, `connections_service`, prima in `rt/web`) e la lettura delle lezioni
+  (`settings_service`, `connections_service`) e la lettura delle lezioni
   (`lesson_service`).
 - **Autenticazione**: token casuale mostrato una volta al primo avvio, hash salato nella
   tabella `settings`; Bearer per gli script, cookie di sessione HttpOnly + CSRF per la SPA.

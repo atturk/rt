@@ -4,8 +4,7 @@ import yaml
 
 from rt.core.config import load_config
 from rt.core.custom_stt import transcribe_custom
-from rt.web.app import _topic_from_link
-from rt.web.settings import save_credential, save_route, save_telegram, save_transcription
+from rt.services.settings_service import save_credential, save_route, save_telegram, save_transcription
 
 
 def test_web_settings_persist_and_keep_existing_route_options(tmp_path, monkeypatch):
@@ -70,12 +69,3 @@ def test_custom_stt_converts_seconds_to_rt_milliseconds(tmp_path, monkeypatch):
     assert captured["data"]["response_format"] == "verbose_json"
     assert result["transcriptSegments"] == [{"startMs": 1250.0, "endMs": 2500.0,
                                               "text": "Buongiorno", "confidence": None}]
-
-
-def test_telegram_topic_link_keeps_unassigned_rows():
-    status, chat, rows, cleared = _topic_from_link(
-        "https://t.me/c/1234567890/12/34", [["", "11"]], "")
-    assert "12" in status
-    assert chat == "-1001234567890"
-    assert rows == [["", "11"], ["", "12"]]
-    assert cleared == ""

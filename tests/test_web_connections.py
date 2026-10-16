@@ -6,8 +6,8 @@ import yaml
 
 from rt.core.config import load_config
 from rt.telegram.daemon_status import get_daemon_pid, remove_daemon_pid, write_daemon_pid
-from rt.web.connections import (add_model, assign_phase, connection_names,
-                                model_names, phase_selection, save_connection)
+from rt.services.connections_service import (add_model, assign_phase, connection_names,
+                                             model_names, phase_selection, save_connection)
 
 
 def test_connection_round_robin_and_phase_selection(tmp_path, monkeypatch):

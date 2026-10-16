@@ -266,8 +266,7 @@ def _is_managed_code(rel_path: str) -> bool:
 
 
 def _install_runtime_requirements(project_root: str) -> bool:
-    """Installa le dipendenze nel venv di RT e rende visibile qualsiasi errore. Gradio
-    (requirements-web.txt) serve solo a 'rt web --legacy' e non viene più installato."""
+    """Installa le dipendenze nel venv di RT e rende visibile qualsiasi errore."""
     req_file = os.path.join(project_root, "requirements.txt")
     if not os.path.isfile(req_file):
         return True

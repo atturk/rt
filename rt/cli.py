@@ -1011,39 +1011,14 @@ def _ensure_database_or_exit(command: Optional[str]) -> None:
         sys.exit(1)
 
 
-LEGACY_WEB_WARNING = ("⚠️ L'interfaccia Gradio (rt web --legacy) è deprecata e verrà rimossa nella prossima "
-                      "release: usa 'rt web'.")
-
-
 def cmd_web(args: argparse.Namespace) -> None:
-    """Avvia la web app: API + worker + SPA (RT4-F8); con --legacy la vecchia interfaccia Gradio."""
-    if not args.legacy:
-        if args.lessons_root or args.log_file:
-            raise SystemExit("--lessons-root e --log-file valgono solo con --legacy: la cartella lezioni "
-                             "si imposta dalla web (Impostazioni) o con 'rt config'.")
-        from rt.api.launcher import run_spa
-        from rt.api.server import DEFAULT_PORT
-        kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
-        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
-        if code:
-            sys.exit(code)
-        return
-    print(LEGACY_WEB_WARNING, file=sys.stderr)
-    try:
-        from rt.web.app import main as web_main
-    except ModuleNotFoundError as exc:
-        if exc.name == "gradio":
-            raise SystemExit("Gradio non è installato (non serve più alla web di RT). Per l'interfaccia "
-                             "legacy: ./.venv/bin/python -m pip install -r requirements-web.txt") from exc
-        raise
-    argv = ["--port", str(args.port or 7860)]
-    if args.lessons_root:
-        argv += ["--lessons-root", args.lessons_root]
-    if args.no_browser:
-        argv.append("--no-browser")
-    if args.log_file:
-        argv += ["--log-file", args.log_file]
-    web_main(argv)
+    """Avvia la web app: API + worker + SPA (RT4-F8)."""
+    from rt.api.launcher import run_spa
+    from rt.api.server import DEFAULT_PORT
+    kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
+    code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
+    if code:
+        sys.exit(code)
 
 
 def cmd_logs(args: argparse.Namespace) -> None:
@@ -1114,14 +1089,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
     p_web = subparsers.add_parser(
         "web", help="Avvia la web app (API, worker e interfaccia) e apre il browser già autenticato")
-    p_web.add_argument("--port", type=int, default=None, help="Porta locale (default: 8765, con --legacy 7860)")
+    p_web.add_argument("--port", type=int, default=None, help="Porta locale (default: 8765)")
     p_web.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
-    p_web.add_argument("--legacy", action="store_true",
-                       help="Vecchia interfaccia Gradio (deprecata, rimossa nella prossima release)")
     p_web.add_argument("--spa", action="store_true", help=argparse.SUPPRESS)  # compatibilità: ora è il default
     p_web.add_argument("--verbose", action="store_true", help="Segui i log dei servizi già attivi fino a Ctrl+C")
-    p_web.add_argument("--lessons-root", help="Cartella delle lezioni (solo con --legacy)")
-    p_web.add_argument("--log-file", help="Percorso del log diagnostico (solo con --legacy)")
     p_web.set_defaults(func=cmd_web)
 
     p_logs = subparsers.add_parser("logs", help="Mostra i log di API, worker e bot")

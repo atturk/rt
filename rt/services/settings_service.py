@@ -1,8 +1,8 @@
 """
 rt.services.settings_service
 Impostazioni modificabili da web e API (credenziali, route dei job LLM, Telegram, motore di
-trascrizione, cartella lezioni), salvate senza riscrivere il resto del YAML. Spostato da
-rt/web/settings.py (RT4-E4) perché lo usano sia Gradio sia l'API FastAPI.
+trascrizione, cartella lezioni), salvate senza riscrivere il resto del YAML. Spostato dalla
+vecchia web Gradio (RT4-E4).
 """
 from __future__ import annotations
 
