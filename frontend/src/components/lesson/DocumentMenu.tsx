@@ -15,6 +15,9 @@ import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/docume
 import { OPEN_QUESTIONS_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
 
+// Solo su Mac ctrl+clic è un clic destro.
+const macCtrlClick = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+
 type Point = { x: number; y: number }
 type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range; reviewParts?: Schemas['ReviewPartSelection'][] }
 /** La parte sotto il clic destro, per una superficie che non è l'<article> (l'editor). */
@@ -107,7 +110,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
 
   return (
     <div ref={root} onContextMenu={open} onMouseDownCapture={(event) => {
-      if (event.altKey || !(event.button === 2 || (event.button === 0 && event.ctrlKey))) return
+      if (event.altKey || !(event.button === 2 || (event.button === 0 && event.ctrlKey && macCtrlClick()))) return
       const article = root.current?.querySelector('article')
       if (!article?.contains(event.target as Node)) return
       const selection = window.getSelection()

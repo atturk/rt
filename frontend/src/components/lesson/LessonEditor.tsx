@@ -40,6 +40,9 @@ import { usePreference } from '@/lib/preferences'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
+// Solo su Mac ctrl+clic è un clic destro; altrove ctrl+clic aggiunge un cursore.
+const macCtrlClick = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+
 type Problem = Schemas['DocumentEditProblem']
 type Status =
   | { kind: 'idle' }
@@ -513,7 +516,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
           data-testid="lesson-document"
           data-active-unit={current ?? ''}
           onMouseDownCapture={(e) => {
-            if (e.altKey || !(e.button === 2 || (e.button === 0 && e.ctrlKey))) return
+            if (e.altKey || !(e.button === 2 || (e.button === 0 && e.ctrlKey && macCtrlClick()))) return
             selectedBefore.current = !(viewOf(handle.current)?.state.selection.main.empty ?? true)
             // il clic destro non sposta il cursore: niente scorrimento che chiuderebbe il menu
             e.preventDefault()

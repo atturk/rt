@@ -74,3 +74,29 @@ def test_extraction_distinguishes_vector_and_embedded_figures(tmp_path):
     assert [p.has_figures for p in images] == [False, False, False, True, True]
     assert all(p.mapping_skip for p in images[:3])
     assert images[3].text == images[4].text == ''
+
+
+def test_repeated_logo_and_background_are_not_figures():
+    """Esportazioni di slide: sfondo e logo su ogni pagina non rendono 'figura' la copertina."""
+    import io
+
+    import fitz
+    from PIL import Image
+
+    from rt.core.material_page_filter import pdf_pages_have_figures
+
+    def png(color, size):
+        buf = io.BytesIO()
+        Image.new("RGB", size, color).save(buf, format="PNG")
+        return buf.getvalue()
+
+    logo, chart = png((10, 20, 200), (40, 40)), png((200, 30, 30), (300, 200))
+    doc = fitz.open()
+    for number in range(5):
+        page = doc.new_page(width=800, height=600)
+        page.draw_rect(page.rect, color=(0.9, 0.9, 0.9), fill=(0.95, 0.95, 0.95))  # sfondo
+        page.insert_image(fitz.Rect(20, 20, 220, 220), stream=logo)  # logo grande ripetuto
+        page.insert_text((300, 300), f"Titolo {number}")
+        if number == 3:
+            page.insert_image(fitz.Rect(250, 250, 750, 580), stream=chart)
+    assert pdf_pages_have_figures(doc) == [False, False, False, True, False]

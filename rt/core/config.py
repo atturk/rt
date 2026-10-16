@@ -831,12 +831,11 @@ def _migrate_general(path, stamp, size):
 
 def _migrate_image_threshold(path, data):
     """Una sola volta: conserva anche una futura scelta esplicita di 0,8."""
-    classifier = data.get('classifier')
-    if not isinstance(classifier, dict):
-        return
     migrations = data.setdefault('_migrations', {})
     if not isinstance(migrations, dict) or migrations.get('images_threshold_07'):
         return
+    # Anche senza 'classifier' si segna la migrazione: un 0,8 scelto dopo resta.
+    classifier = data.get('classifier') if isinstance(data.get('classifier'), dict) else {}
     jobs = classifier.get('jobs') or {}
     images = jobs.get('images') if isinstance(jobs, dict) else None
     if isinstance(images, dict) and images.get('threshold') == 0.8:

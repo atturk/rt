@@ -52,6 +52,7 @@ it('sui titoli senza selezione mantiene Verifica disattiva', () => {
 })
 
 it.each([{ button: 2 }, { button: 0, ctrlKey: true }])('senza selezione usa il paragrafo anche con ctrl+clic: %j', (mouse) => {
+  vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
   window.getSelection()?.removeAllRanges()
   render(<MemoryRouter><DocumentMenu lessonId={1} unitIds={['1.1']} ready><article><h3 data-unit-id="1.1">Test</h3><p>Un intero paragrafo sotto il clic.</p></article></DocumentMenu></MemoryRouter>)
   const paragraph = screen.getByText('Un intero paragrafo sotto il clic.')

@@ -114,10 +114,11 @@ def _extract(real):
     suffix = os.path.splitext(real)[1].lower()
     if suffix == '.pdf':
         import fitz
-        from rt.core.material_page_filter import pdf_page_has_figures
+        from rt.core.material_page_filter import pdf_pages_have_figures
         with fitz.open(real) as document:
-            for page in document:
-                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], pdf_page_has_figures(page)
+            figures = pdf_pages_have_figures(document)
+            for page, has_figures in zip(document, figures):
+                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], has_figures
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)

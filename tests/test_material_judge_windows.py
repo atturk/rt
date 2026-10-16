@@ -64,3 +64,10 @@ def test_one_destination_with_best_probability_and_macro_aggregation(tmp_path, m
     monkeypatch.setattr('rt.services.enrichment_service.decision', decision)
     assert classify_material_page({'numero': 1, 'testo': 'Contenuto didattico'}, candidates,
                                   PageSourceIdentity('src', 'hash'), str(tmp_path), {}) == expected
+
+
+def test_windows_stay_short_without_punctuation():
+    from rt.pipeline.material_mapping import transcript_windows
+    transcript = " ".join(f"parola{i}" for i in range(3000))  # parlato senza punti
+    windows = transcript_windows("parola10 parola11", transcript)
+    assert len(windows) == 2 and all(len(w) <= 600 for w in windows)

@@ -79,7 +79,7 @@ export function StudyNotePopup({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
       e.preventDefault()
       void handleSend()
     }
@@ -260,7 +260,7 @@ export function StudyNotePopup({
       </div>
       {/* Fondo fisso: resta raggiungibile mentre il centro scorre. */}
       {!note && !isWaiting && (
-        <div className="shrink-0 border-t bg-card p-3" data-testid="study-note-composer">
+        <div className="shrink-0 border-t bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-testid="study-note-composer">
           <div className="flex items-end gap-2 rounded-lg border bg-muted/40 p-2">
             <textarea className="min-w-0 flex-1 resize-none bg-transparent text-body focus-visible:outline-2 focus-visible:outline-ring"
               rows={2} placeholder={isVerifica ? 'Cosa vuoi verificare?' : 'Cosa vuoi chiedere?'} aria-label="Richiesta facoltativa"

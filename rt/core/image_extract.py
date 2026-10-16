@@ -41,11 +41,12 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     basename = os.path.basename(pdf_path)
     results = []
     mat = fitz.Matrix(zoom, zoom)
-    from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_page_has_figures
+    from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_pages_have_figures
     texts = cleaned_page_texts([page.get_text().strip() for page in doc])
+    figures = pdf_pages_have_figures(doc)
     for i in range(doc.page_count):
         page = doc.load_page(i)
-        has_figures = pdf_page_has_figures(page)
+        has_figures = figures[i]
         sparse = few_words(texts[i])
         pix = page.get_pixmap(matrix=mat)
         results.append(ExtractedImage(

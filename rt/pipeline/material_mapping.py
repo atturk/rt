@@ -307,7 +307,16 @@ def _write_json(lesson_dir: str, name: str, data: Dict[str, Any]) -> None:
 
 def transcript_windows(page_text, transcript, idf=None):
     """Due passaggi non sovrapposti, ordinati come nel parlato e vicini a 600 caratteri."""
-    sentences = re.split(r'(?<=[.!?])\s+|\n+', transcript.strip())
+    sentences = []
+    for sentence in re.split(r'(?<=[.!?])\s+|\n+', transcript.strip()):
+        # Parlato senza punteggiatura: una "frase" può essere un'unità intera; si spezza a parole.
+        while len(sentence) > 600:
+            cut = sentence.rfind(' ', 0, 600)
+            cut = cut if cut > 0 else 600
+            sentences.append(sentence[:cut])
+            sentence = sentence[cut:].strip()
+        if sentence:
+            sentences.append(sentence)
     windows = []
     current = ''
     for sentence in sentences:

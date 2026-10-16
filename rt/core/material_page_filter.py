@@ -26,10 +26,35 @@ def few_words(text):
     return len(tokenize_text(text)) < MIN_SIGNIFICANT_WORDS
 
 
-def pdf_page_has_figures(page):
-    if page.get_image_info():
-        return True
-    # Un piccolo logo o una riga decorativa non è un disegno esteso.
+MIN_IMAGE_AREA_FRACTION = 0.05
+BACKGROUND_AREA_FRACTION = 0.90
+
+
+def _figure_keys(page):
+    """Immagini e disegni estesi della pagina, con una chiave per riconoscere quelli ripetuti."""
     area = page.rect.get_area()
-    return any(drawing["rect"].get_area() >= area * MIN_VECTOR_AREA_FRACTION
-               for drawing in page.get_drawings()) if area else False
+    if not area:
+        return []
+    keys = []
+    for info in page.get_image_info(xrefs=True):
+        bbox = info.get("bbox")
+        rect_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) if bbox else 0
+        if rect_area >= area * MIN_IMAGE_AREA_FRACTION:
+            keys.append(("img", info.get("xref") or info.get("digest") or tuple(round(v) for v in bbox)))
+    for drawing in page.get_drawings():
+        rect = drawing["rect"]
+        # Un logo o una riga decorativa non è un disegno esteso; uno sfondo a tutta pagina nemmeno.
+        if area * MIN_VECTOR_AREA_FRACTION <= rect.get_area() < area * BACKGROUND_AREA_FRACTION:
+            keys.append(("draw", tuple(round(v) for v in rect)))
+    return keys
+
+
+def pdf_pages_have_figures(document):
+    """Per ogni pagina, se ha una figura vera. Come per le righe ripetute, loghi, sfondi e
+    cornici che tornano su quasi tutte le pagine non contano (es. esportazioni di slide)."""
+    per_page = [_figure_keys(page) for page in document]
+    counts = Counter(key for keys in per_page for key in set(keys))
+    total = len(per_page)
+    repeated = {key for key, count in counts.items()
+                if total >= REPEATED_LINE_MIN_PAGES and count >= math.ceil(total * REPEATED_LINE_FRACTION)}
+    return [any(key not in repeated for key in keys) for keys in per_page]
