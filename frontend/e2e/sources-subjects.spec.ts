@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
@@ -55,6 +56,8 @@ test('fonti: la sezione Fonti sta in cima a Dettagli e mostra la registrazione c
 })
 
 test('registrazione unita: parti e barra restano dentro la card a 390 px', async ({ page }) => {
+  // Unire due audio richiede ffmpeg, che il job e2e della CI non ha (la riga è coperta anche dai vitest).
+  test.skip(!hasFfmpeg(), 'ffmpeg non installato')
   await loginViaLink(page)
   const lesson = await firstLesson(page)
   const audio = readFileSync(fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url)))
@@ -160,3 +163,12 @@ test('fonti: conferma, fonti usate tolte e ripristino; una fonte mai usata non l
     await page.request.delete(`/api/v1${url}/${fresh.id}`, { headers: authHeaders() })
   }
 })
+
+function hasFfmpeg(): boolean {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
