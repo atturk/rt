@@ -1,0 +1,320 @@
+<title>Media della lezione RT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: tre stati del pannello Arricchimento com'è oggi (larghezza reale ~470px), affiancati: caricamento con scelta, trascinamento col pannello aperto, media con selezione; sotto il ritaglio. Token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --panel:#ffffff; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d9d9d9;
+  --acc:#155f52; --acc-fg:#ffffff; --acc-soft:#dceee7; --warn:#8a5a00; --warn-soft:#fbf1dc; --danger:#b3261e; --slide:#ffffff; --slide-ink:#2c3e8f; --shade:rgb(0 0 0/.55);
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#0f0f0f; --panel:#1c1c1c; --fg:#f5f5f5; --soft:#262626; --mute:#a3a3a3; --border:#333333;
+  --acc:#6fd3b3; --acc-fg:#0d2a22; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2d12; --danger:#d9534f; --slide:#f7f7f7; --slide-ink:#2c3e8f; --shade:rgb(0 0 0/.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#0f0f0f; --panel:#1c1c1c; --fg:#f5f5f5; --soft:#262626; --mute:#a3a3a3; --border:#333333;
+  --acc:#6fd3b3; --acc-fg:#0d2a22; --acc-soft:#16312a; --warn:#f1c27a; --warn-soft:#3a2d12; --danger:#d9534f; --slide:#f7f7f7; --slide-ink:#2c3e8f; --shade:rgb(0 0 0/.6); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1500px;margin:0 auto;display:grid;gap:18px}
+header{padding-block:22px 4px;display:grid;gap:4px}
+h1{font-size:23px;margin:0;text-wrap:balance} h2{font-size:15px;margin:0}
+.meta{color:var(--mute);font-size:13px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;align-items:start}
+.col{display:grid;gap:8px;min-width:0}
+.col>p{margin:0;font-size:13.5px;color:var(--mute)}
+.pan{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px 18px 76px;display:grid;gap:14px;align-content:start;position:relative;min-height:600px;max-width:480px;width:100%}
+.pt{display:flex;align-items:center;justify-content:space-between;font-size:17px;font-weight:600}
+.sec{display:flex;align-items:center;gap:6px}
+.lbl{flex:1;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);font-weight:600;font-variant-numeric:tabular-nums}
+.ib{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;border:0;background:transparent;color:var(--fg);cursor:pointer;position:relative;padding:0;flex:none}
+.ib.on{background:var(--acc-soft);color:var(--acc)}
+.ib.go{background:var(--acc);color:var(--acc-fg)}
+.ib:disabled{opacity:.35;cursor:default}
+.ib:focus-visible,.th:focus-visible,.gh:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ib[data-tip]:hover::after,.ib[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;white-space:nowrap;background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:6px;pointer-events:none;z-index:9}
+.bar .ib[data-tip]:hover::after,.bar .ib[data-tip]:focus-visible::after,.cf .ib[data-tip]:hover::after,.crop .acts .ib[data-tip]:hover::after{top:auto;bottom:calc(100% + 8px)}
+.card{border:1px solid var(--border);border-radius:12px;padding:14px;display:grid;gap:12px}
+.card .ct{display:flex;align-items:center;justify-content:space-between;font-weight:600}
+.drop{border:1.5px dashed var(--border);border-radius:10px;padding:14px;text-align:center;font-size:13.5px;color:var(--mute)}
+.file{display:flex;align-items:center;gap:8px;font-size:13.5px;min-width:0}
+.file span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .n{color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mode{display:flex;align-items:center;gap:10px;font-size:13.5px;min-width:0}
+.mode p{margin:0;flex:1;min-width:0}
+.cf{display:flex;justify-content:flex-end;gap:6px}
+.grp{display:grid;gap:8px}
+.gh{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;background:none;border:0;color:var(--fg);padding:0;cursor:pointer;text-align:left;min-width:0;font-family:inherit}
+.gh span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gh .n{color:var(--mute);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ghr{display:flex;align-items:center;gap:4px;min-width:0}.ghr .gh{flex:1}
+.ghr .ib{width:28px;height:28px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+.cell{display:grid;gap:4px;min-width:0;position:relative}
+.crp{position:absolute;right:5px;top:5px;width:26px;height:26px;border-radius:7px;border:0;background:rgb(0 0 0/.55);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:0;padding:0}
+.cell:hover .crp,.crp:focus-visible{opacity:1}
+.crp:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+@media (hover:none){.crp{opacity:1}}
+.th{position:relative;aspect-ratio:4/3;border-radius:8px;border:1px solid var(--border);background:var(--slide);overflow:hidden;cursor:pointer;padding:0;max-width:100%;width:100%}
+.th .t{position:absolute;left:8%;top:8%;width:55%;height:7%;background:var(--slide-ink);border-radius:2px;opacity:.9}
+.th .l{position:absolute;left:8%;height:3.5%;background:#555;opacity:.35;border-radius:2px}
+.th .ck{position:absolute;left:5px;top:5px;width:18px;height:18px;border-radius:50%;border:1.5px solid #fff;background:rgb(0 0 0/.3);display:grid;place-items:center;font-size:11px;color:#fff;opacity:0}
+.cell:hover .ck,.th[aria-pressed="true"] .ck{opacity:1}
+.th[aria-pressed="true"]{outline:2.5px solid var(--acc);outline-offset:1px}
+.th[aria-pressed="true"] .ck{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+.cap{font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.cap b{color:var(--fg);font-weight:500}
+.free .th{opacity:.6}
+.bar{position:absolute;left:14px;right:14px;bottom:14px;background:var(--fg);color:var(--bg);border-radius:12px;padding:6px 8px 6px 14px;display:flex;align-items:center;gap:2px;font-size:13.5px;box-shadow:0 6px 18px rgb(0 0 0/.3)}
+.bar .sp{flex:1;font-variant-numeric:tabular-nums}
+.bar .ib{color:var(--bg)}
+.bar .ib.go{background:var(--acc);color:var(--acc-fg)}
+.veil{position:absolute;inset:0;border-radius:16px;border:2px dashed var(--acc);background:color-mix(in srgb,var(--acc) 14%,transparent);display:grid;place-items:center;text-align:center;font-weight:600;color:var(--fg);padding:20px}
+.ghost{position:absolute;right:60px;top:280px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;box-shadow:0 8px 20px rgb(0 0 0/.3);display:flex;gap:6px;align-items:center}
+.crop{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;display:grid;gap:10px;max-width:640px;width:100%}
+.crop .top{font-size:14px;font-weight:600}
+.stage{position:relative;aspect-ratio:4/3;background:var(--slide);border-radius:8px;overflow:hidden;touch-action:none;user-select:none;max-width:100%}
+.stage .t{position:absolute;left:6%;top:6%;width:45%;height:7%;background:var(--slide-ink);border-radius:3px}
+.stage .bx{position:absolute;border:1.5px solid #777;border-radius:4px;background:#eef}
+.box{position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px var(--shade);cursor:move}
+.hd{position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;border:2px solid var(--acc)}
+.hd.nw{left:-8px;top:-8px;cursor:nwse-resize}.hd.ne{right:-8px;top:-8px;cursor:nesw-resize}.hd.sw{left:-8px;bottom:-8px;cursor:nesw-resize}.hd.se{right:-8px;bottom:-8px;cursor:nwse-resize}
+.crop .acts{display:flex;justify-content:flex-end;gap:6px}
+.crop .acts .ib{border:1px solid var(--border)}
+.cropwrap{position:relative;display:grid;grid-template-columns:minmax(0,640px) minmax(0,300px);gap:18px;align-items:start}
+@media (max-width:760px){.cropwrap{grid-template-columns:1fr}}
+.side{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;display:grid;gap:10px;align-content:start}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mini{position:relative;aspect-ratio:4/3;border-radius:8px;border:1px solid var(--border);background:var(--slide);overflow:hidden}
+.mini .t{position:absolute;left:8%;top:8%;width:55%;height:7%;background:var(--slide-ink);border-radius:2px}
+.mini .bx{position:absolute;border:1px solid #777;border-radius:3px;background:#eef}
+.mini .sc{position:absolute;right:5px;top:5px;background:var(--acc);color:var(--acc-fg);border-radius:6px;padding:2px;display:grid}
+.cell.new{animation:split .55s cubic-bezier(.2,.8,.2,1)}
+.cell.new .mini{animation:glow 1.4s ease-out}
+@keyframes split{from{transform:translate(calc(-100% - 12px),0) scale(.92);opacity:.2}to{transform:none;opacity:1}}
+@keyframes glow{0%,40%{box-shadow:0 0 0 3px var(--acc)}100%{box-shadow:0 0 0 0 transparent}}
+.cell.swap .mini{animation:glow 1.4s ease-out}
+@media (prefers-reduced-motion: reduce){.cell.new,.cell.new .mini,.cell.swap .mini{animation:none}}
+.modal{position:absolute;inset:0;display:grid;place-items:center;background:rgb(0 0 0/.45);border-radius:16px;padding:16px;z-index:20}
+.mbox{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px;display:grid;gap:10px;max-width:400px;box-shadow:0 12px 30px rgb(0 0 0/.35)}
+.mbox p{margin:0;font-size:14px}
+.mbox .warn{display:flex;gap:8px;align-items:flex-start;color:var(--warn);background:var(--warn-soft);border-radius:8px;padding:8px 10px}
+.mbox .warn svg{flex:none;margin-top:2px}
+.mact{display:flex;justify-content:flex-end;gap:8px}
+.btn{font:inherit;font-size:13.5px;border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:8px;padding:6px 14px;cursor:pointer}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.note{border-left:3px solid var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--bg));padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px;display:grid;gap:4px;max-width:1100px}
+.note p{margin:0} ul{margin:0;padding-left:20px;display:grid;gap:4px}
+svg{display:block}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-up" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/></g></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></g></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 8.5 8.5 3 10l5.5 1.5L10 17l1.5-5.5L17 10l-5.5-1.5Z"/><path d="M19 15v4M17 17h4"/></g></symbol>
+  <symbol id="i-pages" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></g></symbol>
+  <symbol id="i-ins" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/><path d="M5 19h14"/></g></symbol>
+  <symbol id="i-crop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></g></symbol>
+  <symbol id="i-unlink" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="m4 21 16-16"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-full" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-all" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></g></symbol>
+  <symbol id="i-copyplus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/><path d="M14.5 11.5v6M11.5 14.5h6"/></g></symbol>
+  <symbol id="i-replace" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></g></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 2 20h20Z" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01"/></g></symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></g></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/></g></symbol>
+</svg>
+
+<div class="wrap">
+<header>
+  <h1>Media della lezione e caricamento in Arricchimento</h1>
+  <span class="meta">RT 4.2.6 · MS1 rivisto · 15 ott 2026 · esempio: lezione PGSS del 7 ott, slide “Pianificazione strategica” (9 pagine)</span>
+</header>
+
+<div class="cols">
+  <section class="col">
+    <h2>1. Carica: scegli tu se collocare</h2>
+    <p>Nel riquadro di oggi un'icona a due stati, come Unisci: collocazione automatica oppure solo pagine. La frase accanto segue lo stato; l'ultima scelta resta per la volta dopo. Prova a cliccarla.</p>
+    <div class="pan" aria-label="Caricamento">
+      <div class="pt"><span>Arricchimento</span><button class="ib" aria-label="Chiudi"><svg width="18" height="18"><use href="#i-x"/></svg></button></div>
+      <div class="sec"><span class="lbl">Media della lezione · 0</span>
+        <button class="ib on" aria-label="Aggiungi PDF o foto" data-tip="Aggiungi PDF o foto"><svg width="18" height="18"><use href="#i-up"/></svg></button>
+        <button class="ib" aria-label="Cerca immagini sul web" data-tip="Cerca immagini sul web"><svg width="18" height="18"><use href="#i-search"/></svg></button></div>
+      <div class="card">
+        <div class="ct"><span>Aggiungi PDF o foto</span><button class="ib" aria-label="Chiudi"><svg width="16" height="16"><use href="#i-x"/></svg></button></div>
+        <div class="drop">Trascina qui PDF o foto, oppure <u>scegli i file</u></div>
+        <div class="file"><svg width="16" height="16" style="color:var(--mute)"><use href="#i-pdf"/></svg><span>PGSS Pianificazione strategica.pdf</span><span class="n">9 pagine</span></div>
+        <div class="mode">
+          <button class="ib" id="modeBtn" aria-pressed="false"><svg width="18" height="18" id="modeIco"><use href="#i-pages"/></svg></button>
+          <p id="modeTxt"></p>
+        </div>
+        <div class="cf"><button class="ib" aria-label="Annulla" data-tip="Annulla"><svg width="18" height="18"><use href="#i-x"/></svg></button><button class="ib go" aria-label="Carica" data-tip="Carica"><svg width="18" height="18"><use href="#i-up"/></svg></button></div>
+      </div>
+      <div class="meta" style="text-align:center">Nessun media presente nella lezione.</div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>2. Trascini un PDF col pannello aperto</h2>
+    <p>Bug di oggi: si apre il velo a tutto schermo dell'import di una nuova lezione. Con il pannello Arricchimento aperto, PDF e foto vanno al pannello: il velo grande non compare, si illumina il pannello e il file entra nel riquadro di caricamento. Audio e zip restano all'import normale.</p>
+    <div class="pan" aria-label="Trascinamento">
+      <div class="pt"><span>Arricchimento</span><button class="ib" aria-label="Chiudi"><svg width="18" height="18"><use href="#i-x"/></svg></button></div>
+      <div class="sec"><span class="lbl">Media della lezione · 9</span><button class="ib" aria-label="Aggiungi"><svg width="18" height="18"><use href="#i-up"/></svg></button><button class="ib" aria-label="Cerca"><svg width="18" height="18"><use href="#i-search"/></svg></button></div>
+      <div class="grid" style="opacity:.35"><div class="cell"><div class="th"></div></div><div class="cell"><div class="th"></div></div><div class="cell"><div class="th"></div></div></div>
+      <div class="veil"><div><svg width="28" height="28" style="margin:0 auto 8px"><use href="#i-up"/></svg>Rilascia per aggiungere ai media della lezione</div></div>
+      <div class="ghost"><svg width="16" height="16"><use href="#i-pdf"/></svg>Slide lezione 8.pdf</div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>3. Media: scegli tu cosa e dove</h2>
+    <p>Prova: clic su più miniature (⇧ per un intervallo). Raggruppate per fonte; le non usate più chiare con “non usata”. Dalla barra: inserisci al cursore, colloca in automatico solo le scelte, togli dal testo. Il ritaglio è la piccola icona in alto a destra di ogni miniatura (al passaggio del mouse).</p>
+    <div class="pan" aria-label="Media con selezione">
+      <div class="pt"><span>Arricchimento</span><button class="ib" aria-label="Chiudi"><svg width="18" height="18"><use href="#i-x"/></svg></button></div>
+      <div class="sec"><span class="lbl">Media della lezione · 9</span><button class="ib" aria-label="Aggiungi PDF o foto" data-tip="Aggiungi PDF o foto"><svg width="18" height="18"><use href="#i-up"/></svg></button><button class="ib" aria-label="Cerca immagini sul web" data-tip="Cerca immagini sul web"><svg width="18" height="18"><use href="#i-search"/></svg></button></div>
+      <div class="grp" id="grp"></div>
+      <div class="bar" id="bar" hidden>
+        <span class="sp" id="count">0</span>
+        <button class="ib" id="bAll" aria-label="Seleziona tutte" data-tip="Seleziona tutte (⌘A)"><svg width="18" height="18"><use href="#i-all"/></svg></button>
+        <button class="ib go" id="bIns" aria-label="Inserisci al cursore" data-tip="Inserisci al cursore"><svg width="18" height="18"><use href="#i-ins"/></svg></button>
+        <button class="ib" id="bAuto" aria-label="Colloca in automatico le selezionate" data-tip="Colloca in automatico le selezionate"><svg width="18" height="18"><use href="#i-spark"/></svg></button>
+        <button class="ib" id="bOut" aria-label="Togli dal testo" data-tip="Togli dal testo (resta nei media)"><svg width="18" height="18"><use href="#i-unlink"/></svg></button>
+        <button class="ib" id="bX" aria-label="Annulla la selezione" data-tip="Annulla la selezione"><svg width="18" height="18"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="col">
+  <h2>Ritaglio: nuova immagine o sostituzione</h2>
+  <p style="margin:0;font-size:13.5px;color:var(--mute)">Prova: sposta il riquadro e premi “Salva come nuova immagine” più volte: ogni ritaglio si sdoppia dalla pagina e prende il nome “Pag. 7 · ritaglio N”. “Sostituisci la pagina” chiede conferma e dice dove la pagina è usata.</p>
+  <div class="cropwrap">
+    <div class="crop">
+      <div class="top">Pagina 7 · Modello organizzativo</div>
+      <div class="stage" id="stage">
+        <span class="t"></span>
+        <span class="bx" style="left:10%;top:22%;width:22%;height:14%"></span><span class="bx" style="left:40%;top:22%;width:22%;height:14%"></span><span class="bx" style="left:70%;top:22%;width:20%;height:14%"></span>
+        <span class="bx" style="left:25%;top:48%;width:22%;height:14%"></span><span class="bx" style="left:55%;top:48%;width:22%;height:14%"></span><span class="bx" style="left:38%;top:74%;width:24%;height:14%"></span>
+        <div class="box" id="box" style="left:8%;top:19%;width:57%;height:20%"><span class="hd nw" data-h="nw"></span><span class="hd ne" data-h="ne"></span><span class="hd sw" data-h="sw"></span><span class="hd se" data-h="se"></span></div>
+      </div>
+      <div class="acts">
+        <button class="ib" aria-label="Annulla" data-tip="Annulla"><svg width="18" height="18"><use href="#i-x"/></svg></button>
+        <button class="ib" id="cReset" aria-label="Pagina intera" data-tip="Pagina intera"><svg width="18" height="18"><use href="#i-full"/></svg></button>
+        <button class="ib" id="cReplace" aria-label="Sostituisci la pagina con il ritaglio" data-tip="Sostituisci la pagina con il ritaglio"><svg width="18" height="18"><use href="#i-replace"/></svg></button>
+        <button class="ib go" id="cNew" aria-label="Salva come nuova immagine" data-tip="Salva come nuova immagine"><svg width="18" height="18"><use href="#i-copyplus"/></svg></button>
+      </div>
+    </div>
+    <div class="side">
+      <span class="lbl">Media della lezione · pagina 7</span>
+      <div class="grid g2" id="crops"></div>
+    </div>
+    <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mt">
+      <div class="mbox">
+        <b id="mt">Sostituire la pagina 7 con il ritaglio?</b>
+        <p>L'immagine intera della pagina 7 viene sostituita dal ritaglio e non si potrà ripristinare da qui.</p>
+        <p class="warn"><svg width="16" height="16"><use href="#i-alert"/></svg><span>È usata nella lezione nelle unità <b>2.1</b> e <b>2.4</b>: lì comparirà il ritaglio.</span></p>
+        <div class="mact"><button class="btn" id="mNo" type="button">Annulla</button><button class="btn danger" id="mYes" type="button">Sostituisci</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="note">
+  <p><b>Cosa cambia</b></p>
+  <ul>
+    <li><b>Caricamento:</b> icona a due stati nel riquadro. “Colloca in automatico” fa quello che fa oggi (descrive e colloca le pagine nelle sottounità). “Solo pagine” divide il PDF in immagini e le mette nei media senza chiamare modelli: niente costi, niente collocazione.</li>
+    <li><b>Media:</b> lo stesso pannello di oggi, con le pagine raggruppate per fonte (anche quelle delle fonti importate con la lezione) e la didascalia “Pag. 3 · 2.1” o “Pag. 3 · non usata”. Il gruppo si chiude dalla freccia.</li>
+    <li><b>Selezionare tutto:</b> icona “Seleziona tutte le pagine di questa fonte” accanto al nome di ogni fonte (secondo clic le deseleziona), icona “Seleziona tutte” nella barra, ⌘A con il fuoco sulle miniature.</li>
+    <li><b>Barra della selezione (icone con tooltip):</b> Inserisci al cursore; Colloca in automatico solo le selezionate (lavoro in background con l'avanzamento di oggi); Togli dal testo per quelle già nel testo (restano nei media come non usate); Annulla.</li>
+    <li><b>Ritaglio:</b> due icone. “Salva come nuova immagine” (predefinita) crea una nuova immagine accanto alla pagina, con un'animazione di sdoppiamento e il nome “Pag. 7 · ritaglio 1”, poi “ritaglio 2” e così via: si può ritagliare la stessa pagina quante volte si vuole, anche da un ritaglio. “Sostituisci la pagina” chiede conferma, dice in quali unità la pagina è usata e lì mette il ritaglio al posto della pagina intera.</li>
+    <li><b>Togliere:</b> niente stati nuovi. “Togli dal testo” toglie l'immagine dal testo; cancellarla nell'editor fa lo stesso.</li>
+    <li><b>Trascinamento con il pannello aperto:</b> PDF e foto vanno ai media della lezione (si apre il riquadro di caricamento con i file); il velo grande dell'import non compare. Audio e zip continuano ad aprire l'import di una nuova lezione.</li>
+    <li>iPhone: stesso pannello come foglio; tocco = selezione, tocco lungo = visore, niente trascinamento.</li>
+  </ul>
+</div>
+</div>
+
+<script>
+(function(){
+  var mode=false,btn=document.getElementById('modeBtn'),ico=document.getElementById('modeIco'),txt=document.getElementById('modeTxt');
+  function setMode(){btn.setAttribute('aria-pressed',String(mode));btn.classList.toggle('on',mode);
+    ico.innerHTML='<use href="'+(mode?'#i-spark':'#i-pages')+'"/>';
+    btn.setAttribute('aria-label',mode?'Collocazione automatica: clic per tenere solo le pagine':'Solo pagine: clic per collocarle in automatico');
+    btn.dataset.tip=mode?'Clic per tenere solo le pagine':'Clic per collocarle in automatico';
+    txt.textContent=mode?'Le pagine vengono descritte e collocate in automatico nelle sottounità.':'Le pagine restano nei media: le inserisci tu, o le fai collocare dopo.'}
+  btn.onclick=function(){mode=!mode;setMode()};setMode();
+
+  var groups=[
+    {name:'PGSS Pianificazione strategica.pdf',open:true,pages:[{n:1,u:null},{n:2,u:'2.1'},{n:3,u:null},{n:4,u:null},{n:5,u:'1.2'},{n:6,u:null},{n:7,u:null},{n:8,u:null},{n:9,u:null}]},
+    {name:'Slide del docente (fonte della lezione)',open:false,pages:[],total:40}];
+  var sel=new Set(),last=null,root=document.getElementById('grp');
+  function page(id){var a=id.split('-');return groups[+a[0]].pages.find(function(q){return q.n===+a[1]})}
+  function render(){
+    root.innerHTML='';var idx=0,all=[];
+    groups.forEach(function(g,gi){
+      var used=g.pages.filter(function(p){return p.u}).length;
+      var h=document.createElement('button');h.type='button';h.className='gh';h.setAttribute('aria-expanded',String(g.open));
+      h.innerHTML='<svg width="14" height="14" style="transform:rotate('+(g.open?0:-90)+'deg)"><use href="#i-chev"/></svg><span>'+g.name+'</span><span class="n">'+(g.pages.length?used+' usate su '+g.pages.length:g.total+' pagine')+'</span>';
+      h.onclick=function(){g.open=!g.open;render()};
+      var row=document.createElement('div');row.className='ghr';row.appendChild(h);
+      if(g.pages.length){var sa=document.createElement('button');sa.type='button';sa.className='ib';sa.setAttribute('aria-label','Seleziona tutte le pagine di questa fonte');sa.dataset.tip='Seleziona tutte le pagine di questa fonte';sa.innerHTML='<svg width="16" height="16"><use href="#i-all"/></svg>';
+        sa.onclick=function(){var allIn=g.pages.every(function(p){return sel.has(gi+'-'+p.n)});g.pages.forEach(function(p){allIn?sel.delete(gi+'-'+p.n):sel.add(gi+'-'+p.n)});render()};row.appendChild(sa)}
+      root.appendChild(row);
+      if(!g.open)return;
+      var grid=document.createElement('div');grid.className='grid';
+      g.pages.forEach(function(p){var id=gi+'-'+p.n;all.push(id);var i=idx++;
+        var c=document.createElement('div');c.className='cell'+(p.u?'':' free');
+        var lines='';for(var k=0;k<4;k++)lines+='<span class="l" style="top:'+(26+k*13)+'%;width:'+(78-k*10)+'%"></span>';
+        c.innerHTML='<button type="button" class="th" aria-pressed="'+sel.has(id)+'" aria-label="Pagina '+p.n+(p.u?', usata in '+p.u:', non usata')+'"><span class="t"></span>'+lines+'<span class="ck">✓</span></button><button type="button" class="crp" aria-label="Ritaglia la pagina '+p.n+'" title="Ritaglia"><svg width="14" height="14"><use href="#i-crop"/></svg></button><span class="cap">Pag. '+p.n+' · '+(p.u?'<b>'+p.u+'</b>':'non usata')+'</span>';
+        c.firstChild.onclick=function(e){
+          if(e.shiftKey&&last!==null){var a=Math.min(i,last),z=Math.max(i,last);for(var k=a;k<=z;k++)sel.add(all[k])}
+          else if(sel.has(id))sel.delete(id);else sel.add(id);last=i;render()};
+        grid.appendChild(c)});
+      root.appendChild(grid)});
+    var n=sel.size;document.getElementById('bar').hidden=!n;
+    document.getElementById('count').textContent=n+(n===1?' selezionata':' selezionate');
+    var anyUsed=false;sel.forEach(function(id){if(page(id).u)anyUsed=true});
+    document.getElementById('bOut').disabled=!anyUsed}
+  document.getElementById('bX').onclick=function(){sel.clear();render()};
+  function selectAll(){groups.forEach(function(g,gi){g.pages.forEach(function(p){sel.add(gi+'-'+p.n)})});render()}
+  document.getElementById('bAll').onclick=selectAll;
+  document.getElementById('grp').addEventListener('keydown',function(e){if((e.metaKey||e.ctrlKey)&&e.key==='a'){e.preventDefault();selectAll()}});
+  document.getElementById('bOut').onclick=function(){sel.forEach(function(id){page(id).u=null});sel.clear();render()};
+  document.getElementById('bIns').onclick=function(){sel.forEach(function(id){var p=page(id);if(!p.u)p.u='2.4'});sel.clear();render()};
+  document.getElementById('bAuto').onclick=function(){var u=['1.1','1.3','2.2'],k=0;sel.forEach(function(id){var p=page(id);if(!p.u)p.u=u[k++%3]});sel.clear();render()};
+  sel.add('0-3');sel.add('0-4');sel.add('0-7');render();
+
+  var stage=document.getElementById('stage'),box=document.getElementById('box'),st=null;
+  function pct(v,m){return Math.max(0,Math.min(100,v/m*100))}
+  box.addEventListener('pointerdown',function(e){var r=stage.getBoundingClientRect();st={h:e.target.dataset.h||'move',x:e.clientX,y:e.clientY,l:box.offsetLeft,t:box.offsetTop,w:box.offsetWidth,hh:box.offsetHeight,W:r.width,H:r.height};box.setPointerCapture(e.pointerId);e.preventDefault()});
+  box.addEventListener('pointermove',function(e){if(!st)return;var dx=e.clientX-st.x,dy=e.clientY-st.y,l=st.l,t=st.t,w=st.w,h=st.hh,M=30;
+    if(st.h==='move'){l=Math.max(0,Math.min(st.W-w,l+dx));t=Math.max(0,Math.min(st.H-h,t+dy))}
+    else{if(st.h.indexOf('w')>=0){var nl=Math.max(0,Math.min(l+w-M,l+dx));w+=l-nl;l=nl}
+      if(st.h.indexOf('e')>=0)w=Math.max(M,Math.min(st.W-l,w+dx));
+      if(st.h.indexOf('n')>=0){var nt=Math.max(0,Math.min(t+h-M,t+dy));h+=t-nt;t=nt}
+      if(st.h.indexOf('s')>=0)h=Math.max(M,Math.min(st.H-t,h+dy))}
+    box.style.left=pct(l,st.W)+'%';box.style.top=pct(t,st.H)+'%';box.style.width=pct(w,st.W)+'%';box.style.height=pct(h,st.H)+'%'});
+  box.addEventListener('pointerup',function(){st=null});box.addEventListener('pointercancel',function(){st=null});
+
+  var crops=document.getElementById('crops'),n=0,boxes=[[10,22,22,14],[40,22,22,14],[70,22,20,14],[25,48,22,14],[55,48,22,14],[38,74,24,14]];
+  function mini(name,part,sc){var c=document.createElement('div');c.className='cell';
+    var r=part||[0,0,100,100],inner='';
+    if(!part)inner='<span class="t"></span>';
+    boxes.forEach(function(b){var l=(b[0]-r[0])/r[2]*100,t=(b[1]-r[1])/r[3]*100,w=b[2]/r[2]*100,h=b[3]/r[3]*100;if(l+w<0||t+h<0||l>100||t>100)return;inner+='<span class="bx" style="left:'+l+'%;top:'+t+'%;width:'+w+'%;height:'+h+'%"></span>'});
+    c.innerHTML='<div class="mini">'+inner+(sc?'<span class="sc"><svg width="12" height="12"><use href="#i-scissors"/></svg></span>':'')+'</div><span class="cap">'+name+'</span>';return c}
+  var orig=mini('Pag. 7 · <b>2.1, 2.4</b>');crops.appendChild(orig);
+  function rect(){return [parseFloat(box.style.left),parseFloat(box.style.top),parseFloat(box.style.width),parseFloat(box.style.height)]}
+  document.getElementById('cNew').onclick=function(){n++;var c=mini('Pag. 7 · ritaglio '+n+' · non usata',rect(),true);c.classList.add('new');
+    var after=orig;for(var k=0;k<n-1;k++)after=after.nextSibling||after;after.after(c)};
+  document.getElementById('cReset').onclick=function(){box.style.left='0%';box.style.top='0%';box.style.width='100%';box.style.height='100%'};
+  var modal=document.getElementById('modal');
+  document.getElementById('cReplace').onclick=function(){modal.hidden=false;document.getElementById('mNo').focus()};
+  document.getElementById('mNo').onclick=function(){modal.hidden=true};
+  modal.addEventListener('keydown',function(e){if(e.key==='Escape')modal.hidden=true});
+  document.getElementById('mYes').onclick=function(){modal.hidden=true;var c=mini('Pag. 7 (ritagliata) · <b>2.1, 2.4</b>',rect(),true);c.classList.add('swap');orig.replaceWith(c);orig=c};
+})();
+</script>

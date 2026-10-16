@@ -138,19 +138,21 @@ def _extract(real):
     suffix = os.path.splitext(real)[1].lower()
     if suffix == '.pdf':
         import fitz
+        from rt.core.material_page_filter import pdf_pages_have_figures
         with fitz.open(real) as document:
-            for page in document:
-                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')]
+            figures = pdf_pages_have_figures(document)
+            for page, has_figures in zip(document, figures):
+                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], has_figures
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)
         with _quicklook_slides(real, len(presentation.slides)) as render:
             for i, slide in enumerate(presentation.slides):
                 text, pictures = _slide_content(slide)
-                yield text, [render(i)] if render else [_png_image(data) for data in pictures]
+                yield text, [render(i)] if render else [_png_image(data) for data in pictures], bool(pictures)
     else:
         with open(real, 'rb') as stream:
-            yield '', [_png_image(stream.read())]
+            yield '', [_png_image(stream.read())], True
 
 
 def cached_pages(lesson_dir, source):
@@ -170,7 +172,7 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
     if compute_file_sha256(path) != source.impronta:
         raise ValueError('Una fonte originale è cambiata: aggiungila come nuova fonte')
     cached = cached_pages(lesson_dir, source)
-    if cached is not None:
+    if cached is not None and all('has_figures' in page for page in cached):
         return cached
     folder = os.path.join(lesson_dir, 'materials', source.impronta)
     with lesson_lock(lesson_dir):
@@ -178,16 +180,25 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
     pages = []
     # Cache per pagina: una ripresa dopo errore non ripete le chiamate Vision riuscite.
     with fs.materialize(path) as real:
-        for number, (text, images) in enumerate(_extract(real), 1):
+        from rt.core.material_page_filter import cleaned_page_texts, few_words
+        extracted = list(_extract(real))
+        cleaned = cleaned_page_texts([text for text, _, _ in extracted])
+        for number, (text, images, has_figures) in enumerate(extracted, 1):
             if ctx:
                 ctx.check_cancelled()
             entry_path = os.path.join(folder, f'page-{number}.json')
             if fs.isfile(entry_path):
                 with fs.open(entry_path, encoding='utf-8') as stream:
-                    pages.append(json.load(stream))
-                continue
-            if not text:
-                text = '\n'.join(_describe(data, lesson_dir, mock) for data in images)
+                    saved = json.load(stream)
+                if 'has_figures' in saved:
+                    pages.append(saved)
+                    continue
+            mapping_text = cleaned[number - 1]
+            sparse = few_words(mapping_text)
+            if sparse and has_figures:
+                described = '\n'.join(_describe(data, lesson_dir, mock) for data in images)
+                text = '\n'.join(filter(None, [text, described]))
+                mapping_text = described
             filenames = []
             with lesson_lock(lesson_dir):
                 for index, data in enumerate(images, 1):
@@ -195,7 +206,9 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
                     with fs.open(os.path.join(lesson_dir, relative), 'wb') as stream:
                         stream.write(data)
                     filenames.append(relative)
-                entry = {'numero': number, 'testo': text, 'immagini': filenames}
+                entry = {'numero': number, 'testo': text, 'immagini': filenames,
+                         'mapping_text': mapping_text, 'has_figures': has_figures,
+                         'mapping_skip': sparse and not has_figures}
                 with fs.open(entry_path + '.tmp', 'w', encoding='utf-8') as stream:
                     json.dump(entry, stream, ensure_ascii=False)
                 fs.replace(entry_path + '.tmp', entry_path)
@@ -210,7 +223,7 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
     return pages
 
 
-def material_context_parts(lesson_dir, *, mock=False, ctx=None):
+def material_context_parts(lesson_dir, *, mock=False, ctx=None, include_materials: bool = True):
     """Contesto per la riscrittura: solo le fonti che non sono già nei segmenti, una volta sola."""
     from rt.core.sources import load_sources
     from rt.core.source_selection import selection
@@ -225,8 +238,9 @@ def material_context_parts(lesson_dir, *, mock=False, ctx=None):
         if source.id in in_segments:
             continue
         if source.tipo == 'materiale':
-            for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
-                parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
+            if include_materials:
+                for page in material_pages(lesson_dir, source, mock=mock, ctx=ctx):
+                    parts.append(f"[{source.id}, {os.path.basename(source.file)}, pagina {page['numero']}]\n{page['testo']}")
         else:
             texts = [segment['text_raw'] for segment in cache.get(source.id, {}).get('segments', [])]
             if texts:

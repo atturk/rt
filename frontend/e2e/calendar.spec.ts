@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
 
 test('calendario: navigazione, settimana tipo, popup evento e riepilogo', async ({ page }) => {
   await loginViaLink(page)
@@ -179,5 +179,100 @@ test('calendario: modifica di un\'ora solo per questa settimana', async ({ page 
       await page.request.delete(`/api/v1/calendar/override/${ev.override_id}`, { headers: authHeaders() })
     }
     await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
+  }
+})
+
+test('calendario: icona + nel popup ora apre popup di import con data e ora preselezionate (UI1)', async ({ page }) => {
+  await loginViaLink(page)
+
+  // Crea uno slot di prova nella settimana tipo (giovedì 08:30 - 10:30)
+  const addRes = await page.request.post('/api/v1/calendar/template', {
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    data: JSON.stringify({
+      day_of_week: 3,
+      start_time: '08:30',
+      end_time: '10:30',
+      materia: 'Chirurgia Generale',
+      docente: 'Prof. De Luca',
+    }),
+  })
+  expect(addRes.ok()).toBeTruthy()
+  const createdTpl = (await addRes.json()) as { id: number }
+  const key = 'tpl_' + createdTpl.id
+
+  try {
+    await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Calendario' }).click()
+    await expect(page).toHaveURL(/\/calendario/)
+
+    const slot = page.getByTestId('calendar-event-' + key).first()
+    await expect(slot).toBeVisible()
+    await slot.click()
+
+    const eventPopup = page.getByTestId('calendar-event-popup')
+    await expect(eventPopup).toBeVisible()
+    await expect(eventPopup.getByText('Nessuna registrazione')).toBeVisible()
+
+    const plusBtn = eventPopup.getByRole('button', { name: "Importa una lezione per quest'ora" })
+    await expect(plusBtn).toBeVisible()
+    await plusBtn.click()
+
+    // Il popup evento si chiude e si apre il popup Nuova lezione
+    await expect(eventPopup).toHaveCount(0)
+    const newLessonDialog = page.getByTestId('new-lesson')
+    await expect(newLessonDialog).toBeVisible()
+
+    // La materia dello slot è preselezionata
+    await expect(newLessonDialog.getByLabel('Materia')).toHaveValue('Chirurgia Generale')
+    await page.keyboard.press('Escape')
+    await expect(newLessonDialog).toHaveCount(0)
+  } finally {
+    await page.request.delete(`/api/v1/calendar/template/${createdTpl.id}`, { headers: authHeaders() })
+  }
+})
+
+
+test('calendario: seguita senza lezione resta importabile e viene collegata', async ({ page }) => {
+  test.setTimeout(180_000)
+  await loginViaLink(page)
+  const created = await page.request.post('/api/v1/calendar/template', {
+    headers: authHeaders(), data: { day_of_week: 3, start_time: '07:00', end_time: '08:00', materia: 'Prova Seguita' },
+  })
+  expect(created.ok()).toBeTruthy()
+  const { id } = await created.json() as { id: number }
+  const key = `tpl_${id}`
+  let lessonId: number | undefined
+  try {
+    await page.goto('/calendario')
+    await page.getByTestId(`calendar-event-${key}`).click()
+    const popup = page.getByTestId('calendar-event-popup')
+    await popup.getByRole('button', { name: 'Seguita', exact: true }).click()
+    await expect(popup.getByRole('button', { name: "Importa una lezione per quest'ora" })).toBeVisible()
+    await popup.getByRole('button', { name: "Importa una lezione per quest'ora" }).click()
+    const dialog = page.getByTestId('new-lesson')
+    await expect(dialog.getByLabel('Materia')).toHaveValue('Prova Seguita')
+    const date = await dialog.getByLabel(/^Data/).inputValue()
+    await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({
+      name: 'seguita.pdf', mimeType: 'application/pdf', buffer: tinyPdf(),
+    })
+    const posted = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/lessons')
+    await dialog.getByRole('button', { name: 'Avvia' }).click()
+    const imported = await posted
+    expect(imported.ok(), await imported.text()).toBeTruthy()
+    await expect.poll(async () => {
+      const day = await apiGet<{ events: { key: string; lesson?: { id: number }; is_recorded: boolean; status: string }[] }>(page.request, `/calendar/day?date=${date}`)
+      const event = day.events.find((event) => event.key === key)
+      lessonId = event?.lesson?.id
+      return event?.is_recorded && event.status === 'seguita'
+    }, { timeout: 120_000 }).toBe(true)
+  } finally {
+    if (lessonId) {
+      const jobs = await apiGet<{ id: string; state: string }[]>(page.request, `/jobs?lesson_id=${lessonId}`)
+      for (const job of jobs.filter((job) => ['queued', 'running', 'waiting_for_decision'].includes(job.state))) {
+        await page.request.post(`/api/v1/jobs/${job.id}/cancel`, { headers: authHeaders() })
+        await expect.poll(async () => (await apiGet<{ state: string }>(page.request, `/jobs/${job.id}`)).state).toBe('cancelled')
+      }
+      await page.request.delete(`/api/v1/lessons/${lessonId}`, { headers: authHeaders() })
+    }
+    await page.request.delete(`/api/v1/calendar/template/${id}`, { headers: authHeaders() })
   }
 })

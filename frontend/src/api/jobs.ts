@@ -109,54 +109,47 @@ export type NewLesson = {
   auto_accept: boolean
   with_review: boolean
   with_enrichment?: boolean
+  unisci?: boolean
 }
 
-/** POST /lessons multipart con avanzamento dell'upload. */
-export function useCreateLesson() {
-  const client = useQueryClient()
-  const [progress, setProgress] = useState<UploadProgress | null>(null)
-  const mutation = useMutation({
-    mutationFn: (input: NewLesson) => {
-      const form = new FormData()
-      for (const file of input.files) form.append('audio', file, file.name)
-      if (input.materiali) {
-        for (const file of input.materiali) form.append('materiali', file, file.name)
-      }
-      if (input.principale) form.append('principale', input.principale)
-      if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
-      if (input.calendar_entry_id) form.append('calendar_entry_id', input.calendar_entry_id)
-      if (input.calendar_date) form.append('calendar_date', input.calendar_date)
-      form.append('date', input.date)
-      form.append('materia', input.materia)
-      form.append('argomenti', input.argomenti)
-      form.append('docente', input.docente)
-      form.append('ora', input.ora ?? '')
-      form.append('run', String(input.run))
-      form.append('mock', String(input.mock))
-      form.append('auto_accept', String(input.auto_accept))
-      form.append('with_review', String(input.with_review))
-      if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
-      const allFiles = [...input.files, ...(input.materiali ?? [])]
-      setProgress({ loaded: 0, total: allFiles.reduce((sum, f) => sum + f.size, 0) })
-      const body = {
-        audio: input.files.map((f) => f.name),
-        appunti: '',
-        date: input.date,
-        materia: input.materia,
-        argomenti: input.argomenti,
-        docente: input.docente,
-        ora: input.ora ?? '',
-        run: input.run,
-        mock: input.mock,
-        auto_accept: input.auto_accept,
-        with_review: input.with_review,
-        with_enrichment: input.with_enrichment,
-      } as Schemas['Body_create_lesson_api_v1_lessons_post']
-      return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
-    },
-    onSettled: () => invalidateAfterJob(client),
-  })
-  return { ...mutation, progress: mutation.isPending ? progress : null }
+/** POST /lessons multipart con avanzamento dell'upload. Gira nella coda dei caricamenti
+ * (lib/uploadQueue): continua anche a finestra chiusa e si annulla con `signal`. */
+export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgress) => void, signal: AbortSignal) {
+  const form = new FormData()
+  for (const file of input.files) form.append('audio', file, file.name)
+  if (input.materiali) {
+    for (const file of input.materiali) form.append('materiali', file, file.name)
+  }
+  if (input.principale) form.append('principale', input.principale)
+  if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
+  if (input.unisci !== undefined) form.append('unisci', String(input.unisci))
+  if (input.calendar_entry_id) form.append('calendar_entry_id', input.calendar_entry_id)
+  if (input.calendar_date) form.append('calendar_date', input.calendar_date)
+  form.append('date', input.date)
+  form.append('materia', input.materia)
+  form.append('argomenti', input.argomenti)
+  form.append('docente', input.docente)
+  form.append('ora', input.ora ?? '')
+  form.append('run', String(input.run))
+  form.append('mock', String(input.mock))
+  form.append('auto_accept', String(input.auto_accept))
+  form.append('with_review', String(input.with_review))
+  if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
+  const body = {
+    audio: input.files.map((f) => f.name),
+    appunti: '',
+    date: input.date,
+    materia: input.materia,
+    argomenti: input.argomenti,
+    docente: input.docente,
+    ora: input.ora ?? '',
+    run: input.run,
+    mock: input.mock,
+    auto_accept: input.auto_accept,
+    with_review: input.with_review,
+    with_enrichment: input.with_enrichment,
+  } as Schemas['Body_create_lesson_api_v1_lessons_post']
+  return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, onProgress), signal }))
 }
 
 /** Esito di un archivio nel risultato del job import_lesson_zips. */
@@ -166,20 +159,11 @@ export type ZipImportResult = { results: ZipImportItem[]; imported: number; reje
 /** POST /lessons/import-zip multipart con avanzamento dell'upload: accoda il job
  * import_lesson_zips (202). I rifiuti immediati (nome, firma ZIP) tornano nel risultato del job;
  * se nessun archivio è valido l'API risponde subito 422. */
-export function useImportLessonZips() {
-  const client = useQueryClient()
-  const [progress, setProgress] = useState<UploadProgress | null>(null)
-  const mutation = useMutation({
-    mutationFn: (files: File[]) => {
-      const form = new FormData()
-      for (const file of files) form.append('archives', file, file.name)
-      setProgress({ loaded: 0, total: files.reduce((sum, f) => sum + f.size, 0) })
-      const body = { archives: files.map((f) => f.name) } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
-      return unwrap(api.POST('/api/v1/lessons/import-zip', { body, bodySerializer: () => form, fetch: xhrFetch(form, setProgress) }))
-    },
-    onSettled: () => invalidateAfterJob(client),
-  })
-  return { ...mutation, progress: mutation.isPending ? progress : null }
+export function sendLessonZips(files: File[], onProgress: (progress: UploadProgress) => void, signal: AbortSignal) {
+  const form = new FormData()
+  for (const file of files) form.append('archives', file, file.name)
+  const body = { archives: files.map((f) => f.name) } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
+  return unwrap(api.POST('/api/v1/lessons/import-zip', { body, bodySerializer: () => form, fetch: xhrFetch(form, onProgress), signal }))
 }
 
 // ---------------------------------------------------------------- outline

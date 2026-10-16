@@ -22,15 +22,15 @@ function mount(unit = false) {
 beforeEach(() => { state.suggestions = true; state.failed = false; vi.clearAllMocks() })
 it('in modo unità mostra il consiglio, tre domande e nessuna vasta; invia consigliato con count', () => {
   mount(true)
-  expect(screen.getByLabelText('Quante')).toHaveValue(3)
+  expect(screen.getByLabelText('Fino a')).toHaveValue(3)
   expect(screen.queryByRole('button', { name: 'Vasta' })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
   fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   expect(state.mutate).toHaveBeenCalledWith({ qtype: 'mirata', count: 2, unit_ids: ['1.2'] }, expect.anything())
 })
 it('in modo lezione parte da dieci, include vasta e permette la scelta personalizzata', () => {
   mount()
-  expect(screen.getByLabelText('Quante')).toHaveValue(10)
+  expect(screen.getByLabelText('Fino a')).toHaveValue(10)
   fireEvent.click(screen.getByRole('button', { name: 'Vasta' }))
   fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   expect(state.mutate).toHaveBeenCalledWith({ qtype: 'vasta', count: 10 }, expect.anything())

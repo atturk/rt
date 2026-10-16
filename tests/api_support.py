@@ -205,3 +205,20 @@ def fake_llm_server():
     server, url = _serve(Handler)
     server.requests = received
     return server, url
+
+
+def mock_image_description_for_unit(monkeypatch, lesson_dir):
+    """Foto pertinente per i test d'integrazione: il mapping richiede candidate reali."""
+    from rt.llm.client import LLMClient
+    from rt.pipeline.outline import load_outline
+    title = load_outline(lesson_dir).macro_sections[0].units[0].title
+    original = LLMClient.call_structured
+
+    def describe(self, *args, **kwargs):
+        if kwargs.get('job_name') == 'image_description':
+            assert self.force_mock  # nessuna chiamata reale, neppure se il worker perde --mock
+            result = original(self, *args, **kwargs)
+            return result.model_copy(update={'ocr_text': title})
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(LLMClient, 'call_structured', describe)

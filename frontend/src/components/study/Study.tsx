@@ -30,6 +30,7 @@ import { Modal } from '@/components/ui/modal'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
+import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { renderDelimitedMath } from '@/lib/math'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
@@ -655,6 +656,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             highlightMode={hlMode}
             onReady={setTextRoot}
             notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
+            activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
             onNoteClick={(note, rect) => {
               setPopupState({
                 open: true,
@@ -906,17 +908,29 @@ function ReadingSkeleton() {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, onSelection }: {
+/** Il testo della striscia di immagini non fa parte della lezione: le ancore non lo contano. */
+const outsideImageStrips: NodeFilter = {
+  acceptNode: (node) => node.parentElement?.closest('.rt-image-strip-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+}
+
+export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
   /** Il testo è pronto (formule disegnate): evidenziatore e lettura veloce lo usano. */
   onReady: (root: HTMLElement | null) => void
   notes?: StudyNote[]
+  activeNoteId?: number | null
   onNoteClick?: (note: StudyNote, rect: DOMRect) => void
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Strisce di immagini consecutive, rimontate a ogni unità (prima di formule e lettura veloce).
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    return mountDocumentImageStrips(root)
+  }, [unit.html])
   useEffect(() => {
     const root = ref.current
     if (!root) return
@@ -930,7 +944,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
 
   useEffect(() => {
     const root = ref.current
-    if (!root || !notes || !notes.length) return
+    if (!root) return
 
     const existing = root.querySelectorAll('.rt-sn')
     existing.forEach((span) => {
@@ -943,13 +957,14 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
     })
     root.normalize()
 
-    for (const n of notes) {
+    for (const n of notes ?? []) {
+      if (n.id !== activeNoteId) continue
       if (n.anchor_state === 'non_ritrovata') continue
       // L'ancora è sul markdown: nel testo reso grassetto, corsivo e codice non hanno i segni.
       const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
       if (!targetQuote) continue
 
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
       let node = walker.nextNode() as Text | null
       let found = false
       while (node && !found) {
@@ -975,7 +990,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
         node = walker.nextNode() as Text | null
       }
     }
-  }, [notes, unit.html])
+  }, [notes, activeNoteId, unit.html])
 
   const handleMouseUp = () => {
     if (highlightMode !== 'verifica' && highlightMode !== 'chiedi') return
@@ -988,7 +1003,7 @@ function UnitText({ lessonId, unit, highlightMode, onReady, notes, onNoteClick, 
     const root = ref.current
     if (!root || !root.contains(range.commonAncestorContainer)) return
 
-    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
     let offset = 0
     let startOffset = -1
     let endOffset = -1
@@ -1168,7 +1183,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
           <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running} />
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Quante</label>
+          <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Fino a</label>
           <Input
             id="study-gen-count"
             type="number"

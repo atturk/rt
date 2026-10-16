@@ -9,6 +9,7 @@ nel menu Start su Windows).
   apre il browser già autenticato; poi esce: RT resta acceso anche senza finestre.
 - Su Windows avvia API e worker in questa finestra (come 'rt web'): chiuderla spegne RT.
   Se RT è già acceso apre solo il browser.
+- Usa la porta 8765; se la occupa un altro programma ne sceglie una libera e la ricorda.
 - Scarica in background il browser per le catture delle visualizzazioni, se manca.
 """
 import argparse
@@ -136,6 +137,17 @@ def _services_match_app() -> bool:
     return True
 
 
+def _service_port() -> Optional[int]:
+    """La porta scritta nel servizio api di launchd."""
+    from rt.services import service_manager as sm
+    try:
+        with open(sm.plist_path("api"), "rb") as f:
+            args = plistlib.load(f)["ProgramArguments"]
+        return int(args[args.index("--port") + 1])
+    except (OSError, KeyError, ValueError, IndexError, plistlib.InvalidFileException):
+        return None
+
+
 def _wait_for_api(port: int, seconds: float = API_WAIT_SECONDS) -> bool:
     from rt.services.service_manager import api_is_up
     deadline = time.monotonic() + seconds
@@ -161,7 +173,7 @@ def run_macos(port: int, open_browser: bool, say: Callable[[str], None]) -> int:
     from rt.api.launcher import run_spa
     from rt.services import service_manager as sm
     try:
-        if not sm.installed() or not _services_match_app():
+        if not sm.installed() or not _services_match_app() or _service_port() != port:
             sm.install(port=port, say=say)
     except sm.ServiceError as exc:
         say(f"❌ {exc}")
@@ -189,13 +201,14 @@ def run_foreground(port: int, open_browser: bool, say: Callable[[str], None]) ->
 
 def run(port: Optional[int] = None, open_browser: bool = True) -> int:
     from rt.core.version import get_current_version
-    from rt.services.service_manager import api_port
+    from rt.services.service_manager import choose_port
     say = _sayer()
-    port = port or api_port()
     version = get_current_version(paths.project_root())
     if needs_setup(version) and not prepare(version, say):
         say("⚠️  Preparazione incompleta: RT parte lo stesso, i dettagli sono qui sopra.")
     ensure_capture_browser(say)
+    # la 8765, o un'altra libera (ricordata) se la occupa un altro programma
+    port = port or choose_port(say)
     from rt.services import service_manager as sm
     if sm.supported() and os.environ.get("RT_NO_SERVICES") != "1":
         return run_macos(port, open_browser, say)

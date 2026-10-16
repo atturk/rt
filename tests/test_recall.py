@@ -92,7 +92,7 @@ def test_real_batch_uses_distinct_ids_and_keeps_answers_with_their_question(less
 
     def generated(_client, **kwargs):
         return kwargs["response_model"].model_validate({"questions": [{
-            "type": "quiz", "question_text": kwargs["unit_id"],
+            "type": "quiz", "question_text": "Qual è il contenuto accademico dell’unità " + kwargs["unit_id"] + "?",
             "options": ["A", "B", "C", "D"], "correct_index": 0,
             "pregenerated_material": "Spiegazione corretta."}]})
 
@@ -588,7 +588,7 @@ class TestRecallUsesResolvedDraft:
         def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
             captured["prompt"] = prompt
             return response_model.model_validate({"questions": [{
-                "type": "mirata", "question_text": "Domanda di prova?"}]})
+                "type": "mirata", "question_text": "Qual è il contenuto accademico rivisto?"}]})
 
         from unittest.mock import patch
         with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
@@ -760,8 +760,9 @@ def test_evaluator_outcome_survives_recording_and_legacy_results(lesson_dir, qty
 
     def evaluate(_client, **kwargs):
         data = {'commento': 'Valutazione del tentativo', 'outcome': outcome}
-        if qtype == RecallQuestionType.MIRATA:
-            data.update(correttezza=70, completezza=50)
+        scores = {'corretta': (90, 90), 'parziale': (70, 50), 'sbagliata': (20, 20), None: (70, 50)}
+        c, f = scores[outcome]
+        data.update(correttezza=c, completezza=f)
         assert 'outcome' in kwargs['prompt'] and 'outcome' in kwargs['system_prompt']
         return kwargs['response_model'].model_validate(data)
 
@@ -769,10 +770,11 @@ def test_evaluator_outcome_survives_recording_and_legacy_results(lesson_dir, qty
         text = handle_recall_answer(lesson_dir, q.id, 'Tentativo', is_voice=True, force_mock=False)
     assert isinstance(text, str) and 'Valutazione del tentativo' in text
     answer = load_recall_bank(lesson_dir).answers[0]
-    assert answer.outcome == outcome and answer.is_voice
-    assert question_list(lesson_dir)['questions'][0]['outcome'] == outcome
+    expected = outcome or 'parziale'
+    assert answer.outcome == expected and answer.is_voice
+    assert question_list(lesson_dir)['questions'][0]['outcome'] == expected
     record_recall_vote(lesson_dir, q.id, 'up')
-    assert load_recall_bank(lesson_dir).answers[0].outcome == outcome
+    assert load_recall_bank(lesson_dir).answers[0].outcome == expected
 
 
 @pytest.mark.parametrize('qtype', [RecallQuestionType.MIRATA, RecallQuestionType.VASTA])
@@ -784,8 +786,7 @@ def test_non_lo_so_overrides_the_evaluator_outcome(lesson_dir, qtype):
 
     def evaluate(_client, **kwargs):
         data = {'commento': 'Spiegazione', 'outcome': 'corretta'}
-        if qtype == RecallQuestionType.MIRATA:
-            data.update(correttezza=100, completezza=100)
+        data.update(correttezza=100, completezza=100)
         return kwargs['response_model'].model_validate(data)
 
     with patch('rt.llm.client.LLMClient.call_structured', evaluate):
@@ -815,7 +816,7 @@ def test_outcome_contract_rejects_unknown_values_and_accepts_old_answers():
     assert RecallAnswer(question_id='q', answer_text='Risposta').outcome is None
     for model, data in [(RecallAnswer, {'question_id': 'q', 'answer_text': 'Risposta'}),
                         (RecallEvalMirataResult, {'correttezza': 80, 'completezza': 80, 'commento': 'ok'}),
-                        (RecallEvalVastaResult, {'commento': 'ok'})]:
+                        (RecallEvalVastaResult, {'correttezza': 80, 'completezza': 80, 'commento': 'ok'})]:
         assert model(**data).outcome is None
         with pytest.raises(ValidationError):
             model(**data, outcome='ottima')

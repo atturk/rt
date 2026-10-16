@@ -15,10 +15,20 @@ def resolve_audio_path(lesson_dir: str) -> Optional[str]:
     se presente ed esistente, altrimenti None.
     """
     manifest = load_manifest(lesson_dir)
-    if not manifest or not manifest.audio_file:
+    raw_path = manifest.audio_file if manifest else None
+    if not raw_path:
+        # Lezioni importate con le fonti: il manifest può non avere l'audio, che sta in
+        # info.yaml con il percorso dentro sources/<id>/.
+        info_path = os.path.join(lesson_dir, "info.yaml")
+        if fs.isfile(info_path):
+            from rt.core.state import read_info_yaml
+            try:
+                raw_path = read_info_yaml(info_path).get("file_audio")
+            except Exception:
+                raw_path = None
+    if not raw_path:
         return None
-
-    raw_path = manifest.audio_file
+    raw_path = str(raw_path)
     candidates = [
         raw_path if os.path.isabs(raw_path) else None,
         os.path.join(lesson_dir, raw_path),

@@ -326,7 +326,9 @@ def test_api_document_is_preview_until_build(api_client, api_lesson):
     assert doc["final"] is False and doc["sections"]
 
 
-def test_api_images_job_works_without_build(api_client, api_lesson, rt_db, tmp_path):
+def test_api_images_job_works_without_build(api_client, api_lesson, rt_db, tmp_path, monkeypatch):
+    from tests.api_support import mock_image_description_for_unit
+    mock_image_description_for_unit(monkeypatch, api_lesson)
     from PIL import Image
     from rt.services.jobs import DbJobQueue
     from rt.services.worker import Worker

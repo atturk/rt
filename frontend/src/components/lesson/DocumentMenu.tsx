@@ -15,6 +15,9 @@ import { blockIndex, documentBlocks, partLabel, partOfRange } from '@/lib/docume
 import { OPEN_QUESTIONS_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
 
+// Solo su Mac ctrl+clic è un clic destro.
+const macCtrlClick = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
+
 type Point = { x: number; y: number }
 type Part = { text: string; units: string[]; at: Point; anchor: Point; range?: Range; reviewParts?: Schemas['ReviewPartSelection'][] }
 /** La parte sotto il clic destro, per una superficie che non è l'<article> (l'editor). */
@@ -60,8 +63,13 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
   }
   // Il documento (l'<article> del DocumentView) sta dentro questo contenitore.
   const root = useRef<HTMLDivElement>(null)
+  const selectedBefore = useRef<Range | null | undefined>(undefined)
 
   const open = (event: MouseEvent) => {
+    if (event.altKey) {
+      setMenu(null)
+      return
+    }
     if (locate) {
       const part = locate(event)
       if (!part) return
@@ -72,20 +80,25 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
     const article = root.current?.querySelector('article')
     if (!article) return
     const selection = window.getSelection()
-    const range = selection && !selection.isCollapsed && selection.rangeCount ? selection.getRangeAt(0) : null
+    const range = selectedBefore.current === undefined
+      ? selection && !selection.isCollapsed && selection.rangeCount ? selection.getRangeAt(0) : null
+      : selectedBefore.current
+    selectedBefore.current = undefined
     const inside = range && article.contains(range.commonAncestorContainer)
-    const heading = (event.target as HTMLElement).closest('h1, h2, h3, h4')
-    const text = inside ? selection!.toString() : ''
-    if (!text.trim() && !(heading && article.contains(heading))) return
+    const target = event.target as HTMLElement
+    if (!article.contains(target)) return
+    let block = target.closest('h1, h2, h3, h4, p, li, pre, blockquote, td')
+    if (!block || !article.contains(block)) block = target === article ? article.firstElementChild : target
+    const text = inside && range ? range.toString() : ''
     event.preventDefault()
     const blocks = documentBlocks(article, unitIds)
     const [from, to] = text.trim() && range
       ? [blockIndex(article, range.startContainer), blockIndex(article, range.endContainer)]
-      : [blockIndex(article, heading), blockIndex(article, heading)]
+      : [blockIndex(article, block), blockIndex(article, block)]
     const units = from < 0 || to < 0 ? [] : partOfRange(blocks, from, to, unitIds)
-    const rect = text.trim() && range ? range.getBoundingClientRect() : heading!.getBoundingClientRect()
+    const rect = text.trim() && range ? range.getBoundingClientRect() : block!.getBoundingClientRect()
     setMenu({
-      text: text.trim() ? text : (heading?.textContent ?? '').trim(),
+      text: text.trim() ? text : (block?.textContent ?? '').trim(),
       units,
       at: { x: event.clientX, y: event.clientY },
       anchor: { x: rect.left, y: rect.bottom },
@@ -96,7 +109,14 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
   const unavailable = (part: Part) => (!ready ? 'serve prima la rielaborazione della lezione' : part.units.length === 0 ? NO_PART : null)
 
   return (
-    <div ref={root} onContextMenu={open} data-testid="document-surface">
+    <div ref={root} onContextMenu={open} onMouseDownCapture={(event) => {
+      if (event.altKey || !(event.button === 2 || (event.button === 0 && event.ctrlKey && macCtrlClick()))) return
+      const article = root.current?.querySelector('article')
+      if (!article?.contains(event.target as Node)) return
+      const selection = window.getSelection()
+      selectedBefore.current = selection && !selection.isCollapsed && selection.rangeCount
+        ? selection.getRangeAt(0).cloneRange() : null
+    }} data-testid="document-surface">
       {queued && (
         <div role="status" className="mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-meta" data-testid="generate-queued">
           <Sparkles className="size-4 shrink-0" aria-hidden />
@@ -247,6 +267,7 @@ function ContextMenu({ at, items, onClose }: { at: Point; items: MenuItem[]; onC
           )}
         </Tooltip>
       ))}
+      <p className="border-t px-2.5 pt-1.5 text-[11px] text-muted-foreground">⌥ + clic destro: menu del browser</p>
     </div>,
     document.body,
   )

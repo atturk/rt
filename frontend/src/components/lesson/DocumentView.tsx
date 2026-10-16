@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 import type { Schemas } from '@/api/client'
+import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { activeUnit, unitSpeechProgress } from '@/lib/audio'
 import { withImageUrls } from '@/lib/images'
 import { renderDelimitedMath } from '@/lib/math'
@@ -101,6 +102,13 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     }
     return () => root.querySelectorAll('.rt-unit-meta button').forEach(node => unmountDomTooltip(node as HTMLElement))
   }, [doc, hasAudio])
+
+  // Strisce di immagini consecutive (IM1c)
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    return mountDocumentImageStrips(root)
+  }, [doc.html])
 
   // Evidenzia l'unità in ascolto (intestazione e blocchi fino alla prossima intestazione).
   useEffect(() => {

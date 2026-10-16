@@ -136,7 +136,7 @@ def test_empty_remembered_until_context_changes_or_explicit_regeneration(tmp_pat
 def test_multiple_questions_unique_ids_deduplicate_and_keep_answers(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=1)
     def generate(**kw):
-        return kw['response_model'].model_validate({'questions': [{'type': 'mirata', 'question_text': t} for t in ['Prima?', 'Seconda?', 'Prima?']]})
+        return kw['response_model'].model_validate({'questions': [{'type': 'mirata', 'question_text': t} for t in ['Qual è il contenuto primo?', 'Descrivi il contenuto secondo?', 'Qual è il contenuto primo?']]})
     with patch('rt.llm.client.LLMClient.call_structured', side_effect=generate):
         result = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [])
     assert [q.id for q in result] == ['recall_000001', 'recall_000002']
@@ -161,7 +161,7 @@ def test_override_applies_to_both_identical_views_and_can_be_reset(tmp_path):
 
 def test_completed_unit_checkpoint_survives_later_failure(tmp_path):
     path = setup_mock_lesson(tmp_path, num_units=2)
-    response = RecallMirataGenerationResult.model_validate({'questions': [{'type': 'mirata', 'question_text': 'Primo concetto?'}]})
+    response = RecallMirataGenerationResult.model_validate({'questions': [{'type': 'mirata', 'question_text': 'Qual è il contenuto primo?'}]})
     with patch('rt.llm.client.LLMClient.call_structured', side_effect=[response, RuntimeError('Job interrotto')]):
         with pytest.raises(RuntimeError, match='Job interrotto'):
             recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 10, [])
@@ -176,7 +176,7 @@ def test_concurrent_generations_deduplicate_and_remember_exhaustion(tmp_path):
     errors = []
     def generate(**kw):
         barrier.wait(timeout=5)
-        return kw['response_model'].model_validate({'questions': [{'type': 'mirata', 'question_text': 'Stesso concetto?'}]})
+        return kw['response_model'].model_validate({'questions': [{'type': 'mirata', 'question_text': 'Qual è il contenuto identico?'}]})
     def worker():
         try:
             recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [])
@@ -281,3 +281,55 @@ def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_p
         data = json.loads(prompt.split('VALUTAZIONE CLASSIFICATORE:\n')[1].split('\n')[0])
         assert data['level'] is None and [(u['unit_id'], u['level']) for u in data['units']] == [('1.1', 0), ('1.2', 2)]
         assert prompt.endswith(GROUP_GUIDANCE)
+
+
+def test_previous_questions_include_other_types_and_complete_json():
+    from rt.core.models import RecallBank, RecallQuestion
+    from rt.llm.prompts import recall_previous_block
+    bank = RecallBank(questions=[
+        RecallQuestion(id='q1', type='quiz', unit_ids=['1'], question_text='Qual è il ruolo di ADH?'),
+        RecallQuestion(id='q2', type='mirata', unit_ids=['1'], question_text='Descrivi il compenso respiratorio.'),
+        RecallQuestion(id='q3', type='vasta', unit_ids=['2'], question_text='Spiega la glicolisi.'),
+    ])
+    previous = recall.previous_questions_on_units(bank, ['1'])
+    assert previous == ['[quiz] Qual è il ruolo di ADH?', '[mirata] Descrivi il compenso respiratorio.']
+    block = recall_previous_block(previous)
+    assert 'di ogni tipo: cerca altri concetti, non parafrasi' in block
+    assert json.loads(block.split(':\n', 1)[1]) == previous
+    previous = [f'[quiz] Domanda {n} ' + 'x' * 900 for n in range(40)]
+    block = recall_previous_block(previous)
+    encoded = block.split(':\n', 1)[1]
+    values = json.loads(encoded)
+    assert len(values) <= 30 and len(encoded) <= 12000
+    assert values[-1] == previous[-1]
+
+
+@pytest.mark.parametrize('sizes, expected, calls', [([1, 1, 1], 3, 3), ([1, 0], 1, 2), ([2], 2, 1)])
+def test_up_to_three_rounds_keep_excess_and_stop_on_empty(tmp_path, sizes, expected, calls):
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    seen = []
+    def generate(**kw):
+        seen.append(kw['prompt'])
+        batch = sizes[len(seen) - 1]
+        return kw['response_model'].model_validate({'questions': [
+            {'type': 'mirata', 'question_text': f'Qual è il contenuto del giro {len(seen)} domanda {i}?'} for i in range(batch)]})
+    wanted = 1 if sizes == [2] else 10
+    with patch('rt.llm.client.LLMClient.call_structured', side_effect=generate):
+        results = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, wanted, [])
+    assert len(results) == expected and len(seen) == calls
+    if calls > 1:
+        assert '[mirata] Qual è il contenuto del giro 1 domanda 0?' in seen[1]
+    assert all('obiettivo 10' not in prompt for prompt in seen)
+
+
+def test_local_checks_reject_broken_generation_before_saving(tmp_path):
+    path = setup_mock_lesson(tmp_path, num_units=1)
+    summary = {}
+    def generate(**kw):
+        return kw['response_model'].model_validate({'questions': [
+            {'type': 'mirata', 'question_text': 'Domanda 1: Qual è il contenuto?'},
+            {'type': 'mirata', 'question_text': 'Qual è il contenuto della unità?'}]})
+    with patch('rt.llm.client.LLMClient.call_structured', side_effect=generate):
+        result = recall.generate_recall_batch(path, RecallQuestionType.MIRATA, 1, [], summary=summary)
+    assert len(result) == 1 and len(recall.load_recall_bank(path).questions) == 1
+    assert summary['local_discarded'] == 1

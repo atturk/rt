@@ -21,16 +21,24 @@ export function useLessonImages(id: number) {
  *  scelte, null = tutte. */
 export function useAddImages(id: number) {
   return useMutation({
-    mutationFn: (vars: { files: File[]; perUnit: number; units: string[] | null }) =>
+    mutationFn: (vars: {
+      files?: File[]
+      perUnit?: number
+      units?: string[] | null
+      selected_images?: string[] | null
+      pages_only?: boolean
+    }) =>
       unwrap(
         api.POST('/api/v1/lessons/{lesson_id}/images', {
           params: path(id),
-          body: { mock: false },
+          body: { mock: false, pages_only: !!vars.pages_only },
           bodySerializer: () =>
             formData({
-              files: vars.files.length ? vars.files : null,
-              web_search: vars.perUnit > 0 ? vars.perUnit : null,
-              units: vars.perUnit > 0 && vars.units ? vars.units : null,
+              files: vars.files && vars.files.length ? vars.files : null,
+              web_search: vars.perUnit && vars.perUnit > 0 ? vars.perUnit : null,
+              units: vars.perUnit && vars.perUnit > 0 && vars.units ? vars.units : null,
+              selected_images: vars.selected_images && vars.selected_images.length ? vars.selected_images : null,
+              pages_only: vars.pages_only ? true : null,
             }),
         }),
       ),
@@ -54,3 +62,49 @@ export function uploadEditorImage(id: number, file: File, leaseToken: string) {
     bodySerializer: () => formData({ file, lease_token: leaseToken }),
   }))
 }
+
+/** Id della fonte di una pagina dei materiali ("material:<id>:<pagina>"), null per le altre immagini. */
+export function materialSourceId(source?: string | null): string | null {
+  const match = /^material:([^:]+):\d+$/.exec(source ?? '')
+  return match ? match[1] : null
+}
+
+/** Copia una pagina dei materiali in assets/images per l'inserimento nel documento. */
+export function copyMaterialPage(id: number, sourceId: string, page: number, leaseToken?: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/material-page', {
+    params: path(id),
+    body: { source_id: sourceId, page, lease_token: leaseToken },
+  }))
+}
+
+/** Toglie dal documento e da placement i riferimenti alle immagini indicate. */
+export function removeFromText(id: number, imageNames: string[], leaseToken?: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/remove-from-text', {
+    params: path(id),
+    body: { image_names: imageNames, lease_token: leaseToken },
+  }))
+}
+
+/** Ritaglia un'immagine (come nuova immagine o sostituzione). */
+export function cropMediaImage(
+  id: number,
+  imageName: string,
+  rect: [number, number, number, number],
+  replace: boolean = false,
+  leaseToken?: string,
+  updateDocument: boolean = true,
+) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/crop', {
+    params: path(id),
+    body: {
+      image_name: imageName,
+      rect,
+      replace,
+      lease_token: leaseToken ?? null,
+      update_document: updateDocument,
+    },
+  }))
+}
+
+
+

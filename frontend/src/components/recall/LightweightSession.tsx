@@ -1,3 +1,4 @@
+import { useRecallRules } from '@/api/recallRules'
 import { questionTypeId, typeLabel } from '@/lib/recall'
 import { EmptyGeneration } from './EmptyGeneration'
 import {
@@ -127,6 +128,7 @@ export function LightweightSession({
   const answerMutation = useAnswer(activeLessonId)
   const voiceMutation = useAnswerVoice(activeLessonId)
   const voteMutation = useVote(activeLessonId)
+  const votesEnabled = useRecallRules().data?.votes_enabled ?? true
   const regenerateMutation = useRegenerateQuestion(activeLessonId)
   const skipMutation = useSkip(activeLessonId)
   const endLessonSession = useEndSession(lessonId ?? 0)
@@ -827,6 +829,7 @@ export function LightweightSession({
               {/* Barra azioni inferiori */}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
                 <div className="flex items-center gap-1.5">
+                  {votesEnabled && <>
                   <IconButton
                     label="Buona domanda"
                     icon={ThumbsUp}
@@ -839,6 +842,7 @@ export function LightweightSession({
                     active={currentVote === 'down'}
                     onClick={() => handleVote('down')}
                   />
+                  </>}
                   <Button
                     variant="outline"
                     size="sm"

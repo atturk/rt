@@ -28,10 +28,13 @@ class ReviewFindingList(BaseModel):
     issues: List[ReviewFinding]
 
 
+LATEX_WRITING_RULE = r"Formule, insiemi, variabili con indici, frazioni ed equazioni in LaTeX ($...$ in riga, $$...$$ a blocco), mai pedici/apici Unicode o <sub>/<sup>; chimica: reazioni in $$\mathrm{...}$$ con \rightarrow o \rightleftharpoons, specie in riga come $\mathrm{CO_2}$, mai \ce; testo normale e sigle non chimiche restano testo."
+
+
 STUDY_NOTE_VERIFICA_SYSTEM_PROMPT = """Sei un revisore accademico ed esperto della materia. Il tuo compito è verificare l'accuratezza scientifica e concettuale del passaggio selezionato rispetto all'unità didattica e al contesto della lezione.
 Valuta se il passaggio è corretto, impreciso, errato o non verificabile.
 Fornisci una spiegazione rigorosa e chiara in formato markdown.
-Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione."""
+Se l'esito è 'impreciso' o 'errato', fornisci obbligatoriamente il campo 'correzione' contenente il testo che sostituisce ESATTAMENTE e per intero il passaggio scelto, senza commenti o spiegazioni all'interno della correzione.""" + "\n" + LATEX_WRITING_RULE
 
 STUDY_NOTE_CHIEDI_SYSTEM_PROMPT = """Sei un tutor accademico chiaro, accurato e didattico. Il tuo compito è spiegare allo studente il passaggio selezionato tenendo conto dell'unità didattica e dell'intera lezione.
 Rispondi in formato markdown in modo chiaro, approfondito ma accessibile."""
@@ -153,7 +156,8 @@ OBIETTIVI DI SCRITTURA:
 4. "Tenere il filo": mantieni la continuità concettuale della lezione senza salti logici.
 5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette). "Approfondita" significa esposizione completa e ben argomentata di ciò che il docente ha detto — non aggiunta di conoscenza enciclopedica esterna. Distingui sempre tra: (a) FATTO SORGENTE — ciò che il docente ha detto esplicitamente; (b) INFERENZA DIRETTA — collegamenti logici impliciti ma evidenti nel discorso del docente; ED EVITA (c) CONOSCENZA ESTERNA — nozioni non dette dal docente, anche se vere e pertinenti, che non vanno mai aggiunte.
 6. PROVENANCE: Nell'output JSON devi includere in "source_segment_ids" la lista degli ID dei segmenti principali utilizzati per redigere l'unità.
-7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi)."""
+7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi).
+8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano.""" + "\n9. " + LATEX_WRITING_RULE
 
 
 class PromptPrefix(str):
@@ -200,8 +204,10 @@ def build_rewrite_user_prompt(
     previous_units_text: str = "",
     materials_text: str = "",
     include_prefix: bool = True,
+    unit_materials_text: str = "",
 ) -> str:
     prefix = build_rewrite_prefix(outline_summary, previous_units_text, materials_text, glossary_text) if include_prefix else ""
+    materials_section = f"---\nPAGINE DEI MATERIALI ASSEGNATE A QUESTA UNITÀ:\n{unit_materials_text}\n" if unit_materials_text else ""
     return prefix + f"""Devi rielaborare l'unità didattica:
 ID: {unit_id}
 Titolo: {unit_title}
@@ -212,7 +218,7 @@ CONTESTO PRECEDENTE (ultimi 1-2 minuti, solo per mantenere il filo, non riscrive
 ---
 SEGMENTI PRINCIPALI DELL'UNITÀ (da rielaborare integralmente):
 {main_segments_text}
----
+{materials_section}---
 CONTESTO SUCCESSIVO (prossimi 1-2 minuti, solo per continuità):
 {next_context if next_context else "_Fine lezione_"}
 ---
@@ -297,21 +303,21 @@ Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestam
 def recall_fewshot_block(examples: List[dict]) -> str:
     """Le domande bocciate orientano cosa evitare, mai cosa imitare."""
     parts = []
-    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE'), (('down', 'lightning'), 'ESEMPI DA EVITARE')]:
+    for votes, title in [(('up',), 'ESEMPI BUONI DA SEGUIRE (forma e livello, non argomento)'), (('down', 'lightning'), 'ESEMPI DA EVITARE (forma e livello, non argomento)')]:
         rows = [ex for ex in examples if ex.get('vote') in votes]
         if not rows:
             continue
         parts.append(title + ':')
         for ex in rows:
             parts.append(ex.get('question_text', ''))
-            if title == 'ESEMPI DA EVITARE':
+            if title == 'ESEMPI DA EVITARE (forma e livello, non argomento)':
                 reasons = list(ex.get('reasons') or [])
                 if ex.get('vote') == 'lightning' and not reasons:
                     reasons = ['troppo facile o troppi indizi']
                 parts.append('Motivi: ' + (', '.join(reasons) or 'non specificati'))
                 if ex.get('comment'):
                     parts.append('Commento: ' + ex['comment'])
-    return '\n'.join(parts) + '\n\n' if parts else ''
+    return 'Scenario e contenuti si prendono solo dall’unità; gli esempi indicano forma e livello.\n\n' + '\n'.join(parts) + '\n\n' if parts else ''
 
 
 def build_recall_quiz_user_prompt(
@@ -464,10 +470,8 @@ GROUP_GUIDANCE = "Usa le valutazioni delle singole unità come orientamento per 
 NEUTRAL_GUIDANCE = "Valutazione del classificatore assente o non utilizzabile. Decidi dal contenuto e dal contesto, restituendo zero o più domande pertinenti e distinte, senza quota obbligatoria."
 
 
-def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, previous_questions: list) -> str:
+def recall_previous_block(previous_questions: list) -> str:
     import json
-    before, separator, after = prompt.partition("Genera zero, una o più domande")
-    prompt = before + context_block(context) + "\n\n" + separator + after
     if previous_questions:
         # Mantieni un array completo; troncare una stringa JSON può tagliare una domanda.
         previous = []
@@ -476,7 +480,15 @@ def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, pr
             if len(json.dumps(candidate, ensure_ascii=False)) > 12000:
                 break
             previous = candidate
-        prompt += "\n\nDOMANDE GIÀ PRESENTI (cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
+        return "\n\nDOMANDE GIÀ PRESENTI SULL’UNITÀ (di ogni tipo: cerca altri concetti, non parafrasi):\n" + json.dumps(previous, ensure_ascii=False)
+    return ""
+
+
+def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, previous_questions: list) -> str:
+    import json
+    before, separator, after = prompt.partition("Genera zero, una o più domande")
+    prompt = before + context_block(context) + "\n\n" + separator + after
+    prompt += recall_previous_block(previous_questions)
     return prompt + "\n\nVALUTAZIONE CLASSIFICATORE:\n" + json.dumps(assessment, ensure_ascii=False, sort_keys=True) + "\n" + (GROUP_GUIDANCE if assessment.get("state") == "group" else RICHNESS_GUIDANCE.get(assessment.get("level"), NEUTRAL_GUIDANCE))
 
 
@@ -529,7 +541,7 @@ Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResul
 # 9. RECALL EVAL VASTA JOB (Fase D3)
 # ----------------------------------------------------------------------
 
-class RecallEvalVastaResult(BaseModel):
+class RecallEvalVastaResult(RecallEvalMirataResult):
     outcome: Optional[RecallOutcome] = None
     commento: str = Field(..., description="Valutazione breve di correttezza concettuale e qualità organizzativa rispetto alla scaletta ideale")
 
@@ -541,7 +553,7 @@ REGOLE CATEGORICHE:
 2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
 3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
 4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente.
-5. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
+5. Riporta correttezza e completezza fra 0 e 100. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -557,7 +569,7 @@ SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (commento, outcome)."""
+Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (correttezza, completezza, commento, outcome)."""
 
 
 # ----------------------------------------------------------------------
@@ -693,18 +705,18 @@ def build_recall_special_user_prompt(
 
 RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda già usata a lezione, per verificare se lo studente ha capito il ragionamento e non solo memorizzato la risposta.
 REGOLE:
-1. Mantieni l'obiettivo e il procedimento del tipo; cambia i valori delle variabili restando negli intervalli plausibili, e se serve i dettagli di contorno (età, sesso, contesto).
+1. Mantieni l'obiettivo e il procedimento del tipo; cambia valori negli intervalli plausibili e contesto (età, sesso, situazione clinica; miscele di profumi, integratori o farmaci), partendo dallo scenario dell'unità.
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
 3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.
 4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.
-OUTPUT JSON (conforme a GeneratedVariant): {"question_text": "...", "pregenerated_material": "..."}"""
+OUTPUT JSON (conforme a VariantBatch): {"items": [{"question_text": "...", "pregenerated_material": "..."}]}"""
 
 
 RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
-Mantieni l'obiettivo e il procedimento generale del tipo; varia i dati entro intervalli plausibili.
+Mantieni l'obiettivo e il procedimento generale del tipo; varia dati e contesto (età, sesso, situazione) entro intervalli plausibili a partire dallo scenario dell'unità.
 La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
 Non generare pregenerated_material né una soluzione della domanda.
-OUTPUT JSON (conforme a GeneratedTextVariant): {"question_text": "..."}"""
+OUTPUT JSON (conforme a TextVariantBatch): {"items": [{"question_text": "..."}]}"""
 
 RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente una domanda personalizzata.
 Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
@@ -712,7 +724,7 @@ Restituisci VariantCheck: coerente=true solo se la traccia è risolvibile; descr
 Non restituire una soluzione pregenerata: lascia soluzione vuota."""
 
 
-def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False) -> str:
+def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, problems: str = "", *, text_correction: bool = False, batch_size: int = 1, max_items: int = 5) -> str:
     import json
     what = kind
     prompt = f"TIPO DI {what.upper()}:\n" + json.dumps(tipo, ensure_ascii=False, indent=1)
@@ -720,8 +732,9 @@ def build_recall_variant_user_prompt(kind: str, tipo: dict, previous: list, prob
         prompt += "\n\nVERSIONI GIÀ USATE (non ripeterle):\n" + json.dumps(previous[-6:], ensure_ascii=False)
     if problems:
         prompt += "\n\nLA VARIANTE PRECEDENTE ERA ERRATA, correggi questi problemi:\n" + problems
-    model = "GeneratedTextVariant" if text_correction else "GeneratedVariant"
-    return prompt + f"\n\nCrea una nuova variante del {what} e restituisci {model}."
+    model = "TextVariantBatch" if text_correction else "VariantBatch"
+    # Tetto tecnico del lotto (mai il numero chiesto dall'utente).
+    return prompt + f"\n\nCrea fino a {max_items} varianti del {what}, diverse fra loro, nel contenitore items conforme a {model}."
 
 
 RECALL_VARIANT_CHECK_SYSTEM_PROMPT = """Sei un docente universitario che controlla una variante di una domanda personalizzata prima di proporla a uno studente.

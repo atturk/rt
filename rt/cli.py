@@ -915,9 +915,9 @@ def _ensure_database_or_exit(command: Optional[str]) -> None:
 def cmd_web(args: argparse.Namespace) -> None:
     """Avvia la web app: API + worker + SPA (RT4-F8)."""
     from rt.api.launcher import run_spa
-    from rt.api.server import DEFAULT_PORT
+    from rt.services.service_manager import api_port
     kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
-    code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
+    code = run_spa(port=args.port or api_port(), open_browser=not args.no_browser, **kwargs)
     if code:
         sys.exit(code)
 

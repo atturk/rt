@@ -54,6 +54,7 @@ def test_fewshot_groups_and_prompt_keep_reasons(tmp_path):
     assert 'ambigua' in prompt and 'Due risposte' in prompt
     recall.record_fewshot_vote(RecallQuestionType.QUIZ, 'Da evitare?', 'up', state_dir=root)
     assert not recall._load_fewshot(root)['quiz']['avoid']
+    assert all(row['vote'] == 'up' for row in recall.load_fewshot_examples(RecallQuestionType.QUIZ, root))
 
 
 def test_regeneration_job_uses_original_units_comment_and_is_idempotent(api_client, lesson, rt_db):

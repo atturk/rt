@@ -395,6 +395,7 @@ class ClassifierJobConfig(BaseModel):
     model: Optional[str] = None
     credential: Optional[str] = None
     base_url: Optional[str] = None
+    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
 class ClassifierJob(BaseModel):
@@ -403,6 +404,7 @@ class ClassifierJob(BaseModel):
     credential: str
     base_url: Optional[str] = None
     timeout_seconds: float
+    threshold: Optional[float] = Field(default=0.8, ge=0.0, le=1.0)
 
 
 class ClassifierConfig(BaseModel):
@@ -452,10 +454,12 @@ def classifier_job(cfg, name) -> ClassifierJob:
         raise ValueError("Job del classificatore non valido")
     classifier = cfg.classifier
     job = classifier.jobs.get(name, ClassifierJobConfig())
+    threshold = job.threshold if job.threshold is not None else (0.7 if name == "images" else 0.8)
     return ClassifierJob(mode=job.mode, model=job.model or classifier.model,
         credential=job.credential or classifier.credential,
         base_url=job.base_url or classifier.base_url,
-        timeout_seconds=classifier.timeout_seconds)
+        timeout_seconds=classifier.timeout_seconds,
+        threshold=threshold)
 
 
 def classifier_jev(cfg, name):
@@ -513,6 +517,8 @@ class CustomQuestionType(BaseModel):
 
 
 class RecallConfig(BaseModel):
+    votes_enabled: bool = True
+    presave_check: bool = True
     custom_types: List[CustomQuestionType] = Field(default_factory=list)
     custom_type_threshold: float = Field(default=.25, ge=0, le=1)
     refill_thresholds: Dict[str, int] = Field(default_factory=dict)
@@ -807,10 +813,27 @@ def _migrate_general(path, stamp, size):
         data = yaml.safe_load(stream)
     if isinstance(data, dict):
         try:
-            migrate_registry(path, data)
+            data = migrate_registry(path, data)
+            _migrate_image_threshold(path, data)
         except Exception as exc:  # una migrazione non riuscita non deve fermare l'app: si riprova al prossimo avvio
             import logging
             logging.getLogger(__name__).warning("Migrazione dei tipi di domanda non riuscita: %s", exc)
+
+
+def _migrate_image_threshold(path, data):
+    """Una sola volta: conserva anche una futura scelta esplicita di 0,8."""
+    migrations = data.setdefault('_migrations', {})
+    if not isinstance(migrations, dict) or migrations.get('images_threshold_07'):
+        return
+    # Anche senza 'classifier' si segna la migrazione: un 0,8 scelto dopo resta.
+    classifier = data.get('classifier') if isinstance(data.get('classifier'), dict) else {}
+    jobs = classifier.get('jobs') or {}
+    images = jobs.get('images') if isinstance(jobs, dict) else None
+    if isinstance(images, dict) and images.get('threshold') == 0.8:
+        images['threshold'] = 0.7
+    migrations['images_threshold_07'] = True
+    from rt.services.config_service import write_yaml_atomic
+    write_yaml_atomic(path, data)
 
 
 def load_config(config_path: Optional[str] = None) -> RTConfig:

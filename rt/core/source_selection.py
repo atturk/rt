@@ -32,8 +32,13 @@ def selection(lesson_dir):
             and not any(s.tipo == "materiale" for s in sources)):
         # Compatibilità b1: dagli appunti impliciti all’audio sopraggiunto.
         primary_changed = False
-    return {'principale': primary, 'ordine_usato': used, 'principale_usato': used_primary,
-            'solo_ricostruzione': reordered or primary_changed}
+    removed_used = [s.id for s in load_sources(lesson_dir, include_removed=True)
+                    if s.rimossa_il and s.id in used]
+    # Una principale tolta e mai usata non richiede ricostruzione.
+    if used_primary not in ids and used_primary not in removed_used:
+        primary_changed = False
+    return {'fonti_tolte_usate': removed_used, 'principale': primary, 'ordine_usato': used, 'principale_usato': used_primary,
+            'solo_ricostruzione': bool(removed_used) or reordered or primary_changed}
 
 
 @lesson_locked
@@ -63,3 +68,20 @@ def record_used_selection(lesson_dir):
     state.update(principale=current['principale'], principale_usato=current['principale'],
                  ordine_usato=[s.id for s in sources], audio_usato=[s.id for s in sources if s.tipo == 'audio'])
     _write_state(lesson_dir, state)
+
+
+@lesson_locked
+def restore_removed_used(lesson_dir):
+    """Rimette soltanto le fonti tolte ancora presenti nel testo corrente."""
+    used = selection(lesson_dir)['ordine_usato']
+    sources = load_sources(lesson_dir, include_removed=True)
+    for source in sources:
+        if source.id in used:
+            source.rimossa_il = None
+    active = [s for s in sources if not s.rimossa_il]
+    mapping = {s.id: s for s in active}
+    ordered = [mapping[sid] for sid in used if sid in mapping]
+    ordered.extend(s for s in active if s.id not in used)
+    for index, source in enumerate(ordered, 1):
+        source.ordine = index
+    _save(lesson_dir, [*ordered, *(s for s in sources if s.rimossa_il)])

@@ -41,9 +41,10 @@ def test_pdf_native_text_and_blank_page_vision_cached_once(tmp_path, monkeypatch
     assert calls == []
     assert material_pages(lesson, source) == pages
     blank = add_source(lesson, 'materiale', 'blank.pdf', pdf_bytes(''))
-    assert material_pages(lesson, blank)[0]['testo'] == 'Vision text'
+    assert material_pages(lesson, blank)[0]['testo'] == ''
+    assert material_pages(lesson, blank)[0]['mapping_skip'] is True
     material_pages(lesson, blank)
-    assert len(calls) == 1
+    assert len(calls) == 0
     assert (tmp_path / source.file).read_bytes() == original
     (tmp_path / blank.file).write_bytes(original)
     with pytest.raises(ValueError, match='originale'):
@@ -65,12 +66,13 @@ def test_image_and_pptx_extract_text_and_embedded_images_without_quicklook(tmp_p
     lesson = str(tmp_path)
     source = add_source(lesson, 'materiale', 'slides.pptx', stream.getvalue())
     pages = material_pages(lesson, source)
-    assert pages[0]['testo'] == 'Slide native text' and len(pages[0]['immagini']) == 1
+    assert 'Slide native text' in pages[0]['testo'] and 'image context' in pages[0]['testo']
+    assert len(pages[0]['immagini']) == 1 and pages[0]['has_figures']
     assert page_count(str(tmp_path / source.file)) == 1
     image = add_source(lesson, 'materiale', 'photo.png', png_bytes())
     assert material_pages(lesson, image)[0]['testo'] == 'image context'
     material_pages(lesson, image)
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):

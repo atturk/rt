@@ -16,8 +16,11 @@ export type StudyNoteResponse = {
   correzione?: string
   sources?: StudyNoteWebSource[]
 }
-export type StudyNote = Omit<Schemas['StudyNoteView'], 'response'> & {
+export type StudyNote = Omit<Schemas['StudyNoteView'], 'response' | 'spiegazione_html' | 'correzione_html'> & {
   response?: StudyNoteResponse | null
+  /** Le note già in memoria o ricevute da un server precedente restano leggibili. */
+  spiegazione_html?: string
+  correzione_html?: string
   precedente?: boolean
 }
 export type StudyNoteCreate = Schemas['StudyNoteCreate']

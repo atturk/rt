@@ -25,12 +25,16 @@ import {
   type SourceItem,
 } from '@/api/sources'
 import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
+import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
+import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
+import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
   const sourcesQuery = useSources(lessonId)
@@ -49,6 +53,11 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const [notesModalOpen, setNotesModalOpen] = useState(false)
   const [notesText, setNotesText] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Upload audio multipli
+  const [pendingAudios, setPendingAudios] = useState<File[]>([])
+  const [unisciAudio, setUnisciAudio] = useState(true)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
 
   // Dialog di conferma per azioni che richiedono ricostruzione
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -69,16 +78,35 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
   // Upload handlers
   const handleAudioSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    if (audioInputRef.current) audioInputRef.current.value = ''
+    if (files.length === 1) {
+      setActionError(null)
+      try {
+        await sourcesApi.addAudio(lessonId, files[0])
+        sourcesQuery.refetch()
+      } catch (err) {
+        setActionError(errorMessage(err))
+      }
+      return
+    }
+    setPendingAudios(files)
+    setUnisciAudio(true)
+  }
+
+  const handleUploadPendingAudios = async () => {
+    if (!pendingAudios.length) return
+    setUploadingAudio(true)
     setActionError(null)
     try {
-      await sourcesApi.addAudio(lessonId, file)
+      await sourcesApi.addAudio(lessonId, pendingAudios, undefined, unisciAudio)
+      setPendingAudios([])
       sourcesQuery.refetch()
     } catch (err) {
       setActionError(errorMessage(err))
     } finally {
-      if (audioInputRef.current) audioInputRef.current.value = ''
+      setUploadingAudio(false)
     }
   }
 
@@ -254,6 +282,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         <input
           ref={audioInputRef}
           type="file"
+          multiple
           accept=".mp3,.m4a,.wav,.ogg,.aac,.flac,audio/*"
           className="hidden"
           onChange={handleAudioSelected}
@@ -267,6 +296,38 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           onChange={handleMaterialsSelected}
         />
       </div>
+
+      {pendingAudios.length > 1 && (
+        <div
+          className="flex items-center justify-between gap-2 rounded-lg border bg-card p-2.5 text-meta"
+          data-testid="pending-audios-bar"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Mic className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="truncate font-medium">
+              {pendingAudios.length} parti · {formatBytes(pendingAudios.reduce((sum, f) => sum + f.size, 0))} ·{' '}
+              {unisciAudio ? "un'unica registrazione" : 'fonti separate'}
+            </span>
+            <MergeAudioToggle merged={unisciAudio} disabled={uploadingAudio} onChange={setUnisciAudio} />
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              disabled={uploadingAudio}
+              onClick={handleUploadPendingAudios}
+            >
+              {uploadingAudio ? 'Caricamento…' : 'Carica'}
+            </Button>
+            <IconButton
+              icon={X}
+              label="Annulla"
+              disabled={uploadingAudio}
+              onClick={() => setPendingAudios([])}
+            />
+          </div>
+        </div>
+      )}
 
       {actionError && <Alert tone="danger">{actionError}</Alert>}
       {restoreJob.error && <Alert tone="danger">{restoreJob.error}</Alert>}
@@ -318,10 +379,11 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
               onDragOver={isAudio ? (e) => handleDragOver(e, audioIdx) : undefined}
               onDrop={isAudio ? (e) => handleDrop(e, audioIdx) : undefined}
               className={cn(
-                'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
+                'group relative flex w-full min-w-0 flex-col gap-2 rounded-lg px-2 py-1.5 text-body transition-colors hover:bg-muted/60',
                 isAudio && dragOverIndex === audioIdx && 'border-2 border-accent',
               )}
             >
+              <div className="flex min-w-0 items-center gap-2">
               {/* Icona tipo */}
               {s.tipo === 'audio' && <Mic className="size-4 shrink-0 text-muted-foreground" />}
               {s.tipo === 'appunti' && <FileText className="size-4 shrink-0 text-muted-foreground" />}
@@ -371,12 +433,14 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 <span className="size-4 shrink-0" aria-hidden />
               )}
 
-              {/* Nome */}
-              <span className="min-w-0 flex-1 truncate font-medium">{s.nome}</span>
+              {/* Nome ed eventuali parti */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? 'Registrazione unita' : s.nome}</span>
+              </div>
 
               {/* Misura */}
               {sizeText && (
-                <span className="text-meta text-muted-foreground tabular-nums">{sizeText}</span>
+                <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>
               )}
 
               {/* Puntino fonte nuova non ancora usata */}
@@ -396,8 +460,21 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                 label={`Togli ${s.nome}`}
                 className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                 disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(s.id)}
+                onClick={() => setConfirmDialog({
+                  open: true,
+                  title: `Togliere ${s.nome}?`,
+                  description: s.usata
+                    ? 'Il testo della lezione contiene ancora questa parte: per toglierla serve Ricostruisci.'
+                    : 'Vuoi togliere questa fonte dalla lezione?',
+                  confirmLabel: 'Togli',
+                  onConfirm: () => {
+                    setConfirmDialog(null)
+                    deleteMutation.mutate(s.id, { onError: (err) => setActionError(errorMessage(err)) })
+                  },
+                })}
               />
+              </div>
+              {isAudio && s.parti && s.parti.length > 1 && <SourceAudioParts sourceId={s.id} parts={s.parti} />}
             </div>
           )
         })}

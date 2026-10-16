@@ -26,9 +26,11 @@ def purge_lesson_records(session, row: Lesson) -> None:
     """Toglie le righe legate alla lezione per percorso o per chiave (job conclusi, sessioni
     di recall, comandi Telegram, istruzioni aggiuntive, lease di modifica, documenti di
     stato): senza questo una lezione ricreata con lo stesso nome le erediterebbe."""
-    from sqlalchemy import delete, or_
+    from sqlalchemy import delete, or_, update
+    from rt.db.models import CalendarEntryState
     from rt.services.document_edit_lease import _key as lease_key
     from rt.services.prompt_settings import extra_keys
+    session.execute(update(CalendarEntryState).where(CalendarEntryState.lesson_id == row.id).values(lesson_id=None))
     path = row.path
     for model in (RecallSession, TelegramCommand):
         session.execute(delete(model).where(model.lesson_path == path))

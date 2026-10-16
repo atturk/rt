@@ -1,4 +1,7 @@
 import { expect, type Page } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test, apiGet, authHeaders, loginViaLink, openLessonDetails } from './support'
 
 // 4.2.5b2: Materie in Impostazioni, Fonti nel pannello Dettagli, chip Consigliato e interruttore
@@ -52,6 +55,41 @@ test('fonti: la sezione Fonti sta in cima a Dettagli e mostra la registrazione c
   await expect(panel.getByText('Fasi', { exact: true })).toBeVisible()
 })
 
+test('registrazione unita: parti e barra restano dentro la card a 390 px', async ({ page }) => {
+  // Unire due audio richiede ffmpeg, che il job e2e della CI non ha (la riga è coperta anche dai vitest).
+  test.skip(!hasFfmpeg(), 'ffmpeg non installato')
+  await loginViaLink(page)
+  const lesson = await firstLesson(page)
+  const audio = readFileSync(fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url)))
+  const form = new FormData()
+  form.append('tipo', 'audio')
+  form.append('unisci', 'true')
+  for (const suffix of ['163453', '170453']) {
+    form.append('file', new File([new Uint8Array(audio)], `TX02_MIC002_registrazione_universitaria_molto_lunga_${suffix}.wav`, { type: 'audio/wav' }))
+  }
+  const response = await page.request.post(`/api/v1/lessons/${lesson.id}/sources`, { headers: authHeaders(), multipart: form })
+  expect(response.ok(), await response.text()).toBeTruthy()
+  const source = await response.json() as { id: string }
+  try {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/lezioni/${lesson.id}`)
+    const panel = await openLessonDetails(page)
+    const row = panel.getByTestId(`source-row-${source.id}`)
+    await expect(row).toContainText('Registrazione unita')
+    await row.getByRole('button', { name: '2 parti' }).click()
+    await expect(row.getByTestId(`source-parts-${source.id}`)).toBeVisible()
+    expect(await row.evaluate((root) => {
+      const card = root.closest('[data-testid="sources-section"]')!.getBoundingClientRect()
+      return [root, ...Array.from(root.querySelectorAll('*'))].every((element) => {
+        const box = element.getBoundingClientRect()
+        return box.left >= card.left - 1 && box.right <= card.right + 1
+      }) && root.scrollWidth <= root.clientWidth
+    })).toBe(true)
+  } finally {
+    await page.request.delete(`/api/v1/lessons/${lesson.id}/sources/${source.id}`, { headers: authHeaders() })
+  }
+})
+
 test('domande: il chip Consigliato sta prima dei tipi e i tipi di prima restano', async ({ page }) => {
   await loginViaLink(page)
   const lessons = await apiGet<{ id: number; materia: string; phases: Record<string, string> }[]>(page.request, '/lessons')
@@ -78,3 +116,59 @@ test('ricerca web: l\'interruttore della verifica è spento di default e non can
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
 })
+
+test('fonti: conferma, fonti usate tolte e ripristino; una fonte mai usata non lascia la riga', async ({ page }) => {
+  await loginViaLink(page)
+  const lesson = await firstLesson(page)
+  const url = `/lessons/${lesson.id}/sources`
+  const initial = await apiGet<{ sources: { id: string; usata: boolean }[] }>(page.request, url)
+  const used = initial.sources.find(s => s.usata)!
+  expect(used).toBeTruthy()
+  await page.goto(`/lezioni/${lesson.id}`)
+  let panel = await openLessonDetails(page)
+  const row = panel.getByTestId(`source-row-${used.id}`)
+  await row.hover()
+  await row.getByRole('button', { name: /^Togli / }).click()
+  await expect(page.getByRole('dialog')).toContainText('Il testo della lezione contiene ancora questa parte')
+  await page.getByRole('button', { name: 'Annulla', exact: true }).click()
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { name: /^Togli / }).click()
+  await page.getByRole('button', { name: 'Togli', exact: true }).click()
+  try {
+    const bar = page.getByTestId('lesson-update-bar')
+    await expect(bar).toContainText('Hai tolto una fonte già usata')
+    await expect(bar.getByRole('button', { name: 'Ricostruisci', exact: true })).toBeVisible()
+    await expect(bar.getByTestId('bar-extend-btn')).toHaveCount(0)
+    await bar.getByRole('button', { name: "Rimetti com'era" }).click()
+    await expect(row).toBeVisible()
+    await expect(bar.getByText(/Hai tolto/)).toHaveCount(0)
+  } finally {
+    await page.request.post(`/api/v1${url}/restore-removed`, { headers: authHeaders() })
+  }
+  const added = await page.request.post(`/api/v1${url}`, { headers: authHeaders(), multipart: { tipo: 'appunti', testo: 'Fonte di prova mai usata' } })
+  expect(added.ok()).toBeTruthy()
+  const fresh = await added.json() as { id: string }
+  await page.reload()
+  panel = await openLessonDetails(page)
+  const freshRow = panel.getByTestId(`source-row-${fresh.id}`)
+  try {
+    await freshRow.hover()
+    await freshRow.getByRole('button', { name: /^Togli / }).click()
+    await expect(page.getByRole('dialog')).toContainText('Vuoi togliere questa fonte')
+    await page.getByRole('button', { name: 'Togli', exact: true }).click()
+    await expect(freshRow).toHaveCount(0)
+    await expect(page.getByTestId('lesson-update-bar').getByText(/Fonti nuove/)).toHaveCount(0)
+    await expect(page.getByTestId('lesson-update-bar').getByText(/Hai tolto/)).toHaveCount(0)
+  } finally {
+    await page.request.delete(`/api/v1${url}/${fresh.id}`, { headers: authHeaders() })
+  }
+})
+
+function hasFfmpeg(): boolean {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}

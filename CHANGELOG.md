@@ -17,6 +17,91 @@
 - Su Windows funzionano i lock dei file, i nomi delle lezioni e la resa delle slide PowerPoint (con LibreOffice, se installato).
 - RT si installa come un'app: un .dmg per il Mac (Apple Silicon) e un setup per Windows, con tutto incluso (niente Homebrew, Python o terminale). Si apre con un doppio clic e apre la web app nel browser.
 - L'app si aggiorna da Impostazioni › Info › Aggiornamenti, solo alle versioni stabili. Le beta si scaricano a mano dalla pagina delle release.
+- Se la porta 8765 è occupata da un altro programma, l'app ne sceglie una libera e la ricorda: niente più avvio fallito.
+
+## 4.2.6b5 — 2026-10-16
+
+### Novità
+
+- In Arricchimento › Media della lezione vedi tutte le pagine e le foto delle fonti, raggruppate per fonte, con l'unità in cui compaiono o “non usata”. Puoi selezionarne una, un intervallo con Maiusc o tutte, e inserirle nel testo al punto del cursore (più pagine diventano una striscia), trascinarle nel testo, collocarle in automatico solo quelle scelte o toglierle dal testo lasciandole nei media.
+- Ogni miniatura ha l'icona Ritaglia: il ritaglio si salva come nuova immagine (“Pag. N · ritaglio K”) oppure sostituisce la pagina nel testo, dopo una conferma che dice in quali unità compare.
+- Aggiungendo PDF o foto puoi scegliere “Solo pagine”: il file viene diviso in pagine nei media, senza modelli e senza costi, e le collochi quando vuoi.
+- Le registrazioni unite hanno una riga compatta con durata totale, chip delle parti e barra proporzionale; aprendo il chip, nomi e durate usano tutta la larghezza del pannello anche sul telefono.
+- Le risposte e le correzioni di Chiedi/Verifica mostrano titoli, grassetti, elenchi e formule; il contenuto passa dallo stesso renderer sicuro dei documenti.
+- Sul computer i popup Chiedi e Verifica si spostano e si ridimensionano, possono allargarsi a pannello e mantengono il campo d’invio visibile mentre la risposta scorre. Invio manda la richiesta, Maiusc+Invio va a capo.
+- La collocazione delle pagine confronta i passaggi pertinenti del parlato e verifica che il contenuto sia didattico. Ogni pagina va nel punto più adatto, con una soglia iniziale più permissiva.
+- La rielaborazione e le correzioni di Verifica usano formule LaTeX, anche per le reazioni chimiche, leggibili nell’editor, nella lettura e nello Studio.
+
+### Correzioni
+
+- Trascinando PDF o foto con il pannello Arricchimento aperto, il pannello si illumina e il rilascio apre il caricamento dei media, invece del riquadro di import di una nuova lezione.
+- Miniature e immagini nel testo si vedono intere, senza tagli, anche quando sono molto larghe o molto alte.
+- Su iPhone il foglio Chiedi/Verifica resta sopra la barra delle sezioni e la tastiera; la maniglia sceglie tre altezze e le risposte lunghe aprono il foglio a piena altezza.
+- Nel testo il clic destro apre sempre il menu di RT, anche senza selezione e con ctrl+clic su Mac; ⌥ + clic destro apre il menu del browser.
+- Le sottolineature di Verifica e Chiedi compaiono solo con il pannello delle note aperto; nello Studio si vede solo la nota del popup aperto.
+- Copertine, titoli e pagine quasi vuote senza figure restano fuori dalla collocazione automatica, senza chiamare i modelli; intestazioni e piè di pagina ripetuti non contano come contenuto. Gli schemi con poco testo usano la descrizione visiva.
+- Nell’import senza audio il primo documento è già selezionato come fonte principale; togliendolo, la scelta passa al primo rimasto.
+- Le istruzioni ai modelli evitano pedici e apici Unicode o HTML nelle formule.
+
+## 4.2.6b4 — 2026-10-15
+
+### Correzioni
+
+- Trascinando un file sulla pagina, il riquadro di import resta visibile finché non lo lasci andare, anche se muovi il file sopra altri elementi.
+
+### Novità
+
+- Puoi scaricare solo le fonti di una lezione (audio unito e ottimizzato, PDF, foto e altri documenti) dal menu Esporta della lezione o, per più lezioni, dalla selezione con “Solo le fonti (zip)”.
+- Il pulsante Unisci è un’icona che cambia con lo stato: parti unite in un’unica registrazione o fonti separate.
+- Il caricamento dei file di una nuova lezione continua anche se chiudi la finestra di import: lo segui nella pagina Job, puoi annullarlo e avviare altri import, che partono uno dopo l’altro. Finché un caricamento è in corso, chiudere o ricaricare la scheda di RT chiede conferma.
+
+## 4.2.6b3 — 2026-10-15
+
+### Correzioni
+
+- Le ore segnate come seguite senza una lezione si possono scegliere nell’import e collegare a una lezione. Le ore annullate rifiutano il collegamento; eliminare una lezione libera la sua ora senza cambiare lo stato “seguita”.
+- In Arricchimento puoi trascinare PDF e foto nel riquadro di caricamento, aggiungendoli ai file già scelti.
+- Il caricamento di PDF e foto mostra l’avanzamento durante la lettura e la collocazione delle immagini.
+
+### Novità
+
+- I PDF e le foto aggiunti in Arricchimento si collocano nelle sottounità pertinenti, come i materiali importati. I PDF usano il testo della pagina; la descrizione visiva serve alle pagine senza testo e alle foto. Le immagini già presenti restano al loro posto.
+- Le immagini trovate sul web per una sottounità vengono inserite direttamente in quella sottounità.
+
+## 4.2.6b2.1 — 2026-10-15
+
+### Correzioni
+
+- Il player audio è di nuovo visibile nelle lezioni importate con più audio uniti (o con un audio e dei materiali): non trovava l'audio salvato fra le fonti. Le lezioni già importate tornano a funzionare da sole.
+
+## 4.2.6b2 — 2026-10-15
+
+### Correzioni
+
+- Striscia di immagini nell'editor: con molte pagine non allarga più l'editor e la pagina, le miniature scorrono dentro la striscia; sotto la striscia non compare più l'ultima pagina a grandezza piena.
+- Pannello Domande: tolta la frase sotto i chip del tipo ("Ogni unità riceve il tipo che Jev le ha consigliato…").
+- Le novità della 4.2.6b1 sono di nuovo visibili in Impostazioni (la sezione risultava vuota).
+
+## 4.2.6b1 — 2026-10-15
+
+### Novità
+
+- Domande, numero come tetto: nei popup "Quante" diventa "Fino a". Il modello genera solo le domande che trova utili; se non arriva al numero, RT riprova fino a tre passaggi sulle unità che danno ancora domande nuove. Le domande in più dell'ultimo passaggio restano.
+- Domande, niente ripetizioni: il generatore vede le domande già presenti sull'unità di ogni tipo (quiz, mirate, vaste, personalizzate), non solo dello stesso tipo, e cerca altri concetti.
+- Domande, varianti degli esercizi: i tipi con "Varianti verificate" riempiono il numero chiesto con varianti che cambiano dati e contesto (es. età e situazione clinica, profumi o farmaci nelle miscele), fino a 5 per chiamata, ciascuna controllata da una verifica indipendente. Non c'è più il limite di 2.
+- Domande, controlli senza modello: RT scarta da sé le domande chiaramente rotte (troppo corte o enormi, segnaposto, testo ripetuto, in inglese, quiz con opzioni doppie o risposta giusta molto più lunga, fuori tema, quasi doppioni, varianti con gli stessi numeri). Le valutazioni con esito in contraddizione con le percentuali si riprovano una volta.
+- Domande, avviso finale: a fine generazione dice quante ne ha create rispetto al numero e perché si è fermato, per esempio "Generate 6 su 10: il modello non ha trovato altri contenuti utili. 2 scartate dai controlli, 1 variante non ha superato la verifica."
+- Regole dai voti: in Impostazioni › Domande, sezione "Regole dai voti", per ogni tipo e materia con voti ci sono al massimo 8 regole ricavate dai voti, modificabili a mano, con numero di voti, data e l'icona Aggiorna ora. Si aggiornano da sole dopo 5 voti nuovi, ma quelle modificate a mano restano finché non premi Aggiorna ora. Interruttori Voti e Controllo prima di salvare, accesi di default: con i Voti spenti spariscono i pulsanti di voto e nei prompt non entrano né esempi né regole. Gli esempi dei voti si scelgono per materia e pertinenza con l'unità.
+- Fonti tolte in sicurezza: la × su una fonte in Dettagli chiede conferma (e avvisa se serve Ricostruisci). La fonte resta salvata: se era già usata compare "Hai tolto N fonti già usate" con Ricostruisci e l'icona Rimetti com'era; se non era mai usata non compare nessuna riga. Ripristinare una versione rimette le fonti di quella versione.
+- Materiali per sottounità: prima della rielaborazione ogni pagina dei materiali viene confrontata con il parlato delle sottounità (parole significative, senza intercalari) e il classificatore delle immagini conferma a quali appartiene davvero (soglia 0,8, regolabile in Impostazioni › Classificatore). Ogni sottounità riceve solo le sue pagine come contesto, e la fonte principale guida: dai materiali entrano termini, valori, definizioni ed esempi di ciò che il docente tratta. Le lezioni già fatte cambiano solo con Ricostruisci.
+- Immagini dei materiali: con la graffetta accesa le pagine assegnate compaiono sotto la loro sottounità (o sotto l'unità se servono a tre o più sottounità), nell'ordine del documento; le immagini aggiunte a mano o dal web restano dopo.
+- Striscia di immagini: due o più immagini di fila diventano una striscia di miniature in una riga che scorre di lato, nell'editor, nella lettura e nello Studio, con la freccina per chiuderle tutte. Un clic apre il visore a schermo pieno con frecce, tastiera (← → Esc) e swipe sul telefono. Il markdown esportato resta un'immagine per riga.
+- Audio leggero: ogni registrazione aggiunta (anche con i materiali o da Aggiungi fonte) si salva in m4a; il wav non si tiene.
+- Unisci: più audio caricati insieme diventano una sola fonte, con l'elenco delle parti e la loro durata sotto il nome in Fonti. Il bottone Unisci (acceso di default) sta nella riga delle parti dell'import e in Aggiungi fonte; spento, restano fonti separate.
+- Alleggerisci: in Impostazioni › Spazio e cache, "Alleggerisci l'audio delle lezioni" mostra quanto spazio si libera e, dopo la conferma, converte i vecchi wav e flac e cancella gli audio uniti che non servono più, senza rifare trascrizioni e senza rompere le versioni.
+- Calendario: in un'ora senza lezione c'è l'icona + che apre l'import con quella data e quell'ora già scelte; a import finito la lezione è collegata.
+- Import: l'ora scelta si distingue meglio (bordo pieno), le altre hanno la barretta grigia.
+- Trascinamento: si possono trascinare audio, materiali o .zip su qualunque punto della finestra; compare "Rilascia per importare" e si apre l'import con i file già caricati.
 
 ## 4.2.5 — 2026-10-14
 
