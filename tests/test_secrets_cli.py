@@ -214,18 +214,10 @@ def test_set_secret_uses_store_when_initialized(workdir):
     os.environ.pop("DEEPSEEK_API_KEY", None)
 
 
-def test_wizard_saves_to_store(workdir):
-    from rt.tui.configure import _save_secret
-    secrets_service.init_store()
-    _save_secret(str(workdir / ".env"), "RT_TELEGRAM_BOT_TOKEN", "999:token-dal-wizard-abc")
-    assert secrets_service.store().get("RT_TELEGRAM_BOT_TOKEN") == "999:token-dal-wizard-abc"
-    assert "token-dal-wizard" not in (workdir / ".env").read_text(encoding="utf-8")
-
-
 def test_web_telegram_settings_keep_chat_id_in_env(workdir):
-    from rt.web import settings
+    from rt.services import settings_service as settings
     secrets_service.init_store()
-    settings.save_telegram(workdir, "999:token-dal-web-abcdef", "-100555", [], "")
+    settings.save_telegram(workdir, "999:token-dal-web-abcdef", "-100555")
     env_text = (workdir / ".env").read_text(encoding="utf-8")
     assert "-100555" in env_text and "token-dal-web" not in env_text
     assert secrets_service.store().get("RT_TELEGRAM_BOT_TOKEN") == "999:token-dal-web-abcdef"

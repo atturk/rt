@@ -17,7 +17,7 @@ dall'API sulla stessa origine. Ctrl+C li ferma tutti. Tutto ascolta solo su `127
 La fase FA ha consolidato la web dopo il primo uso reale. In breve:
 
 - **Job più robusti (FA1):** una risposta del modello fuori schema dà un errore leggibile; **Riprova** riprende un job fallito dalla fase in cui si era fermato;
-  il worker avvisa su Telegram a fine lezione; i job su lezioni diverse girano in parallelo
+  il worker avvisa su Telegram a fine lezione (se le notifiche sono accese); i job su lezioni diverse girano in parallelo
   (numero regolabile in Impostazioni).
 - **Documento come conferma (FA2):** il documento finale è la conferma dell'anteprima e non
   dipende più dalla revisione, che dà solo avvisi nel dialogo di conferma. Recall, immagini e
@@ -30,10 +30,10 @@ La fase FA ha consolidato la web dopo il primo uso reale. In breve:
   modello prima di salvarlo, pricing con avvisi, SearXNG per la ricerca immagini da
   Impostazioni › Ricerca web, campi segreti che non attivano il portachiavi del Mac.
 - **Cartella dati e Telegram (FA6):** scelta della cartella con Finder o con il navigatore,
-  anteprima di token e Chat ID, topic con il nome della materia, prova e pulizia dei messaggi.
-- **Recall e immagini (FA7):** la sessione di recall si termina con un riepilogo e si può
-  avviare o interrompere su Telegram; le immagini dal web si cercano per unità, sulle unità
-  scelte.
+  anteprima di token e Chat ID (dalla versione successiva alla 4.2.5 Telegram manda solo
+  notifiche).
+- **Recall e immagini (FA7):** la sessione di recall si termina con un riepilogo; le immagini
+  dal web si cercano per unità, sulle unità scelte.
 - **Revisione e player (FA8):** revisione ordinabile per tipo e gravità, velocità del player
   regolabile da 0.5× a 3×.
 - **Chiusura (FA9):** l'interfaccia non cita più comandi del terminale; un test lo controlla.
@@ -64,7 +64,7 @@ Non usare `tailscale funnel`: renderebbe RT pubblico su Internet.
 
 ## Cosa si fa dalla web
 
-La web fa tutto quello che si fa nel terminale; la tabella di parità, con i test che lo
+La web è l'interfaccia completa di RT (nel terminale restano i comandi); la tabella di parità, con i test che lo
 verificano, è in [RT4_PARITY.md](RT4_PARITY.md). Tutto quello che salvi vive nel backend (DB e
 cartella `media/`) e resta dopo la ricarica della pagina.
 
@@ -98,9 +98,11 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   configurate. Se un'unità non riesce comunque, le altre proseguono: la fase finisce parziale e
   il job fallisce con un messaggio che dice modello, unità e inizio della risposta. Riprova rifà
   solo le unità mancanti.
-- **Notifica Telegram:** a fine pipeline, e dopo il solo documento, il worker manda la notifica
-  "Lezione pronta" come da terminale (se Telegram è configurato; in modalità prova no). Se
-  l'invio non riesce il job resta completato e l'errore compare tra gli eventi.
+- **Notifiche Telegram:** a fine pipeline, e dopo il solo documento, il worker manda "Lezione
+  pronta"; quando un job si ferma sulla scaletta da approvare (se non si approva da sola) o
+  sulle issue da decidere, e quando una lavorazione non riesce, manda un avviso (solo con le
+  notifiche accese e configurate; in modalità prova no). Se l'invio non riesce il job non cambia
+  esito e l'errore compare tra gli eventi.
 - **Review:** le lezioni con issue della review scientifica da valutare, con il numero per
   ciascuna; un clic apre la revisione della lezione.
 - **Lezione:** documento con i timecode cliccabili, player dell'audio con forma d'onda (clic
@@ -120,35 +122,24 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   (domande da porre per tipo e risposte date), ordinate per data, titolo o domande da porre;
   vista, ordine e materie chiuse restano nel browser come nella pagina Lezioni. **Recall della
   materia** apre `/recall/materie/<materia>`: una sessione con la stessa logica di quella di una
-  lezione, ma le domande arrivano a turno da tutte le lezioni della materia (quelle in corso su
-  Telegram sono escluse), con risposta, voto, salto, **Termina sessione** e riepilogo. La pagina
+  lezione, ma le domande arrivano a turno da tutte le lezioni della materia, con risposta, voto, salto, **Termina sessione** e riepilogo. La pagina
   genera anche le domande delle lezioni che non ne hanno ancora. La scelta della domanda è in
-  `rt/services/recall_subject.py`, riusabile dal bot.
+  `rt/services/recall_subject.py`.
 - **Recall:** pool di domande dell'intera lezione dalle unità scelte (di predefinito le
   rilevanti, con score e livello del classificatore), quiz, domande mirate e vaste, risposte
   scritte o a voce. **Rigenera pool** passa al recaller tutte le unità selezionate e aggiunge domande a
   quelle già generate; la pagina **Domande** le mostra tutte e permette di eliminare,
   anche in blocco, quelle che non convincono. Quando
   restano 5 quiz, 3 mirate o 2 vaste da porre ne arrivano altre da unità scelte a caso.
-  Due selettori a slitta scelgono dove fare il recall (**Telegram** o **Qui**) e il tipo di
-  domanda (Quiz, Mirata, Vasta, anche con le frecce della tastiera); sotto ciascuno c'è la
-  scelta attiva. **Qui:** la sessione parte con la prima domanda e **Termina sessione** la
-  chiude, con il riepilogo (domande, risposte date, quiz giusti) che resta dopo la ricarica.
-  **Telegram:** **Avvia su Telegram** chiede al bot di aprire la sessione nel topic della
-  materia; serve il bot configurato e avviato, altrimenti l'interruttore è disabilitato e la
-  pagina dice cosa manca. Una sessione in corso su Telegram, avviata dall'app o dal bot, si vede
-  nella pagina della lezione (e in quelle delle altre lezioni) e **Interrompi** la chiude:
-  nel topic arriva «Sessione interrotta dall'app».
+  Il selettore a slitta sceglie il tipo di domanda (Quiz, Mirata, Vasta, anche con le frecce
+  della tastiera). La sessione parte con la prima domanda e **Termina sessione** la chiude, con
+  il riepilogo (domande, risposte date, quiz giusti) che resta dopo la ricarica.
 - **Immagini:** slide, foto o PDF da integrare nel documento, e immagini dal web:
   **Immagini per unità** è quante cercarne per ogni unità (0 = nessuna ricerca), su tutte le
   unità o su quelle scelte (caselle raggruppate per sezione, con «seleziona sezione»). Le
   immagini entrano nel documento come link Markdown, una sotto l'altra. La ricerca web richiede
   SearXNG: se manca, la pagina rimanda alle Impostazioni. Si aggiungono alla bozza e compaiono
   subito nell'anteprima.
-- **Bot Telegram:** stato, avvio e arresto del bot; il gruppo configurato (Chat ID e token con
-  l'occhio per vederli per intero); i topic per materia, ciascuno con il pulsante **Prova**; le
-  ultime notifiche inviate (lezione pronta, issue da rivedere, prove dei topic); un link alle
-  impostazioni di Telegram.
 - **Impostazioni:** cartella dati (solo lettura), job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
   ricerca web, Telegram e trascrizione. La configurazione guidata (aperta dall'installer) chiede quello
   che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
@@ -275,29 +266,20 @@ crea.
 
 ### Telegram
 
-- **Token del bot e Chat ID:** dopo il salvataggio i campi restano vuoti (lasciali vuoti per
-  mantenere i valori salvati) e sotto compare un'anteprima parzialmente nascosta, per esempio
-  `1234…wXyZ` o `-100…7890`. Il pulsante con l'occhio mostra il valore completo, che la pagina
-  chiede al backend solo in quel momento; premendolo di nuovo torna l'anteprima. Vale anche
-  nella configurazione guidata.
-- **Ascolta i topic per 20 secondi:** mentre ascolta, scrivi un messaggio in ogni topic dal
-  telefono. RT aggiunge i topic trovati con il loro nome su Telegram e, se il nome coincide con
-  una materia che RT conosce già (maiuscole e accenti non contano), propone anche la materia.
-  Se Telegram non dice il nome (per esempio per un messaggio in risposta a un altro), il topic
-  arriva senza nome e la materia la scrivi tu. I nomi si salvano con i topic.
-- **Prova:** accanto al cestino di ogni topic invia nel topic il messaggio "Questo è il topic di
-  MATERIA" e mostra l'esito.
-- **Cancella i messaggi di rilevamento:** dopo una conferma elimina dal gruppo solo i messaggi
-  ricevuti durante l'ultimo ascolto (mai altri messaggi, né quelli con cui Telegram crea i
-  topic). Serve che il bot sia amministratore del gruppo; Telegram non permette di cancellare i
-  messaggi più vecchi di 48 ore. Alla fine la pagina dice quanti messaggi ha eliminato e quali no,
-  con il motivo.
+Telegram serve solo per le notifiche nella chat personale: lezione pronta, scaletta da
+approvare, issue da decidere, lavorazione non riuscita. Le manda il worker; non c'è un bot
+sempre acceso, né comandi, topic o recall in chat.
 
-### Esportare o ripulire la chat di un topic (non disponibile)
-
-Un bot di Telegram non può leggere lo storico di una chat: riceve solo i messaggi che arrivano
-mentre è in ascolto. Per esportare tutti i messaggi di un topic o ripulirlo servirebbe un
-client che accede con il tuo account Telegram; per ora RT non lo fa.
+- **Ricevi le notifiche su Telegram:** l'interruttore (spento di predefinito).
+- **Collegamento in quattro passi:** crei un bot con @BotFather, incolli il token, scrivi
+  `/start` al bot e premi **Collega la chat**: RT legge l'ultimo messaggio ricevuto dal bot e
+  salva la chat personale da cui è arrivato (i messaggi dei gruppi non contano).
+- **Token e Chat ID salvati:** il campo del token resta vuoto (lascialo vuoto per mantenere quello
+  salvato) e sotto compare un'anteprima parzialmente nascosta, per esempio `1234…wXyZ`. Il
+  pulsante con l'occhio mostra il valore completo, che la pagina chiede al backend solo in quel
+  momento.
+- **Manda un messaggio di prova:** controlla che token e chat funzionino.
+- **Ultime notifiche inviate:** le ultime 20, anche quelle non partite.
 
 ## Installazione e aggiornamento
 
@@ -309,99 +291,3 @@ messaggio che spiega come ottenerla.
 In un checkout di sviluppo la web app si compila da `frontend/` (`npm install && npm run build`,
 vedi [frontend/README.md](../frontend/README.md)); la build in `frontend/dist` viene usata se
 `rt/spa` non c'è. `RT_SPA_DIR` sceglie un'altra cartella.
-
-## Interfaccia legacy (Gradio, deprecata)
-
-`rt web --legacy` avvia ancora la vecchia interfaccia Gradio per questa release, con un avviso:
-verrà rimossa nella prossima. Accetta `--lessons-root`, `--port` (default 7860), `--no-browser`
-e `--log-file`.
-
-L'interfaccia Gradio si avvia localmente e legge i dati esistenti di RT:
-manifest, stato delle fasi, documento Markdown, issue di review, ledger delle
-decisioni, file audio e configurazione. La review scrive le decisioni nel ledger RT
-e aggiunge un registro delle azioni web nella stessa cartella della lezione.
-
-### Avvio
-
-Dopo aver installato o aggiornato RT:
-
-```bash
-rt web --legacy
-```
-
-Gradio non è più tra le dipendenze standard: per usarla installa
-`requirements-web.txt` nel virtualenv (`./.venv/bin/python -m pip install -r requirements-web.txt`).
-
-Se la cartella delle lezioni non è impostata in `config/general.yaml`, l'app si
-apre sulla schermata Configurazione. Inserisci il percorso di una cartella
-esistente oppure scegli dove crearne una nuova e premi **Salva**.
-Il percorso viene salvato in `telegram.lessons_root`, mantenendo intatte le altre
-impostazioni. Per provarne un'altra solo per la sessione corrente:
-
-```bash
-rt web --legacy --lessons-root "/percorso/alle/lezioni"
-```
-
-L'app si apre su `http://127.0.0.1:7860`. Si può usare `--port 7868` per cambiare
-porta o `--no-browser` per non aprire automaticamente il browser. `bin/rt-web`
-resta disponibile come avvio diretto equivalente. Il server ascolta
-solo su `127.0.0.1` e non genera un link pubblico Gradio.
-
-Il terminale mostra avvio, richieste HTTP, durata delle azioni, errori Python e
-segnalazioni dal browser. Gli stessi eventi vengono salvati in un file locale a
-rotazione (5 MB per file, tre copie): su macOS `~/Library/Logs/rt/web.log`, oppure
-nel percorso scelto con `--log-file`. `RT_WEB_LOG` permette la stessa scelta via
-variabile d'ambiente. I log non includono corpi delle richieste né il percorso dei
-file audio serviti. Premi Ctrl+C per fermare il server.
-
-### Schermate
-
-- **Dashboard:** sidebar sovrapposta e regolabile con lezioni raggruppate per
-  materia, stato delle cinque fasi, issue aperte e appunti completi. Durante il
-  cambio lezione il controllo di chiusura e le altre lezioni restano bloccati fino
-  al caricamento. I timecode avviano il player a forma d'onda dell'audio integrale;
-  le frecce accanto al lettore passano tra le unità della lezione. L'audio viene
-  servito con richieste HTTP a intervalli di byte per consentire la ricerca e
-  la riproduzione continua anche di file lunghi.
-- **Review contestuale:** il pulsante delle issue apre un pannello a destra del
-  documento, raggruppabile per unità o tipo. Cliccando una issue, RT evidenzia il
-  claim nel testo e mostra proposta modificabile, motivazione, domanda al docente
-  e azioni accetta/mantieni originale. Le segnalazioni sulla qualità ASR e sulla
-  fedeltà al parlato sono marcate come avvisi dell'unità, non come errori
-  concettuali confermati. Una decisione si può riaprire; la successiva issue in
-  attesa viene selezionata automaticamente. Le issue senza ancora valida non
-  vengono applicate al testo: il pannello segnala il numero e permette di aprire
-  il JSON originale nell'app predefinita.
-- **Configurazione:** la cartella lezioni viene salvata in `config/general.yaml`
-  e riletta dopo un refresh. I pulsanti aprono form per lezioni, connessioni,
-  Telegram e trascrizione. Una connessione comprende provider, Base URL e una o
-  più chiavi; RT alterna le chiavi quando sono più di una. La tabella assegna a
-  ciascuna delle sei fasi una connessione e un modello ricercabile. Il pulsante
-  `+` aggiunge un ID modello alla connessione scelta. I cinque job LLM storici
-  di recall condividono ora la route `recall`; le vecchie configurazioni sono
-  lette automaticamente finché la nuova route non viene salvata. Le chiavi
-  restano nel `.env` locale e non sono mostrate dopo il salvataggio. Si possono
-  inoltre configurare token, chat e topic
-  Telegram, ascoltare nuovi topic e avviare il bot in background dalla dashboard.
-  Il motore STT predefinito può essere `macparakeet` oppure un server
-  OpenAI-compatible che restituisce `verbose_json` con timestamp di segmento.
-  Le route secondarie e i fallback esistenti sono preservati; le opzioni avanzate
-  restano modificabili nei file YAML.
-- **Importa audio:** il pulsante nell'intestazione apre il setup non interattivo
-  della CLI. Richiede data e materia; la trascrizione con `macparakeet-cli` è
-  selezionabile. Una lezione esistente non viene sovrascritta.
-
-L'interfaccia usa Seravek quando disponibile sul sistema, con font di riserva, e
-segue la modalità chiara o scura del sistema.
-La cartella originale delle lezioni resta esclusa dall'accesso diretto via web:
-RT prepara per Gradio solo l'audio della lezione scelta in una cartella temporanea.
-Se un file chiamato `.m4a` contiene in realtà AAC grezzo, RT lo rimette in un
-contenitore M4A riproducibile dal browser, senza modificare l'originale.
-
-Le lezioni di prova non vengono importate nel repository: la UI usa la loro cartella
-originale, esattamente come fa RT. La verifica è stata eseguita sulla lezione di
-Patologia generale del 26 febbraio 2025 in `prove trt`: una decisione di prova è
-stata salvata, riletta dalla dashboard e poi riaperta. Il ledger è tornato a 18
-questioni in attesa. Il log `web_review_events.jsonl` conserva entrambi gli eventi
-(`recorded` e `reverted`) nella sottocartella `_state/` della lezione. Se un log
-esiste già nella radice di una lezione con il vecchio layout, RT usa quel file.

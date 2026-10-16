@@ -1,17 +1,9 @@
 import os
 import json
-import asyncio
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
-from rt.core.models import ScienceType, SegmentsData, Segment, Draft, DraftUnit, ScienceIssue
-from rt.telegram import registry, issue_queue as tg_queue
-from rt.telegram.daemon import handle_callback
-from rt.telegram.formatting import build_issue_keyboard
-from rt.telegram.notify import notify_issues_ready, notify_build_completed
+from rt.core.models import SegmentsData, Segment, Draft, DraftUnit
 from rt.pipeline.review import run_review
 from rt.llm.prompts import SCIENCE_REVIEW_SYSTEM_PROMPT, build_science_review_user_prompt
-from rt.cli import main, cmd_review, cmd_build
 
 
 def _setup_test_lesson(lesson_dir: str):
@@ -75,124 +67,6 @@ def _setup_test_lesson(lesson_dir: str):
         f.write("fase_corrente: draft_validato\nmateria: BIOCHIMICA\ndata: 2026-09-08\n")
 
 
-def test_issue_keyboard_includes_quit_button():
-    kb_asr = build_issue_keyboard("test_id", "asr")
-    all_buttons = [b for row in kb_asr["inline_keyboard"] for b in row]
-    assert len(all_buttons) == 6
-    assert any(b["text"] == "🛑 Esci" and b["callback_data"] == "iq:test_id" for b in all_buttons)
-
-    kb_sci = build_issue_keyboard("test_id", "science")
-    all_buttons_sci = [b for row in kb_sci["inline_keyboard"] for b in row]
-    assert len(all_buttons_sci) == 6
-    assert any(b["text"] == "🛑 Esci" and b["callback_data"] == "iq:test_id" for b in all_buttons_sci)
-
-
-
-def test_telegram_review_quit_callback(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    state_dir = str(tmp_path / "state")
-    _setup_test_lesson(lesson_dir)
-
-    tg_queue.create_queue(lesson_dir, ["asr_000001", "asr_000002"], {"asr_000001": "asr", "asr_000002": "asr"})
-    short_id = registry.register_pending(
-        lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
-        extra={"issue_id": "asr_000001", "issue_type": "asr"}
-    )
-
-    update = MagicMock()
-    query = MagicMock()
-    query.data = f"iq:{short_id}"
-    query.answer = AsyncMock()
-    query.edit_message_reply_markup = AsyncMock()
-    update.callback_query = query
-    update.effective_chat.id = 12345
-    update.effective_message.message_thread_id = None
-
-    context = MagicMock()
-    context.bot_data = {"state_dir": state_dir}
-    context.bot.send_message = AsyncMock()
-
-    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next, \
-         patch("rt.telegram.review_channel.start_review_via_telegram") as mock_start:
-        asyncio.run(handle_callback(update, context))
-        assert not mock_send_next.called
-        assert not mock_start.called
-
-    query.answer.assert_awaited_once_with("Revisione interrotta.")
-    query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
-    context.bot.send_message.assert_awaited_once()
-    assert "interrotta" in context.bot.send_message.call_args[1]["text"]
-
-    queue = tg_queue.load_queue(lesson_dir)
-    assert queue.current_index == 0
-
-
-def test_telegram_review_back_callback_dispatched(tmp_path):
-    """Regressione: il callback 'ib:<short_id>' (bottone Indietro) deve raggiungere
-    _handle_issue_callback tramite il dispatcher reale handle_callback(), non essere
-    silenziosamente ignorato (mancava da ISSUE_ACTIONS, quindi cadeva nel ramo 'else'
-    senza alcun effetto visibile, come riscontrato in uso reale)."""
-    lesson_dir = str(tmp_path / "lesson")
-    state_dir = str(tmp_path / "state")
-    _setup_test_lesson(lesson_dir)
-
-    tg_queue.create_queue(lesson_dir, ["asr_000001", "asr_000002"], {"asr_000001": "asr", "asr_000002": "asr"})
-    tg_queue.advance(lesson_dir)  # current_index = 1, così "Indietro" ha senso (non è già alla prima)
-    short_id = registry.register_pending(
-        lesson_dir, round_=0, kind="issue_review", state_dir=state_dir,
-        extra={"issue_id": "asr_000002", "issue_type": "asr"}
-    )
-
-    update = MagicMock()
-    query = MagicMock()
-    query.data = f"ib:{short_id}"
-    query.answer = AsyncMock()
-    query.edit_message_reply_markup = AsyncMock()
-    update.callback_query = query
-    update.effective_chat.id = 12345
-    update.effective_message.message_thread_id = None
-
-    context = MagicMock()
-    context.bot_data = {"state_dir": state_dir}
-
-    with patch("rt.telegram.review_channel.send_current_issue") as mock_send_next:
-        asyncio.run(handle_callback(update, context))
-        assert mock_send_next.called, "'ib:' deve raggiungere _handle_issue_callback tramite il dispatcher, non essere ignorato"
-
-    queue = tg_queue.load_queue(lesson_dir)
-    assert queue.current_index == 0
-
-
-def test_notify_issues_ready_zero_count(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    with patch("rt.telegram.client.send_message") as mock_send, \
-         patch("rt.telegram.config.load_telegram_config", return_value=MagicMock()), \
-         patch("rt.core.config.load_config") as mock_cfg:
-        mock_cfg.return_value.telegram.topics = []
-        mock_cfg.return_value.telegram.state_dir = str(tmp_path / "state")
-
-        notify_issues_ready(lesson_dir, "asr", count=0)
-        assert mock_send.called
-        _, kwargs = mock_send.call_args
-        assert "Nessuna issue ASR trovata" in kwargs["text"]
-        assert "reply_markup" not in kwargs or kwargs.get("reply_markup") is None
-
-
-def test_notify_issues_ready_positive_count(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    with patch("rt.telegram.client.send_message") as mock_send, \
-         patch("rt.telegram.config.load_telegram_config", return_value=MagicMock()), \
-         patch("rt.core.config.load_config") as mock_cfg:
-        mock_cfg.return_value.telegram.topics = []
-        mock_cfg.return_value.telegram.state_dir = str(tmp_path / "state")
-
-        notify_issues_ready(lesson_dir, "science", count=5)
-        assert mock_send.called
-        _, kwargs = mock_send.call_args
-        assert "5 issue scientifiche pronte" in kwargs["text"]
-        assert kwargs.get("reply_markup") is not None
-
-
 def test_science_review_prompt_has_no_raw_transcript_access_and_ignores_asr_artifacts():
     """Il critic scientifico non riceve più la trascrizione grezza (causa di confusione
     reale riscontrata: citava frammenti ASR grezzi come se fossero affermazioni del
@@ -239,27 +113,3 @@ def test_mock_generation_bounded_across_many_units(tmp_path):
     )
 
 
-def test_cli_channel_dispatch(tmp_path):
-    lesson_dir = str(tmp_path / "lesson")
-    _setup_test_lesson(lesson_dir)
-
-    # 1. review con channel terminale -> nessuna notifica telegram
-    args_rev_term = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="terminal")
-    with patch("rt.telegram.notify.notify_issues_ready") as mock_notify:
-        cmd_review(args_rev_term)
-        assert not mock_notify.called
-
-    # 2. review con channel telegram -> invia notifica telegram
-    args_rev_tg = MagicMock(lesson_dir=lesson_dir, force=True, mock=True, channel="telegram")
-    with patch("rt.telegram.notify.notify_issues_ready") as mock_notify:
-        cmd_review(args_rev_tg)
-        assert mock_notify.called
-        assert mock_notify.call_args[0][1] == "science"
-        assert mock_notify.call_args[0][2] == 10
-
-    # V5b: il build standalone non invia più notifiche Telegram.
-    args_bld_tg = MagicMock(lesson_dir=lesson_dir, force=True, rename=False, channel="telegram")
-    with patch("rt.cli.run_build", return_value={"status": "completed", "lesson_dir": lesson_dir, "rielaborato": "rielaborato.md"}), \
-         patch("rt.telegram.notify.notify_build_completed") as mock_notify_bld:
-        cmd_build(args_bld_tg)
-        mock_notify_bld.assert_not_called()

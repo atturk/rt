@@ -24,18 +24,13 @@ jev:
   task_b_fabrication_threshold: 0.80
 
 # Nessuna credenziale preconfigurata: una nuova installazione parte senza connessioni.
-# Aggiungile dalla web (Impostazioni › Connessioni) o con 'rt configure'.
+# Aggiungile dalla web (Impostazioni › Connessioni).
 credentials: []
 
 telegram:
-  enabled: false            # Telegram spento: ripassi nella web app (Impostazioni › Bot Telegram per accenderlo)
-  default_channel: "terminal"
-  # Cartella che raccoglie tutte le lezioni: 'rt build' vi sposta le lezioni finite, e la
-  # dashboard principale (comando 'rt' senza sottocomando) la scansiona per elencarle tutte.
-  # Se configurata, 'rt' (tasto 'n', nuova lezione) crea lì anche le lezioni nuove.
+  enabled: false            # notifiche nella chat personale: si accendono dalla web (Impostazioni › Telegram)
+  # Cartella delle lezioni della 3.x: serve solo a migrarle nel database.
   lessons_root: null
-  topics: {}
-  misc_topic_id: null
 
 # Motore usato dal setup delle lezioni. Un server custom deve supportare
 # POST /audio/transcriptions e restituire verbose_json con segmenti temporizzati.

@@ -128,8 +128,7 @@ def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypa
         with fs.open(os.path.join(lesson, name), "w", encoding="utf-8") as f:
             f.write(text)
     lesson_id = fs.resolve(lesson).lesson_id
-    run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=True,
-                                           channel="terminal"), RunContext())
+    run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=True), RunContext())
     # Come nel processo API: la cache di fs ricorda il percorso di prima della build.
     with fs._lock:
         fs._known[rt_db.url][lesson] = lesson_id

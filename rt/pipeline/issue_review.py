@@ -1,9 +1,7 @@
 """
 rt.pipeline.issue_review
-Regole pure sulle issue scientifiche usate da tutte le interfacce di review (nessuna UI).
-- App Textual e review da terminale: rt.tui.issue_review
-- invio sequenziale via Telegram: rt.telegram.review_channel
-- registrazione delle decisioni: rt.services.review_service
+Regole pure sulle issue scientifiche usate dalla review (nessuna UI); la registrazione
+delle decisioni è in rt.services.review_service.
 """
 from typing import Any, Optional, Tuple
 

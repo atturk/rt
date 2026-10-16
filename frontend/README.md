@@ -3,7 +3,7 @@
 Interfaccia web di RT 4.0: React + TypeScript + Vite, Tailwind CSS, componenti in stile
 shadcn/ui (`src/components/ui`), TanStack Query, React Router. Parla solo con l'API
 (`rt api`, `/api/v1`, vedi `docs/API.md`). Da RT4-F8 è la web di RT (`rt web`, vedi
-`docs/WEB.md`); la web Gradio (`rt/web`) resta solo con `rt web --legacy`.
+`docs/WEB.md`).
 
 ## Avvio
 
@@ -61,7 +61,7 @@ sostituisci l'host con `localhost:5173`.
   `GET /events` (eventi di tutti i job) e a ogni evento invalida le query interessate
   (`keysForEvent`); si riconnette con attesa crescente e, mentre è giù, rilegge i job ogni 10
   secondi. Niente `refetchInterval` per dati che cambiano con i job: restano solo quelli
-  commentati (worker, bot Telegram, sessioni di recall, forma d'onda).
+  commentati (worker, notifiche Telegram, sessioni di recall, forma d'onda).
 - **Job ed eventi live.** `src/api/jobs.ts`: `useJobEvents` apre `GET /jobs/{id}/events`
   con `EventSource` (eccezione al client generato, come il canale live: openapi-fetch non fa streaming; il
   percorso resta tipizzato). Il browser riprende da solo con `Last-Event-ID`; ogni evento fa
@@ -70,10 +70,9 @@ sostituisci l'host con `localhost:5173`.
   `xhrFetch` (`src/api/upload.ts`) per avere la barra di avanzamento, sempre con `api.POST`.
 - **Aree attuali**: `lessons` (dashboard e lezione), `reviews` (`/review`, elenco delle lezioni
   con issue da valutare; la revisione è `review`, `/lezioni/:id/revisione`), `recall` (`/recall`, `/lezioni/:id/recall`),
-  `images` (`/immagini`, `/lezioni/:id/immagini`), `telegram` (`/bot`; il pannello
-  `components/TelegramBotPanel.tsx` si può mettere anche nelle impostazioni; anteprima con occhio,
-  "Prova" e pulizia dei messaggi di rilevamento in `components/settings/telegram.tsx`, scelta
-  della cartella in `components/settings/folders.tsx`). Gli hook di un'area
+  `images` (`/immagini`, `/lezioni/:id/immagini`), impostazioni Telegram
+  (`/impostazioni/telegram`, `/bot` ci rimanda; token, collegamento della chat personale,
+  messaggio di prova e ultime notifiche in `components/settings/telegram.tsx`). Gli hook di un'area
   stanno in `src/api/<area>.ts`; `src/api/jobStatus.ts` segue un job (`GET /jobs/{id}`) e
   `components/JobProgress.tsx` ne mostra l'avanzamento.
 - **Elenchi di lezioni.** Un solo `useLessons()` senza filtri; testo, materia e stato si
@@ -101,7 +100,7 @@ sostituisci l'host con `localhost:5173`.
   o file su disco.
 - **Testi in italiano**, etichette accessibili (`aria-label`, `<label>`), tema chiaro e scuro.
 - **Playwright per ogni schermata** (`e2e/`): contro l'API vera servita da
-  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, bot Telegram e Bot API finti, niente finestra di Finder per la scelta cartella, microfono finto di Chromium nei test vocali), con ricarica della pagina
+  `scripts/e2e_server.py` (lezioni di prova, worker con `--mock`, Bot API di Telegram finta, niente finestra di Finder per la scelta cartella, microfono finto di Chromium nei test vocali), con ricarica della pagina
   dopo ogni modifica e verifica rileggendo dall'API. Aggiorna la colonna "SPA (F7)" di
   `docs/RT4_PARITY.md` per le righe coperte.
 - **Accessibilità controllata con axe** (`e2e/a11y.spec.ts`): ogni pagina nuova va aggiunta

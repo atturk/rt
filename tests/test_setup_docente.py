@@ -56,7 +56,7 @@ def test_pipeline_emits_transcription_progress(tmp_path):
         assert kwargs["docente"] == "Rossi"
         return {"lesson_dir": str(tmp_path)}
 
-    _setup(fake_setup, ["a.m4a"], PipelineOptions(materia="X", docente="Rossi"), RunContext(reporter=Reporter()), None)
+    _setup(fake_setup, ["a.m4a"], PipelineOptions(materia="X", docente="Rossi"), RunContext(reporter=Reporter()))
     progress = [e for e in events if e.type == "phase_progress"]
     assert [(p.phase, p.current, p.total) for p in progress] == [("setup", 42, 100)]
     assert "42%" in progress[0].message

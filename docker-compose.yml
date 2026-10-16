@@ -1,6 +1,6 @@
 # RT con Docker Compose (RT4-G1). Avvio:   docker compose up -d
 # Accesso: docker compose exec api rt web --no-browser   (stampa un link di accesso monouso)
-# Profili facoltativi:  --profile telegram (bot)   --profile postgres (database PostgreSQL)
+# Profilo facoltativo:  --profile postgres (database PostgreSQL)
 # Dettagli, backup e limiti (trascrizione): docs/SELF_HOSTING.md
 name: rt
 
@@ -32,18 +32,6 @@ services:
       <<: *rt-env
       # auto: trascrive solo con un motore STT "custom" configurato (macparakeet è solo macOS)
       RT_WORKER_STT: ${RT_WORKER_STT:-auto}
-    healthcheck:
-      disable: true
-    depends_on:
-      api:
-        condition: service_healthy
-
-  bot:
-    <<: *rt
-    command: ["telegram-daemon", "--service"]
-    profiles: ["telegram"]
-    # esce con 0 se il bot non è configurato: non va rilanciato a vuoto
-    restart: on-failure
     healthcheck:
       disable: true
     depends_on:

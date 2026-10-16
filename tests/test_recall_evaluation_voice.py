@@ -6,14 +6,11 @@ rt/core/recall_stt.py).
 """
 import os
 import json
-import subprocess
 import pytest
 from unittest.mock import patch, MagicMock
 
 from rt.core.models import RecallQuestion, RecallQuestionType, RecallBank, Draft, DraftUnit
 from rt.pipeline.recall import save_recall_bank, evaluate_recall_answer
-from rt.telegram.client import download_voice, TelegramAPIError
-from rt.telegram.config import TelegramConfig
 from rt.core.recall_stt import transcribe_voice_answer
 
 
@@ -102,36 +99,6 @@ class TestEvaluateRecallAnswer:
 # ---------------------------------------------------------------------------
 # 2. download_voice
 # ---------------------------------------------------------------------------
-
-class TestDownloadVoice:
-    def test_downloads_file_content(self, tmp_path):
-        cfg = TelegramConfig(bot_token="TOK", chat_id=1)
-        dest_path = str(tmp_path / "voice.oga")
-
-        get_file_resp = MagicMock()
-        get_file_resp.json.return_value = {"ok": True, "result": {"file_id": "F1", "file_path": "voice/file_1.oga"}}
-
-        binary_resp = MagicMock()
-        binary_resp.status_code = 200
-        binary_resp.content = b"AUDIO_BYTES_HERE"
-
-        with patch("requests.post", return_value=get_file_resp) as mock_post, \
-             patch("requests.get", return_value=binary_resp) as mock_get:
-            download_voice(cfg, "F1", dest_path)
-
-        assert mock_post.call_args[0][0] == "https://api.telegram.org/botTOK/getFile"
-        assert mock_get.call_args[0][0] == "https://api.telegram.org/file/botTOK/voice/file_1.oga"
-        with open(dest_path, "rb") as f:
-            assert f.read() == b"AUDIO_BYTES_HERE"
-
-    def test_raises_on_missing_file_path(self, tmp_path):
-        cfg = TelegramConfig(bot_token="TOK", chat_id=1)
-        get_file_resp = MagicMock()
-        get_file_resp.json.return_value = {"ok": True, "result": {"file_id": "F1"}}  # niente file_path
-
-        with patch("requests.post", return_value=get_file_resp):
-            with pytest.raises(TelegramAPIError):
-                download_voice(cfg, "F1", str(tmp_path / "x.oga"))
 
 
 # ---------------------------------------------------------------------------

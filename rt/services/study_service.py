@@ -1,6 +1,6 @@
 """Studio (RT 4.2): le unità della lezione da leggere una alla volta, con il tratto d'audio e le
-domande del pool che riguardano ciascuna. Lo usano la web app (GET /lessons/{id}/study) e la
-mini app di Telegram (Leggi e ripeti)."""
+domande del pool che riguardano ciascuna. Lo usano la web app (GET /lessons/{id}/study) e il
+recall."""
 from typing import Any, Dict, List
 
 

@@ -5,9 +5,9 @@ build), riusabile da CLI, API e worker. Non stampa, non legge da stdin e non chi
 sys.exit(): comunica con eventi sul RunContext e restituisce un PipelineResult con uno
 stato finale esplicito.
 
-Le decisioni umane (approvazione outline, issue scientifiche) non vengono chieste da qui:
-se c'è un DecisionProvider (CLI interattiva) viene interrogato, altrimenti la pipeline si
-ferma con WAITING_FOR_DECISION e la DecisionRequired pendente.
+Le decisioni umane (approvazione outline, issue scientifiche, metadati mancanti) non vengono
+chieste da qui: la pipeline si ferma con WAITING_FOR_DECISION e la DecisionRequired pendente,
+che si prende nella web.
 """
 from dataclasses import dataclass, field
 from enum import Enum
@@ -44,7 +44,8 @@ class PipelineOptions:
     with_enrichment: Optional[bool] = None
     auto_accept: bool = False
     rename: bool = True
-    channel: Optional[str] = None
+    # chi ha lanciato la pipeline: canale delle decisioni automatiche nel ledger ("cli" o "api")
+    source: str = "api"
 
 
 @dataclass
@@ -54,17 +55,6 @@ class PipelineResult:
     decision: Optional[DecisionRequired] = None
     phase_results: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     error: Optional[BaseException] = None
-
-
-class DecisionProvider(Protocol):
-    """Chi risponde alle decisioni umane durante la run (es. la CLI interattiva)."""
-
-    def approve_outline(self, lesson_dir: str, force: bool, force_mock: bool) -> None:
-        """Ritorna quando l'outline è approvata (eventualmente dopo revisioni); può
-        sollevare KeyboardInterrupt se l'utente rinuncia."""
-
-    def review_science_issues(self, lesson_dir: str, channel: str, auto_accept: Optional[str]) -> bool:
-        """True se la review è completa e si può procedere al build."""
 
 
 class Notifier(Protocol):
@@ -106,18 +96,11 @@ def lesson_title(lesson_dir: str) -> str:
         return os.path.basename(os.path.abspath(lesson_dir))
 
 
-def _resolve_channel(channel: Optional[str]) -> str:
-    if channel:
-        return channel
-    from rt.core.config import load_config
-    return load_config().telegram.channel
-
-
-def _auto_accept_pending(lesson_dir: str, ctx: RunContext) -> List[Any]:
-    """Senza DecisionProvider: applica l'auto-accept alle issue pendenti e restituisce
-    quelle che richiedono ancora una decisione umana."""
+def _auto_accept_pending(lesson_dir: str, ctx: RunContext, channel: str = "api") -> List[Any]:
+    """Applica l'auto-accept alle issue pendenti e restituisce quelle che richiedono ancora
+    una decisione umana."""
     from rt.services.review_service import auto_accept_pending
-    accepted, remaining = auto_accept_pending(lesson_dir, "all", channel="api")
+    accepted, remaining = auto_accept_pending(lesson_dir, "all", channel=channel)
     if accepted:
         ctx.emit(Notice(message=f"⚡ Auto-approvati {len(accepted)} casi in base ai filtri CLI."))
     return remaining
@@ -127,7 +110,6 @@ def run_pipeline(
     inputs: Union[str, Sequence[str]],
     options: PipelineOptions,
     ctx: RunContext,
-    decisions: Optional[DecisionProvider] = None,
     notifiers: Sequence[Notifier] = (),
 ) -> PipelineResult:
     """Esegue la pipeline completa. Le eccezioni diventano FAILED (con error), tranne
@@ -136,7 +118,7 @@ def run_pipeline(
     result = PipelineResult(status=PipelineStatus.FAILED)
     try:
         with ctx.activate():
-            _run(raw_inputs, options, ctx, decisions, notifiers, result)
+            _run(raw_inputs, options, ctx, notifiers, result)
     except (KeyboardInterrupt, RunCancelled):
         raise
     except Exception as exc:  # noqa: BLE001 - lo stato FAILED porta l'eccezione al chiamante
@@ -145,7 +127,7 @@ def run_pipeline(
     return result
 
 
-def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notifiers, result: PipelineResult) -> None:
+def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, result: PipelineResult) -> None:
     from rt.pipeline.build import run_build
     from rt.pipeline.outline import run_outline
     from rt.pipeline.prepare import run_prepare
@@ -159,7 +141,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     if is_audio_input(raw_inputs):
         try:
             with phase_scope(ctx, "setup") as scope:
-                setup_res = _setup(run_setup, raw_inputs, options, ctx, decisions)
+                setup_res = _setup(run_setup, raw_inputs, options, ctx)
                 scope.complete(setup_res)
         except MissingSetupFields as exc:
             # Nessuno può chiedere i metadati ora: la run aspetta che arrivino (API/worker).
@@ -181,10 +163,8 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
 
     if outline_needs_approval(lesson_dir, force):
         from rt.services import outline_service
-        if decisions is not None:
-            decisions.approve_outline(lesson_dir, force=force, force_mock=mock)
-        elif options.auto_accept:
-            outline_service.approve_outline(lesson_dir, actor="auto_accept", channel="api")
+        if options.auto_accept:
+            outline_service.approve_outline(lesson_dir, actor="auto_accept", channel=options.source)
         elif not outline_service.is_outline_approved(lesson_dir):
             outline_service.start_outline_timer(lesson_dir)
             _wait(result, ctx, "outline_approval", lesson_dir,
@@ -197,23 +177,16 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, decisions, notif
     # ferma qui (FAILED con il motivo); rilanciarla rifà solo le unità mancanti.
     raise_if_incomplete("rewrite", result.phase_results["rewrite"])
 
-    channel = _resolve_channel(options.channel)
     if options.with_review:
         result.phase_results["review"] = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         raise_if_incomplete("review", result.phase_results["review"])
-        if decisions is not None:
-            auto = "all" if options.auto_accept else None
-            if not decisions.review_science_issues(lesson_dir, channel, auto):
-                _wait(result, ctx, "science_issue", lesson_dir, {"lesson_dir": lesson_dir, "channel": channel})
-                return
-        else:
-            remaining = _auto_accept_pending(lesson_dir, ctx) if options.auto_accept else _pending(lesson_dir)
-            if remaining:
-                _wait(result, ctx, "science_issue", lesson_dir,
-                      {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})
-                return
-            from rt.services.review_service import mark_ready_to_build
-            mark_ready_to_build(lesson_dir)
+        remaining = _auto_accept_pending(lesson_dir, ctx, options.source) if options.auto_accept else _pending(lesson_dir)
+        if remaining:
+            _wait(result, ctx, "science_issue", lesson_dir,
+                  {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})
+            return
+        from rt.services.review_service import mark_ready_to_build
+        mark_ready_to_build(lesson_dir)
 
     ctx.check_cancelled()
     result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx, with_enrichment=options.with_enrichment)
@@ -243,9 +216,8 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: R
             ctx.emit(Notice(message=f"Notifica di fine lavorazione inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
-def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, decisions) -> Dict[str, Any]:
+def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:
     from rt.pipeline.setup import DEFAULT_MODEL
-    prompter = getattr(decisions, "setup_prompter", None) if decisions is not None else None
     setup_res = run_setup(
         audio=raw_inputs,
         date=options.date,
@@ -258,14 +230,13 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext, dec
         skip_transcribe=options.skip_transcribe,
         force=options.force,
         mock_asr=options.mock,
-        interactive=prompter is not None,
+        interactive=False,
         on_progress=lambda msg: ctx.emit(Notice(message=msg)),
         on_lesson_created=lambda d: ctx.progress("setup", message="Lezione creata", lesson_dir=d),
         # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
-        prompter=prompter,
-        # Senza DecisionProvider (API/worker) i metadati mancanti non si inventano.
-        strict=decisions is None,
+        # I metadati mancanti non si inventano: la run aspetta che arrivino.
+        strict=True,
     )
     return dict(setup_res, mock_asr=options.mock, skip_transcribe=options.skip_transcribe)
 
@@ -347,7 +318,7 @@ def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ct
     with ctx.activate():
         try:
             with phase_scope(ctx, "setup") as scope:
-                setup_res = _setup(run_setup, raw_inputs, options, ctx, None)
+                setup_res = _setup(run_setup, raw_inputs, options, ctx)
                 scope.complete(setup_res)
         except MissingSetupFields as exc:
             _wait(result, ctx, "setup_metadata", "setup", {"inputs": raw_inputs, "missing": exc.fields})

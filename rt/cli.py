@@ -1,18 +1,17 @@
 """
 rt.cli
 CLI unificata per il workflow accademico RT.
+Le decisioni (scaletta, issue, recall) e la configurazione si fanno nella web ('rt web').
 Comandi disponibili:
-  rt config             (wizard interattivo di configurazione guidata)
   rt run                <cartella> [--mock]
   rt setup              --audio <file> --date <YYYY-MM-DD> --materia <nome>
   rt prepare            <cartella>
   rt outline            <cartella> [--mock]
   rt rewrite            <cartella> [--unit <id>] [--mock]
   rt review             <cartella> [--unit <id>]... [--mock]
-  rt recall             <cartella>
+  rt recall             <cartella> [--pool | --reset | --delete | --units]
   rt build              <cartella> [--no-rename] (rinomina la cartella col titolo finale, attivo di default)
   rt status             <cartella>
-  rt telegram-daemon    [--state-dir <path>]
   rt import             <archivio.zip>... (export completi fatti con 'rt export --all --zip')
   rt delete             <cartella> [--yes]
   rt relevance          <cartella> [--all] [--mock] (etichette JEV delle unità)
@@ -27,26 +26,22 @@ import sys
 import os
 import argparse
 import json
-import re
 from typing import Dict, Any, List, Optional, Tuple
 
 from rt.core.config import load_env_file, _default_project_root
 from rt.cli_secrets import configure_secrets_parser, cmd_secrets
 from rt.cli_jobs import cmd_jobs, cmd_worker, configure_jobs_parser, configure_worker_parser
 from rt import cli_system
-from rt.core.state import read_info_yaml, transition_to, WorkflowState
-from rt.core.encoding import fix_mojibake
+from rt.core.state import read_info_yaml
 
 from rt.core.manifest import load_manifest
 from rt.core.lesson_paths import lesson_path
 from rt.core.segments import load_segments_json
 from rt.pipeline.prepare import run_prepare
 from rt.pipeline.outline import run_outline, load_outline
-from rt.tui.outline_review import confirm_or_revise_outline
 from rt.pipeline.validator import validate_outline, validate_draft
-from rt.pipeline.rewrite import run_rewrite, load_draft, get_draft_path
+from rt.pipeline.rewrite import run_rewrite, load_draft
 from rt.pipeline.review import run_review, load_science_issues
-from rt.tui.issue_review import run_interactive_review
 from rt.pipeline.ledger import load_ledger
 from rt.pipeline.build import run_build
 from rt.storage import fs
@@ -77,7 +72,7 @@ def _job_config_hint(job_name: str) -> str:
     where = os.path.relpath(existing, os.getcwd()) if existing else f"config/{job_name}.yaml (in qualunque sottocartella di config/)"
     return (
         f"❌ Il job '{job_name}' non ha alcun provider configurato in {where}.\n"
-        f"   Esegui 'rt config' per configurarlo con la procedura guidata.\n"
+        f"   Configuralo nella web: 'rt web', poi Impostazioni › Modelli.\n"
         f"   In alternativa, per una modifica manuale: apri config/general.yaml, dichiara una\n"
         f"   credenziale sotto 'credentials:' (nome, provider, env_var), imposta la variabile\n"
         f"   d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:' in {where}.\n"
@@ -108,7 +103,7 @@ def _ensure_config_ready(required_jobs: List[str]) -> Any:
         else:
             print(
                 f"❌ I seguenti job non hanno un provider configurato: {', '.join(missing)}.\n"
-                "   Esegui 'rt config' per configurarli con la procedura guidata.\n"
+                "   Configurali nella web: 'rt web', poi Impostazioni › Modelli.\n"
                 "   In alternativa, per una modifica manuale: apri config/general.yaml, dichiara una\n"
                 "   credenziale sotto 'credentials:' (nome, provider, env_var), imposta la variabile\n"
                 "   d'ambiente corrispondente, poi imposta 'provider'/'model' sotto 'primary:' nei\n"
@@ -132,6 +127,26 @@ def _print_phase_action(
     print(format_phase_action(phase_name, res, step=step, total_steps=total_steps, description=description, details=details))
 
 
+WEB_DECISIONS = {
+    "outline_approval": "⏸ La scaletta aspetta la tua approvazione: approvala nella web ('rt web').",
+    "science_issue": "⏸ Ci sono issue da decidere: decidile nella web ('rt web').",
+}
+
+
+def _print_pending_issues(lesson_dir: str, auto_accept: Optional[str]) -> None:
+    """Dopo la review: applica l'eventuale --auto-accept e indica la web per le issue rimaste."""
+    from rt.services.review_service import auto_accept_pending
+    from rt.pipeline.ledger import get_pending_issues
+    if auto_accept:
+        accepted, remaining = auto_accept_pending(lesson_dir, auto_accept, channel="cli")
+        if accepted:
+            print(f"✔ Issue accettate in automatico: {len(accepted)}.")
+    else:
+        _, remaining = get_pending_issues(lesson_dir)
+    if remaining:
+        print(f"{WEB_DECISIONS['science_issue']} Da decidere: {len(remaining)}.")
+
+
 def cmd_prepare(args):
     force = getattr(args, "force", False)
     res = run_prepare(args.lesson_dir, force=force)
@@ -148,8 +163,10 @@ def cmd_outline(args):
     _print_phase_action("outline", res)
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
-
-    confirm_or_revise_outline(args.lesson_dir, force=force, force_mock=args.mock)
+    from rt.pipeline.outline_review import outline_needs_approval
+    from rt.services.outline_service import is_outline_approved
+    if outline_needs_approval(args.lesson_dir, force) and not is_outline_approved(args.lesson_dir):
+        print(WEB_DECISIONS["outline_approval"])
 
 
 def cmd_validate_outline(args):
@@ -187,46 +204,25 @@ def _get_lesson_title_for_notify(lesson_dir: str) -> str:
 
 
 def cmd_review(args):
-    no_regenerate = getattr(args, "no_regenerate", False) is True
-    if no_regenerate:
-        if getattr(args, "reset", False) is True:
-            from rt.pipeline.ledger import purge_decisions_by_prefix
-            removed = purge_decisions_by_prefix(args.lesson_dir, prefix="sci_")
-            print(f"🔄 Reset: rimosse {removed} decisioni scientifiche precedenti (le issue esistenti restano invariate).")
-        channel = getattr(args, "channel", None)
-        if not channel:
-            from rt.core.config import load_config as _load_cfg_for_channel
-            channel = _load_cfg_for_channel().telegram.channel
-        auto_accept = getattr(args, "auto_accept", None)
-        history = getattr(args, "history", False)
-        run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
-        return
-
     if isinstance(getattr(args, "unit", None), list) and args.unit:
         _review_units(args)
         return
 
     from rt.core.idempotency import check_phase_status, PhaseStatus
     try:
-        phase_status, reason = check_phase_status(args.lesson_dir, "review")
+        phase_status, _reason = check_phase_status(args.lesson_dir, "review")
     except OSError:
         # lesson_dir non scrivibile/inesistente (es. invocazione di test con un percorso
         # fittizio): non c'è nulla di reale da proteggere, procedi come se non fosse STALE.
-        phase_status, reason = PhaseStatus.MISSING, ""
+        phase_status, _reason = PhaseStatus.MISSING, ""
     if phase_status in (PhaseStatus.STALE, PhaseStatus.INVALID):
         existing_issues = load_science_issues(args.lesson_dir)
-        if existing_issues and sys.stdin.isatty():
-            import questionary
-            n = len(existing_issues)
-            msg = (
-                f"La fase 'review' è {phase_status.value.upper()} e contiene {n} issue/decisioni già esistenti.\n"
-                f"Una nuova rigenerazione sostituirà completamente le issue attuali.\n"
-                f"Continuare con la rigenerazione?"
-            )
-            confirmed = questionary.confirm(msg, default=False).ask()
-            if not confirmed:
-                print("Operazione annullata. Usa 'rt review <lezione> --no-regenerate' per sfogliare le issue esistenti senza rigenerarle.")
-                return
+        if existing_issues and not getattr(args, "yes", False):
+            print(
+                f"⚠️  La fase 'review' è {phase_status.value.upper()} e contiene {len(existing_issues)} issue già esistenti:\n"
+                f"   una nuova revisione le sostituisce tutte. Rilancia con --yes per confermare.",
+                file=sys.stderr)
+            sys.exit(1)
 
     if not getattr(args, "mock", False):
         _ensure_config_ready(["review"])
@@ -242,19 +238,7 @@ def cmd_review(args):
     _print_phase_action("review", res)
     if getattr(args, "json", False):
         print(json.dumps(res, ensure_ascii=False, indent=2))
-    
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.channel
-
-    if not res.get("skipped") and channel == "telegram":
-        from rt.telegram.notify import notify_issues_ready
-        notify_issues_ready(args.lesson_dir, "science", res.get("total_science_issues", 0))
-
-    auto_accept = getattr(args, "auto_accept", None)
-    history = getattr(args, "history", False)
-    run_interactive_review(args.lesson_dir, "science", channel=channel, auto_accept=auto_accept, history=history)
+    _print_pending_issues(args.lesson_dir, getattr(args, "auto_accept", None))
 
 
 
@@ -282,20 +266,11 @@ def _review_units(args) -> None:
                       f"non ha ritrovato: {', '.join(res['orphaned_decisions'])}.")
     if getattr(args, "json", False):
         print(json.dumps({"phase": "review", "units": results}, ensure_ascii=False, indent=2))
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.channel
-    run_interactive_review(args.lesson_dir, "science", channel=channel,
-                           auto_accept=getattr(args, "auto_accept", None), history=getattr(args, "history", False))
+    _print_pending_issues(args.lesson_dir, getattr(args, "auto_accept", None))
 
 
 def cmd_recall(args):
-    if getattr(args, "check", False) is True:
-        from rt.tui.recall import run_stale_recall_check
-        run_stale_recall_check(args.lesson_dir)
-        return
-
+    """Gestione del pool di domande; la sessione di recall si fa nella web."""
     reset_val = getattr(args, "reset", None)
     if isinstance(reset_val, str) and reset_val in ("all", "quiz", "mirata", "vasta"):
         from rt.pipeline.recall import purge_recall_by_type
@@ -324,8 +299,6 @@ def cmd_recall(args):
         )
         sys.exit(1)
 
-    order = getattr(args, "order", "alternato")
-    style = getattr(args, "style", None)
     force_mock = getattr(args, "mock", False)
 
     units_arg = getattr(args, "units", None)
@@ -335,30 +308,18 @@ def cmd_recall(args):
         rows = set_selection(args.lesson_dir, wanted)
         picked = [r["unit_id"] for r in rows if r["selected"]]
         print(f"🎯 Unità per il recaller: {len(picked)} di {len(rows)} ({', '.join(picked) or 'nessuna'}).")
+    if not getattr(args, "pool", False):
+        if not isinstance(units_arg, str):
+            print("ℹ️  La sessione di recall si fa nella web ('rt web'): da qui si gestisce il pool "
+                  "(--pool, --units, --delete, --reset).")
+        return
 
     if not force_mock:
         _ensure_config_ready(["recall"])
 
-    if getattr(args, "pool", False):
-        from rt.services.recall_service import generate_pool
-        generated = generate_pool(args.lesson_dir, force_mock=force_mock)
-        print("🧠 Pool rigenerato, domande nuove: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
-        return
-
-    channel = getattr(args, "channel", None)
-    if not channel:
-        from rt.core.config import load_config as _load_cfg_for_channel
-        channel = _load_cfg_for_channel().telegram.channel
-
-    from rt.telegram.recall_channel import start_recall_via_telegram
-    from rt.tui.recall import run_recall_terminal_session
-    if channel == "telegram":
-        start_recall_via_telegram(args.lesson_dir, order=order, style=style, force_mock=force_mock)
-    else:
-        run_recall_terminal_session(args.lesson_dir, order=order, style=style, force_mock=force_mock)
-
-
-
+    from rt.services.recall_service import generate_pool
+    generated = generate_pool(args.lesson_dir, force_mock=force_mock)
+    print("🧠 Pool rigenerato, domande nuove: " + ", ".join(f"{n} {t}" for t, n in generated.items()) + ".")
 
 
 def cmd_add_images(args):
@@ -421,18 +382,6 @@ def normalize_review_cli_args(argv: List[str]) -> List[str]:
     return new_argv
 
 
-def _prompt_and_launch_daemon_if_needed():
-    if not sys.stdin.isatty():
-        return
-    from rt.telegram.daemon_status import is_daemon_running, launch_daemon_in_terminal
-    if is_daemon_running():
-        return
-    import questionary
-    answer = questionary.confirm("Vuoi avviare il demone Telegram ora?", default=True).ask()
-    if answer:
-        launch_daemon_in_terminal()
-
-
 def cmd_build(args):
     force = getattr(args, "force", False)
     res = run_build(args.lesson_dir, force=force, rename_folder=args.rename)
@@ -446,7 +395,6 @@ def cmd_build(args):
 def cmd_setup(args):
     """Setup nativo per l'ingest di file audio, trascrizione macparakeet-cli e metadati."""
     from rt.pipeline.setup import run_setup, SetupError, SetupCancelled, DEFAULT_MODEL
-    from rt.cli_prompts import terminal_setup_prompter
     try:
         res = run_setup(
             audio=args.audio,
@@ -459,8 +407,7 @@ def cmd_setup(args):
             skip_transcribe=args.skip_transcribe,
             force=args.force,
             mock_asr=args.mock,
-            interactive=True,
-            prompter=terminal_setup_prompter(),
+            interactive=False,
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
     except SetupCancelled:
@@ -750,30 +697,6 @@ def cmd_import(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-class CliDecisionProvider:
-    """Decisioni umane di 'rt run' chieste con le UI da terminale (Textual/input) o Telegram."""
-
-    def __init__(self) -> None:
-        from rt.cli_prompts import terminal_setup_prompter
-        self.setup_prompter = terminal_setup_prompter()
-
-    def approve_outline(self, lesson_dir: str, force: bool, force_mock: bool) -> None:
-        confirm_or_revise_outline(lesson_dir, force=force, force_mock=force_mock)
-
-    def review_science_issues(self, lesson_dir: str, channel: str, auto_accept: Optional[str]) -> bool:
-        return run_interactive_review(lesson_dir, "science", channel=channel, auto_accept=auto_accept)
-
-
-class TelegramBuildNotifier:
-    """Notifica Telegram di fine build, poi proposta di avviare il demone (solo da TTY)."""
-
-    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
-        from rt.telegram.notify import notify_build_completed
-        sent = notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title)
-        _prompt_and_launch_daemon_if_needed()
-        return False if sent is None else sent
-
-
 def cmd_run(args):
     """Pipeline end-to-end completa con idempotenza, cost protection e supporto audio/cartella."""
     from rt.pipeline.setup import SetupError, SetupCancelled, DEFAULT_MODEL
@@ -781,6 +704,7 @@ def cmd_run(args):
     from rt.llm.telemetry import GLOBAL_TELEMETRY
     from rt.services.context import RunContext
     from rt.services.pipeline_service import PipelineOptions, PipelineStatus, is_audio_input, run_pipeline
+    from rt.telegram.notify import TelegramBuildNotifier
 
     raw_inputs = args.input if isinstance(args.input, list) else [args.input]
     first_input = raw_inputs[0] if raw_inputs else ""
@@ -819,11 +743,11 @@ def cmd_run(args):
         with_enrichment=getattr(args, "with_enrichment", None),
         auto_accept=bool(getattr(args, "auto_accept", False)),
         rename=getattr(args, "rename", True),
-        channel=getattr(args, "channel", None),
+        source="cli",
     )
     if getattr(args, "queue", False):
         from rt.cli_jobs import run_queued
-        run_queued(raw_inputs, options, CliDecisionProvider())
+        run_queued(raw_inputs, options)
         return
     # La CLI usa la telemetria di processo: il riepilogo costi e i test la leggono da lì.
     ctx = RunContext(reporter=CliReporter(steps=steps, total_steps=total_steps), telemetry=GLOBAL_TELEMETRY)
@@ -834,7 +758,7 @@ def cmd_run(args):
     lock = lesson_work_lock(first_input) if not is_audio and fs.isdir(first_input) else nullcontext()
     try:
         with lock:
-            result = run_pipeline(raw_inputs, options, ctx, decisions=CliDecisionProvider(), notifiers=[TelegramBuildNotifier()])
+            result = run_pipeline(raw_inputs, options, ctx, notifiers=[TelegramBuildNotifier()])
     except LessonBusy as exc:
         print(f"❌ {exc}: un job della coda la sta elaborando ('rt jobs' per vederlo).", file=sys.stderr)
         sys.exit(1)
@@ -846,28 +770,21 @@ def cmd_run(args):
             print(f"❌ Errore durante l'ingest audio: {result.error.cli_message()}", file=sys.stderr)
             sys.exit(1)
         raise result.error
+    if result.status == PipelineStatus.WAITING_FOR_DECISION:
+        kind = result.decision.kind if result.decision else ""
+        if kind == "setup_metadata":
+            missing = ", ".join((result.decision.payload or {}).get("missing") or [])
+            print(f"⏸ Mancano i metadati della lezione ({missing}): rilancia con -d/-m/-a.", file=sys.stderr)
+        else:
+            print(f"{WEB_DECISIONS.get(kind, '⏸ La lezione aspetta una decisione nella web (rt web).')}\n"
+                  f"   Poi rilancia 'rt run \"{result.lesson_dir}\"' per completarla.")
+        return
     if result.status != PipelineStatus.COMPLETED:
         return
 
     summary_text = format_cost_summary(GLOBAL_TELEMETRY.get_summary())
     if summary_text:
         print(summary_text)
-
-
-def cmd_telegram_daemon(args):
-    from rt.telegram.daemon import run_daemon
-    if getattr(args, "service", False):
-        # servizio launchd (fase G): senza token e Chat ID esce con 0, così launchd non lo
-        # rilancia a vuoto; si riavvia da Impostazioni quando il bot è configurato
-        from rt.core.config import telegram_enabled
-        from rt.services.settings_service import telegram_configured
-        if not telegram_enabled():
-            print("ℹ️  Telegram è disattivato: il servizio del bot resta fermo.", file=sys.stderr)
-            return
-        if not telegram_configured():
-            print("ℹ️  Bot Telegram non configurato: il servizio resta fermo.", file=sys.stderr)
-            return
-    run_daemon(state_dir=getattr(args, "state_dir", None))
 
 
 class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -885,24 +802,6 @@ class RTHelpFormatter(argparse.RawDescriptionHelpFormatter):
                     parts.append(self._format_action(subaction))
             return self._join_parts(parts)
         return super()._format_action(action)
-
-
-def cmd_config(args: argparse.Namespace) -> None:
-    if getattr(args, "models", False):
-        from rt.tui.configure import run_models_management
-        run_models_management()
-    elif getattr(args, "telegram", False):
-        from rt.tui.configure import run_telegram_only
-        run_telegram_only()
-    elif getattr(args, "topics", False):
-        from rt.tui.configure import run_topics_management
-        run_topics_management()
-    elif getattr(args, "theme", False):
-        from rt.tui.configure import run_theme_selection
-        run_theme_selection()
-    else:
-        from rt.tui.configure import run_config_wizard
-        run_config_wizard()
 
 
 def cmd_db(args: argparse.Namespace) -> None:
@@ -1011,39 +910,14 @@ def _ensure_database_or_exit(command: Optional[str]) -> None:
         sys.exit(1)
 
 
-LEGACY_WEB_WARNING = ("⚠️ L'interfaccia Gradio (rt web --legacy) è deprecata e verrà rimossa nella prossima "
-                      "release: usa 'rt web'.")
-
-
 def cmd_web(args: argparse.Namespace) -> None:
-    """Avvia la web app: API + worker + SPA (RT4-F8); con --legacy la vecchia interfaccia Gradio."""
-    if not args.legacy:
-        if args.lessons_root or args.log_file:
-            raise SystemExit("--lessons-root e --log-file valgono solo con --legacy: la cartella lezioni "
-                             "si imposta dalla web (Impostazioni) o con 'rt config'.")
-        from rt.api.launcher import run_spa
-        from rt.api.server import DEFAULT_PORT
-        kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
-        code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
-        if code:
-            sys.exit(code)
-        return
-    print(LEGACY_WEB_WARNING, file=sys.stderr)
-    try:
-        from rt.web.app import main as web_main
-    except ModuleNotFoundError as exc:
-        if exc.name == "gradio":
-            raise SystemExit("Gradio non è installato (non serve più alla web di RT). Per l'interfaccia "
-                             "legacy: ./.venv/bin/python -m pip install -r requirements-web.txt") from exc
-        raise
-    argv = ["--port", str(args.port or 7860)]
-    if args.lessons_root:
-        argv += ["--lessons-root", args.lessons_root]
-    if args.no_browser:
-        argv.append("--no-browser")
-    if args.log_file:
-        argv += ["--log-file", args.log_file]
-    web_main(argv)
+    """Avvia la web app: API + worker + SPA (RT4-F8)."""
+    from rt.api.launcher import run_spa
+    from rt.api.server import DEFAULT_PORT
+    kwargs = {"verbose": True} if getattr(args, "verbose", False) else {}
+    code = run_spa(port=args.port or DEFAULT_PORT, open_browser=not args.no_browser, **kwargs)
+    if code:
+        sys.exit(code)
 
 
 def cmd_logs(args: argparse.Namespace) -> None:
@@ -1063,7 +937,6 @@ def cmd_api(args: argparse.Namespace) -> None:
 
 def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.ArgumentParser]]:
     from rt.pipeline.setup import DEFAULT_MODEL, configure_setup_parser
-    from rt.tui.configure import configure_config_parser
 
     epilog_text = (
         "Fasi della pipeline:\n"
@@ -1086,7 +959,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "Installazione e manutenzione:\n"
         "  doctor              Controlla l'installazione e dice cosa sistemare\n"
         "  backup / restore    Backup completo (database, media, configurazione) e ripristino\n"
-        "  service             Servizi in background con launchd: API, worker, bot\n"
+        "  service             Servizi in background con launchd: API e worker\n"
         "  logs                Ultime righe dei log dei servizi (--follow per seguirli)\n"
         "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
@@ -1100,8 +973,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  rt api                          Avvia l'API REST locale (http://127.0.0.1:8765/docs)\n"
         "  rt run lezione.m4a              Pipeline completa da un file audio\n"
         "  rt run <cartella_lezione>       Riprende una lezione già iniziata\n"
-        "  rt review <cartella_lezione>    Critica scientifica indipendente\n"
-        "  rt recall <cartella_lezione>    Sessione di active recall da terminale"
+        "  rt review <cartella_lezione>    Critica scientifica indipendente"
     )
     parser = argparse.ArgumentParser(
         prog="rt",
@@ -1114,18 +986,14 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
     p_web = subparsers.add_parser(
         "web", help="Avvia la web app (API, worker e interfaccia) e apre il browser già autenticato")
-    p_web.add_argument("--port", type=int, default=None, help="Porta locale (default: 8765, con --legacy 7860)")
+    p_web.add_argument("--port", type=int, default=None, help="Porta locale (default: 8765)")
     p_web.add_argument("--no-browser", action="store_true", help="Non aprire automaticamente il browser")
-    p_web.add_argument("--legacy", action="store_true",
-                       help="Vecchia interfaccia Gradio (deprecata, rimossa nella prossima release)")
     p_web.add_argument("--spa", action="store_true", help=argparse.SUPPRESS)  # compatibilità: ora è il default
     p_web.add_argument("--verbose", action="store_true", help="Segui i log dei servizi già attivi fino a Ctrl+C")
-    p_web.add_argument("--lessons-root", help="Cartella delle lezioni (solo con --legacy)")
-    p_web.add_argument("--log-file", help="Percorso del log diagnostico (solo con --legacy)")
     p_web.set_defaults(func=cmd_web)
 
-    p_logs = subparsers.add_parser("logs", help="Mostra i log di API, worker e bot")
-    p_logs.add_argument("service", nargs="?", choices=["api", "worker", "bot"], help="Servizio (default: tutti)")
+    p_logs = subparsers.add_parser("logs", help="Mostra i log di API e worker")
+    p_logs.add_argument("service", nargs="?", choices=["api", "worker"], help="Servizio (default: tutti)")
     p_logs.add_argument("--lines", type=int, default=50, help="Righe recenti per servizio (default: 50)")
     p_logs.add_argument("--follow", "-f", action="store_true", help="Segui le nuove righe fino a Ctrl+C")
     p_logs.set_defaults(func=cmd_logs)
@@ -1138,11 +1006,6 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_api.add_argument("--dev-cors", action="store_true", help="Consente le richieste dalla SPA in sviluppo (localhost:5173)")
     p_api.add_argument("--service", action="store_true", help=argparse.SUPPRESS)  # avvio da launchd (rt service)
     p_api.set_defaults(func=cmd_api)
-
-    # 1. config
-    p_cfg = subparsers.add_parser("config", help="Wizard interattivo di configurazione guidata (provider LLM, Telegram, STT, pricing)")
-    configure_config_parser(p_cfg)
-    p_cfg.set_defaults(func=cmd_config)
 
     # 1-bis. secrets
     p_sec = subparsers.add_parser("secrets", help="Chiavi API e token cifrati: init, migrate, list, set, unset, rotate")
@@ -1172,8 +1035,6 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_run.add_argument("--auto-accept", action="store_true", help="Auto-accetta revisioni senza blocchi interattivi")
     p_run.add_argument("--rename", action=argparse.BooleanOptionalAction, default=True,
                         help="Rinomina la cartella con il titolo formale (default: attivo, --no-rename per disattivare)")
-    p_run.add_argument("--channel", choices=["terminal", "telegram"], default=None,
-                        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
     p_run.set_defaults(func=cmd_run)
 
     # 3. review
@@ -1188,17 +1049,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         default=None,
         help="Auto-accetta le proposte scientifiche ('all' per accettare tutto)."
     )
-    p_rsci.add_argument(
-        "--history",
-        action="store_true",
-        help="Mostra anche le issue già decise per una eventuale rivalutazione (solo terminale)"
-    )
-    p_rsci.add_argument(
-        "--channel",
-        choices=["terminal", "telegram"],
-        default=None,
-        help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)"
-    )
+    p_rsci.add_argument("-y", "--yes", action="store_true",
+                        help="Conferma la nuova revisione anche se sostituisce issue già esistenti")
     p_rsci.add_argument(
         "--asr-llm",
         action="store_true",
@@ -1215,22 +1067,11 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_rsci.add_argument("--unit", action="append", metavar="ID",
                         help="Rivede solo questa unità (ripetibile); le issue delle altre unità restano")
     p_rsci.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo")
-    p_rsci.add_argument(
-        "--no-regenerate",
-        action="store_true",
-        help="Salta la rigenerazione delle issue e apre direttamente la revisione interattiva di quelle già esistenti su disco"
-    )
     p_rsci.set_defaults(func=cmd_review)
 
     # 4. recall
-    p_recall = subparsers.add_parser("recall", help="Sessione di active recall (quiz/mirata/vasta) su una lezione già rielaborata")
+    p_recall = subparsers.add_parser("recall", help="Pool di domande di recall di una lezione (la sessione si fa nella web)")
     p_recall.add_argument("lesson_dir", help="Directory della lezione")
-    p_recall.add_argument("--order", choices=["sequenziale", "alternato", "casuale"], default="alternato",
-                           help="Ordine di proposta delle domande per questa sessione (default: alternato)")
-    p_recall.add_argument("--channel", choices=["terminal", "telegram"], default=None,
-                           help="Canale per questa sessione: terminale o Telegram (default: da config, altrimenti terminale)")
-    p_recall.add_argument("--style", choices=["quiz", "mirata", "vasta"], default=None,
-                           help="Tipo di domanda per questa sessione; se passato, aggiorna anche lo stile attivo globale (default: stile attivo corrente)")
     p_recall.add_argument(
         "--reset", nargs="?", const="all", choices=["all", "quiz", "mirata", "vasta"], default=None,
         help="Resetta le domande/risposte di recall già effettuate: senza valore o 'all' azzera "
@@ -1244,7 +1085,6 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
                                "domande nuove a quelle già generate (che restano)")
     p_recall.add_argument("--delete", default=None, metavar="recall_000012,...",
                           help="Elimina queste domande (e le loro risposte) dal pool della lezione")
-    p_recall.add_argument("--check", action="store_true", help="Revisione interattiva da terminale delle domande stale per modifica dell'unità")
     p_recall.add_argument("--mock", action="store_true", help="Usa mock deterministico (nessuna chiamata LLM reale)")
     p_recall.set_defaults(func=cmd_recall)
 
@@ -1254,12 +1094,6 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_stat.add_argument("--issues", action="store_true", help="Mostra report diagnostico dettagliato delle issue e del ledger")
     p_stat.add_argument("--json", action="store_true", help="Mostra anche il blocco JSON completo dello stato")
     p_stat.set_defaults(func=cmd_status)
-
-    # 6. telegram-daemon
-    p_tgd = subparsers.add_parser("telegram-daemon", help="Avvia il daemon Telegram persistente per bottoni/feedback")
-    p_tgd.add_argument("--state-dir", default=None, help="Override della cartella di stato Telegram (default: da config)")
-    p_tgd.add_argument("--service", action="store_true", help=argparse.SUPPRESS)  # launchd: esce pulito se non configurato
-    p_tgd.set_defaults(func=cmd_telegram_daemon)
 
     # worker e coda dei job (fase D)
     p_wrk = subparsers.add_parser("worker", help="Esegue i job in coda (pipeline, trascrizioni, recall) in background")
@@ -1363,7 +1197,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_rst = subparsers.add_parser("restore", help=argparse.SUPPRESS, description="Ripristina un backup fatto con 'rt backup'")
     cli_system.configure_restore_parser(p_rst)
     p_rst.set_defaults(func=cli_system.cmd_restore)
-    p_svc = subparsers.add_parser("service", help=argparse.SUPPRESS, description="Servizi in background (launchd): API, worker, bot")
+    p_svc = subparsers.add_parser("service", help=argparse.SUPPRESS, description="Servizi in background (launchd): API e worker")
     cli_system.configure_service_parser(p_svc)
     p_svc.set_defaults(func=cli_system.cmd_service)
     p_data = subparsers.add_parser("data", help=argparse.SUPPRESS, description="Cartella dati di RT (RT_DATA_DIR o ~/.rt): stato, creazione, migrazione")
@@ -1402,12 +1236,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
     return parser, {
         "web": p_web,
-        "config": p_cfg,
         "run": p_run,
         "review": p_rsci,
         "recall": p_recall,
         "status": p_stat,
-        "telegram-daemon": p_tgd,
         "setup": p_set,
         "prepare": p_prep,
         "outline": p_out,
@@ -1443,8 +1275,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     args = parser.parse_args(normalized_argv)
     _ensure_database_or_exit(args.command)
     if args.command is None:
-        from rt.tui.app import run_app
-        run_app()
+        parser.print_help()
         return
     from rt.llm.errors import LLMFailure
     from rt.pipeline.unit_failures import PhaseIncomplete

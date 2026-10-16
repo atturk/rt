@@ -6,7 +6,7 @@ stampa da sempre. È l'unico punto in cui la presentazione a terminale delle fas
 import os
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from rt.services.events import DecisionRequired, Event, Notice, PhaseCompleted, PhaseStarted
+from rt.services.events import Event, Notice, PhaseCompleted, PhaseStarted
 
 # Descrizioni mostrate da 'rt run' nell'intestazione "[n/N] FASE (descrizione)...".
 RUN_PHASE_DESCRIPTIONS = {
@@ -148,13 +148,7 @@ class CliReporter:
                 self.out("\n✨ PIPELINE COMPLETATA CON SUCCESSO!")
         elif isinstance(event, Notice):
             self.out(event.message)
-        elif isinstance(event, DecisionRequired):
-            lesson_dir = event.payload.get("lesson_dir", "")
-            if event.kind == "science_issue":
-                self.out(f"\n⏸  In attesa che la revisione scientifica venga completata (Telegram, oppure esegui 'rt review \"{lesson_dir}\"' da terminale). "
-                         f"Esegui poi 'rt build \"{lesson_dir}\"' per finalizzare.")
-            elif event.kind == "outline_approval":
-                self.out(f"\n⏸  Outline in attesa di approvazione. Esegui 'rt run \"{lesson_dir}\"' da un terminale interattivo per confermarla.")
+        # DecisionRequired: il suggerimento (decidere nella web) lo stampa il comando
 
     def render_setup(self, res: Dict[str, Any]) -> Optional[str]:
         step = self.steps.get("setup", (1, ""))[0] + 1

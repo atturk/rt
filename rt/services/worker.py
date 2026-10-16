@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from rt.services.context import CancelToken, RunCancelled, RunContext
 from rt.services.events import Event, PhaseCompleted, PhaseProgress, PhaseStarted, ReviewUnitDone, ReviewUnitsQueued, ReviewUnitStarted
@@ -49,6 +49,34 @@ def mock_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(out.get("options"), dict):
         out["options"] = {**out["options"], "mock": True}
     return out
+
+
+# Job lunghi di cui avvisare quando non riescono (le notifiche le registra chi avvia il worker:
+# rt/services non conosce Telegram).
+NOTIFY_FAILED_TYPES = frozenset({"run_pipeline", "run_phase", "ingest_audio", "update_lesson", "add_images"})
+_JOB_NOTIFIERS: List[Any] = []
+
+
+def register_job_notifier(notifier: Any) -> None:
+    """notifier.job_waiting(lesson_dir, decision) e notifier.job_failed(lesson_dir, error).
+    Un notifier dello stesso tipo già registrato viene sostituito."""
+    _JOB_NOTIFIERS[:] = [n for n in _JOB_NOTIFIERS if type(n) is not type(notifier)] + [notifier]
+
+
+def unregister_job_notifiers() -> None:
+    _JOB_NOTIFIERS.clear()
+
+
+def _notify_job_outcome(job: JobInfo, outcome: "JobOutcome") -> None:
+    lesson_dir = outcome.lesson_path or job.lesson_path
+    for notifier in list(_JOB_NOTIFIERS):
+        try:
+            if outcome.state == JobState.WAITING_FOR_DECISION and outcome.decision:
+                notifier.job_waiting(lesson_dir, outcome.decision)
+            elif outcome.state == JobState.FAILED and job.type in NOTIFY_FAILED_TYPES:
+                notifier.job_failed(lesson_dir, outcome.error)
+        except Exception:  # noqa: BLE001 - una notifica non cambia l'esito del job
+            logger.warning("Notifica del job %s non inviata", job.id, exc_info=True)
 
 
 def register_handler(job_type: str, handler: JobHandler) -> None:
@@ -301,6 +329,7 @@ class Worker:
             return
         self.queue.finish(job.id, self.worker_id, outcome.state, result=outcome.result, error=outcome.error,
                           decision=outcome.decision, lesson_path=outcome.lesson_path)
+        _notify_job_outcome(job, outcome)
         if job.type == "documents" and outcome.state == JobState.SUCCEEDED and job.lesson_path:
             from rt.services.documents_service import ensure_documents_queued
             ensure_documents_queued(job.lesson_path, self.queue)

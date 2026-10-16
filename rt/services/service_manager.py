@@ -3,9 +3,8 @@ rt.services.service_manager
 Servizi di RT in background (RT4-G1): su macOS sono LaunchAgent di launchd (il default),
 uno per processo, che partono al login e ripartono se cadono:
 
-    api     'rt api --service'              API + web app su 127.0.0.1:<porta>
-    worker  'rt worker'                     esegue i job in coda
-    bot     'rt telegram-daemon --service'  bot Telegram (esce subito se non è configurato)
+    api     'rt api --service'  API + web app su 127.0.0.1:<porta>
+    worker  'rt worker'         esegue i job in coda (e manda le notifiche Telegram)
 
 I file .plist stanno in ~/Library/LaunchAgents (RT_LAUNCH_AGENTS_DIR per i test), i log in
 <cartella dati>/logs. Ogni servizio riceve RT_DATA_DIR, così usa la stessa cartella dati di
@@ -25,9 +24,8 @@ LABEL_PREFIX = "com.atturk.rt."
 SERVICES: Dict[str, List[str]] = {
     "api": ["api", "--service"],
     "worker": ["worker"],
-    "bot": ["telegram-daemon", "--service"],
 }
-DESCRIPTIONS = {"api": "API e web app", "worker": "worker dei job", "bot": "bot Telegram"}
+DESCRIPTIONS = {"api": "API e web app", "worker": "worker dei job"}
 AGENTS_DIR_ENV = "RT_LAUNCH_AGENTS_DIR"
 PORT_ENV = "RT_API_PORT"
 DEFAULT_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -93,7 +91,7 @@ def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] 
         "StandardOutPath": log,
         "StandardErrorPath": log,
         "RunAtLoad": True,
-        # riparte se esce con errore; un'uscita pulita (bot non configurato, 'rt service stop') no
+        # riparte se esce con errore; un'uscita pulita ('rt service stop') no
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
         "ProcessType": "Background" if name == "worker" else "Standard",
@@ -138,19 +136,32 @@ def _require_supported() -> None:
                            "docker compose (docs/SELF_HOSTING.md) o avvia 'rt api' e 'rt worker' a mano.")
 
 
-# LaunchAgent che il README della 3.x faceva scrivere a mano per il bot: con il servizio 'bot'
-# girerebbero due bot sullo stesso token (Telegram accetta un solo polling alla volta).
-LEGACY_AGENT_LABELS = ("com.rt.telegram-daemon",)
+# LaunchAgent del bot Telegram sempre acceso, che non esiste più (Telegram manda solo
+# notifiche, dal worker): quello scritto a mano con la 3.x e il servizio 'bot' della 4.x.
+# Lanciano un comando che non c'è più, quindi si tolgono.
+LEGACY_AGENT_LABELS = ("com.rt.telegram-daemon", LABEL_PREFIX + "bot")
 
 
 def legacy_agents() -> List[str]:
-    """I .plist scritti a mano con la 3.x ancora presenti."""
+    """I .plist del vecchio bot ancora presenti."""
     return [p for p in (os.path.join(agents_dir(), f"{name}.plist") for name in LEGACY_AGENT_LABELS)
             if os.path.isfile(p)]
 
 
-def legacy_agent_hint(path: str) -> str:
-    return f"launchctl bootout gui/{os.getuid()} '{path}'; rm '{path}'"
+def remove_legacy_agents(say: Callable[[str], None] = print) -> List[str]:
+    """Scarica e cancella i .plist del vecchio bot (vedi LEGACY_AGENT_LABELS)."""
+    removed = []
+    for path in legacy_agents():
+        if supported():
+            _launchctl("bootout", f"{_domain()}/{os.path.basename(path)[:-len('.plist')]}")
+        try:
+            os.remove(path)
+        except OSError as exc:
+            say(f"⚠️  Non riesco a rimuovere il vecchio bot Telegram ({path}): {exc}")
+            continue
+        removed.append(path)
+        say(f"🗑  Vecchio servizio del bot Telegram rimosso ({os.path.basename(path)}).")
+    return removed
 
 
 def installed(names: Optional[Sequence[str]] = None) -> List[str]:
@@ -175,10 +186,7 @@ def install(names: Optional[Sequence[str]] = None, start: bool = True, data_dir:
             _launchctl("bootout", _target(name))  # se era già caricato con il plist vecchio
             _bootstrap(path)
         say(f"✅ Servizio {name} ({DESCRIPTIONS[name]}) installato" + (" e avviato." if start else "."))
-    if "bot" in names:
-        for path in legacy_agents():
-            say(f"⚠️  C'è ancora il LaunchAgent della 3.x per il bot ({path}): con il servizio bot "
-                f"girerebbero due bot. Rimuovilo con: {legacy_agent_hint(path)}")
+    remove_legacy_agents(say)
     return names
 
 

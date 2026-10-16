@@ -1,8 +1,8 @@
 """
 rt.telegram.notify_log
-Registro delle ultime notifiche inviate al gruppo (RT4-FA6): lezione pronta, issue da
-rivedere, messaggi di prova dei topic. Un file JSONL nella cartella di stato Telegram, con le
-ultime MAX_ENTRIES righe; la pagina Bot Telegram lo legge da GET /telegram/notifications.
+Registro delle ultime notifiche inviate (RT4-FA6): lezione pronta, decisioni, errori, prove.
+Un file JSONL nella cartella di stato Telegram, con le ultime MAX_ENTRIES righe; la pagina
+Impostazioni › Telegram lo legge da GET /telegram/notifications.
 Registrare non deve mai far fallire l'invio: gli errori si ignorano. Nessun token nel file.
 """
 import json
@@ -30,13 +30,12 @@ def _plain(text: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", text or "")).strip()[:300]
 
 
-def record_notification(kind: str, text: str, topic_id: Optional[int], ok: bool = True,
-                        state_dir: Optional[str] = None) -> None:
+def record_notification(kind: str, text: str, ok: bool = True, state_dir: Optional[str] = None) -> None:
     try:
         path = _path(state_dir)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         entry = {"sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "kind": kind,
-                 "text": _plain(text), "topic_id": topic_id, "ok": ok}
+                 "text": _plain(text), "ok": ok}
         with _lock:
             lines: List[str] = []
             if os.path.isfile(path):

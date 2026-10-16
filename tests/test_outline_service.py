@@ -57,7 +57,7 @@ def test_revision_invalidates_approval(temp_lesson_dir, monkeypatch):
 
 
 def test_pipeline_resumes_after_approval(temp_lesson_dir):
-    opts = PipelineOptions(mock=True, rename=False, channel="terminal")
+    opts = PipelineOptions(mock=True, rename=False)
     res = run_pipeline(temp_lesson_dir, opts, RunContext())
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
     assert res.decision.payload["outline"]["lesson_title"]

@@ -1,20 +1,17 @@
 """
 rt.services.settings_service
 Impostazioni modificabili da web e API (credenziali, route dei job LLM, Telegram, motore di
-trascrizione, cartella lezioni), salvate senza riscrivere il resto del YAML. Spostato da
-rt/web/settings.py (RT4-E4) perché lo usano sia Gradio sia l'API FastAPI.
+trascrizione, cartella lezioni), salvate senza riscrivere il resto del YAML. Spostato dalla
+vecchia web Gradio (RT4-E4).
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import re
-import tempfile
 from typing import Any
 from urllib.parse import urlparse
 
-import yaml
 
 from rt.core.config import JobRoutingConfig, KNOWN_PROVIDER_DEFAULT_BASE_URLS, find_job_yaml_paths, load_config, classifier_job
 from rt.llm.credentials import CredentialRef, GLOBAL_CREDENTIALS
@@ -182,39 +179,25 @@ def save_route(project_root: Path, job: str, role: str, provider: str,
     return f"Modello {role} salvato per {job}."
 
 
-def save_telegram(project_root: Path, token: str, chat_id: str,
-                  topics: list[list[str]], misc_topic: str,
-                  topic_names: dict[int, str] | None = None) -> str:
+# Chiavi delle vecchie versioni (bot nei gruppi con i topic): si tolgono al primo salvataggio.
+_LEGACY_TELEGRAM_KEYS = ("topics", "topic_names", "misc_topic_id", "default_channel", "wait_timeout_seconds")
+
+
+def save_telegram(project_root: Path, token: str, chat_id: str) -> str:
+    """Token del bot (segreto) e ID della chat personale in cui arrivano le notifiche."""
     if token.strip():
         _validate_secret(token.strip())
     if chat_id.strip():
         _validate_secret(chat_id.strip())
-    path = general_config_path(project_root)
-    data = _read_yaml(path)
-    telegram = data.setdefault("telegram", {})
-    if not isinstance(telegram, dict):
-        raise ValueError("Configurazione Telegram non valida.")
-    mapped = {}
-    for row in topics or []:
-        if not row or not str(row[0]).strip():
-            continue
-        mapped[str(row[0]).strip().upper()] = int(row[1])
-    telegram["topics"] = mapped
-    # Nomi dei topic rilevati da "Ascolta i topic" (RT4-FA6), solo per i topic salvati.
-    if topic_names is not None:
-        previous = telegram.get("topic_names") if isinstance(telegram.get("topic_names"), dict) else {}
-        names = {**{int(k): str(v) for k, v in previous.items()},
-                 **{int(k): str(v).strip() for k, v in topic_names.items() if str(v).strip()}}
-        kept = {k: v for k, v in names.items() if k in set(mapped.values())}
-        if kept:
-            telegram["topic_names"] = kept
-        else:
-            telegram.pop("topic_names", None)
-    telegram["misc_topic_id"] = int(misc_topic) if str(misc_topic).strip() else None
-    if chat_id.strip():
         if not re.fullmatch(r"-?\d+", chat_id.strip()):
             raise ValueError("Chat ID non valido.")
-    _atomic_yaml(path, data)
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    telegram = data.get("telegram")
+    if isinstance(telegram, dict) and any(k in telegram for k in _LEGACY_TELEGRAM_KEYS):
+        for key in _LEGACY_TELEGRAM_KEYS:
+            telegram.pop(key, None)
+        _atomic_yaml(path, data)
     if token.strip():
         _save_secret(project_root, "RT_TELEGRAM_BOT_TOKEN", token.strip())
     if chat_id.strip():
@@ -224,8 +207,7 @@ def save_telegram(project_root: Path, token: str, chat_id: str,
 
 
 def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
-    """Accende o spegne Telegram (telegram.enabled nella configurazione generale). Spento, il
-    bot non parte e i ripassi e le decisioni restano nella web app e nel terminale."""
+    """Accende o spegne le notifiche Telegram (telegram.enabled nella configurazione generale)."""
     path = general_config_path(project_root)
     data = _read_yaml(path)
     telegram = data.setdefault("telegram", {})
@@ -233,7 +215,7 @@ def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
         raise ValueError("Configurazione Telegram non valida.")
     telegram["enabled"] = bool(enabled)
     _atomic_yaml(path, data)
-    return "Telegram attivato." if enabled else "Telegram disattivato."
+    return "Notifiche Telegram attivate." if enabled else "Notifiche Telegram disattivate."
 
 
 def save_transcription(project_root: Path, engine: str, base_url: str,
@@ -295,77 +277,6 @@ def save_notice(project_root: Path, notice: str, dismissed: bool) -> str:
     return "Preferenza salvata."
 
 
-def save_lessons_root(raw_path: str, project_root: Path) -> str:
-    """Imposta solo telegram.lessons_root e crea la cartella se necessario (solo web legacy:
-    dalla 4.x le lezioni stanno nel database e la cartella non si configura più)."""
-    if not raw_path or not raw_path.strip():
-        raise ValueError("Inserisci il percorso della cartella delle lezioni.")
-    entered = Path(raw_path.strip()).expanduser()
-    if not entered.is_absolute():
-        raise ValueError("Usa un percorso assoluto, per esempio ~/RT Lezioni.")
-    root = entered.resolve()
-    project = project_root.resolve()
-    if root == project or root.is_relative_to(project):
-        raise ValueError("Scegli una cartella fuori dall'installazione di RT.")
-    if root.exists() and not root.is_dir():
-        raise ValueError("Il percorso indicato è un file, non una cartella.")
-
-    config_path = general_config_path(project_root)
-    original = config_path.read_text(encoding="utf-8") if config_path.is_file() else ""
-    try:
-        data = yaml.safe_load(original) if original.strip() else {}
-    except yaml.YAMLError as exc:
-        raise ValueError("Il file di configurazione generale di RT contiene YAML non valido.") from exc
-    if not isinstance(data, dict):
-        raise ValueError("Il file di configurazione generale di RT non contiene una mappa YAML valida.")
-    telegram = data.get("telegram")
-    if telegram is not None and not isinstance(telegram, dict):
-        raise ValueError("La sezione telegram della configurazione generale non è modificabile dalla web app.")
-
-    lines = original.splitlines(keepends=True)
-    scalar = json.dumps(str(root), ensure_ascii=False)
-    heading = next((i for i, line in enumerate(lines)
-                    if re.match(r"^telegram:[ \t]*(?:#.*)?(?:\r?\n)?$", line)), None)
-    if heading is None:
-        if "telegram" in data:
-            raise ValueError("La sezione telegram usa un formato non modificabile dalla web app.")
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
-        lines.extend(["\ntelegram:\n", f"  lessons_root: {scalar}\n"])
-    else:
-        end = next((i for i in range(heading + 1, len(lines))
-                    if re.match(r"^[A-Za-z_][\w-]*[ \t]*:", lines[i])), len(lines))
-        field = next((i for i in range(heading + 1, end)
-                      if re.match(r"^[ \t]+lessons_root[ \t]*:", lines[i])), None)
-        if field is None:
-            lines.insert(end, f"  lessons_root: {scalar}\n")
-        else:
-            indent = re.match(r"^([ \t]+)", lines[field]).group(1)
-            lines[field] = f"{indent}lessons_root: {scalar}\n"
-
-    updated = "".join(lines)
-    try:
-        parsed = yaml.safe_load(updated)
-    except yaml.YAMLError as exc:
-        raise ValueError("Impossibile verificare il file di configurazione aggiornato.") from exc
-    if parsed.get("telegram", {}).get("lessons_root") != str(root):
-        raise ValueError("Impossibile verificare la nuova cartella nel file di configurazione.")
-
-    root.mkdir(parents=True, exist_ok=True)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".general-", suffix=".yaml", dir=config_path.parent)
-    try:
-        if config_path.exists():
-            os.fchmod(fd, config_path.stat().st_mode & 0o777)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(updated)
-        os.replace(temporary, config_path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-    return str(root)
-
-
 # ---------------------------------------------------------------------------
 # Vista d'insieme e pricing (RT4-E4): usate dall'API. Nessun valore segreto esce da qui.
 # ---------------------------------------------------------------------------
@@ -375,14 +286,6 @@ def secret_is_set(env_var: str) -> bool:
     load_env_file()
     value = os.environ.get(env_var, "").strip()
     return bool(value) and value != "test-disabled-token"
-
-
-def telegram_configured() -> bool:
-    """Token del bot e Chat ID impostati (non i segnaposto di .env.example)."""
-    chat = (os.environ.get("RT_TELEGRAM_CHAT_ID") or "").strip()
-    token = (os.environ.get("RT_TELEGRAM_BOT_TOKEN") or "").strip()
-    return (secret_is_set("RT_TELEGRAM_BOT_TOKEN") and "your-bot-token" not in token
-            and bool(chat) and chat != "987654321")
 
 
 def telegram_value(field: str) -> str:
@@ -441,11 +344,6 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "bot_token_preview": mask_value(telegram_value("bot_token")),
             "chat_id_set": bool(telegram_value("chat_id")),
             "chat_id_preview": mask_value(telegram_value("chat_id")),
-            "topics": dict(cfg.telegram.topics or {}),
-            "topic_names": {str(k): v for k, v in (cfg.telegram.topic_names or {}).items()
-                            if k in set((cfg.telegram.topics or {}).values())},
-            "misc_topic_id": cfg.telegram.misc_topic_id,
-            "default_channel": cfg.telegram.default_channel,
         },
         "worker": {"concurrency": cfg.worker.concurrency, "running": _running_workers()},
         "notices": {"dismissed": [n for n in cfg.ui.dismissed_notices if n in NOTICES]},

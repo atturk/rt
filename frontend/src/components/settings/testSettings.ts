@@ -5,7 +5,7 @@ export const testSettings: Settings = {
   worker: { concurrency: 2, running: 2 }, notices: { dismissed: [] },
   preferences: { secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale' },
   transcription: { engine: 'macparakeet', api_key_set: false },
-  telegram: { enabled: false, bot_token_set: false, chat_id_set: false, topics: {}, default_channel: 'web' },
+  telegram: { enabled: false, bot_token_set: false, chat_id_set: false },
   connections: [{ name: 'locale', provider: 'openai_compatible', base_url: 'http://localhost:9/v1', models: ['test'], credentials: [{ name: 'locale_1', set: true }] }],
   credentials: [{ name: 'locale_1', provider: 'openai_compatible', env_var: 'RT_LOCALE_1_API_KEY', set: true }],
   phases: ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image'].map(job => ({ job, label: job, connection: 'locale', model: 'test' })),

@@ -1,8 +1,8 @@
 """
 rt.services.config_service
 Lettura, validazione e scrittura atomica della configurazione (config/general.yaml e file
-per-job) e dei segreti, condivise dal wizard 'rt config' (rt/tui/configure) e dalle
-impostazioni web (rt/web/settings.py). Riusa rt.core.config per la precedenza dei percorsi
+per-job) e dei segreti, usate dalle
+impostazioni web. Riusa rt.core.config per la precedenza dei percorsi
 e per la validazione.
 
 I segreti passano da set_secret(): se l'archivio cifrato config/secrets.enc esiste (creato da

@@ -18,25 +18,12 @@ File audio in ingresso: demo_lecture.wav
 [4/7] OUTLINE (Scaletta gerarchica didattica)...
 ✔ Outline validata: 1 unità didattiche (100.0% copertura)
 
-============================================================
-📋 OUTLINE GENERATA — in attesa di conferma
-============================================================
-📋 Lezione Accademica Rielaborata
-
-1. Introduzione e concetti fondamentali
-  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
-
-Azione [A=Approva / M=Richiedi modifiche]: ✔ Outline approvata.
-
 [5/7] REWRITE (Rielaborazione fluida a finestre con provenance)...
 ✔ Rielaborate 1/1 unità. Provenance verificata.
 
 [6/7] REVIEW (Critic indipendente su correttezza scientifica)...
 ✔ Issue scientifiche: 10 (Concettuali: 10)
-
 ⚡ Auto-approvati 10 casi in base ai filtri CLI.
-
-✨ Nessuna issue in attesa di revisione umana (tutte già risolte o auto-approvate).
 
 [7/7] BUILD (Finalizzazione deterministica Markdown)...
 ✔ File finali generati con successo:

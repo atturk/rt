@@ -69,45 +69,43 @@ Il riepilogo di ogni lezione in `GET /lessons` (freschezza delle fasi, issue pen
 richiede centinaia di letture; il processo dell'API lo tiene in cache per lezione. La chiave è
 un'impronta degli input calcolata a ogni richiesta con due query (nome, hash, mtime e
 dimensione dei file della lezione nel DB; numero e ultimo id delle chiamate LLM) più uno `stat`
-dei file per le lezioni ancora in cartella: ogni scrittura, anche dal worker, dalla CLI o dal bot,
+dei file per le lezioni ancora in cartella: ogni scrittura, anche dal worker o dalla CLI,
 cambia l'impronta e la lezione si ricalcola. Con 20 lezioni la prima richiesta costa circa
 0,9 s, le successive circa 40 ms.
 
 ### Impostazioni (RT4-E4)
 
 La logica vive in `rt/services/settings_service.py` e `rt/services/connections_service.py`
-(spostati da `rt/web/`, che li reimporta per Gradio). Nessuna risposta contiene un valore
+(spostati dalla vecchia web Gradio, rimossa). Nessuna risposta contiene un valore
 segreto: solo `set: true/false` (per token e Chat ID di Telegram anche un'anteprima con primi e
 ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
 |---|---|---|
-| `GET /settings` | Trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (sempre `false`: le lezioni stanno nel database, nessuna cartella da scegliere) | `rt config` |
+| `GET /settings` | Trascrizione, Telegram, sei fasi, connessioni, credenziali, pricing, ricerca web (`web_search`); `data_dir` (dove stanno `rt.db` e `media/` per questo processo) e `setup_required` (sempre `false`: le lezioni stanno nel database, nessuna cartella da scegliere) | — |
 | `PUT /settings/worker` | Job in parallelo del worker di `rt web` (1-4, default 2); `GET /settings` riporta anche i worker attivi ora | `rt worker --concurrency` |
-| `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | `rt config` |
-| `PUT /settings/telegram` | Token, chat, topic per materia | `rt config --telegram` |
-| `POST /settings/connections` | Nuova connessione (provider, base URL, chiavi) | `rt config --models` |
-| `POST /settings/connections/{name}/models` | Aggiunge un modello | `rt config --models` |
-| `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | `rt config --models` |
+| `PUT /settings/transcription` | Motore STT (macparakeet o server compatibile) | — |
+| `PUT /settings/telegram/enabled` `{enabled}` | Accende o spegne le notifiche Telegram (`telegram.enabled` in `general.yaml`) | — |
+| `PUT /settings/telegram` `{bot_token?, chat_id?}` | Token del bot e chat personale; un valore vuoto lo cancella | — |
+| `POST /settings/telegram/chat` `{bot_token?}` | Trova la chat personale tra i messaggi recenti del bot (getUpdates): l'utente scrive /start al bot, poi questa chiamata salva token e Chat ID e risponde con il nome (`found`, `name`, `message`); `found: false` se nessuno ha scritto al bot | — |
+| `POST /settings/telegram/test` | Messaggio di prova nella chat collegata; esito nella risposta. `409 telegram_disabled` con le notifiche spente | — |
+| `POST /settings/connections` | Nuova connessione (provider, base URL, chiavi) | — |
+| `POST /settings/connections/{name}/models` | Aggiunge un modello | — |
+| `PUT /settings/phases/{job}` | Connessione e modello per outline, rewrite, review, recall, image_description, image_unit_judge | — |
 | `GET/PUT /settings/routes/{job}/{role}` | Route primaria, secondaria, fallback | file `config/*.yaml` |
-| `PUT /settings/pricing` | Pricing custom per provider e modello | `rt config` |
+| `PUT /settings/pricing` | Pricing custom per provider e modello | — |
 | `POST /settings/models/test` | Prova connessione e modello (anche non salvati): chiamata minima e sincrona (prompt di poche parole, 16 token di uscita, timeout 20 s) con esito, latenza, stato HTTP ed errore del provider sanificato; con `mock` o `RT_API_MOCK=1` risponde subito senza rete | — |
 | `PUT /settings/web-search` | URL base di SearXNG (`searxng_base_url` in `general.yaml`, vuoto lo toglie); letto da `add_images` | `config/general.yaml` |
 | `POST /settings/web-search/test` | Ricerca immagini di prova su SearXNG (timeout 10 s): numero di risultati, o l'errore (anche il formato json non abilitato) | — |
 | `PUT /settings/notices` `{notice, dismissed}` | "Non mostrare più" per gli avvisi della SPA (`preview_edit_beta`, `preview_edit_issues`), salvato in `ui.dismissed_notices` di `general.yaml`; `GET /settings` li riporta in `notices.dismissed` | — |
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
-| `GET /telegram/daemon`, `POST /telegram/daemon/start`, `/stop` | Stato, avvio e arresto del bot | `rt telegram-daemon` |
 | `POST /settings/telegram/reveal` `{field: bot_token\|chat_id}` | Valore completo del token o del Chat ID, solo su richiesta esplicita (`Cache-Control: no-store`); `GET /settings` ne dà solo l'anteprima (`bot_token_preview`, `chat_id_preview`, es. `1234…wXyZ`) | — |
-| `POST /settings/telegram/test-topic` `{topic_id, materia}` | Invia nel topic "Questo è il topic di MATERIA"; esito nella risposta | — |
-| `GET /settings/telegram/listen-messages` | Messaggi ricevuti durante l'ultimo ascolto riuscito dei topic (quanti, se già cancellati) | — |
-| `POST /settings/telegram/listen-messages/delete` | `deleteMessage` solo di quei messaggi (mai quelli di servizio): quanti eliminati e quali no, con il motivo (più vecchi di 48 ore, permessi) | — |
-| `GET /telegram/notifications?limit=` | Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic), dal registro `notifications.jsonl` nella cartella di stato Telegram | — |
+| `GET /telegram/notifications?limit=` | Ultime notifiche inviate nella chat (lezione pronta, decisione da prendere, errore, prova), dal registro `notifications.jsonl` nella cartella di stato Telegram | — |
 | `POST /system/choose-folder` `{start?}` | Finestra di Finder (`osascript` 'choose folder') e percorso POSIX scelto; `unavailable` fuori da macOS (o con `RT_NATIVE_FOLDER_PICKER=0`), `cancelled` se annullata. Solo da loopback | — |
 | `GET /system/folders?path=` | Sottocartelle (niente file, niente cartelle nascoste) di una cartella della home, per il navigatore della SPA. Solo da loopback e dentro la home | — |
 
-Il bot parte come processo separato in una sessione propria (sopravvive all'API) e il lock
-del PID file in `~/.rt/` impedisce i duplicati; lo stop invia SIGTERM. Un servizio launchd
-dedicato arriva con la fase G.
+Telegram serve solo alle notifiche: nessun processo resta in ascolto. Il worker manda il
+messaggio quando un job finisce, si ferma su una decisione o fallisce.
 
 ### Scritture, job ed eventi live (RT4-E3)
 
@@ -116,7 +114,7 @@ Le operazioni lunghe sono job della coda della fase D (`rt/services/jobs.py`), e
 worker è attivo: il job resta in coda finché non ne parte uno). I tipi standard
 (`run_pipeline`, `ingest_audio`, `run_phase`, `add_images`, `recall_generate`) sono quelli di
 `rt/services/job_handlers.py`; quelli aggiuntivi usati solo dall'API (`rewrite_unit`,
-`recall_batch`, `recall_refill`, `recall_evaluate`, `outline_revision`, `credential_test`, `telegram_listen_topics`) stanno in
+`recall_batch`, `recall_refill`, `recall_evaluate`, `outline_revision`, `credential_test`) stanno in
 `rt/services/api_jobs.py`.
 
 | Metodo e percorso | Cosa fa | Equivalente CLI |
@@ -143,13 +141,9 @@ worker è attivo: il job resta in coda finché non ne parte uno). I tipi standar
 | `GET /lessons/{id}/recall/units`, `PUT .../recall/units` `{unit_ids}` | Unità da cui il recaller genera le domande, con categoria, score e livello del classificatore; `unit_ids: null` torna alle sole rilevanti | `rt recall --units` |
 | `POST .../recall/generate`, `POST .../recall/next` | Senza `qtype` rigenera il pool dell'intera lezione dalle unità selezionate, aggiungendo domande a quelle già generate (job `recall_generate`); con `qtype` altre domande di quel tipo (job `recall_batch`); prossima domanda, che alla soglia (5 quiz, 3 mirate, 2 vaste) accoda il rifornimento da unità selezionate a caso (job `recall_refill`) come il terminale | `rt recall --pool`, `rt recall` |
 | `POST .../recall/answer`, `.../answer-voice`, `.../vote`, `.../skip` | Quiz subito; risposte aperte scritte o vocali valutate da un job; voti; salto | `rt recall` |
-| `GET /lessons/{id}/recall/session` | Sessione in corso qui (`web`) e su Telegram (`telegram`), ultimo riepilogo (`last`), ultima richiesta al bot (`command`) | — |
+| `GET /lessons/{id}/recall/session` | Sessione in corso nella web app (`web`) e ultimo riepilogo (`last`) | — |
 | `POST .../recall/session/end` | Termina la sessione della web app e ne salva il riepilogo (domande, risposte date, quiz giusti); 404 se non ce n'è una | uscita da `rt recall` |
-| `GET /recall/telegram` | Bot pronto per il recall (`configured`, `running`) e sessioni in corso su Telegram per tutte le lezioni | — |
-| `POST /lessons/{id}/recall/telegram/start` `{qtype}` | Chiede al bot di avviare il recall nel topic della materia (202; l'esito in `/recall/session`); 409 se il bot non è configurato o è fermo, o se c'è già una sessione | `rt recall --channel telegram`, `/recall` nel bot |
-| `POST /recall/telegram/sessions/{id}/stop` | Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic «Sessione interrotta dall'app» | `/quit` nel bot |
 | `POST /settings/test-credential` | Job `credential_test`: chiamata minima, esito sanificato | — |
-| `POST /settings/telegram/listen-topics` | Job `telegram_listen_topics`: ascolta 20 s i messaggi al bot (getUpdates) e restituisce `chat_id` e `topics` visti, `names` (nome del topic da `forum_topic_created`/`forum_topic_edited` o dal `reply_to_message`), `materie` (materia nota che coincide con il nome) e `messages` (chat e message id dei messaggi degli utenti, per la cancellazione) | web Gradio "Ascolta topic" |
 
 Il build (`run_phase` con `phase: build`) richiede prepare, outline e rewrite aggiornati; la
 review non è una dipendenza (i suoi problemi sono gli avvisi di `GET /phases`). Il job
@@ -166,11 +160,8 @@ per i test: la prima unità di quella fase fallisce una volta con una risposta f
 
 **Sessioni di recall (RT4-FA7).** La tabella `recall_sessions` è il registro condiviso delle
 sessioni: la web app apre la sua con la prima domanda (`/recall/next`) e la chiude con
-`/recall/session/end`; il daemon Telegram registra e chiude le sue (da `/recall`, `/quit`, fine
-del pool o interruzione dall'app). L'API non parla con Telegram: scrive le richieste nella
-tabella `telegram_commands` e il daemon le esegue ogni due secondi, scrivendone l'esito. Mentre
-una sessione è su Telegram la web non pone domande di quella lezione (`409
-telegram_session_active`), e viceversa.
+`/recall/session/end`. Le sessioni `telegram` delle versioni precedenti restano leggibili nello
+storico.
 
 Le decisioni registrano `channel=api` e l'attore. Con un job in esecuzione sulla lezione le
 decisioni rispondono `409 lesson_busy`. I file caricati vanno in
@@ -180,9 +171,7 @@ dimensione è `RT_API_MAX_UPLOAD_MB` (default 2048).
 `rt worker --mock` esegue ogni job in mock qualunque cosa chieda il client (LLM finto, risposte
 vocali senza trascrizione, immagini dal web generate senza SearXNG, giudice delle immagini che
 le mette nella prima macro-sezione): lo usa il server dei test end-to-end della SPA
-(`scripts/e2e_server.py`), insieme al bot Telegram finto (`RT_TELEGRAM_FAKE=1`: prende il PID
-file, non riceve aggiornamenti ed esegue le richieste della web app con domande in mock sulla
-Bot API di `RT_TELEGRAM_API_URL`).
+(`scripts/e2e_server.py`), con una Bot API di Telegram finta su `RT_TELEGRAM_API_URL`.
 
 ## Parità con la CLI (RT4-E5)
 

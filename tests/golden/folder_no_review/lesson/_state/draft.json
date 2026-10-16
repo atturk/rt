@@ -6,9 +6,14 @@
       "unit_id": "1.1",
       "title": "Unità Didattica Rielaborata",
       "start_segment_id": "seg_000001",
-      "end_segment_id": "seg_000001",
+      "end_segment_id": "seg_000006",
       "source_segment_ids": [
-        "seg_000001"
+        "seg_000001",
+        "seg_000002",
+        "seg_000003",
+        "seg_000004",
+        "seg_000005",
+        "seg_000006"
       ],
       "content": "La trattazione scientifica si apre con l'analisi sistematica dei meccanismi biochimici fondamentali.",
       "generated_at": "<TS>"

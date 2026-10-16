@@ -701,20 +701,9 @@ class RecallSessionInfo(BaseModel):
     summary: Optional[RecallSummary] = Field(None, description="Riepilogo salvato alla chiusura")
 
 
-class TelegramCommandInfo(BaseModel):
-    id: int
-    kind: Literal["start_recall", "stop_recall"]
-    state: Literal["pending", "running", "done", "failed"]
-    error: Optional[str] = None
-    created_at: Optional[str] = None
-    processed_at: Optional[str] = None
-
-
 class RecallSessionState(BaseModel):
     web: Optional[RecallSessionInfo] = Field(None, description="Sessione in corso nella web app")
     last: Optional[RecallSessionInfo] = Field(None, description="Ultima sessione web chiusa, con il riepilogo")
-    telegram: Optional[RecallSessionInfo] = Field(None, description="Sessione in corso su Telegram per questa lezione")
-    command: Optional[TelegramCommandInfo] = Field(None, description="Ultima richiesta al bot per questa lezione")
 
 
 class ClassificationStatus(BaseModel):
@@ -731,7 +720,6 @@ class LessonRecallStats(BaseModel):
     ready: bool = Field(description="Rielaborazione valida: la lezione può fare recall")
     questions: Dict[str, Dict[str, int]] = Field(description="tipo -> stato -> numero")
     answers: int
-    telegram: bool = Field(False, description="Sessione in corso su Telegram per la lezione")
     classification: Optional[ClassificationStatus] = Field(None, description="Classificatore sulla lezione (null se non pronta)")
 
 
@@ -752,18 +740,6 @@ class SubjectQuestion(BaseModel):
 
 class SubjectGenerateAccepted(BaseModel):
     jobs: List[JobAccepted] = Field(description="Un job recall_generate per ogni lezione pronta senza domande")
-
-
-class TelegramRecallStart(BaseModel):
-    qtype: Literal["quiz", "mirata", "vasta"] = "quiz"
-    mock: bool = False
-
-
-class TelegramRecallStatus(BaseModel):
-    enabled: bool = Field(False, description="Telegram attivo (spento di predefinito: il recall si fa solo nella web app)")
-    configured: bool = Field(description="Token e chat del bot salvati")
-    running: bool = Field(description="Bot in esecuzione")
-    sessions: List[RecallSessionInfo] = Field(description="Sessioni di recall in corso su Telegram, per tutte le lezioni")
 
 
 class SectionLabelRow(BaseModel):

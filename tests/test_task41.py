@@ -23,7 +23,6 @@ from rt.core.asr_risk import (
     detect_statistical_asr_risks,
 )
 from rt.pipeline.ledger import apply_decisions_to_draft
-from rt.tui.issue_review import _build_science_panel
 
 
 def test_p10_calculation():
@@ -260,37 +259,4 @@ def test_apply_decisions_to_draft_err_asr_st():
     draft_res_edited = apply_decisions_to_draft(draft, ledger_edited, [issue])
     assert draft_res_edited.units[0].content == new_content
 
-
-def test_tui_science_panel_err_asr_st():
-    issue = ScienceIssue(
-        id="sci_st_1.1",
-        type=ScienceType.ERR_ASR_ST,
-        severity=ScienceSeverity.HIGH,
-        unit_id="1.1",
-        segment_id="seg_000001",
-        claim="trascrizione raw sospetta",
-        reason="Confidenza ASR degradata",
-        status="pending",
-    )
-
-    rendered = _build_science_panel(
-        idx=0,
-        total_count=1,
-        iss=issue,
-        tc="01:30",
-        sci_unit_info="1.1 - Titolo",
-        sci_unit=DraftUnit(
-            unit_id="1.1",
-            title="Titolo",
-            start_segment_id="seg_000001",
-            end_segment_id="seg_000001",
-            source_segment_ids=["seg_000001"],
-            content="Contenuto intero dell'unità.",
-        ),
-        decisions_map={},
-    )
-
-    panel_text = rendered.plain
-    assert "Confidenza ASR degradata" in panel_text
-    assert "trascrizione raw sospetta" in panel_text
 

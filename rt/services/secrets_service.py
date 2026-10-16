@@ -1,7 +1,7 @@
 """
 rt.services.secrets_service
-Gestione dell'archivio segreti cifrato (RT4-C2), condivisa da 'rt secrets', dal wizard
-'rt config' e dalle impostazioni web. Nessun input(): le conferme le chiede l'adattatore
+Gestione dell'archivio segreti cifrato (RT4-C2), condivisa da 'rt secrets' e dalle
+impostazioni web. Nessun input(): le conferme le chiede l'adattatore
 (rt/cli.py). Nessuna funzione restituisce o stampa valori di segreti, salvo la chiave master
 appena generata, che init_store restituisce una sola volta perché l'utente la conservi.
 """

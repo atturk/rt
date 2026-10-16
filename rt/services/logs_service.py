@@ -1,6 +1,6 @@
 """
 rt.services.logs_service
-Lettura dei log dei servizi (api, worker, bot) nella cartella dati: le ultime righe e, a
+Lettura dei log dei servizi (api, worker) nella cartella dati: le ultime righe e, a
 richiesta, il seguito in tempo reale. La usano 'rt logs' e 'rt web -v' (servizi già attivi);
 l'output passa da una callback, così il servizio non sa chi lo mostra.
 """
@@ -9,7 +9,7 @@ import time
 from collections import deque
 from typing import Callable, Dict, Optional, Tuple
 
-LOG_SERVICES = ("api", "worker", "bot")
+LOG_SERVICES = ("api", "worker")
 
 
 def _default_write(text: str) -> None:

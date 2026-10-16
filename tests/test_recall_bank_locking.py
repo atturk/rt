@@ -20,30 +20,6 @@ from rt.pipeline.recall import (
 from rt.core.filelock import acquire_file_lock, release_file_lock, file_lock
 
 
-def test_daemon_concurrent_updates_flag():
-    """Verifica che run_daemon configuri concurrent_updates(True) sull'ApplicationBuilder."""
-    with patch("rt.telegram.daemon.load_telegram_config") as mock_tg_cfg, \
-         patch("rt.telegram.daemon.load_config") as mock_cfg, \
-         patch("rt.telegram.daemon.Application.builder") as mock_builder_factory, \
-         patch("rt.telegram.daemon_status.write_daemon_pid"), \
-         patch("rt.telegram.daemon_status.remove_daemon_pid"):
-
-        mock_tg_cfg.return_value.bot_token = "dummy_token"
-        mock_cfg.return_value.telegram.state_dir = "/tmp/state"
-
-        mock_builder = MagicMock()
-        mock_builder.token.return_value = mock_builder
-        mock_builder.concurrent_updates.return_value = mock_builder
-        mock_app = MagicMock()
-        mock_builder.build.return_value = mock_app
-        mock_builder_factory.return_value = mock_builder
-
-        from rt.telegram.daemon import run_daemon
-        run_daemon(state_dir="/tmp/test_state")
-
-        mock_builder.concurrent_updates.assert_called_once_with(True)
-
-
 def test_file_lock_stale_recovery(tmp_path):
     """Verifica che un lock stale (> 30s) venga rimosso e riacquisito con successo."""
     lock_file = str(tmp_path / "test.lock")

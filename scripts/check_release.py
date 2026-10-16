@@ -13,12 +13,12 @@ from rt.core.changelog import release_notes
 
 
 REQUIRED = {
-    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
+    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', 'bin/rt', 'rt/cli.py', '.env.example',
     'config.example/general.yaml',
 }
 ALLOWED_ROOT_FILES = {
-    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'requirements-web.txt', 'constraints.txt',
+    'VERSION', 'CHANGELOG.md', 'README.md', 'requirements.txt', 'constraints.txt',
     'install.sh', 'bootstrap.sh', '.env.example',
 }
 ALLOWED_DIRS = {'rt', 'bin', 'config.example', 'docs'}

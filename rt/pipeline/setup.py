@@ -5,7 +5,6 @@ Fornisce funzioni riusabili per la CLI nativa (`rt setup`, `rt run <audio>`).
 """
 
 import os
-import sys
 import re
 import shutil
 import tempfile
@@ -100,8 +99,7 @@ class SetupCancelled(SetupError):
 
 
 class SetupPrompter(Protocol):
-    """Chiede all'utente i metadati mancanti. Implementato dalla CLI (rt.cli_prompts);
-    ogni metodo può sollevare SetupCancelled."""
+    """Chiede all'utente i metadati mancanti; ogni metodo può sollevare SetupCancelled."""
 
     def ask_audio(self) -> str: ...
 

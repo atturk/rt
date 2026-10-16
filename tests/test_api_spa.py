@@ -96,19 +96,6 @@ def test_rt_web_starts_the_spa_by_default(monkeypatch):
     assert calls == [(8765, False), (8765, False), (9000, True)]
 
 
-def test_rt_web_legacy_starts_gradio_with_a_warning(monkeypatch, capsys):
-    import types
-    from rt.cli import build_parser, cmd_web
-    seen = []
-    monkeypatch.setitem(sys.modules, "rt.web.app", types.SimpleNamespace(main=seen.append))
-    parser, _ = build_parser()
-    cmd_web(parser.parse_args(["web", "--legacy", "--no-browser", "--lessons-root", "/x"]))
-    assert seen == [["--port", "7860", "--lessons-root", "/x", "--no-browser"]]
-    assert "deprecata" in capsys.readouterr().err
-    with pytest.raises(SystemExit, match="solo con --legacy"):
-        cmd_web(parser.parse_args(["web", "--lessons-root", "/x"]))
-
-
 def test_worker_command_runs_rt_worker():
     import os
     from rt.api.launcher import worker_command

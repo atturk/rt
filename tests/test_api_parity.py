@@ -169,7 +169,7 @@ def is_asr(issue_type: str) -> bool:
 def test_row_run_folder_pipeline(api, cli, pair):
     """rt run <cartella> --mock --auto-accept ⇔ POST /lessons/{id}/jobs run_pipeline."""
     cli_dir, api_dir = pair
-    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--channel", "terminal", "--no-rename",
+    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--no-rename",
            stdin="a\n")
     lesson_id = api.lesson_id()
     job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "auto_accept": True,
@@ -201,7 +201,7 @@ def test_row_export(api, cli, pair, tmp_path):
     import io
     import zipfile
     cli_dir, api_dir = pair
-    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--channel", "terminal", "--no-rename",
+    cli.rt("run", cli_dir, "--mock", "--auto-accept", "--with-review", "--no-rename",
            stdin="a\n")
     lesson_id = api.lesson_id()
     job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "auto_accept": True,
@@ -226,7 +226,7 @@ def test_row_single_phases(api, cli, pair):
     cli_dir, api_dir = pair
     lesson_id = api.lesson_id()
     cli.rt("prepare", cli_dir)
-    cli.rt("outline", cli_dir, "--mock", stdin="a\n")  # 'rt outline' chiede subito l'approvazione
+    cli.rt("outline", cli_dir, "--mock")  # l'approvazione si dà nella web: qui non serve
     for phase in ("prepare", "outline"):
         job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": phase, "mock": True})
         assert job["state"] == "succeeded", job
@@ -234,7 +234,7 @@ def test_row_single_phases(api, cli, pair):
     assert_same_lesson(cli_dir, api_dir)
 
     cli.rt("rewrite", cli_dir, "--mock")
-    cli.rt("review", cli_dir, "--mock", "--auto-accept", "all", "--channel", "terminal")
+    cli.rt("review", cli_dir, "--mock", "--auto-accept", "all")
     for phase in ("rewrite", "review"):
         job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": phase, "mock": True})
         assert job["state"] == "succeeded", job
@@ -277,7 +277,7 @@ def test_row_review_single_unit(api, cli, pair):
         purge_decisions_by_prefix(lesson_dir, "sci_")
     lesson_id = api.lesson_id()
     unit = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()["macro_sections"][0]["units"][0]["id"]
-    out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all", "--channel", "terminal")
+    out = cli.rt("review", cli_dir, "--mock", "--unit", unit, "--auto-accept", "all")
     assert f"Unità {unit} saltata: già verificata" in out
     job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "review", "unit": unit,
                                                        "mock": True})
@@ -342,65 +342,14 @@ def test_row_validate_phase(api, cli, pair):
     assert res.json()["error"]["message"].replace(api_dir, cli_dir) in err
 
 
-def test_row_outline_revise_and_approve(api, cli, pair):
-    """Revisione e approvazione dell'outline in 'rt run' ⇔ /outline/revise + /outline/approve."""
-    cli_dir, api_dir = pair
-    feedback = "Dividi in due unità"
-    cli.rt("run", cli_dir, "--mock", "--channel", "terminal", "--no-rename", stdin=f"m\n{feedback}\na\n")
-    lesson_id = api.lesson_id()
-    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_pipeline", "mock": True, "with_review": False,
-                                                       "rename": False})
-    assert job["state"] == "waiting_for_decision" and job["decision"]["kind"] == "outline_approval"
-    outline = api.client.get(f"/api/v1/lessons/{lesson_id}/outline").json()
-    assert outline["approved"] is False
-    revision = api.run(f"/lessons/{lesson_id}/outline/revise", json={"feedback": feedback, "mock": True})
-    assert revision["state"] == "succeeded", revision
-    api.post(f"/lessons/{lesson_id}/outline/approve")
-    api.drain()
-    assert api.job(job["id"])["state"] == "succeeded"
-    assert_same_lesson(cli_dir, api_dir)
-
-
 def _pending_review_pair(cli, pair):
     """Le due copie ferme sulla review: outline approvata, issue non ASR pendenti."""
     for lesson_dir in pair:
-        cli.rt("run", lesson_dir, "--mock", "--with-review", "--channel", "terminal", "--no-rename", stdin="a\n")
+        cli.rt("run", lesson_dir, "--mock", "--with-review", "--no-rename", stdin="a\n")
     from rt.pipeline.ledger import get_pending_issues
     pending = [list(get_pending_issues(d)[1]) for d in pair]
     assert pending[0] and [i.id for i in pending[0]] == [i.id for i in pending[1]]
     return pending[0]
-
-
-@pytest.mark.anyio
-async def test_row_interactive_review(api, cli, pair):
-    """Review interattiva da terminale (Textual) ⇔ /issues/{id}/decision e /decisions/undo."""
-    from rt.tui.issue_review import IssueReviewApp
-    cli_dir, api_dir = pair
-    to_review = _pending_review_pair(cli, pair)
-    plan = {issue.id: ("accepted" if n % 2 == 0 else "rejected") for n, issue in enumerate(to_review)}
-
-    app = IssueReviewApp(lesson_dir=cli_dir, to_review=to_review, issue_type="science")
-    async with app.run_test() as pilot:
-        # prima risposta sbagliata, poi "indietro" e correzione, come l'annullamento dell'API
-        await pilot.press("r" if plan[to_review[0].id] == "accepted" else "a")
-        await pilot.press("b")
-        for issue in to_review:
-            await pilot.press("a" if plan[issue.id] == "accepted" else "r")
-    assert app.return_value is True
-
-    lesson_id = api.lesson_id()
-    first = to_review[0].id
-    wrong = "rejected" if plan[first] == "accepted" else "accepted"
-    api.post(f"/lessons/{lesson_id}/issues/{first}/decision", json={"decision": wrong})
-    api.post(f"/lessons/{lesson_id}/decisions/undo", json={"issue_id": first})
-    for issue in to_review:
-        api.post(f"/lessons/{lesson_id}/issues/{issue.id}/decision", json={"decision": plan[issue.id]})
-    assert api.client.get(f"/api/v1/lessons/{lesson_id}/issues").json()["items"] == []
-
-    cli.rt("build", cli_dir, "--no-rename")
-    job = api.run(f"/lessons/{lesson_id}/jobs", json={"type": "run_phase", "phase": "build", "rename": False})
-    assert job["state"] == "succeeded", job
-    assert_same_lesson(cli_dir, api_dir)
 
 
 def _built_pair(pair):
@@ -452,73 +401,13 @@ def _recall_files(lesson_dir):
     return bank
 
 
-def _cli_recall_session(monkeypatch, lesson_dir, style, keys, editor_text=""):
-    """Il recall da terminale di 'rt recall' (serve un TTY: stdin e input simulati)."""
-    import builtins
-    import sys
-    import rt.core.editor_edit as editor_edit
-    from rt.tui.recall import run_recall_terminal_session
-    replies = iter(keys)
-
-    def fake_input(prompt=""):
-        try:
-            return next(replies)
-        except StopIteration:
-            raise EOFError
-    with monkeypatch.context() as mp:
-        mp.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-        mp.setattr(builtins, "input", fake_input)
-        mp.setattr(editor_edit, "edit_text_in_editor", lambda initial: initial + editor_text)
-        run_recall_terminal_session(lesson_dir, order="alternato", style=style, force_mock=True)
-
-
-def test_row_recall_quiz_and_open_answer(api, cli, pair, monkeypatch):
-    """rt recall (quiz: scelta e salto; mirata: risposta scritta) ⇔ /recall/generate, /next,
-    /answer, /skip."""
-    cli_dir, api_dir = pair
-    _built_pair(pair)
-    lesson_id = api.lesson_id()
-    answer_text = "Le lipasi idrolizzano i trigliceridi."
-
-    _cli_recall_session(monkeypatch, cli_dir, "quiz", ["a", "s", "q"])
-    _cli_recall_session(monkeypatch, cli_dir, "mirata", ["r", "q"], editor_text=answer_text)
-
-    assert api.run(f"/lessons/{lesson_id}/recall/generate", json={"mock": True})["state"] == "succeeded"
-
-    def shown(qtype, exclude=""):
-        """Domanda mostrata; il rifornimento (job recall_refill) gira prima della successiva,
-        come nel terminale dopo ogni domanda."""
-        return api.post(f"/lessons/{lesson_id}/recall/next?mock=true&qtype={qtype}"
-                        + (f"&exclude_id={exclude}" if exclude else ""))
-
-    first = shown("quiz")
-    api.post(f"/lessons/{lesson_id}/recall/answer", json={"question_id": first["id"], "choice": 0})
-    api.drain()
-    second = shown("quiz")
-    api.post(f"/lessons/{lesson_id}/recall/skip", json={"question_id": second["id"]})
-    api.drain()
-    shown("quiz", exclude=second["id"])  # mostrata, poi "esci"
-    api.drain()
-    open_q = shown("mirata")
-    job = api.run(f"/lessons/{lesson_id}/recall/answer", json={"question_id": open_q["id"], "answer": answer_text,
-                                                                "mock": True})
-    assert job["state"] == "succeeded", job
-    api.post(f"/lessons/{lesson_id}/recall/seen", json={"question_id": open_q["id"]})
-    shown("mirata")  # mostrata, poi "esci"
-    api.drain()
-    cli_bank, api_bank = _recall_files(cli_dir), _recall_files(api_dir)
-    for cq, aq in zip(cli_bank["questions"], api_bank["questions"]):
-        assert cq == aq, (cq["id"], {k: (cq.get(k), aq.get(k)) for k in set(cq) | set(aq) if cq.get(k) != aq.get(k)})
-    assert [(q["id"], q["type"], q["status"]) for q in cli_bank["questions"]] == [
-        (q["id"], q["type"], q["status"]) for q in api_bank["questions"]]
-    assert cli_bank == api_bank
-
-
 def test_row_status_and_cost(api, cli, pair):
     """rt status --json e rt cost --json ⇔ GET /lessons/{id} e GET /lessons/{id}/costs."""
     cli_dir, api_dir = pair
-    cli.rt("run", cli_dir, "--mock", "--with-review", "--channel", "terminal", "--no-rename", stdin="a\n")
-    cli.rt("run", api_dir, "--mock", "--with-review", "--channel", "terminal", "--no-rename", stdin="a\n")
+    # outline approvata con --auto-accept, poi una review che lascia le issue da decidere
+    for lesson_dir in (cli_dir, api_dir):
+        cli.rt("run", lesson_dir, "--mock", "--auto-accept", "--no-rename")
+        cli.rt("review", lesson_dir, "--mock")
     status = cli.json_out("status", cli_dir, "--json")
     cost = cli.json_out("cost", cli_dir, "--json")
     detail = api.client.get(f"/api/v1/lessons/{api.lesson_id()}").json()
@@ -537,7 +426,7 @@ def test_row_status_and_cost(api, cli, pair):
 
 
 def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypatch, rt_db):
-    """rt config (provider, modelli delle sei fasi, pricing, Telegram, trascrizione)
+    """Configurazione (provider, modelli delle fasi, Telegram, trascrizione)
     ⇔ endpoint di RT4-E4: quello che scrive l'API lo legge la CLI."""
     import subprocess
     import sys
@@ -556,33 +445,22 @@ def test_row_config_written_by_api_is_read_by_cli(api_client, tmp_path, monkeypa
     res = client.put("/api/v1/settings/transcription", json={"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                                                "model": "whisper-parita"})
     assert res.status_code == 200, res.text
-    res = client.put("/api/v1/settings/telegram", json={"chat_id": "424242", "topics": {"BIOCHIMICA": 7}})
+    res = client.put("/api/v1/settings/telegram", json={"chat_id": "424242"})
     assert res.status_code == 200, res.text
 
     # la CLI in un processo nuovo, nella stessa cartella di lavoro
-    script = ("import json; from rt.core.config import load_config; c = load_config(); "
+    script = ("import json, os; from rt.core.config import load_config, load_env_file; c = load_config(); "
+              "load_env_file(); "
               "print(json.dumps({'engine': c.transcription.engine, "
-              "'stt_model': c.transcription.model, 'topics': c.telegram.topics, "
+              "'stt_model': c.transcription.model, 'chat': os.environ.get('RT_TELEGRAM_CHAT_ID'), "
               f"'models': {{j: c.jobs[j].primary.model for j in {jobs!r}}}}}))")
     env = dict(os.environ, PYTHONPATH=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = subprocess.run([sys.executable, "-c", script], cwd=os.getcwd(), env=env, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     seen = json.loads(out.stdout.strip().splitlines()[-1])
     assert (seen["engine"], seen["stt_model"]) == ("custom", "whisper-parita")
-    assert seen["topics"] == {"BIOCHIMICA": 7}
+    assert seen["chat"] == "424242"
     assert seen["models"] == {j: f"vendor/model-{n}" for n, j in enumerate(jobs)}
-
-
-def test_row_telegram_daemon_status(api, monkeypatch, tmp_path):
-    """Stato del demone Telegram: GET /telegram/daemon ⇔ il PID file che legge 'rt telegram-daemon'."""
-    import rt.telegram.daemon_status as ds
-    pid_path = str(tmp_path / "tg.pid")
-    monkeypatch.setattr(ds, "DEFAULT_PID_PATH", pid_path)
-    assert api.client.get("/api/v1/telegram/daemon").json() == {"running": False, "pid": None}
-    ds.write_daemon_pid(pid_path)  # come fa il demone all'avvio
-    assert api.client.get("/api/v1/telegram/daemon").json() == {"running": True, "pid": ds.get_daemon_pid(pid_path)}
-    ds.remove_daemon_pid(pid_path)
-    assert api.client.get("/api/v1/telegram/daemon").json()["running"] is False
 
 
 def test_row_relevance_run(api, cli, pair):

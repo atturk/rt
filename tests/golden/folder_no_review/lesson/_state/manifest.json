@@ -19,13 +19,11 @@
     "valid": true,
     "macro_count": 1,
     "units_count": 1,
-    "covered_segments": 1,
-    "coverage_percentage": 16.67,
-    "omitted_count": 5,
+    "covered_segments": 6,
+    "coverage_percentage": 100.0,
+    "omitted_count": 0,
     "duplicate_count": 0,
-    "omitted_ranges": [
-      "2-6"
-    ]
+    "omitted_ranges": []
   },
   "phase_records": {
     "outline": {

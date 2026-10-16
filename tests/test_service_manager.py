@@ -1,6 +1,6 @@
 """
 RT4-G1: servizi launchd (rt.services.service_manager) e comandi pensati per girare come
-servizio ('rt api --service', 'rt telegram-daemon --service', 'rt web' con API già attiva).
+servizio ('rt api --service', 'rt web' con API già attiva).
 """
 import plistlib
 import subprocess
@@ -47,10 +47,8 @@ def test_render_plist(tmp_path, monkeypatch):
     assert spec["EnvironmentVariables"]["RT_DATA_DIR"] == str(tmp_path / "data")
     assert spec["StandardOutPath"] == str(tmp_path / "data" / "logs" / "api.log")
     assert spec["KeepAlive"] == {"SuccessfulExit": False} and spec["RunAtLoad"] is True
-    bot = plistlib.loads(sm.render_plist("bot"))
-    assert bot["ProgramArguments"][-2:] == ["telegram-daemon", "--service"]
     with pytest.raises(sm.ServiceError):
-        sm.render_plist("nope")
+        sm.render_plist("bot")  # il bot sempre acceso non c'è più
 
 
 def test_install_status_stop_uninstall(launchd, tmp_path):
@@ -69,19 +67,24 @@ def test_install_status_stop_uninstall(launchd, tmp_path):
     assert sm.installed() == [] and not loaded
 
 
-def test_legacy_bot_agent_is_reported(launchd, tmp_path):
-    """Il LaunchAgent del bot scritto a mano con la 3.x: install e doctor dicono di toglierlo."""
+def test_old_bot_agents_are_removed_on_install(launchd, tmp_path):
+    """I LaunchAgent del vecchio bot (scritto a mano con la 3.x, servizio 'bot' della 4.x)
+    lanciano un comando che non esiste più: doctor li segnala e install li toglie."""
     from rt.services import doctor_service
+    calls, loaded = launchd
     agents = tmp_path / "LaunchAgents"
     agents.mkdir()
-    legacy = agents / "com.rt.telegram-daemon.plist"
-    legacy.write_bytes(plistlib.dumps({"Label": "com.rt.telegram-daemon"}))
+    old = [agents / "com.rt.telegram-daemon.plist", agents / "com.atturk.rt.bot.plist"]
+    for path in old:
+        path.write_bytes(plistlib.dumps({"Label": path.stem}))
+    loaded.add("com.atturk.rt.bot")
+    checks = [c for c in doctor_service.check_services() if c.name == "Vecchio bot Telegram"]
+    assert len(checks) == 2 and checks[0].status == doctor_service.WARN
     said = []
-    sm.install(["bot"], start=False, say=said.append)
-    assert any(str(legacy) in line and "rm " in line for line in said)
-    checks = [c for c in doctor_service.check_services() if c.name == "Bot della 3.x"]
-    assert checks and checks[0].status == doctor_service.WARN
-    legacy.unlink()
+    sm.install(["api"], start=False, say=said.append)
+    assert not any(path.exists() for path in old)
+    assert "com.atturk.rt.bot" not in loaded
+    assert sum("Vecchio servizio del bot Telegram rimosso" in line for line in said) == 2
     assert sm.legacy_agents() == []
 
 
@@ -99,10 +102,11 @@ def test_services_unsupported_outside_macos(monkeypatch):
 
 def test_cli_service_status(launchd, capsys):
     from rt.cli import main
-    main(["service", "install", "--no-bot"])
+    main(["service", "install", "api"])
     main(["service", "status"])
     out = capsys.readouterr().out
-    assert "api" in out and "attivo, pid 4242" in out and "non installato" in out  # bot
+    assert "api" in out and "attivo, pid 4242" in out and "non installato" in out  # worker
+    assert "bot" not in out
 
 
 def test_api_service_mode_hides_token():
@@ -114,14 +118,6 @@ def test_api_service_mode_hides_token():
         say(line)
     assert not any("segreto123" in line for line in lines)
     assert lines[-1].startswith("🚀")
-
-
-def test_telegram_service_exits_cleanly_when_not_configured(monkeypatch, capsys):
-    from rt import cli
-    monkeypatch.setattr("rt.services.settings_service.telegram_configured", lambda: False)
-    monkeypatch.setattr("rt.telegram.daemon.run_daemon", lambda **_k: pytest.fail("non doveva partire"))
-    cli.cmd_telegram_daemon(type("A", (), {"service": True, "state_dir": None})())
-    assert "non configurato" in capsys.readouterr().err
 
 
 def test_rt_web_opens_browser_when_services_run(monkeypatch, rt_db):

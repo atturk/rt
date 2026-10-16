@@ -1,0 +1,15 @@
+exit_code: 0
+--- stdout ---
+
+============================================================
+🚀 RT 2.0 — PIPELINE END-TO-END PER: <ROOT>/[2026-09-05] BIOCHIMICA - Lipidi
+============================================================
+
+[1/4] PREPARE (Parsing deterministico segmenti)...
+✔ Segmenti estratti: 6 (70.0s)
+
+[2/4] OUTLINE (Scaletta gerarchica didattica)...
+✔ Outline validata: 1 unità didattiche (100.0% copertura)
+⏸ La scaletta aspetta la tua approvazione: approvala nella web ('rt web').
+   Poi rilancia 'rt run "<ROOT>/[2026-09-05] BIOCHIMICA - Lipidi"' per completarla.
+--- stderr ---

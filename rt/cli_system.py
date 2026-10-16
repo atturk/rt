@@ -91,9 +91,8 @@ def configure_service_parser(p: argparse.ArgumentParser) -> None:
                        ("uninstall", "Ferma e rimuove i servizi"), ("start", "Avvia i servizi installati"),
                        ("stop", "Ferma i servizi (ripartono al prossimo login)"), ("restart", "Riavvia i servizi")):
         sp = sub.add_parser(name, help=text)
-        sp.add_argument("names", nargs="*", metavar="servizio", help="api, worker, bot (default: tutti)")
+        sp.add_argument("names", nargs="*", metavar="servizio", help="api, worker (default: tutti)")
         if name == "install":
-            sp.add_argument("--no-bot", action="store_true", help="Non installare il servizio del bot Telegram")
             sp.add_argument("--no-start", action="store_true", help="Scrive i file ma non avvia i servizi")
 
 
@@ -117,7 +116,7 @@ def cmd_service(args: argparse.Namespace) -> None:
                   + ("(risponde)" if sm.api_is_up() else "(non risponde)"))
             return
         if command == "install":
-            chosen = names or [n for n in sm.SERVICES if not (n == "bot" and args.no_bot)]
+            chosen = names or list(sm.SERVICES)
             sm.install(chosen, start=not args.no_start)
             return
         if command == "uninstall":

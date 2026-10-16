@@ -4,13 +4,13 @@ Test architetturale (RT4-A0): il motore (rt/pipeline, rt/core) non deve dipender
 interfacce utente né bloccarsi sul terminale.
 
 Segnala in ogni file di rt/pipeline, rt/core e rt/services:
-  - import di textual, rich.prompt, questionary, rt.telegram, rt.tui, rt.web (anche dentro
-    funzioni);
+  - import di interfacce utente (textual, rich.prompt, questionary, rt.telegram e i moduli
+    rimossi rt.tui e rt.web), anche dentro funzioni;
   - chiamate a input() e sys.exit().
 
-Dalla chiusura della fase A (RT4-A6) il test è bloccante e senza eccezioni: la UI vive in
-rt/tui, rt/telegram, rt/web e negli adattatori CLI (rt/cli*.py); il motore passa da
-rt/services.
+Dalla chiusura della fase A (RT4-A6) il test è bloccante e senza eccezioni: la UI vive nella
+web app (rt/api), nelle notifiche Telegram (rt/telegram) e negli adattatori CLI (rt/cli*.py);
+il motore passa da rt/services.
 
 Inoltre motore, servizi, storage, DB, LLM, sicurezza e bot Telegram non importano le
 interfacce rt.api e rt.cli (rt/cli*.py): i servizi sollevano errori di dominio
@@ -36,7 +36,7 @@ def _is_forbidden(module: str) -> bool:
 
 
 def _is_interface(module: str) -> bool:
-    """rt.api (e sottomoduli), rt.cli e gli adattatori rt.cli_* (rt.cli_jobs, rt.cli_prompts...)."""
+    """rt.api (e sottomoduli), rt.cli e gli adattatori rt.cli_* (rt.cli_jobs, rt.cli_system...)."""
     return module == "rt.api" or module.startswith("rt.api.") or module == "rt.cli" or \
         module.startswith(("rt.cli.", "rt.cli_"))
 
