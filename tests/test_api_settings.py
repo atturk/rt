@@ -154,8 +154,8 @@ def test_transcription_telegram_pricing_persist(api_client, api_token, ws, tmp_p
     assert api_client.put("/api/v1/settings/pricing", json=pricing).status_code == 200
 
     data = _no_secret(fresh(api_token).get("/api/v1/settings")).json()
-    assert data["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
-                                     "model": "whisper", "api_key_set": True}
+    assert {k: data["transcription"][k] for k in ("engine", "base_url", "model", "api_key_set")} == {
+        "engine": "custom", "base_url": "http://127.0.0.1:9000/v1", "model": "whisper", "api_key_set": True}
     assert data["telegram"]["bot_token_set"] is True and data["telegram"]["chat_id_preview"] == "-1…77"
     assert data["pricing"] == pricing
     bad = api_client.put("/api/v1/settings/pricing", json={"openrouter": {"m": {"input_per_million": "tanto"}}})

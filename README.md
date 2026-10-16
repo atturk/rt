@@ -244,7 +244,16 @@ comando funziona anche sulle installazioni da archivio e verifica le dipendenze 
 Il comando si interrompe prima di modificare un clone Git se non è su `main` o
 se contiene modifiche tracciate. Da quel momento gli aggiornamenti successivi si
 fanno con `rt -u`.
-La trascrizione integrata usa `macparakeet-cli` su macOS; gli altri sistemi possono elaborare trascrizioni già prodotte.
+La trascrizione ha tre motori, da scegliere in Impostazioni › Lavorazione:
+
+- **macparakeet** (`macparakeet-cli`): consigliato sul Mac, usa il Neural Engine. Solo macOS.
+- **Parakeet ONNX**: lo stesso modello Parakeet v3 eseguito sulla CPU con onnx-asr, su Windows,
+  Linux e macOS (seconda scelta sul Mac). Il modello, circa 700 MB, si scarica in
+  `<cartella dati>/models/` alla prima trascrizione e poi funziona senza internet.
+- **Server OpenAI-compatible**: un tuo server di trascrizione
+  ([ALTERNATIVE_TRANSCRIPTION.md](docs/ALTERNATIVE_TRANSCRIPTION.md)).
+
+ffmpeg si usa quello installato, altrimenti quello incluso nel pacchetto `imageio-ffmpeg`.
 
 Per contribuire: [sviluppo](https://github.com/atturk/rt/blob/main/docs/DEVELOPMENT.md), [gestione file e release](https://github.com/atturk/rt/blob/main/docs/MAINTENANCE.md),
 [valutazione delle interfacce](https://github.com/atturk/rt/blob/main/docs/INTERFACE_DIRECTION.md) (documenti disponibili nel repository).

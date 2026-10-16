@@ -299,12 +299,17 @@ def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool =
         return None
     try:
         from rt.core.config import load_config
-        if load_config().transcription.engine == "custom":
+        engine = load_config().transcription.engine
+        if engine == "custom":
             return None
+        if engine == "parakeet":
+            from rt.core.onnx_stt import available
+            if available():
+                return None
     except Exception:
         pass
-    return ("La trascrizione con macparakeet funziona solo su macOS: avvia RT sul Mac "
-            "(oppure configura un motore di trascrizione compatibile nelle impostazioni).")
+    return ("La trascrizione con macparakeet funziona solo su macOS: in Impostazioni scegli "
+            "Parakeet ONNX (locale) o un server di trascrizione compatibile.")
 
 
 def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ctx: RunContext) -> PipelineResult:

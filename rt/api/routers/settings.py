@@ -95,6 +95,11 @@ class Transcription(BaseModel):
     base_url: Optional[str] = None
     model: Optional[str] = None
     api_key_set: bool
+    recommended: str = Field(description="Motore consigliato su questo sistema")
+    macparakeet_available: bool = Field(description="macparakeet può girare qui (solo macOS)")
+    macparakeet_installed: bool
+    parakeet_available: bool = Field(description="Parakeet ONNX installato (il modello si scarica al primo uso)")
+    parakeet_model_ready: bool
 
 
 class TelegramSettings(BaseModel):
@@ -155,7 +160,7 @@ class Settings(BaseModel):
 
 
 class TranscriptionIn(BaseModel):
-    engine: Literal["macparakeet", "custom"]
+    engine: Literal["macparakeet", "parakeet", "custom"]
     base_url: str = ""
     model: str = ""
     api_key: Optional[str] = Field(None, description="Lascia vuoto per non cambiarla")

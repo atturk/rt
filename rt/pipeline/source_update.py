@@ -2,7 +2,6 @@
 import json
 import os
 import re
-import subprocess
 import tempfile
 from contextlib import ExitStack
 from uuid import uuid4
@@ -33,14 +32,9 @@ def _write_state(lesson_dir, state):
 
 
 def _duration(path):
+    from rt.core.media_tools import audio_duration
     with fs.materialize(path) as real:
-        result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                                 "-of", "default=noprint_wrappers=1:nokey=1", real],
-                                capture_output=True, text=True, check=True, timeout=60)
-    duration = float(result.stdout.strip())
-    if duration <= 0:
-        raise ValueError("Audio senza durata valida")
-    return duration
+        return audio_duration(real)
 
 
 def _transcribe(path, mock=False):
@@ -52,10 +46,12 @@ def _transcribe(path, mock=False):
     with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
         if mock:
             raw_path, _ = generate_deterministic_mock_asr(real, "2026-01-01", "Appunti", "", temp)
-        elif stt.engine == "custom":
+        elif stt.engine in ("custom", "parakeet"):
             from rt.core.custom_stt import transcribe_custom
+            from rt.core.onnx_stt import transcribe_onnx
             load_env_file()
-            data = transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds)
+            data = (transcribe_onnx(real) if stt.engine == "parakeet"
+                    else transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds))
             raw_path = os.path.join(temp, "raw.json")
             with open(raw_path, "w", encoding="utf-8") as stream:
                 json.dump(data, stream)

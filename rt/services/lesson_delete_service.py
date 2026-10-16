@@ -1,7 +1,6 @@
 """Delete a lesson with a validated path and a durable filesystem quarantine."""
 
 import contextlib
-import fcntl
 import json
 import os
 import shutil
@@ -9,6 +8,7 @@ import uuid
 
 from sqlalchemy import select
 
+from rt.core.portable import lock_file, unlock_file
 from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
 from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
@@ -51,15 +51,13 @@ def _journal_lock(db, wait: bool = True):
     folder = os.path.join(fs.data_dir(db), "pending-deletions")
     os.makedirs(folder, mode=0o700, exist_ok=True)
     with open(os.path.join(folder, ".lock"), "a") as handle:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
-        except BlockingIOError:
+        if not lock_file(handle, blocking=wait):
             yield False
             return
         try:
             yield True
         finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            unlock_file(handle)
 
 
 def delete_lesson(lesson_id: int, lesson_dir: str) -> None:

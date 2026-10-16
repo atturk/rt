@@ -247,7 +247,8 @@ class TelegramRuntimeConfig(BaseModel):
             description="Quando le domande da porre di un tipo scendono a questa soglia (o sotto), "
                         "il recaller ne genera altre da unità selezionate scelte casualmente")
         refill_batch_size: int = Field(default=4, ge=1, description="Domande cercate a ogni rifornimento")
-        stt_engine: str = Field(default="macparakeet", description="'macparakeet' | 'custom' (il vecchio 'api' resta non implementato)")
+        stt_engine: str = Field(default_factory=lambda: default_engine(),
+                                description="'macparakeet' | 'parakeet' | 'custom' (il vecchio 'api' resta non implementato)")
     recall: "TelegramRuntimeConfig.RecallConfig" = Field(default_factory=RecallConfig)
 
     @model_validator(mode="after")
@@ -261,9 +262,21 @@ class TelegramRuntimeConfig(BaseModel):
         return self
 
 
+def default_engine() -> str:
+    """macparakeet sul Mac, Parakeet ONNX altrove (Windows, Linux). RT_DEFAULT_STT_ENGINE lo
+    fissa (la suite di test lo usa per avere lo stesso default su ogni sistema)."""
+    import sys
+    forced = os.environ.get("RT_DEFAULT_STT_ENGINE", "").strip()
+    if forced in ("macparakeet", "parakeet", "custom"):
+        return forced
+    return "macparakeet" if sys.platform == "darwin" else "parakeet"
+
+
 class TranscriptionConfig(BaseModel):
-    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale."""
-    engine: Literal["macparakeet", "custom"] = "macparakeet"
+    """Motore ASR usato dal setup delle lezioni e, se scelto, dal recall vocale: macparakeet
+    (solo macOS, consigliato sul Mac), parakeet (Parakeet ONNX locale, ovunque) o custom (server
+    compatibile OpenAI)."""
+    engine: Literal["macparakeet", "parakeet", "custom"] = Field(default_factory=lambda: default_engine())
     base_url: Optional[str] = None
     model: Optional[str] = None
     timeout_seconds: int = Field(default=600, ge=10)

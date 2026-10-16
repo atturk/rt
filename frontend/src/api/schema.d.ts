@@ -7021,8 +7021,27 @@ export interface components {
             base_url?: string | null;
             /** Engine */
             engine: string;
+            /**
+             * Macparakeet Available
+             * @description macparakeet può girare qui (solo macOS)
+             */
+            macparakeet_available: boolean;
+            /** Macparakeet Installed */
+            macparakeet_installed: boolean;
             /** Model */
             model?: string | null;
+            /**
+             * Parakeet Available
+             * @description Parakeet ONNX installato (il modello si scarica al primo uso)
+             */
+            parakeet_available: boolean;
+            /** Parakeet Model Ready */
+            parakeet_model_ready: boolean;
+            /**
+             * Recommended
+             * @description Motore consigliato su questo sistema
+             */
+            recommended: string;
         };
         /** TranscriptionIn */
         TranscriptionIn: {
@@ -7040,7 +7059,7 @@ export interface components {
              * Engine
              * @enum {string}
              */
-            engine: "macparakeet" | "custom";
+            engine: "macparakeet" | "parakeet" | "custom";
             /**
              * Model
              * @default

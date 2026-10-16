@@ -644,8 +644,13 @@ def detect_stt_capability(requested: Optional[str] = "auto", mock: bool = False)
         return "mock"
     try:
         from rt.core.config import load_config
-        if load_config().transcription.engine == "custom":
+        engine = load_config().transcription.engine
+        if engine == "custom":
             return "custom"
+        if engine == "parakeet":
+            from rt.core.onnx_stt import available
+            if available():
+                return "parakeet"
     except Exception:
         pass
     import sys

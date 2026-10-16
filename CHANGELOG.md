@@ -10,6 +10,12 @@
 - Il terminale serve per i comandi: revisione, ripasso e configurazione si fanno nella web app. Tolti `rt config` e le schermate interattive di `rt review` e `rt recall`; `rt run` si ferma su scaletta e issue da valutare e le decisioni si prendono nella web (`--auto-accept` per accettarle dal terminale).
 - Meno dipendenze da installare (python-telegram-bot, Telethon, Textual, questionary).
 
+### Novità
+
+- Nuovo motore di trascrizione Parakeet ONNX: lo stesso modello Parakeet v3, sulla CPU, anche su Windows e Linux. Sul Mac resta consigliato macparakeet; Parakeet ONNX è la seconda scelta. Il modello si scarica alla prima trascrizione (circa 700 MB).
+- ffmpeg non va più installato a parte: se manca, RT usa quello incluso.
+- Su Windows funzionano i lock dei file, i nomi delle lezioni e la resa delle slide PowerPoint (con LibreOffice, se installato).
+
 ## 4.2.5 — 2026-10-14
 
 ### Novità

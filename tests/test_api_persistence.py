@@ -111,8 +111,8 @@ def test_settings_writes_persist(api_client, api_token, ws, tmp_path):
     conn = next(x for x in snap["connections"] if x["name"] == "Casa")
     assert "vendor/extra" in conn["models"] and all(x["set"] for x in conn["credentials"])
     assert data["/settings/routes/rewrite/secondary"]["model"] == "vendor/secondaria"
-    assert snap["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
-                                     "model": "whisper", "api_key_set": True}
+    assert {k: snap["transcription"][k] for k in ("engine", "base_url", "model", "api_key_set")} == {
+        "engine": "custom", "base_url": "http://127.0.0.1:9000/v1", "model": "whisper", "api_key_set": True}
     assert snap["telegram"]["bot_token_set"] is True
     assert snap["telegram"]["chat_id_preview"] == "-1…23"
     assert snap["pricing"] == pricing

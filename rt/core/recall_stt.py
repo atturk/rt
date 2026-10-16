@@ -66,6 +66,10 @@ def transcribe_voice_answer(audio_path: str, stt_engine: str = "macparakeet") ->
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    elif stt_engine == "parakeet":
+        from rt.core.onnx_stt import transcribe_onnx
+        return transcribe_onnx(audio_path)["rawTranscript"]
+
     elif stt_engine == "custom":
         from rt.core.config import load_config, load_env_file
         from rt.core.custom_stt import transcribe_custom

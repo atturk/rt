@@ -39,9 +39,11 @@ def merge_audio_for_transcription(audios: List[str], output: str) -> None:
     """Normalize and join clips in their supplied order on one playback time line."""
     if len(audios) < 2:
         raise ValueError("Servono almeno due file audio")
-    if not shutil.which("ffmpeg"):
+    from rt.core.media_tools import ffmpeg_path
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg:
         raise SetupError("Per importare più audio installa ffmpeg e riprova.")
-    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
     for audio in audios:
         command.extend(["-i", os.path.abspath(audio)])
     filters = ";".join(f"[{i}:a]{AUDIO_NORMALIZATION_FILTER}[a{i}]"
@@ -57,7 +59,8 @@ def merge_audio_for_transcription(audios: List[str], output: str) -> None:
 
 def transcode_audio_for_storage(audio: str, output: str) -> bool:
     """Riduce l'audio singolo; se ffmpeg non riesce l'import conserva l'originale."""
-    ffmpeg = shutil.which("ffmpeg")
+    from rt.core.media_tools import ffmpeg_path
+    ffmpeg = ffmpeg_path()
     if not ffmpeg:
         return False
     try:
@@ -233,8 +236,10 @@ def guess_subject_from_filename(filename: str) -> str:
 
 
 def sanitize_filename_part(text: str) -> str:
-    """Rimuove caratteri non consentiti nei nomi dei file su macOS/Unix."""
-    return text.replace("/", "-").replace(":", "-").strip()
+    """Rimuove i caratteri non consentiti nei nomi dei file su macOS, Linux e Windows."""
+    text = re.sub(r'[/\\:]', "-", text)
+    text = re.sub(r'[*?"<>|\x00-\x1f]', "", text)
+    return text.strip().rstrip(".").strip()
 
 
 def generate_deterministic_mock_asr(
@@ -601,17 +606,23 @@ def run_setup(
 
         stt = load_config().transcription
         use_custom_stt = stt.engine == "custom"
-        parakeet_bin = None if use_custom_stt else find_macparakeet_binary()
-        if not use_custom_stt and not parakeet_bin:
+        use_onnx = stt.engine == "parakeet"
+        parakeet_bin = None if use_custom_stt or use_onnx else find_macparakeet_binary()
+        if not use_custom_stt and not use_onnx and not parakeet_bin:
             raise SetupError(
-                "macparakeet-cli non trovato. Assicurati che sia installato con 'brew install moona3k/tap/macparakeet-cli'."
+                "macparakeet-cli non trovato. Installalo con 'brew install moona3k/tap/macparakeet-cli' "
+                "oppure scegli il motore Parakeet ONNX in Impostazioni."
             )
         if use_custom_stt:
             model = stt.model or ""
             load_env_file()
+        if use_onnx:
+            from rt.core.onnx_stt import MODEL_LABEL
+            model = MODEL_LABEL
 
         if on_progress:
             on_progress("\n[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
+                        else "\n[2/9] TRASCRIZIONE PARAKEET ONNX..." if use_onnx
                         else "\n[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)...")
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
@@ -637,6 +648,12 @@ def run_setup(
                     try:
                         raw_data = transcribe_custom(aud_abs, stt.base_url, stt.model, stt.timeout_seconds)
                     except (RuntimeError, ValueError) as exc:
+                        raise SetupError(str(exc)) from None
+                elif use_onnx:
+                    from rt.core.onnx_stt import transcribe_onnx
+                    try:
+                        raw_data = transcribe_onnx(aud_abs, on_percent=on_transcription_progress, on_progress=on_progress)
+                    except RuntimeError as exc:
                         raise SetupError(str(exc)) from None
                 else:
                     cmd_json = [

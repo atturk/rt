@@ -69,6 +69,28 @@ export function TranscriptionSection({ settings }: { settings: Settings }) {
   )
 }
 
+type Engine = 'macparakeet' | 'parakeet' | 'custom'
+
+const ENGINE_LABEL: Record<Engine, string> = {
+  macparakeet: 'macparakeet (sul Mac)',
+  parakeet: 'Parakeet ONNX (locale)',
+  custom: 'Server OpenAI-compatible',
+}
+
+function engineHint(t: Settings['transcription'], engine: Engine): string {
+  if (engine === 'macparakeet') {
+    if (!t.macparakeet_available) return 'macparakeet funziona solo su macOS: qui scegli Parakeet ONNX.'
+    return t.macparakeet_installed ? 'Usa il Neural Engine del Mac: il più veloce.' : 'macparakeet-cli non è installato su questo Mac.'
+  }
+  if (engine === 'parakeet') {
+    if (!t.parakeet_available) return 'Il motore non è installato: reinstalla RT.'
+    return t.parakeet_model_ready
+      ? 'Gira su questo computer, senza internet.'
+      : 'Gira su questo computer. Il modello (circa 700 MB) si scarica alla prima trascrizione, poi funziona senza internet.'
+  }
+  return 'Un tuo server di trascrizione, con risposta verbose_json e segmenti temporizzati.'
+}
+
 function TranscriptionFields({
   settings,
   pending,
@@ -76,24 +98,29 @@ function TranscriptionFields({
 }: {
   settings: Settings
   pending: boolean
-  onSubmit: (body: { engine: 'macparakeet' | 'custom'; base_url: string; model: string; api_key: string | null }) => void
+  onSubmit: (body: { engine: Engine; base_url: string; model: string; api_key: string | null }) => void
 }) {
   const t = settings.transcription
-  const [engine, setEngine] = useState<'macparakeet' | 'custom'>(t.engine === 'custom' ? 'custom' : 'macparakeet')
+  const [engine, setEngine] = useState<Engine>(t.engine as Engine)
   const [baseUrl, setBaseUrl] = useState(t.base_url ?? '')
   const [model, setModel] = useState(t.model ?? '')
   const [apiKey, setApiKey] = useState('')
   const custom = engine === 'custom'
+  const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['macparakeet', 'parakeet', 'custom'] : ['parakeet', 'custom']
   function submit(e: FormEvent) {
     e.preventDefault()
     onSubmit({ engine, base_url: baseUrl.trim(), model: model.trim(), api_key: apiKey.trim() || null })
   }
   return (
     <form className="grid grid-cols-1 gap-3 sm:grid-cols-2" onSubmit={submit}>
-      <Field label="Motore" htmlFor="stt-engine">
-        <Select id="stt-engine" value={engine} onChange={(e) => setEngine(e.target.value as 'macparakeet' | 'custom')}>
-          <option value="macparakeet">macparakeet (su questo Mac)</option>
-          <option value="custom">Server OpenAI-compatible</option>
+      <Field label="Motore" htmlFor="stt-engine" hint={<span data-testid="stt-engine-hint">{engineHint(t, engine)}</span>}>
+        <Select id="stt-engine" value={engine} onChange={(e) => setEngine(e.target.value as Engine)}>
+          {engines.map((name) => (
+            <option key={name} value={name}>
+              {ENGINE_LABEL[name]}
+              {name === t.recommended ? ' · consigliato' : ''}
+            </option>
+          ))}
         </Select>
       </Field>
       <Field label="Base URL del server" htmlFor="stt-base-url">

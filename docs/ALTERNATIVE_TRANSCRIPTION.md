@@ -2,6 +2,13 @@
 
 Questo documento illustra come utilizzare motori di Speech-to-Text (STT) alternativi al motore predefinito `macparakeet-cli` (es. Whisper locale/faster-whisper, Deepgram, OpenAI Audio API, MacWhisper, Voxtral, Gladia, AssemblyAI, ecc.) con la pipeline di RT.
 
+I motori integrati sono tre (Impostazioni › Lavorazione, chiave `transcription.engine`):
+`macparakeet` (solo macOS, predefinito sul Mac), `parakeet` (Parakeet TDT 0.6B v3 in ONNX con
+onnx-asr, su ogni sistema, predefinito su Windows e Linux; modello scaricato una volta in
+`<cartella dati>/models/`, `RT_STT_MODELS_DIR` per spostarlo) e `custom` (server
+OpenAI-compatible, sotto). Parakeet ONNX produce lo stesso JSON di macparakeet-cli, con
+confidenza per parola, quindi anche il rilevamento statistico dei rischi ASR funziona.
+
 ---
 
 ## Principio Architetturale
