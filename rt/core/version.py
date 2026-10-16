@@ -379,7 +379,12 @@ def _post_update(project_root: str) -> bool:
 
 def run_update(project_root: str, channel: Optional[str] = None) -> int:
     """'rt -u' segue il canale salvato (stabile se mai scelto); 'rt -u --beta' e
-    'rt -u --stable' cambiano canale in modo permanente e poi aggiornano."""
+    'rt -u --stable' cambiano canale in modo permanente e poi aggiornano. L'app installata
+    (RT.app, setup per Windows) si aggiorna solo alle versioni stabili, con il nuovo installer."""
+    from rt.core import bundle
+    if bundle.kind(project_root):
+        from rt.core.app_update import run_cli
+        return run_cli(project_root, wants_beta=channel == BETA)
     if channel is not None:
         previous = get_update_channel()
         try:

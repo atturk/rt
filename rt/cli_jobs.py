@@ -94,7 +94,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
     stt = detect_stt_capability(kwargs["stt"], mock=kwargs["mock"])
     print(f"👷 Worker RT avviato{mode} (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
     print(f"   Trascrizione: {stt}" if stt else
-          "   Trascrizione: nessuna (i job che devono trascrivere audio aspettano un worker sul Mac)", flush=True)
+          "   Trascrizione: nessuna (i job che devono trascrivere audio aspettano un worker con un motore di trascrizione)", flush=True)
     try:
         run_workers(_queue, concurrency=max(1, args.concurrency), **kwargs)
     except KeyboardInterrupt:

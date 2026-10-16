@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatBytes } from '@/lib/jobs'
 import { Section } from './common'
+import { UpdateSection } from './update'
 
 /** Scheda Info: versione e canale di aggiornamento (come 'rt -v'; il canale si cambia con
  * 'rt -u --beta' / '--stable'), cartelle e runtime. Utile da copiare in una segnalazione. */
@@ -42,6 +43,7 @@ export function InfoSection() {
           </dl>
         )}
       </Section>
+      <UpdateSection />
       <ChangelogSection version={info.data?.version} />
       <CacheSection />
     </>

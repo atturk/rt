@@ -31,7 +31,25 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 
 ### 1. Requisiti e Configurazione
 
-#### Installazione in un comando (macOS)
+#### App per Mac e Windows (consigliata)
+
+Dalla [pagina delle release](https://github.com/atturk/rt/releases/latest) scarica:
+
+- **Mac (Apple Silicon)**: `RT-<versione>-macos-arm64.dmg`, aprilo e trascina RT in Applicazioni.
+- **Windows (64 bit)**: `RT-<versione>-windows-x64-setup.exe` e installalo (non servono permessi
+  di amministratore).
+
+Dentro c'è tutto (Python, dipendenze, web app, ffmpeg): un doppio clic su RT prepara la cartella
+dati `~/.rt` e apre la web app nel browser, sulla configurazione guidata. Sul Mac RT resta acceso in
+background; su Windows resta acceso finché è aperta la sua finestra. Gli aggiornamenti stabili si
+installano da Impostazioni › Info › Aggiornamenti; le beta si scaricano a mano dalle release.
+
+L'app non è firmata: al primo avvio il Mac la blocca (Impostazioni di Sistema › Privacy e sicurezza
+› Apri comunque) e Windows mostra SmartScreen (Ulteriori informazioni › Esegui comunque). Il
+motore di trascrizione locale su Windows è Parakeet ONNX, che scarica il modello alla prima
+trascrizione (circa 700 MB); sul Mac resta consigliato macparakeet.
+
+#### Installazione in un comando (macOS, da terminale)
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/atturk/rt/main/bootstrap.sh)"

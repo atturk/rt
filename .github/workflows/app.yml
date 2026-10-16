@@ -1,0 +1,151 @@
+name: App
+
+# L'app installabile (scripts/build_app.py): .dmg per il Mac e setup .exe per Windows, con la
+# prova dell'installazione, dell'avvio e di una trascrizione vera con Parakeet ONNX. Su
+# Windows gira anche la suite dei test. release.yml la richiama e allega gli installer.
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # modello Parakeet ONNX in cache fra un'esecuzione e l'altra (circa 700 MB)
+  RT_STT_MODELS_DIR: ${{ github.workspace }}/.stt-models
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build setup
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/build_app.py --out dist
+      - name: Install silently
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\RT-*-windows-x64-setup.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOLAUNCH=1',"/LOG=$env:RUNNER_TEMP\setup.log" -Wait
+          Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 20
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\python\python.exe")) { throw "RT non installato" }
+      - name: Start the app
+        shell: pwsh
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\RT"
+          python scripts/app_smoke.py "$app\python\python.exe" $app
+      - uses: actions/cache@v4
+        with:
+          path: .stt-models
+          key: stt-parakeet-tdt-0.6b-v3-int8-silero
+      - name: Real transcription (Parakeet ONNX)
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile("$env:RUNNER_TEMP\voice.wav")
+          $voice.Speak("The kidney filters the blood. Today we study the nephron and the urine.")
+          $voice.Dispose()
+          $app = "$env:LOCALAPPDATA\Programs\RT"
+          & "$app\python\python.exe" scripts\stt_smoke.py $app "$env:RUNNER_TEMP\voice.wav" "kidney,blood"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          Start-Process "$env:LOCALAPPDATA\Programs\RT\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path "$env:LOCALAPPDATA\Programs\RT\python") { throw "Disinstallazione incompleta" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows
+          path: dist/RT-*-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build dmg
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/build_app.py --out dist
+      - name: Install from the dmg
+        run: |
+          dmg=$(ls dist/RT-*-macos-arm64.dmg)
+          mkdir -p "$RUNNER_TEMP/mnt" "$RUNNER_TEMP/Applications"
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/mnt" "$dmg"
+          ditto "$RUNNER_TEMP/mnt/RT.app" "$RUNNER_TEMP/Applications/RT.app"
+          hdiutil detach "$RUNNER_TEMP/mnt"
+          test -x "$RUNNER_TEMP/Applications/RT.app/Contents/MacOS/RT"
+      - name: Start the app
+        run: |
+          app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
+          python scripts/app_smoke.py "$app/python/bin/python3" "$app"
+      - uses: actions/cache@v4
+        with:
+          path: .stt-models
+          key: stt-parakeet-tdt-0.6b-v3-int8-silero
+      - name: Real transcription (Parakeet ONNX)
+        run: |
+          say -v Alice -o "$RUNNER_TEMP/voce.wav" --file-format=WAVE --data-format=LEI16@16000 \
+            "Il rene filtra il sangue. Oggi studiamo il nefrone e la produzione di urina." \
+            || say -o "$RUNNER_TEMP/voce.wav" --file-format=WAVE --data-format=LEI16@16000 \
+               "The kidney filters the blood. Today we study the nephron."
+          app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
+          words=$(say -v '?' | grep -q '^Alice ' && echo "rene,sangue" || echo "kidney,blood")
+          "$app/python/bin/python3" scripts/stt_smoke.py "$app" "$RUNNER_TEMP/voce.wav" "$words"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-macos
+          path: dist/RT-*-macos-arm64.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # La suite dei test su Windows: quello che funziona solo sul Mac salta fuori qui.
+  test-windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run test suite
+        run: python -m pytest tests/ -q -n auto --dist loadfile

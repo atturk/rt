@@ -1,0 +1,344 @@
+"""
+rt.core.app_update
+Aggiornamento dell'app installata (RT.app, setup per Windows) dalle release STABILI di
+GitHub: si scarica il nuovo installer della release più recente, si verifica con SHA256SUMS
+e lo si installa sopra l'app. Le beta non arrivano mai da qui: chi vuole provarle scarica
+l'installer a mano dalla pagina delle release.
+
+- Windows: il setup parte in modalità silenziosa, chiude RT, sostituisce i file e lo riavvia.
+- macOS: il .dmg si monta, la nuova RT.app si copia accanto a quella in uso e un processo
+  separato le scambia e riapre RT, che riavvia i servizi con il codice nuovo.
+
+Lo stato dell'operazione (scaricamento, installazione, errore) vive nel processo che la
+esegue: la pagina Info lo legge con GET /api/v1/system/update.
+"""
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
+from dataclasses import asdict, dataclass, field
+from typing import Callable, Dict, Optional
+
+from rt.core import bundle, paths
+from rt.core.version import (OFFLINE_ENV, RELEASES_API, format_version, get_current_version, is_prerelease,
+                             parse_version)
+
+RELEASES_PAGE = "https://github.com/atturk/rt/releases"
+ASSET_NAMES = {
+    bundle.MACOS: "RT-{version}-macos-arm64.dmg",
+    bundle.WINDOWS: "RT-{version}-windows-x64-setup.exe",
+}
+CHECK_TTL_SECONDS = 6 * 3600
+
+
+class AppUpdateError(RuntimeError):
+    pass
+
+
+@dataclass
+class UpdateCheck:
+    supported: bool
+    current: str
+    latest: Optional[str] = None
+    available: bool = False
+    asset_url: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_size: Optional[int] = None
+    sums_url: Optional[str] = None
+    notes_url: Optional[str] = None
+    error: Optional[str] = None
+    checked_at: float = field(default_factory=time.time)
+
+
+def asset_name(kind: str, version: str) -> str:
+    return ASSET_NAMES[kind].format(version=version)
+
+
+def _get_json(url: str, timeout: float):
+    req = urllib.request.Request(url, headers={"User-Agent": "RT-Updater",
+                                               "Accept": "application/vnd.github.v3+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def evaluate(release: Dict, kind: Optional[str], current: str) -> UpdateCheck:
+    """Confronta la release stabile più recente con la versione installata."""
+    check = UpdateCheck(supported=kind is not None, current=current)
+    tag = release.get("tag_name") if isinstance(release, dict) else None
+    if not tag or release.get("prerelease") or release.get("draft"):
+        return check
+    latest = format_version(tag)
+    check.latest = latest
+    check.notes_url = release.get("html_url") or f"{RELEASES_PAGE}/tag/{tag}"
+    if kind is None:
+        return check
+    assets = {a.get("name"): a for a in release.get("assets") or [] if isinstance(a, dict)}
+    wanted = assets.get(asset_name(kind, latest))
+    sums = assets.get("SHA256SUMS")
+    newer = (parse_version(latest) or ()) > (parse_version(current) or ())
+    if newer and wanted and sums:
+        check.available = True
+        check.asset_url = wanted.get("browser_download_url")
+        check.asset_name = wanted.get("name")
+        check.asset_size = wanted.get("size")
+        check.sums_url = sums.get("browser_download_url")
+    return check
+
+
+def check(timeout: float = 8.0, project_root: Optional[str] = None) -> UpdateCheck:
+    root = project_root or paths.project_root()
+    current = get_current_version(root)
+    kind = bundle.kind(root)
+    if os.environ.get(OFFLINE_ENV) == "1":
+        return UpdateCheck(supported=kind is not None, current=current,
+                           error="Controllo degli aggiornamenti disattivato (RT_UPDATE_OFFLINE=1).")
+    try:
+        release = _get_json(f"{RELEASES_API}/latest", timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return UpdateCheck(supported=kind is not None, current=current)
+        return UpdateCheck(supported=kind is not None, current=current,
+                           error=f"GitHub non risponde (HTTP {exc.code}).")
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return UpdateCheck(supported=kind is not None, current=current,
+                           error=f"Impossibile controllare gli aggiornamenti: {getattr(exc, 'reason', exc)}.")
+    return evaluate(release, kind, current)
+
+
+# ------------------------------------------------------------------ download e verifica
+
+def _updates_dir() -> str:
+    target = os.path.join(paths.data_dir(), "updates")
+    os.makedirs(target, exist_ok=True)
+    return target
+
+
+def expected_sha256(sums_text: str, name: str) -> Optional[str]:
+    for line in sums_text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == name:
+            return parts[0].lower()
+    return None
+
+
+def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None] = lambda done, total: None,
+             opener: Callable = urllib.request.urlopen) -> str:
+    """Scarica l'installer e lo verifica con SHA256SUMS; restituisce il percorso del file."""
+    if not (info.asset_url and info.asset_name and info.sums_url):
+        raise AppUpdateError("Nessun aggiornamento da scaricare.")
+    headers = {"User-Agent": "RT-Updater"}
+    try:
+        with opener(urllib.request.Request(info.sums_url, headers=headers), timeout=30) as resp:
+            sums = resp.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError) as exc:
+        raise AppUpdateError(f"Impossibile scaricare SHA256SUMS: {exc}") from None
+    expected = expected_sha256(sums, info.asset_name)
+    if not expected:
+        raise AppUpdateError(f"SHA256SUMS non elenca {info.asset_name}.")
+    target = os.path.join(_updates_dir(), info.asset_name)
+    partial = target + ".part"
+    digest = hashlib.sha256()
+    done = 0
+    try:
+        with opener(urllib.request.Request(info.asset_url, headers=headers), timeout=60) as resp, \
+                open(partial, "wb") as out:
+            total = info.asset_size or int(resp.headers.get("Content-Length") or 0) or None
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+                digest.update(chunk)
+                done += len(chunk)
+                on_progress(done, total)
+    except (urllib.error.URLError, OSError) as exc:
+        _remove(partial)
+        raise AppUpdateError(f"Download interrotto: {exc}") from None
+    if digest.hexdigest() != expected:
+        _remove(partial)
+        raise AppUpdateError("Il file scaricato non corrisponde a SHA256SUMS: aggiornamento annullato.")
+    os.replace(partial, target)
+    return target
+
+
+def _remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+# ------------------------------------------------------------------ installazione
+
+def _detached() -> Dict:
+    if sys.platform == "win32":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: il setup sopravvive alla chiusura di RT
+        return {"creationflags": 0x00000008 | 0x00000200, "close_fds": True}
+    return {"start_new_session": True, "close_fds": True}
+
+
+def install_windows(installer: str) -> None:
+    """Il setup chiude RT (anche worker e finestre), sostituisce i file e lo riapre."""
+    subprocess.Popen([installer, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
+                      f"/LOG={os.path.join(_updates_dir(), 'setup.log')}"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     **_detached())
+
+
+def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
+    """Copia la nuova RT.app accanto a quella in uso; un processo separato le scambia e riapre
+    RT (che riavvia i servizi con il codice nuovo)."""
+    app = bundle.app_path(project_root)
+    if not app:
+        raise AppUpdateError("Non trovo RT.app: scarica l'aggiornamento dalla pagina delle release.")
+    parent = os.path.dirname(app)
+    if not os.access(parent, os.W_OK):
+        raise AppUpdateError(f"Non posso scrivere in {parent}: scarica l'aggiornamento dalla pagina delle release.")
+    staging = app + ".update"
+    shutil.rmtree(staging, ignore_errors=True)
+    mount = tempfile.mkdtemp(prefix="rt-update-")
+    try:
+        _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg])
+        try:
+            source = os.path.join(mount, "RT.app")
+            if not os.path.isdir(source):
+                raise AppUpdateError("Il .dmg non contiene RT.app.")
+            _run(["ditto", source, staging])
+        finally:
+            subprocess.run(["hdiutil", "detach", mount, "-force"], capture_output=True, check=False)
+    finally:
+        shutil.rmtree(mount, ignore_errors=True)
+    subprocess.run(["xattr", "-dr", "com.apple.quarantine", staging], capture_output=True, check=False)
+    old = app + ".old"
+    script = ('sleep 1; rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD"; '
+              'open "$APP" --args --after-update')
+    subprocess.Popen(["/bin/sh", "-c", script], env={**os.environ, "APP": app, "NEW": staging, "OLD": old},
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     **_detached())
+
+
+def _run(command) -> None:
+    try:
+        res = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AppUpdateError(f"{command[0]}: {exc}") from None
+    if res.returncode != 0:
+        raise AppUpdateError(f"{command[0]}: {(res.stderr or res.stdout).strip()}")
+
+
+def install(installer: str, project_root: Optional[str] = None) -> None:
+    kind = bundle.kind(project_root)
+    if kind == bundle.WINDOWS:
+        install_windows(installer)
+    elif kind == bundle.MACOS:
+        install_macos(installer, project_root)
+    else:
+        raise AppUpdateError("Questa installazione si aggiorna con 'rt -u'.")
+
+
+# ------------------------------------------------------------------ stato per l'API
+
+class _State:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.phase = "idle"  # idle | downloading | installing | error
+        self.downloaded = 0
+        self.total: Optional[int] = None
+        self.error: Optional[str] = None
+        self.target: Optional[str] = None
+        self.last_check: Optional[UpdateCheck] = None
+
+    def snapshot(self) -> Dict:
+        with self.lock:
+            return {"phase": self.phase, "downloaded": self.downloaded, "total": self.total,
+                    "error": self.error, "target": self.target}
+
+
+STATE = _State()
+
+
+def cached_check(refresh: bool = False) -> UpdateCheck:
+    last = STATE.last_check
+    if not refresh and last is not None and last.error is None and time.time() - last.checked_at < CHECK_TTL_SECONDS:
+        return last
+    result = check()
+    STATE.last_check = result
+    return result
+
+
+def start(info: UpdateCheck, after: Callable[[], None] = lambda: None) -> bool:
+    """Scarica e installa in un thread; False se un aggiornamento è già in corso."""
+    with STATE.lock:
+        if STATE.phase in ("downloading", "installing"):
+            return False
+        STATE.phase, STATE.downloaded, STATE.total = "downloading", 0, info.asset_size
+        STATE.error, STATE.target = None, info.latest
+
+    def progress(done: int, total: Optional[int]) -> None:
+        with STATE.lock:
+            STATE.downloaded, STATE.total = done, total
+
+    def work() -> None:
+        try:
+            path = download(info, progress)
+            with STATE.lock:
+                STATE.phase = "installing"
+            install(path)
+            after()
+        except AppUpdateError as exc:
+            with STATE.lock:
+                STATE.phase, STATE.error = "error", str(exc)
+        except Exception as exc:  # noqa: BLE001 - l'errore va mostrato nella pagina
+            with STATE.lock:
+                STATE.phase, STATE.error = "error", f"Aggiornamento non riuscito: {exc}"
+
+    threading.Thread(target=work, name="rt-app-update", daemon=True).start()
+    return True
+
+
+def as_dict(info: UpdateCheck) -> Dict:
+    data = asdict(info)
+    data.pop("sums_url", None)
+    return data
+
+
+# ------------------------------------------------------------------ 'rt -u' dall'app
+
+def run_cli(project_root: str, wants_beta: bool = False) -> int:
+    if wants_beta:
+        print(f"🧪 Le beta non si installano da qui: scarica l'installer dalla pagina {RELEASES_PAGE}.")
+        return 0
+    info = check(project_root=project_root)
+    if info.error:
+        print(f"❌ {info.error}", file=sys.stderr)
+        return 1
+    if not info.available:
+        if info.latest and is_prerelease(info.current):
+            print(f"Hai la beta {info.current}: l'app passerà alla prossima versione stabile appena esce.")
+        else:
+            print(f"Sei già aggiornato all'ultima versione ({info.current}).")
+        return 0
+    print(f"Scarico RT {info.latest}...")
+    last = [-1]
+
+    def progress(done: int, total: Optional[int]) -> None:
+        if total:
+            percent = done * 100 // total
+            if percent // 10 != last[0]:
+                last[0] = percent // 10
+                print(f"  {percent}%", flush=True)
+    try:
+        path = download(info, progress)
+        install(path, project_root)
+    except AppUpdateError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 1
+    print(f"✅ Installo RT {info.latest}: RT si chiude e si riapre da solo.")
+    return 0
