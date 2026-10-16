@@ -15,6 +15,9 @@ permissions:
 env:
   # modello Parakeet ONNX in cache fra un'esecuzione e l'altra (circa 700 MB)
   RT_STT_MODELS_DIR: ${{ github.workspace }}/.stt-models
+  # la console dei runner Windows è cp1252: le emoji dei messaggi di RT la farebbero fallire
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
 
 jobs:
   windows:
@@ -134,8 +137,6 @@ jobs:
   # La suite dei test su Windows: quello che funziona solo sul Mac salta fuori qui.
   test-windows:
     runs-on: windows-latest
-    env:
-      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
