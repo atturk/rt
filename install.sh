@@ -380,7 +380,7 @@ else
     fi
 fi
 
-# Servizi in background (launchd): API + web app, worker, bot Telegram
+# Servizi in background (launchd): API + web app e worker (toglie il vecchio bot Telegram)
 if [ "${RT_NO_SERVICES:-0}" = "1" ]; then
     echo "ℹ️ Servizi in background non installati (RT_NO_SERVICES=1): usa 'rt web'."
 elif "${RT_BIN[@]}" service install 2>&1 | tee -a "$LOG_FILE"; then

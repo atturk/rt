@@ -590,7 +590,7 @@ class DbJobQueue:
 
 # ---------------------------------------------------------------- capability dei worker (RT4-G1)
 
-STT_JOB_TYPES = ("ingest_audio", "run_pipeline", "transcribe_voice")
+STT_JOB_TYPES = ("ingest_audio", "run_pipeline")
 
 
 def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path: Optional[str] = None) -> bool:
@@ -614,8 +614,6 @@ def job_needs_stt(job_type: str, payload: Optional[Dict[str, Any]], lesson_path:
     if job_type not in STT_JOB_TYPES:
         return False
     payload = payload or {}
-    if job_type == "transcribe_voice":
-        return not (payload.get("mock") or payload.get("force_mock"))
     options = payload.get("options") or {}
     if payload.get("mock") or options.get("mock") or options.get("skip_transcribe"):
         return False
@@ -692,40 +690,6 @@ def has_live_worker(job_type: Optional[str] = None, same_host: bool = False, nee
     if same_host:
         workers = [w for w in workers if w["hostname"] == socket.gethostname()]
     return bool(workers)
-
-
-class JobFailed(RuntimeError):
-    """Il job accodato è fallito o è stato annullato (messaggio = errore del job)."""
-
-
-def run_job_or_inline(job_type: str, lesson_id: LessonRef, payload: Dict[str, Any], inline,
-                      *, created_by: Optional[str] = None, same_host: bool = False,
-                      pickup_timeout: float = 30.0, poll_interval: float = 0.5) -> Dict[str, Any]:
-    """Esegue un lavoro lungo tramite la coda se c'è un worker vivo, altrimenti in processo
-    chiamando inline() (comportamento di prima della fase D). Bloccante: chi è in un event
-    loop (daemon Telegram) la chiama in un executor. Se nessun worker prende il job entro
-    pickup_timeout secondi (worker appena morto) il job viene annullato e si esegue inline.
-    Restituisce il risultato del job (o {"inline": valore} quando esegue in processo)."""
-    needs_stt = job_needs_stt(job_type, payload, lesson_id if isinstance(lesson_id, str) else None)
-    queue = _optional_queue() if has_live_worker(job_type, same_host=same_host, needs_stt=needs_stt) else None
-    if queue is None:
-        return {"inline": inline()}
-    job_id = queue.enqueue(job_type, lesson_id, payload, created_by=created_by)
-    started = time.monotonic()
-    while True:
-        job = queue.get(job_id)
-        if job is None:
-            raise JobFailed(f"Job {job_id} scomparso")
-        if job.state == JobState.SUCCEEDED.value:
-            return job.result or {}
-        if job.state in (JobState.FAILED.value, JobState.CANCELLED.value):
-            raise JobFailed(job.error or f"Job {job.state}")
-        if job.state == JobState.WAITING_FOR_DECISION.value:
-            return job.result or {}
-        if job.state == JobState.QUEUED.value and time.monotonic() - started > pickup_timeout:
-            if queue.cancel(job_id).state == JobState.CANCELLED.value:
-                return {"inline": inline()}
-        time.sleep(poll_interval)
 
 
 def resume_waiting_jobs(lesson_dir: str, kind: str, condition=None) -> List[str]:

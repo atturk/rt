@@ -44,13 +44,18 @@ export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }
 
-/** Telegram acceso o spento (spento di predefinito: i ripassi si fanno solo nella web app). */
+/** Notifiche Telegram accese o spente (spente di predefinito). */
 export function useSetTelegramEnabled() {
   return useSettingsMutation((enabled: boolean) => unwrap(api.PUT('/api/v1/settings/telegram/enabled', { body: { enabled } })))
 }
 
 export function useSaveTelegram() {
   return useSettingsMutation((body: Schemas['TelegramIn']) => unwrap(api.PUT('/api/v1/settings/telegram', { body })))
+}
+
+/** "Collega la chat": trova la chat di chi ha scritto /start al bot e la salva (con il token, se dato). */
+export function useFindTelegramChat() {
+  return useSettingsMutation((body: Schemas['TelegramChatIn']) => unwrap(api.POST('/api/v1/settings/telegram/chat', { body })))
 }
 
 export function useCreateConnection() {
@@ -157,36 +162,6 @@ export function useTestCredential() {
   })
 }
 
-/** "Ascolta i topic": job che legge per 20 secondi i messaggi arrivati al bot. Con names
- * (nome del topic dal Bot API) e materie (materia nota che coincide con il nome). */
-export type ListenResult = {
-  ok: boolean
-  message: string
-  chat_id?: string | null
-  topics?: number[]
-  names?: Record<string, string>
-  materie?: Record<string, string>
-}
-
-export const telegramSettingsKeys = { listenMessages: ['settings', 'telegram', 'listen-messages'] as const }
-
-export function useListenTopics() {
-  const client = useQueryClient()
-  return useMutation({
-    onSettled: () => client.invalidateQueries({ queryKey: telegramSettingsKeys.listenMessages }),
-    mutationFn: async (): Promise<ListenResult> => {
-      const accepted = await unwrap(api.POST('/api/v1/settings/telegram/listen-topics'))
-      if (!accepted.worker_available) return { ok: false, message: 'Nessun worker attivo: riavvia RT con la web e riprova.' }
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        const job = await unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: accepted.job_id } } }))
-        if (job.state === 'succeeded') return job.result as ListenResult
-        if (isTerminal(job.state)) return { ok: false, message: `Ascolto non eseguito: ${job.error ?? job.state}` }
-      }
-    },
-  })
-}
-
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled'])
 
 export function isTerminal(state: string | undefined) {
@@ -202,45 +177,11 @@ export function useJob(id: string | undefined) {
   })
 }
 
-/** Messaggi ricevuti durante l'ultimo ascolto dei topic (quanti e se già cancellati). */
-export function useListenMessages(enabled = true) {
-  return useQuery({
-    queryKey: telegramSettingsKeys.listenMessages,
-    queryFn: () => unwrap(api.GET('/api/v1/settings/telegram/listen-messages')),
-    enabled,
-  })
-}
-
-/** Cancella dal gruppo solo i messaggi dell'ultimo ascolto. */
-export function useDeleteListenMessages() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: () => unwrap(api.POST('/api/v1/settings/telegram/listen-messages/delete')),
-    onSettled: () => client.invalidateQueries({ queryKey: telegramSettingsKeys.listenMessages }),
-  })
-}
-
 /** Valore completo del token del bot o del Chat ID: solo su richiesta esplicita (pulsante occhio). */
 export function useRevealTelegram() {
   return useMutation({
     mutationFn: (field: 'bot_token' | 'chat_id') => unwrap(api.POST('/api/v1/settings/telegram/reveal', { body: { field } })),
   })
-}
-
-/** "Prova": messaggio "Questo è il topic di <materia>" nel topic; l'esito è la risposta. */
-export function useTestTopic() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (body: Schemas['TopicTestIn']) => unwrap(api.POST('/api/v1/settings/telegram/test-topic', { body })),
-    onSettled: () => client.invalidateQueries({ queryKey: ['telegram', 'notifications'] }),
-  })
-}
-
-/** "Prova" di un topic dal form o dalla pagina Bot: la mutation e se l'id è valido. */
-export function useTopicTest(topicId: string, materia: string) {
-  const test = useTestTopic()
-  const valid = /^\d+$/.test(topicId.trim()) && Number(topicId) > 0
-  return { test, valid, run: () => test.mutate({ topic_id: Number(topicId.trim()), materia: materia.trim() }) }
 }
 
 // ---------------------------------------------------------------- chiave sola lettura (AP1)

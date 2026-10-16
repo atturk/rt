@@ -6,6 +6,9 @@
 
 - Tolta la mini app di Telegram: lo studio e il recall dal telefono passano dalla web app.
 - Tolta la vecchia interfaccia Gradio (`rt web --legacy`), già deprecata: la web di RT è quella che si apre con `rt web`.
+- Telegram serve solo alle notifiche nella tua chat personale: lezione pronta, decisione da prendere, errore. Si configura in Impostazioni › Telegram (token del bot, /start, Collega la chat). Niente più gruppi, topic, ripassi o revisione su Telegram, e niente più servizio del bot: `rt service install` (eseguito anche dall'aggiornamento) toglie quello vecchio.
+- Il terminale serve per i comandi: revisione, ripasso e configurazione si fanno nella web app. Tolti `rt config` e le schermate interattive di `rt review` e `rt recall`; `rt run` si ferma su scaletta e issue da valutare e le decisioni si prendono nella web (`--auto-accept` per accettarle dal terminale).
+- Meno dipendenze da installare (python-telegram-bot, Telethon, Textual, questionary).
 
 ## 4.2.5 — 2026-10-14
 

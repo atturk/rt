@@ -26,9 +26,7 @@ RECALL_EVALUATE = "recall_evaluate"
 RECALL_REFILL = "recall_refill"
 OUTLINE_REVISION = "outline_revision"
 CREDENTIAL_TEST = "credential_test"
-TELEGRAM_LISTEN_TOPICS = "telegram_listen_topics"
 IMPORT_LESSON_ZIPS = "import_lesson_zips"
-TELEGRAM_TOPIC_EXPORT = "telegram_topic_export"
 EXPORT_LESSONS = "export_lessons"
 UPDATE_LESSON = "update_lesson"
 INGEST_NOTES = "ingest_notes"
@@ -192,7 +190,6 @@ def study_note_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 def _cleanup_upload(payload: Dict[str, Any]) -> None:
     """I file caricati via API stanno in una cartella temporanea (<radice>/.rt/uploads/<id>):
     a job concluso l'audio o le immagini sono già copiati nella lezione."""
-    import shutil
     upload_dir = payload.get("upload_dir")
     if upload_dir and os.path.basename(os.path.dirname(upload_dir)) == "uploads":
         fs.rmtree(upload_dir, ignore_errors=True)
@@ -383,24 +380,6 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({"ok": True, "credential": p["credential"], "message": "Credenziale valida."})
 
 
-def telegram_listen_topics_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Ascolta i messaggi al bot per rilevare chat e topic: l'esito (anche un errore) è il risultato."""
-    from rt.services.telegram_topics import TopicListenError, known_materie, listen_topics, listen_existing_daemon, match_materia
-    try:
-        found = (listen_existing_daemon if job.payload.get("existing_daemon") else listen_topics)(
-            seconds=int(job.payload.get("seconds") or 20))
-    except TopicListenError as exc:
-        return _done({"ok": False, "message": str(exc), "chat_id": None, "topics": []})
-    n = len(found["topics"])
-    message = (f"Rilevati {n} topic. Assegna una materia a ciascuno e salva." if n
-               else "Nessun topic rilevato. Invia un messaggio in un topic e riprova.")
-    # Nome del topic dal Bot API e, se coincide con una materia nota, la materia proposta.
-    materie = known_materie() if found.get("names") else []
-    found["materie"] = {topic: m for topic, name in found.get("names", {}).items()
-                        if (m := match_materia(name, materie))}
-    return _done({"ok": True, "message": message, **found})
-
-
 def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Importa gli archivi ZIP completi caricati via API, uno alla volta: un archivio rifiutato
     (anche già alla richiesta, per nome o firma) non ferma gli altri. Il risultato elenca per
@@ -519,43 +498,6 @@ def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return _done({"file": filename, "size": os.path.getsize(target), "included": included})
 
 
-def telegram_topic_export_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Esporta cronologia e media di un topic con l'account utente e lascia lo ZIP in
-    exports_root()/<job_id>/: lo scarica GET /settings/telegram/user/archives/{job_id}."""
-    import asyncio
-    import shutil
-    import time
-    from rt.services.telegram_user_archive import export_topic
-    chat_id, topic_id = int(job.payload["chat_id"]), int(job.payload["topic_id"])
-    sweep_stale_exports()
-    counted = {"messages": 0, "bytes": 0, "last": 0.0}
-
-    def progress(messages: int, media_bytes: int) -> None:
-        ctx.check_cancelled()
-        counted.update(messages=messages, bytes=media_bytes)
-        now = time.monotonic()
-        if now - counted["last"] >= 1.0:  # al massimo un evento al secondo, non uno per messaggio
-            counted["last"] = now
-            ctx.progress(TELEGRAM_TOPIC_EXPORT, messages, None,
-                         message=f"{messages} messaggi, {media_bytes / (1024 * 1024):.0f} MB di media")
-
-    ctx.progress(TELEGRAM_TOPIC_EXPORT, 0, None, message="Collegamento a Telegram")
-    # Gli errori di dominio (ServiceError: sessione scaduta, topic troppo grande, media non
-    # scaricato) diventano l'errore del job con il loro messaggio (job_error_message).
-    path, folder = asyncio.run(export_topic(chat_id, topic_id, progress=progress))
-    filename = f"telegram-topic-{topic_id}.zip"
-    target = job_export_path(job.id, filename)
-    try:
-        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
-        shutil.move(path, target)
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
-    ctx.progress(TELEGRAM_TOPIC_EXPORT, counted["messages"], counted["messages"],
-                 message=f"Archivio pronto: {counted['messages']} messaggi")
-    return _done({"topic_id": topic_id, "file": filename, "size": os.path.getsize(target),
-                  "messages": counted["messages"], "media_bytes": counted["bytes"]})
-
-
 for _type, _handler in (
     (INGEST_NOTES, ingest_notes_job),
     ("ingest_sources", ingest_sources_job),
@@ -564,8 +506,7 @@ for _type, _handler in (
     (REWRITE_UNIT, rewrite_unit_job), (REVIEW_UNIT, review_unit_job), (REVIEW_PART, review_part_job), (RECALL_BATCH, recall_batch_job), (RECALL_EVALUATE, recall_evaluate_job),
     ('recall_regenerate', recall_regenerate_job), ('recall_comment', recall_comment_job), (RECALL_REFILL, recall_refill_job), (UNIT_RELEVANCE, unit_relevance_job),
     (OUTLINE_REVISION, outline_revision_job), (CREDENTIAL_TEST, credential_test_job),
-    (TELEGRAM_LISTEN_TOPICS, telegram_listen_topics_job),
-    (IMPORT_LESSON_ZIPS, import_lesson_zips_job), (TELEGRAM_TOPIC_EXPORT, telegram_topic_export_job),
+    (IMPORT_LESSON_ZIPS, import_lesson_zips_job),
     (EXPORT_LESSONS, export_lessons_job), (STUDY_NOTE, study_note_job),
 ):
     if _type not in _HANDLERS:

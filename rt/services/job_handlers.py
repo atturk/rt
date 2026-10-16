@@ -15,7 +15,6 @@ RUN_PHASE = "run_phase"
 INGEST_AUDIO = "ingest_audio"
 ADD_IMAGES = "add_images"
 RECALL_GENERATE = "recall_generate"
-TRANSCRIBE_VOICE = "transcribe_voice"
 
 
 def pipeline_options(data: Dict[str, Any]):
@@ -158,20 +157,11 @@ def recall_generate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     return JobOutcome(state=JobState.SUCCEEDED, result={"questions": len(load_recall_bank(lesson_dir).questions)})
 
 
-def transcribe_voice_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
-    """Trascrizione di una risposta vocale (Telegram). Il file è locale: il daemon accoda
-    questo job solo se c'è un worker vivo sulla stessa macchina."""
-    from rt.core.recall_stt import transcribe_voice_answer
-    text = transcribe_voice_answer(job.payload["path"], job.payload.get("engine") or "macparakeet")
-    return JobOutcome(state=JobState.SUCCEEDED, result={"text": text})
-
-
 register_handler(RUN_PIPELINE, run_pipeline_job)
 register_handler(INGEST_AUDIO, ingest_audio_job)
 register_handler(RUN_PHASE, run_phase_job)
 register_handler(ADD_IMAGES, add_images_job)
 register_handler(RECALL_GENERATE, recall_generate_job)
-register_handler(TRANSCRIBE_VOICE, transcribe_voice_job)
 
 
 def enrichment_analyze_job(job: JobInfo, ctx: RunContext) -> JobOutcome:

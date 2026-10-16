@@ -395,10 +395,10 @@ def test_cli_main_flag_interception():
         mock_update.assert_called_once()
 
 
-def test_cli_main_no_subcommand_launches_tui_app():
-    with patch("rt.tui.app.run_app") as mock_run:
-        main([])
-    mock_run.assert_called_once()
+def test_cli_main_no_subcommand_prints_help(capsys):
+    main([])
+    out = capsys.readouterr().out
+    assert "Comandi principali:" in out and "rt web" in out
 
 
 def test_cli_help_includes_version_and_update(capsys):

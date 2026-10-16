@@ -6,30 +6,10 @@ exit_code: 0
 ============================================================
 
 [1/4] PREPARE (Parsing deterministico segmenti)...
-✔ Segmenti estratti: 6 (70.0s)
+⏩ [SKIP] Segmenti già validi (6 segmenti, 70.0s)
 
 [2/4] OUTLINE (Scaletta gerarchica didattica)...
-✔ Outline validata: 1 unità didattiche (100.0% copertura)
-
-============================================================
-📋 OUTLINE GENERATA — in attesa di conferma
-============================================================
-📋 Lezione Accademica Rielaborata
-
-1. Introduzione e concetti fondamentali
-  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
-
-Azione [A=Approva / M=Richiedi modifiche]: Descrivi le modifiche desiderate: ⏳ Rigenerazione outline in corso...
-
-============================================================
-📋 OUTLINE GENERATA — in attesa di conferma
-============================================================
-📋 Lezione Accademica Rielaborata
-
-1. Introduzione e concetti fondamentali
-  1.1 Panoramica generale e prima unità — Concetto chiave 1, Concetto chiave 2
-
-Azione [A=Approva / M=Richiedi modifiche]: ✔ Outline approvata.
+⏩ [SKIP] Outline già valida (1 unità didattiche, 0 chiamate LLM)
 
 [3/4] REWRITE (Rielaborazione fluida a finestre con provenance)...
 ✔ Rielaborate 1/1 unità. Provenance verificata.
@@ -45,7 +25,6 @@ Azione [A=Approva / M=Richiedi modifiche]: ✔ Outline approvata.
 ============================================================
 💰 RIEPILOGO COSTI SESSIONE
 ============================================================
-  outline            2 richieste  $0.000000
   rewrite            1 richieste  $0.000000
   TOTALE               $0.000000
 ============================================================

@@ -2,9 +2,9 @@
 
 I file YAML in `config.example/` costituiscono un **guscio vuoto out-of-the-box**: non assumono alcun provider o credenziale preimpostata nel codice. Questo documento spiega la struttura dei file, come dichiarare esplicitamente le credenziali e i modelli, e come configurare le route opzionali avanzate (dual-key round-robin, fallback mirati).
 
-> **💡 Configurazione Automatica**: È possibile generare e aggiornare la configurazione in modo interattivo eseguendo `./bin/rt config`. Il wizard ti guiderà nella scelta dei profili modello LLM per ciascuna fase della pipeline, API key, topic Telegram, motore STT e listino prezzi custom.
+> **💡 Configurazione dalla web app**: la pagina Impostazioni di `rt web` scrive questi file per te: connessioni e modelli per ciascuna fase della pipeline, API key, notifiche Telegram, motore STT e listino prezzi custom.
 >
-> **Libreria Profili Modello (`model_profiles:`)**: `config/general.yaml` può contenere una sezione `model_profiles:` con profili modello riutilizzabili salvati dal wizard `rt config`. Questa sezione è ad uso esclusivo del wizard per comodità di configurazione; `RTConfig` e il motore di routing ignorano completamente `model_profiles:`. L'effettivo comportamento a runtime di ciascun job resta determinato esclusivamente dai campi `primary:`, `primary_routes:` e `round_robin:` nei file `config/<job>.yaml`. Chi preferisce modificare i file a mano può continuare a farlo direttamente nei singoli file per-job ignorando `model_profiles:`.
+> **Libreria Profili Modello (`model_profiles:`)**: `config/general.yaml` può contenere una sezione `model_profiles:` con profili modello riutilizzabili salvati dal vecchio wizard `rt config` (rimosso). `RTConfig` e il motore di routing ignorano completamente `model_profiles:`. L'effettivo comportamento a runtime di ciascun job resta determinato esclusivamente dai campi `primary:`, `primary_routes:` e `round_robin:` nei file `config/<job>.yaml`. Chi preferisce modificare i file a mano può continuare a farlo direttamente nei singoli file per-job ignorando `model_profiles:`.
 
 Per iniziare manualmente: copia l'intera cartella in `config/` e personalizza i file al suo interno — `config/` è ignorata da git per proteggere le tue impostazioni locali.
 ```bash
@@ -26,17 +26,14 @@ cp -r config.example config
 | `retry.idle_read_timeout_seconds` | Timeout di inattività applicativa: tempo massimo senza contenuto/reasoning reale prima di considerare la risposta bloccata. |
 | `thresholds.green` | Soglia di confidence ASR (0-1) sopra la quale una correzione fonetica è considerata certa e viene auto-approvata nel ledger. |
 | `thresholds.yellow` | Soglia sotto la quale un'ambiguità è plausibile e viene inserita nella coda di revisione umana. Sotto `yellow` (fascia "RED", non è un campo di configurazione ma una fascia implicita) il rischio è considerato elevato e richiede verifica d'ascolto umana obbligatoria. |
-| `telegram.enabled` | Telegram attivo (predefinito `false`): bot, ripassi e decisioni su Telegram. Spento, i ripassi si fanno nella web app e le decisioni nel terminale o nella web app; si cambia da Impostazioni › Bot Telegram. `RT_TELEGRAM_ENABLED=1`/`0` lo forza. |
-| `telegram.default_channel` | Canale di default per la pipeline (`"terminal"` o `"telegram"`); con Telegram spento vale sempre `"terminal"`. |
+| `telegram.enabled` | Notifiche Telegram nella chat personale (predefinito `false`): lezione pronta, decisione da prendere, errore. Si cambia da Impostazioni › Telegram. `RT_TELEGRAM_ENABLED=1`/`0` lo forza. Token (`RT_TELEGRAM_BOT_TOKEN`) e chat (`RT_TELEGRAM_CHAT_ID`) stanno nei segreti e nel `.env`. Le chiavi delle versioni precedenti (`default_channel`, `topics`, `misc_topic_id`) vengono ignorate. |
 | `telegram.lessons_root` | Solo installazioni 3.x: cartella delle lezioni a cartelle da convertire (`rt db migrate-storage`) e prefisso dei loro percorsi nel database. Non si configura più: senza questa chiave il prefisso è `<cartella dati>/lessons`, che non deve esistere su disco. |
-| `telegram.topics` | Mappa da materia in maiuscolo (es. `BIOCHIMICA`) a `message_thread_id` del topic Telegram dedicato nel gruppo. |
-| `telegram.misc_topic_id` | `message_thread_id` del topic "Varie/Generale" per materie non presenti in `topics`. |
 | `transcription.engine` | `macparakeet` oppure `custom` per un server STT OpenAI-compatible. |
 | `transcription.base_url` / `transcription.model` | Indirizzo del server e ID modello quando `engine: custom`. Il server deve fornire `/audio/transcriptions` con risposta `verbose_json` e `segments` temporizzati. |
 | `transcription.timeout_seconds` | Tempo massimo della richiesta STT custom (default 600 s). |
 
 La pagina Impostazioni di `rt web` consente di gestire
-credenziali, modelli, prezzi, bot Telegram e motore STT.
+credenziali, modelli, prezzi, notifiche Telegram e motore STT.
 Le chiavi sono salvate nell'archivio cifrato `config/secrets.enc` se è stato creato con
 `rt secrets init`, altrimenti nel `.env` locale (vedi "Segreti cifrati a riposo" qui sotto);
 per il server STT custom la variabile facoltativa è `RT_STT_API_KEY`.
@@ -133,7 +130,7 @@ archivio cifrato > `.env`. Se l'archivio esiste e una chiave nota è ancora in c
 nel `.env`.
 
 **Chiave master**: letta da `RT_MASTER_KEY` (anche più chiavi separate da virgola, la prima
-cifra, tutte decifrano) oppure dal portachiavi. Per il daemon Telegram avviato da launchd il
+cifra, tutte decifrano) oppure dal portachiavi. Per i servizi avviati da launchd il
 portachiavi di login funziona; se usi `RT_MASTER_KEY`, aggiungila all'ambiente del servizio.
 Se la chiave va persa l'archivio non si può più leggere: conserva la chiave mostrata da
 `init` in un gestore di password. Con archivio presente ma chiave assente RT avvisa e continua
@@ -155,16 +152,9 @@ Nei file di template, ciascun job ha solo il blocco `primary:` con `provider: nu
 
 ### File di config non-job: `config/telegram/recall_lessons.yaml`
 
-Non tutti i file `.yaml` sotto `config/` sono job LLM: `recall_lessons.yaml` (se presente, sempre nella sottocartella `telegram/`) è un'eccezione esplicitamente esclusa dalla ricerca ricorsiva dei job (vedi `rt.core.config.find_job_yaml_paths`) e serve a un altro scopo — dire a `/recall` lanciato da Telegram **quale cartella usare per ciascuna materia**, al posto del comportamento automatico di default.
-
-Per default, `/recall` da Telegram usa l'ultima lezione con build completata in quel topic (tracciata automaticamente da `notify_build_completed`, nessuna configurazione richiesta) — se non hai mai fatto una build in un topic, `/recall` non trova nulla e te lo dice, non è un browser/indice di lezioni. `recall_lessons.yaml` è per chi vuole fissare esplicitamente la cartella indipendentemente dall'ultima build:
-
-```yaml
-# config/telegram/recall_lessons.yaml
-BIOCHIMICA: "/percorso/assoluto/[2026-09-05] BIOCHIMICA - trigliceridi"
-```
-
-La chiave è la stessa materia usata in `topics:` dentro `general.yaml`. Facoltativo per materia: quelle non elencate continuano a usare il comportamento automatico.
+Il file delle versioni precedenti (cartella da usare per `/recall` lanciato da Telegram) non
+serve più, perché il recall su Telegram è stato rimosso. Resta escluso dalla ricerca ricorsiva
+dei job (`rt.core.config.find_job_yaml_paths`), quindi lasciarlo in `config/` non dà errori.
 
 ### Campi comuni di livello superiore
 | Campo | Significato |

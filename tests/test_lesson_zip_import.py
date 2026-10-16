@@ -118,7 +118,6 @@ def test_job_types_are_registered_for_rt_worker():
     from rt.services.worker import registered_handlers
     handlers = registered_handlers()
     assert getattr(handlers["import_lesson_zips"], "upload_cleanup", False)  # upload pulito a fine job
-    assert "telegram_topic_export" in handlers
 
 
 def test_group_export_imports_each_lesson_and_distinguishes_duplicates(api_client, workspace, worker):

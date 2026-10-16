@@ -21,7 +21,7 @@ def _no_stdin(monkeypatch):
 
 def test_waits_for_outline_approval_without_provider(temp_lesson_dir):
     rep = ListReporter()
-    res = run_pipeline(temp_lesson_dir, PipelineOptions(mock=True, channel="terminal"), RunContext(reporter=rep))
+    res = run_pipeline(temp_lesson_dir, PipelineOptions(mock=True), RunContext(reporter=rep))
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
     assert res.decision.kind == "outline_approval"
     assert rep.of_type(DecisionRequired)[0].kind == "outline_approval"
@@ -32,7 +32,7 @@ def test_waits_for_outline_approval_without_provider(temp_lesson_dir):
 def test_completes_with_auto_accept(temp_lesson_dir):
     rep = ListReporter()
     ctx = RunContext(reporter=rep)
-    opts = PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=False, channel="terminal")
+    opts = PipelineOptions(mock=True, with_review=True, auto_accept=True, rename=False)
     res = run_pipeline(temp_lesson_dir, opts, ctx)
     assert res.status == PipelineStatus.COMPLETED, res.error
     assert [e.phase for e in rep.of_type(PhaseCompleted)] == ["prepare", "outline", "rewrite", "review", "build"]
@@ -41,23 +41,14 @@ def test_completes_with_auto_accept(temp_lesson_dir):
 
 
 def test_waits_for_science_review_without_auto_accept(temp_lesson_dir):
-    class ApproveOnly:
-        def approve_outline(self, lesson_dir, force, force_mock):
-            self.called = True
-
-        def review_science_issues(self, *a):
-            raise AssertionError("non usato")
-
-    provider = ApproveOnly()
-    opts = PipelineOptions(mock=True, with_review=True, rename=False, channel="terminal")
-    res = run_pipeline(temp_lesson_dir, opts, RunContext(), decisions=None)
+    from rt.services import outline_service
+    opts = PipelineOptions(mock=True, with_review=True, rename=False)
+    res = run_pipeline(temp_lesson_dir, opts, RunContext())
+    assert res.status == PipelineStatus.WAITING_FOR_DECISION
     assert res.decision.kind == "outline_approval"
 
-    res = run_pipeline(temp_lesson_dir, opts, RunContext(), decisions=provider)
-    assert provider.called
-    # Il provider esiste ma la review è chiesta tramite lui: qui simuliamo un worker senza
-    # provider dopo l'approvazione, che si ferma sulle issue pendenti.
-    assert res.status == PipelineStatus.FAILED and isinstance(res.error, AssertionError)
+    # l'outline si approva nella web; la pipeline poi si ferma sulle issue da decidere
+    outline_service.approve_outline(temp_lesson_dir, actor="attilio", channel="web")
     res = run_pipeline(temp_lesson_dir, opts, RunContext())
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
     assert res.decision.kind == "science_issue"
@@ -65,7 +56,7 @@ def test_waits_for_science_review_without_auto_accept(temp_lesson_dir):
 
 
 def test_failure_is_reported_not_exited(tmp_path):
-    res = run_pipeline(str(tmp_path / "manca"), PipelineOptions(mock=True, channel="terminal"), RunContext())
+    res = run_pipeline(str(tmp_path / "manca"), PipelineOptions(mock=True), RunContext())
     assert res.status == PipelineStatus.FAILED
     assert isinstance(res.error, FileNotFoundError)
 
@@ -78,7 +69,7 @@ def test_ingest_emits_lesson_created_before_setup_completes(tmp_path):
     audio.write_bytes(b"audio")
     rep = ListReporter()
     opts = PipelineOptions(mock=True, date="2026-10-05", materia="BIOCHIMICA",
-                           dest_dir=str(tmp_path / "lessons"), channel="terminal")
+                           dest_dir=str(tmp_path / "lessons"))
     result = ingest_audio(str(audio), opts, RunContext(reporter=rep))
     assert result.status == PipelineStatus.COMPLETED
     created = next(e for e in rep.events if isinstance(e, PhaseProgress) and e.lesson_dir)

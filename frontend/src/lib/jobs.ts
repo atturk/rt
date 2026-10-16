@@ -20,10 +20,8 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   recall_evaluate: 'Valutazione risposta',
   transcribe_voice: 'Trascrizione vocale',
   credential_test: 'Prova credenziale',
-  telegram_listen_topics: 'Ascolto dei topic Telegram',
   import_lesson_zips: 'Importazione da ZIP',
   export_lessons: 'Esportazione di lezioni',
-  telegram_topic_export: 'Esportazione di un topic Telegram',
 }
 
 export const JOB_STATE_LABELS: Record<string, string> = {

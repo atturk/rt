@@ -40,8 +40,8 @@ Combina **codice deterministico** (parsing ASR, normalizzazione temporale in sec
 Il comando scarica l'ultima release in `./rt` e fa tutto il resto: prerequisiti (Homebrew,
 Python 3.11+, `ffmpeg`, `macparakeet-cli` se lo vuoi), ambiente Python, web app già compilata,
 cartella dati `~/.rt` (configurazione, segreti cifrati, database, audio e immagini), servizi in
-background per API, worker e bot Telegram, e alla fine apre il browser sulla **configurazione
-guidata** (provider e chiavi, modelli, Telegram facoltativo). Non ci sono altri
+background per API e worker, e alla fine apre il browser sulla **configurazione
+guidata** (provider e chiavi, modelli, notifiche Telegram facoltative). Non ci sono altri
 passaggi. Rilanciarlo ripara un'installazione rotta senza toccare i dati.
 
 Dopo l'installazione:
@@ -103,7 +103,6 @@ non nella cartella del codice; `./bin/rt data` mostra i percorsi in uso. La via 
 
 ```bash
 ./bin/rt data init      # crea ~/.rt con la configurazione di partenza
-./bin/rt config         # configurazione guidata nel terminale
 ./bin/rt secrets init   # archivio cifrato per chiavi API e token
 ```
 
@@ -121,11 +120,12 @@ rt web
 ```
 
 Avvia l'API, un worker per i job e la web app, e apre il browser già autenticato su
-`http://127.0.0.1:8765`. Dalla web fai tutto quello che fai nel terminale: importi l'audio,
-segui la pipeline in tempo reale, approvi la scaletta, fai la review accanto al testo con
-l'audio, leggi il documento con i timecode, fai il recall anche a voce, aggiungi immagini e
-configuri provider, modelli e Telegram. Al primo avvio una configurazione guidata chiede provider,
-modelli e Telegram. `install.sh` e `rt -u` installano la web app compilata dalla
+`http://127.0.0.1:8765`. La web è l'interfaccia di RT: importi l'audio, segui la pipeline in
+tempo reale, approvi la scaletta, fai la review accanto al testo con l'audio, leggi il documento
+con i timecode, fai il recall anche a voce, aggiungi immagini e configuri provider, modelli e
+notifiche Telegram. Al primo avvio una configurazione guidata chiede provider, modelli e
+Telegram. Nel terminale restano i comandi (`rt run`, `rt review`, `rt status`...): quando serve
+una decisione (scaletta, issue) indicano di prenderla nella web. `install.sh` e `rt -u` installano la web app compilata dalla
 release. Dettagli in [Web app di RT](docs/WEB.md).
 
 ### 2. Esecuzione End-to-End di una Lezione
@@ -153,8 +153,7 @@ in un processo separato, avvia un worker e accoda la pipeline:
 ./bin/rt jobs close ID                   # chiude un job in attesa delle issue: le valuti dopo in Revisione
 ```
 
-Senza `--queue`, `rt run` lavora in processo come sempre. Con un worker attivo anche il daemon
-Telegram gli passa la generazione delle domande di recall e la trascrizione dei vocali.
+Senza `--queue`, `rt run` lavora in processo come sempre.
 
 ### 2-ter. Dove finiscono le lezioni
 
@@ -193,33 +192,16 @@ database (una volta sola, con backup; le cartelle originali vengono spostate, no
 ./bin/rt status "cartella_lezione"            # Mostra lo stato di avanzamento
 ```
 
-### 4. Notifiche e Comandi via Telegram (opzionale)
+### 4. Notifiche su Telegram (opzionale)
 
-Le funzionalità Telegram (routing per topic in base alla materia, notifica di build completata,
-`/list`, `/recall <query>`, active recall via bot) richiedono il bot sempre attivo. Con
-l'installazione in un comando è il servizio in background `bot`: parte da solo appena configuri
-token e chat (web app > Impostazioni > Telegram) e si avvia o ferma anche da lì.
+RT può scriverti nella chat personale di Telegram quando una lezione è pronta, quando la
+scaletta o le issue aspettano una tua decisione e quando una lavorazione non riesce. Non c'è un
+bot sempre acceso: RT manda solo messaggi. Si configura nella web (Impostazioni › Telegram):
+crei un bot con @BotFather, incolli il token, scrivi `/start` al bot e premi «Collega la chat».
 
-`/list` nel topic Generale elenca tutte le lezioni, raggruppate per materia e numerate di
-seguito; nel topic di una materia (o in "varie") solo le sue. Rispondendo a un elenco con un
-numero (o con `/recall <numero>`) la recall di quella lezione parte nel topic della sua materia,
-o in "varie" se la materia non ha un topic.
-
-```bash
-rt service status        # stato di API, worker e bot
-rt service restart bot   # dopo aver cambiato la configurazione a mano
-```
-
-Senza servizi (`RT_NO_SERVICES=1` o installazione manuale) si avvia a mano con
-`./bin/rt telegram-daemon`, da lasciare aperto in un terminale.
-
-**Dalla 3.x:** se avevi creato a mano `~/Library/LaunchAgents/com.rt.telegram-daemon.plist`,
-rimuovilo, altrimenti girano due bot sullo stesso token (`rt doctor` lo segnala):
-
-```bash
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
-rm ~/Library/LaunchAgents/com.rt.telegram-daemon.plist
-```
+**Dalle versioni precedenti:** il bot con comandi, topic e recall in chat non c'è più.
+`rt service install` (lo esegue anche l'aggiornamento) toglie il vecchio servizio `bot` e il
+LaunchAgent `com.rt.telegram-daemon` della 3.x; `rt doctor` li segnala se sono ancora presenti.
 
 ---
 

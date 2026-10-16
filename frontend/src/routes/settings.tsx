@@ -7,7 +7,8 @@ import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
-import { TelegramSection, TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
 import { AppearanceSection, OutlineSettingsSection } from '@/components/settings/preferences'
@@ -18,13 +19,11 @@ import { QuestionsSettingsSection } from '@/components/settings/questions'
 import { SubjectsSettingsSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
-import { TelegramBotPanel } from '@/components/TelegramBotPanel'
 import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { NotificationsCard, TelegramUserPanel } from './telegram'
 import { SETUP_PATH } from './setupGate'
 
 export { SETUP_PATH, SetupGate } from './setupGate'
@@ -109,7 +108,7 @@ export function ModelsSettingsPage() {
     </details></>)
 }
 export function TelegramSettingsPage() {
-  return page(s => <><TelegramSection settings={s} />{s.telegram.enabled && <><TelegramBotPanel /><TelegramUserPanel /><NotificationsCard /></>}</>)
+  return page(s => <><TelegramSection settings={s} />{s.telegram.enabled && <NotificationsCard />}</>)
 }
 export function DeviceSettingsPage() { return <DeviceAccessSection /> }
 function InfoActions() {

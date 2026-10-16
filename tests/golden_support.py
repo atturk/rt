@@ -146,20 +146,20 @@ def _cli_record(code: int, stdout: str, stderr: str, root: str) -> str:
 
 
 def scenario_audio_full(root: str) -> Dict[str, str]:
-    """Audio mock → setup → prepare → outline (approvata da stdin) → rewrite → review con
-    auto-accept → build; poi seconda esecuzione sulla cartella (tutte le fasi in SKIP)."""
+    """Audio mock → setup → prepare → outline → rewrite → review, tutto con auto-accept →
+    build; poi seconda esecuzione sulla cartella (tutte le fasi in SKIP)."""
     shutil.copy(AUDIO_FIXTURE, os.path.join(root, "demo_lecture.wav"))
     out_dir = os.path.join(root, "out")
     first = _run_cli(
         ["run", "demo_lecture.wav", "--mock", "--auto-accept", "--with-review",
-         "--channel", "terminal", "--no-rename",
+         "--no-rename",
          "-d", "2026-09-05", "-m", "BIOCHIMICA", "-a", "Lipidi", "-o", out_dir],
-        cwd=root, stdin="a\n",
+        cwd=root, stdin="",
     )
     lesson_dir = os.path.join(out_dir, LESSON_NAME)
     second = _run_cli(
         ["run", lesson_dir, "--mock", "--auto-accept", "--with-review",
-         "--channel", "terminal", "--no-rename"],
+         "--no-rename"],
         cwd=root, stdin="",
     )
     result = {
@@ -171,19 +171,18 @@ def scenario_audio_full(root: str) -> Dict[str, str]:
 
 
 def scenario_folder_no_review(root: str) -> Dict[str, str]:
-    """Cartella lezione già inizializzata con trascritto Markdown → run senza review, con
-    una richiesta di modifica dell'outline e poi l'approvazione dal fallback non-TTY."""
+    """Cartella lezione già inizializzata con trascritto Markdown → run senza review: la prima
+    esecuzione si ferma sull'outline da approvare (nella web), la seconda con --auto-accept la
+    approva e arriva al build."""
     lesson_dir = os.path.join(root, LESSON_NAME)
     os.makedirs(lesson_dir)
     with open(os.path.join(lesson_dir, "info.yaml"), "w", encoding="utf-8") as f:
         f.write(INFO_YAML)
     with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
         f.write(TRANSCRIPT_MD)
-    run = _run_cli(
-        ["run", lesson_dir, "--mock", "--channel", "terminal", "--no-rename"],
-        cwd=root, stdin="m\nDividi in due unità\na\n",
-    )
-    result = {"cli_run.txt": _cli_record(*run, root)}
+    waiting = _run_cli(["run", lesson_dir, "--mock", "--no-rename"], cwd=root, stdin="")
+    run = _run_cli(["run", lesson_dir, "--mock", "--auto-accept", "--no-rename"], cwd=root, stdin="")
+    result = {"cli_waiting.txt": _cli_record(*waiting, root), "cli_run.txt": _cli_record(*run, root)}
     files = _collect_files(lesson_dir, root)
     result.update({f"lesson/{k}": v for k, v in files.items() if v != "<MISSING>"})
     return result

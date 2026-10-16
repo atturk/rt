@@ -166,7 +166,7 @@ def test_lesson_id_and_path_survive_build_with_legacy_rename(api_client, lesson)
     lesson_id = _only_lesson(api_client)["id"]
     approve_outline(lesson, channel="api")
     result = run_pipeline([lesson], PipelineOptions(mock=True, with_review=True, auto_accept=True,
-                                                    rename=True, channel="terminal"), RunContext())
+                                                    rename=True), RunContext())
     assert result.status.value == "completed" and result.lesson_dir == lesson
     item = _only_lesson(api_client)
     assert item["id"] == lesson_id and item["path"] == os.path.realpath(result.lesson_dir)

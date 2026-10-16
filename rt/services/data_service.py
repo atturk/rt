@@ -12,13 +12,13 @@ Disposizione 4.0: tutto nella cartella dati (RT_DATA_DIR o ~/.rt):
     <dati>/.env              variabili non segrete (RT_TELEGRAM_CHAT_ID)
     <dati>/rt.db             database (SQLite)
     <dati>/media/            audio e immagini delle lezioni
-    <dati>/.rt_telegram/     stato del bot
+    <dati>/.rt_telegram/     log delle notifiche Telegram ed esempi del recall
     <dati>/logs/             log dei servizi
     <dati>/backups/          backup ('rt backup') e copie di sicurezza delle migrazioni
 
 La migrazione copia config e segreti, copia il DB con l'API di backup di SQLite (copia
 coerente), sposta media/ e solo alla fine attiva la cartella. Gli originali restano
-rinominati (*.migrato-<data>): niente viene cancellato. Si rifiuta se API, worker o bot
+rinominati (*.migrato-<data>): niente viene cancellato. Si rifiuta se API o worker
 sono attivi, perché scriverebbero nel DB vecchio.
 """
 import os
@@ -188,10 +188,8 @@ def _inside(path: str, parent: str) -> bool:
 
 
 def running_services() -> List[str]:
-    """Processi di RT che scrivono nel DB adesso: bot, worker, API. Vuota se nessuno."""
+    """Processi di RT che scrivono nel DB adesso: worker e API. Vuota se nessuno."""
     out = []
-    if _bot_pid() is not None:
-        out.append("bot Telegram")
     try:
         from rt.db.engine import get_database
         from rt.services.jobs import DbJobQueue
@@ -204,20 +202,6 @@ def running_services() -> List[str]:
     if api_is_up():
         out.append("API/web")
     return out
-
-
-def _bot_pid() -> Optional[int]:
-    """PID del bot Telegram vivo (stesso file di rt.telegram.daemon_status, che il service
-    layer non importa)."""
-    try:
-        with open(os.path.join(paths.data_dir(), "telegram_daemon.pid"), encoding="utf-8") as f:
-            pid = int(f.read().strip())
-        os.kill(pid, 0)
-        return pid
-    except PermissionError:
-        return pid
-    except (OSError, ValueError):
-        return None
 
 
 def migrate(target: Optional[str] = None, dry_run: bool = False, say: Callable[[str], None] = print,

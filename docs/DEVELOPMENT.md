@@ -74,10 +74,10 @@ Per eseguire l'intera suite:
   normalizzato percorsi temporanei, timestamp e hash. Se un cambiamento è voluto, rigenera con
   `.venv/bin/python scripts/update_golden.py [scenario]` e rivedi il diff.
 - `test_layering.py` (bloccante): fallisce se `rt/pipeline`, `rt/core` o `rt/services`
-  importano UI (`textual`, `rich.prompt`, `questionary`, `rt.telegram`, `rt.tui`, `rt.web`) o
-  chiamano `input()`/`sys.exit()`. Prompt, app Textual e messaggi Telegram vanno in `rt/tui`,
-  `rt/telegram`, `rt/web` o negli adattatori CLI (`rt/cli.py`, `rt/cli_reporter.py`,
-  `rt/cli_prompts.py`).
+  importano UI (`textual`, `rich.prompt`, `questionary`, `rt.telegram` e i moduli rimossi
+  `rt.tui` e `rt.web`) o chiamano `input()`/`sys.exit()`. I messaggi Telegram vanno in
+  `rt/telegram` (registrato nel worker con `register_job_notifier`), l'output del terminale
+  negli adattatori CLI (`rt/cli.py`, `rt/cli_reporter.py`).
 
 ---
 

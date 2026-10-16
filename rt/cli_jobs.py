@@ -52,12 +52,15 @@ def _queue():
 
 
 def prepare_worker_process(queue) -> None:
-    """Quello che il service layer non può fare da solo all'avvio di un worker: registra la
-    notifica Telegram di fine lavorazione (rt/services non importa rt.telegram).
-    Gli upload orfani si eliminano esplicitamente dall'interfaccia, dopo conferma."""
+    """Quello che il service layer non può fare da solo all'avvio di un worker: registra le
+    notifiche Telegram (rt/services non importa rt.telegram): lezione pronta, decisioni da
+    prendere, lavorazioni non riuscite. Gli upload orfani si eliminano esplicitamente
+    dall'interfaccia, dopo conferma."""
     from rt.services.pipeline_service import register_build_notifier
-    from rt.telegram.notify import TelegramBuildNotifier
+    from rt.services.worker import register_job_notifier
+    from rt.telegram.notify import TelegramBuildNotifier, TelegramJobNotifier
     register_build_notifier(TelegramBuildNotifier())
+    register_job_notifier(TelegramJobNotifier())
 
 
 def cmd_worker(args: argparse.Namespace) -> None:
@@ -192,39 +195,22 @@ def _render_event(event) -> None:
         print(f"↻ Ripreso da un worker (tentativo {p['attempt']})", flush=True)
 
 
-def _answer_decision(job, options, decisions) -> bool:
-    """Chiede in terminale la decisione su cui il job è fermo. True se è stata presa (il job
-    è tornato in coda), False se il job resta in attesa."""
-    from rt.services import outline_service
-    from rt.services.jobs import resume_waiting_jobs
-    from rt.services.review_service import is_review_complete
-
+def _decision_hint(job) -> None:
+    """Il job è fermo su una decisione: si prende nella web e il job riparte da solo."""
     kind = (job.decision or {}).get("kind")
-    lesson_dir = (job.decision or {}).get("payload", {}).get("lesson_dir") or job.lesson_path
-    if kind == "outline_approval":
-        decisions.approve_outline(lesson_dir, force=options.force, force_mock=options.mock)
-        if outline_service.is_outline_approved(lesson_dir):
-            resume_waiting_jobs(lesson_dir, "outline_approval")
-            return True
-    elif kind == "science_issue":
-        from rt.services.pipeline_service import _resolve_channel
-        channel = _resolve_channel(options.channel)
-        decisions.review_science_issues(lesson_dir, channel, "all" if options.auto_accept else None)
-        if is_review_complete(lesson_dir):
-            resume_waiting_jobs(lesson_dir, "science_issue")
-            return True
-    elif kind == "setup_metadata":
+    if kind == "setup_metadata":
         missing = ", ".join((job.decision or {}).get("payload", {}).get("missing") or [])
         print(f"⏸ Mancano i metadati della lezione ({missing}): rilancia con -d/-m/-a.", file=sys.stderr)
-        return False
-    print(f"⏸ Il job {job.id[:12]} resta in attesa di una decisione ({kind}).")
-    return False
+        return
+    from rt.cli import WEB_DECISIONS
+    print(WEB_DECISIONS.get(kind, "⏸ Il job aspetta una decisione nella web ('rt web')."))
+    print(f"   Il job {job.id[:12]} riparte da solo dopo la decisione ('rt jobs show {job.id[:12]}').")
 
 
-def run_queued(raw_inputs, options, decisions) -> None:
+def run_queued(raw_inputs, options) -> None:
     """'rt run --queue': accoda la pipeline e ne segue il progresso dagli eventi del job.
-    Le decisioni (outline, issue) si prendono qui come in 'rt run'; Ctrl+C smette di seguire
-    ma il job continua nel worker."""
+    Si ferma alla prima decisione (scaletta, issue), che si prende nella web; Ctrl+C smette di
+    seguire ma il job continua nel worker."""
     from rt.services.job_handlers import RUN_PIPELINE, pipeline_payload
     from rt.services.pipeline_service import is_audio_input
 
@@ -248,7 +234,8 @@ def run_queued(raw_inputs, options, decisions) -> None:
             if job.state in ("failed", "cancelled"):
                 print(f"❌ Job {job.state}" + (f": {job.error}" if job.error else ""), file=sys.stderr)
                 sys.exit(1)
-            if job.state == "waiting_for_decision" and not _answer_decision(job, options, decisions):
+            if job.state == "waiting_for_decision":
+                _decision_hint(job)
                 return
     except KeyboardInterrupt:
         print(f"\n⏹ Smetto di seguire il job: continua nel worker ('rt jobs show {job_id[:12]}').", file=sys.stderr)

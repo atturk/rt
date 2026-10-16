@@ -82,15 +82,13 @@ stateDiagram-v2
   `ERR_RECONSTRUCTION` e `SCIENCE_CHECK`.
 - Il rilevamento statistico ASR produce `ERR_ASR_ST`; l'opzione `--asr-llm` abilita
   il raffinamento LLM dei candidati statistici (`ERR_ASR_LLM`).
-- Analisi e decisioni sono distinte: la CLI richiama la pipeline e poi la sessione
-  interattiva tramite terminale o Telegram.
+- Analisi e decisioni sono distinte: la pipeline si ferma sulle issue da valutare e le
+  decisioni si prendono nella web app (`--auto-accept` le accetta dal terminale).
 
-### Fase 6: Human-in-the-Loop Review (`rt review`)
-- Mostra in cima l'identificativo e il titolo dell'Unità didattica, il timecode, il frammento ASR originale, la proposta AI e la motivazione.
-- **Contesto Draft ASR**: per le ambiguità ASR estrae e mostra la singola frase pulita dal testo rielaborato dove cade il termine (`[termine]`), senza puntini di sospensione.
-- **Contesto Draft Scienza**: per le critiche scientifiche mostra l'intero testo dell'unità didattica per una valutazione contestuale completa.
-- Scelte interattive: `[A]ccetta`, `[R]ifiuta`, `[M]odifica testo`, `[S]alta`, `[Q]Esci e salva`.
-- **Opzioni di auto-approvazione**:
+### Fase 6: Human-in-the-Loop Review (web app)
+- La revisione si fa nella web app (`/lezioni/:id/revisione`): per ogni issue unità, timecode, frammento ASR originale, proposta AI e motivazione; accetta, rifiuta o modifica il testo.
+- Il terminale non ha più una revisione interattiva: `rt review` genera le issue e le elenca.
+- **Opzioni di auto-approvazione** (terminale):
   - `--auto-accept`: accetta automaticamente tutte le proposte (oppure `all`).
   - `--auto-accept yellow`: auto-accetta le proposte YELLOW (rimangono solo le ROSSE da controllare).
   - `--auto-accept red`: auto-accetta le proposte RED.

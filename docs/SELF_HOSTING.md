@@ -20,7 +20,8 @@ Il comando scarica l'ultima release in `./rt` ed esegue `install.sh`, che:
 5. crea l'archivio cifrato dei segreti (chiave master nel portachiavi di macOS);
 6. crea o migra il database; se trova lezioni nel vecchio formato a cartelle le converte nel
    database e in `media/` dopo un backup (lo stesso di `rt db migrate-storage`);
-7. installa i servizi in background (API e web app, worker, bot Telegram);
+7. installa i servizi in background (API e web app, worker) e toglie il vecchio servizio del bot
+   Telegram, se c'è;
 8. esegue `rt doctor` e apre il browser sulla configurazione guidata.
 
 È idempotente: rilanciarlo (da dove c'è già `./rt`) riporta il codice alla release, reinstalla
@@ -48,8 +49,8 @@ Tutto ciò che è tuo sta in un posto solo, `~/.rt` (o `RT_DATA_DIR`):
   .env              variabili non segrete (RT_TELEGRAM_CHAT_ID)
   rt.db             database: lezioni, testi, decisioni, costi, job
   media/            audio e immagini originali delle lezioni
-  .rt_telegram/     stato del bot
-  logs/             log dei servizi (api.log, worker.log, bot.log)
+  .rt_telegram/     registro delle notifiche Telegram
+  logs/             log dei servizi (api.log, worker.log)
   backups/          backup di default e copie di sicurezza delle migrazioni
 ```
 
@@ -58,21 +59,20 @@ senza perdere nulla. `rt data` mostra i percorsi in uso.
 
 **Dalla 3.x.** Con la 3.x configurazione e `.env` stavano nella cartella del codice e il
 database in `<cartella lezioni>/.rt`. `rt -u` (o il comando di installazione) li sposta:
-configurazione, `.env` e stato del bot vengono copiati nella cartella dati e gli originali
+configurazione, `.env` e stato di Telegram vengono copiati nella cartella dati e gli originali
 rinominati (`config.migrato-<data>`), niente viene cancellato. Se il database e `media/` esistono
 già in `<cartella lezioni>/.rt`, restano lì (magari su un disco esterno): quella diventa la
-cartella dati e `~/.rt/rt-data.json` rimanda lì. La migrazione si rifiuta se API, worker o bot
+cartella dati e `~/.rt/rt-data.json` rimanda lì. La migrazione si rifiuta se API o worker
 sono attivi. Si può anche lanciare a mano: `rt data migrate --dry-run`, poi `rt data migrate`.
 
 ## Servizi in background (launchd)
 
-Su macOS RT gira come tre LaunchAgent, che partono al login e ripartono se cadono:
+Su macOS RT gira come due LaunchAgent, che partono al login e ripartono se cadono:
 
 | Servizio | Comando | Cosa fa |
 |---|---|---|
 | `api` | `rt api --service` | API e web app su `http://127.0.0.1:8765` (solo questo Mac) |
 | `worker` | `rt worker` | esegue i job: pipeline, trascrizioni, recall, immagini |
-| `bot` | `rt telegram-daemon --service` | bot Telegram; se non è configurato esce subito e resta fermo |
 
 ```bash
 rt service status            # stato dei servizi e della web app
@@ -83,8 +83,9 @@ rt service restart [nomi]
 rt service uninstall [nomi]
 ```
 
-Con i servizi attivi `rt web` apre solo il browser con un link di accesso monouso. Il bot si
-avvia e si ferma anche da Impostazioni > Telegram: con il servizio installato lo fa launchd.
+Con i servizi attivi `rt web` apre solo il browser con un link di accesso monouso. Le notifiche
+Telegram le manda il worker: non serve un servizio a parte, e `rt service install` toglie
+quello del bot delle versioni precedenti (`com.atturk.rt.bot`, `com.rt.telegram-daemon`).
 Il token dell'API non finisce nei log: si entra con `rt web`, oppure `rt api --reset-token`
 ne genera uno nuovo e lo mostra (poi `rt service restart api`).
 
@@ -119,8 +120,8 @@ rt restore /Volumes/Disco/rt-backup          # il più recente, o una cartella r
 ```
 
 Ogni backup contiene una copia coerente del database (API di backup di SQLite, anche con RT in
-funzione; `pg_dump` per PostgreSQL), la configurazione con `secrets.enc`, `.env` e lo stato del
-bot. I media stanno in `media-store/`, uno per hash: ogni backup copia solo i file nuovi. Prima
+funzione; `pg_dump` per PostgreSQL), la configurazione con `secrets.enc`, `.env` e il registro delle
+notifiche Telegram. I media stanno in `media-store/`, uno per hash: ogni backup copia solo i file nuovi. Prima
 di salvare, RT verifica che ogni media citato nel database esista (`--allow-missing` per salvare
 comunque il resto); `rt doctor` fa lo stesso controllo.
 
@@ -158,7 +159,6 @@ Si usa da un clone del repository (l'archivio della release non contiene i file 
 git clone https://github.com/atturk/rt.git && cd rt
 docker compose up -d                          # API + web app e worker, dati nel volume rt-data
 docker compose exec api rt web --no-browser   # stampa il link di accesso monouso
-docker compose --profile telegram up -d       # anche il bot
 ```
 
 - L'immagine (`Dockerfile`, multi-stage) compila la web app con Node e poi usa solo Python.

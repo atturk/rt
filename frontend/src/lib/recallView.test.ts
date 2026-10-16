@@ -6,7 +6,7 @@ const lesson = (id: number, materia: string, data: string, titolo = `L${id}`) =>
   ({ id, materia, data, titolo, folder_name: `f${id}`, argomenti: '', path: '', phases: {}, pending_issues: 0 }) as unknown as Lesson
 
 const stat = (id: number, pending: number, answers = 0, ready = true): LessonRecallStats =>
-  ({ lesson_id: id, ready, questions: pending ? { quiz: { pending, answered: answers } } : {}, answers, telegram: false })
+  ({ lesson_id: id, ready, questions: pending ? { quiz: { pending, answered: answers } } : {}, answers })
 
 const LESSONS = [lesson(1, 'FISIOLOGIA', '2026-09-01'), lesson(2, 'BIOCHIMICA', '2026-09-03'), lesson(3, 'BIOCHIMICA', '2026-09-02'), lesson(4, '', '2026-09-04')]
 const STATS = new Map([stat(1, 3), stat(2, 1, 2), stat(3, 5), stat(4, 0, 0, false)].map((s) => [s.lesson_id, s]))

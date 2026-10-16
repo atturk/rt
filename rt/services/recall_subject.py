@@ -9,8 +9,7 @@ lezione si sceglie casualmente.
 Qui ci sono solo la scelta della domanda e il registro della sessione (tabella recall_sessions,
 colonna subject, lesson_path vuoto, question_ids "<id lezione>:<id domanda>"). Risposte, voti e
 salti restano quelli della lezione a cui appartiene la domanda (rt.services.recall_service).
-Il modulo non dipende dal canale: la web app lo usa, il bot Telegram può riusarlo passando
-channel=TELEGRAM.
+Il modulo non dipende dal canale: oggi lo usa la web app (channel=WEB).
 """
 import logging
 import random
@@ -19,12 +18,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 
-from rt.core.models import RecallQuestionType
 from rt.db.engine import require_database
 from rt.db.models import RecallSession
 from rt.db.session import read_scope, session_scope
 from rt.services.recall_sessions import (
-    ACTIVE, ENDED, TELEGRAM, WEB, RecallSessionError, _now, _views, list_sessions, summarize,
+    ACTIVE, ENDED, WEB, RecallSessionError, _now, _views, summarize,
 )
 
 LOG = logging.getLogger(__name__)
@@ -98,11 +96,6 @@ def subject_lessons(materia: str) -> List[Dict[str, Any]]:
     return sorted(items, key=lambda i: (i["data"] or "9999", i["folder_name"]))
 
 
-def _telegram_busy() -> set:
-    """Lezioni con una sessione in corso su Telegram: la web app non ne pone le domande."""
-    return {s["lesson_id"] for s in list_sessions(channel=TELEGRAM) if s.get("lesson_id") is not None}
-
-
 def _classifying() -> set:
     """Lezioni con un job del classificatore in coda o in corso (percorsi come nella coda)."""
     from rt.services.jobs import JobState, get_job_queue
@@ -115,8 +108,7 @@ def _classifying() -> set:
     return {j.lesson_path for j in jobs if j.lesson_path}
 
 
-def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None,
-                 classifying: Optional[set] = None) -> Dict[str, Any]:
+def lesson_stats(summary: Dict[str, Any], classifying: Optional[set] = None) -> Dict[str, Any]:
     """Domande per tipo e stato e risposte date di una lezione, come GET /lessons/{id}/recall."""
     from rt.db.repositories import normalize_lesson_path
     from rt.services.recall_service import recall_overview
@@ -128,18 +120,17 @@ def lesson_stats(summary: Dict[str, Any], telegram_busy: Optional[set] = None,
             and normalize_lesson_path(summary["path"]) in (classifying or set()):
         classification = {**classification, "state": "running"}
     return {"lesson_id": summary["id"], "ready": ready, "questions": overview["questions"],
-            "answers": overview["answers"], "telegram": summary["id"] in (telegram_busy or set()),
-            "classification": classification}
+            "answers": overview["answers"], "classification": classification}
 
 
 def recall_by_subject() -> List[Dict[str, Any]]:
     """Per la pagina del recall: ogni materia con il pool delle sue lezioni e la sessione per
     materia in corso. Le lezioni senza materia stanno sotto materia vuota."""
     from rt.services.lesson_service import list_lessons
-    busy, classifying = _telegram_busy(), _classifying()
+    classifying = _classifying()
     subjects: Dict[str, List[Dict[str, Any]]] = {}
     for summary in list_lessons():
-        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, busy, classifying))
+        subjects.setdefault(summary["materia"] or "", []).append(lesson_stats(summary, classifying))
     active = {s["subject"]: s for s in _subject_sessions(state=ACTIVE)}
     out = [{"materia": materia, "lessons": lessons, "session": active.get(materia) if materia else None}
            for materia, lessons in sorted(subjects.items())]
@@ -150,8 +141,8 @@ def recall_by_subject() -> List[Dict[str, Any]]:
 
 def subject_overview(materia: str) -> Dict[str, Any]:
     subject = normalize_subject(materia)
-    busy, classifying = _telegram_busy(), _classifying()
-    lessons = [lesson_stats(s, busy, classifying) for s in subject_lessons(subject)]
+    classifying = _classifying()
+    lessons = [lesson_stats(s, classifying) for s in subject_lessons(subject)]
     return {"materia": subject, "lessons": lessons, "session": active_subject_session(subject),
             "last": last_ended_subject_session(subject)}
 
@@ -306,8 +297,7 @@ def next_subject_question(materia: str, qtype, order: str = "alternato",
     from rt.services.recall_service import pending_count, pick_pending_question, type_value
     subject = normalize_subject(materia)
     lessons = [s for s in subject_lessons(subject) if _ready(s)]
-    busy = _telegram_busy() if channel == WEB else set()
-    candidates = [s for s in lessons if s["id"] not in busy and pending_count(s["path"], qtype, include_asked=channel == WEB) > 0]
+    candidates = [s for s in lessons if pending_count(s["path"], qtype, include_asked=channel == WEB) > 0]
     skipped_lesson, skipped_id = split_question_key(exclude) if exclude else (None, None)
     last = _last_lesson(subject, channel)
     if skipped_lesson is not None:

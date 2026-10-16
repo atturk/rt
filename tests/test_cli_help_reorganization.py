@@ -21,22 +21,12 @@ def test_cli_help_main_commands_and_no_positional_arguments(capsys):
     assert "Workflow per Rielaborazione Trascritti e Active Recall" in out
     assert "Academic Lecture Transcription" not in out
 
-    # Ordine dei 6 comandi principali
-    pos_config = out.find("config")
-    pos_run = out.find("run")
-    pos_review = out.find("review")
-    pos_recall = out.find("recall")
-    pos_status = out.find("status")
-    pos_tgd = out.find("telegram-daemon")
-
-    assert pos_config != -1
-    assert pos_run != -1
-    assert pos_review != -1
-    assert pos_recall != -1
-    assert pos_status != -1
-    assert pos_tgd != -1
-
-    assert pos_config < pos_run < pos_review < pos_recall < pos_status < pos_tgd
+    # Ordine dei comandi principali: la web prima, poi la pipeline e lo stato
+    positions = [out.find(f"\n    {name} ") for name in ("web", "run", "review", "recall", "status")]
+    assert -1 not in positions
+    assert positions == sorted(positions)
+    for gone in ("config", "telegram-daemon"):
+        assert f"\n    {gone} " not in out
 
 
 def test_cli_help_pipeline_phases_in_separate_section(capsys):

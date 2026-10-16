@@ -19,7 +19,7 @@ from rt.services import outline_service
 from rt.services.job_handlers import (
     INGEST_AUDIO, RECALL_GENERATE, RUN_PHASE, RUN_PIPELINE, pipeline_payload,
 )
-from rt.services.jobs import has_live_worker, run_job_or_inline
+from rt.services.jobs import has_live_worker
 from rt.services.pipeline_service import PipelineOptions
 from rt.services.review_service import is_review_complete, list_pending_issues, record_review_decision
 from rt.services.worker import Worker
@@ -111,7 +111,6 @@ def test_worker_stt_capability(queue, tmp_path, monkeypatch):
     assert job_needs_stt(INGEST_AUDIO, {"inputs": [audio], "options": {}})
     assert not job_needs_stt(INGEST_AUDIO, {"inputs": [audio], "options": {"mock": True}})
     assert not job_needs_stt(RECALL_GENERATE, {})
-    assert job_needs_stt("transcribe_voice", {"path": "x.ogg"})
     assert detect_stt_capability("auto") is None
     assert detect_stt_capability("auto", mock=True) == "mock"
     assert detect_stt_capability("none") is None
@@ -153,33 +152,10 @@ def background_worker(queue):
     thread.join(timeout=10)
 
 
-def test_run_job_or_inline_without_worker_runs_in_process(queue):
-    assert not has_live_worker("recall_generate")
-    assert run_job_or_inline("recall_generate", None, {}, inline=lambda: 42) == {"inline": 42}
-    assert queue.list() == []
-
-
-def test_run_job_or_inline_uses_live_worker(queue, tmp_path, background_worker):
-    lesson_dir = make_lesson(tmp_path / "lezioni")
-    result = run_job_or_inline(RUN_PHASE, lesson_dir, {"phase": "prepare", "options": {"mock": True}},
-                               inline=lambda: pytest.fail("doveva passare dal worker"), poll_interval=0.05)
-    assert "prepare" in result["phase_results"]
-    assert [j.type for j in queue.list()] == [RUN_PHASE]
-
-
-def test_run_job_or_inline_falls_back_when_nobody_picks_up(queue):
-    stale = Worker(queue, job_types=["recall_generate"], on_message=lambda m: None)
-    stale.register()  # registrato ma mai in esecuzione (worker appena morto)
-    result = run_job_or_inline("recall_generate", None, {}, inline=lambda: "fatto",
-                               pickup_timeout=0.1, poll_interval=0.02)
-    assert result == {"inline": "fatto"}
-    assert queue.list()[0].state == "cancelled"
-
-
 def test_cli_run_queue_follows_job(queue, tmp_path, background_worker, capsys):
     from rt.cli import main
     lesson_dir = make_lesson(tmp_path / "lezioni")
-    main(["run", lesson_dir, "--mock", "--auto-accept", "--with-review", "--channel", "terminal",
+    main(["run", lesson_dir, "--mock", "--auto-accept", "--with-review",
           "--no-rename", "--queue"])
     out = capsys.readouterr().out
     assert "in coda" in out and "▶ rewrite" in out and "✔ build" in out and "✅ Job completato" in out
@@ -196,21 +172,9 @@ def test_cli_run_queue_without_worker_warns(queue, tmp_path, capsys, monkeypatch
 
     monkeypatch.setattr("rt.services.jobs.DbJobQueue.stream_events", cancel_and_stream)
     with pytest.raises(SystemExit) as exc:
-        cli_jobs.run_queued([lesson_dir], PipelineOptions(mock=True), decisions=None)
+        cli_jobs.run_queued([lesson_dir], PipelineOptions(mock=True))
     assert exc.value.code == 1
     out = capsys.readouterr()
     assert "Nessun worker attivo" in out.out and "cancelled" in out.err
 
 
-def test_telegram_voice_transcription_inline_without_worker(queue, monkeypatch):
-    from rt.telegram import daemon
-    monkeypatch.setattr("rt.core.recall_stt.transcribe_voice_answer", lambda path, engine: f"testo da {path}")
-    assert daemon._transcribe_voice("/tmp/x.ogg", "macparakeet") == "testo da /tmp/x.ogg"
-    assert queue.list() == []
-
-
-def test_telegram_voice_transcription_via_worker(queue, background_worker, monkeypatch):
-    from rt.telegram import daemon
-    monkeypatch.setattr("rt.core.recall_stt.transcribe_voice_answer", lambda path, engine: "dal worker")
-    assert daemon._transcribe_voice("/tmp/x.ogg", "macparakeet") == "dal worker"
-    assert [j.type for j in queue.list()] == ["transcribe_voice"]

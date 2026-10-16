@@ -228,32 +228,15 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
 
 
 class TelegramRuntimeConfig(BaseModel):
-    enabled: bool = Field(default=False, description="Telegram attivo: bot, ripassi e decisioni su Telegram. Spento (il "
-                                                     "predefinito) i ripassi si fanno nella web app e le decisioni nel "
-                                                     "terminale o nella web app; RT_TELEGRAM_ENABLED=1/0 lo forza.")
-    default_channel: str = Field(default="terminal", description="'terminal' | 'telegram', usato quando --channel non è passato a 'rt run'")
-    wait_timeout_seconds: int = Field(default=0, description="0 = nessun timeout, attende indefinitamente (Ctrl+C per uscire)")
-    state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram, relativa alla cwd da cui gira 'rt'")
-    topics: Dict[str, int] = Field(
-        default_factory=dict,
-        description="Mappa materia (uppercase, es. 'BIOCHIMICA') -> message_thread_id del topic Telegram dedicato nel gruppo. \"Materie assenti dalla mappa vanno nel topic 'Generale' (nessun message_thread_id inviato).\""
-    )
-    topic_names: Dict[int, str] = Field(
-        default_factory=dict,
-        description="Nome del topic Telegram (message_thread_id -> nome), rilevato dalla web con "
-                    "'Ascolta i topic'. Solo informativo: l'instradamento usa 'topics'."
-    )
-    misc_topic_id: Optional[int] = Field(
-        default=None,
-        description="message_thread_id del topic 'Varie/Generale' per lezioni la cui materia "
-                    "non è mappata in 'topics'. Se non impostato, tali lezioni continuano ad "
-                    "andare nel topic Generale nativo di Telegram (nessun message_thread_id)."
-    )
+    enabled: bool = Field(default=False, description="Notifiche Telegram attive nella chat personale (spente di "
+                                                     "predefinito); RT_TELEGRAM_ENABLED=1/0 lo forza.")
+    state_dir: str = Field(default=".rt_telegram", description="Cartella di stato Telegram (registro delle notifiche), "
+                                                              "relativa alla cartella dati")
     lessons_root: Optional[str] = Field(
         default=None,
         description="Cartella che contiene direttamente tutte le sotto-cartelle di lezione (una "
-                    "per lezione, struttura piatta senza annidamento), usata da /list e /recall "
-                    "<query> su Telegram per enumerare le lezioni disponibili."
+                    "per lezione, struttura piatta senza annidamento) delle installazioni 3.x: "
+                    "serve alla migrazione verso il database (rt db migrate-storage)."
     )
     # ------------------------------------------------------
     # Recall configuration
@@ -276,11 +259,6 @@ class TelegramRuntimeConfig(BaseModel):
         elif forced in ("0", "false", "no", "off"):
             self.enabled = False
         return self
-
-    @property
-    def channel(self) -> str:
-        """Il canale delle decisioni da usare davvero: con Telegram spento sempre il terminale."""
-        return self.default_channel if self.enabled else "terminal"
 
 
 class TranscriptionConfig(BaseModel):
@@ -732,9 +710,9 @@ _NON_JOB_YAML_FILENAMES = {"recall_lessons.yaml"}
 def find_job_yaml_paths(config_dir: str) -> Dict[str, str]:
     """Cerca ricorsivamente in config_dir tutti i file <job>.yaml (nome file, senza
     estensione, = nome del job) tranne il 'general.yaml' della cartella radice e i
-    file elencati in _NON_JOB_YAML_FILENAMES (config non di routing LLM, es.
-    config/telegram/recall_lessons.yaml, letto a parte da rt.telegram.recall_lessons —
-    non ha la forma di un JobRoutingConfig e romperebbe la validazione se trattato come job).
+    file elencati in _NON_JOB_YAML_FILENAMES (config non di routing LLM, es. il vecchio
+    config/telegram/recall_lessons.yaml — non ha la forma di un JobRoutingConfig e romperebbe
+    la validazione se trattato come job).
     Ritorna {job_name: path_assoluto}. La struttura di sottocartelle è libera
     (es. config/rt/outline.yaml, config/telegram/recall_quiz.yaml, o tutto piatto
     come prima): il codice non impone né assume alcuna organizzazione specifica."""

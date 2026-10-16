@@ -259,60 +259,24 @@ export function useSkip(id: number) {
 
 export type RecallSessionInfo = Schemas['RecallSessionInfo']
 export type RecallSessionState = Schemas['RecallSessionState']
-export type TelegramRecallStatus = Schemas['TelegramRecallStatus']
-
 export const sessionKeys = {
   lesson: (id: number) => ['recall', id, 'session'] as const,
-  telegram: ['recall-telegram'] as const,
 }
 
-/** Sessione qui e su Telegram. Mentre il bot esegue una richiesta si rilegge spesso. */
+/** Sessione in corso sulla lezione e ultima chiusa. */
 export function useRecallSession(id: number) {
   return useQuery({
     queryKey: sessionKeys.lesson(id),
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/recall/session', { params: path(id) })),
-    // Polling voluto: le richieste al bot (telegram_commands) e le risposte date su Telegram non
-    // sono job, quindi non passano dal canale live.
-    refetchInterval: (query) => {
-      const state = query.state.data?.command?.state
-      return state === 'pending' || state === 'running' ? 1_000 : 10_000
-    },
-  })
-}
-
-/** Bot pronto per il recall e sessioni in corso su Telegram (tutte le lezioni). */
-export function useTelegramRecall() {
-  return useQuery({
-    queryKey: sessionKeys.telegram,
-    queryFn: () => unwrap(api.GET('/api/v1/recall/telegram')),
-    // Polling lento voluto: bot e sessioni su Telegram cambiano fuori dai job (niente eventi live).
-    refetchInterval: 10_000,
-  })
-}
-
-function useSessionMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: fn,
-    onSettled: () =>
-      Promise.all([client.invalidateQueries({ queryKey: ['recall'] }), client.invalidateQueries({ queryKey: sessionKeys.telegram })]),
   })
 }
 
 export function useEndSession(id: number) {
-  return useSessionMutation(() => unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/session/end', { params: path(id) })))
-}
-
-export function useStartTelegram(id: number) {
-  return useSessionMutation((qtype: Schemas['TelegramRecallStart']['qtype']) =>
-    unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/telegram/start', { params: path(id), body: { qtype, mock: false } })),
-  )
-}
-
-export function useStopTelegram() {
-  return useSessionMutation((sessionId: number) =>
-    unwrap(api.POST('/api/v1/recall/telegram/sessions/{session_id}/stop', { params: { path: { session_id: sessionId } } })),
-  )
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/v1/lessons/{lesson_id}/recall/session/end', { params: path(id) })),
+    onSettled: () => client.invalidateQueries({ queryKey: ['recall'] }),
+  })
 }
 
 // ---------------------------------------------------------------- recall per materia

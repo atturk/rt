@@ -18,7 +18,7 @@ def isolated_workspace(tmp_path, monkeypatch, lessons_root=True):
     root.mkdir()
     if lessons_root:
         (work / "config" / "general.yaml").write_text(
-            f"telegram:\n  lessons_root: {str(root)!r}\n  default_channel: terminal\n", encoding="utf-8")
+            f"telegram:\n  lessons_root: {str(root)!r}\n", encoding="utf-8")
     monkeypatch.chdir(work)
     return str(root)
 
@@ -63,67 +63,32 @@ def add_audio(lesson_dir: str, name: str = "lezione.m4a") -> str:
 
 
 def run_mock_pipeline(lesson_dir: str, with_review: bool = True, auto_accept: bool = True):
-    """Pipeline in processo, in mock, senza DecisionProvider (come la eseguirebbe il worker)."""
+    """Pipeline in processo, in mock, come la eseguirebbe il worker."""
     from rt.services.context import RunContext
     from rt.services.pipeline_service import PipelineOptions, run_pipeline
-    options = PipelineOptions(mock=True, with_review=with_review, auto_accept=auto_accept,
-                              rename=False, channel="terminal")
+    options = PipelineOptions(mock=True, with_review=with_review, auto_accept=auto_accept, rename=False)
     return run_pipeline([lesson_dir], options, RunContext())
 
 
-CHAT = {"id": -1001234567890, "type": "supergroup", "is_forum": True}
-
-
-def _topic_root(topic_id, name):
-    """Messaggio di servizio che crea il topic (la radice: il suo id è quello del topic)."""
-    return {"message_id": topic_id, "message_thread_id": topic_id, "is_topic_message": True, "chat": CHAT,
-            "forum_topic_created": {"name": name, "icon_color": 7322096}}
-
-
-# Bot API finta (RT4-F5, RT4-FA6). "_age": secondi fa, trasformati in "date" a ogni risposta.
-# - topic 12 "Biochimica": messaggio di creazione e un messaggio nel topic (nome anche dal reply);
-# - topic 27 "Anatomia umana": solo il reply_to_message (nome senza materia corrispondente) e un
-#   messaggio di 3 giorni fa (oltre le 48 ore: Telegram non lo cancellerebbe);
-# - topic 33: risposta a un altro messaggio, nome non recuperabile;
-# - un messaggio nel topic Generale (senza message_thread_id).
+# Bot API finta: la chat personale di chi ha scritto /start, dopo un messaggio in un gruppo
+# (che il rilevamento della chat ignora).
+PRIVATE_CHAT = {"id": 555123, "type": "private", "first_name": "Ada", "last_name": "Rossi"}
 FAKE_TELEGRAM_UPDATES = [
-    {"update_id": 1, "message": {**_topic_root(12, "Biochimica"), "_age": 120}},
-    {"update_id": 2, "message": {"message_id": 40, "message_thread_id": 12, "is_topic_message": True, "chat": CHAT,
-                                 "text": "biochimica", "_age": 60, "reply_to_message": _topic_root(12, "Biochimica")}},
-    {"update_id": 3, "message": {"message_id": 41, "message_thread_id": 27, "is_topic_message": True, "chat": CHAT,
-                                 "text": "anatomia", "_age": 50, "reply_to_message": _topic_root(27, "Anatomia umana")}},
-    {"update_id": 4, "message": {"message_id": 42, "message_thread_id": 27, "is_topic_message": True, "chat": CHAT,
-                                 "text": "vecchio", "_age": 3 * 86400}},
-    {"update_id": 5, "message": {"message_id": 43, "message_thread_id": 33, "is_topic_message": True, "chat": CHAT,
-                                 "text": "risposta", "_age": 40,
-                                 "reply_to_message": {"message_id": 35, "message_thread_id": 33, "chat": CHAT, "text": "x"}}},
-    {"update_id": 6, "message": {"message_id": 44, "chat": CHAT, "text": "generale", "_age": 30}},
+    {"update_id": 1, "message": {"message_id": 10, "chat": {"id": -100999, "type": "supergroup"}, "text": "ciao"}},
+    {"update_id": 2, "message": {"message_id": 11, "chat": PRIVATE_CHAT, "text": "/start"}},
 ]
 
 
 def fake_telegram_server(updates=None):
-    """Bot API finta su una porta libera di 127.0.0.1: getUpdates (rilevamento topic) e i
-    metodi di invio (sendMessage, sendPoll, deleteMessage, ...). Restituisce (server, base_url):
-    basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' -> 401. server.calls registra tutte
-    le chiamate [(metodo, corpo)], server.sent quelle accettate, server.deleted gli id
-    cancellati (un secondo deleteMessage -> 400)."""
-    import copy
+    """Bot API finta su una porta libera di 127.0.0.1: getUpdates, getMe e sendMessage.
+    Restituisce (server, base_url): basta RT_TELEGRAM_API_URL=base_url. Token 'rifiutato' ->
+    401. server.calls registra tutte le chiamate [(metodo, corpo)], server.sent quelle accettate."""
     import itertools
     import json as _json
     import threading
-    import time
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     payload = FAKE_TELEGRAM_UPDATES if updates is None else updates
     message_ids = itertools.count(100)
-
-    def dated():
-        now = int(time.time())
-        out = copy.deepcopy(payload)
-        for item in out:
-            message = item.get("message") or {}
-            if "_age" in message:
-                message["date"] = now - message.pop("_age")
-        return out
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self, status, body):
@@ -133,11 +98,6 @@ def fake_telegram_server(updates=None):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-
-        def do_GET(self):  # noqa: N802
-            ok = "/getUpdates" in self.path and "rifiutato" not in self.path
-            self._reply(200 if ok else 401, {"ok": True, "result": dated()} if ok
-                        else {"ok": False, "error_code": 401, "description": "Unauthorized"})
 
         def do_POST(self):  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
@@ -151,28 +111,17 @@ def fake_telegram_server(updates=None):
             if "rifiutato" in self.path:
                 return self._reply(401, {"ok": False, "error_code": 401, "description": "Unauthorized"})
             server.sent.append((method, body))
-            if method == "deleteMessage":
-                key = (str(body.get("chat_id")), int(body.get("message_id")))
-                if key in server.deleted:
-                    return self._reply(400, {"ok": False, "error_code": 400,
-                                             "description": "Bad Request: message to delete not found"})
-                server.deleted.add(key)
-                return self._reply(200, {"ok": True, "result": True})
-            if method == "editMessageReplyMarkup":
-                return self._reply(200, {"ok": True, "result": True})
-            message_id = next(message_ids)
-            result = {"message_id": message_id}
-            if method == "sendMessage":
-                result.update(chat=CHAT, text=body.get("text"))
-            if method == "sendPoll":
-                result["poll"] = {"id": f"poll-{message_id}"}
-            self._reply(200, {"ok": True, "result": result})
+            if method == "getUpdates":
+                return self._reply(200, {"ok": True, "result": payload})
+            if method == "getMe":
+                return self._reply(200, {"ok": True, "result": {"id": 1, "is_bot": True, "username": "rt_test_bot"}})
+            self._reply(200, {"ok": True, "result": {"message_id": next(message_ids), "text": body.get("text")}})
 
         def log_message(self, *args):
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    server.calls, server.deleted, server.sent = [], set(), []
+    server.calls, server.sent = [], []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 

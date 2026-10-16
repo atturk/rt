@@ -49,7 +49,7 @@ Il sistema RT 2.0 è progettato per risolvere la fragilità insita nei workflow 
                     └──────────┬──────────┘
                                ↓
                     ┌─────────────────────┐
-                    │ TELEGRAM / OBSIDIAN │
+                    │  WEB APP / EXPORT   │
                     └─────────────────────┘
 ```
 
@@ -218,7 +218,7 @@ Per evitare allucinazioni in cui il modello attribuisce ingiustamente al docente
 ## 7. Service layer (RT 4.0, fase A)
 
 Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: le interfacce
-(CLI, Telegram, web, in futuro API e worker) passano da `rt/services/`.
+(CLI, API e web app, worker) passano da `rt/services/`.
 
 - **Eventi** (`rt/services/events.py`): `PhaseStarted`, `PhaseProgress`, `PhaseCompleted`,
   `PhaseFailed` (messaggio già sanificato), `CostUpdated`, `DecisionRequired`, `Notice`. Chi
@@ -234,58 +234,56 @@ Il motore (`rt/pipeline`, `rt/core`) non parla più direttamente con l'utente: l
 - **Presentazione a terminale** (`rt/cli_reporter.py`): `CliReporter` traduce gli eventi
   nelle stesse righe di sempre (`[n/N] FASE (...)`, `[SKIP]`, riepilogo costi).
 - **Orchestratore** (`rt/services/pipeline_service.py`): `run_pipeline(inputs, options, ctx,
-  decisions=None, notifiers=())` esegue setup (se l'input è audio) → prepare → outline →
+  notifiers=())` esegue setup (se l'input è audio) → prepare → outline →
   rewrite → review (opzionale) → build e restituisce un `PipelineResult` con stato
   `COMPLETED`, `WAITING_FOR_DECISION` (con la `DecisionRequired` pendente),
-  `SKIPPED_TRANSCRIPTION` o `FAILED` (con l'eccezione). Le decisioni umane passano da un
-  `DecisionProvider`: la CLI passa `CliDecisionProvider` (UI Textual/terminale o Telegram);
-  senza provider la pipeline si ferma sulla decisione, oppure con `auto_accept` approva
-  outline e issue. La notifica di fine build va ai `Notifier` registrati (la CLI registra
-  `TelegramBuildNotifier`). `cmd_run` in `rt/cli.py` fa solo parsing, banner, chiamata al
+  `SKIPPED_TRANSCRIPTION` o `FAILED` (con l'eccezione). Le decisioni umane si prendono nella
+  web app: la pipeline si ferma sulla decisione, oppure con `auto_accept` approva outline e
+  issue. `PipelineOptions.source` (`cli` o `api`) finisce come `channel` nelle approvazioni
+  automatiche. La notifica di fine build va ai `Notifier` registrati (la CLI registra
+  `TelegramBuildNotifier`, il worker quelli di `build_notifiers()`). `cmd_run` in `rt/cli.py` fa solo parsing, banner, chiamata al
   servizio, riepilogo costi ed exit code.
 - **Setup** (`rt/pipeline/setup.py`): `resolve_setup_request()` produce un `SetupRequest`
-  validato senza leggere da stdin. I campi mancanti si chiedono a un `SetupPrompter`
-  (implementato in `rt/cli_prompts.py` e passato dalla CLI solo con un TTY); senza prompter
-  si usano i default di sempre, oppure con `strict=True` si solleva `MissingSetupFields`
+  validato senza leggere da stdin. I campi mancanti si possono chiedere a un `SetupPrompter`
+  (la CLI non ne passa: il terminale non fa domande); senza prompter si usano i default di sempre, oppure con `strict=True` si solleva `MissingSetupFields`
   (l'orchestratore senza `DecisionProvider` la trasforma in `DecisionRequired(setup_metadata)`).
   L'annullamento di un prompt è `SetupCancelled` (exit 0 in CLI), gli errori restano `SetupError`.
 - **Outline** (`rt/services/outline_service.py`): `get_outline_review()` (albero JSON e stato),
   `approve_outline(lesson_dir, actor, channel)` (registrata in `_state/outline_approval.json`
   con l'hash di `outline.json`, quindi una revisione la invalida), `is_outline_approved()`,
-  `request_outline_revision(lesson_dir, feedback, ctx)`. La UI da terminale (app Textual e
-  fallback testuale) è in `rt/tui/outline_review.py`; `rt/pipeline/outline_review.py` tiene
-  solo la regola di gating `outline_needs_approval()`.
+  `request_outline_revision(lesson_dir, feedback, ctx)`. La revisione si fa nella web app;
+  `rt/pipeline/outline_review.py` tiene solo la regola di gating `outline_needs_approval()`.
 - **Review delle issue** (`rt/services/review_service.py`): punto unico per elencare le issue
   pendenti con contesto (unità, timecode, finestra audio), registrare una decisione
-  (`record_review_decision`, con `channel` cli/telegram/web/api e `actor`), annullare
+  (`record_review_decision`, con `channel` cli/web/api e `actor`; `telegram` resta nelle decisioni vecchie), annullare
   l'ultima (`undo_last_decision`), applicare l'auto-accept e sapere se la review è completa.
   Ogni scrittura del ledger avviene sotto il lock a file `.rt.lock` della lezione, quindi CLI,
-  daemon Telegram e web possono decidere in parallelo senza perdere decisioni. Il ledger
+  worker e web possono decidere in parallelo senza perdere decisioni. Il ledger
   resta `review_decisions.json` nello stesso formato: `channel`/`actor` compaiono solo nelle
-  decisioni che li hanno. L'app Textual è in `rt/tui/issue_review.py`, l'invio via Telegram
-  in `rt/telegram/review_channel.py` (porta `ReviewChannel`), la web usa
+  decisioni che li hanno. La web usa
   `rt/pipeline/review_actions.py` come adattatore sottile; `rt/pipeline/issue_review.py`
-  contiene solo regole pure e non importa più `rt.telegram`.
+  contiene solo regole pure.
 - **Configurazione** (`rt/services/config_service.py`): percorsi (`config/` nella cwd o nel
   progetto, `.env` accanto), lettura/validazione (`validate_config`) e scrittura atomica di
   YAML e testo, `set_env_var` e `set_secret` (archivio cifrato se inizializzato, altrimenti `.env` con
-  chmod 600). Il wizard `rt config` è in `rt/tui/configure/` e, come le
-  impostazioni della web (via API), scrive attraverso il servizio.
+  chmod 600). Le impostazioni della web (via API) scrivono attraverso il
+  servizio.
 - **Segreti** (`rt/security/secrets.py`, fase C): porta `SecretStore` con
   `EnvSecretStore` (sola lettura) ed `EncryptedFileSecretStore` (`config/secrets.enc`,
   Fernet/MultiFernet, chiave master da `RT_MASTER_KEY` o dal portachiavi). `load_env_file`
   riversa lo store in `os.environ` con priorità ambiente esplicito > store > `.env`, quindi
-  `CredentialRegistry` e il daemon Telegram non cambiano. Gestione (init, migrate, list,
+  `CredentialRegistry` e le notifiche Telegram non cambiano. Gestione (init, migrate, list,
   set, unset, rotate) in `rt/services/secrets_service.py`, comando `rt secrets` in
   `rt/cli_secrets.py`. Una futura `DbSecretStore` (fase B) implementerà la stessa porta.
 - **Active Recall** (`rt/services/recall_service.py`): stato di sessione per lezione, batch
   iniziale, prossima domanda con rifornimento, valutazione delle risposte, domande stale.
-  Canali: `rt/telegram/recall_channel.py` (Telegram) e `rt/tui/recall.py` (terminale e
-  revisione delle domande stale). `rt/core/version.run_update` restituisce il codice di
+  Il ripasso si fa nella web app (`rt/services/recall_sessions.py` registra le sessioni).
+  `rt/core/version.run_update` restituisce il codice di
   uscita invece di terminare il processo.
 - **Regola di layering** (`tests/test_layering.py`, bloccante dalla fine della fase A):
   `rt/pipeline`, `rt/core` e `rt/services` non importano `textual`, `rich.prompt`,
   `questionary`, `rt.telegram`, `rt.tui`, `rt.web` e non chiamano `input()` o `sys.exit()`.
+  Le notifiche Telegram arrivano al worker tramite `register_job_notifier`.
 
 ## 8. Database (RT 4.0, fase B)
 
@@ -299,7 +297,7 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
   `~/.rt/rt.db` se `lessons_root` non è impostato). Postgres funziona passando un URL
   `postgresql://…` (driver da installare a parte).
 - **SQLite**: WAL, `foreign_keys=ON`, `busy_timeout` 30 s e transazioni `BEGIN IMMEDIATE`,
-  così CLI, daemon Telegram e web scrivono in coda senza errori di lock.
+  così CLI, worker e web scrivono in coda senza errori di lock.
 - **Creazione automatica** (fase D, `rt/db/bootstrap.py::ensure_database`): ogni comando `rt`
   (tranne `db`, `config` e `secrets`) crea il DB se manca e applica le migrazioni pendenti
   sotto il lock `rt.db.migrate.lock`; se è già aggiornato costa la sola lettura della
@@ -315,7 +313,7 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
   `LlmCall`, `Setting`, `StateDocument`. Migrazioni in `rt/db/migrations/versions`; `tests/test_db_schema.py`
   esegue `alembic check` per garantire che modelli e migrazioni coincidano.
 - **Accesso**: `rt/db/repositories.py`, sempre dentro `rt.db.session.session_scope(db)`.
-- **Indice e controllo**: dashboard, costi e comandi Telegram enumerano le lezioni indicizzate
+- **Indice e controllo**: dashboard e costi enumerano le lezioni indicizzate
   nel DB, senza scandire `lessons_root`. `rt db check` controlla integrità SQLite, contenuti,
   checksum e riferimenti/media orfani o mancanti; segnala anche le lezioni ancora in formato
   cartella e non modifica dati. La sincronizzazione manuale è stata rimossa; per convertire
@@ -338,7 +336,8 @@ restano leggibili finché non vengono convertite con il comando esplicito di mig
   - *Chiamate LLM* (`rt/db/llm_calls.py`): ogni riga di `llm_debug.log` diventa un `LlmCall`
     (la prima volta per una lezione si importa l'intero log); `rt cost` legge dal DB con
     fallback al file.
-  - *Stato del daemon Telegram* (`rt/db/state_documents.py`): `active_sessions.json`,
+  - *Stato del vecchio daemon Telegram* (`rt/db/state_documents.py`, solo per i dati delle
+    versioni precedenti): `active_sessions.json`,
     `registry.json`, `awaiting_feedback.json`, `recall_preferences.json`,
     `last_lesson_per_topic.json`, `telegram_issue_queue.json` e `telegram_audio_sent.json`
     diventano righe di `state_documents` (chiave = percorso del file). Alla prima lettura il
@@ -378,14 +377,13 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   (`JobInfo`, `RunContext`) → `JobOutcome`. Errori sanificati in `jobs.error`.
 - **CLI**: `rt worker [--once] [--concurrency N] [--types …]` esegue i job;
   `rt jobs [list|show ID|cancel ID]` li elenca, mostra e annulla. La tabella `workers` tiene
-  il battito dei worker (`has_live_worker`), così CLI e daemon sanno se possono accodare.
+  il battito dei worker (`has_live_worker`), così CLI e API sanno se un job verrà eseguito.
 
 ### Pipeline come job e decisioni (RT4-D2)
 
 - **Tipi di job** (`rt/services/job_handlers.py`): `run_pipeline` (come `rt run`),
   `ingest_audio` (setup + trascrizione), `run_phase` (`prepare|outline|rewrite|review|build`),
-  `add_images`, `recall_generate` (primo batch di domande) e `transcribe_voice` (risposta
-  vocale di Telegram).
+  `add_images` e `recall_generate` (primo batch di domande).
 - **Pause**: quando `pipeline_service` si ferma con `WAITING_FOR_DECISION` il job passa in
   `waiting_for_decision` con la `DecisionRequired` in `jobs.decision` e libera la lezione.
   `outline_service.approve_outline` e `review_service.record_review_decision` (quando l'ultima
@@ -396,13 +394,11 @@ La coda vive nel database (nessun Redis). `rt/services/jobs.py` definisce la por
   `run_pipeline` su audio falliscono con un messaggio chiaro su un worker non macOS (salvo
   mock, `--skip-transcribe` o motore STT `custom`).
 - **CLI**: `rt run --queue` accoda la pipeline e ne segue gli eventi; le decisioni si prendono
-  in terminale come in `rt run` e il job riparte da solo. Senza `--queue` tutto resta in
+  nella web app e il job riparte da solo. Senza `--queue` tutto resta in
   processo come prima.
-- **Telegram**: la generazione delle domande di recall e la trascrizione dei vocali passano da
-  `run_job_or_inline`: con un worker vivo (per i vocali, sulla stessa macchina, perché il file
-  è locale) accodano un job e aspettano il risultato in un thread dell'executor; senza worker,
-  o se nessuno prende il job entro 30 secondi, eseguono in processo come prima. L'avvio della
-  review su Telegram non ha passi lunghi (la review LLM è una fase della pipeline).
+- **Telegram**: solo notifiche. Il worker, quando un job finisce, si ferma su una decisione o
+  fallisce, chiama i notifier registrati con `register_job_notifier`
+  (`rt.telegram.notify.TelegramJobNotifier`), che scrivono nella chat personale.
 
 ## 10. API REST (RT 4.0, fase E)
 
@@ -440,11 +436,11 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
   `L<id>_<nome>`; il DB ne conserva il percorso, come fa Anki. `Lesson.storage` vale `db` o
   `folder` (le lezioni ancora in cartella funzionano come prima).
 - **Identità**: `Lesson.path` resta `<lessons_root>/<nome lezione>` anche se la cartella non
-  esiste (senza `telegram.lessons_root` il prefisso è `<cartella dati>/lessons`): job, id dell'API, stato Telegram e `rt run <percorso>` non cambiano. `rt build`
+  esiste (senza `telegram.lessons_root` il prefisso è `<cartella dati>/lessons`): job, id dell'API e `rt run <percorso>` non cambiano. `rt build`
   che rinomina la lezione aggiorna solo il percorso nel DB.
 - **Accesso**: `rt/storage/fs.py` offre le stesse funzioni di `open`/`os`/`shutil` e sceglie
   il backend per percorso; tutti i moduli che leggono o scrivono file di lezione passano da
-  lì. I programmi esterni (ffmpeg, player, Telegram) ricevono il file reale in `media/` con
+  lì. I programmi esterni (ffmpeg, player) ricevono il file reale in `media/` con
   `fs.real_path`; i lock stanno in `<cartella dati>/locks`. Le letture usano transazioni di
   sola lettura, le scritture si uniscono alla transazione già aperta nel thread
   (`rt/db/session.py`).
@@ -462,32 +458,31 @@ Con il database attivo le nuove lezioni non hanno più una cartella di lavoro.
 ## 12. Self-hosting (RT 4.0, fase G)
 
 - **Cartella dati** (`rt/core/paths.py`): un solo posto per `config/`, `.env`, `secrets.enc`,
-  `rt.db`, `media/`, stato del bot, PID, log e backup. `RT_DATA_DIR` la sceglie (vince sempre,
+  `rt.db`, `media/`, registro delle notifiche Telegram, PID, log e backup. `RT_DATA_DIR` la sceglie (vince sempre,
   anche su `config/` nella cwd); altrimenti è `~/.rt` quando contiene `rt-data.json`, che può
   rimandare altrove (`location`: 3.x migrate con DB e media in `<lezioni>/.rt`). Senza cartella
   attiva vale la disposizione 3.x. `config_home()` è l'unica precedenza per config e `.env`,
-  usata da `load_config`, `load_env_file`, `config_service`, `secrets.default_store_path`, TUI.
+  usata da `load_config`, `load_env_file`, `config_service`, `secrets.default_store_path`.
 - **Migrazione e completamento degli aggiornamenti** (`rt/services/data_service.py`):
-  `plan_migration`/`migrate` (copia config, `.env`, stato del bot; DB con l'API di backup di
+  `plan_migration`/`migrate` (copia config, `.env`, stato di Telegram; DB con l'API di backup di
   SQLite e `media/` spostata solo verso una `RT_DATA_DIR` scelta; rollback se un passo fallisce;
   originali rinominati `*.migrato-<data>`). `post_update()` = `rt data post-update`, eseguito
   da `rt -u` e da `install.sh` con il codice nuovo: migrazione, `ensure_database`, proposta di
   cifrare le chiavi, servizi aggiornati e riavviati.
-- **Servizi** (`rt/services/service_manager.py`): LaunchAgent `com.atturk.rt.{api,worker,bot}`
+- **Servizi** (`rt/services/service_manager.py`): LaunchAgent `com.atturk.rt.{api,worker}`
   generati con `plistlib`, gestiti con `launchctl bootstrap/bootout/kickstart`. `rt api
-  --service` non scrive il token nei log; `rt telegram-daemon --service` esce con 0 se il bot
-  non è configurato (KeepAlive solo sulle uscite con errore). Le Impostazioni avviano e fermano
-  il bot tramite launchd quando il servizio è installato; `rt web` con l'API già attiva apre solo
-  il browser.
+  --service` non scrive il token nei log. `rt service install` toglie i LaunchAgent del vecchio
+  bot Telegram (`remove_legacy_agents`), che `rt doctor` segnala. `rt web` con l'API già attiva
+  apre solo il browser.
 - **Capability dei worker**: `workers.capabilities` (Alembic 0007) registra `{"stt": motore}`.
-  `job_needs_stt()` decide se un job deve trascrivere (ingest e pipeline da audio non in mock,
-  vocali del recall); `claim()` salta quei job per un worker senza STT e `live_workers(...,
-  needs_stt=True)` guida `run_job_or_inline` e `worker_available` dell'API.
+  `job_needs_stt()` decide se un job deve trascrivere (ingest e pipeline da audio non in mock);
+  `claim()` salta quei job per un worker senza STT e `live_workers(..., needs_stt=True)`
+  guida `worker_available` dell'API.
 - **Backup** (`rt/services/backup_service.py`): snapshot `rt-backup-<data>/` (DB, config,
-  `env`, stato del bot, `manifest.json`) e `media-store/<sha>` condiviso e incrementale;
+  `env`, registro delle notifiche, `manifest.json`) e `media-store/<sha>` condiviso e incrementale;
   `verify_media` controlla che ogni `lesson_files.media_path` esista. Ripristino con copia di
   sicurezza di ciò che sostituisce.
 - **Diagnosi** (`rt/services/doctor_service.py`) e `rt uninstall` in `rt/cli_system.py`.
 - **Docker**: `Dockerfile` multi-stage (SPA con Node, runtime Python con `RT_DATA_DIR=/data` e
-  keyring nullo), `docker-compose.yml` con `api`, `worker`, `bot` (profilo `telegram`) e
+  keyring nullo), `docker-compose.yml` con `api`, `worker` e
   `postgres` (profilo). Dettagli d'uso in [SELF_HOSTING.md](SELF_HOSTING.md).

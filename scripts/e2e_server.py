@@ -8,8 +8,7 @@ Uso (lo lancia frontend/playwright.config.ts):
 Scrive frontend/e2e/.state/server.json con base_url e token API, che i test usano per
 chiedere un link di accesso monouso (POST /api/v1/auth/login-link) e per rileggere dall'API.
 Ogni avvio riparte da zero: lezioni, DB e configurazione vengono ricreati. Il worker gira con
---mock (LLM, risposte vocali e immagini dal web finti), il bot Telegram è finto
-(RT_TELEGRAM_FAKE=1: esegue le richieste della web app) e il Bot API anche
+--mock (LLM, risposte vocali e immagini dal web finti), la Bot API di Telegram è finta
 (tests/api_support.fake_telegram_server), la "Prova" dei modelli è in mock (RT_API_MOCK=1),
 SearXNG è un server finto (searxng_url in server.json); niente finestra di Finder per la scelta
 cartella.
@@ -41,7 +40,7 @@ def _workspace(base: str, telegram: bool = False) -> str:
     with open(general_path, encoding="utf-8") as f:
         general = yaml.safe_load(f) or {}
     general.setdefault("telegram", {})["lessons_root"] = lessons
-    # Telegram è spento di predefinito; gli e2e del bot finto lo accendono (e lo provano a spegnere)
+    # Le notifiche Telegram sono spente di predefinito; gli e2e di Telegram le accendono (e le provano a spegnere)
     general["telegram"]["enabled"] = telegram
     # la ricerca web delle immagini richiede SearXNG configurato; il worker --mock non lo chiama
     general.setdefault("jev", {}).update(relevance_model="typesafe/jev-1.13", relevance_mode="shadow")
@@ -53,7 +52,6 @@ def _workspace(base: str, telegram: bool = False) -> str:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     os.environ["HOME"] = home
     os.environ["RT_NATIVE_FOLDER_PICKER"] = "0"
-    os.environ["RT_TELEGRAM_FAKE"] = "1"
     os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [ROOT, os.environ.get("PYTHONPATH")]))
     os.environ.pop("RT_DATABASE_URL", None)
     os.environ.pop("RT_DATA_DIR", None)  # anche nell'ambiente cloud i dati degli e2e restano isolati
@@ -209,7 +207,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--dir", default=os.path.join(tempfile.gettempdir(), "rt-e2e"))
     parser.add_argument("--telegram", action="store_true",
-                        help="Telegram acceso (gli e2e del bot finto); senza, il predefinito: spento")
+                        help="Notifiche Telegram accese (gli e2e di Telegram); senza, il predefinito: spente")
     args = parser.parse_args()
     sys.path.insert(0, ROOT)
 
@@ -223,8 +221,7 @@ def main() -> int:
 
     ensure_database()
     _lessons(root)
-    # Bot API finta per "Ascolta i topic" (RT4-F5) e per il recall su Telegram avviato dalla web
-    # (RT4-FA7): API, worker e bot finto la ereditano dall'ambiente.
+    # Bot API finta per "Collega la chat" e per le notifiche: API e worker la ereditano dall'ambiente.
     from tests.api_support import fake_telegram_server
     _telegram, os.environ["RT_TELEGRAM_API_URL"] = fake_telegram_server()
     # "Prova" dei modelli in mock (nessuna chiamata LLM) e SearXNG finto per la ricerca web (RT4-FA5).

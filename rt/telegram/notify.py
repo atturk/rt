@@ -1,188 +1,161 @@
 """
 rt.telegram.notify
-Notifiche one-shot che non devono mai far fallire la pipeline chiamante.
+Notifiche nella chat personale di Telegram: scaletta da approvare, issue da decidere, lezione
+pronta, lavorazione non riuscita. Basta il token del bot e l'ID della chat: nessun bot sempre
+acceso. Una notifica non deve mai far fallire la lavorazione che la manda.
 """
-import sys
-import json
+import html
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any
-from rt.storage import fs
+from typing import Any, Dict, List, Optional
 
 LOG = logging.getLogger(__name__)
 
+TEST_TEXT = "👋 Da ora le notifiche di RT arrivano in questa chat."
 
-def _record(kind: str, text: str, thread_id, state_dir: str) -> None:
-    """Ultime notifiche per la pagina Bot Telegram della web (RT4-FA6)."""
+
+def _record(kind: str, text: str, ok: bool = True) -> None:
+    """Ultime notifiche per la pagina Impostazioni › Telegram della web."""
     from rt.telegram.notify_log import record_notification
-    record_notification(kind, text, thread_id, state_dir=state_dir)
+    record_notification(kind, text, ok=ok)
 
 
-class TelegramBuildNotifier:
-    """Notifier di fine build per i job del worker (rt.services.pipeline_service): lo registra
-    chi avvia il worker ('rt worker', 'rt web'). Se Telegram non è configurato non fa nulla;
-    un errore di invio sale all'orchestratore, che lo segnala senza far fallire il job."""
-    channel = "Telegram"
+def _redact(message: str, token: str) -> str:
+    # Gli errori di rete di requests riportano l'URL, che contiene il token del bot
+    return message.replace(token, "[token]") if token else message
 
-    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
-        # Il worker vive a lungo: token e chat salvati dalla web dopo il suo avvio si leggono qui
-        from rt.core.config import load_env_file
-        load_env_file()
-        try:
-            return notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title, raise_errors=True)
-        except Exception as exc:
-            # Gli errori di rete di requests riportano l'URL, che contiene il token del bot
-            import os
-            message, token = str(exc), (os.environ.get("RT_TELEGRAM_BOT_TOKEN") or "").strip()
-            if token:
-                message = message.replace(token, "[token]")
+
+def send_notification(kind: str, text: str, raise_errors: bool = False) -> bool:
+    """True se il messaggio è partito; False se Telegram è spento o non configurato, o (senza
+    raise_errors) se l'invio non è riuscito."""
+    from rt.core.config import load_env_file
+    from rt.telegram.client import send_message
+    from rt.telegram.config import TelegramConfigError, load_telegram_config
+    # I processi lunghi (worker) leggono qui token e chat salvati dalla web dopo il loro avvio
+    load_env_file()
+    try:
+        cfg = load_telegram_config()
+    except TelegramConfigError:
+        return False
+    try:
+        send_message(cfg, text)
+    except Exception as exc:  # noqa: BLE001 - la notifica non deve far fallire chi la manda
+        message = _redact(str(exc), cfg.bot_token)
+        _record(kind, text, ok=False)
+        if raise_errors:
             raise RuntimeError(message) from None
+        LOG.warning("Notifica Telegram non inviata: %s", message)
+        return False
+    _record(kind, text)
+    return True
+
+
+def _lesson_lines(lesson_dir: Optional[str], lesson_title: Optional[str]) -> List[str]:
+    """Titolo, data e materia della lezione, per riconoscerla dal telefono."""
+    lines: List[str] = []
+    if lesson_title:
+        lines.append(f"📘 {html.escape(lesson_title)}")
+    if lesson_dir:
+        try:
+            from rt.core.lesson_paths import lesson_path
+            from rt.core.state import read_info_yaml
+            info = read_info_yaml(lesson_path(lesson_dir, "info.yaml")) or {}
+        except Exception:  # noqa: BLE001 - i dettagli sono facoltativi
+            info = {}
+        details = [str(info.get(key, "")).strip() for key in ("data", "materia")]
+        if any(details):
+            lines.append("📅 " + " · ".join(html.escape(d) for d in details if d))
+    return lines
 
 
 def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], lesson_title: str,
                            raise_errors: bool = False) -> bool:
-    """True se il messaggio è partito; False se Telegram non è configurato o (senza
-    raise_errors) se l'invio non è riuscito."""
-    import os
-    from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
-    from rt.telegram.client import send_message, edit_message_text
-    from rt.core.lesson_paths import lesson_path
-    from rt.telegram.formatting import escape_html
-    from rt.core.config import load_config
-    from rt.core.state import read_info_yaml
+    lines = ["✅ <b>Lezione pronta</b>"] + _lesson_lines(lesson_dir, lesson_title)
+    reason = str((build_result or {}).get("reason") or "").strip()
+    if reason:
+        lines.append(f"🔄 {html.escape(reason)}")
+    return send_notification("lezione_pronta", "\n".join(lines), raise_errors=raise_errors)
 
-    try:
-        cfg = load_telegram_config()
-    except TelegramConfigError:
+
+def notify_decision_needed(kind: str, lesson_dir: Optional[str], lesson_title: Optional[str],
+                           count: Optional[int] = None) -> bool:
+    """La lavorazione aspetta una decisione: la scaletta da approvare o le issue da decidere."""
+    if kind == "outline_approval":
+        head, tail = "📝 <b>Scaletta da approvare</b>", "Aprila in RT per approvarla o chiedere modifiche."
+    elif kind == "science_issue":
+        head = "🔎 <b>Issue da decidere</b>" + (f" ({count})" if count else "")
+        tail = "Decidile in RT: dopo la lezione si completa da sola."
+    else:
         return False
+    text = "\n".join([head] + _lesson_lines(lesson_dir, lesson_title) + [tail])
+    return send_notification("decisione", text)
 
+
+def notify_job_failed(lesson_dir: Optional[str], lesson_title: Optional[str], error: Optional[str]) -> bool:
+    lines = ["❌ <b>Lavorazione non riuscita</b>"] + _lesson_lines(lesson_dir, lesson_title)
+    if error:
+        lines.append(html.escape(error[:300]))
+    return send_notification("errore", "\n".join(lines))
+
+
+class TelegramBuildNotifier:
+    """Notifica di fine lavorazione per 'rt run' e per i job del worker. Se Telegram non è
+    configurato non fa nulla; un errore di invio sale all'orchestratore, che lo segnala senza
+    far fallire il job."""
+    channel = "Telegram"
+
+    def build_completed(self, lesson_dir: str, build_result: Dict[str, Any], lesson_title: str) -> bool:
+        return notify_build_completed(lesson_dir, build_result, lesson_title=lesson_title, raise_errors=True)
+
+
+class TelegramJobNotifier:
+    """Notifiche dei job del worker che si fermano su una decisione o non riescono."""
+
+    def job_waiting(self, lesson_dir: Optional[str], decision: Dict[str, Any]) -> None:
+        kind = (decision or {}).get("kind")
+        if kind == "outline_approval" and _outline_auto_approved():
+            return  # la scaletta si approva da sola dopo pochi secondi: niente notifica
+        payload = (decision or {}).get("payload") or {}
+        lesson_dir = payload.get("lesson_dir") or lesson_dir
+        count = len(payload["pending"]) if isinstance(payload.get("pending"), list) else None
+        notify_decision_needed(kind, lesson_dir, _title(lesson_dir), count)
+
+    def job_failed(self, lesson_dir: Optional[str], error: Optional[str]) -> None:
+        notify_job_failed(lesson_dir, _title(lesson_dir), error)
+
+
+def _outline_auto_approved() -> bool:
     try:
-        runtime_cfg = load_config().telegram
-        message_thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
-
-        info_path = os.path.join(lesson_dir, "info.yaml")
-        info = {}
-        if fs.exists(info_path):
-            try:
-                info = read_info_yaml(info_path)
-            except Exception:
-                info = {}
-
-        data = str(info.get("data", "")).strip()
-        materia = str(info.get("materia", "")).strip()
-        argomenti = str(info.get("argomenti", "")).strip()
-
-        mapped_materie = {k.strip().upper() for k in (runtime_cfg.topics or {}).keys()}
-        is_generic_topic = (not materia) or (materia.upper() not in mapped_materie)
-
-        lines = ["✅ <b>Lezione pronta</b>"]
-        if data:
-            lines.append(f"📅 {escape_html(data)}")
-        if argomenti:
-            lines.append(f"📌 {escape_html(argomenti)}")
-        if is_generic_topic and materia:
-            lines.append(f"📚 {escape_html(materia)}")
-
-        lines.append("")
-        lines.append("Usa /list per vedere tutte le lezioni disponibili.")
-
-        message_path = lesson_path(lesson_dir, "build_telegram_message.json")
-        previous = {}
-        if fs.isfile(message_path):
-            try:
-                with fs.open(message_path, "r", encoding="utf-8") as stream:
-                    previous = json.load(stream)
-            except (ValueError, OSError):
-                LOG.warning("Riferimento al messaggio di build illeggibile: %s", lesson_dir)
-        revision = previous.get("message_id") and str(previous.get("chat_id")) == str(cfg.chat_id) and previous.get("thread_id") == message_thread_id
-        if revision:
-            reason = str(build_result.get("reason") or "").strip()
-            when = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
-            lines.insert(1, f"🔄 Aggiornata: {escape_html(reason) if reason else when}")
-        text = "\n".join(lines)
-        message_id = None
-        if revision:
-            try:
-                edit_message_text(cfg, int(previous["message_id"]), text)
-                message_id = int(previous["message_id"])
-            except Exception as exc:
-                LOG.warning("Impossibile aggiornare il messaggio Telegram della build: %s", exc)
-                text = "🔄 <b>Rebuild della lezione</b>\n" + text
-        if message_id is None:
-            sent = send_message(cfg, text=text, message_thread_id=message_thread_id)
-            if isinstance(sent, dict) and isinstance(sent.get("message_id"), int):
-                message_id = sent["message_id"]
-        if message_id is not None:
-            temp = message_path + ".tmp"
-            with fs.open(temp, "w", encoding="utf-8") as stream:
-                json.dump({"message_id": message_id, "chat_id": cfg.chat_id, "thread_id": message_thread_id}, stream)
-            fs.replace(temp, message_path)
-        _record("lezione_pronta", text, message_thread_id, runtime_cfg.state_dir)
-
-        from rt.telegram.last_lesson import record_last_lesson
-        record_last_lesson(runtime_cfg.state_dir, cfg.chat_id, message_thread_id, lesson_dir)
-        return True
-    except Exception as e:
-        if raise_errors:
-            raise
-        print(f"⚠️  Notifica Telegram di build non inviata: {e}", file=sys.stderr)
+        from rt.core.config import load_config
+        return getattr(load_config().ui, "outline_auto_approval_seconds", 10) > 0
+    except Exception:  # noqa: BLE001
         return False
 
 
-def notify_issues_ready(lesson_dir: str, issue_type: str, count: int) -> None:
-    """issue_type: 'asr' | 'science'. Fire-and-forget: non deve mai bloccare né
-    far fallire il comando chiamante. Se count == 0 manda un messaggio di conferma senza bottoni."""
-    import os
-    from rt.telegram.config import load_telegram_config, resolve_topic_id, TelegramConfigError
-    from rt.telegram import client as tg_client, registry as tg_registry, formatting as tg_fmt, session as tg_session
-    from rt.core.config import load_config
+def _title(lesson_dir: Optional[str]) -> Optional[str]:
+    if not lesson_dir:
+        return None
+    from rt.services.pipeline_service import lesson_title
+    return lesson_title(lesson_dir)
 
+
+def send_test() -> Dict[str, Any]:
+    """Messaggio di prova dalle impostazioni: {ok, message}."""
     try:
-        cfg = load_telegram_config()
-    except TelegramConfigError:
-        return
+        sent = send_notification("prova", TEST_TEXT, raise_errors=True)
+    except RuntimeError as exc:
+        return {"ok": False, "message": f"Messaggio non inviato: {exc}"}
+    if not sent:
+        return {"ok": False, "message": "Salva prima il token del bot e la chat, con le notifiche attive."}
+    return {"ok": True, "message": "Messaggio di prova inviato: controlla Telegram."}
 
-    try:
-        runtime_cfg = load_config().telegram
-        thread_id = resolve_topic_id(lesson_dir, runtime_cfg.topics, runtime_cfg.misc_topic_id)
-        label = "ASR" if issue_type == "asr" else "scientifiche"
 
-        if count <= 0:
-            text = f"✅ Nessuna issue {label} trovata."
-            tg_client.send_message(cfg, text=text, message_thread_id=thread_id)
-            _record("issue", text, thread_id, runtime_cfg.state_dir)
-            return
-
-        active = tg_session.get_active_session(runtime_cfg.state_dir, cfg.chat_id, thread_id)
-        if active is not None:
-            if active.get("kind") != "issue_review" or os.path.abspath(active.get("lesson_dir", "")) != os.path.abspath(lesson_dir):
-                busy_msg = f"C'è già un'attività in corso in questo topic ({active.get('kind')}). Usa /quit per chiuderla prima."
-                tg_client.send_message(cfg, text=busy_msg, message_thread_id=thread_id)
-                return
-            else:
-                tg_client.send_message(
-                    cfg,
-                    text="ℹ️ Review già pronta per questo topic. Clicca su 'Inizia review' nel messaggio precedente, oppure usa /quit per annullare.",
-                    message_thread_id=thread_id,
-                )
-                return
-
-        tg_session.start_session(runtime_cfg.state_dir, cfg.chat_id, thread_id, "issue_review", lesson_dir)
-        short_id = tg_registry.register_pending(
-            lesson_dir, round_=1, kind="start_issue_review", state_dir=runtime_cfg.state_dir, message_thread_id=thread_id
-        )
-        keyboard = tg_fmt.build_start_review_keyboard(short_id)
-        text = f"🔎 {count} issue {label} pronte per la review."
-        res = tg_client.send_message(
-            cfg,
-            text=text,
-            reply_markup=keyboard,
-            message_thread_id=thread_id
-        )
-        _record("issue", text, thread_id, runtime_cfg.state_dir)
-        msg_id = res.get("message_id") if isinstance(res, dict) else getattr(res, "message_id", None)
-        if msg_id is not None:
-            tg_session.update_session_message(runtime_cfg.state_dir, cfg.chat_id, thread_id, msg_id)
-    except Exception as e:
-        print(f"⚠️  Notifica Telegram issue pronte non inviata: {e}", file=sys.stderr)
-
+def detect_private_chat(token: str) -> Optional[Dict[str, str]]:
+    """La chat personale dell'ultimo messaggio ricevuto dal bot (chi ha scritto /start):
+    {chat_id, name}, oppure None se nessuno gli ha ancora scritto."""
+    from rt.telegram.client import get_updates
+    for update in reversed(get_updates(token) or []):
+        chat = ((update or {}).get("message") or {}).get("chat") or {}
+        if chat.get("type") == "private" and chat.get("id") is not None:
+            name = " ".join(p for p in (chat.get("first_name"), chat.get("last_name")) if p) or chat.get("username") or ""
+            return {"chat_id": str(chat["id"]), "name": name}
+    return None

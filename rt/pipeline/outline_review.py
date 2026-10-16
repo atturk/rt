@@ -1,8 +1,7 @@
 """
 rt.pipeline.outline_review
-Regola di gating della conferma outline, senza interfaccia. La UI da terminale
-(confirm_or_revise_outline, OutlineReviewApp) è in rt.tui.outline_review; approvazione e
-revisione come servizio sono in rt.services.outline_service.
+Regola di gating della conferma outline, senza interfaccia. Approvazione e revisione come
+servizio sono in rt.services.outline_service (le usa la web).
 """
 from rt.core.idempotency import check_phase_status, PhaseStatus
 

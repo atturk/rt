@@ -207,7 +207,7 @@ def test_apply_decisions_to_draft_err_asr_llm():
 
 
 def test_cli_review_asr_llm_flag():
-    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli.run_interactive_review"), patch("sys.argv", ["rt", "review", "/path/to/lesson", "--asr-llm", "--mock"]):
+    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli._print_pending_issues"), patch("sys.argv", ["rt", "review", "/path/to/lesson", "--asr-llm", "--mock"]):
         mock_run_review.return_value = {"status": "ok", "skipped": True}
         try:
             main()

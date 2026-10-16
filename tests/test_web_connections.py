@@ -1,11 +1,8 @@
 """Connessioni web: chiavi multiple, modelli per fase e compatibilità legacy."""
-import subprocess
-import sys
 
 import yaml
 
 from rt.core.config import load_config
-from rt.telegram.daemon_status import get_daemon_pid, remove_daemon_pid, write_daemon_pid
 from rt.services.connections_service import (add_model, assign_phase, connection_names,
                                              model_names, phase_selection, save_connection)
 
@@ -65,23 +62,6 @@ def test_recall_legacy_prefers_configured_route_over_empty_quiz(tmp_path, monkey
         encoding="utf-8")
     assert load_config().jobs["recall"].primary.model == "working-model"
     assert phase_selection(tmp_path, "recall") == ("old", "working-model")
-
-
-def test_daemon_pid_is_exclusive_across_processes(tmp_path):
-    path = str(tmp_path / "telegram.pid")
-    write_daemon_pid(path)
-    try:
-        assert get_daemon_pid(path) is not None
-        attempt = subprocess.run(
-            [sys.executable, "-c",
-             "from rt.telegram.daemon_status import write_daemon_pid; "
-             "write_daemon_pid(__import__('sys').argv[1])", path],
-            capture_output=True, text=True, check=False)
-        assert attempt.returncode != 0
-        assert "già in esecuzione" in attempt.stderr
-    finally:
-        remove_daemon_pid(path)
-    assert get_daemon_pid(path) is None
 
 
 def test_model_offered_by_legacy_route_stays_selectable_after_reassignment(tmp_path, monkeypatch):

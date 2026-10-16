@@ -147,66 +147,6 @@ def test_cost_falls_back_to_file_without_db(lesson):
     assert compute_lesson_cost(lesson_dir)["total_calls"] == 1
 
 
-def test_telegram_state_imported_once_and_renamed(rt_db, tmp_path):
-    from rt.telegram import audio_sent, conversation_state, issue_queue, last_lesson, recall_preferences, registry, session
-    state_dir = tmp_path / "tg"
-    state_dir.mkdir()
-    lesson_dir = tmp_path / "lez"
-    (lesson_dir / "_state").mkdir(parents=True)
-    files = {
-        "active_sessions.json": {"schema_version": "1.0", "sessions": {"1:general": {
-            "kind": "review", "lesson_dir": str(lesson_dir), "started_at": "t", "chat_id": "1",
-            "thread_id": None, "message_id": 5}}},
-        "registry.json": {"schema_version": "1.0", "entries": {"abc123": {"lesson_dir": str(lesson_dir)}}},
-        "awaiting_feedback.json": {"1": {"short_id": "abc123", "lesson_dir": str(lesson_dir), "kind": "outline_feedback"}},
-        "recall_preferences.json": {"active_style": "vasta"},
-        "last_lesson_per_topic.json": {"1:general": {"lesson_dir": str(lesson_dir), "updated_at": "t"}},
-    }
-    for name, data in files.items():
-        (state_dir / name).write_text(json.dumps(data), encoding="utf-8")
-    (lesson_dir / "_state" / "telegram_issue_queue.json").write_text(
-        json.dumps({"issue_ids": ["a", "b"], "issue_types": {"a": "science", "b": "science"}, "current_index": 1}))
-    (lesson_dir / "_state" / "telegram_audio_sent.json").write_text(json.dumps({"s1-s2": {"message_id": 9}}))
-
-    # nessuna sessione attiva persa
-    assert session.get_active_session(str(state_dir), 1)["message_id"] == 5
-    assert registry._load_registry(str(state_dir))["entries"]["abc123"]["lesson_dir"] == str(lesson_dir)
-    assert conversation_state.get_awaiting_feedback(str(state_dir), 1)["short_id"] == "abc123"
-    assert recall_preferences.get_active_style(str(state_dir)) == "vasta"
-    assert last_lesson.get_last_lesson(str(state_dir), 1, None) == str(lesson_dir)
-    assert issue_queue.load_queue(str(lesson_dir)).current_index == 1
-    assert audio_sent.get_sent_audio(str(lesson_dir), "s1", "s2")["message_id"] == 9
-
-    for name in files:
-        assert not (state_dir / name).exists() and (state_dir / (name + MIGRATED_SUFFIX)).exists()
-    assert (lesson_dir / "_state" / ("telegram_issue_queue.json" + MIGRATED_SUFFIX)).exists()
-
-    # da qui in poi solo DB: le scritture non ricreano i file
-    session.update_session_message(str(state_dir), 1, None, 7)
-    session.start_session(str(state_dir), 2, 44, "recall", str(lesson_dir))
-    issue_queue.advance(str(lesson_dir))
-    recall_preferences.set_active_style(str(state_dir), "quiz")
-    conversation_state.clear_awaiting_feedback(str(state_dir), 1)
-    audio_sent.record_sent_audio(str(lesson_dir), "s3", "s4", 10)
-    last_lesson.record_last_lesson(str(state_dir), 2, 44, str(lesson_dir))
-    assert not (state_dir / "active_sessions.json").exists()
-    assert session.get_active_session(str(state_dir), 1)["message_id"] == 7
-    assert session.get_active_session_for_lesson(str(state_dir), str(lesson_dir), kind="recall")["thread_id"] == "44"
-    assert issue_queue.load_queue(str(lesson_dir)).current_index == 2
-    assert recall_preferences.get_active_style(str(state_dir)) == "quiz"
-    assert conversation_state.get_awaiting_feedback(str(state_dir), 1) is None
-    assert audio_sent.get_sent_audio(str(lesson_dir), "s3", "s4")["message_id"] == 10
-    assert last_lesson.get_last_lesson(str(state_dir), 2, 44) == str(lesson_dir)
-    with session_scope(rt_db) as s:
-        assert s.query(StateDocument).count() == 7
-
-
-def test_telegram_state_without_db_uses_files(tmp_path):
-    from rt.telegram import session
-    session.start_session(str(tmp_path), 1, None, "review", str(tmp_path))
-    assert (tmp_path / "active_sessions.json").exists()
-
-
 CONCURRENT_WRITER = r"""
 import os, sys
 from rt.services.review_service import record_review_decision

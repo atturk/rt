@@ -1,7 +1,7 @@
 """
 rt.services.config_service
 Lettura, validazione e scrittura atomica della configurazione (config/general.yaml e file
-per-job) e dei segreti, condivise dal wizard 'rt config' (rt/tui/configure) e dalle
+per-job) e dei segreti, usate dalle
 impostazioni web. Riusa rt.core.config per la precedenza dei percorsi
 e per la validazione.
 

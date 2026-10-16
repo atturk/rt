@@ -2375,30 +2375,6 @@
         "title": "CustomQuestionType",
         "type": "object"
       },
-      "DaemonStatus": {
-        "properties": {
-          "pid": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pid"
-          },
-          "running": {
-            "title": "Running",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "running"
-        ],
-        "title": "DaemonStatus",
-        "type": "object"
-      },
       "Decision": {
         "properties": {
           "actor": {
@@ -2916,24 +2892,6 @@
           "outcome"
         ],
         "title": "DecisionTestOut",
-        "type": "object"
-      },
-      "DeleteFailure": {
-        "properties": {
-          "message_id": {
-            "title": "Message Id",
-            "type": "integer"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message_id",
-          "reason"
-        ],
-        "title": "DeleteFailure",
         "type": "object"
       },
       "DocumentEditCheck": {
@@ -5452,12 +5410,6 @@
             "description": "Rielaborazione valida: la lezione può fare recall",
             "title": "Ready",
             "type": "boolean"
-          },
-          "telegram": {
-            "default": false,
-            "description": "Sessione in corso su Telegram per la lezione",
-            "title": "Telegram",
-            "type": "boolean"
           }
         },
         "required": [
@@ -5765,75 +5717,6 @@
         "title": "LessonVersion",
         "type": "object"
       },
-      "ListenMessages": {
-        "properties": {
-          "cleaned": {
-            "description": "True se sono già stati cancellati",
-            "title": "Cleaned",
-            "type": "boolean"
-          },
-          "count": {
-            "description": "Messaggi ricevuti durante quell'ascolto (esclusi quelli di servizio)",
-            "title": "Count",
-            "type": "integer"
-          },
-          "finished_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At"
-          },
-          "job_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Ultimo ascolto dei topic concluso",
-            "title": "Job Id"
-          }
-        },
-        "required": [
-          "count",
-          "cleaned"
-        ],
-        "title": "ListenMessages",
-        "type": "object"
-      },
-      "ListenMessagesDeleted": {
-        "properties": {
-          "deleted": {
-            "title": "Deleted",
-            "type": "integer"
-          },
-          "failed": {
-            "items": {
-              "$ref": "#/components/schemas/DeleteFailure"
-            },
-            "title": "Failed",
-            "type": "array"
-          },
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id",
-          "deleted",
-          "failed"
-        ],
-        "title": "ListenMessagesDeleted",
-        "type": "object"
-      },
       "LoginLink": {
         "properties": {
           "expires_in": {
@@ -6099,7 +5982,7 @@
       "Notification": {
         "properties": {
           "kind": {
-            "description": "lezione_pronta, issue o prova",
+            "description": "lezione_pronta, decisione, errore o prova",
             "title": "Kind",
             "type": "string"
           },
@@ -6115,17 +5998,6 @@
           "text": {
             "title": "Text",
             "type": "string"
-          },
-          "topic_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic Id"
           }
         },
         "required": [
@@ -7851,17 +7723,6 @@
       },
       "RecallSessionState": {
         "properties": {
-          "command": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TelegramCommandInfo"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Ultima richiesta al bot per questa lezione"
-          },
           "last": {
             "anyOf": [
               {
@@ -7872,17 +7733,6 @@
               }
             ],
             "description": "Ultima sessione web chiusa, con il riepilogo"
-          },
-          "telegram": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RecallSessionInfo"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Sessione in corso su Telegram per questa lezione"
           },
           "web": {
             "anyOf": [
@@ -9595,9 +9445,9 @@
         "title": "TailnetInfo",
         "type": "object"
       },
-      "TelegramCommandInfo": {
+      "TelegramChatIn": {
         "properties": {
-          "created_at": {
+          "bot_token": {
             "anyOf": [
               {
                 "type": "string"
@@ -9606,32 +9456,24 @@
                 "type": "null"
               }
             ],
-            "title": "Created At"
+            "description": "Token nuovo da salvare insieme alla chat; vuoto = quello salvato",
+            "title": "Bot Token"
+          }
+        },
+        "title": "TelegramChatIn",
+        "type": "object"
+      },
+      "TelegramChatOut": {
+        "properties": {
+          "found": {
+            "title": "Found",
+            "type": "boolean"
           },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "kind": {
-            "enum": [
-              "start_recall",
-              "stop_recall"
-            ],
-            "title": "Kind",
+          "message": {
+            "title": "Message",
             "type": "string"
           },
-          "processed_at": {
+          "name": {
             "anyOf": [
               {
                 "type": "string"
@@ -9640,25 +9482,15 @@
                 "type": "null"
               }
             ],
-            "title": "Processed At"
-          },
-          "state": {
-            "enum": [
-              "pending",
-              "running",
-              "done",
-              "failed"
-            ],
-            "title": "State",
-            "type": "string"
+            "description": "Nome della chat trovata",
+            "title": "Name"
           }
         },
         "required": [
-          "id",
-          "kind",
-          "state"
+          "found",
+          "message"
         ],
-        "title": "TelegramCommandInfo",
+        "title": "TelegramChatOut",
         "type": "object"
       },
       "TelegramEnabledIn": {
@@ -9697,100 +9529,11 @@
                 "type": "null"
               }
             ],
+            "description": "ID della chat personale; lascia vuoto per non cambiarlo",
             "title": "Chat Id"
-          },
-          "misc_topic_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Misc Topic Id"
-          },
-          "topic_names": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "id del topic -> nome rilevato (facoltativo)",
-            "title": "Topic Names"
-          },
-          "topics": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "description": "MATERIA -> id del topic",
-            "title": "Topics",
-            "type": "object"
           }
         },
         "title": "TelegramIn",
-        "type": "object"
-      },
-      "TelegramRecallStart": {
-        "properties": {
-          "mock": {
-            "default": false,
-            "title": "Mock",
-            "type": "boolean"
-          },
-          "qtype": {
-            "default": "quiz",
-            "enum": [
-              "quiz",
-              "mirata",
-              "vasta"
-            ],
-            "title": "Qtype",
-            "type": "string"
-          }
-        },
-        "title": "TelegramRecallStart",
-        "type": "object"
-      },
-      "TelegramRecallStatus": {
-        "properties": {
-          "configured": {
-            "description": "Token e chat del bot salvati",
-            "title": "Configured",
-            "type": "boolean"
-          },
-          "enabled": {
-            "default": false,
-            "description": "Telegram attivo (spento di predefinito: il recall si fa solo nella web app)",
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "running": {
-            "description": "Bot in esecuzione",
-            "title": "Running",
-            "type": "boolean"
-          },
-          "sessions": {
-            "description": "Sessioni di recall in corso su Telegram, per tutte le lezioni",
-            "items": {
-              "$ref": "#/components/schemas/RecallSessionInfo"
-            },
-            "title": "Sessions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "configured",
-          "running",
-          "sessions"
-        ],
-        "title": "TelegramRecallStatus",
         "type": "object"
       },
       "TelegramSettings": {
@@ -9828,188 +9571,20 @@
             "title": "Chat Id Set",
             "type": "boolean"
           },
-          "default_channel": {
-            "title": "Default Channel",
-            "type": "string"
-          },
           "enabled": {
             "default": false,
-            "description": "Telegram attivo (spento di predefinito): bot, ripassi e decisioni su Telegram",
+            "description": "Notifiche Telegram attive nella chat personale (spente di predefinito)",
             "title": "Enabled",
             "type": "boolean"
-          },
-          "misc_topic_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Misc Topic Id"
-          },
-          "topic_names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "description": "id del topic -> nome rilevato da Telegram",
-            "title": "Topic Names",
-            "type": "object"
-          },
-          "topics": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Topics",
-            "type": "object"
           }
         },
         "required": [
-          "bot_token_set",
-          "topics",
-          "default_channel"
+          "bot_token_set"
         ],
         "title": "TelegramSettings",
         "type": "object"
       },
-      "TelegramTopicOut": {
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
-        ],
-        "title": "TelegramTopicOut",
-        "type": "object"
-      },
-      "TelegramUserCompleteIn": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "password": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Password"
-          }
-        },
-        "required": [
-          "code"
-        ],
-        "title": "TelegramUserCompleteIn",
-        "type": "object"
-      },
-      "TelegramUserStartIn": {
-        "properties": {
-          "api_hash": {
-            "title": "Api Hash",
-            "type": "string"
-          },
-          "api_id": {
-            "title": "Api Id",
-            "type": "integer"
-          },
-          "phone": {
-            "title": "Phone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "api_id",
-          "api_hash",
-          "phone"
-        ],
-        "title": "TelegramUserStartIn",
-        "type": "object"
-      },
-      "TelegramUserStatusOut": {
-        "properties": {
-          "authorized": {
-            "title": "Authorized",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "authorized"
-        ],
-        "title": "TelegramUserStatusOut",
-        "type": "object"
-      },
-      "TelegramUserTopicsOut": {
-        "properties": {
-          "topics": {
-            "items": {
-              "$ref": "#/components/schemas/TelegramTopicOut"
-            },
-            "title": "Topics",
-            "type": "array"
-          }
-        },
-        "required": [
-          "topics"
-        ],
-        "title": "TelegramUserTopicsOut",
-        "type": "object"
-      },
-      "TopicRecreateIn": {
-        "properties": {
-          "confirmation": {
-            "title": "Confirmation",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "topic_id": {
-            "title": "Topic Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "topic_id",
-          "name",
-          "confirmation"
-        ],
-        "title": "TopicRecreateIn",
-        "type": "object"
-      },
-      "TopicTestIn": {
-        "properties": {
-          "materia": {
-            "default": "",
-            "title": "Materia",
-            "type": "string"
-          },
-          "topic_id": {
-            "minimum": 1.0,
-            "title": "Topic Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "topic_id"
-        ],
-        "title": "TopicTestIn",
-        "type": "object"
-      },
-      "TopicTestOut": {
+      "TelegramTestOut": {
         "properties": {
           "message": {
             "title": "Message",
@@ -10018,19 +9593,13 @@
           "ok": {
             "title": "Ok",
             "type": "boolean"
-          },
-          "text": {
-            "description": "Testo inviato nel topic",
-            "title": "Text",
-            "type": "string"
           }
         },
         "required": [
           "ok",
-          "message",
-          "text"
+          "message"
         ],
-        "title": "TopicTestOut",
+        "title": "TelegramTestOut",
         "type": "object"
       },
       "Transcription": {
@@ -19284,7 +18853,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Sessione in corso qui e su Telegram, ultimo riepilogo e ultima richiesta al bot",
+        "summary": "Sessione in corso e ultimo riepilogo",
         "tags": [
           "recall"
         ]
@@ -19473,105 +19042,6 @@
           }
         ],
         "summary": "Salta una domanda (torna in coda)",
-        "tags": [
-          "recall"
-        ]
-      }
-    },
-    "/api/v1/lessons/{lesson_id}/recall/telegram/start": {
-      "post": {
-        "operationId": "telegram_start_api_v1_lessons__lesson_id__recall_telegram_start_post",
-        "parameters": [
-          {
-            "description": "Id della lezione (da GET /lessons)",
-            "in": "path",
-            "name": "lesson_id",
-            "required": true,
-            "schema": {
-              "description": "Id della lezione (da GET /lessons)",
-              "title": "Lesson Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TelegramRecallStart"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TelegramCommandInfo"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Chiede al bot di avviare il recall nel topic della materia (l'esito arriva in /recall/session)",
         "tags": [
           "recall"
         ]
@@ -23458,169 +22928,6 @@
         ]
       }
     },
-    "/api/v1/recall/telegram": {
-      "get": {
-        "operationId": "telegram_status_api_v1_recall_telegram_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TelegramRecallStatus"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Bot pronto per il recall (configurato e in esecuzione) e sessioni in corso su Telegram",
-        "tags": [
-          "recall"
-        ]
-      }
-    },
-    "/api/v1/recall/telegram/sessions/{session_id}/stop": {
-      "post": {
-        "operationId": "telegram_stop_api_v1_recall_telegram_sessions__session_id__stop_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecallSessionInfo"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Interrompe una sessione su Telegram: il bot la chiude e scrive nel topic che è stata interrotta dall'app",
-        "tags": [
-          "recall"
-        ]
-      }
-    },
     "/api/v1/recall/types": {
       "get": {
         "operationId": "recall_types_api_v1_recall_types_get",
@@ -26737,7 +26044,93 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Bot Telegram: token, chat, topic",
+        "summary": "Notifiche Telegram: token del bot e chat personale",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/telegram/chat": {
+      "post": {
+        "operationId": "find_telegram_chat_api_v1_settings_telegram_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramChatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramChatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trova la chat di chi ha scritto /start al bot e la salva per le notifiche",
         "tags": [
           "impostazioni"
         ]
@@ -26823,320 +26216,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Accende o spegne Telegram (spento: anche il bot si ferma)",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/listen-messages": {
-      "get": {
-        "operationId": "listen_messages_api_v1_settings_telegram_listen_messages_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListenMessages"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Messaggi ricevuti durante l'ultimo ascolto dei topic",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/listen-messages/delete": {
-      "post": {
-        "operationId": "delete_listen_messages_api_v1_settings_telegram_listen_messages_delete_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListenMessagesDeleted"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Cancella dal gruppo solo i messaggi ricevuti durante l'ultimo ascolto dei topic",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/listen-topics": {
-      "post": {
-        "operationId": "telegram_listen_topics_api_v1_settings_telegram_listen_topics_post",
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAccepted"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Ascolta per 20 secondi i messaggi al bot e rileva chat e topic del gruppo (job)",
-        "tags": [
-          "job",
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/recreate-topic": {
-      "post": {
-        "operationId": "recreate_telegram_topic_api_v1_settings_telegram_recreate_topic_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopicRecreateIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Elimina tutti i messaggi del topic e lo ricrea vuoto",
+        "summary": "Accende o spegne le notifiche Telegram",
         "tags": [
           "impostazioni"
         ]
@@ -27228,25 +26308,15 @@
         ]
       }
     },
-    "/api/v1/settings/telegram/test-topic": {
+    "/api/v1/settings/telegram/test": {
       "post": {
-        "operationId": "test_topic_api_v1_settings_telegram_test_topic_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopicTestIn"
-              }
-            }
-          },
-          "required": true
-        },
+        "operationId": "test_telegram_api_v1_settings_telegram_test_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TopicTestOut"
+                  "$ref": "#/components/schemas/TelegramTestOut"
                 }
               }
             },
@@ -27308,571 +26378,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Invia nel topic il messaggio di prova 'Questo è il topic di <materia>'",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/archives/{job_id}": {
-      "get": {
-        "operationId": "download_telegram_topic_archive_api_v1_settings_telegram_user_archives__job_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "title": "Job Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/zip": {}
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Scarica l'archivio prodotto da un job telegram_topic_export concluso",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/complete": {
-      "post": {
-        "operationId": "complete_telegram_user_api_v1_settings_telegram_user_complete_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TelegramUserCompleteIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Completa l'accesso utente con codice e 2FA",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/session": {
-      "delete": {
-        "operationId": "revoke_telegram_user_api_v1_settings_telegram_user_session_delete",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Revoca la sessione Telegram utente",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/start": {
-      "post": {
-        "operationId": "start_telegram_user_api_v1_settings_telegram_user_start_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TelegramUserStartIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Invia un codice Telegram all'account utente",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/status": {
-      "get": {
-        "operationId": "telegram_user_status_api_v1_settings_telegram_user_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TelegramUserStatusOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Stato della sessione Telegram utente",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/topics": {
-      "get": {
-        "operationId": "get_telegram_user_topics_api_v1_settings_telegram_user_topics_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TelegramUserTopicsOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Elenca i topic del gruppo con l'account utente",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/telegram/user/topics/{topic_id}/archive": {
-      "post": {
-        "operationId": "start_telegram_topic_archive_api_v1_settings_telegram_user_topics__topic_id__archive_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "topic_id",
-            "required": true,
-            "schema": {
-              "title": "Topic Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobAccepted"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Esporta cronologia e media del topic (job telegram_topic_export; si scarica da /settings/telegram/user/archives/{job_id})",
+        "summary": "Manda un messaggio di prova nella chat",
         "tags": [
           "impostazioni"
         ]
@@ -28865,234 +27371,6 @@
         ]
       }
     },
-    "/api/v1/telegram/daemon": {
-      "get": {
-        "operationId": "daemon_status_api_v1_telegram_daemon_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DaemonStatus"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Stato del bot Telegram",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/telegram/daemon/start": {
-      "post": {
-        "operationId": "daemon_start_api_v1_telegram_daemon_start_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DaemonStatus"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Avvia il bot Telegram come processo indipendente dall'API",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/telegram/daemon/stop": {
-      "post": {
-        "operationId": "daemon_stop_api_v1_telegram_daemon_stop_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DaemonStatus"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Ferma il bot Telegram",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
     "/api/v1/telegram/notifications": {
       "get": {
         "operationId": "notifications_api_v1_telegram_notifications_get",
@@ -29181,7 +27459,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Ultime notifiche inviate dal bot (lezione pronta, issue, prove dei topic)",
+        "summary": "Ultime notifiche inviate (lezione pronta, decisioni, errori, prove)",
         "tags": [
           "impostazioni"
         ]

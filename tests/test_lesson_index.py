@@ -1,14 +1,11 @@
 import os
-import pytest
 from rt.core.lesson_index import (
-    LessonEntry,
     scan_lessons,
     filter_by_materia,
     filter_unmapped,
     filter_by_date,
     filter_by_keyword,
 )
-from rt.telegram.lesson_query import resolve_recall_query, MAX_INLINE_DISAMBIGUATION
 
 
 def _create_fake_lesson(root_dir, folder_name, materia, date, titolo, argomenti):
@@ -63,41 +60,3 @@ def test_scan_lessons_and_filters(tmp_path):
     assert kw_cuore[0].materia == "ANATOMIA"
 
 
-def test_resolve_recall_query(tmp_path):
-    root = str(tmp_path)
-    _create_fake_lesson(root, "2026-03-10_biochimica_lipidi", "BIOCHIMICA", "2026-03-10", "Lipidi", "Lipidi e Colesterolo - introduzione")
-    _create_fake_lesson(root, "2026-03-10_biochimica_colesterolo", "BIOCHIMICA", "2026-03-10", "Biosintesi Colesterolo", "Colesterolo")
-    _create_fake_lesson(root, "2026-03-11_biochimica_enzimi", "BIOCHIMICA", "2026-03-11", "Enzimi", "Cinetica")
-
-    entries = scan_lessons(root)
-
-    # 1. Query per data flessibile ("10 marzo 2026") -> mode="date", 2 match
-    mode, matches = resolve_recall_query(entries, "10 marzo 2026")
-    assert mode == "date"
-    assert len(matches) == 2
-
-    # 2. Query per keyword ("enzimi") -> mode="keyword", 1 match
-    mode, matches = resolve_recall_query(entries, "enzimi")
-    assert mode == "keyword"
-    assert len(matches) == 1
-    assert matches[0].folder_name == "2026-03-11_biochimica_enzimi"
-
-    # 3. Query composta ("10-03-2026 - Lipidi") -> mode="date_and_keyword", 1 match
-    mode, matches = resolve_recall_query(entries, "10-03-2026 - Lipidi")
-    assert mode == "date_and_keyword"
-    assert len(matches) == 1
-    assert matches[0].folder_name == "2026-03-10_biochimica_lipidi"
-
-    # 4. Caso limite: query che sembra data ma non lo è ("99-99-9999") -> fallback a keyword
-    mode, matches = resolve_recall_query(entries, "99-99-9999")
-    assert mode == "keyword"
-    assert len(matches) == 0
-
-    # 5. Caso limite: data valida senza risultati ("2026-12-31") -> mode="date", 0 match
-    mode, matches = resolve_recall_query(entries, "2026-12-31")
-    assert mode == "date"
-    assert len(matches) == 0
-
-    # 6. Caso limite: keyword che contiene letteralmente " - " senza data valida ("non_data - parola") -> mode="keyword"
-    mode, matches = resolve_recall_query(entries, "non_data - parola")
-    assert mode == "keyword"

@@ -4,15 +4,13 @@ RT4-F6: endpoint delle immagini della lezione (elenco e file per l'anteprima), '
 e bot Telegram finto usati dai test end-to-end della SPA.
 """
 import os
-import subprocess
-import sys
 
 import pytest
 
 from rt.services.jobs import DbJobQueue
 from rt.services.worker import Worker, mock_payload
 from tests.api_support import isolated_workspace, make_lesson, run_mock_pipeline
-from tests.golden_support import AUDIO_FIXTURE, PROJECT_ROOT
+from tests.golden_support import AUDIO_FIXTURE
 
 
 @pytest.fixture
@@ -95,28 +93,6 @@ def test_voice_answer_in_mock_skips_stt(api_client, ws, rt_db):
     voice = [a for a in answers if a["question_id"] == question["id"]]
     assert voice and voice[-1]["is_voice"] and voice[-1]["answer_text"] == MOCK_VOICE_TRANSCRIPT
     assert voice[-1]["evaluation"]
-
-
-def test_fake_telegram_daemon_start_stop(tmp_path, monkeypatch):
-    """RT_TELEGRAM_FAKE=1: 'rt telegram-daemon' prende il PID file senza contattare Telegram."""
-    from rt.telegram import daemon_status as ds
-    pid_path = str(tmp_path / "home" / ".rt" / "telegram_daemon.pid")
-    env = {**os.environ, "HOME": str(tmp_path / "home"), "RT_TELEGRAM_FAKE": "1", "PYTHONPATH": PROJECT_ROOT}
-    proc = subprocess.Popen([sys.executable, "-m", "rt.cli", "telegram-daemon"], cwd=PROJECT_ROOT, env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    try:
-        import time
-        deadline = time.monotonic() + 20
-        while ds.get_daemon_pid(pid_path) is None and time.monotonic() < deadline:
-            assert proc.poll() is None, proc.stderr.read()
-            time.sleep(0.1)
-        assert ds.get_daemon_pid(pid_path) == proc.pid
-        proc.terminate()
-        assert proc.wait(timeout=10) == 0
-        assert ds.get_daemon_pid(pid_path) is None
-    finally:
-        if proc.poll() is None:
-            proc.kill()
 
 
 def test_web_search_requires_searxng_before_enqueue(api_client, ws, rt_db):

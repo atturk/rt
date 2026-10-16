@@ -179,20 +179,16 @@ def check_services() -> List[Check]:
             st = sm.status(name)
             label = f"Servizio {name}"
             if not st.installed:
-                level = WARN if name != "bot" else OK
-                out.append(Check(label, level, "non installato" + ("" if name != "bot" else " (facoltativo)"),
-                                 "" if name == "bot" else f"Esegui 'rt service install {name}'."))
+                out.append(Check(label, WARN, "non installato", f"Esegui 'rt service install {name}'."))
             elif st.running:
                 out.append(Check(label, OK, f"attivo (pid {st.pid})" if st.pid else "attivo"))
-            elif name == "bot":
-                out.append(Check(label, OK, "installato, fermo (parte quando configuri Telegram)"))
             else:
                 out.append(Check(label, FAIL, "installato ma fermo" + (f" (ultima uscita {st.last_exit})" if st.last_exit else ""),
                                  f"Esegui 'rt service start {name}' e guarda {os.path.join(paths.data_dir(), 'logs', name + '.log')}."))
         for path in sm.legacy_agents():
-            out.append(Check("Bot della 3.x", WARN, f"LaunchAgent scritto a mano ancora presente: {path} "
-                             "(con il servizio bot girerebbero due bot sullo stesso token).",
-                             f"Rimuovilo: {sm.legacy_agent_hint(path)}"))
+            out.append(Check("Vecchio bot Telegram", WARN, f"servizio ancora installato: {path} "
+                             "(il bot non esiste più: Telegram manda solo notifiche).",
+                             "Esegui 'rt service install' per rimuoverlo."))
     if api_up:
         out.append(Check("Porta", OK, f"RT risponde su http://127.0.0.1:{port}"))
     elif _port_busy(port):

@@ -148,7 +148,7 @@ def test_transcription_telegram_pricing_persist(api_client, api_token, ws, tmp_p
                          json={"engine": "custom", "base_url": "http://127.0.0.1:9000/v1", "model": "whisper", "api_key": STT})
     assert res.status_code == 200, res.text
     res = api_client.put("/api/v1/settings/telegram",
-                         json={"bot_token": BOT, "chat_id": "-100777", "topics": {"biochimica": 12}, "misc_topic_id": 3})
+                         json={"bot_token": BOT, "chat_id": "-100777"})
     assert res.status_code == 200, res.text
     pricing = {"openrouter": {"model/x": {"input_per_million": 1.5, "output_per_million": 3.0}}}
     assert api_client.put("/api/v1/settings/pricing", json=pricing).status_code == 200
@@ -157,7 +157,6 @@ def test_transcription_telegram_pricing_persist(api_client, api_token, ws, tmp_p
     assert data["transcription"] == {"engine": "custom", "base_url": "http://127.0.0.1:9000/v1",
                                      "model": "whisper", "api_key_set": True}
     assert data["telegram"]["bot_token_set"] is True and data["telegram"]["chat_id_preview"] == "-1…77"
-    assert data["telegram"]["topics"] == {"BIOCHIMICA": 12} and data["telegram"]["misc_topic_id"] == 3
     assert data["pricing"] == pricing
     bad = api_client.put("/api/v1/settings/pricing", json={"openrouter": {"m": {"input_per_million": "tanto"}}})
     assert bad.status_code == 422
@@ -193,16 +192,6 @@ def test_no_json_response_contains_a_secret(api_client, ws):
             if res.headers.get("content-type", "").startswith("application/json"):
                 _no_secret(res)
                 json.loads(res.text)
-
-
-def test_telegram_daemon_status_and_guard(api_client, ws, monkeypatch):
-    import rt.telegram.daemon_status as ds
-    monkeypatch.setattr(ds, "DEFAULT_PID_PATH", str(ws + "/tg.pid"))
-    assert api_client.get("/api/v1/telegram/daemon").json() == {"running": False, "pid": None}
-    # senza token e chat configurati non parte nulla
-    res = api_client.post("/api/v1/telegram/daemon/start")
-    assert res.status_code == 409 and res.json()["error"]["code"] == "telegram_not_configured"
-    assert api_client.post("/api/v1/telegram/daemon/stop").json()["running"] is False
 
 
 def test_preferences_persist(api_client, api_token, ws):

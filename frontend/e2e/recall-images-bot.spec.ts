@@ -1,9 +1,9 @@
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, loginViaLink, tinyPdf } from './support'
 
-// Sessione di ripasso leggera, pannello Arricchimento e bot Telegram contro l'API vera. Il worker
-// gira con --mock (LLM finto) e il bot è finto (RT_TELEGRAM_FAKE=1), vedi scripts/e2e_server.py.
+// Sessione di ripasso leggera e pannello Arricchimento contro l'API vera. Il worker gira con
+// --mock (LLM finto), vedi scripts/e2e_server.py.
 
 type Lesson = { id: number; materia: string; phases: Record<string, string> }
 type Question = { id: string; type: string; status: string; question_text: string; options?: string[] | null }
@@ -110,40 +110,4 @@ test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', 
   const first = gallery.getByRole('img').first()
   await expect(first).toHaveJSProperty('complete', true)
   expect(await first.evaluate((img) => (img as unknown as { naturalWidth: number }).naturalWidth)).toBeGreaterThan(0)
-})
-
-test('bot Telegram: avvio e arresto del bot finto, stato riletto dopo la ricarica', async ({ page }) => {
-  await loginViaLink(page)
-  // Il bot sta nella sezione Telegram delle Impostazioni (4.2.2).
-  await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('link', { name: 'Impostazioni' }).click()
-  await page.getByRole('navigation', { name: 'Sezioni delle impostazioni' }).getByRole('link', { name: 'Telegram' }).click()
-  await expect(page).toHaveURL(/\/impostazioni\/telegram$/)
-  const panel = page.getByTestId('telegram-bot')
-  await expect(panel).toHaveAttribute('data-running', 'false')
-
-  const settings = await apiGet<{ telegram: { bot_token_set?: boolean; chat_id_set?: boolean } }>(page.request, '/settings')
-  if (!settings.telegram.chat_id_set) {
-    // senza token e chat il backend rifiuta l'avvio: la pagina lo spiega
-    await page.getByRole('button', { name: 'Avvia il bot' }).click()
-    await expect(panel.getByText('Salva prima token e Chat ID del bot')).toBeVisible()
-    const res = await page.request.put('/api/v1/settings/telegram', {
-      headers: authHeaders(),
-      data: { bot_token: '123456:e2e-bot-finto', chat_id: '1' },
-    })
-    expect(res.ok(), await res.text()).toBeTruthy()
-  }
-
-  await page.getByRole('button', { name: 'Avvia il bot' }).click()
-  await expect(panel).toHaveAttribute('data-running', 'true', { timeout: 15_000 })
-  await page.reload()
-  await expect(panel).toHaveAttribute('data-running', 'true')
-  const running = await apiGet<{ running: boolean; pid: number | null }>(page.request, '/telegram/daemon')
-  expect(running.running).toBe(true)
-  await expect(panel.getByRole('status')).toHaveText(`Attivo (pid ${running.pid})`)
-
-  await page.getByRole('button', { name: 'Ferma il bot' }).click()
-  await expect(panel).toHaveAttribute('data-running', 'false', { timeout: 15_000 })
-  await page.reload()
-  await expect(panel).toHaveAttribute('data-running', 'false')
-  expect((await apiGet<{ running: boolean }>(page.request, '/telegram/daemon')).running).toBe(false)
 })

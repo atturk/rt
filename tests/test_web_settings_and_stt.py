@@ -36,10 +36,9 @@ def test_web_settings_persist_and_keep_existing_route_options(tmp_path, monkeypa
         "google_test_one", "google_test_three"}
     assert job["primary"]["temperature"] == 0.2
 
-    save_telegram(project, "bot-token", "-123", [["BIOCHIMICA", "22"]], "33")
+    save_telegram(project, "", "-123")
     save_transcription(project, "custom", "http://localhost:8000/v1", "local-stt", "")
     loaded = load_config()
-    assert loaded.telegram.topics == {"BIOCHIMICA": 22}
     assert loaded.transcription.engine == "custom"
     assert loaded.transcription.timeout_seconds == 45
     assert loaded.transcription.model == "local-stt"

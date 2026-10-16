@@ -53,7 +53,6 @@ def test_task_a_supports_selected_noul_and_score_types(request_type, answer, sho
 from rt.llm.prompts import ScienceIssueList
 from rt.pipeline.review import run_review
 from rt.pipeline.ledger import apply_decisions_to_draft
-from rt.tui.issue_review import _build_science_panel
 from rt.pipeline.issue_review import _is_no_diff_issue_type
 from rt.cli import main
 
@@ -379,41 +378,6 @@ def test_task_a_never_sees_raw_transcript(tmp_path):
 # Rendering della card per ERR_REWRITE_DRIFT
 # ---------------------------------------------------------------------------
 
-def test_rewrite_drift_issue_renders_no_diff_branch():
-    unit = DraftUnit(
-        unit_id="1.1",
-        title="Titolo Unità",
-        start_segment_id="seg_000001",
-        end_segment_id="seg_000001",
-        source_segment_ids=["seg_000001"],
-        content="Testo rielaborato dell'unità che potrebbe contenere un'invenzione.",
-    )
-    iss = ScienceIssue(
-        id="sci_jevdrift_1.1",
-        type=ScienceType.ERR_REWRITE_DRIFT,
-        severity=ScienceSeverity.HIGH,
-        unit_id="1.1",
-        segment_id=None,
-        claim=unit.content,
-        reason="Il modello di pre-screening Jev ha rilevato con probabilità 0.95 ...",
-        suggested_fix=None,
-        diplomatic_question=None,
-        status="pending",
-    )
-    assert _is_no_diff_issue_type(iss) is True
-
-    rendered_text = _build_science_panel(
-        idx=0, total_count=1, iss=iss, tc="N/D",
-        sci_unit_info=f"{unit.unit_id} - {unit.title}", sci_unit=unit,
-        decisions_map={}, last_status=None,
-    )
-    rendered = rendered_text.plain
-    assert "Il modello di pre-screening Jev" in rendered
-    assert "0.95" in rendered
-    # Nessun blocco diff rosso/verde: niente prefisso "+ " di correzione, dato che
-    # suggested_fix è None per questo tipo di issue.
-    assert "\n+ " not in rendered
-
 
 # ---------------------------------------------------------------------------
 # apply_decisions_to_draft per ERR_REWRITE_DRIFT
@@ -463,7 +427,7 @@ def test_apply_decisions_to_draft_err_rewrite_drift():
 # ---------------------------------------------------------------------------
 
 def test_cli_review_shadow_jev_flag():
-    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli.run_interactive_review"), \
+    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli._print_pending_issues"), \
          patch("sys.argv", ["rt", "review", "/path/to/lesson", "--shadow-jev", "--mock"]):
         mock_run_review.return_value = {"status": "ok", "skipped": True}
         try:
@@ -476,7 +440,7 @@ def test_cli_review_shadow_jev_flag():
 
 
 def test_cli_review_without_shadow_jev_defaults_false():
-    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli.run_interactive_review"), \
+    with patch("rt.cli.run_review") as mock_run_review, patch("rt.cli._print_pending_issues"), \
          patch("sys.argv", ["rt", "review", "/path/to/lesson", "--mock"]):
         mock_run_review.return_value = {"status": "ok", "skipped": True}
         try:

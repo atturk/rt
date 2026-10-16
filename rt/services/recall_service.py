@@ -2,12 +2,10 @@
 rt.services.recall_service
 Logica di una sessione di Active Recall indipendente dal canale: stato di sessione per
 lezione, batch iniziale, scelta della prossima domanda con rifornimento, valutazione delle
-risposte, domande stale. Le interfacce sono rt.telegram.recall_channel (Telegram) e
-rt.tui.recall (terminale). Il motore delle domande resta rt.pipeline.recall.
+risposte, domande stale. L'interfaccia è la web (API). Il motore delle domande resta rt.pipeline.recall.
 """
 from rt.services.custom_question_types import question_key, type_key, resolve_type, lesson_types
 import json
-import os
 import uuid
 from typing import Any, List, Optional
 

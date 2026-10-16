@@ -8,7 +8,7 @@ import shutil
 import pytest
 
 from rt.pipeline.setup import (
-    MissingSetupFields, SetupCancelled, SetupError, resolve_setup_request, run_setup,
+    MissingSetupFields, SetupError, resolve_setup_request, run_setup,
 )
 from rt.services.context import RunContext
 from rt.services.events import ListReporter
@@ -83,45 +83,13 @@ def test_prompter_is_used_for_missing_and_invalid_fields(audio):
     assert p.invalid == ["boh"]
 
 
-def test_prompt_cancel_raises_setup_cancelled(monkeypatch):
-    import rt.cli_prompts as cp
-
-    class TTY:
-        def isatty(self):
-            return True
-
-    def _eof(*_a):
-        raise EOFError
-    monkeypatch.setattr(cp.sys, "stdin", TTY())
-    monkeypatch.setattr("builtins.input", _eof)
-    with pytest.raises(SetupCancelled):
-        cp.CliSetupPrompter().ask_date("2026-01-01")
-
-
-def test_cmd_setup_cancel_exits_zero(monkeypatch, audio):
-    import argparse
-    from rt import cli
-
-    class Cancelling:
-        def ask_audio(self, *_a):
-            raise SetupCancelled("x")
-        ask_date = ask_materia = invalid_date = ask_audio
-
-    monkeypatch.setattr("rt.cli_prompts.terminal_setup_prompter", lambda: Cancelling())
-    args = argparse.Namespace(audio=[audio], date=None, materia=None, argomenti=None, dest_dir=None,
-                              model=None, skip_transcribe=False, force=False, mock=True)
-    with pytest.raises(SystemExit) as exc:
-        cli.cmd_setup(args)
-    assert exc.value.code == 0
-
-
 def test_pipeline_without_provider_waits_for_setup_metadata(audio):
     rep = ListReporter()
-    res = run_pipeline([audio], PipelineOptions(mock=True, channel="terminal"), RunContext(reporter=rep))
+    res = run_pipeline([audio], PipelineOptions(mock=True), RunContext(reporter=rep))
     assert res.status == PipelineStatus.WAITING_FOR_DECISION
     assert res.decision.kind == "setup_metadata"
     assert res.decision.payload["missing"] == ["date", "materia"]
 
-    res = run_pipeline([audio], PipelineOptions(mock=True, auto_accept=True, rename=False, channel="terminal",
+    res = run_pipeline([audio], PipelineOptions(mock=True, auto_accept=True, rename=False,
                                                 date="2026-09-05", materia="biochimica"), RunContext())
     assert res.status == PipelineStatus.COMPLETED, res.error
