@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # anche le PR verso un branch beta (claude/rt-X.Y.Z-beta): gli installer si provano lì
+    branches: [main, 'claude/rt-*-beta']
     # 'labeled': aggiungere l'etichetta 'full-matrix' a una PR rilancia la matrice completa
     types: [opened, synchronize, reopened, labeled]
   workflow_call:
