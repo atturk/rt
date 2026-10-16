@@ -1,7 +1,7 @@
 import { Prec, StateEffect, StateField, type EditorState } from '@codemirror/state'
 import { dropCursor, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
-import { copyMaterialPage } from '@/api/images'
+import { copyMaterialPage, materialSourceId } from '@/api/images'
 import { unitRanges } from './lessonUnits'
 import { timecodeSpans } from './timecodeLock'
 
@@ -144,7 +144,7 @@ export function lessonImageUploads(options: Options) {
 
   const insertMediaItem = (
     view: EditorView,
-    item: { path?: string; alt_text?: string; in_assets?: boolean; source_name?: string; page?: number; lessonId?: number },
+    item: { path?: string; alt_text?: string; in_assets?: boolean; source_name?: string; source?: string; page?: number; lessonId?: number },
     position: number,
   ) => {
     if (view.state.readOnly) return false
@@ -157,8 +157,11 @@ export function lessonImageUploads(options: Options) {
         let finalPath = item.path || ''
         let finalAlt = item.alt_text || ''
 
-        if (!item.in_assets && item.source_name && item.page != null && item.lessonId != null) {
-          const copied = await copyMaterialPage(item.lessonId, item.source_name, item.page)
+        if (!item.in_assets) {
+          const sourceId = materialSourceId(item.source)
+          // Senza una pagina copiata in assets non si inserisce un riferimento rotto.
+          if (!sourceId || item.page == null || item.lessonId == null) return
+          const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
           finalPath = copied.path
           finalAlt = copied.alt_text
         }

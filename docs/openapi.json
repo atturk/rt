@@ -2475,6 +2475,8 @@
             "items": {
               "type": "number"
             },
+            "maxItems": 4,
+            "minItems": 4,
             "title": "Rect",
             "type": "array"
           },
@@ -2482,6 +2484,12 @@
             "default": false,
             "description": "Se True, sostituisce la pagina nel documento e in placement",
             "title": "Replace",
+            "type": "boolean"
+          },
+          "update_document": {
+            "default": true,
+            "description": "False se il testo lo cambia l'editor aperto",
+            "title": "Update Document",
             "type": "boolean"
           }
         },

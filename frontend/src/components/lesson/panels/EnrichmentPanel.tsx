@@ -7,6 +7,7 @@ import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
 import { useLessonDocument } from '@/api/hooks'
 import {
   copyMaterialPage,
+  materialSourceId,
   cropMediaImage,
   removeFromText,
   useAddImages,
@@ -205,16 +206,14 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     if (!selected.length) return
     const items: Array<{ path: string; alt_text: string }> = []
     for (const img of selected) {
-      if (!img.in_assets && img.source_name && img.page != null) {
+      if (!img.in_assets) {
+        const sourceId = materialSourceId(img.source)
+        if (!sourceId || img.page == null) continue
         try {
-          const copied = await copyMaterialPage(id, img.source_name, img.page)
+          const copied = await copyMaterialPage(id, sourceId, img.page)
           items.push({ path: copied.path, alt_text: copied.alt_text })
         } catch {
-          items.push({
-            path: `assets/images/${img.name}`,
-            alt_text:
-              img.alt_text || (img.page ? `${img.source_name}, pagina ${img.page}` : img.name),
-          })
+          // Pagina non copiata (job in corso): niente riferimento rotto nel testo.
         }
       } else {
         items.push({
@@ -250,13 +249,17 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     const selected = imageList.filter((i) => selectedNames.has(i.name))
     const names = selected.map((s) => s.name)
     if (!names.length) return
-    window.dispatchEvent(
-      new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }),
-    )
-    try {
-      await removeFromText(id, names)
-    } catch {
-      // Ignora errori se il documento è modificato dall'editor
+    if (canInsertAtCursor) {
+      // Editor aperto: il testo lo cambia l'editor e il salvataggio aggiorna il posizionamento.
+      window.dispatchEvent(
+        new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }),
+      )
+    } else {
+      try {
+        await removeFromText(id, names)
+      } catch {
+        // Lezione occupata o in modifica altrove: il testo resta com'era.
+      }
     }
     setSelectedNames(new Set())
     void refreshImages()
@@ -533,8 +536,10 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             onClose={() => setActiveCropImage(null)}
             onSave={async (cropRect, replace) => {
               try {
-                const res = await cropMediaImage(id, activeCropImage.name, cropRect, replace)
-                if (replace) {
+                const res = await cropMediaImage(
+                  id, activeCropImage.name, cropRect, replace, undefined, !canInsertAtCursor,
+                )
+                if (replace && canInsertAtCursor) {
                   window.dispatchEvent(
                     new CustomEvent('rt-editor-replace-image', {
                       detail: {

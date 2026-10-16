@@ -4598,6 +4598,12 @@ export interface components {
              * @default false
              */
             replace: boolean;
+            /**
+             * Update Document
+             * @description False se il testo lo cambia l'editor aperto
+             * @default true
+             */
+            update_document: boolean;
         };
         /** CustomQuestionType */
         CustomQuestionType: {

@@ -81,16 +81,20 @@ export function GlobalFileDrop({
       close()
 
       const target = (e.target as Element | null) ?? null
+      // Col pannello Arricchimento aperto, PDF e foto vanno ai media ovunque si rilascino, anche
+      // sul pannello; restano fuori solo il riquadro di caricamento e l'editor, che li gestiscono da sé.
+      // Stesso controllo del velo (tutti i file, non solo quelli accettati dall'import).
+      const all = Array.from(e.dataTransfer?.files ?? [])
+      if (isEnrichmentPanelOpen() && all.length > 0 && all.every(isMediaFile)) {
+        if (target instanceof Element && target.closest('[data-file-drop-target], .cm-editor')) return
+        window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DROP_EVENT, { detail: { files: all } }))
+        return
+      }
       if (isExcludedTarget(target)) return
 
       if (!e.dataTransfer || !hasAcceptedDrag(e.dataTransfer)) return
-      const files = Array.from(e.dataTransfer.files ?? []).filter(isAcceptedFile)
+      const files = all.filter(isAcceptedFile)
       if (files.length === 0) return
-
-      if (isEnrichmentPanelOpen() && files.length > 0 && files.every(isMediaFile)) {
-        window.dispatchEvent(new CustomEvent(ENRICHMENT_MEDIA_DROP_EVENT, { detail: { files } }))
-        return
-      }
 
       onDropFiles(files)
     }

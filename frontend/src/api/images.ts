@@ -63,6 +63,12 @@ export function uploadEditorImage(id: number, file: File, leaseToken: string) {
   }))
 }
 
+/** Id della fonte di una pagina dei materiali ("material:<id>:<pagina>"), null per le altre immagini. */
+export function materialSourceId(source?: string | null): string | null {
+  const match = /^material:([^:]+):\d+$/.exec(source ?? '')
+  return match ? match[1] : null
+}
+
 /** Copia una pagina dei materiali in assets/images per l'inserimento nel documento. */
 export function copyMaterialPage(id: number, sourceId: string, page: number, leaseToken?: string) {
   return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/material-page', {
@@ -86,6 +92,7 @@ export function cropMediaImage(
   rect: [number, number, number, number],
   replace: boolean = false,
   leaseToken?: string,
+  updateDocument: boolean = true,
 ) {
   return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/crop', {
     params: path(id),
@@ -94,6 +101,7 @@ export function cropMediaImage(
       rect,
       replace,
       lease_token: leaseToken ?? null,
+      update_document: updateDocument,
     },
   }))
 }

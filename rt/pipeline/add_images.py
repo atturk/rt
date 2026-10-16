@@ -468,7 +468,7 @@ def resolve_selected_images(
     """Risolve le immagini selezionate (file in assets/images o materiali delle fonti) in ExtractedImage."""
     import re
     from rt.core.sources import load_sources
-    from rt.core.materials import cached_pages, material_pages
+    from rt.core.materials import cached_pages
 
     descriptions = load_image_descriptions(lesson_dir)
     extracted: List[ExtractedImage] = []
@@ -526,27 +526,15 @@ def resolve_selected_images(
         if sources is None:
             sources = load_sources(lesson_dir)
 
-        mat_match = None
-        for s in sources:
-            if s.impronta in item or s.id in item:
-                mat_match = s
-                break
-        if mat_match is None and sources:
-            for s in sources:
-                candidate = os.path.join(lesson_dir, "materials", s.impronta, os.path.basename(item))
-                if fs.isfile(candidate):
-                    mat_match = s
-                    break
+        # Solo l'identificativo esatto "material:<id>:<pagina>" di una fonte non tolta.
+        tag = re.match(r"^material:([^:]+):(\d+)$", item)
+        mat_match = next((s for s in sources if tag and not s.rimossa_il
+                          and tag.group(1) in (s.id, s.impronta)), None)
 
         if mat_match:
-            m = re.search(r"page-(\d+)", item) or re.search(r":(\d+)$", item)
-            page_num = int(m.group(1)) if m else 1
+            page_num = int(tag.group(2))
+            # Solo le pagine già lette all'import: mai estrazioni (o testo finto) da qui.
             pages = cached_pages(lesson_dir, mat_match)
-            if not pages:
-                try:
-                    pages = material_pages(lesson_dir, mat_match, mock=True)
-                except Exception:
-                    pages = None
             page_text = ""
             img_rel = None
             if pages:

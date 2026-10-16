@@ -130,6 +130,8 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             found_hash = None
             found_desc = None
             for h, d in descriptions.items():
+                if d.get("crop_of"):
+                    continue  # i ritagli stanno accanto alla pagina, non al suo posto
                 s_tag = str(d.get("source") or "")
                 if s_tag in (f"material:{src.id}:{num}", f"material:{src.impronta}:{num}",
                              f"pdf:{src_name}#{num}", f"pdf:{src.file}#{num}"):
@@ -202,7 +204,8 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             group_name = os.path.basename(s_tag.removeprefix("folder:"))
         elif s_tag.startswith("material:"):
             parts = s_tag.split(":")
-            group_name = parts[1] if len(parts) > 1 else "Materiali"
+            source_files = {src.id: os.path.basename(src.file) for src in sources}
+            group_name = source_files.get(parts[1], "Materiali") if len(parts) > 1 else "Materiali"
             page_num = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         else:
             group_name = s_tag or "Altre immagini"
@@ -297,9 +300,11 @@ def remove_from_text(
 
 class CropImageRequest(BaseModel):
     image_name: str = Field(..., description="Nome o identificativo dell'immagine da ritagliare")
-    rect: list[float] = Field(..., description="Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0")
+    rect: list[float] = Field(..., min_length=4, max_length=4,
+                              description="Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0")
     replace: bool = Field(False, description="Se True, sostituisce la pagina nel documento e in placement")
     lease_token: Optional[str] = Field(None, description="Token di lease dell'editor se aperto")
+    update_document: bool = Field(True, description="False se il testo lo cambia l'editor aperto")
 
 
 @router.post("/lessons/{lesson_id}/media/crop", response_model=EditorImage, status_code=201,
@@ -318,6 +323,7 @@ def crop_media(
         rect=req.rect,
         replace=req.replace,
         lease_token=req.lease_token,
+        update_document=req.update_document,
     )
     return EditorImage(**res)
 

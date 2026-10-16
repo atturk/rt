@@ -184,6 +184,7 @@ export function MediaGallery({
                                 img.alt_text ||
                                 (img.page ? `${img.source_name}, pagina ${img.page}` : img.name),
                               source_name: img.source_name,
+                              source: img.source,
                               page: img.page,
                               in_assets: img.in_assets,
                               lessonId,
