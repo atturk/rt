@@ -116,7 +116,7 @@ def choose_port(say: Callable[[str], None] = print) -> int:
     programma ne sceglie una libera e la ricorda, così 'rt web' e i servizi la ritrovano.
     Con RT_API_PORT decide l'utente e non si cambia niente."""
     port = api_port()
-    if _valid_port(os.environ.get(PORT_ENV)) or api_is_up(port) or not port_busy(port):
+    if _valid_port(os.environ.get(PORT_ENV)) or not port_busy(port) or api_is_up(port):
         return port
     chosen = _free_port(port)
     try:

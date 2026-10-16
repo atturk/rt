@@ -22,7 +22,7 @@ def occupied():
     """Un altro programma in ascolto su una porta (non RT: niente /api/v1/health)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
-    s.listen(1)
+    s.listen(16)  # sul Mac una coda piena rifiuta le connessioni successive
     yield s.getsockname()[1]
     s.close()
 
