@@ -157,19 +157,23 @@ def test_variants_are_verified_and_discarded_when_the_solution_does_not_match(tm
     recall.generate_recall_batch(path, CASO, None, [], force_mock=True)
     template = recall.load_recall_bank(path).templates[0]
     variant = GeneratedTextVariant(question_text='Paziente con pH 7,30 e pCO2 55')
-    calls = [variant, VariantCheck(coerente=False, problemi='pCO2 incoerente'),
-             variant.model_copy(update={'question_text': 'Paziente con pH 7,32 e pCO2 52'}), VariantCheck(coerente=True)]
+    second = variant.model_copy(update={'question_text': 'Paziente con pH 7,32 e pCO2 52'})
+    calls = [recall_special.TextVariantBatch(items=[variant, second]),
+             VariantCheck(coerente=False, problemi='pCO2 incoerente'), VariantCheck(coerente=True)]
+    summary = {}
     with patch.object(recall_special, '_mock', return_value=False), \
             patch('rt.llm.client.LLMClient.call_structured', side_effect=calls) as call:
-        question = recall_special.generate_variant(path, template.id)
-    assert call.call_args_list[0].kwargs['response_model'] is GeneratedTextVariant
+        questions = recall_special.generate_variants(path, template.id, 2, summary=summary)
+    assert call.call_args_list[0].kwargs['response_model'] is recall_special.TextVariantBatch
+    question = questions[0]
     assert question.pregenerated_material is None
     assert 'SOLUZIONE PROPOSTA' not in call.call_args_list[1].kwargs['prompt']
     assert question.question_text.endswith('pCO2 52') and question.variant == 1 and question.template_id == template.id
-    assert 'pCO2 incoerente' in call.call_args_list[2].kwargs['prompt']
+    assert summary['verification_discarded'] == 1 and call.call_count == 3
     with patch.object(recall_special, '_mock', return_value=False), \
-            patch('rt.llm.client.LLMClient.call_structured', side_effect=[variant, VariantCheck(coerente=False)] * 2):
+            patch('rt.llm.client.LLMClient.call_structured', side_effect=[recall_special.TextVariantBatch(items=[variant]), VariantCheck(coerente=False)]) as call:
         assert recall_special.generate_variant(path, template.id) is None
+    assert call.call_count == 2  # Nessun tentativo aggiuntivo: nuovo giro nel batch.
     assert recall.load_recall_bank(path).templates[0].variants == 1
 
 
@@ -180,7 +184,7 @@ def test_refill_of_an_exhausted_pool_creates_variants(tmp_path):
     recall.record_recall_answer(path, asked.id, 'risposta')
     assert recall_service.is_low(path, CASO) and recall.generation_available(path, CASO, force_mock=True)
     refill = recall.generate_recall_batch(path, CASO, 4, [], force_mock=True, shuffle=True)
-    assert len(refill) == 1 and refill[0].variant == 1 and 'Variante mock' in refill[0].question_text
+    assert len(refill) == 4 and refill[0].variant == 1 and 'Variante mock' in refill[0].question_text
 
 
 def test_special_answers_are_evaluated_on_the_reasoning(tmp_path):

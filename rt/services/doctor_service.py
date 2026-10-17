@@ -5,7 +5,6 @@ servizi e porta, e per ogni problema dice come sistemarlo. Nessun controllo modi
 """
 import os
 import shutil
-import socket
 import sys
 from dataclasses import asdict, dataclass
 from typing import Callable, List, Optional
@@ -171,12 +170,6 @@ def check_spa() -> Check:
     return Check("Web app", FAIL, "interfaccia web non installata.", "Esegui 'rt -u' (scarica la web app della release).")
 
 
-def _port_busy(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.5)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
 def check_services() -> List[Check]:
     from rt.services import service_manager as sm
     port = sm.api_port()
@@ -199,9 +192,10 @@ def check_services() -> List[Check]:
                              "Esegui 'rt service install' per rimuoverlo."))
     if api_up:
         out.append(Check("Porta", OK, f"RT risponde su http://127.0.0.1:{port}"))
-    elif _port_busy(port):
+    elif sm.port_busy(port):
         out.append(Check("Porta", FAIL, f"la porta {port} è occupata da un altro programma.",
-                         f"Libera la porta o scegline un'altra: RT_API_PORT=<porta> rt service install api."))
+                         "Apri l'app RT: sceglie da sola un'altra porta libera. Da terminale: "
+                         "RT_API_PORT=<porta> rt service install api."))
     else:
         out.append(Check("Porta", OK if not sm.supported() or not sm.installed(["api"]) else WARN,
                          f"porta {port} libera" + (" ma l'API non risponde" if sm.installed(["api"]) else ""),

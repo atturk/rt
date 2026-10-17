@@ -93,7 +93,9 @@ def test_rt_web_starts_the_spa_by_default(monkeypatch):
     for argv in (["web", "--no-browser"], ["web", "--spa", "--no-browser"]):  # --spa: vecchio alias
         cmd_web(parser.parse_args(argv))
     cmd_web(parser.parse_args(["web", "--port", "9000"]))
-    assert calls == [(8765, False), (8765, False), (9000, True)]
+    from rt.services.service_manager import api_port
+    # senza --port vale la porta di RT (8765, quella ricordata dall'app o RT_API_PORT)
+    assert calls == [(api_port(), False), (api_port(), False), (9000, True)]
 
 
 def test_worker_command_runs_rt_worker():

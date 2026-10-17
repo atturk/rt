@@ -7,6 +7,7 @@ import { useJobs } from '@/api/jobs'
 import { JobLive } from '@/components/jobs/JobLive'
 import { JobStateBadge, WorkerWarning } from '@/components/jobs/JobParts'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { UploadList } from '@/components/jobs/UploadList'
 import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
 import { Card } from '@/components/ui/card'
@@ -67,6 +68,7 @@ export function JobsPage() {
         </p>
       )}
       <WorkerWarning />
+      <UploadList />
       {jobs.isError && <Alert tone="danger">{errorMessage(jobs.error)}</Alert>}
       {jobs.isPending && <p className="text-sm text-muted-foreground">Carico i job…</p>}
       {jobs.data?.length === 0 && <Card className="p-6 text-sm text-muted-foreground">Nessun job.</Card>}

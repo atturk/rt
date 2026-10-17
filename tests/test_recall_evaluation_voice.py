@@ -65,7 +65,7 @@ class TestEvaluateRecallAnswer:
         def fake_call_structured(self, prompt, system_prompt, response_model, **kwargs):
             captured_prompts["prompt"] = prompt
             captured_prompts["job_name"] = kwargs.get("job_name")
-            return response_model(commento="Copre 2 punti su 3, manca il deposito.")
+            return response_model(correttezza=75, completezza=65, commento="Copre 2 punti su 3, manca il deposito.", outcome="parziale")
 
         with patch("rt.llm.client.LLMClient.call_structured", fake_call_structured):
             result = evaluate_recall_answer(lesson_dir, "recall_2", "Viene assorbito e trasportato.", force_mock=False)

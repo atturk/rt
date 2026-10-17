@@ -359,6 +359,27 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "pages_only": {
+            "default": false,
+            "description": "Estrae solo le pagine nei media senza descriverle né collocarle",
+            "title": "Pages Only",
+            "type": "boolean"
+          },
+          "selected_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nomi o hash delle immagini selezionate da collocare",
+            "title": "Selected Images"
+          },
           "units": {
             "anyOf": [
               {
@@ -529,6 +550,11 @@
             "title": "Run",
             "type": "boolean"
           },
+          "unisci": {
+            "default": true,
+            "title": "Unisci",
+            "type": "boolean"
+          },
           "with_enrichment": {
             "anyOf": [
               {
@@ -618,6 +644,11 @@
             ],
             "title": "Tipo",
             "type": "string"
+          },
+          "unisci": {
+            "default": true,
+            "title": "Unisci",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1974,6 +2005,19 @@
               }
             ],
             "title": "Model"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           }
         },
         "title": "ClassifierJobConfig",
@@ -2127,6 +2171,20 @@
             "title": "Request Type",
             "type": "string"
           },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.8,
+            "title": "Threshold"
+          },
           "timeout_seconds": {
             "title": "Timeout Seconds",
             "type": "number"
@@ -2186,6 +2244,39 @@
           "section_id"
         ],
         "title": "ClassifierUnit",
+        "type": "object"
+      },
+      "CompactAudioPreview": {
+        "properties": {
+          "bytes_convertibili": {
+            "title": "Bytes Convertibili",
+            "type": "integer"
+          },
+          "bytes_orfani": {
+            "title": "Bytes Orfani",
+            "type": "integer"
+          },
+          "file_convertibili": {
+            "title": "File Convertibili",
+            "type": "integer"
+          },
+          "file_orfani": {
+            "title": "File Orfani",
+            "type": "integer"
+          },
+          "spazio_stimato_liberato": {
+            "title": "Spazio Stimato Liberato",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_convertibili",
+          "bytes_convertibili",
+          "file_orfani",
+          "bytes_orfani",
+          "spazio_stimato_liberato"
+        ],
+        "title": "CompactAudioPreview",
         "type": "object"
       },
       "Connection": {
@@ -2388,6 +2479,55 @@
           "model"
         ],
         "title": "CredentialTest",
+        "type": "object"
+      },
+      "CropImageRequest": {
+        "properties": {
+          "image_name": {
+            "description": "Nome o identificativo dell'immagine da ritagliare",
+            "title": "Image Name",
+            "type": "string"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Token di lease dell'editor se aperto",
+            "title": "Lease Token"
+          },
+          "rect": {
+            "description": "Rettangolo relativo [left, top, width, height] tra 0.0 e 1.0",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Rect",
+            "type": "array"
+          },
+          "replace": {
+            "default": false,
+            "description": "Se True, sostituisce la pagina nel documento e in placement",
+            "title": "Replace",
+            "type": "boolean"
+          },
+          "update_document": {
+            "default": true,
+            "description": "False se il testo lo cambia l'editor aperto",
+            "title": "Update Document",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "image_name",
+          "rect"
+        ],
+        "title": "CropImageRequest",
         "type": "object"
       },
       "CustomQuestionType": {
@@ -5241,7 +5381,8 @@
             "default": "markdown",
             "enum": [
               "markdown",
-              "zip"
+              "zip",
+              "sources"
             ],
             "title": "Format",
             "type": "string"
@@ -5282,6 +5423,36 @@
             "title": "Alt Text",
             "type": "string"
           },
+          "crop_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Indice progressivo del ritaglio per la pagina",
+            "title": "Crop Index"
+          },
+          "crop_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hash o identificativo dell'immagine originale se ritaglio",
+            "title": "Crop Of"
+          },
+          "in_assets": {
+            "default": true,
+            "description": "True se il file è già presente in assets/images",
+            "title": "In Assets",
+            "type": "boolean"
+          },
           "in_document": {
             "description": "True se il documento la richiama (finale se aggiornato, altrimenti l'anteprima dalla bozza)",
             "title": "In Document",
@@ -5296,9 +5467,21 @@
             "type": "array"
           },
           "name": {
-            "description": "Nome del file in assets/images",
+            "description": "Nome del file in assets/images o identificativo",
             "title": "Name",
             "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numero di pagina per documenti multipagina",
+            "title": "Page"
           },
           "slide_title": {
             "default": "",
@@ -5307,9 +5490,23 @@
           },
           "source": {
             "default": "",
-            "description": "Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>",
+            "description": "Origine: pdf:<file>#<pagina>, folder:<file>, websearch:<query>, material:...",
             "title": "Source",
             "type": "string"
+          },
+          "source_name": {
+            "default": "",
+            "description": "Nome leggibile della fonte: nome del file, Dal web, Dall'editor",
+            "title": "Source Name",
+            "type": "string"
+          },
+          "units": {
+            "description": "Unità in cui compare nel documento",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
           },
           "url": {
             "description": "Percorso dell'API che serve il file",
@@ -5887,6 +6084,35 @@
           "at"
         ],
         "title": "ManualValidation",
+        "type": "object"
+      },
+      "MaterialPageRequest": {
+        "properties": {
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "page"
+        ],
+        "title": "MaterialPageRequest",
         "type": "object"
       },
       "Me": {
@@ -7663,6 +7889,123 @@
         "title": "RecallRestored",
         "type": "object"
       },
+      "RecallRuleEdit": {
+        "properties": {
+          "rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "subject",
+          "rules"
+        ],
+        "title": "RecallRuleEdit",
+        "type": "object"
+      },
+      "RecallRuleGroup": {
+        "properties": {
+          "rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "votes": {
+            "title": "Votes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "type",
+          "subject",
+          "rules",
+          "votes"
+        ],
+        "title": "RecallRuleGroup",
+        "type": "object"
+      },
+      "RecallRuleUpdate": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "subject"
+        ],
+        "title": "RecallRuleUpdate",
+        "type": "object"
+      },
+      "RecallRulesView": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/RecallRuleGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "presave_check": {
+            "default": true,
+            "title": "Presave Check",
+            "type": "boolean"
+          },
+          "votes_enabled": {
+            "default": true,
+            "title": "Votes Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "title": "RecallRulesView",
+        "type": "object"
+      },
       "RecallSavedEvaluation": {
         "properties": {
           "answer_text": {
@@ -8109,6 +8452,49 @@
           "vote"
         ],
         "title": "RecallVote",
+        "type": "object"
+      },
+      "RecallVoteSettings": {
+        "properties": {
+          "presave_check": {
+            "default": true,
+            "title": "Presave Check",
+            "type": "boolean"
+          },
+          "votes_enabled": {
+            "default": true,
+            "title": "Votes Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "RecallVoteSettings",
+        "type": "object"
+      },
+      "RemoveFromTextRequest": {
+        "properties": {
+          "image_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Names",
+            "type": "array"
+          },
+          "lease_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Token"
+          }
+        },
+        "required": [
+          "image_names"
+        ],
+        "title": "RemoveFromTextRequest",
         "type": "object"
       },
       "RevealIn": {
@@ -8695,6 +9081,31 @@
             "title": "Ordine",
             "type": "integer"
           },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
+          },
+          "rimossa_il": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rimossa Il"
+          },
           "tipo": {
             "enum": [
               "audio",
@@ -8730,6 +9141,41 @@
           "ids"
         ],
         "title": "SourceOrder",
+        "type": "object"
+      },
+      "SourcePart": {
+        "properties": {
+          "durata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata"
+          },
+          "durata_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durata S"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nome"
+        ],
+        "title": "SourcePart",
         "type": "object"
       },
       "SourcePrimary": {
@@ -8805,6 +9251,31 @@
             ],
             "title": "Parole"
           },
+          "parti": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourcePart"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parti"
+          },
+          "rimossa_il": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rimossa Il"
+          },
           "tipo": {
             "enum": [
               "audio",
@@ -8837,6 +9308,14 @@
           "can_undo": {
             "title": "Can Undo",
             "type": "boolean"
+          },
+          "fonti_tolte_usate": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fonti Tolte Usate",
+            "type": "array"
           },
           "has_unused_sources": {
             "title": "Has Unused Sources",
@@ -9027,6 +9506,12 @@
             ],
             "title": "Applied Decision Id"
           },
+          "correzione_html": {
+            "default": "",
+            "description": "Correzione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato",
+            "title": "Correzione Html",
+            "type": "string"
+          },
           "cost": {
             "anyOf": [
               {
@@ -9110,6 +9595,12 @@
             "additionalProperties": true,
             "title": "Response",
             "type": "object"
+          },
+          "spiegazione_html": {
+            "default": "",
+            "description": "Spiegazione Markdown resa con il renderer sicuro di RT; HTML grezzo escapato",
+            "title": "Spiegazione Html",
+            "type": "string"
           },
           "unit_fingerprint": {
             "title": "Unit Fingerprint",
@@ -12607,16 +13098,17 @@
             }
           },
           {
-            "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+            "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione",
             "in": "query",
             "name": "format",
             "required": false,
             "schema": {
               "default": "markdown",
-              "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione",
+              "description": "markdown: i documenti finali aggiornati; zip: l'archivio completo di ogni lezione; sources: le fonti di ogni lezione",
               "enum": [
                 "markdown",
-                "zip"
+                "zip",
+                "sources"
               ],
               "title": "Format",
               "type": "string"
@@ -15644,16 +16136,17 @@
             }
           },
           {
-            "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+            "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file)",
             "in": "query",
             "name": "scope",
             "required": false,
             "schema": {
               "default": "final",
-              "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso",
+              "description": "final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file)",
               "enum": [
                 "final",
-                "all"
+                "all",
+                "sources"
               ],
               "title": "Scope",
               "type": "string"
@@ -16626,6 +17119,208 @@
         ]
       }
     },
+    "/api/v1/lessons/{lesson_id}/materials/{impronta}/{name}": {
+      "get": {
+        "operationId": "get_material_image_api_v1_lessons__lesson_id__materials__impronta___name__get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "impronta",
+            "required": true,
+            "schema": {
+              "title": "Impronta",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "File di una pagina dei materiali",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/crop": {
+      "post": {
+        "operationId": "crop_media_api_v1_lessons__lesson_id__media_crop_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CropImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ritaglia un'immagine o pagina (nuova immagine o sostituzione)",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
     "/api/v1/lessons/{lesson_id}/media/images": {
       "post": {
         "operationId": "upload_editor_image_api_v1_lessons__lesson_id__media_images_post",
@@ -16720,6 +17415,202 @@
           }
         ],
         "summary": "Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/material-page": {
+      "post": {
+        "operationId": "copy_material_page_api_v1_lessons__lesson_id__media_material_page_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorImage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copia una pagina dei materiali in assets/images",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/remove-from-text": {
+      "post": {
+        "operationId": "remove_from_text_api_v1_lessons__lesson_id__media_remove_from_text_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFromTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Toglie immagini dal testo e da placement",
         "tags": [
           "immagini"
         ]
@@ -20498,6 +21389,95 @@
           }
         ],
         "summary": "Put Source Primary",
+        "tags": [
+          "lezioni"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/sources/restore-removed": {
+      "post": {
+        "operationId": "post_restore_removed_api_v1_lessons__lesson_id__sources_restore_removed_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rimette le fonti tolte già usate nel testo corrente",
         "tags": [
           "lezioni"
         ]
@@ -25940,6 +26920,342 @@
         ]
       }
     },
+    "/api/v1/settings/recall-rules": {
+      "get": {
+        "operationId": "recall_rules_api_v1_settings_recall_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallRulesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recall Rules",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      },
+      "put": {
+        "operationId": "edit_recall_rules_api_v1_settings_recall_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRuleEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallRulesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Recall Rules",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/recall-rules/update": {
+      "post": {
+        "operationId": "update_recall_rules_api_v1_settings_recall_rules_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Recall Rules",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/recall-votes": {
+      "put": {
+        "operationId": "recall_votes_api_v1_settings_recall_votes_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallVoteSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallRulesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recall Votes",
+        "tags": [
+          "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/routes/{job}/{role}": {
       "get": {
         "operationId": "get_route_api_v1_settings_routes__job___role__get",
@@ -27396,6 +28712,58 @@
           }
         ],
         "summary": "Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio": {
+      "post": {
+        "operationId": "start_compact_audio_api_v1_system_compact_audio_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Avvia il job per convertire in m4a i wav/flac e cancellare gli audio uniti orfani",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/compact-audio/preview": {
+      "get": {
+        "operationId": "preview_compact_audio_endpoint_api_v1_system_compact_audio_preview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompactAudioPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani",
         "tags": [
           "sistema"
         ]

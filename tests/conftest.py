@@ -67,6 +67,7 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
     RT_DATA_DIR è tolta e la cartella dati predefinita punta a un percorso vuoto. I test della
     cartella dati impostano RT_DATA_DIR da sé."""
     monkeypatch.delenv("RT_DATA_DIR", raising=False)
+    monkeypatch.setenv("RT_API_PORT", "65432")
     monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(tmp_path_factory.getbasetemp() / "no-data-dir"))
 
 

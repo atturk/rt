@@ -116,7 +116,7 @@ test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', a
   expect(markdown).toContain('# ')
 
   download = page.waitForEvent('download')
-  await (await exportItem(page, /zip/i)).click()
+  await (await exportItem(page, /^Tutti i dati/)).click()
   const zip = readFileSync((await (await download).path())!)
   expect((await download).suggestedFilename()).toMatch(/\.zip$/)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
@@ -172,8 +172,10 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
   await actions.getByRole('button', { name: 'Esporta' }).click()
   const menu = page.getByRole('menu', { name: 'Esporta' })
-  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^Tutti i dati \(zip\)/])
-  for (const item of await menu.getByRole('menuitem').all()) {
+  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^Tutti i dati \(zip\)/, /^Solo le fonti \(zip\)/])
+  // Le fonti si scaricano anche prima della rielaborazione
+  await expect(menu.getByRole('menuitem', { name: /^Solo le fonti/ })).not.toHaveAttribute('aria-disabled', 'true')
+  for (const item of (await menu.getByRole('menuitem').all()).slice(0, 2)) {
     await expect(item).toHaveAttribute('aria-disabled', 'true')
     await expect(item).not.toHaveAttribute('title')
     await item.hover()

@@ -1,6 +1,7 @@
 import { type EditorState, type Extension, type Range, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, WidgetType } from '@codemirror/view'
 import type { UnitTask } from './lessonWorkflow'
+import { findMarkdownImageStrips } from './lessonImageStrips'
 
 /**
  * Le unità nel Markdown dell'editor della lezione: dal titolo `### 1.1 Titolo` fino al titolo
@@ -136,16 +137,26 @@ class LessonImageWidget extends WidgetType {
   }
 }
 
+
 /**
  * Immagini della lezione nell'editor: il Markdown dice `assets/images/x.png`, il browser le
  * trova sotto l'API (come withImageUrls per la lettura). atomic-editor non ha un risolutore,
  * quindi si corregge l'src delle <img> che disegna; quelle che salta (didascalie con [ ], come
  * "[MOCK] …") le disegna un riquadro nostro sotto la riga.
+ * Le immagini consecutive (strisce) sono gestite da lessonImageStrips e vengono saltate qui.
  */
 export function lessonImages(lessonId: number): Extension {
   const build = (state: EditorState): DecorationSet => {
+    const strips = findMarkdownImageStrips(state, lessonId)
+    const stripLines = new Set<number>()
+    for (const s of strips) {
+      for (let ln = s.startLine; ln <= s.endLine; ln++) {
+        stripLines.add(ln)
+      }
+    }
     const ranges: Range<Decoration>[] = []
     for (let n = 1; n <= state.doc.lines; n++) {
+      if (stripLines.has(n)) continue
       const line = state.doc.line(n)
       const text = line.text.trim()
       const m = LOCAL_IMAGE_RE.exec(text)

@@ -45,7 +45,7 @@ def test_audio_insertion_transcribes_only_new_source_and_shifts_times(tmp_path, 
     prepare_source_update(lesson)
     assert len(calls) == 1
     remove_source(lesson, source.id)
-    assert sources_pending(lesson)
+    assert not sources_pending(lesson)
     assert prepare_source_update(lesson)["segments"][0].start_seconds == 0
 
 
@@ -94,3 +94,47 @@ def test_legacy_lesson_with_missing_audio_can_add_notes(tmp_path, monkeypatch):
     assert result["status"] == "draft_validated"
     assert _read_state(lesson)["sources"]["src_000001"]["duration"] == 1
     assert [s.text_raw for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["original", "notes"]
+
+
+def test_prepare_source_update_cleans_up_old_merged_audio(tmp_path, monkeypatch):
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    from rt.core.sources import load_sources
+    load_sources(lesson)
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda p: 2.0)
+    old_merged = tmp_path / "audio-old123.m4a"
+    old_merged.write_bytes(b"old merged audio")
+    from rt.core.state import update_info_yaml
+    update_info_yaml(str(tmp_path / "info.yaml"), {"file_audio": "audio-old123.m4a"})
+    prepare_source_update(lesson)
+    assert not old_merged.exists()
+
+
+def test_prepare_source_update_multiple_audios_cleans_previous_merged(tmp_path, monkeypatch):
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    from rt.core.sources import load_sources
+    load_sources(lesson)
+    monkeypatch.setattr("rt.pipeline.source_update._duration", lambda p: 2.0)
+    old_merged = tmp_path / "audio-previous.m4a"
+    old_merged.write_bytes(b"previous merged audio")
+    from rt.core.state import update_info_yaml
+    update_info_yaml(str(tmp_path / "info.yaml"), {"file_audio": "audio-previous.m4a"})
+    write_audio(tmp_path / "second.wav", 2)
+    monkeypatch.setattr("rt.pipeline.setup.transcode_audio_for_storage", lambda inp, out: False)
+    add_source(lesson, "audio", "second.wav", (tmp_path / "second.wav").read_bytes())
+    monkeypatch.setattr("rt.pipeline.source_update._transcribe", lambda p, m: [
+        Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=1,
+                start_formatted="00:00", end_formatted="00:01", text_raw="new")
+    ])
+    def mock_merge(paths, target):
+        with open(target, "wb") as f:
+            f.write(b"new merged")
+    monkeypatch.setattr("rt.pipeline.setup.merge_audio_for_transcription", mock_merge)
+    prepare_source_update(lesson)
+    assert not old_merged.exists()
+    from rt.core.state import read_info_yaml
+    new_audio = read_info_yaml(str(tmp_path / "info.yaml")).get("file_audio")
+    assert new_audio.startswith("audio-") and new_audio != "audio-previous.m4a"
+    assert (tmp_path / new_audio).exists()
+

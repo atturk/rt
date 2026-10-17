@@ -122,13 +122,13 @@ def test_estendi_rejected_before_writing_when_removed_source_empties_unit(tmp_pa
         raise AssertionError("Estendi impossibile: niente da preparare")
     source_update.prepare_source_update = must_not_prepare
     try:
-        with pytest.raises(ValidationError, match="svuota"):
+        with pytest.raises(ValueError, match="Ricostruisci"):
             run_source_update(lesson, mock=True)
     finally:
         source_update.prepare_source_update = prepare
     assert _files(tmp_path) == before
     assert (tmp_path / "update_snapshot.json").read_bytes() == pointer
-    assert sources_pending(lesson)
+    assert not sources_pending(lesson)
     # Ricostruisci invece riesce e usa le fonti in attesa.
     result = run_source_update(lesson, mode="rebuild", mock=True)
     assert result["status"] == "draft_validated"

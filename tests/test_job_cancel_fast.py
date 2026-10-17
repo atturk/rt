@@ -147,7 +147,7 @@ def test_generation_reports_each_unit_and_stops_before_the_next(tmp_path):
 
     def answer(**kwargs):
         token.cancel()  # annullato mentre il recaller risponde sulla prima unità
-        return RecallMirataGenerationResult.model_validate({"questions": [{"type": "mirata", "question_text": "Primo?"}]})
+        return RecallMirataGenerationResult.model_validate({"questions": [{"type": "mirata", "question_text": "Qual è il contenuto primo?"}]})
 
     with patch("rt.llm.client.LLMClient.call_structured", side_effect=answer) as call, use_cancel_token(token):
         with pytest.raises(RunCancelled):
@@ -159,5 +159,5 @@ def test_generation_reports_each_unit_and_stops_before_the_next(tmp_path):
     assert any(m.startswith("Mirata · unità 1.1") and "1 domanda nuova" in m for m in messages)
     assert not any("1.2" in m for m in messages)
     # la domanda già ricevuta resta nel pool
-    assert [q.question_text for q in recall.load_recall_bank(path).questions] == ["Primo?"]
+    assert [q.question_text for q in recall.load_recall_bank(path).questions] == ["Qual è il contenuto primo?"]
     json.dumps(events)  # gli eventi finiscono nel DB: devono essere serializzabili

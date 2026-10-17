@@ -228,7 +228,7 @@ describe('StudyFlow unit navigation', () => {
 
     fireEvent.click(generate)
     fireEvent.click(screen.getByRole('button', { name: 'Query SQL' }))
-    fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
     fireEvent.click(screen.getByTestId('study-generate-start'))
 
@@ -316,7 +316,7 @@ it.each([true, false])('popup Genera: consigliato presente e selezionato solo co
   if (suggestions) expect(screen.getByTestId('question-type-advice')).toHaveAttribute('aria-label', 'Consigliato da Jev')
   if (suggestions) expect(screen.getByRole('button', { name: 'Mirata' })).toHaveAttribute('aria-pressed', 'true')
   else expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
   fireEvent.click(screen.getByTestId('study-generate-start'))
   expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'mirata' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })

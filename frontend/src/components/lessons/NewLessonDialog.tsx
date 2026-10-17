@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
   Check,
+  Ban,
   ChevronLeft,
   ChevronRight,
   FileAudio,
@@ -25,19 +26,22 @@ import { useSubjects } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
   invalidateAfterJob,
-  useCreateLesson,
-  useImportLessonZips,
+  sendLesson,
+  sendLessonZips,
+  type NewLesson,
   type ZipImportResult,
 } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
 import { AudioOrder } from '@/components/lessons/AudioOrder'
+import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { AUDIO_EXTENSIONS, formatBytes } from '@/lib/jobs'
+import { cancelUpload, enqueueUpload, isUploadActive, useUpload, type UploadSend } from '@/lib/uploadQueue'
 import { cn } from '@/lib/utils'
 
 const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
@@ -68,7 +72,7 @@ const minutesOf = (time: string) => {
  * negli altri giorni (o prima delle lezioni) la prima non ancora registrata.
  */
 function pickSlot(hours: CalendarEventView[], date: string, now = new Date()) {
-  const free = hours.filter((h) => !h.is_recorded)
+  const free = hours.filter((h) => !h.is_recorded && h.status !== 'annullata')
   if (free.length === 0) return null
   if (date === today()) {
     const current = now.getHours() * 60 + now.getMinutes()
@@ -117,12 +121,35 @@ const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
  * - Graffetta per allegare i materiali alle unità (allega_materiali).
  * - Menu materie da GET /subjects.
  */
-export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export type NewLessonDialogProps = {
+  open: boolean
+  onClose: () => void
+  initialDate?: string
+  initialSlotKey?: string
+  initialFiles?: File[]
+}
+
+export function NewLessonDialog({
+  open,
+  onClose,
+  initialDate,
+  initialSlotKey,
+  initialFiles,
+}: NewLessonDialogProps) {
   const navigate = useNavigate()
   const client = useQueryClient()
   const lessons = useLessons()
-  const create = useCreateLesson()
-  const zips = useImportLessonZips()
+  // Il caricamento sta nella coda (lib/uploadQueue): chiudendo la finestra continua.
+  const [uploadId, setUploadId] = useState<string | null>(null)
+  const upload = useUpload(uploadId)
+  const [uploadError, setUploadError] = useState<unknown>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const input = useRef<HTMLInputElement>(null)
   const materialsInput = useRef<HTMLInputElement>(null)
   const listId = useId()
@@ -130,19 +157,23 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   const [audioFiles, setAudioFiles] = useState<File[]>([])
   const [materialFiles, setMaterialFiles] = useState<File[]>([])
   const [zipFiles, setZipFiles] = useState<File[]>([])
-  const [primaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
+  const [selectedPrimaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
+  const primaryMaterialName = materialFiles.some((file) => file.name === selectedPrimaryMaterialName)
+    ? selectedPrimaryMaterialName
+    : materialFiles[0]?.name ?? null
   const [attachMaterials, setAttachMaterials] = useState(true)
   const [manualMode, setManualMode] = useState(false)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState('')
   const [docente, setDocente] = useState('')
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(() => initialDate ?? today())
   const [time, setTime] = useState('')
   const [solo, setSolo] = useState(false)
   const [review, setReview] = useState(false)
   const [enrichment, setEnrichment] = useState(false)
+  const [unisciAudio, setUnisciAudio] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
   const openedJob = useRef<string | null>(null)
@@ -159,7 +190,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
   const zipFinished = !!zipJob && jobFinished(job.data)
   const busy =
-    create.isPending || zips.isPending || (!!zipJob && !job.isError && !jobFinished(job.data))
+    (!!upload && isUploadActive(upload)) || (!!zipJob && !job.isError && !jobFinished(job.data))
 
   const subjectsQuery = useSubjects()
   const subjects = Array.isArray(subjectsQuery.data)
@@ -180,13 +211,23 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   )
 
   // La scelta si confronta per chiave (tpl_N/ovr_N): dopo un nuovo fetch gli oggetti cambiano.
-  const selectedSlot = hours.find((h) => h.key === selectedKey && !h.is_recorded) ?? null
+  const selectedSlot = hours.find((h) => h.key === selectedKey && !h.is_recorded && h.status !== 'annullata') ?? null
   // Tutte registrate: niente da scegliere, restano i campi a mano.
   const allRecorded = hours.length > 0 && hours.every((h) => h.is_recorded)
 
   // Selezione automatica dello slot al cambio data o al caricamento ore
   useEffect(() => {
-    if (manualMode || hours.length === 0 || selectedSlot) return
+    if (manualMode || hours.length === 0) return
+    if (selectedKey) {
+      const match = hours.find((h) => h.key === selectedKey && !h.is_recorded && h.status !== 'annullata')
+      if (match && !materia) {
+        // oxlint-disable-next-line react/set-state-in-effect
+        setMateria(match.materia)
+        setDocente(match.docente ?? '')
+        setTime(match.start_time)
+      }
+      return
+    }
     const pick = pickSlot(hours, date)
     if (!pick) return
     // oxlint-disable-next-line react/set-state-in-effect
@@ -194,48 +235,60 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setMateria(pick.materia)
     setDocente(pick.docente ?? '')
     setTime(pick.start_time)
-  }, [hours, manualMode, selectedSlot, date])
+  }, [hours, manualMode, selectedKey, date, materia])
 
-  const choose = (chosen: File[]) => {
-    if (busy || chosen.length === 0) return
-    const zipsFound = chosen.filter(isZip)
-    if (zipsFound.length > 0) {
-      if (zipsFound.length !== chosen.length) {
-        setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+  const choose = useCallback(
+    (chosen: File[]) => {
+      if (busy || chosen.length === 0) return
+      const zipsFound = chosen.filter(isZip)
+      if (zipsFound.length > 0) {
+        if (zipsFound.length !== chosen.length) {
+          setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+          return
+        }
+        setZipFiles(zipsFound)
+        setAudioFiles([])
+        setMaterialFiles([])
+        setProblem(null)
+        setZipJob(null)
+        setUploadError(null)
         return
       }
-      setZipFiles(zipsFound)
-      setAudioFiles([])
-      setMaterialFiles([])
+
+      const auds = chosen.filter(isAudioFile)
+      const mats = chosen.filter(isMaterialFile)
+
+      const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
+      if (unsupported) {
+        setProblem(
+          `Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`,
+        )
+        return
+      }
+
+      // Ordinamento di partenza: data di modifica del file, poi per nome
+      const sortedAuds = [...auds].sort(
+        (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
+      )
+
+      setZipFiles([])
+      setAudioFiles((prev) => [...prev, ...sortedAuds])
+      setMaterialFiles((prev) => [...prev, ...mats])
+      if (mats.length > 0) setAttachMaterials(true)
       setProblem(null)
       setZipJob(null)
-      create.reset()
-      zips.reset()
-      return
+      setUploadError(null)
+    },
+    [busy],
+  )
+
+  const initialFilesHandled = useRef(false)
+  useEffect(() => {
+    if (!initialFilesHandled.current && initialFiles && initialFiles.length > 0) {
+      initialFilesHandled.current = true
+      choose(initialFiles)
     }
-
-    const auds = chosen.filter(isAudioFile)
-    const mats = chosen.filter(isMaterialFile)
-
-    const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
-    if (unsupported) {
-      setProblem(`Formato non supportato: ${unsupported.name}. Usa ${AUDIO_EXTENSIONS.join(', ')} o ${MATERIAL_EXTENSIONS.join(', ')}.`)
-      return
-    }
-
-    // Ordinamento di partenza: data di modifica del file, poi per nome
-    const sortedAuds = [...auds].sort(
-      (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
-    )
-
-    setZipFiles([])
-    setAudioFiles((prev) => [...prev, ...sortedAuds])
-    setMaterialFiles((prev) => [...prev, ...mats])
-    if (mats.length > 0) setAttachMaterials(true)
-    setProblem(null)
-    setZipJob(null)
-    create.reset()
-  }
+  }, [initialFiles, choose])
 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
@@ -249,7 +302,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     const updated = materialFiles.filter((_, i) => i !== index)
     setMaterialFiles(updated)
     if (primaryMaterialName === toRemove?.name) {
-      setPrimaryMaterialName(null)
+      setPrimaryMaterialName(updated[0]?.name ?? null)
     }
     if (updated.length === 0) {
       setAttachMaterials(false)
@@ -261,6 +314,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     setMaterialFiles([])
     setZipFiles([])
     setPrimaryMaterialName(null)
+    setUnisciAudio(true)
     setProblem(null)
     setZipJob(null)
   }
@@ -274,7 +328,7 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
   }
 
   const handleSelectSlot = (h: CalendarEventView) => {
-    if (h.is_recorded) return
+    if (h.is_recorded || h.status === 'annullata') return
     setSelectedKey(h.key)
     setMateria(h.materia)
     setDocente(h.docente ?? '')
@@ -308,12 +362,16 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
     if (busy || zipJob) return
 
     if (kind === 'zip') {
-      zips.mutate(zipFiles, {
-        onSuccess: (accepted) => {
+      const files = zipFiles
+      startUpload(
+        files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
+        files,
+        (onProgress, signal) => sendLessonZips(files, onProgress, signal),
+        (accepted) => {
           setZipJob(accepted.job_id)
           setZipFiles([])
         },
-      })
+      )
       return
     }
 
@@ -333,39 +391,69 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
     const chosenSlot = manualMode ? null : selectedSlot
 
-    create.mutate(
-      {
-        files: audioFiles,
-        materiali: materialFiles.length > 0 ? materialFiles : undefined,
-        // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
-        principale:
-          audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
-        allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
-        calendar_entry_id: chosenSlot?.key,
-        calendar_date: chosenSlot ? date : undefined,
-        date,
-        materia: materia.trim(),
-        argomenti: '',
-        docente: docente.trim(),
-        ora: time,
-        run: !solo,
-        mock: false,
-        auto_accept: false,
-        with_review: !solo && review,
-        with_enrichment: !solo && enrichment,
-      },
-      {
-        onSuccess: (accepted) => {
-          onClose()
-          navigate(`/lezioni/nuova/${accepted.job_id}`)
-        },
+    const input: NewLesson = {
+      files: audioFiles,
+      materiali: materialFiles.length > 0 ? materialFiles : undefined,
+      // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
+      principale:
+        audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
+      allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
+      unisci: audioFiles.length > 1 ? unisciAudio : undefined,
+      calendar_entry_id: chosenSlot?.key,
+      calendar_date: chosenSlot ? date : undefined,
+      date,
+      materia: materia.trim(),
+      argomenti: '',
+      docente: docente.trim(),
+      ora: time,
+      run: !solo,
+      mock: false,
+      auto_accept: false,
+      with_review: !solo && review,
+      with_enrichment: !solo && enrichment,
+    }
+    startUpload(
+      `${materia.trim()} · ${date}`,
+      [...audioFiles, ...materialFiles],
+      (onProgress, signal) => sendLesson(input, onProgress, signal),
+      (accepted) => {
+        onClose()
+        navigate(`/lezioni/nuova/${accepted.job_id}`)
       },
     )
   }
 
-  const upload = create.progress ?? zips.progress
+  /** Accoda l'invio. A finestra ancora aperta si prosegue come prima (pagina del job, esito
+   * dello zip); a finestra chiusa il job compare in Job e gli errori restano nella sua riga. */
+  function startUpload(
+    label: string,
+    files: File[],
+    send: UploadSend<{ job_id: string }>,
+    accepted: (value: { job_id: string }) => void,
+  ) {
+    setUploadError(null)
+    const { id, done } = enqueueUpload(label, files, send)
+    setUploadId(id)
+    done.then(
+      (value) => {
+        invalidateAfterJob(client)
+        if (!mounted.current) return
+        setUploadId(null)
+        accepted(value)
+      },
+      (reason: unknown) => {
+        if (!mounted.current) return
+        setUploadId(null)
+        if (reason instanceof DOMException && reason.name === 'AbortError') return
+        // L'errore si legge qui: la riga fallita non serve anche in Job.
+        cancelUpload(id)
+        setUploadError(reason)
+      },
+    )
+  }
+
   const percent = upload?.total ? Math.round((upload.loaded / upload.total) * 100) : null
-  const error = create.error ?? zips.error
+  const error = uploadError
   const errorText =
     error instanceof ApiError && error.code === 'payload_too_large'
       ? `${error.message} Dividi l'audio in più file più piccoli.`
@@ -500,20 +588,26 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
             {audioFiles.length > 1 ? (
               <div>
                 <AudioOrder files={audioFiles} disabled={busy} onChange={setAudioFiles} />
-                <p className="-mt-2 mb-1 flex items-center justify-between text-meta text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
+                <div className="-mt-2 mb-1 flex items-center justify-between gap-2 text-meta text-muted-foreground">
+                  <span className="flex items-center gap-1.5 min-w-0 truncate">
                     <FileAudio className="size-4 shrink-0" aria-hidden />
-                    <span>
-                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} · diventano un'unica registrazione, in quest'ordine
+                    <span className="truncate">
+                      {audioFiles.length} parti · {formatBytes(totalAudioBytes)} ·{' '}
+                      {unisciAudio
+                        ? "diventano un'unica registrazione, in quest'ordine"
+                        : `restano ${audioFiles.length} fonti separate`}
                     </span>
                   </span>
-                  <IconButton
-                    label="Rimuovi tutti gli audio"
-                    icon={X}
-                    disabled={busy}
-                    onClick={() => setAudioFiles([])}
-                  />
-                </p>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <MergeAudioToggle merged={unisciAudio} disabled={busy} onChange={setUnisciAudio} />
+                    <IconButton
+                      label="Rimuovi tutti gli audio"
+                      icon={X}
+                      disabled={busy}
+                      onClick={() => setAudioFiles([])}
+                    />
+                  </div>
+                </div>
               </div>
             ) : audioFiles.length === 1 ? (
               <div className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-meta">
@@ -614,17 +708,9 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                       )}
                       aria-hidden
                     />
-                    {primaryMaterialName ? (
-                      <span>
-                        Senza audio la scaletta segue <b>{primaryMaterialName}</b>; gli altri
-                        materiali sono contesto.
-                      </span>
-                    ) : (
-                      <span>
-                        Senza audio la scaletta segue il documento con più pagine; la stellina
-                        sceglie un altro materiale.
-                      </span>
-                    )}
+                    <span>
+                      La scaletta segue «{primaryMaterialName}»; la stellina sceglie un altro file
+                    </span>
                   </div>
                 )}
               </div>
@@ -685,17 +771,24 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                       <button
                         key={h.key}
                         type="button"
-                        disabled={h.is_recorded}
+                        disabled={h.is_recorded || h.status === 'annullata'}
                         onClick={() => handleSelectSlot(h)}
                         className={cn(
-                          'flex items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left text-meta transition-all min-w-0',
-                          isSelected && 'border-primary ring-1 ring-primary bg-primary/10',
-                          h.is_recorded && 'opacity-50 cursor-not-allowed',
+                          'flex items-center gap-2 rounded-lg bg-card text-left text-meta transition-all min-w-0',
+                          isSelected
+                            ? 'border-2 border-link bg-primary/20 px-[9px] py-[5px]'
+                            : 'border border-border px-2.5 py-1.5',
+                          (h.is_recorded || h.status === 'annullata') && 'opacity-50 cursor-not-allowed',
                         )}
-                        aria-label={h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
+                        aria-label={h.status === 'annullata' ? `${h.materia} - Ora annullata` : h.is_recorded ? `${h.materia} - Già registrata` : `${h.materia} ${h.start_time}-${h.end_time}${h.docente ? ` - ${h.docente}` : ''}`}
                         data-testid={`calendar-slot-${i}`}
                       >
-                        <span className="w-1 self-stretch rounded-full bg-primary" />
+                        <span
+                          className={cn(
+                            'w-1 self-stretch rounded-full',
+                            isSelected ? 'bg-link' : 'bg-muted-foreground/30',
+                          )}
+                        />
                         <div className="flex flex-col leading-tight">
                           <span className="font-semibold text-foreground text-xs">{h.materia}</span>
                           <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -704,6 +797,9 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
                         </div>
                         {h.is_recorded && (
                           <Check className="size-3.5 text-emerald-600 shrink-0 ml-1" />
+                        )}
+                        {!h.is_recorded && h.status === 'annullata' && (
+                          <Ban className="size-3.5 text-muted-foreground shrink-0 ml-1" aria-hidden />
                         )}
                       </button>
                     )
@@ -782,7 +878,21 @@ export function NewLessonDialog({ open, onClose }: { open: boolean; onClose: () 
 
         {problem && <Alert tone="danger">{problem}</Alert>}
         {errorText && <Alert tone="danger">{errorText}</Alert>}
-        {upload && <ProgressBar value={percent} label="Caricamento" className="my-3 h-1.5" />}
+        {upload && isUploadActive(upload) && (
+          <div className="my-3 flex flex-col gap-1.5" data-testid="upload-status">
+            {upload.state === 'queued' ? (
+              <p className="text-meta text-muted-foreground">In coda: parte quando finisce il caricamento in corso.</p>
+            ) : (
+              <ProgressBar value={percent} label="Caricamento" className="h-1.5" />
+            )}
+            <p className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
+              <span>Puoi chiudere la finestra: il caricamento continua e lo segui in Job. Tieni aperta la scheda di RT finché non finisce.</span>
+              <button type="button" className="underline" onClick={() => cancelUpload(upload.id)}>
+                Annulla il caricamento
+              </button>
+            </p>
+          </div>
+        )}
         {zipJob && (
           <div className="my-3">
             <JobProgress

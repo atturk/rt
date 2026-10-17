@@ -48,3 +48,18 @@ def test_changelog_api_reads_installation_and_requires_auth(api_client, tmp_path
     assert response.json() == parse_changelog(TEXT)
     api_client.headers.pop('Authorization')
     assert api_client.get('/api/v1/system/changelog').status_code == 401
+
+
+def test_bullets_without_group_title_are_shown_as_news():
+    from rt.core.changelog import parse_changelog
+    text = "# Novità di RT\n\n## 4.2.6b1 — 2026-10-15\n\n- Prima novità.\n- Seconda.\n"
+    assert parse_changelog(text)[0]['groups'] == [{'title': 'Novità', 'items': ['Prima novità.', 'Seconda.']}]
+
+
+def test_every_release_section_has_items():
+    """Una sezione senza punti si vedrebbe vuota nella pagina Novità."""
+    from pathlib import Path
+    from rt.core.changelog import parse_changelog
+    text = (Path(__file__).resolve().parent.parent / 'CHANGELOG.md').read_text(encoding='utf-8')
+    for release in parse_changelog(text):
+        assert any(group['items'] for group in release['groups']), release['version']

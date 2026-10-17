@@ -27,6 +27,7 @@ class SourcesView(BaseModel):
     ordine_usato: list[str]
     principale_usato: str | None
     solo_ricostruzione: bool
+    fonti_tolte_usate: list[str] = []
 
 
 class UpdateRequest(BaseModel):
@@ -66,7 +67,8 @@ def get_sources(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 tipo: Literal["audio", "appunti", "materiale"] = Form(...),
                 file: Optional[list[UploadFile]] = File(None), testo: Optional[str] = Form(None),
-                ordine: Optional[int] = Form(None, ge=1)):
+                ordine: Optional[int] = Form(None, ge=1),
+                unisci: bool = Form(True)):
     from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
@@ -93,13 +95,44 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
         finally:
             shutil.rmtree(target, ignore_errors=True)
     if tipo == "audio":
-        if not file or len(file) != 1 or testo is not None:
-            raise ApiError(422, "validation_error", "Carica un file audio.")
+        if not file or len(file) == 0 or testo is not None:
+            raise ApiError(422, "validation_error", "Carica almeno un file audio.")
         # A blocchi su disco con limite, come l'import: mai l'intero file in memoria.
         target = _upload_dir()
         try:
-            saved = _save_uploads(file, SUPPORTED_AUDIO_EXTENSIONS, target)[0]
-            return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved), None, ordine, saved)
+            saved = _save_uploads(file, SUPPORTED_AUDIO_EXTENSIONS, target)
+            if len(saved) == 1:
+                return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved[0]), None, ordine, saved[0])
+            if unisci:
+                from rt.pipeline.setup import merge_audio_for_transcription
+                from rt.pipeline.source_update import _duration
+                from rt.core.sources import format_source_duration
+                parts = []
+                for p in saved:
+                    dur_s = None
+                    try:
+                        dur_s = _duration(p)
+                    except Exception:
+                        pass
+                    parts.append({
+                        "nome": os.path.basename(p),
+                        "durata": format_source_duration(dur_s) if dur_s is not None else None,
+                        "durata_s": dur_s,
+                    })
+                merged_output = os.path.join(target, "audio completo.m4a")
+                try:
+                    merge_audio_for_transcription(saved, merged_output)
+                except Exception as exc:
+                    raise ApiError(422, "validation_error", f"Impossibile unire i file audio: {exc}") from None
+                return _add_source(lesson_id, lesson_dir, tipo, "audio completo.m4a", None, ordine, merged_output, parti=parts)
+            else:
+                with source_mutation(lesson_id, lesson_dir):
+                    if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
+                        raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
+                    added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                        None if ordine is None else ordine + i, source_path=path)
+                             for i, path in enumerate(saved)]
+                    return added[0] if len(added) == 1 else added
         finally:
             shutil.rmtree(target, ignore_errors=True)
     if testo is None or file is not None or not testo.strip():
@@ -110,10 +143,10 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
     return _add_source(lesson_id, lesson_dir, tipo, "appunti.txt", content, ordine)
 
 
-def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_path=None):
+def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_path=None, parti=None):
     with source_mutation(lesson_id, lesson_dir):
         try:
-            return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path)
+            return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path, parti=parti)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
 
@@ -204,4 +237,13 @@ def put_source_primary(lesson_id: int, body: SourcePrimary, lesson_dir: LessonDi
             set_primary(lesson_dir, body.id)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
+        return sources_view(lesson_dir)
+
+
+@router.post("/lessons/{lesson_id}/sources/restore-removed", response_model=SourcesView,
+             summary="Rimette le fonti tolte già usate nel testo corrente")
+def post_restore_removed(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.source_selection import restore_removed_used
+    with source_mutation(lesson_id, lesson_dir):
+        restore_removed_used(lesson_dir)
         return sources_view(lesson_dir)

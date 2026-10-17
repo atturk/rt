@@ -67,3 +67,50 @@ def test_notes_primary_drives_outline_when_audio_arrives(tmp_path):
     result = prepare_source_update(lesson, mock=True)
     assert [s.text_raw for s in result['segments']] == ['notes main']
     assert result['segments'][0].source_file == note.id
+
+
+def test_removed_used_sources_are_not_new_and_can_be_put_back(tmp_path):
+    from rt.core.sources import remove_source
+    from rt.core.source_selection import restore_removed_used
+    from rt.pipeline.source_update import sources_pending, _read_state, _write_state
+    from rt.core.update_history import record_version, restore_version
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    note = add_source(lesson, 'appunti', 'note.txt', b'appunti usati')
+    record_used_selection(lesson)
+    state = _read_state(lesson)
+    state['used'] = state['ordine_usato']
+    _write_state(lesson, state)
+    version = record_version(lesson, 'import')
+    remove_source(lesson, note.id)
+    assert not sources_pending(lesson)
+    assert selection(lesson)['fonti_tolte_usate'] == [note.id]
+    assert selection(lesson)['solo_ricostruzione']
+    assert (tmp_path / note.file).read_bytes() == b'appunti usati'
+    # Aggiunta e riordino non devono perdere la fonte tolta nel registro.
+    fresh = add_source(lesson, 'appunti', 'fresh.txt', b'nuovi')
+    set_order(lesson, [s.id for s in load_sources(lesson)])
+    assert next(s for s in load_sources(lesson, include_removed=True) if s.id == note.id).rimossa_il
+    remove_source(lesson, fresh.id)
+    assert not sources_pending(lesson)
+    restore_removed_used(lesson)
+    assert [s.id for s in load_sources(lesson)] == state['used']
+    assert not selection(lesson)['solo_ricostruzione']
+    assert next(s for s in load_sources(lesson, include_removed=True) if s.id == fresh.id).rimossa_il
+    remove_source(lesson, note.id)
+    record_version(lesson, 'rebuild')
+    restore_version(lesson, version)
+    assert note.id in [s.id for s in load_sources(lesson)]
+    assert not selection(lesson)['solo_ricostruzione']
+
+
+def test_removing_unused_source_never_requires_update(tmp_path):
+    from rt.core.sources import remove_source
+    from rt.pipeline.source_update import sources_pending
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    note = add_source(lesson, 'appunti', 'new.txt', b'appunti nuovi')
+    remove_source(lesson, note.id)
+    assert not sources_pending(lesson)
+    assert selection(lesson)['fonti_tolte_usate'] == []
+    assert not selection(lesson)['solo_ricostruzione']

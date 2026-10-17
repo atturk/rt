@@ -15,6 +15,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   add_images: 'Immagini',
   recall_generate: 'Domande di recall',
   recall_batch: 'Domande di recall',
+  recall_rules_update: 'Aggiorna regole dai voti',
   recall_refill: 'Rifornimento domande',
   unit_relevance: 'Etichette del classificatore',
   recall_evaluate: 'Valutazione risposta',

@@ -7,6 +7,9 @@ import { ApiError } from '@/api/client'
 
 import { LightweightSession } from './LightweightSession'
 
+let mockVotesEnabled = true
+vi.mock('@/api/recallRules', () => ({ useRecallRules: () => ({ data: { votes_enabled: mockVotesEnabled } }) }))
+
 let mockSuggestions = false
 const mockGenerateMutate = vi.fn()
 const mockNextMutateAsync = vi.fn()
@@ -154,6 +157,7 @@ describe('LightweightSession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSuggestions = false
+    mockVotesEnabled = true
     mockRestorableData = { asked: 0, wrong: 0 }
     mockOverviewData = {
       questions: {
@@ -450,14 +454,14 @@ it('il cambio tipo usa remaining della nuova domanda', async () => {
   expect(await screen.findByRole('button', { name: 'Prossima' })).toBeVisible()
 })
 
-it('finite le domande dell’unità: Genera consigliato con Quante 2 riprende da solo', async () => {
+it('finite le domande dell’unità: Genera consigliato con Fino a 2 riprende da solo', async () => {
   mockSuggestions = true
   mockNextMutateAsync.mockRejectedValueOnce(new ApiError(404, 'no_questions', 'Finite'))
   mockNextMutateAsync.mockResolvedValue(sampleQuestion)
   mockGenerateMutate.mockImplementation((_payload, options) => options.onSuccess({ job_id: 'new-job' }))
   const { updatePending } = renderUnitSession(undefined, undefined, {})
   expect(await screen.findByTestId('recall-empty-generation')).toBeVisible()
-  fireEvent.change(screen.getByLabelText('Quante'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
   fireEvent.click(screen.getByRole('button', { name: 'Genera' }))
   expect(mockGenerateMutate).toHaveBeenCalledWith({ qtype: 'quiz', count: 2, unit_ids: ['1.2'] }, expect.anything())
   // Gli eventi live aggiornano le domande prima dell’effetto di completamento del job.
@@ -471,4 +475,17 @@ it('mostra icona precedente con tooltip se la domanda è precedente', async () =
   mockNextMutateAsync.mockResolvedValueOnce({ ...sampleQuestion, precedente: true })
   renderUnitSession()
   expect(await screen.findByTestId('question-precedente-icon')).toBeInTheDocument()
+})
+
+
+it('nasconde i pulsanti di voto quando i voti sono spenti', async () => {
+  mockNextMutateAsync.mockResolvedValue(sampleQuestion)
+  mockVotesEnabled = false
+  try {
+    renderSession()
+    await screen.findByText(sampleQuestion.question_text)
+    expect(screen.queryByRole('button', { name: 'Buona domanda' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Domanda da scartare' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Commenta' })).toBeInTheDocument()
+  } finally { mockVotesEnabled = true }
 })

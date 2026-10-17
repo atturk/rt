@@ -17,12 +17,26 @@ from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
 
 
+class DocumentImages(tuple):
+    """Tupla compatibile (by_macro, carousel) arricchita con by_unit."""
+    def __new__(cls, by_macro, carousel, by_unit=None):
+        combined = {**by_macro, **(by_unit or {})}
+        return super().__new__(cls, (combined, carousel))
+
+    def __init__(self, by_macro, carousel, by_unit=None):
+        self.by_macro = by_macro
+        self.carousel = carousel
+        self.by_unit = by_unit or {}
+        self.macros = self.by_macro
+        self.units = self.by_unit
+
+
 def get_placement_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, IMAGE_PLACEMENT_FILE)
 
 
 def load_image_placement(lesson_dir: str) -> Optional[Dict[str, Any]]:
-    """{"macros": {macro_id: [hash, ...]}, "carousel": bool}, oppure None se mai scritto."""
+    """{"macros": {macro_id: [hash, ...]}, "units": {unit_id: [hash, ...]}, "carousel": bool}, oppure None se mai scritto."""
     path = get_placement_path(lesson_dir)
     if not fs.isfile(path):
         return None
@@ -34,15 +48,27 @@ def load_image_placement(lesson_dir: str) -> Optional[Dict[str, Any]]:
     if not isinstance(data, dict):
         return None
     macros = data.get("macros") if isinstance(data.get("macros"), dict) else {}
-    return {"macros": {str(k): [str(h) for h in (v or [])] for k, v in macros.items()},
-            "carousel": bool(data.get("carousel"))}
+    units = data.get("units") if isinstance(data.get("units"), dict) else {}
+    return {
+        "macros": {str(k): [str(h) for h in (v or [])] for k, v in macros.items()},
+        "units": {str(k): [str(h) for h in (v or [])] for k, v in units.items()},
+        "carousel": bool(data.get("carousel")),
+    }
 
 
 @lesson_locked
-def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel: bool) -> bool:
-    """Scrive il posizionamento (atomico). True se è cambiato rispetto a prima."""
-    data = {"macros": {str(k): list(v) for k, v in macros.items() if v}, "carousel": bool(carousel)}
+def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel: bool, units: Optional[Dict[str, List[str]]] = None) -> bool:
+    """Scrive il posizionamento (atomico). True se è cambiato rispetto a prima.
+    units=None lascia com'erano le immagini delle sottounità (chi scrive solo le macro)."""
     previous = load_image_placement(lesson_dir)
+    if units is None:
+        units = (previous or {}).get("units", {})
+    units_dict = {str(k): list(v) for k, v in units.items() if v}
+    data = {
+        "macros": {str(k): list(v) for k, v in macros.items() if v},
+        "units": units_dict,
+        "carousel": bool(carousel),
+    }
     if previous == data:
         return False
     path = get_placement_path(lesson_dir)
@@ -56,20 +82,64 @@ def save_image_placement(lesson_dir: str, macros: Dict[str, List[str]], carousel
     return True
 
 
-def images_for_document(lesson_dir: str, outline: Any) -> Tuple[Dict[str, List[dict]], bool]:
-    """(images_by_macro, carousel) per render_rielaborato_md: solo immagini descritte e
-    macro-sezioni che esistono ancora nella scaletta."""
+def sort_images_document_order(lesson_dir: str, images: List[dict]) -> List[dict]:
+    """
+    Ordine sempre quello del documento: fonte nell'ordine delle Fonti,
+    poi numero di pagina; le immagini aggiunte a mano o dal web restano dopo,
+    nel loro ordine.
+    """
+    from rt.core.sources import load_sources
+    try:
+        sources = load_sources(lesson_dir)
+        source_order = {s.id: s.ordine for s in sources}
+    except Exception:
+        source_order = {}
+
+    def sort_key(item_idx: Tuple[int, dict]):
+        idx, img = item_idx
+        source_val = str(img.get("source", ""))
+        if source_val.startswith("material:"):
+            parts = source_val.split(":")
+            if len(parts) >= 3:
+                src_id = parts[1]
+                try:
+                    page_num = int(parts[2])
+                except ValueError:
+                    page_num = 0
+                ord_val = source_order.get(src_id, 900000)
+                return (0, ord_val, page_num, idx)
+        return (1, 0, 0, idx)
+
+    indexed = list(enumerate(images))
+    indexed.sort(key=sort_key)
+    return [img for _, img in indexed]
+
+
+def images_for_document(lesson_dir: str, outline: Any) -> DocumentImages:
+    """(images_by_macro, carousel) arricchito con .by_unit: solo immagini descritte
+    e sezioni/subunità che esistono ancora nella scaletta."""
     placement = load_image_placement(lesson_dir)
     if not placement:
-        return {}, False
+        return DocumentImages({}, False, {})
     from rt.pipeline.add_images import load_image_descriptions
     descriptions = load_image_descriptions(lesson_dir)
     macro_ids = {str(m.id) for m in getattr(outline, "macro_sections", [])}
+    unit_ids = {str(u.id) for m in getattr(outline, "macro_sections", []) for u in getattr(m, "units", [])}
+
     by_macro: Dict[str, List[dict]] = {}
     for macro_id, hashes in placement["macros"].items():
         if macro_id not in macro_ids:
             continue
         images = [descriptions[h] for h in hashes if h in descriptions]
         if images:
-            by_macro[macro_id] = images
-    return by_macro, placement["carousel"]
+            by_macro[macro_id] = sort_images_document_order(lesson_dir, images)
+
+    by_unit: Dict[str, List[dict]] = {}
+    for unit_id, hashes in placement.get("units", {}).items():
+        if unit_id not in unit_ids:
+            continue
+        images = [descriptions[h] for h in hashes if h in descriptions]
+        if images:
+            by_unit[unit_id] = sort_images_document_order(lesson_dir, images)
+
+    return DocumentImages(by_macro, placement["carousel"], by_unit)

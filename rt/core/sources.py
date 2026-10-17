@@ -14,6 +14,23 @@ from rt.core.lesson_lock import lesson_locked
 from rt.storage import fs
 
 
+class SourcePart(BaseModel):
+    nome: str
+    durata: str | None = None
+    durata_s: float | None = None
+
+
+def format_source_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return ""
+    m = round(seconds / 60)
+    h = m // 60
+    rem = m % 60
+    if h > 0:
+        return f"{h} h {rem} min" if rem > 0 else f"{h} h"
+    return f"{m} min"
+
+
 class Source(BaseModel):
     id: str
     tipo: Literal["audio", "appunti", "materiale"]
@@ -21,17 +38,25 @@ class Source(BaseModel):
     impronta: str
     aggiunta_il: str
     ordine: int = Field(ge=1)
+    rimossa_il: str | None = None
+    parti: list[SourcePart] | None = None
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
     path = lesson_path(lesson_dir, "sources.json")
+    # Le scritture delle fonti attive (aggiunta e riordino) conservano le tolte.
+    if fs.isfile(path):
+        with fs.open(path, encoding="utf-8") as stream:
+            removed = [Source.model_validate(item) for item in json.load(stream)
+                       if item.get("rimossa_il") and item["id"] not in {s.id for s in sources}]
+        sources = [*sources, *removed]
     with fs.open(path + ".tmp", "w", encoding="utf-8") as stream:
         json.dump([s.model_dump() for s in sources], stream, ensure_ascii=False, indent=2)
     fs.replace(path + ".tmp", path)
 
 
 @lesson_locked
-def load_sources(lesson_dir: str) -> list[Source]:
+def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Source]:
     """Crea soltanto il registro se assente; non modifica i file storici.
     Un registro vuoto non si salva: durante il setup info.yaml non ha ancora l'audio, e un
     registro vuoto scritto allora lo avrebbe nascosto per sempre (lo si ricostruisce qui)."""
@@ -42,7 +67,8 @@ def load_sources(lesson_dir: str) -> list[Source]:
         with fs.open(path, encoding="utf-8") as stream:
             items = json.load(stream)
         if items or not audio or not fs.isfile(os.path.join(lesson_dir, audio)):
-            return [Source.model_validate(item) for item in items]
+            return [Source.model_validate(item) for item in items
+                    if include_removed or not item.get("rimossa_il")]
     sources = []
     if audio:
         sources.append(Source(
@@ -58,7 +84,8 @@ def load_sources(lesson_dir: str) -> list[Source]:
 @lesson_locked
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes | None, ordine: int | None = None,
-               source_path: str | None = None) -> Source:
+               source_path: str | None = None,
+               parti: list[SourcePart] | list[dict] | None = None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
@@ -81,9 +108,26 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     else:
         with fs.open(path, "wb") as stream:
             stream.write(content)
+    if tipo == "audio":
+        from rt.pipeline.setup import transcode_audio_for_storage, EFFICIENT_AUDIO_EXTENSIONS
+        base_ext = os.path.splitext(name)[1].lower()
+        if base_ext not in EFFICIENT_AUDIO_EXTENSIONS:
+            converted_name = os.path.splitext(name)[0] + ".m4a"
+            converted_relative = os.path.join("sources", sid, converted_name)
+            converted_path = os.path.join(lesson_dir, converted_relative)
+            transcode_ok = False
+            with fs.materialize(path) as mat_in, fs.external_output(converted_path) as ext_out:
+                if transcode_audio_for_storage(mat_in, ext_out):
+                    transcode_ok = True
+            if transcode_ok:
+                fs.remove(path)
+                relative = converted_relative
+                path = converted_path
+    parsed_parts = [SourcePart.model_validate(p) for p in parti] if parti else None
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
-                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position)
+                    aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
+                    parti=parsed_parts)
     sources.insert(position - 1, source)
     for index, item in enumerate(sources, 1):
         item.ordine = index
@@ -103,11 +147,12 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
 
 @lesson_locked
 def remove_source(lesson_dir: str, source_id: str) -> None:
-    """Toglie dal registro; conserva la copia immutabile per l'annullamento."""
-    sources = load_sources(lesson_dir)
-    remaining = [s for s in sources if s.id != source_id]
-    if len(remaining) == len(sources):
+    """Segna la fonte come tolta; registro e file restano disponibili alle versioni."""
+    sources = load_sources(lesson_dir, include_removed=True)
+    source = next((s for s in sources if s.id == source_id and not s.rimossa_il), None)
+    if source is None:
         raise KeyError(source_id)
-    for index, item in enumerate(remaining, 1):
+    source.rimossa_il = datetime.now(timezone.utc).isoformat()
+    for index, item in enumerate((s for s in sources if not s.rimossa_il), 1):
         item.ordine = index
-    _save(lesson_dir, remaining)
+    _save(lesson_dir, sources)

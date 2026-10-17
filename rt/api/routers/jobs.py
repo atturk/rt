@@ -172,20 +172,23 @@ def create_lesson(
     allega_materiali: Optional[bool] = Form(None),
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
+    unisci: bool = Form(True),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
     calendar = {}
     if calendar_entry_id or calendar_date:
         from datetime import date as calendar_day
-        from rt.services.calendar_service import get_day_view
+        from rt.services.calendar_service import require_linkable_event
+        from rt.db.engine import get_database
+        from rt.db.session import read_scope
         if not calendar_entry_id or not calendar_date:
             raise ApiError(422, "validation_error", "Indica ora e data del calendario insieme.")
         try:
             if calendar_day.fromisoformat(calendar_date).isoformat() != calendar_date:
                 raise ValueError()
-            if not any(event.key == calendar_entry_id for event in get_day_view(calendar_date).events):
-                raise ValueError()
+            with read_scope(get_database()) as session:
+                require_linkable_event(calendar_date, calendar_entry_id, session)
         except ValueError:
             raise ApiError(422, "validation_error", "Ora del calendario non trovata per questa data.") from None
         calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date}
@@ -216,6 +219,7 @@ def create_lesson(
             return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
                 "appunti": appunti, "principale": principale,
                 "allega_materiali": True if allega_materiali is None else allega_materiali,
+                "unisci": unisci,
                 "run": run, "options": options, "upload_dir": target, **calendar}, actor)
         return _with_upload_cleanup(target, _mixed)
     if not audio:
@@ -237,6 +241,10 @@ def create_lesson(
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
                    "auto_accept": auto_accept, "channel": "terminal"}
+        if len(paths) > 1:
+            return enqueue_job("ingest_sources", None, {"audio": paths, "materiali": [],
+                "appunti": "", "principale": None, "allega_materiali": False, "unisci": unisci,
+                "run": run, "options": options, "upload_dir": target, **calendar}, actor)
         # run=true: tutta la pipeline dall'audio (come 'rt run audio'); altrimenti solo setup
         return enqueue_job("run_pipeline" if run else "ingest_audio", None,
                            {"inputs": paths, "options": options, "upload_dir": target, **calendar}, actor)
@@ -297,11 +305,13 @@ def add_images(
     files: Optional[List[UploadFile]] = File(None, description="PDF o immagini"),
     web_search: Optional[int] = Form(None, ge=1, le=10, description="Immagini da cercare sul web per ogni unità"),
     units: Optional[List[str]] = Form(None, description="Unità per cui cercare sul web (id dell'outline); vuoto = tutte"),
+    selected_images: Optional[List[str]] = Form(None, description="Nomi o hash delle immagini selezionate da collocare"),
+    pages_only: bool = Form(False, description="Estrae solo le pagine nei media senza descriverle né collocarle"),
     mock: bool = Form(False),
 ):
     from rt.services.images_service import ImagesError, check_web_search
-    if not files and not web_search:
-        raise ApiError(422, "validation_error", "Carica almeno un file o chiedi una ricerca web.")
+    if not files and not web_search and not selected_images:
+        raise ApiError(422, "validation_error", "Carica almeno un file, chiedi una ricerca web o seleziona immagini da collocare.")
     unit_ids = [u.strip() for u in units or [] if u.strip()] or None
     if web_search:
         try:
@@ -317,8 +327,15 @@ def add_images(
             # un PDF da solo si passa com'è; le immagini come cartella (come 'rt add-images -i')
             single_pdf = len(saved) == 1 and saved[0].lower().endswith(".pdf")
             input_path = saved[0] if single_pdf else target
-        payload = {"input_path": input_path, "web_search_count": web_search, "unit_ids": unit_ids if web_search else None,
-                   "mock": mock, "upload_dir": target}
+        payload = {
+            "input_path": input_path,
+            "web_search_count": web_search,
+            "unit_ids": unit_ids if web_search else None,
+            "selected_images": selected_images,
+            "pages_only": pages_only,
+            "mock": mock,
+            "upload_dir": target,
+        }
         return enqueue_job("add_images", lesson_dir, payload, actor)
     return _with_upload_cleanup(target, _go) if target else _go()
 

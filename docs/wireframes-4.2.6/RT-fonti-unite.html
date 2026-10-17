@@ -1,0 +1,155 @@
+<title>Fonti unite RT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: tre pannelli Fonti affiancati (oggi, chiuso, aperto) alla larghezza reale del pannello laterale; token come in index.css di RT */
+:root{
+  --bg:#ffffff; --page:#f4f5f4; --fg:#171717; --soft:#f1f1f1; --mute:#5c5c5c; --border:#d4d4d4; --line:#ececec;
+  --acc:#155f52; --acc-soft:#dceee7; --star:#d98c0a; --bad:#b3261e; --bad-soft:#fbe7e5;
+  --p1:#155f52; --p2:#3f8a7a; --p3:#79b3a4;
+  --sans:system-ui,-apple-system,'Helvetica Neue',sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --star:#f1b34a; --bad:#ff8a80; --bad-soft:#3a1714;
+  --p1:#6fd3b3; --p2:#4aa58c; --p3:#2f7564; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171717; --page:#101010; --fg:#ffffff; --soft:#262626; --mute:#a3a3a3; --border:#3a3a3a; --line:#262626;
+  --acc:#6fd3b3; --acc-soft:#16312a; --star:#f1b34a; --bad:#ff8a80; --bad-soft:#3a1714;
+  --p1:#6fd3b3; --p2:#4aa58c; --p3:#2f7564; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1140px;margin:0 auto;display:grid;gap:18px}
+header{padding-block:22px 4px;display:grid;gap:4px}
+h1{font-size:23px;margin:0;text-wrap:balance} h2{font-size:15px;margin:0}
+.meta{color:var(--mute);font-size:13px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start}
+.col{display:grid;gap:8px;min-width:0}
+.col p{margin:0;font-size:13.5px;color:var(--mute)}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;display:grid;gap:8px;max-width:360px;width:100%}
+.panel.bad{border-color:var(--bad)}
+.ph{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.ph span:last-child{font-size:20px;font-weight:400;letter-spacing:0}
+.src{display:grid;gap:6px;background:var(--soft);border-radius:10px;padding:8px}
+.row{display:flex;align-items:center;gap:8px;font-size:14px;min-width:0}
+.ic{width:16px;height:16px;flex:none;color:var(--mute)}
+.num{width:20px;height:20px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none;font-variant-numeric:tabular-nums}
+.star{color:var(--star);flex:none;font-size:14px}
+.name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dur{color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.x{color:var(--mute);flex:none}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--mute);border:1px solid var(--border);border-radius:999px;padding:1px 8px;background:var(--bg);white-space:nowrap;cursor:pointer}
+.chip.on{border-color:var(--acc);color:var(--acc)}
+.bar{display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px;margin-left:52px}
+.bar i{display:block;height:100%}
+.parts{display:grid;gap:2px;margin-left:52px;font-size:13px}
+.part{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;color:var(--mute)}
+.part b{width:10px;height:10px;border-radius:2px;display:block}
+.part span:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
+.part span:last-child{font-variant-numeric:tabular-nums}
+.mat{display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 8px}
+/* oggi */
+.today .stack{display:flex;gap:8px;align-items:center}
+.today .inner{display:grid;gap:2px;font-size:12.5px;color:var(--mute);min-width:0;flex:1}
+.today .inner div{display:grid;grid-template-columns:16px 52px 40px;gap:4px;line-height:1.15}
+.note{border-left:3px solid var(--acc);background:var(--acc-soft);padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px;display:grid;gap:4px}
+.note p{margin:0}
+ul{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Fonti unite nel pannello Fonti</h1>
+  <span class="meta">RT 4.2.6 · 15 ott 2026 · wireframe per la registrazione unita da più parti (esempio: lezione di Patologia generale 2 del 14 ott)</span>
+</header>
+
+<div class="cols">
+  <section class="col">
+    <h2>Oggi</h2>
+    <p>Le parti stanno in una colonna stretta sotto il nome: nomi tagliati a 7 lettere, durate che vanno a capo, riga alta come mezzo pannello.</p>
+    <div class="panel bad today" aria-label="Pannello Fonti oggi">
+      <div class="ph"><span>Fonti</span><span>+</span></div>
+      <div class="src">
+        <div class="stack">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2"/></svg>
+          <span class="num">1</span><span class="star">★</span>
+          <div class="inner">
+            <strong style="color:var(--fg);font-size:14px">audio comp…</strong>
+            <div><span>1</span><span>TX02_…</span><span>· 30 min</span></div>
+            <div><span>2</span><span>TX02_…</span><span>· 30 min</span></div>
+            <div><span>3</span><span>TX02_…</span><span>· 2 min</span></div>
+            <div><span>4</span><span>TX02_…</span><span>· 30 min</span></div>
+            <div><span>5</span><span>TX02_…</span><span>· 6 min</span></div>
+          </div>
+          <span class="dur">1 h 37 min</span><span class="x">✕</span>
+        </div>
+      </div>
+      <div class="mat"><span class="ic">📎</span><span class="name" style="font-weight:500">4. Emostasi coagula…</span><span class="dur">33 pagine</span></div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>Proposta, chiusa (default)</h2>
+    <p>Una riga come le altre fonti. Il nome dice cosa è, il chip dice quante parti ci sono e apre l'elenco. Sotto, una barra sottile mostra le parti in proporzione alla durata.</p>
+    <div class="panel" aria-label="Pannello Fonti proposta chiusa">
+      <div class="ph"><span>Fonti</span><span>+</span></div>
+      <div class="src">
+        <div class="row">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2"/></svg>
+          <span class="num">1</span><span class="star">★</span>
+          <span class="name">Registrazione unita</span>
+          <span class="dur">1 h 37 min</span>
+        </div>
+        <div class="row" style="margin-left:52px;gap:6px">
+          <span class="chip">5 parti ▾</span>
+        </div>
+        <div class="bar" aria-hidden="true">
+          <i style="flex:1800;background:var(--p1)"></i><i style="flex:1800;background:var(--p2)"></i><i style="flex:94;background:var(--p3)"></i><i style="flex:1800;background:var(--p1)"></i><i style="flex:350;background:var(--p2)"></i>
+        </div>
+      </div>
+      <div class="mat"><span class="ic">📎</span><span class="name" style="font-weight:500">4. Emostasi coagulazione trombosi embolia.pdf</span><span class="dur">33 pag.</span></div>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>Proposta, aperta</h2>
+    <p>Le parti scendono sotto la riga e usano tutta la larghezza: un colore per parte uguale alla barra, nome accorciato al centro (inizio e orario finale restano leggibili), durata allineata a destra. Il nome completo resta nel tooltip.</p>
+    <div class="panel" aria-label="Pannello Fonti proposta aperta">
+      <div class="ph"><span>Fonti</span><span>+</span></div>
+      <div class="src">
+        <div class="row">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2"/></svg>
+          <span class="num">1</span><span class="star">★</span>
+          <span class="name">Registrazione unita</span>
+          <span class="dur">1 h 37 min</span>
+        </div>
+        <div class="row" style="margin-left:52px;gap:6px">
+          <span class="chip on">5 parti ▴</span>
+        </div>
+        <div class="bar" aria-hidden="true">
+          <i style="flex:1800;background:var(--p1)"></i><i style="flex:1800;background:var(--p2)"></i><i style="flex:94;background:var(--p3)"></i><i style="flex:1800;background:var(--p1)"></i><i style="flex:350;background:var(--p2)"></i>
+        </div>
+        <div class="parts">
+          <div class="part"><b style="background:var(--p1)"></b><span>TX02_MIC002 … 163453</span><span>30 min</span></div>
+          <div class="part"><b style="background:var(--p2)"></b><span>TX02_MIC003 … 170453</span><span>30 min</span></div>
+          <div class="part"><b style="background:var(--p3)"></b><span>TX02_MIC004 … 173453</span><span>2 min</span></div>
+          <div class="part"><b style="background:var(--p1)"></b><span>TX02_MIC005 … 175706</span><span>30 min</span></div>
+          <div class="part"><b style="background:var(--p2)"></b><span>TX02_MIC006 … 182706</span><span>6 min</span></div>
+        </div>
+      </div>
+      <div class="mat"><span class="ic">📎</span><span class="name" style="font-weight:500">4. Emostasi coagulazione trombosi embolia.pdf</span><span class="dur">33 pag.</span></div>
+    </div>
+  </section>
+</div>
+
+<div class="note">
+  <p><b>Cosa cambia</b></p>
+  <ul>
+    <li>Il nome della fonte unita diventa “Registrazione unita” invece del nome del file (“audio completo.m4a”); il file scaricato resta lo stesso.</li>
+    <li>Le parti sono chiuse di default: la riga ha la stessa altezza delle altre fonti.</li>
+    <li>Durata totale e ✕ restano sulla prima riga, come per ogni fonte; il ✕ compare al passaggio del mouse.</li>
+    <li>Nomi lunghi accorciati al centro, così si vede la parte che cambia (l'orario della registrazione).</li>
+    <li>Con una sola parte (audio singolo) non compaiono né chip né barra.</li>
+  </ul>
+</div>
+</div>

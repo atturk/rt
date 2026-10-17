@@ -130,6 +130,7 @@ def render_rielaborato_md(
     images_by_macro: Optional[Dict[str, List[dict]]] = None,
     edits: Optional[Dict[str, Any]] = None,
     enrichment_by_unit: Optional[Dict[str, List[str]]] = None,
+    images_by_unit: Optional[Dict[str, List[dict]]] = None,
 ) -> str:
     """
     Renderizza rielaborato.md pulito e pronto per lo studio/Obsidian/Telegram.
@@ -138,6 +139,8 @@ def render_rielaborato_md(
     """
     from rt.pipeline.document_edits import macro_title, unit_start_segment, unit_title
     edits = edits or {}
+    if images_by_unit is None and hasattr(images_by_macro, "by_unit"):
+        images_by_unit = images_by_macro.by_unit
     seg_by_id: Dict[str, Segment] = {s.id: s for s in segments_data.segments}
     draft_by_unit_id = {u.unit_id: u for u in draft.units}
     
@@ -163,12 +166,12 @@ def render_rielaborato_md(
         lines.append(f"## {macro.id}. {macro_title(edits, macro.id, macro.title)}\n")
         
         macro_id_str = str(macro.id)
-        if images_by_macro and macro_id_str in images_by_macro and images_by_macro[macro_id_str]:
-            # link Markdown uno sotto l'altro: la formattazione la sceglie l'utente
-            for img in images_by_macro[macro_id_str]:
+        macro_imgs = (images_by_macro or {}).get(macro_id_str, [])
+        if macro_imgs:
+            for img in macro_imgs:
                 alt = img.get("alt_text", "")
                 lines.append(f"![{alt}]({img['filename']})")
-            lines.append("")
+                lines.append("")
         
         for unit in macro.units:
             start_seg_id = unit_start_segment(edits, unit.id, unit.start_segment_id)
@@ -181,6 +184,14 @@ def render_rielaborato_md(
             
             lines.append(f"### {unit.id} {unit_title(edits, unit.id, unit.title)}")
             lines.append(f"{derived_timestamp}\n")
+
+            unit_id_str = str(unit.id)
+            unit_imgs = (images_by_unit or {}).get(unit_id_str, [])
+            if unit_imgs:
+                for img in unit_imgs:
+                    alt = img.get("alt_text", "")
+                    lines.append(f"![{alt}]({img['filename']})")
+                    lines.append("")
             
             draft_unit = draft_by_unit_id.get(unit.id)
             content = draft_unit.content.strip() if draft_unit else ""
@@ -282,7 +293,9 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     edits = load_document_edits(lesson_dir)
     edited = edited_unit_dates(lesson_dir)
     resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues, edited)
-    images_by_macro, _carousel = images_for_document(lesson_dir, outline)
+    doc_images = images_for_document(lesson_dir, outline)
+    images_by_macro = doc_images.by_macro
+    images_by_unit = doc_images.by_unit
     from rt.services.enrichment_service import document_blocks
 
     return {
@@ -299,7 +312,7 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
         "rielaborato": render_rielaborato_md(
             outline=outline, draft=resolved_draft, segments_data=segments_data, date=date_val,
             subject=subject_val, topics=topics_val, images_by_macro=images_by_macro, edits=edits,
-            enrichment_by_unit=document_blocks(lesson_dir)),
+            enrichment_by_unit=document_blocks(lesson_dir), images_by_unit=images_by_unit),
         "errori_concettuali": render_errori_concettuali_md(science_issues, segments_data, date_val, subject_val, ledger),
     }
 

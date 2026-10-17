@@ -332,6 +332,18 @@ def set_entry_state(
         )
 
 
+def require_linkable_event(date: str, entry_key: str, session: Session) -> schemas.CalendarEventView:
+    """Controllo condiviso fra import e collegamento, anche nella transazione di link."""
+    day = parse_date(date)
+    events, _ = _resolve_dates(session, [day], datetime.datetime.now())[date]
+    event = next((event for event in events if event.key == entry_key), None)
+    if event is None:
+        raise Invalid("calendar_entry_not_found", "Ora del calendario non trovata per questa data.")
+    if event.status == "annullata":
+        raise Invalid("calendar_entry_cancelled", "Ora annullata: non è possibile collegare una lezione.")
+    return event
+
+
 def link_lesson(
     data: schemas.CalendarLinkLessonRequest, db=None
 ) -> schemas.CalendarEntryStateView:
@@ -339,6 +351,8 @@ def link_lesson(
     with session_scope(database) as session:
         if data.lesson_id is not None and session.get(Lesson, data.lesson_id) is None:
             raise NotFound("lesson_not_found", f"Lezione {data.lesson_id} non trovata.")
+        if data.lesson_id is not None:
+            require_linkable_event(data.date, data.entry_key, session)
         row = session.scalars(
             select(CalendarEntryState).where(
                 CalendarEntryState.date == data.date,
@@ -552,7 +566,9 @@ def _resolve_day_events(
         )
 
         # Risoluzione stato
-        if lesson_summary is not None:
+        if day_status == "annullata" or (es and es.status == "annullata"):
+            effective_status = "annullata"
+        elif lesson_summary is not None:
             effective_status = "seguita"
         elif es and es.status:
             effective_status = es.status
@@ -581,7 +597,7 @@ def _resolve_day_events(
                 status=effective_status,
                 note=es.note if es else None,
                 is_modified=s["is_modified"],
-                is_recorded=bool(lesson_summary is not None or effective_status == "seguita"),
+                is_recorded=lesson_summary is not None,
                 template_entry_id=s["template_entry_id"],
                 override_id=s["override_id"],
                 lesson=lesson_summary,

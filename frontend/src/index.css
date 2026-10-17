@@ -262,6 +262,7 @@
 }
 .rt-document img {
   max-width: 100%;
+  max-height: 70vh;
   border-radius: 8px;
 }
 .rt-document a {
@@ -521,6 +522,9 @@
 .rt-lesson-editor .cm-activeLine {
   background: transparent;
 }
+.rt-lesson-editor .cm-dropCursor {
+  border-left: 2px dashed var(--primary) !important;
+}
 /* Timecode bloccato: l'etichetta della lettura. Clic ascolta, triplo clic modifica. */
 .rt-lesson-editor .rt-timecode-locked {
   display: inline-block;
@@ -593,6 +597,7 @@
 }
 .rt-lesson-editor .rt-editor-image img {
   max-width: 100%;
+  max-height: 70vh;
   border-radius: 8px;
 }
 
@@ -1007,3 +1012,161 @@
 .rt-cls-hover, .rt-cls-cell:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .rt-cls-manual { position: absolute; width: 5px; height: 5px; right: 3px; top: 3px; border-radius: 50%; background: var(--foreground); }
 .rt-cls-sheet { margin: auto auto 0; width: min(640px, 100%); max-height: 80dvh; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+
+/* Striscia miniature immagini (IM1c) */
+/* minmax(0, 1fr): la colonna resta larga quanto lo spazio disponibile e le miniature scorrono
+   dentro la striscia invece di allargare editor e pagina. */
+.rt-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 10px 0; min-width: 0; max-width: 100%; }
+/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine cade subito dopo la striscia:
+   le pagine si vedono già come miniature. */
+.cm-content > .rt-strip + .cm-atomic-image { display: none; }
+.rt-strip-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
+.rt-strip-head .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-strip-head .count-pill { font-variant-numeric: tabular-nums; }
+.rt-strip-head .ib { position: relative; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; display: grid; place-items: center; color: var(--muted-foreground); cursor: pointer; }
+.rt-strip-head .ib:hover { background: var(--muted); color: var(--foreground); }
+.rt-strip-head .chev { width: 18px; height: 18px; transition: transform .15s ease; flex: none; }
+.rt-strip-icon, .rt-strip-clip { display: grid; place-items: center; width: 18px; height: 18px; flex: none; }
+.rt-strip.closed .rail, .rt-strip.closed .thumbs { display: none; }
+.rt-strip.closed .chev { transform: rotate(-90deg); }
+
+.rt-strip .rail { position: relative; }
+.rt-strip .rail .thumbs { scrollbar-width: thin; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; }
+.rt-strip .thumb { flex: none; width: 136px; height: 90px; border: 1px solid var(--border); border-radius: 8px; padding: 0; background: var(--muted); overflow: hidden; scroll-snap-align: start; position: relative; cursor: pointer; display: block; }
+.rt-strip .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.rt-strip .thumb:hover { border-color: var(--accent-foreground); }
+.rt-strip .thumb .pg { position: absolute; right: 4px; bottom: 4px; background: var(--foreground); color: var(--background); font-size: 10px; padding: 1px 5px; border-radius: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; font-weight: 500; }
+
+.rt-strip .rail::before, .rt-strip .rail::after { content: ''; position: absolute; top: 0; bottom: 4px; width: 28px; pointer-events: none; opacity: 0; transition: opacity .15s ease; z-index: 1; }
+.rt-strip .rail::before { left: 0; background: linear-gradient(90deg, var(--background), transparent); }
+.rt-strip .rail::after { right: 0; background: linear-gradient(270deg, var(--background), transparent); }
+.rt-strip .rail.l::before, .rt-strip .rail.r::after { opacity: 1; }
+
+.rt-strip .nav { position: absolute; top: calc(50% - 15px); z-index: 2; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--background); color: var(--foreground); display: none; place-items: center; box-shadow: var(--shadow); cursor: pointer; }
+.rt-strip .nav svg { width: 18px; height: 18px; }
+.rt-strip .nav.prev { left: 4px; }
+.rt-strip .nav.next { right: 4px; }
+.rt-strip .rail:hover .nav.show { display: grid; }
+@media (hover: none) { .rt-strip .rail .nav { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .rt-strip-head .chev { transition: none; } }
+
+/* Linee markdown di una striscia mentre il cursore è dentro l'editor */
+.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
+
+/* Visore a schermo pieno (IM1d) */
+.rt-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(10 10 10 / 0.88);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.rt-viewer-box {
+  width: min(900px, 100%);
+  display: grid;
+  gap: 12px;
+  color: #ffffff;
+  min-width: 0;
+}
+.rt-vtop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.rt-vtop .cap {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.9;
+}
+.rt-vtop .count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.rt-viewer-box .vb {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.15);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.rt-viewer-box .vb:hover {
+  background: rgb(255 255 255 / 0.3);
+}
+.rt-viewer-box .vb svg {
+  width: 18px;
+  height: 18px;
+}
+.rt-vmain {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.rt-slide-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  max-height: min(65vh, 600px);
+}
+.rt-viewer-slide {
+  max-width: min(640px, 100%);
+  max-height: min(65vh, 600px);
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+.rt-vstrip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.rt-vstrip button:first-child {
+  margin-left: auto;
+}
+.rt-vstrip button:last-child {
+  margin-right: auto;
+}
+.rt-vstrip button {
+  flex: none;
+  width: 64px;
+  height: 42px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0.55;
+  background: var(--muted);
+  cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.rt-vstrip button img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.rt-vstrip button.on {
+  border-color: #ffffff;
+  opacity: 1;
+}
+@media (max-width: 520px) {
+  .rt-vmain {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rt-vmain .vb {
+    display: none;
+  }
+}

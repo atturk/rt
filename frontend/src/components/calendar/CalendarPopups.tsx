@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Link as LinkIcon,
   Mic,
+  Plus,
   SkipForward,
   X,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ import { getSubjectColor } from './subjectColor'
 import { STATUS_LABELS } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
 import { useSubjects } from '@/api/subjects'
+import { useOpenNewLesson } from '@/components/shell/newLesson'
 
 
 export type PopupAnchor = {
@@ -80,6 +82,7 @@ export function EventPopup({
   onLinkLesson: (lessonId: number | null) => void
 }) {
   const color = getSubjectColor(event.materia)
+  const openNewLesson = useOpenNewLesson()
   const [editingNote, setEditingNote] = useState(false)
   const [noteText, setNoteText] = useState(event.note ?? '')
   const [linking, setLinking] = useState(false)
@@ -258,6 +261,7 @@ export function EventPopup({
         ) : (
           <>
             <span className="flex-1 text-muted-foreground">Nessuna registrazione</span>
+            {event.status !== 'annullata' && <>
             <IconButton
               label="Collega una lezione"
               icon={LinkIcon}
@@ -265,12 +269,22 @@ export function EventPopup({
               active={linking}
               onClick={() => setLinking((prev) => !prev)}
             />
+            <IconButton
+              label="Importa una lezione per quest'ora"
+              icon={Plus}
+              side="top"
+              onClick={() => {
+                onClose()
+                openNewLesson({ date: event.date, slotKey: event.key })
+              }}
+            />
+            </>}
           </>
         )}
       </div>
 
       {/* Scegli lezione da collegare */}
-      {linking && !isRecorded && (
+      {linking && !isRecorded && event.status !== 'annullata' && (
         <div className="flex max-h-40 flex-col gap-1 overflow-auto rounded border bg-muted/40 p-1.5 text-xs">
           <span className="font-semibold text-muted-foreground">Seleziona una lezione:</span>
           {lessonsQuery.data?.map((l) => (

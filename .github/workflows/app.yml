@@ -5,7 +5,8 @@ name: App
 # Windows gira anche la suite dei test. release.yml la richiama e allega gli installer.
 on:
   pull_request:
-    branches: [main]
+    # anche le PR verso un branch beta (claude/rt-X.Y.Z-beta): gli installer si provano lì
+    branches: [main, 'claude/rt-*-beta']
   workflow_call:
   workflow_dispatch:
 

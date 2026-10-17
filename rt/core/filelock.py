@@ -7,6 +7,7 @@ Nessuna dipendenza esterna.
 import os
 import json
 import socket
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -54,6 +55,15 @@ def acquire_file_lock(lock_path: str, retries: int = 30, backoff: float = 0.1, s
                     continue
             except FileNotFoundError:
                 continue
+            except PermissionError:
+                if sys.platform != "win32":
+                    raise
+            time.sleep(backoff * (attempt + 1 if attempt < 5 else 5))
+        except PermissionError:
+            # Windows: un lock appena rimosso da un altro processo resta "in cancellazione"
+            # per un attimo, e crearlo o leggerlo dà accesso negato invece di "esiste già"
+            if sys.platform != "win32":
+                raise
             time.sleep(backoff * (attempt + 1 if attempt < 5 else 5))
     raise TimeoutError(f"Impossibile acquisire il lock su '{lock_path}' dopo {retries} tentativi.")
 

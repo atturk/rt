@@ -2,7 +2,7 @@
 rt.pipeline.add_images
 Comando supplementare (fuori da 'rt run', come review-asr/recall) che integra immagini
 (slide PDF, foto, o risultati di ricerca web) nel documento della lezione, sotto la
-macro-sezione a cui appartengono per contenuto.
+sottounità a cui appartengono per contenuto (macro per le immagini web senza provenienza).
 
 Lavora sulla bozza: basta il rewrite (prepare, outline e rewrite VALID). Il posizionamento
 scelto finisce in assets/images/placement.json (rt.pipeline.image_placement), che
@@ -15,7 +15,8 @@ import hashlib
 import base64
 from rt.services.prompt_settings import effective_system
 import re
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Callable, Dict, Any, Optional, List, Tuple
+from rt.services.context import RunContext
 from rt.core.lesson_paths import lesson_path
 from rt.core.image_extract import ExtractedImage, extract_images
 from rt.core.searxng_client import search_images, download_image
@@ -136,6 +137,7 @@ def describe_new_images(
     lesson_context: Optional[str] = None,
     force_mock: bool = False,
     failures: Optional[UnitFailureTracker] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
 ) -> None:
     """Per ogni immagine nuova (ExtractedImage, hash), genera la descrizione strutturata
     via LLM con o senza contesto a seconda della sorgente, salva l'immagine grezza e
@@ -149,7 +151,9 @@ def describe_new_images(
     client = LLMClient(force_mock=force_mock)
     existing_descriptions = load_image_descriptions(lesson_dir)
 
-    for img, img_hash in new_images:
+    for i, (img, img_hash) in enumerate(new_images, 1):
+        if progress:
+            progress(i - 1, len(new_images))
         mime_type, ext = _get_image_mime_type(img.source_label)
         b64_data = base64.b64encode(img.image_bytes).decode("utf-8")
         image_data_url = f"data:{mime_type};base64,{b64_data}"
@@ -195,10 +199,14 @@ def describe_new_images(
             "alt_text": desc.alt_text,
         }
         save_image_descriptions(lesson_dir, existing_descriptions)
+        if progress:
+            progress(i, len(new_images))
 
 
 def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = False,
-                          failures: Optional[UnitFailureTracker] = None) -> Dict[str, List[str]]:
+                          failures: Optional[UnitFailureTracker] = None,
+                          progress: Optional[Callable[[int, int], None]] = None,
+                          image_hashes: Optional[List[str]] = None) -> Dict[str, List[str]]:
     """One image per Decision API request, compared against the complete lesson.
 
     Choice labels map uniquely to macro IDs, never micro-units. The full lesson is
@@ -208,7 +216,10 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
     from rt.llm.jev_client import JevChoiceQuestion, JevChoiceAnswer
     from rt.core.config import load_config
     from rt.llm.cancel import raise_if_cancelled, RunCancelled
-    descriptions = load_image_descriptions(lesson_dir)
+    # Le pagine dei materiali le colloca l'assegnazione dei materiali, non questo giudice.
+    descriptions = {h: d for h, d in load_image_descriptions(lesson_dir).items()
+                    if not str(d.get("source", "")).startswith("material:")
+                    and (image_hashes is None or h in image_hashes)}
     if not descriptions:
         return {}
     macros = list(getattr(outline, "macro_sections", []))
@@ -217,6 +228,9 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
         return results
     if LLMClient(force_mock=force_mock).force_mock:
         results[str(macros[0].id)] = list(descriptions)
+        if progress:
+            for i in range(len(descriptions) + 1):
+                progress(i, len(descriptions))
         return results
     if len(macros) > 254:
         raise ValueError("Il giudice immagini supporta al massimo 254 macro unità per lezione")
@@ -240,7 +254,9 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
             cached = json.load(f)
     else:
         cached = {}
-    for image_hash, description in descriptions.items():
+    for i, (image_hash, description) in enumerate(descriptions.items(), 1):
+        if progress:
+            progress(i - 1, len(descriptions))
         raise_if_cancelled()
         key = digest([description, lesson_text, question.model_dump(), cfg.model])
         entry = cached.get(image_hash, {})
@@ -273,6 +289,8 @@ def judge_images_by_macro(lesson_dir: str, outline: Any, force_mock: bool = Fals
             failures.failed(image_hash, f"immagine {description.get('filename', image_hash)}", exc)
             if failures.too_many():
                 break
+        if progress:
+            progress(i, len(descriptions))
     return results
 
 
@@ -357,7 +375,7 @@ def fetch_web_images(
         if force_mock:
             for i in range(per_unit):
                 extracted.append(ExtractedImage(image_bytes=_mock_png(f"{unit_id}#{i}"),
-                                                source_label=f"websearch:{query}#{i+1}"))
+                                                source_label=f"websearch:{query}#{i+1}", unit_id=unit_id))
                 found[unit_id] += 1
             continue
         try:
@@ -370,7 +388,7 @@ def fetch_web_images(
                 data = download_image(res.image_url)
             except Exception:
                 continue
-            extracted.append(ExtractedImage(image_bytes=data, source_label=f"websearch:{query}"))
+            extracted.append(ExtractedImage(image_bytes=data, source_label=f"websearch:{query}", unit_id=unit_id))
             found[unit_id] += 1
 
     if search_errors and len(search_errors) == len(queries):
@@ -379,19 +397,201 @@ def fetch_web_images(
     return extracted, found
 
 
+def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=None, progress=None):
+    """Il testo dei PDF evita Vision; foto e pagine mute riusano le descrizioni in cache."""
+    descriptions = load_image_descriptions(lesson_dir)
+    for i, image in enumerate(images, 1):
+        image_hash = compute_image_hash(image.image_bytes)
+        if image_hash not in descriptions:
+            if image.text or image.mapping_skip:
+                descriptions[image_hash] = {
+                    "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash),
+                    "source": image.source_label,
+                    "ocr_text": image.text,
+                }
+                save_image_descriptions(lesson_dir, descriptions)
+            else:
+                describe_new_images(lesson_dir, [(image, image_hash)],
+                                    lesson_context=get_lesson_context(lesson_dir),
+                                    force_mock=force_mock, failures=failures)
+                descriptions = load_image_descriptions(lesson_dir)
+        if image_hash in descriptions and descriptions[image_hash].get('source') == image.source_label:
+            source_name = image.source_label.split(':', 1)[-1]
+            if image.source_label.startswith('pdf:'):
+                source_name = source_name.rsplit('#', 1)[0]
+            descriptions[image_hash]['alt_text'] = f"{source_name}, pagina {image.page_number}"
+            save_image_descriptions(lesson_dir, descriptions)
+        if progress:
+            progress(i, len(images))
+        if failures and failures.too_many():
+            break
+
+
+def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=None, progress=None):
+    """Solo posizionamento: non scrive mai pages_by_unit/pages_by_macro né la bozza."""
+    from rt.core.models import SegmentsData
+    from rt.core.segments import load_segments_json
+    from rt.pipeline.material_mapping import (
+        build_subunit_corpus, place_page_in_outline, append_page_placements,
+        PageSourceIdentity, _read_json, CACHE_FILE,
+    )
+    segments_path = lesson_path(lesson_dir, 'segments.json')
+    segments = load_segments_json(segments_path) if fs.isfile(segments_path) else SegmentsData()
+    corpus, idf = build_subunit_corpus(outline, segments)
+    cached = _read_json(lesson_dir, CACHE_FILE)
+    descriptions = load_image_descriptions(lesson_dir)
+    by_unit, by_macro = {}, {}
+    for i, image in enumerate(images, 1):
+        image_hash = compute_image_hash(image.image_bytes)
+        description = descriptions.get(image_hash)
+        if description is not None and not image.mapping_skip:
+            text = image.text or '\n'.join(str(description.get(key) or '')
+                for key in ('slide_title', 'ocr_text', 'visual_elements', 'summary_keywords'))
+            identity = image.file_fingerprint or image_hash
+            units, macros = place_page_in_outline(
+                {'numero': image.page_number, 'testo': text}, corpus, idf,
+                PageSourceIdentity(identity, identity), lesson_dir, cached, mock=force_mock, ctx=ctx,
+            )
+            append_page_placements(by_unit, by_macro, image_hash, units, macros)
+        if progress:
+            progress(i, len(images))
+    return by_unit, by_macro
+
+
+def resolve_selected_images(
+    lesson_dir: str,
+    selected_images: List[str],
+    force_mock: bool = False,
+    failures: Optional[UnitFailureTracker] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
+) -> List[ExtractedImage]:
+    """Risolve le immagini selezionate (file in assets/images o materiali delle fonti) in ExtractedImage."""
+    import re
+    from rt.core.sources import load_sources
+    from rt.core.materials import cached_pages
+
+    descriptions = load_image_descriptions(lesson_dir)
+    extracted: List[ExtractedImage] = []
+
+    by_hash = dict(descriptions)
+    by_file = {desc["filename"]: (h, desc) for h, desc in descriptions.items() if "filename" in desc}
+    by_base = {os.path.basename(desc["filename"]): (h, desc) for h, desc in descriptions.items() if "filename" in desc}
+
+    sources = None
+
+    for i, item in enumerate(selected_images, 1):
+        target_hash = None
+        target_desc = None
+
+        if item in by_hash:
+            target_hash = item
+            target_desc = by_hash[item]
+        elif item in by_file:
+            target_hash, target_desc = by_file[item]
+        elif item in by_base:
+            target_hash, target_desc = by_base[item]
+
+        if target_hash and target_desc:
+            full_path = os.path.join(lesson_dir, target_desc["filename"])
+            if fs.isfile(full_path):
+                with fs.open(full_path, "rb") as f:
+                    data = f.read()
+                page_num = 1
+                source_str = target_desc.get("source", "")
+                alt_str = target_desc.get("alt_text", "")
+                m = re.search(r"pagina\s+(\d+)", alt_str, re.IGNORECASE) or re.search(r":(\d+)$", source_str)
+                if m:
+                    page_num = int(m.group(1))
+                text = target_desc.get("ocr_text") or target_desc.get("slide_title") or ""
+                if not text and not target_desc.get("visual_elements") and not LLMClient(force_mock=force_mock).force_mock:
+                    img_obj = ExtractedImage(image_bytes=data, page_number=page_num, source_label=source_str)
+                    describe_new_images(lesson_dir, [(img_obj, target_hash)],
+                                        lesson_context=get_lesson_context(lesson_dir),
+                                        force_mock=force_mock, failures=failures)
+                    descriptions = load_image_descriptions(lesson_dir)
+                    target_desc = descriptions.get(target_hash, target_desc)
+                    text = target_desc.get("ocr_text") or target_desc.get("slide_title") or ""
+                extracted.append(ExtractedImage(
+                    image_bytes=data,
+                    page_number=page_num,
+                    source_label=source_str or f"asset:{target_hash}",
+                    text=text,
+                    file_fingerprint=target_hash,
+                ))
+                if progress:
+                    progress(i, len(selected_images))
+                continue
+
+        # Non ancora in descriptions: pagina dei materiali (es. materials/<impronta>/page-1-1.png)
+        if sources is None:
+            sources = load_sources(lesson_dir)
+
+        # Solo l'identificativo esatto "material:<id>:<pagina>" di una fonte non tolta.
+        tag = re.match(r"^material:([^:]+):(\d+)$", item)
+        mat_match = next((s for s in sources if tag and not s.rimossa_il
+                          and tag.group(1) in (s.id, s.impronta)), None)
+
+        if mat_match:
+            page_num = int(tag.group(2))
+            # Solo le pagine già lette all'import: mai estrazioni (o testo finto) da qui.
+            pages = cached_pages(lesson_dir, mat_match)
+            page_text = ""
+            img_rel = None
+            if pages:
+                p = next((p for p in pages if int(p.get("numero", 0)) == page_num), None)
+                if p:
+                    page_text = p.get("testo", "")
+                    if p.get("immagini"):
+                        img_rel = p["immagini"][0]
+            if not img_rel:
+                cand = os.path.join("materials", mat_match.impronta, f"page-{page_num}-1.png")
+                if fs.isfile(os.path.join(lesson_dir, cand)):
+                    img_rel = cand
+            if img_rel and fs.isfile(os.path.join(lesson_dir, img_rel)):
+                with fs.open(os.path.join(lesson_dir, img_rel), "rb") as f:
+                    data = f.read()
+                h = compute_image_hash(data)
+                rel = save_raw_image(lesson_dir, data, h)
+                src_name = os.path.basename(mat_match.file)
+                descriptions = load_image_descriptions(lesson_dir)
+                if h not in descriptions:
+                    descriptions[h] = {
+                        "filename": rel,
+                        "source": f"material:{mat_match.id}:{page_num}",
+                        "alt_text": f"{src_name}, pagina {page_num}",
+                        "ocr_text": page_text,
+                    }
+                    save_image_descriptions(lesson_dir, descriptions)
+                extracted.append(ExtractedImage(
+                    image_bytes=data,
+                    page_number=page_num,
+                    source_label=f"material:{mat_match.id}:{page_num}",
+                    text=page_text,
+                    file_fingerprint=mat_match.impronta,
+                ))
+        if progress:
+            progress(i, len(selected_images))
+
+    return extracted
+
+
 def run_add_images(
     lesson_dir: str,
     input_path: Optional[str] = None,
     web_search_count: Optional[int] = None,
     force_mock: bool = False,
     unit_ids: Optional[List[str]] = None,
+    selected_images: Optional[List[str]] = None,
+    pages_only: bool = False,
     tolerate_failures: bool = False,
+    ctx: Optional[RunContext] = None,
 ) -> Dict[str, Any]:
     """Orchestratore principale di 'rt add-images'. web_search_count: immagini da cercare sul
     web per ogni unità (unit_ids: solo quelle unità, None = tutte). Con tolerate_failures (job
     del worker) un'immagine o una sezione che il modello non riesce a elaborare non ferma le
     altre: il posizionamento si scrive con le immagini riuscite e il risultato elenca le non
-    riuscite (failed_units)."""
+    riuscite (failed_units). Con pages_only=True estrae solo le immagini nei media senza
+    chiamare modelli né collocarle. Con selected_images colloca solo quelle selezionate."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.pipeline.image_placement import get_placement_path, save_image_placement
     from rt.pipeline.outline import load_outline
@@ -406,15 +606,66 @@ def run_add_images(
     build_was_valid = check_phase_status(lesson_dir, "build")[0] == PhaseStatus.VALID
 
     outline = load_outline(lesson_dir)
+    uploaded: List[ExtractedImage] = []
     extracted: List[ExtractedImage] = []
     web_found: Dict[str, int] = {}
     tracker = UnitFailureTracker() if tolerate_failures else None
     tolerant = {"failures": tracker} if tracker is not None else {}
 
-    if input_path:
-        extracted.extend(extract_images(input_path))
+    def report(start, span, message):
+        def update(current, total):
+            if ctx:
+                ctx.check_cancelled()
+                ctx.progress("add_images", start + int(span * current / max(total, 1)), 100,
+                             f"{message} {current}/{total}")
+        return update
+
+    # Modalità Solo pagine: salva le immagini e descrizioni minime senza modelli né collocazione
+    if pages_only:
+        if ctx:
+            ctx.progress("add_images", 0, 100, "Estraggo le pagine")
+        if input_path:
+            uploaded = extract_images(input_path, progress=report(0, 80, "Estraggo le pagine"))
+        descriptions = load_image_descriptions(lesson_dir)
+        for i, img in enumerate(uploaded, 1):
+            h = compute_image_hash(img.image_bytes)
+            if h not in descriptions:
+                rel = save_raw_image(lesson_dir, img.image_bytes, h)
+                descriptions[h] = {
+                    "filename": rel,
+                    "source": img.source_label,
+                    "ocr_text": img.text or "",
+                }
+            if img.source_label.startswith("pdf:"):
+                source_name = img.source_label.split(":", 1)[-1].rsplit("#", 1)[0]
+                descriptions[h]["alt_text"] = f"{source_name}, pagina {img.page_number}"
+            report(80, 20, "Salvo le pagine")(i, len(uploaded))
+        save_image_descriptions(lesson_dir, descriptions)
+        if ctx:
+            ctx.progress("add_images", 100, 100, "Pagine aggiunte ai media")
+        return {
+            "images_added": len(uploaded),
+            "macros_with_images": [],
+            "units_with_images": [],
+            "web_images_by_unit": {},
+            "placement": get_placement_path(lesson_dir),
+            "placement_changed": False,
+            "build_stale": False,
+            "failed_units": [],
+        }
+
+    if ctx:
+        ctx.progress("add_images", 0, 100, "Leggo le pagine")
+
+    if selected_images:
+        uploaded = resolve_selected_images(lesson_dir, selected_images, force_mock=force_mock,
+                                           failures=tracker, progress=report(0, 30, "Leggo le pagine"))
+    elif input_path:
+        uploaded = extract_images(input_path, progress=report(0, 20, "Leggo le pagine"))
 
     if web_search_count and web_search_count > 0:
+        if ctx:
+            ctx.progress("add_images", 25, 100, "Cerco immagini sul web")
         from rt.core.config import load_config
         cfg = load_config()
         searxng_url = getattr(cfg, "searxng_base_url", None)
@@ -428,29 +679,67 @@ def run_add_images(
         )
         extracted.extend(web_extracted)
 
+    if uploaded and not selected_images:
+        prepare_uploaded_images(lesson_dir, uploaded, force_mock=force_mock,
+                                progress=report(30, 20, "Leggo le pagine"), **tolerant)
+
     if extracted:
         new_images, _cached = partition_new_vs_cached_images(lesson_dir, extracted)
         if new_images:
             lesson_context = get_lesson_context(lesson_dir)
             describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock,
-                                **tolerant)
+                                progress=report(50, 10, "Leggo le pagine"), **tolerant)
 
-    assignments = judge_images_by_macro(lesson_dir, outline, force_mock=force_mock, **tolerant)
-
+    uploaded_units, uploaded_macros = place_uploaded_images(
+        lesson_dir, outline, uploaded, force_mock=force_mock, ctx=ctx,
+        progress=report(60, 25, "Colloco le immagini"),
+    ) if uploaded else ({}, {})
+    # La ricerca nasce già da una sottounità: la provenienza non va persa nel giudice macro.
+    web_units = {}
+    without_origin = []
     descriptions = load_image_descriptions(lesson_dir)
-    placement: Dict[str, List[str]] = {}
-    for macro_id, hashes in assignments.items():
-        kept = [h for h in hashes if h in descriptions]
-        if kept:
-            placement[str(macro_id)] = kept
-    assigned_hashes = {h for hashes in placement.values() for h in hashes}
+    known_units = set(outline_unit_ids(outline))
+    for i, image in enumerate(extracted, 1):
+        image_hash = compute_image_hash(image.image_bytes)
+        if image.unit_id in known_units and image_hash in descriptions:
+            hashes = web_units.setdefault(image.unit_id, [])
+            if image_hash not in hashes:
+                hashes.append(image_hash)
+            origins = descriptions[image_hash].setdefault('origin_unit_ids', [])
+            if image.unit_id not in origins:
+                origins.append(image.unit_id)
+        elif image_hash in descriptions:
+            without_origin.append(image_hash)
+        report(85, 5, "Colloco le immagini")(i, len(extracted))
+    if extracted:
+        save_image_descriptions(lesson_dir, descriptions)
+    assignments = judge_images_by_macro(
+        lesson_dir, outline, force_mock=force_mock, image_hashes=without_origin,
+        progress=report(90, 5, "Colloco le immagini"), **tolerant,
+    ) if without_origin else {}
 
-    changed = save_image_placement(lesson_dir, placement, False)
+    from rt.pipeline.image_placement import load_image_placement
+    from rt.pipeline.material_mapping import append_page_placements
+    previous = load_image_placement(lesson_dir) or {}
+    placement = previous.get("macros", {})
+    unit_placement = previous.get("units", {})
+    assigned_hashes = set()
+    for added, section_kind in ((uploaded_units, 'units'), (web_units, 'units'), (uploaded_macros, 'macros'), (assignments, 'macros')):
+        for section_id, hashes in added.items():
+            for image_hash in hashes:
+                append_page_placements(unit_placement, placement, image_hash,
+                    [section_id] if section_kind == 'units' else [],
+                    [section_id] if section_kind == 'macros' else [])
+                assigned_hashes.add(image_hash)
+    changed = save_image_placement(lesson_dir, placement, previous.get("carousel", False), units=unit_placement)
     build_stale = build_was_valid and check_phase_status(lesson_dir, "build")[0] != PhaseStatus.VALID
 
+    if ctx:
+        ctx.progress("add_images", 100, 100, "Immagini collocate")
     return {
         "images_added": len(assigned_hashes),
         "macros_with_images": list(placement.keys()),
+        "units_with_images": list(unit_placement.keys()),
         "web_images_by_unit": web_found,
         "placement": get_placement_path(lesson_dir),
         "placement_changed": changed,

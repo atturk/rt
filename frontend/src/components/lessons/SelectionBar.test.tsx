@@ -37,7 +37,7 @@ describe('export nella barra di selezione', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
     expect(screen.queryByRole('table')).toBeNull()
   })
-  it.each(['markdown', 'zip'] as const)('accoda %s, mostra avanzamento e scarica una volta sola a job finito', async (format) => {
+  it.each(['markdown', 'zip', 'sources'] as const)('accoda %s, mostra avanzamento e scarica una volta sola a job finito', async (format) => {
     const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ job_id: 'exp-1', state: 'queued' }, 202))
     let state = 'running'
     vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
@@ -48,6 +48,7 @@ describe('export nella barra di selezione', () => {
     const client = renderBar()
     fireEvent.click(screen.getByRole('button', { name: format === 'markdown' ? 'Scarica Markdown' : 'Scarica zip' }))
     if (format === 'zip') fireEvent.click(screen.getByRole('menuitem', { name: 'Scarica zip' }))
+    if (format === 'sources') fireEvent.click(screen.getByRole('menuitem', { name: 'Solo le fonti (zip)' }))
     await screen.findByRole('progressbar')
     expect(post).toHaveBeenCalledWith('/api/v1/lesson-exports', { body: {
       ids: format === 'markdown' ? [1] : [1, 2], format, name: 'Lezioni selezionate', study: format === 'zip',

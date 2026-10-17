@@ -9,7 +9,9 @@ scaricano quando servono.
   e le immagini che il Markdown richiama (assets/...), con gli stessi percorsi relativi,
   così i link continuano a funzionare;
 - scope "all": tutti i file della lezione (testi, metadati, stato e media), con i nomi
-  usati nel database (senza il prefisso _state/).
+  usati nel database (senza il prefisso _state/);
+- scope "sources": solo le fonti attive, con il loro nome originale; l'audio è quello della
+  lezione (unito, in m4a: un wav o flac si converte al volo).
 Funziona allo stesso modo per le lezioni in cartella e per quelle nel database.
 
 Il documento finale si usa se esiste ed è aggiornato (build VALID). Altrimenti, se la bozza
@@ -29,7 +31,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from rt.storage import fs
 
-SCOPES = ("final", "all")
+SCOPES = ("final", "all", "sources")
 ERRORS_FILE = "Errori concettuali.md"
 _TITLED_MD = re.compile(r"^\[\d{4}-\d{2}-\d{2}\] .+\.md$")
 _MD_LINK = re.compile(r"!?\[[^\]]*\]\(<?([^)>\s]+)>?(?:\s+\"[^\"]*\")?\)|<img[^>]+src=\"([^\"]+)\"")
@@ -120,6 +122,8 @@ def collect(lesson_dir: str, scope: str = "final") -> List[Tuple[str, Source]]:
     """(nome relativo nell'export, percorso di lettura o contenuto) dei file da esportare."""
     if scope not in SCOPES:
         raise ExportError(f"Ambito di export sconosciuto: {scope} (usa {', '.join(SCOPES)})")
+    if scope == "sources":
+        return _collect_sources(lesson_dir)
     names = lesson_file_names(lesson_dir)
     mode = export_mode(lesson_dir, names)
     if scope == "all":
@@ -144,6 +148,53 @@ def collect(lesson_dir: str, scope: str = "final") -> List[Tuple[str, Source]]:
     return [(n, names[n]) for n in picked_names]
 
 
+def _collect_sources(lesson_dir: str) -> List[Tuple[str, Source]]:
+    """Fonti attive nell'ordine delle Fonti: un solo audio (quello che suona il player) e
+    gli altri file con il loro nome. Le fonti tolte non ci sono."""
+    from rt.core.sources import load_sources
+    from rt.services.lesson_service import lesson_audio_file
+    items: List[Tuple[str, Source]] = []
+    used: set = set()
+
+    def add(name: str, src: Source) -> None:
+        stem, ext = os.path.splitext(name)
+        candidate, n = name, 2
+        while candidate in used:
+            candidate, n = f"{stem} ({n}){ext}", n + 1
+        used.add(candidate)
+        items.append((candidate, src))
+
+    sources = load_sources(lesson_dir)
+    audio = lesson_audio_file(lesson_dir)
+    if audio:
+        add(*_light_audio(audio, sources))
+    for source in sources:
+        if source.tipo == "audio":
+            continue
+        path = os.path.join(lesson_dir, source.file)
+        if fs.isfile(path):
+            add(os.path.basename(source.file), path)
+    if not items:
+        raise ExportError("La lezione non ha fonti da scaricare.")
+    return items
+
+
+def _light_audio(audio: str, sources) -> Tuple[str, Source]:
+    """(nome, contenuto) dell'audio della lezione in m4a."""
+    audio_sources = [s for s in sources if s.tipo == "audio"]
+    name = os.path.basename(audio_sources[0].file) if len(audio_sources) == 1 else "audio completo.m4a"
+    stem, ext = os.path.splitext(name)
+    if os.path.splitext(audio)[1].lower() not in (".wav", ".flac", ".aif", ".aiff"):
+        return f"{stem}{os.path.splitext(audio)[1]}", audio
+    from rt.pipeline.setup import transcode_audio_for_storage
+    with tempfile.TemporaryDirectory(prefix="rt-export-audio-") as tmp:
+        out = os.path.join(tmp, "audio.m4a")
+        if transcode_audio_for_storage(audio, out):
+            with open(out, "rb") as f:
+                return f"{stem}.m4a", f.read()
+    return f"{stem}{os.path.splitext(audio)[1]}", audio
+
+
 def final_markdown(lesson_dir: str) -> Tuple[str, bytes]:
     """(nome del file, contenuto) del Markdown da scaricare: il documento finale se
     aggiornato, altrimenti l'anteprima dalla bozza (nome con "(anteprima)")."""
@@ -158,9 +209,11 @@ def final_markdown(lesson_dir: str) -> Tuple[str, bytes]:
     return final, _read(names[final])
 
 
-def zip_name(lesson_dir: str) -> str:
+def zip_name(lesson_dir: str, scope: str = "all") -> str:
     """Nome dell'archivio: con "(anteprima)" se non contiene il documento finale."""
     base = os.path.basename(os.path.normpath(lesson_dir))
+    if scope == "sources":
+        return f"{base} - fonti.zip"
     return f"{base}{PREVIEW_SUFFIX if is_preview(lesson_dir) else ''}.zip"
 
 
@@ -240,7 +293,7 @@ def _export_zip_into(lesson_dir: str, scope: str, buf, study: bool = False) -> N
 def many_export_filename(name: str, fmt: str) -> str:
     """Nome del download di gruppo, senza separatori o caratteri riservati."""
     base = "".join(c for c in name if c not in '/\\:*?"<>|').strip() or "lezioni"
-    return f"{base}{' - archivi' if fmt == 'zip' else ''}.zip"
+    return f"{base}{' - archivi' if fmt == 'zip' else ' - fonti' if fmt == 'sources' else ''}.zip"
 
 
 def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
@@ -250,10 +303,12 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
 
     markdown: il documento finale di ogni lezione che ne ha uno aggiornato (le altre si
     saltano, come il download da Option nell'elenco); zip: l'archivio completo di ogni
-    lezione (scope all), ciascuno come file .zip reimportabile da «Importa lezioni da ZIP».
+    lezione (scope all), ciascuno come file .zip reimportabile da «Importa lezioni da ZIP»;
+    sources: le fonti di ogni lezione in una cartella col suo nome (le lezioni senza fonti
+    si saltano).
     """
-    if fmt not in ("markdown", "zip"):
-        raise ExportError(f"Formato sconosciuto: {fmt} (usa markdown o zip)")
+    if fmt not in ("markdown", "zip", "sources"):
+        raise ExportError(f"Formato sconosciuto: {fmt} (usa markdown, zip o sources)")
     included = 0
     used: set = set()
 
@@ -269,7 +324,7 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
         path = output.name
     try:
         # Gli archivi delle lezioni sono già compressi: dentro l'archivio del gruppo si salvano così.
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED if fmt == "zip" else zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED if fmt == "markdown" else zipfile.ZIP_STORED) as zf:
             for index, lesson_dir in enumerate(lesson_dirs):
                 if progress:
                     progress(index, len(lesson_dirs), lesson_dir)
@@ -279,6 +334,18 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
                         continue
                     final = final_markdown_name(names)
                     zf.writestr(unique(final), _read(names[final]))
+                elif fmt == "sources":
+                    try:
+                        files = _collect_sources(lesson_dir)
+                    except ExportError:
+                        continue
+                    folder = unique(os.path.basename(os.path.normpath(lesson_dir)))
+                    for rel, src in files:
+                        real = None if isinstance(src, bytes) else fs.real_path(src)
+                        if real is not None:
+                            zf.write(real, f"{folder}/{rel}")
+                        else:
+                            zf.writestr(f"{folder}/{rel}", src if isinstance(src, bytes) else _read(src))
                 else:
                     single = export_zip_to_tempfile(lesson_dir, "all", study=study)
                     try:
@@ -288,7 +355,8 @@ def export_many_to_tempfile(lesson_dirs: List[str], fmt: str,
                 included += 1
         if not included:
             raise ExportError("Nessuna lezione del gruppo ha un documento finale aggiornato."
-                              if fmt == "markdown" else "Nessuna lezione da esportare.")
+                              if fmt == "markdown" else "Nessuna lezione del gruppo ha fonti da scaricare."
+                              if fmt == "sources" else "Nessuna lezione da esportare.")
     except BaseException:
         os.unlink(path)
         raise
