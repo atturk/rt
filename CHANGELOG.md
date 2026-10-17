@@ -1,6 +1,6 @@
 # Novità di RT
 
-## Prossima versione
+## 4.3.0 — 2026-10-17
 
 ### Cambiamenti
 
@@ -18,6 +18,17 @@
 - RT si installa come un'app: un .dmg per il Mac (Apple Silicon) e un setup per Windows, con tutto incluso (niente Homebrew, Python o terminale). Si apre con un doppio clic e apre la web app nel browser.
 - L'app si aggiorna da Impostazioni › Info › Aggiornamenti, solo alle versioni stabili. Le beta si scaricano a mano dalla pagina delle release.
 - Se la porta 8765 è occupata da un altro programma, l'app ne sceglie una libera e la ricorda: niente più avvio fallito.
+
+### Dalle beta 4.2.6
+
+- Arricchimento › Media: tutte le pagine e le foto delle fonti, raggruppate per fonte, da inserire nel testo (anche a strisce), trascinare, ritagliare o collocare in automatico. "Solo pagine" divide PDF e foto senza modelli e senza costi.
+- PDF e foto aggiunti in Arricchimento e immagini dal web finiscono nelle sottounità pertinenti; i materiali guidano la rielaborazione sottounità per sottounità.
+- Domande: il numero diventa un tetto ("Fino a"), niente ripetizioni fra i tipi, varianti verificate degli esercizi, controlli automatici che scartano le domande rotte e un avviso finale con il riepilogo. Le "Regole dai voti" in Impostazioni › Domande si ricavano dai tuoi voti e si modificano a mano.
+- Audio più leggero: le registrazioni si salvano in m4a, più audio caricati insieme diventano una sola fonte (Unisci) e "Alleggerisci l'audio delle lezioni" libera spazio sulle lezioni vecchie.
+- Import più comodo: trascini i file su qualunque punto della finestra, il caricamento continua anche chiudendo l'import (lo segui nella pagina Job), e dal Calendario un'ora senza lezione apre l'import già impostato.
+- Si possono scaricare solo le fonti di una o più lezioni; togliere una fonte chiede conferma e si può rimettere com'era.
+- Chiedi e Verifica mostrano titoli, elenchi e formule, e sul computer i popup si spostano e si ridimensionano. Formule LaTeX anche per le reazioni chimiche.
+- Varie correzioni su miniature, player delle lezioni unite, iPhone e menu del clic destro.
 
 ## 4.2.6b5 — 2026-10-16
 
