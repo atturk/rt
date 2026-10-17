@@ -195,7 +195,8 @@ def install_windows(installer: str) -> None:
 def copy_app_from_dmg(dmg: str, target: str) -> None:
     """Copia RT.app dal .dmg in target, senza quarantena: niente avviso di Gatekeeper per
     un'app non firmata che RT ha scaricato e verificato da sé."""
-    shutil.rmtree(target, ignore_errors=True)
+    if os.path.lexists(target):
+        raise AppUpdateError(f"{target} esiste già: non la sostituisco.")
     mount = tempfile.mkdtemp(prefix="rt-update-")
     try:
         _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg])
@@ -221,6 +222,7 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     if not os.access(parent, os.W_OK):
         raise AppUpdateError(f"Non posso scrivere in {parent}: scarica l'aggiornamento dalla pagina delle release.")
     staging = app + ".update"
+    shutil.rmtree(staging, ignore_errors=True)
     copy_app_from_dmg(dmg, staging)
     old = app + ".old"
     script = ('sleep 1; rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD"; '

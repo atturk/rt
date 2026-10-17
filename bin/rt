@@ -12,6 +12,14 @@ if os.path.basename(script_dir) == "bin":
 else:
     project_root = script_dir
 
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Il passaggio all'app precede anche l'avvio del vecchio venv: bastano i moduli standard,
+# senza caricare configurazione, database o dipendenze della cartella ritirata.
+from rt.core.app_switch import forward_to_app
+forward_to_app(project_root, sys.argv[1:])
+
 venv_dir = os.path.join(project_root, ".venv")
 venv_python = os.path.join(venv_dir, "bin", "python3")
 # Confronta sys.prefix (che riflette il venv REALMENTE attivo per questo interprete), non
@@ -28,9 +36,6 @@ if os.path.isfile(venv_python) and not in_target_venv:
     # aver seguito le istruzioni di install.sh, che aggiungono bin/ al PATH ma non attivano
     # il venv per ogni nuova sessione di terminale).
     os.execv(venv_python, [venv_python, os.path.abspath(__file__)] + sys.argv[1:])
-
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 from rt.cli import main
 
