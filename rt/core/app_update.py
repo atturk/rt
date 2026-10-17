@@ -192,6 +192,25 @@ def install_windows(installer: str) -> None:
                      **_detached())
 
 
+def copy_app_from_dmg(dmg: str, target: str) -> None:
+    """Copia RT.app dal .dmg in target, senza quarantena: niente avviso di Gatekeeper per
+    un'app non firmata che RT ha scaricato e verificato da sé."""
+    shutil.rmtree(target, ignore_errors=True)
+    mount = tempfile.mkdtemp(prefix="rt-update-")
+    try:
+        _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg])
+        try:
+            source = os.path.join(mount, "RT.app")
+            if not os.path.isdir(source):
+                raise AppUpdateError("Il .dmg non contiene RT.app.")
+            _run(["ditto", source, target])
+        finally:
+            subprocess.run(["hdiutil", "detach", mount, "-force"], capture_output=True, check=False)
+    finally:
+        shutil.rmtree(mount, ignore_errors=True)
+    subprocess.run(["xattr", "-dr", "com.apple.quarantine", target], capture_output=True, check=False)
+
+
 def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     """Copia la nuova RT.app accanto a quella in uso; un processo separato le scambia e riapre
     RT (che riavvia i servizi con il codice nuovo)."""
@@ -202,20 +221,7 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     if not os.access(parent, os.W_OK):
         raise AppUpdateError(f"Non posso scrivere in {parent}: scarica l'aggiornamento dalla pagina delle release.")
     staging = app + ".update"
-    shutil.rmtree(staging, ignore_errors=True)
-    mount = tempfile.mkdtemp(prefix="rt-update-")
-    try:
-        _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg])
-        try:
-            source = os.path.join(mount, "RT.app")
-            if not os.path.isdir(source):
-                raise AppUpdateError("Il .dmg non contiene RT.app.")
-            _run(["ditto", source, staging])
-        finally:
-            subprocess.run(["hdiutil", "detach", mount, "-force"], capture_output=True, check=False)
-    finally:
-        shutil.rmtree(mount, ignore_errors=True)
-    subprocess.run(["xattr", "-dr", "com.apple.quarantine", staging], capture_output=True, check=False)
+    copy_app_from_dmg(dmg, staging)
     old = app + ".old"
     script = ('sleep 1; rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD"; '
               'open "$APP" --args --after-update')

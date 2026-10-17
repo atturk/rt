@@ -893,7 +893,7 @@ def _cmd_db_check(args: argparse.Namespace, url: str, shown: str) -> None:
 _COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
                               # fase G: la cartella dati va migrata prima di aprire il DB, e diagnosi,
                               # servizi, ripristino e disinstallazione devono funzionare con un DB rotto
-                              "data", "service", "doctor", "restore", "uninstall",
+                              "data", "app", "service", "doctor", "restore", "uninstall",
                               # l'app prepara da sé cartella dati e database (rt.desktop)
                               "desktop"}
 
@@ -964,6 +964,7 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
         "  service             Servizi in background con launchd: API e worker\n"
         "  logs                Ultime righe dei log dei servizi (--follow per seguirli)\n"
         "  data                Cartella dati di RT (~/.rt o RT_DATA_DIR)\n"
+        "  app                 Passa all'app per il Mac tenendo i dati\n"
         "  uninstall           Disinstalla RT lasciando i dati\n\n"
         "Opzioni generali:\n"
         "  -v, --version       Mostra la versione corrente e verifica aggiornamenti\n"
@@ -1209,6 +1210,10 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_data = subparsers.add_parser("data", help=argparse.SUPPRESS, description="Cartella dati di RT (RT_DATA_DIR o ~/.rt): stato, creazione, migrazione")
     cli_system.configure_data_parser(p_data)
     p_data.set_defaults(func=cli_system.cmd_data)
+    p_app = subparsers.add_parser("app", help="Passa all'app per il Mac (RT.app) tenendo i dati",
+                                  description="Dalla RT da terminale all'app per il Mac: dati e impostazioni restano")
+    cli_system.configure_app_parser(p_app)
+    p_app.set_defaults(func=cli_system.cmd_app)
     p_uni = subparsers.add_parser("uninstall", help=argparse.SUPPRESS, description="Disinstalla RT (servizi e ambiente Python; i dati restano)")
     cli_system.configure_uninstall_parser(p_uni)
     p_uni.set_defaults(func=cli_system.cmd_uninstall)
@@ -1260,6 +1265,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
 
 def main(argv: Optional[List[str]] = None) -> None:
     raw_args = sys.argv[1:] if argv is None else argv
+    from rt.core.app_switch import forward_to_app
+    forward_to_app(_default_project_root(), list(raw_args))  # cartella passata all'app
     from rt.core.bundle import apply_env, utf8_console
     utf8_console()
     apply_env()
