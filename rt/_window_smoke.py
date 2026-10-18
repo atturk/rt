@@ -70,8 +70,12 @@ def downloads(window) -> list[str]:
     for name, href in cases:
         destination[0] = target / name
         destination[0].unlink(missing_ok=True)
+        # Gli export da blob usano un link non inserito nella pagina e revocano subito
+        # l'URL, come LessonEditor, DetailsPanel ed exportQuestionType nel frontend.
+        click = ("a.click(); URL.revokeObjectURL(a.href);" if not name.endswith(".zip")
+                 else "document.body.append(a); a.click(); a.remove();")
         script = ("(() => { const a=document.createElement('a'); a.href=" + href + ";"
-                  "a.download=" + json.dumps(name) + "; document.body.append(a); a.click(); a.remove(); })()")
+                  "a.download=" + json.dumps(name) + ";" + click + "})()")
         if sys.platform == "win32":
             # WebView2 blocca il secondo download automatico senza un gesto dell'utente.
             # La prova equivale al clic sul pulsante della web app, senza aprire DevTools.
