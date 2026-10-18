@@ -384,10 +384,6 @@ export function DetailsPanel({
         </div>
       </div>
 
-      <p className="text-meta text-muted-foreground">
-        Cartella: <span className="font-mono text-foreground [overflow-wrap:anywhere]">{l.folder_name}</span>
-      </p>
-
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
 
       {/* Riepilogo */}
