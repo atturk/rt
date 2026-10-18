@@ -221,15 +221,15 @@ def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
 def transcription_engines() -> Dict[str, Any]:
     """Quali motori locali girano qui e quale consigliare (macparakeet sul Mac, Parakeet ONNX
     altrove)."""
-    import shutil
     import sys
 
     from rt.core import onnx_stt
     from rt.core.config import default_engine
+    from rt.pipeline.setup import find_macparakeet_binary
     return {
         "recommended": default_engine(),
         "macparakeet_available": sys.platform == "darwin",
-        "macparakeet_installed": sys.platform == "darwin" and bool(shutil.which("macparakeet-cli")),
+        "macparakeet_installed": sys.platform == "darwin" and bool(find_macparakeet_binary()),
         "parakeet_available": onnx_stt.available(),
         "parakeet_model_ready": onnx_stt.model_ready(),
     }

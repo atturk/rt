@@ -30,6 +30,15 @@ vi.mock('@/api/jobs', () => ({
   }),
 }))
 
+vi.mock('@/api/subjects', () => ({
+  useSubjects: () => ({
+    data: [
+      { nome: 'FISIOLOGIA', lezioni: 1 },
+      { nome: 'ANATOMIA', lezioni: 0 },
+    ],
+  }),
+}))
+
 vi.mock('@/api/hooks', () => ({
   isActiveJob: () => false,
   useLessonJobs: () => ({ data: [] }),
@@ -103,6 +112,21 @@ describe('DetailsPanel', () => {
         titolo: 'Nuovo Titolo',
       }),
     )
+  })
+
+  it('la materia si può spostare anche su una materia senza lezioni', () => {
+    render(
+      <MemoryRouter>
+        <DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} />
+      </MemoryRouter>,
+    )
+
+    const select = screen.getByLabelText('Materia')
+    const options = within(select).getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual(['ANATOMIA', 'FISIOLOGIA'])
+
+    fireEvent.change(select, { target: { value: 'ANATOMIA' } })
+    expect(mutateMetadata).toHaveBeenCalledWith(expect.objectContaining({ materia: 'ANATOMIA' }))
   })
 
   it('il menu delle fasi permette di aprire le opzioni avanzate ed eseguire con unità', () => {

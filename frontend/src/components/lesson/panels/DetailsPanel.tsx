@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { useOutline } from '@/api/jobs'
+import { useSubjects } from '@/api/subjects'
 import {
   isActiveJob,
   useDeleteLesson,
@@ -83,6 +84,19 @@ function Validation({ title, report }: { title: string; report: Record<string, u
   )
 }
 
+// Senza duplicati che differiscono solo per maiuscole: vince la prima grafia
+// (quella della lezione corrente, poi quella del registro).
+function uniqueSubjects(names: (string | null | undefined)[]): string[] {
+  const byKey = new Map<string, string>()
+  for (const raw of names) {
+    const name = (raw ?? '').trim()
+    if (!name) continue
+    const key = name.toLocaleLowerCase()
+    if (!byKey.has(key)) byKey.set(key, name)
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b))
+}
+
 function formatDataOra(data: string, ora: string): string {
   if (!data) return ora ? `· ${ora}` : ''
   const parts = data.split('-')
@@ -141,10 +155,15 @@ export function DetailsPanel({
     setDocente(l.docente || '')
   }
 
+  // Tutte le materie del registro (anche senza lezioni), più quelle delle lezioni
+  // come riserva finché il registro non è caricato.
   const allLessons = useLessons()
-  const subjectOptions = Array.from(
-    new Set([l.materia, ...(allLessons.data ?? []).map((les) => les.materia)].filter(Boolean) as string[]),
-  ).sort()
+  const subjects = useSubjects()
+  const subjectOptions = uniqueSubjects([
+    l.materia,
+    ...(Array.isArray(subjects.data) ? subjects.data.map((s) => s.nome) : []),
+    ...(allLessons.data ?? []).map((les) => les.materia),
+  ])
 
   const updateMetadata = useUpdateLessonMetadata(l.id)
 
@@ -364,10 +383,6 @@ export function DetailsPanel({
           />
         </div>
       </div>
-
-      <p className="text-meta text-muted-foreground">
-        Cartella: <span className="font-mono text-foreground [overflow-wrap:anywhere]">{l.folder_name}</span>
-      </p>
 
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
 
