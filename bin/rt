@@ -16,9 +16,11 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Il passaggio all'app precede anche l'avvio del vecchio venv: bastano i moduli standard,
-# senza caricare configurazione, database o dipendenze della cartella ritirata.
-from rt.core.app_switch import forward_to_app
-forward_to_app(project_root, sys.argv[1:])
+# senza caricare configurazione, database o dipendenze della cartella ritirata. Solo con il
+# segnale di ritiro: le altre installazioni non importano nulla col Python di sistema.
+if os.path.lexists(os.path.join(project_root, "MOVED_TO_APP")):
+    from rt.core.app_switch import forward_to_app
+    forward_to_app(project_root, sys.argv[1:])
 
 venv_dir = os.path.join(project_root, ".venv")
 venv_python = os.path.join(venv_dir, "bin", "python3")

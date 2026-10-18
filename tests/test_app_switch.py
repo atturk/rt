@@ -16,6 +16,8 @@ import pytest
 from rt.core import app_switch, app_update, bundle
 
 CHECK_OLD_PROCESSES = app_switch.check_old_processes
+# ps, launchd ed execv sul Python dell'app: solo Mac (e Linux in CI), non Windows
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="passaggio all'app solo sul Mac")
 
 
 def make_app(folder, version="4.3.1"):
@@ -185,6 +187,7 @@ def test_forward_handles_unexecutable_python(source, tmp_path, capsys):
     assert "Ripristina l'app" in capsys.readouterr().err
 
 
+@posix_only
 @pytest.mark.parametrize("args", [["-v"], ["-u", "--beta"], ["web", "--no-browser"]])
 def test_wrapper_forwards_before_old_venv_and_dependencies(source, tmp_path, args):
     # Una cartella ritirata deve funzionare anche con venv e dipendenze non più usabili.
@@ -284,6 +287,7 @@ def test_open_failure_reports_retirement(source, tmp_path, capsys):
     assert "già ritirata" in capsys.readouterr().out
 
 
+@posix_only
 @pytest.mark.parametrize("script", ["{root}/bin/rt web --no-browser", "bin/rt web", "./bin/rt api", "rt/bin/rt web",
                                     "{root}/bin/rt worker --concurrency 2"])
 def test_old_foreground_process_blocks_switch(source, monkeypatch, script):
@@ -295,6 +299,7 @@ def test_old_foreground_process_blocks_switch(source, monkeypatch, script):
         CHECK_OLD_PROCESSES(source)
 
 
+@posix_only
 def test_managed_services_and_update_do_not_block_switch(source, monkeypatch):
     from rt.services import service_manager as sm
     monkeypatch.setattr(sm, "status", lambda name: SimpleNamespace(pid=101 if name == "api" else 102))
