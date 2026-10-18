@@ -15,6 +15,17 @@ import webbrowser
 from rt.core import bundle, paths
 
 INFO_PATH = "/settings/info-aggiornamenti"
+LOCALIZATION = {
+    "global.ok": "OK", "global.cancel": "Annulla", "global.quit": "Esci",
+    "global.saveFile": "Salva file", "global.quitConfirmation": "Uscire da RT?",
+    "cocoa.menu.about": "Informazioni su", "cocoa.menu.services": "Servizi",
+    "cocoa.menu.view": "Vista", "cocoa.menu.edit": "Modifica", "cocoa.menu.hide": "Nascondi",
+    "cocoa.menu.hideOthers": "Nascondi altre", "cocoa.menu.showAll": "Mostra tutte",
+    "cocoa.menu.quit": "Esci da", "cocoa.menu.fullscreen": "Attiva tutto schermo",
+    "cocoa.menu.cut": "Taglia", "cocoa.menu.copy": "Copia", "cocoa.menu.paste": "Incolla",
+    "cocoa.menu.selectAll": "Seleziona tutto", "windows.fileFilter.allFiles": "Tutti i file",
+    "windows.fileFilter.otherFiles": "Altri tipi di file",
+}
 
 
 def _log(message: str) -> None:
@@ -198,7 +209,8 @@ def _smoke(window) -> None:
     try:
         result["page"] = window.evaluate_js("document.getElementById('root') !== null && document.title")
         result["authenticated"] = window.evaluate_js(
-            "fetch('/api/v1/auth/me').then(r => r.ok)")
+            "(() => { const r = new XMLHttpRequest(); r.open('GET', '/api/v1/auth/me', false); "
+            "r.send(); return r.status === 200; })()")
         result["url"] = window.get_current_url()
         if result["page"] and result["authenticated"]:
             from rt._window_smoke import downloads
@@ -248,6 +260,12 @@ def open_window(base_url: str, path: str = "/") -> int:
                                        text_select=True, zoomable=True)
         pending_path = path if path.startswith("/") and not path.startswith("//") else "/"
         smoke_done = False
+        engine_error = []
+
+        def initialized(renderer):
+            if sys.platform == "win32" and renderer != "edgechromium":
+                engine_error.append("WebView2 Runtime non disponibile")
+                return False
 
         def loaded():
             nonlocal pending_path, smoke_done
@@ -260,6 +278,7 @@ def open_window(base_url: str, path: str = "/") -> int:
                 _smoke(window)
 
         window.events.loaded += loaded
+        window.events.initialized += initialized
         if sys.platform == "darwin":
             window.events.shown += _macos_menu
         with open(_pid_path(), "w", encoding="utf-8", newline="\n") as f:
@@ -269,12 +288,15 @@ def open_window(base_url: str, path: str = "/") -> int:
         if sys.platform == "win32":
             options["icon"] = os.path.join(paths.project_root(), "rt.ico")
         webview.start(menu=_menu(window, base_url), private_mode=False,
+                      localization=LOCALIZATION,
                       storage_path=os.path.join(paths.data_dir(), "webview"),
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)
+        if engine_error:
+            raise RuntimeError(engine_error[0])
         return 0
     except Exception as exc:
         _log(f"Non riesco ad aprire la finestra: {exc}. Apro il browser.")
-        if window is not None:
+        if window is not None and window.events.shown.is_set():
             try:
                 window.destroy()
             except Exception:

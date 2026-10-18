@@ -24,7 +24,7 @@ def webview(monkeypatch):
     fake = ModuleType("webview")
     fake.settings = {}
     fake_window = Mock()
-    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event())
+    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event())
     fake.create_window = Mock(return_value=fake_window)
     fake.start = Mock()
     menu = ModuleType("webview.menu")
@@ -50,6 +50,9 @@ class Event:
     def __iadd__(self, callback):
         self.callbacks.append(callback)
         return self
+
+    def is_set(self):
+        return False
 
 
 @pytest.mark.parametrize("reason", ["source", "disabled", "linux", "import"])
@@ -308,3 +311,20 @@ def test_native_download_fixture_can_be_exported(data, rt_db, api_client):
     assert response.status_code == 200
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert any(name.endswith('/rielaborato.md') for name in archive.namelist())
+
+
+def test_windows_missing_webview2_uses_browser(data, webview, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(auth, 'create_login_code', lambda: 'code')
+    monkeypatch.setattr(window, '_activate_existing', lambda: False)
+    monkeypatch.setattr(window.ctypes, 'windll', SimpleNamespace(shell32=SimpleNamespace(
+        SetCurrentProcessExplicitAppUserModelID=Mock())), raising=False)
+    def start(**kwargs):
+        fake = webview.create_window.return_value
+        assert fake.events.initialized.callbacks[0]('mshtml') is False
+    webview.start.side_effect = start
+    opened = Mock()
+    monkeypatch.setattr(window.webbrowser, 'open', opened)
+    assert window.open_window('http://127.0.0.1:8765') == 0
+    opened.assert_called_once()
+    assert 'WebView2 Runtime non disponibile' in (data / 'logs' / 'desktop.log').read_text()
