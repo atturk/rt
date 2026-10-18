@@ -314,7 +314,8 @@ def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = F
     version = get_current_version(paths.project_root())
     if needs_setup(version) and not prepare(version, say):
         say("⚠️  Preparazione incompleta: RT parte lo stesso, i dettagli sono qui sopra.")
-    ensure_capture_browser(say)
+    if not serve:
+        ensure_capture_browser(say)
     # la 8765, o un'altra libera (ricordata) se la occupa un altro programma
     port = port or choose_port(say)
     from rt.services import service_manager as sm
