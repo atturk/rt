@@ -26,6 +26,7 @@ def _lesson() -> int:
 def downloads(window) -> list[str]:
     target = Path(paths.sub_dir("window-smoke-downloads", create=True))
     destination = [target / "lezione.zip"]
+    events = []
     if sys.platform == "darwin":
         from Foundation import NSURL
         from webview.platforms.cocoa import BrowserView
@@ -38,15 +39,25 @@ def downloads(window) -> list[str]:
         BrowserView.DownloadDelegate = RTDownloadSmokeDelegate
     else:
         from System import Action
+        from Microsoft.Web.WebView2.Core import CoreWebView2PermissionState
 
         def save(sender, args):
+            events.append("salva " + destination[0].name)
             args.ResultFilePath = str(destination[0])
             args.Handled = True
+
+        def permission(sender, args):
+            kind = str(args.PermissionKind)
+            events.append("permesso " + kind)
+            if kind == "MultipleAutomaticDownloads":
+                args.State = CoreWebView2PermissionState.Allow
+                args.Handled = True
 
         def configure():
             browser = window.native.browser
             browser.webview.CoreWebView2.DownloadStarting -= browser.on_download_starting
             browser.webview.CoreWebView2.DownloadStarting += save
+            browser.webview.CoreWebView2.PermissionRequested += permission
         window.native.Invoke(Action(configure))
 
     lesson_id = _lesson()
@@ -87,6 +98,6 @@ def downloads(window) -> list[str]:
         else:
             found = {p.name: {"size": p.stat().st_size, "inizio": p.read_bytes()[:80].hex()}
                      for p in target.iterdir() if p.is_file()}
-            raise RuntimeError(f"Download di {name} non completato nel motore nativo: {found}")
+            raise RuntimeError(f"Download di {name} non completato nel motore nativo: {found}; eventi: {events}")
         completed.append(name)
     return completed
