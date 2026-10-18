@@ -54,6 +54,10 @@ jobs:
           Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 20
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\python\python.exe")) { throw "RT non installato" }
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\python\pythonw.exe")) { throw "Manca pythonw.exe" }
+          $link = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\RT.lnk"
+          if (-not (Test-Path $link)) { throw "Manca il collegamento a RT" }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+          if ($shortcut.TargetPath -ne "$env:LOCALAPPDATA\Programs\RT\python\pythonw.exe") { throw "Il collegamento apre la console" }
       - name: Start the app
         shell: pwsh
         run: |
@@ -110,6 +114,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\unins000.exe")) { exit 0 }
           Start-Process "$env:LOCALAPPDATA\Programs\RT\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           Start-Sleep -Seconds 3
           if (Test-Path "$env:LOCALAPPDATA\Programs\RT\python") { throw "Disinstallazione incompleta" }

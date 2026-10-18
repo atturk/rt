@@ -328,3 +328,31 @@ def test_windows_missing_webview2_uses_browser(data, webview, monkeypatch):
     assert window.open_window('http://127.0.0.1:8765') == 0
     opened.assert_called_once()
     assert 'WebView2 Runtime non disponibile' in (data / 'logs' / 'desktop.log').read_text()
+
+
+def test_windows_maintenance_command_has_no_console(monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout='diagnostica', stderr=''))
+    monkeypatch.setattr(window.subprocess, 'run', run)
+    window._command('doctor')
+    assert run.call_args.args[0][-1] == 'doctor'
+    assert run.call_args.kwargs['capture_output'] is True
+    assert run.call_args.kwargs['creationflags'] == 0x08000000
+
+
+def test_pythonw_error_shows_native_alert_without_stdin(data, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(sys, 'stdin', None)
+    message = Mock()
+    monkeypatch.setattr(window.ctypes, 'windll', SimpleNamespace(user32=SimpleNamespace(MessageBoxW=message)), raising=False)
+    monkeypatch.setattr(desktop, 'run', Mock(side_effect=RuntimeError('errore di prova')))
+    ask = Mock(side_effect=AssertionError('Non deve chiedere Invio'))
+    monkeypatch.setattr('builtins.input', ask)
+    parser = argparse.ArgumentParser()
+    desktop.configure_parser(parser)
+    with pytest.raises(SystemExit) as exc:
+        desktop.cmd_desktop(parser.parse_args([]))
+    assert exc.value.code == 1
+    message.assert_called_once_with(None, 'RT non si è avviato: errore di prova', 'RT', 0x10)
+    assert 'errore di prova' in (data / 'logs' / 'desktop.log').read_text()
+    ask.assert_not_called()
