@@ -157,6 +157,9 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         assert [x.title for x in items if hasattr(x, "title")] == [
             "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…",
             "Diagnostica", "Apri nel browser", "Ricarica", "Esci da RT"]
+        items[0].function()
+        webview.create_window.return_value.load_url.assert_called_once_with(
+            "http://127.0.0.1:8765/impostazioni/info-aggiornamenti")
     webview.start.side_effect = start
     assert window.open_window("http://127.0.0.1:8765") == 0
     assert "code=monouso" in webview.create_window.call_args.args[1]

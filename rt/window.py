@@ -14,7 +14,7 @@ import webbrowser
 
 from rt.core import bundle, paths
 
-INFO_PATH = "/settings/info-aggiornamenti"
+INFO_PATH = "/impostazioni/info-aggiornamenti"
 LOCALIZATION = {
     "global.ok": "OK", "global.cancel": "Annulla", "global.quit": "Esci",
     "global.saveFile": "Salva file", "global.quitConfirmation": "Uscire da RT?",
