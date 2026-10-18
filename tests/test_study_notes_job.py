@@ -236,3 +236,23 @@ def test_study_note_verifica_with_web_search(tmp_path, monkeypatch, rt_db):
             {"title": "Manuale MSD", "url": "https://msd.it/ph"},
             {"title": "Biochimica Clinica", "url": "https://biochimica.it/ph"},
         ]
+
+
+@pytest.mark.parametrize('kind', ['chiedi', 'verifica'])
+def test_study_note_passes_formula_source_to_prompt(tmp_path, monkeypatch, rt_db, kind):
+    quote = r'Il dominio $D$ contiene $(x, y, z)$ e $\underline{R}_{12}$.'
+    text = 'Prima. ' + quote + ' Dopo.'
+    lesson_dir = _synthetic_lesson(isolated_workspace(tmp_path, monkeypatch), {'1.1': text})
+    write_ledger_file(DecisionLedger(schema_version='2.0'), lesson_dir)
+    calls = []
+
+    def fake_call(self, **kwargs):
+        calls.append(kwargs)
+        if kind == 'verifica':
+            return StudyNoteVerificaResponse(esito='corretto', spiegazione='Corretto.')
+        return StudyNoteChiediResponse(spiegazione='Spiegazione.')
+
+    monkeypatch.setattr('rt.llm.client.LLMClient.call_structured', fake_call)
+    result = run_study_note(lesson_dir, '1.1', kind, make_anchor(text, 7, 7 + len(quote)).model_dump(), force_mock=True)
+    assert f'TESTO SELEZIONATO:\n{quote}\n\nRICHIESTA DELLO STUDENTE:' in calls[0]['prompt']
+    assert result['note']['anchor']['quote'] == quote

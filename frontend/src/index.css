@@ -1170,3 +1170,9 @@
     display: none;
   }
 }
+
+/* Le formule selezionate mostrano il sorgente senza sostituire i nodi del Range. */
+.rt-math-src { display: none; font-family: var(--font-mono); font-size: .92em; }
+.rt-reading math.rt-math-raw { display: none; }
+.rt-reading math.rt-math-raw + .rt-math-src { display: inline; }
+.rt-sn-math { background: color-mix(in oklch, var(--primary) 14%, transparent); cursor: pointer; }

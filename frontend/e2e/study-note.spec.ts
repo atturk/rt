@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { test, apiGet, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink } from './support'
 
 type Lesson = { id: number; materia: string; data: string }
 
@@ -123,4 +123,53 @@ test('Chiedi a 390 px: invio visibile e cliccabile sopra la barra delle sezioni'
   })).toBe(true)
   await send.click()
   await expect(page.getByTestId('study-note-answer')).toBeVisible({ timeout: 45_000 })
+})
+
+test('formule nello Studio: selezione in LaTeX, copia, evidenziatore e citazione Chiedi', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await loginViaLink(page)
+  const l = await getLesson(page, 'STUDIO')
+  const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)
+  try {
+    await page.goto(`/studio/lezione/${l.id}`)
+    await expect(page.getByTestId('study-dots')).toBeVisible()
+    await page.getByTestId('study-dots').locator('button').first().click()
+    const root = page.getByTestId('study-text')
+    const math = root.locator('math').first()
+    await expect(math).toHaveAttribute('data-rt-source', '$z$')
+    // La copia deve funzionare anche senza uno strumento attivo.
+    if (await page.getByTestId('highlight-pen').getAttribute('aria-pressed') === 'true') await page.getByTestId('highlight-pen').click()
+    const selectFormula = () => root.evaluate(root => {
+      const p = root.querySelector('math')!.parentElement!
+      const range = document.createRange()
+      range.setStart(p.firstChild!, 0)
+      range.setEndAfter(root.querySelector('.rt-math-src')!)
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(range)
+    })
+    await selectFormula()
+    await expect(math).toHaveClass(/rt-math-raw/)
+    await expect(root.locator('.rt-math-src').first()).toBeVisible()
+    await expect(root.locator('.rt-math-src').first()).toHaveText('$z$')
+    await page.keyboard.press('ControlOrMeta+c')
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Formula $z$')
+    await page.evaluate(() => getSelection()!.removeAllRanges())
+    await expect(math).not.toHaveClass(/rt-math-raw/)
+    await expect(math).toBeVisible()
+
+    await page.getByTestId('highlight-pen').click()
+    await selectFormula()
+    await root.dispatchEvent('mouseup', { button: 0 })
+    await expect(math).toHaveClass(/rt-hl-math/)
+    await expect(math.locator('.rt-hl')).toHaveCount(0)
+    await expect.poll(async () => (await apiGet<{ source: { text?: string } }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)).some(row => row.source.text === 'Formula $z$')).toBe(true)
+    await page.getByTestId('highlight-chiedi').click()
+    await selectFormula()
+    await root.dispatchEvent('mouseup', { button: 0 })
+    await expect(page.getByTestId('study-note-quote')).toHaveText('Formula $z$')
+  } finally {
+    const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)
+    for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) {
+      expect((await page.request.delete(`/api/v1/lessons/${l.id}/highlights/${row.id}`, { headers: authHeaders() })).ok()).toBe(true)
+    }
+  }
 })
