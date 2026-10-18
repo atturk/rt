@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
@@ -17,6 +17,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatDateTime } from '@/lib/format'
+import { renderDelimitedMath } from '@/lib/math'
 
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
@@ -156,9 +157,7 @@ export function StudyNotesPanel({
 
         <div>
           <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Risposta</span>
-          <div className="mt-1 whitespace-pre-wrap text-body leading-relaxed text-foreground [overflow-wrap:anywhere]" data-testid="detail-answer">
-            {resp?.spiegazione}
-          </div>
+          <NoteHtml html={activeNote.spiegazione_html} text={resp?.spiegazione} className="rt-document rt-reading mt-1 text-body leading-relaxed text-foreground [overflow-wrap:anywhere]" testId="detail-answer" />
         </div>
 
         {fix && (
@@ -186,7 +185,7 @@ export function StudyNotesPanel({
                 </Tooltip>
               )}
             </div>
-            <div className="min-w-0 font-mono text-[13px] text-foreground [overflow-wrap:anywhere]">{fix}</div>
+            <NoteHtml html={activeNote.correzione_html} text={fix} className="rt-document min-w-0 text-body text-foreground [overflow-wrap:anywhere]" />
           </div>
         )}
 
@@ -404,4 +403,16 @@ export function StudyNotesPanel({
       )}
     </div>
   )
+}
+
+/** Risposta e correzione come nel popup dello Studio: Markdown reso dall'API e formule disegnate. */
+function NoteHtml({ html, text, className, testId }: { html?: string | null; text?: string; className: string; testId?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (ref.current) void renderDelimitedMath(ref.current)
+  }, [html, text])
+  if (!html) {
+    return <div ref={ref} className={`${className} whitespace-pre-wrap`} data-testid={testId}>{text}</div>
+  }
+  return <div ref={ref} className={className} data-testid={testId} dangerouslySetInnerHTML={{ __html: html }} />
 }

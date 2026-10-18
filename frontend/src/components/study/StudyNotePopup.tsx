@@ -170,13 +170,13 @@ export function StudyNotePopup({
 
       {/* Citazione selezionata */}
       <div
-        className={`mb-3 rounded-md border p-2.5 text-body italic text-foreground ${
+        className={`mb-3 flex items-start gap-1 rounded-md border p-2.5 text-body italic text-foreground ${
           !isVerifica ? 'border-[#c7761a]/30 bg-[#c7761a]/5' : 'border-border/60 bg-muted/40'
         }`}
         data-testid="study-note-quote"
       >
-        <span className={quoteExpanded ? '' : 'line-clamp-2'}>{effectiveQuote}</span>
-        <IconButton label={quoteExpanded ? 'Riduci la citazione' : 'Mostra tutto'} icon={ChevronsUpDown} onClick={() => setQuoteExpanded((value) => !value)} className="float-right" />
+        <span className={`min-w-0 flex-1 ${quoteExpanded ? '' : 'line-clamp-2'}`}>{effectiveQuote}</span>
+        <IconButton label={quoteExpanded ? 'Riduci la citazione' : 'Mostra tutto'} icon={ChevronsUpDown} onClick={() => setQuoteExpanded((value) => !value)} className="-my-1 -mr-1 shrink-0 not-italic" />
       </div>
 
       {/* Stato 2: Attesa risposta */}
