@@ -11,4 +11,4 @@ RT è un sistema per la rielaborazione delle lezioni universitarie e per lo stud
 </table>
 
 ## Installazione
-Scarica da [questa pagina](https://github.com/atturk/rt/releases/latest) l'ultima versione. Attualmente disponibile per Windows e MacOS.
+In fondo a [questa pagina](https://github.com/atturk/rt/releases/latest) trovi l'ultima versione. Attualmente disponibile per Windows e MacOS.
