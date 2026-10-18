@@ -77,6 +77,9 @@ def main():
             raise RuntimeError(f"Pagina non caricata o non autenticata: {result}")
         if result.get("downloads") != ["lezione.zip", "nota.md", "domande.json"]:
             raise RuntimeError(f"Download non riusciti nel motore nativo: {result}")
+        pid_deadline = min(deadline, time.monotonic() + 10)
+        while (data / "run" / "window.pid").exists() and time.monotonic() < pid_deadline:
+            time.sleep(0.1)
         if (data / "run" / "window.pid").exists():
             raise RuntimeError("Il pid della finestra è rimasto dopo la chiusura.")
         health = get(base, "/api/v1/health")

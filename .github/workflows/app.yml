@@ -87,7 +87,9 @@ jobs:
           $oldPid = Get-Content "$env:RT_DATA_DIR\run\server.pid"
           Remove-Item "$env:RT_DATA_DIR\logs\window-smoke.json"
           $setup = Get-ChildItem dist\RT-*-windows-x64-setup.exe | Select-Object -First 1
-          $install = Start-Process $setup.FullName -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$env:RUNNER_TEMP\update-setup.log" -Wait -PassThru
+          # -Wait aspetta anche il server rilanciato dal setup, che resta acceso.
+          $install = Start-Process $setup.FullName -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$env:RUNNER_TEMP\update-setup.log" -PassThru
+          if (-not $install.WaitForExit(120000)) { throw "Il setup non è terminato entro 120 secondi" }
           if ($install.ExitCode -ne 0) { throw "Aggiornamento non riuscito: $($install.ExitCode)" }
           python scripts/window_smoke.py "$app\python\pythonw.exe" $app --data $env:RT_DATA_DIR --wait-only
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
