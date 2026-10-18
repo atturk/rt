@@ -2,13 +2,13 @@
 rt.desktop
 'rt desktop': quello che parte facendo doppio clic su RT (RT.app sul Mac, il collegamento
 nel menu Start su Windows).
-
 - La prima volta, e dopo ogni aggiornamento dell'app, prepara cartella dati, database e
   archivio dei segreti (come l'ultimo passo di install.sh e di 'rt -u').
 - Sul Mac installa (o riallinea all'app) i servizi in background di launchd, aspetta l'API e
-  apre il browser già autenticato; poi esce: RT resta acceso anche senza finestre.
-- Su Windows avvia API e worker in questa finestra (come 'rt web'): chiuderla spegne RT.
-  Se RT è già acceso apre solo il browser.
+  apre la finestra già autenticata.
+- Su Windows avvia API e worker nascosti e apre la finestra, senza console.
+- Chiudere la finestra lascia RT acceso. 'Esci da RT' nel menu ferma anche i servizi.
+- Senza pywebview (o con --browser) apre il browser già autenticato.
 - Usa la porta 8765; se la occupa un altro programma ne sceglie una libera e la ricorda.
 - Scarica in background il browser per le catture delle visualizzazioni, se manca.
 """
@@ -159,22 +159,27 @@ def _wait_for_api(port: int, seconds: float = API_WAIT_SECONDS) -> bool:
 
 
 def _alert(message: str) -> None:
-    """Sul Mac l'app non ha una finestra: gli errori si mostrano in un avviso."""
+    """Gli errori dell'app si mostrano anche quando non c'è una console."""
     if sys.platform == "darwin":
         script = f'display alert "RT" message {_applescript_string(message)} as critical'
         subprocess.run(["osascript", "-e", script], check=False, capture_output=True)
+    elif sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, "RT", 0x10)
 
 
 def _applescript_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def run_macos(port: int, open_browser: bool, say: Callable[[str], None]) -> int:
+def run_macos(port: int, open_browser: bool, say: Callable[[str], None], browser: bool = False) -> int:
     from rt.api.launcher import run_spa
     from rt.services import service_manager as sm
     try:
         if not sm.installed() or not _services_match_app() or _service_port() != port:
             sm.install(port=port, say=say)
+        elif not sm.api_is_up(port):
+            sm.start()
     except sm.ServiceError as exc:
         say(f"❌ {exc}")
         _alert(f"Non riesco ad avviare RT in background: {exc}")
@@ -184,6 +189,12 @@ def run_macos(port: int, open_browser: bool, say: Callable[[str], None]) -> int:
         say(f"❌ RT non risponde: controlla {log}.")
         _alert(f"RT non risponde. Il registro è in {log}.")
         return 1
+    if open_browser and not browser:
+        from rt import window
+        if window.available():
+            return window.open_window(f"http://127.0.0.1:{port}")
+        if os.environ.get("RT_WINDOW_SMOKE") == "1":
+            return 1
     # print, non say: il token API mostrato alla prima apertura non va nel registro
     return run_spa(port=port, open_browser=open_browser, worker=False, say=print)
 
@@ -199,7 +210,104 @@ def run_foreground(port: int, open_browser: bool, say: Callable[[str], None]) ->
     return run_spa(port=port, open_browser=open_browser, say=print)
 
 
-def run(port: Optional[int] = None, open_browser: bool = True) -> int:
+def _server_pid_path() -> str:
+    return os.path.join(paths.sub_dir("run", create=True), "server.pid")
+
+
+def _server_pid() -> int:
+    try:
+        return int(_read(_server_pid_path()))
+    except ValueError:
+        return 0
+
+
+def _serve(port: int) -> int:
+    from rt.api.launcher import run_spa
+    from rt.api.server import _without_token
+    filtered = _without_token(print)
+
+    def say(message: str) -> None:
+        # In background non serve conservare link monouso nel registro.
+        if "/login?code=" not in message:
+            filtered(message)
+    with open(_server_pid_path(), "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"{os.getpid()}\n")
+    try:
+        return run_spa(port=port, open_browser=False, say=say)
+    finally:
+        if _server_pid() == os.getpid():
+            try:
+                os.remove(_server_pid_path())
+            except OSError:
+                pass
+
+
+def run_windows(port: int, open_browser: bool, say: Callable[[str], None], browser: bool = False) -> int:
+    """Il server vive in un processo nascosto, separato dalla finestra."""
+    from rt.api.launcher import run_spa
+    from rt.services.service_manager import api_is_up
+    if not api_is_up(port):
+        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.isfile(pythonw):
+            raise RuntimeError("Manca pythonw.exe nell'app: reinstalla RT.")
+        with open(os.path.join(paths.sub_dir("logs", create=True), "api.log"),
+                  "a", encoding="utf-8", newline="\n") as log:
+            proc = subprocess.Popen(
+                [pythonw, os.path.join(paths.project_root(), "bin", "rt"),
+                 "desktop", "--serve", "--port", str(port)],
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                creationflags=0x08000000 | 0x00000008 | 0x00000200, close_fds=True)
+        with open(_server_pid_path(), "w", encoding="utf-8", newline="\n") as f:
+            f.write(f"{proc.pid}\n")
+    if not _wait_for_api(port):
+        say("❌ RT non risponde: controlla logs/api.log nella cartella dati.")
+        _alert("RT non risponde. Controlla api.log nella cartella dei registri.")
+        return 1
+    if not open_browser:
+        return 0
+    if not browser:
+        from rt import window
+        if window.available():
+            return window.open_window(f"http://127.0.0.1:{port}")
+        if os.environ.get("RT_WINDOW_SMOKE") == "1":
+            return 1
+    return run_spa(port=port, open_browser=True, worker=False, say=print)
+
+
+def stop_background(base_url: str) -> None:
+    """Ferma RT dal menu. Su Windows aspetta anche la chiusura del worker."""
+    if sys.platform == "darwin":
+        from rt.services import service_manager as sm
+        sm.stop()
+        return
+    import secrets
+    import urllib.request
+    from rt.api import auth
+    from rt.window import _pid_alive
+    pid = _server_pid()
+    session = auth.create_session()
+    csrf = secrets.token_urlsafe(24)
+    request = urllib.request.Request(base_url + "/api/v1/system/quit", method="POST",
+                                    headers={"Cookie": f"{auth.SESSION_COOKIE}={session}; {auth.CSRF_COOKIE}={csrf}",
+                                             auth.CSRF_HEADER: csrf})
+    try:
+        try:
+            with urllib.request.urlopen(request, timeout=3):
+                pass
+        except OSError:
+            pass
+        deadline = time.monotonic() + 15
+        while pid and _pid_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if pid and _pid_alive(pid):
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                           check=True, capture_output=True, creationflags=0x08000000)
+    finally:
+        auth.drop_session(session)
+
+
+def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = False,
+        serve: bool = False) -> int:
     from rt.core.version import get_current_version
     from rt.services.service_manager import choose_port
     say = _sayer()
@@ -210,20 +318,39 @@ def run(port: Optional[int] = None, open_browser: bool = True) -> int:
     # la 8765, o un'altra libera (ricordata) se la occupa un altro programma
     port = port or choose_port(say)
     from rt.services import service_manager as sm
+    if serve:
+        return _serve(port)
     if sm.supported() and os.environ.get("RT_NO_SERVICES") != "1":
-        return run_macos(port, open_browser, say)
+        return run_macos(port, open_browser, say, browser=browser)
+    if sys.platform == "win32" and bundle.kind() and os.environ.get("RT_NO_SERVICES") != "1":
+        return run_windows(port, open_browser, say, browser=browser)
     return run_foreground(port, open_browser, say)
 
 
 def configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--port", type=int, default=None, help="Porta locale (default: 8765)")
-    p.add_argument("--no-browser", action="store_true", help="Non aprire il browser")
+    p.add_argument("--no-browser", action="store_true", help="Avvia solo il server, senza finestra o browser")
+    p.add_argument("--browser", action="store_true", help="Apri RT nel browser")
+    p.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--after-update", action="store_true",
-                   help="Riavvio dopo un aggiornamento: la pagina già aperta si ricarica da sola")
+                   help="Riapre RT dopo un aggiornamento dell'app")
 
 
 def cmd_desktop(args: argparse.Namespace) -> None:
-    code = run(port=args.port, open_browser=not (args.no_browser or args.after_update))
+    # pythonw può partire senza stream: uvicorn e i messaggi hanno comunque un registro.
+    if sys.platform == "win32":
+        for name in ("stdout", "stderr"):
+            if getattr(sys, name) is None:
+                log = "api.log" if getattr(args, "serve", False) else "desktop.log"
+                setattr(sys, name, open(os.path.join(paths.sub_dir("logs", create=True), log),
+                                        "a", encoding="utf-8", buffering=1, newline="\n"))
+    try:
+        code = run(port=args.port, open_browser=not args.no_browser,
+                   browser=getattr(args, "browser", False), serve=getattr(args, "serve", False))
+    except Exception as exc:
+        _sayer()(f"❌ RT non si è avviato: {exc}")
+        _alert(f"RT non si è avviato: {exc}")
+        code = 1
     if code and sys.platform == "win32" and sys.stdin and sys.stdin.isatty():
         input("\nPremi Invio per chiudere questa finestra.")
     if code:

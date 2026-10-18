@@ -217,9 +217,16 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
         shutil.rmtree(mount, ignore_errors=True)
     subprocess.run(["xattr", "-dr", "com.apple.quarantine", staging], capture_output=True, check=False)
     old = app + ".old"
-    script = ('sleep 1; rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD"; '
+    script = ('sleep 1; '
+              'if [ -f "$WINDOW_PID" ]; then '
+              'PID=$(cat "$WINDOW_PID"); '
+              'case "$PID" in ""|*[!0-9]*) ;; *) kill "$PID" 2>/dev/null || true ;; esac; '
+              'rm -f "$WINDOW_PID"; fi; '
+              'rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD" && '
               'open "$APP" --args --after-update')
-    subprocess.Popen(["/bin/sh", "-c", script], env={**os.environ, "APP": app, "NEW": staging, "OLD": old},
+    subprocess.Popen(["/bin/sh", "-c", script],
+                     env={**os.environ, "APP": app, "NEW": staging, "OLD": old,
+                          "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid")},
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      **_detached())
 

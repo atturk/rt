@@ -5,7 +5,7 @@
 ; disinstallando l'app.
 ;
 ; Aggiornamento dall'app (rt/core/app_update.py): il setup parte con /SILENT, chiude RT,
-; sostituisce i file e lo riapre con --after-update (la pagina già aperta si ricarica).
+; sostituisce i file e lo riapre con --after-update (riapre server e finestra).
 ; /NOLAUNCH=1 non riapre RT (prove automatiche).
 
 #define RtCmd '""{app}\bin\rt""'
@@ -55,13 +55,13 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdi
 Source: "{#IconFile}"; DestDir: "{app}"; DestName: "rt.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\RT"; Filename: "{app}\python\python.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; Comment: "Apre RT nel browser"
-Name: "{autodesktop}\RT"; Filename: "{app}\python\python.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; Tasks: desktopicon
-Name: "{userstartup}\RT"; Filename: "{app}\python\python.exe"; Parameters: "{#RtCmd} desktop --no-browser"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; Flags: runminimized; Tasks: startup
+Name: "{autoprograms}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Comment: "Apre RT"
+Name: "{autodesktop}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Tasks: desktopicon
+Name: "{userstartup}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop --no-browser"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Flags: runminimized; Tasks: startup
 
 [Run]
-Filename: "{app}\python\python.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; Description: "Apri RT"; Flags: postinstall nowait skipifsilent
-Filename: "{app}\python\python.exe"; Parameters: "{#RtCmd} desktop --after-update"; WorkingDir: "{%USERPROFILE}"; Flags: nowait; Check: RelaunchAfterSilentUpdate
+Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; Description: "Apri RT"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop --after-update"; WorkingDir: "{%USERPROFILE}"; Flags: nowait; Check: RelaunchAfterSilentUpdate
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

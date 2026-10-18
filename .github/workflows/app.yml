@@ -42,6 +42,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/build_app.py --out dist
+      - name: Check installer size
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/installer_size.py windows
       - name: Install silently
         shell: pwsh
         run: |
@@ -49,11 +53,42 @@ jobs:
           Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOLAUNCH=1',"/LOG=$env:RUNNER_TEMP\setup.log" -Wait
           Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 20
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\python\python.exe")) { throw "RT non installato" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\RT\python\pythonw.exe")) { throw "Manca pythonw.exe" }
       - name: Start the app
         shell: pwsh
         run: |
           $app = "$env:LOCALAPPDATA\Programs\RT"
           python scripts/app_smoke.py "$app\python\python.exe" $app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Lo smoke precedente termina il processo in primo piano; pulisce anche eventuali figli.
+          Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$app\") } | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: Open the window
+        shell: pwsh
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\RT"
+          python scripts/window_smoke.py "$app\python\pythonw.exe" $app --data "$env:RUNNER_TEMP\rt-window"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $console = Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app\*" }
+          if ($console) { throw "L'app ha avviato python.exe invece di pythonw.exe" }
+      - name: Silent update reopens the window
+        shell: pwsh
+        run: |
+          $app = "$env:LOCALAPPDATA\Programs\RT"
+          $env:RT_DATA_DIR = "$env:RUNNER_TEMP\rt-window"
+          $env:RT_WINDOW_SMOKE = '1'
+          $env:RT_API_PORT = '8798'
+          $env:RT_UPDATE_OFFLINE = '1'
+          $oldPid = Get-Content "$env:RT_DATA_DIR\run\server.pid"
+          Remove-Item "$env:RT_DATA_DIR\logs\window-smoke.json"
+          $setup = Get-ChildItem dist\RT-*-windows-x64-setup.exe | Select-Object -First 1
+          $install = Start-Process $setup.FullName -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$env:RUNNER_TEMP\update-setup.log" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Aggiornamento non riuscito: $($install.ExitCode)" }
+          python scripts/window_smoke.py "$app\python\pythonw.exe" $app --data $env:RT_DATA_DIR --wait-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Content "$env:RT_DATA_DIR\run\server.pid") -eq $oldPid) { throw "Il server precedente non è stato sostituito" }
+          $console = Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app\*" }
+          if ($console) { throw "L'app ha aperto una console dopo l'aggiornamento" }
+          Remove-Item Env:RT_WINDOW_SMOKE,Env:RT_DATA_DIR,Env:RT_API_PORT
       - uses: actions/cache@v4
         with:
           path: .stt-models
@@ -70,15 +105,21 @@ jobs:
           & "$app\python\python.exe" scripts\stt_smoke.py $app "$env:RUNNER_TEMP\voice.wav" "kidney,blood"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Uninstall
+        if: always()
         shell: pwsh
         run: |
           Start-Process "$env:LOCALAPPDATA\Programs\RT\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           Start-Sleep -Seconds 3
           if (Test-Path "$env:LOCALAPPDATA\Programs\RT\python") { throw "Disinstallazione incompleta" }
+          $app = "$env:LOCALAPPDATA\Programs\RT"
+          $left = Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$app\") }
+          if ($left) { throw "Processi dell'app rimasti dopo la disinstallazione" }
       - uses: actions/upload-artifact@v4
         with:
           name: app-windows
-          path: dist/RT-*-windows-x64-setup.exe
+          path: |
+            dist/RT-*-windows-x64-setup.exe
+            dist/RT-*-windows-x64-setup.exe.size.json
           if-no-files-found: error
           retention-days: 7
 
@@ -103,6 +144,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/build_app.py --out dist
+      - name: Check installer size
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/installer_size.py macos
       - name: Install from the dmg
         run: |
           dmg=$(ls dist/RT-*-macos-arm64.dmg)
@@ -115,6 +160,10 @@ jobs:
         run: |
           app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
           python scripts/app_smoke.py "$app/python/bin/python3" "$app"
+      - name: Open the window
+        run: |
+          app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
+          python scripts/window_smoke.py "$app/python/bin/python3" "$app" --data "$RUNNER_TEMP/rt-window"
       - uses: actions/cache@v4
         with:
           path: .stt-models
@@ -131,7 +180,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: app-macos
-          path: dist/RT-*-macos-arm64.dmg
+          path: |
+            dist/RT-*-macos-arm64.dmg
+            dist/RT-*-macos-arm64.dmg.size.json
           if-no-files-found: error
           retention-days: 7
 

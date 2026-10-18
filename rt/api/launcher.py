@@ -104,7 +104,11 @@ def run_spa(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, open_browser: bo
     say(f"🚀 RT su {base}  ·  API {base}/api/v1  ·  Ctrl+C per fermare API e worker")
     try:
         # Gli stream SSE della pagina aperta non fanno aspettare Ctrl+C più di qualche secondo.
-        uvicorn.run(create_app(spa_dir=spa_dir), host=host, port=port, log_level="warning", timeout_graceful_shutdown=5)
+        app = create_app(spa_dir=spa_dir)
+        server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning",
+                                             timeout_graceful_shutdown=5))
+        app.state.uvicorn_server = server
+        server.run()
     finally:
         if child is not None and child.poll() is None:
             child.terminate()

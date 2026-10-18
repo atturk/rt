@@ -28889,6 +28889,55 @@
         ]
       }
     },
+    "/api/v1/system/quit": {
+      "post": {
+        "operationId": "quit_system_api_v1_system_quit_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ferma RT e il worker (solo da questo computer)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
     "/api/v1/system/tailnet": {
       "get": {
         "operationId": "system_tailnet_api_v1_system_tailnet_get",

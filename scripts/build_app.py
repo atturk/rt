@@ -100,7 +100,11 @@ def build_payload(target: str, payload: str, archive: str, spa_dist: str) -> str
     say("📦 Dipendenze Python...")
     subprocess.run([python, "-m", "pip", "install", "--no-warn-script-location", "--disable-pip-version-check",
                     "-q", "-r", os.path.join(ROOT, "requirements.txt")], check=True, cwd=ROOT)
+    subprocess.run([python, "-m", "pip", "install", "--no-warn-script-location", "--disable-pip-version-check",
+                    "-q", "-r", os.path.join(ROOT, "packaging", "requirements-app.txt")], check=True, cwd=ROOT)
     subprocess.run([python, "-m", "pip", "check"], check=True)
+    if target == "windows" and not os.path.isfile(os.path.join(payload, "python", "pythonw.exe")):
+        raise SystemExit("Il Python dell'app non contiene pythonw.exe.")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
     for name in CODE:
         source = os.path.join(ROOT, name)
@@ -143,7 +147,7 @@ def read_version() -> str:
 # ------------------------------------------------------------------ macOS
 
 LAUNCHER = """#!/bin/sh
-# Doppio clic su RT: prepara dati e servizi, poi apre RT nel browser (rt/desktop.py)
+# Doppio clic su RT: prepara dati e servizi, poi apre la finestra RT (rt/desktop.py)
 APP="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
 cd "$HOME" || exit 1
 exec "$APP/python/bin/python3" "$APP/bin/rt" desktop "$@"
@@ -171,6 +175,8 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
             "CFBundleShortVersionString": short, "CFBundleVersion": version,
             "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.education",
+            "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
+            "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
         }, f)
     os.symlink("/Applications", os.path.join(work, "dmg", "Applications"))
     os.makedirs(out, exist_ok=True)
