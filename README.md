@@ -12,3 +12,11 @@ RT è un sistema per la rielaborazione delle lezioni universitarie e per lo stud
 
 ## Installazione
 In fondo a [questa pagina](https://github.com/atturk/rt/releases/latest) trovi l'ultima versione. Attualmente disponibile per Windows e MacOS.
+
+## A cosa serve RT
+RT è un rielaboratore di lezioni universitarie. Il nome significa Rielaborazione Trascritti perché nasce come rielaboratore di lezioni registrate. Quindi tu fornisci la registrazione ed RT la rielabora creando un discorso coerente con quello che ha detto il professore, solo che più leggibile. 
+
+### Perché dovrei usare RT quando posso semplicemente dare il trascritto a un LLM?
+RT offre diversi vantaggi rispetto a una rielaborazione "one shot" da parte di un LLM, tra cui
+1. il motore di trascrizione associa a ogni singola parola un timestamp e un punteggio di confidence (quanto è sicuro il modello che si stata detta quella parola)
+2. 
