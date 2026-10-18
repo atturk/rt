@@ -1,0 +1,28 @@
+name: Pulizia prove finestra
+
+on:
+  push:
+    branches: [feature/finestra-app]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            // Ferma soltanto le prove superate di questo branch.
+            for (const workflow_id of ['app.yml', 'tests.yml']) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                ...context.repo, workflow_id, branch: 'feature/finestra-app', event: 'pull_request', per_page: 100
+              });
+              for (const run of runs) {
+                if (run.head_sha === context.sha || ['completed'].includes(run.status)) continue;
+                if (workflow_id === 'app.yml' && run.head_sha === 'a1e12d4bf7f6f1b95d9d38d426ba60e188e66dca') continue;
+                await github.rest.actions.cancelWorkflowRun({...context.repo, run_id: run.id});
+                core.info(`Prova superata fermata: ${run.id}`);
+              }
+            }

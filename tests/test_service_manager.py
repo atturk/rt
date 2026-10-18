@@ -128,6 +128,6 @@ def test_rt_web_opens_browser_when_services_run(monkeypatch, rt_db):
     monkeypatch.setattr(launcher, "_already_running", lambda port: True)
     opened = []
     monkeypatch.setattr(launcher, "_open_when_ready", lambda base, url, say, ob: opened.append(url))
-    monkeypatch.setattr("uvicorn.run", lambda *a, **k: pytest.fail("non doveva avviare un'altra API"))
+    monkeypatch.setattr("uvicorn.Server.run", lambda *a, **k: pytest.fail("non doveva avviare un'altra API"))
     assert launcher.run_spa(say=lambda _m: None, open_browser=False) == 0
     assert opened and "/login?code=" in opened[0]
