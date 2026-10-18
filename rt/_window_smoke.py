@@ -7,10 +7,39 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
 import time
 import zipfile
 
 from rt.core import paths
+
+
+def macos_menu() -> list[str]:
+    """Controlla il menu nativo dopo la traduzione e la sostituzione di Cmd+Q."""
+    from AppKit import NSApplication
+    from PyObjCTools import AppHelper
+    completed = threading.Event()
+    errors = []
+
+    def check():
+        try:
+            main = NSApplication.sharedApplication().mainMenu()
+            items = main.itemAtIndex_(0).submenu().itemArray()
+            exits = [item for item in items if item.title() == "Esci da RT"]
+            if len(exits) != 1 or exits[0].target() is None or exits[0].keyEquivalent() != "q":
+                raise RuntimeError("Il menu deve avere una sola uscita RT, con Cmd+Q e l'azione dei servizi.")
+            if "Modifica" not in [item.title() for item in main.itemArray()]:
+                raise RuntimeError("Manca il menu Modifica.")
+        except Exception as exc:
+            errors.append(str(exc))
+        finally:
+            completed.set()
+    AppHelper.callAfter(check)
+    if not completed.wait(10):
+        raise RuntimeError("Il menu del Mac non ha risposto.")
+    if errors:
+        raise RuntimeError(errors[0])
+    return ["Esci da RT", "Modifica"]
 
 
 def _lesson() -> int:

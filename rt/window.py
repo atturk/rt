@@ -196,7 +196,7 @@ def _macos_menu() -> None:
     def configure():
         menu = NSApplication.sharedApplication().mainMenu().itemAtIndex_(0).submenu()
         for item in list(menu.itemArray()):
-            if item.keyEquivalent() == "q" and item.title() != "Esci da RT":
+            if item.keyEquivalent() == "q" and item.target() is None:
                 menu.removeItem_(item)
             elif item.title() == "Esci da RT":
                 item.setKeyEquivalent_("q")
@@ -213,8 +213,10 @@ def _smoke(window) -> None:
             "r.send(); return r.status === 200; })()")
         result["url"] = window.get_current_url()
         if result["page"] and result["authenticated"]:
-            from rt._window_smoke import downloads
+            from rt._window_smoke import downloads, macos_menu
             result["downloads"] = downloads(window)
+            if sys.platform == "darwin":
+                result["menu"] = macos_menu()
     except Exception as exc:
         result["error"] = str(exc)
     finally:

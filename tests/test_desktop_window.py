@@ -232,6 +232,7 @@ def test_window_smoke_does_not_hide_failure(data, monkeypatch, webview):
 
 def test_smoke_reads_the_native_page(data, monkeypatch):
     monkeypatch.setattr("rt._window_smoke.downloads", lambda window: ["lezione.zip", "nota.md", "domande.json"])
+    monkeypatch.setattr("rt._window_smoke.macos_menu", lambda: ["Esci da RT", "Modifica"])
     fake = Mock()
     fake.evaluate_js.side_effect = ["RT", True]
     fake.get_current_url.return_value = "http://127.0.0.1:8765/"
@@ -407,3 +408,30 @@ def test_windows_start_lock_is_released_before_window(data, monkeypatch):
         return 0
     monkeypatch.setattr(window, 'open_window', opened)
     assert desktop.run_windows(8765, True, lambda message: None) == 0
+
+
+def test_mac_cmd_q_replaces_localized_default_quit(monkeypatch):
+    class Item:
+        def __init__(self, key, target):
+            self.key, self.owner = key, target
+        def title(self):
+            return 'Esci da RT'
+        def keyEquivalent(self):
+            return self.key
+        def target(self):
+            return self.owner
+        def setKeyEquivalent_(self, value):
+            self.key = value
+    custom, default = Item('', object()), Item('q', None)
+    items = [custom, default]
+    app_menu = SimpleNamespace(itemArray=lambda: items, removeItem_=items.remove)
+    main = SimpleNamespace(itemAtIndex_=lambda index: SimpleNamespace(submenu=lambda: app_menu))
+    appkit = ModuleType('AppKit')
+    appkit.NSApplication = SimpleNamespace(sharedApplication=lambda: SimpleNamespace(mainMenu=lambda: main))
+    objc_tools = ModuleType('PyObjCTools')
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda callback: callback())
+    monkeypatch.setitem(sys.modules, 'AppKit', appkit)
+    monkeypatch.setitem(sys.modules, 'PyObjCTools', objc_tools)
+    window._macos_menu()
+    assert items == [custom]
+    assert custom.key == 'q' and custom.target() is not None
