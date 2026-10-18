@@ -7107,6 +7107,10 @@ export interface components {
             principale: string;
             /** Principale Usato */
             principale_usato: string | null;
+            /** Reingest Available */
+            reingest_available: boolean;
+            /** Reingest Reason */
+            reingest_reason?: string | null;
             /** Solo Ricostruzione */
             solo_ricostruzione: boolean;
             /** Sources */
@@ -7745,6 +7749,16 @@ export interface components {
              * @enum {string}
              */
             mode: "extend" | "rebuild";
+            /**
+             * Reingest
+             * @default false
+             */
+            reingest: boolean;
+            /**
+             * With Review
+             * @default false
+             */
+            with_review: boolean;
         };
         /** UploadInventoryItem */
         UploadInventoryItem: {

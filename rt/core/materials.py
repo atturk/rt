@@ -164,14 +164,14 @@ def cached_pages(lesson_dir, source):
     return data['pages'] if data.get('impronta') == source.impronta else None
 
 
-def material_pages(lesson_dir, source, *, mock=False, ctx=None):
+def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False):
     """Estrazione e Vision senza lock della lezione (possono durare minuti); il lock copre
     solo le scritture. La cache è per pagina e per impronta, quindi due lavori concorrenti
     sulla stessa fonte scrivono lo stesso contenuto."""
     path = os.path.join(lesson_dir, source.file)
     if compute_file_sha256(path) != source.impronta:
         raise ValueError('Una fonte originale è cambiata: aggiungila come nuova fonte')
-    cached = cached_pages(lesson_dir, source)
+    cached = None if refresh else cached_pages(lesson_dir, source)
     if cached is not None and all('has_figures' in page for page in cached):
         return cached
     folder = os.path.join(lesson_dir, 'materials', source.impronta)
@@ -187,7 +187,7 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None):
             if ctx:
                 ctx.check_cancelled()
             entry_path = os.path.join(folder, f'page-{number}.json')
-            if fs.isfile(entry_path):
+            if not refresh and fs.isfile(entry_path):
                 with fs.open(entry_path, encoding='utf-8') as stream:
                     saved = json.load(stream)
                 if 'has_figures' in saved:

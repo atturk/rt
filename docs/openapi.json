@@ -9343,6 +9343,21 @@
             ],
             "title": "Principale Usato"
           },
+          "reingest_available": {
+            "title": "Reingest Available",
+            "type": "boolean"
+          },
+          "reingest_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reingest Reason"
+          },
           "solo_ricostruzione": {
             "title": "Solo Ricostruzione",
             "type": "boolean"
@@ -9369,6 +9384,7 @@
           "sources",
           "has_unused_sources",
           "can_undo",
+          "reingest_available",
           "principale",
           "ordine_usato",
           "principale_usato",
@@ -10758,6 +10774,16 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "reingest": {
+            "default": false,
+            "title": "Reingest",
+            "type": "boolean"
+          },
+          "with_review": {
+            "default": false,
+            "title": "With Review",
+            "type": "boolean"
           }
         },
         "title": "UpdateRequest",

@@ -12,7 +12,9 @@ const mutateMetadata = vi.fn()
 const mutateRestore = vi.fn()
 const mutateDelete = vi.fn()
 
-const phases = vi.hoisted(() => ({ list: [] as Record<string, unknown>[] }))
+const phases = vi.hoisted(() => ({ list: [] as Record<string, unknown>[], outline_validation: null as Record<string, unknown> | null, draft_validation: null as Record<string, unknown> | null }))
+const sourceState = vi.hoisted(() => ({ available: true, reason: null as string | null, mutate: vi.fn(), start: vi.fn(), running: false }))
+vi.mock('@/api/sources', () => ({ useSources: () => ({ data: { reingest_available: sourceState.available, reingest_reason: sourceState.reason } }), useUpdateLesson: () => ({ mutate: sourceState.mutate, isPending: false, isError: false }), useSourcesJob: () => ({ start: sourceState.start, running: sourceState.running, error: null }) }))
 const pipelineVersion = vi.hoisted(() => ({ available: true, modified_units: 3 }))
 
 vi.mock('@/api/jobs', () => ({
@@ -46,7 +48,7 @@ vi.mock('@/api/hooks', () => ({
   useWorkers: () => ({ data: [{}] }),
   useRunJob: () => ({ mutate: mutateRun, isPending: false }),
   useValidatePhase: () => ({ mutate: mutateValidate, reset: vi.fn(), isPending: false, isError: false }),
-  usePhases: () => ({ data: { phases: phases.list } }),
+  usePhases: () => ({ data: { phases: phases.list, outline_validation: phases.outline_validation, draft_validation: phases.draft_validation } }),
   useUpdateLessonMetadata: () => ({ mutate: mutateMetadata, isPending: false, isError: false }),
   usePipelineVersion: () => ({ data: pipelineVersion }),
   useRestorePipeline: () => ({ mutate: mutateRestore, isPending: false, isError: false }),
@@ -54,6 +56,13 @@ vi.mock('@/api/hooks', () => ({
 }))
 
 beforeEach(() => {
+  phases.outline_validation = null
+  phases.draft_validation = null
+  sourceState.available = true
+  sourceState.reason = null
+  sourceState.mutate.mockReset()
+  sourceState.start.mockReset()
+  sourceState.running = false
   phases.list = [
     { phase: 'prepare', status: 'VALID', reason: '' },
     { phase: 'outline', status: 'VALID', reason: '' },
@@ -254,4 +263,89 @@ it('Segna come valida resta nel menu ma non è disponibile su una fase già vali
   render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
   fireEvent.click(within(row('outline')).getByRole('button', { name: /Azioni su Scaletta/i }))
   expect(screen.getByRole('menuitem', { name: /Segna come valida/i })).toHaveAttribute('aria-disabled', 'true')
+})
+
+
+it('Play esegue solo le fasi necessarie e l’interruttore della revisione vale per la pipeline', () => {
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  expect(screen.queryByText('Pipeline completa')).toBeNull()
+  expect(screen.queryByText('con la revisione')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Includi la revisione scientifica' }))
+  expect(screen.getByRole('button', { name: 'Includi la revisione scientifica' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: 'Esegui la pipeline' }))
+  expect(mutateRun).toHaveBeenCalledWith(expect.objectContaining({ type: 'run_pipeline', force: false, with_review: true }), expect.anything())
+})
+
+it('la pipeline forzata parte soltanto dopo la conferma e usa force', () => {
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui tutte le fasi' }))
+  expect(mutateRun).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog', { name: 'Rifare tutte le fasi?' })).toHaveTextContent("con il loro costo")
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui' }))
+  expect(mutateRun).toHaveBeenCalledWith(expect.objectContaining({ type: 'run_pipeline', force: true }), expect.anything())
+})
+
+it('da capo chiede conferma e passa rilettura fonti e revisione al job esistente', () => {
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: 'Includi la revisione scientifica' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui tutto da capo' }))
+  expect(sourceState.mutate).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog', { name: 'Rieseguire tutto da capo?' })).toHaveTextContent('note di studio')
+  fireEvent.click(screen.getByRole('button', { name: 'Riesegui' }))
+  expect(sourceState.mutate).toHaveBeenCalledWith({ mode: 'rebuild', reingest: true, with_review: true }, expect.objectContaining({ onSuccess: expect.any(Function) }))
+  sourceState.mutate.mock.calls[0][1].onSuccess({ job_id: 'nuovo-job' })
+  expect(sourceState.start).toHaveBeenCalledWith('nuovo-job')
+  expect(mutateRun).not.toHaveBeenCalled()
+})
+
+it('tutte le azioni sono indisponibili durante la modifica del documento', () => {
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument /></MemoryRouter>)
+  for (const label of ['Includi la revisione scientifica', 'Esegui la pipeline', 'Riesegui tutte le fasi', 'Riesegui tutto da capo']) {
+    const button = screen.getByRole('button', { name: label })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(button)
+  }
+  expect(mutateRun).not.toHaveBeenCalled()
+  expect(sourceState.mutate).not.toHaveBeenCalled()
+})
+
+it('da capo spiega perché un originale mancante lo rende indisponibile', async () => {
+  sourceState.available = false
+  sourceState.reason = 'Audio originale non disponibile.'
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  const button = screen.getByRole('button', { name: 'Riesegui tutto da capo' })
+  expect(button).toHaveAttribute('aria-disabled', 'true')
+  fireEvent.mouseEnter(button)
+  fireEvent.focus(button)
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Audio originale non disponibile.')
+  fireEvent.click(button)
+  expect(sourceState.mutate).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('la validazione %s sta sulla fase e apre dettagli richiudibili', valid => {
+  phases.outline_validation = { valid, macro_count: 3, units_count: 7 }
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  const button = screen.getByTestId('validation-outline')
+  expect(row('outline')).toContainElement(button)
+  expect(button).toHaveAccessibleName(valid ? 'Scaletta valida' : 'Scaletta non valida: apri per i dettagli')
+  expect(button.querySelector('svg')).toHaveClass(valid ? 'lucide-shield-check' : 'lucide-shield-alert')
+  expect(screen.queryByText('Validazione scaletta')).toBeNull()
+  expect(screen.queryByTestId('validation-draft')).toBeNull()
+  fireEvent.click(button)
+  expect(button).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getByRole('dialog')).toHaveTextContent('Macro-sezioni3Unità7')
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(button).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(button)
+  fireEvent.pointerDown(document.body)
+  expect(button).toHaveAttribute('aria-expanded', 'false')
+})
+
+
+it('le azioni restano indisponibili finché il job da capo non termina', () => {
+  sourceState.running = true
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  for (const label of ['Includi la revisione scientifica', 'Esegui la pipeline', 'Riesegui tutte le fasi', 'Riesegui tutto da capo']) {
+    expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-disabled', 'true')
+  }
 })
