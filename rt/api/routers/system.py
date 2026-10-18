@@ -25,6 +25,29 @@ def health() -> Health:
     return Health(version=get_current_version(_default_project_root()), database=get_database() is not None)
 
 
+@router.post("/system/quit", status_code=204, summary="Ferma RT e il worker (solo da questo computer)",
+             responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+def quit_system(request: Request, _actor: Actor) -> Response:
+    import ipaddress
+
+    def local(host: str) -> bool:
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
+
+    peer = request.client.host if request.client else ""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if (not local(peer) or request.headers.get("forwarded")
+            or any(not local(host.strip()) for host in forwarded.split(",") if host.strip())):
+        raise ApiError(403, "local_only", "RT si può spegnere solo da questo computer.")
+    server = getattr(request.app.state, "uvicorn_server", None)
+    if server is None:
+        raise ApiError(409, "quit_unavailable", "Questo server si ferma dal terminale o dai servizi.")
+    server.should_exit = True
+    return Response(status_code=204)
+
+
 class SystemInfo(BaseModel):
     version: str = Field(description="Versione di RT installata (come 'rt -v')")
     prerelease: bool = Field(description="True per una beta o release candidate (es. 4.1.0b2)")

@@ -40,9 +40,15 @@ Dalla [pagina delle release](https://github.com/atturk/rt/releases/latest) scari
   di amministratore).
 
 Dentro c'è tutto (Python, dipendenze, web app, ffmpeg): un doppio clic su RT prepara la cartella
-dati `~/.rt` e apre la web app nel browser, sulla configurazione guidata. Sul Mac RT resta acceso in
-background; su Windows resta acceso finché è aperta la sua finestra. Gli aggiornamenti stabili si
-installano da Impostazioni › Info › Aggiornamenti; le beta si scaricano a mano dalle release.
+dati `~/.rt` e apre RT nella sua finestra, già autenticata, sulla configurazione guidata.
+Chiudere la finestra lascia RT acceso in background su entrambi i sistemi, anche durante una
+trascrizione. Per spegnerlo usa **Esci da RT** nel menu dell'app.
+
+Il menu comprende aggiornamenti, cartella dati, registri, backup, diagnostica e **Apri nel browser**.
+Da terminale `rt desktop --browser` apre direttamente il browser; se la finestra non è disponibile
+RT usa il browser e scrive il motivo in `~/.rt/logs/desktop.log` (anche con `RT_NO_WINDOW=1`).
+Gli aggiornamenti stabili si installano da Impostazioni › Info › Aggiornamenti e riaprono la finestra;
+le beta si scaricano a mano dalle release. L'accesso da telefono e il bot Telegram restano disponibili.
 
 L'app non è firmata: al primo avvio il Mac la blocca (Impostazioni di Sistema › Privacy e sicurezza
 › Apri comunque) e Windows mostra SmartScreen (Ulteriori informazioni › Esegui comunque). Il
