@@ -83,3 +83,12 @@ def test_fuzzy_moved_between_contexts():
     updated = 'Nuova introduzione. ' + text.replace('normale', 'medio')
     result = locate(anchor, updated)
     assert result and updated[result.start:result.end] == quote.replace('normale', 'medio')
+
+
+@pytest.mark.parametrize('quote', ['$D$', '$(x, y, z)$', r'$\underline{R}_{12}$'])
+def test_formula_source_quote_is_exact(quote):
+    text = 'Prima. Il dominio $D$ contiene $(x, y, z)$ e ' + r'$\underline{R}_{12}$' + '. Dopo.'
+    start = text.index(quote)
+    result = locate(make_anchor(text, start, start + len(quote)), text)
+    assert result.exact
+    assert (result.start, result.end) == (start, start + len(quote))

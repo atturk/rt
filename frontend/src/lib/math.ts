@@ -23,6 +23,8 @@ export function mathElement(temml: Temml, source: string, display: boolean, orig
   const math = holder.querySelector('math')
   if (!math) return window.document.createTextNode(original) // formula non valida: resta il testo
   math.setAttribute('aria-label', source.trim())
+  math.setAttribute('data-rt-source', original)
+  math.classList.add('rt-math')
   return math
 }
 
