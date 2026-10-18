@@ -55,6 +55,25 @@ L'app non è firmata: al primo avvio il Mac la blocca (Impostazioni di Sistema �
 motore di trascrizione locale su Windows è Parakeet ONNX, che scarica il modello alla prima
 trascrizione (circa 700 MB); sul Mac resta consigliato macparakeet.
 
+#### Passare all'app dalla RT da terminale
+
+Sul Mac con Apple Silicon esegui `rt -u` e rispondi **sì** alla proposta di passare all'app;
+puoi avviare il passaggio anche con `rt app install`. RT installa l'app, ritira la vecchia
+cartella senza cancellarla e apre RT da Applicazioni. I comandi `rt` nel terminale passano
+all'app, anche `rt -v` e `rt -u`. Se rifiuti, la proposta torna al prossimo aggiornamento.
+Se hai un `rt web` ancora acceso in un terminale, fermalo con Ctrl+C prima del passaggio.
+
+Per fare a mano, scarica il `.dmg` dalla [pagina delle release](https://github.com/atturk/rt/releases/latest),
+aprilo con **tasto destro › Apri**, trascina RT in Applicazioni e aprila (se il Mac la blocca,
+usa tasto destro › Apri su RT, oppure Privacy e sicurezza › Apri comunque). Poi togli da
+`~/.zshrc` la riga `export PATH=".../rt/bin:$PATH"` della vecchia installazione e riapri il terminale.
+
+I dati restano in `~/.rt`: lezioni, configurazione e chiavi non vanno spostate. Chi usa ancora
+una **3.x deve fare prima `rt -u`**, anche una seconda volta se richiesto, per completare il
+passaggio alla cartella dati. Se la RT da terminale è più recente dell'app (per esempio una
+beta), il passaggio guidato aspetta la prossima stabile; per provarlo prima, installa a mano
+un'app della stessa versione o più recente. L'app continua ad aggiornarsi solo alle stabili.
+
 #### Installazione in un comando (macOS, da terminale)
 
 ```bash

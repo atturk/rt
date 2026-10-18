@@ -1,6 +1,6 @@
 """
 rt.cli_system
-Comandi di installazione e manutenzione (fase G): 'rt data', 'rt service', 'rt backup',
+Comandi di installazione e manutenzione (fase G): 'rt data', 'rt app', 'rt service', 'rt backup',
 'rt restore', 'rt doctor', 'rt uninstall'. La logica sta in rt.services.data_service,
 service_manager, backup_service e doctor_service.
 """
@@ -43,7 +43,11 @@ def cmd_data(args: argparse.Namespace) -> None:
         return
     if command == "post-update":
         interactive = sys.stdin.isatty() and os.environ.get("RT_NONINTERACTIVE") != "1"
-        sys.exit(0 if data_service.post_update(confirm=_ask_yes if interactive else None) else 1)
+        ok = data_service.post_update(confirm=_ask_yes if interactive else None)
+        if ok and interactive and sys.stdout.isatty():  # 'rt -u' da terminale, non install.sh
+            from rt.core import app_switch
+            app_switch.offer(paths.project_root(), _ask_yes)
+        sys.exit(0 if ok else 1)
     if command == "migrate":
         try:
             plan = data_service.migrate(dry_run=args.dry_run)
@@ -81,6 +85,21 @@ def cmd_data(args: argparse.Namespace) -> None:
         if db is not None:
             print(f"Media:           {fs.media_dir(db)}")
     print(f"Log dei servizi: {os.path.join(paths.data_dir(), 'logs')}")
+
+
+# ---------------------------------------------------------------- rt app
+
+def configure_app_parser(p: argparse.ArgumentParser) -> None:
+    sub = p.add_subparsers(dest="app_command", required=False, title="Sottocomandi")
+    sub.add_parser("install", help="Installa RT.app e passa all'app tenendo i dati (default)")
+
+
+def cmd_app(args: argparse.Namespace) -> None:
+    from rt.core import app_switch, app_update
+    try:
+        app_switch.switch(paths.project_root())
+    except (app_switch.AppSwitchError, app_update.AppUpdateError, OSError) as exc:
+        _fail(f"Passaggio all'app non riuscito: {exc}.")
 
 
 # ---------------------------------------------------------------- rt service

@@ -135,3 +135,13 @@ def test_macos_update_closes_window_before_swapping_apps(tmp_path, monkeypatch):
     assert script.index('kill "$PID"') < script.index('mv "$APP"')
     assert 'open "$APP" --args --after-update' in script
     assert popen.call_args.kwargs["env"]["WINDOW_PID"] == str(tmp_path / "dati" / "run" / "window.pid")
+
+
+def test_copy_dmg_preserves_existing_target(tmp_path):
+    target = tmp_path / "RT.app"
+    target.mkdir()
+    personal = target / "personale.txt"
+    personal.write_text("da conservare")
+    with pytest.raises(app_update.AppUpdateError, match="esiste già"):
+        app_update.copy_app_from_dmg(str(tmp_path / "RT.dmg"), str(target))
+    assert personal.read_text() == "da conservare"
