@@ -26,6 +26,7 @@ def main():
     parser.add_argument("root")
     parser.add_argument("--data")
     parser.add_argument("--wait-only", action="store_true", help="Controlla il rilancio già fatto dal setup")
+    parser.add_argument("--quit", action="store_true", help="Prova anche l'uscita usata dal menu")
     args = parser.parse_args()
     root = Path(args.root).resolve()
     data = Path(args.data or tempfile.mkdtemp(prefix="rt-window-smoke-")).resolve()
@@ -83,6 +84,23 @@ def main():
         if health["version"] != version or not health["database"]:
             raise RuntimeError(f"Il server dopo la chiusura della finestra non è pronto: {health}")
         print(f"✅ Finestra RT {version} caricata e autenticata; il server resta acceso. {result}")
+        if args.quit:
+            command = ("import sys; sys.path.insert(0, sys.argv[1]); "
+                       "from rt.desktop import stop_background; stop_background(sys.argv[2])")
+            stopped = subprocess.run([args.python, "-c", command, str(root), base], env=env,
+                                     capture_output=True, text=True, encoding="utf-8", timeout=45)
+            if stopped.returncode:
+                raise RuntimeError(f"Esci da RT non riuscito: {stopped.stdout} {stopped.stderr}")
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                try:
+                    get(base, "/api/v1/health")
+                except OSError:
+                    break
+                time.sleep(0.2)
+            else:
+                raise RuntimeError("Il server risponde ancora dopo Esci da RT.")
+            print("✅ Esci da RT ha fermato il server e il worker.")
         success = True
     finally:
         if proc is not None and proc.poll() is None:
@@ -91,7 +109,7 @@ def main():
         for path in [log_path, *sorted((data / "logs").glob("*"))]:
             if path.is_file():
                 print(f"{path.name}:\n{path.read_text(encoding='utf-8', errors='replace')[-6000:]}")
-        if sys.platform == "darwin":
+        if sys.platform == "darwin" and not (success and args.quit):
             subprocess.run([args.python, str(root / "bin" / "rt"), "service", "uninstall"],
                            env=env, check=True)
         elif not success:

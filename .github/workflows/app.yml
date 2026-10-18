@@ -66,6 +66,8 @@ jobs:
         shell: pwsh
         run: |
           $app = "$env:LOCALAPPDATA\Programs\RT"
+          python scripts/window_smoke.py "$app\python\pythonw.exe" $app --data "$env:RUNNER_TEMP\rt-window" --quit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/window_smoke.py "$app\python\pythonw.exe" $app --data "$env:RUNNER_TEMP\rt-window"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $console = Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app\*" }
@@ -163,6 +165,7 @@ jobs:
       - name: Open the window
         run: |
           app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
+          python scripts/window_smoke.py "$app/python/bin/python3" "$app" --data "$RUNNER_TEMP/rt-window" --quit
           python scripts/window_smoke.py "$app/python/bin/python3" "$app" --data "$RUNNER_TEMP/rt-window"
       - uses: actions/cache@v4
         with:
