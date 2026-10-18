@@ -115,3 +115,13 @@ def test_desktop_setup_runs_once_per_version(tmp_path, monkeypatch):
     (tmp_path / desktop.STAMP_FILE).write_text("4.2.5\n")
     assert not desktop.needs_setup("4.2.5")
     assert desktop.needs_setup("4.3.0")
+
+
+def test_copy_dmg_preserves_existing_target(tmp_path):
+    target = tmp_path / "RT.app"
+    target.mkdir()
+    personal = target / "personale.txt"
+    personal.write_text("da conservare")
+    with pytest.raises(app_update.AppUpdateError, match="esiste già"):
+        app_update.copy_app_from_dmg(str(tmp_path / "RT.dmg"), str(target))
+    assert personal.read_text() == "da conservare"

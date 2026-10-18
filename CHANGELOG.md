@@ -1,5 +1,13 @@
 # Novità di RT
 
+## 4.3.1b1 — 2026-10-17
+
+### Novità
+
+- Sul Mac con Apple Silicon, `rt -u` propone di passare all'app con un sì. Puoi farlo anche con `rt app install`: lezioni, configurazione e chiavi restano in `~/.rt`.
+- La vecchia cartella resta al suo posto, ma i suoi comandi `rt` passano all'app, anche per vedere la versione e aggiornare. Se l'app manca, RT avvisa e si ferma per proteggere i dati.
+- Se hai ancora un `rt web` acceso nel terminale, RT ti chiede di fermarlo prima del passaggio. Se usi una beta più recente dell'app, aspetta la prossima stabile per evitare di aprire i dati con una versione vecchia.
+
 ## 4.3.0 — 2026-10-17
 
 ### Cambiamenti
