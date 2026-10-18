@@ -67,7 +67,9 @@ def check_transcription() -> Check:
     if sys.platform != "darwin":
         return Check("Trascrizione", WARN, "macparakeet funziona solo su macOS.",
                      "In Impostazioni scegli Parakeet ONNX (locale) o un server compatibile.")
-    if shutil.which("macparakeet-cli"):
+    # L'app aperta dal Finder non ha /opt/homebrew/bin nel PATH: si cerca come fa la trascrizione.
+    from rt.pipeline.setup import find_macparakeet_binary
+    if find_macparakeet_binary():
         return Check("Trascrizione", OK, "macparakeet-cli installato")
     return Check("Trascrizione", WARN, "macparakeet-cli non trovato: le lezioni da audio non si trascrivono.",
                  "brew install moona3k/tap/macparakeet-cli (serve un Mac Apple Silicon)")
