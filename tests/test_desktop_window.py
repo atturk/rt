@@ -435,3 +435,19 @@ def test_mac_cmd_q_replaces_localized_default_quit(monkeypatch):
     window._macos_menu()
     assert items == [custom]
     assert custom.key == 'q' and custom.target() is not None
+
+
+def test_mac_smoke_reads_the_submenu_title(monkeypatch):
+    from rt._window_smoke import macos_menu
+    exit_item = SimpleNamespace(title=lambda: 'Esci da RT', target=lambda: object(), keyEquivalent=lambda: 'q')
+    app_menu = SimpleNamespace(title=lambda: 'RT', itemArray=lambda: [exit_item])
+    roots = [SimpleNamespace(title=lambda: '', submenu=lambda: app_menu),
+             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica'))]
+    main = SimpleNamespace(itemArray=lambda: roots, itemAtIndex_=lambda index: roots[index])
+    appkit = ModuleType('AppKit')
+    appkit.NSApplication = SimpleNamespace(sharedApplication=lambda: SimpleNamespace(mainMenu=lambda: main))
+    objc_tools = ModuleType('PyObjCTools')
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda callback: callback())
+    monkeypatch.setitem(sys.modules, 'AppKit', appkit)
+    monkeypatch.setitem(sys.modules, 'PyObjCTools', objc_tools)
+    assert macos_menu() == ['Esci da RT', 'Modifica']

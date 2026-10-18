@@ -28,8 +28,10 @@ def macos_menu() -> list[str]:
             exits = [item for item in items if item.title() == "Esci da RT"]
             if len(exits) != 1 or exits[0].target() is None or exits[0].keyEquivalent() != "q":
                 raise RuntimeError("Il menu deve avere una sola uscita RT, con Cmd+Q e l'azione dei servizi.")
-            if "Modifica" not in [item.title() for item in main.itemArray()]:
-                raise RuntimeError("Manca il menu Modifica.")
+            names = [item.submenu().title() if item.submenu() is not None else item.title()
+                     for item in main.itemArray()]
+            if "Modifica" not in names:
+                raise RuntimeError(f"Manca il menu Modifica: {names}")
         except Exception as exc:
             errors.append(str(exc))
         finally:
