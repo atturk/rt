@@ -183,11 +183,13 @@ def test_failed_webview_uses_browser_and_logs(data, monkeypatch, webview):
 
 def test_existing_windows_window_is_activated(data, monkeypatch, webview):
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(auth, "create_login_code", lambda: "code")
+    login = Mock(side_effect=AssertionError("Non deve creare un altro codice"))
+    monkeypatch.setattr(auth, "create_login_code", login)
     monkeypatch.setattr(window, "_activate_existing", lambda: True)
     assert window.open_window("http://127.0.0.1:8765") == 0
     webview.create_window.assert_not_called()
     webview.start.assert_not_called()
+    login.assert_not_called()
 
 
 @pytest.mark.parametrize("host,status", [("192.168.1.20", 403), ("127.0.0.1", 204), ("::1", 204)])

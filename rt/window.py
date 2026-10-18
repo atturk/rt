@@ -230,7 +230,6 @@ def _smoke(window) -> None:
 def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
-    url = f"{base_url}/login?code={auth.create_login_code()}"
     window = None
     owns_pid = False
     lock = None
@@ -249,6 +248,7 @@ def open_window(base_url: str, path: str = "/") -> int:
                     time.sleep(0.2)
                 _log("La finestra RT è già in apertura: riprova tra qualche secondo.")
                 return 1
+        url = f"{base_url}/login?code={auth.create_login_code()}"
         import webview
         if sys.platform == "darwin":
             from Foundation import NSBundle
