@@ -356,3 +356,51 @@ def test_pythonw_error_shows_native_alert_without_stdin(data, monkeypatch):
     message.assert_called_once_with(None, 'RT non si è avviato: errore di prova', 'RT', 0x10)
     assert 'errore di prova' in (data / 'logs' / 'desktop.log').read_text()
     ask.assert_not_called()
+
+
+def test_two_windows_launches_start_only_one_server(data, monkeypatch):
+    import threading
+    import time
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(desktop.os.path, 'isfile', lambda path: True)
+    running = threading.Event()
+    monkeypatch.setattr(sm, 'api_is_up', lambda port: running.is_set())
+    monkeypatch.setattr(sm, 'choose_port', lambda say: 8765)
+    monkeypatch.setattr(desktop, '_wait_for_api', lambda port: running.is_set())
+    calls = []
+    def popen(*args, **kwargs):
+        time.sleep(0.1)
+        calls.append(args[0])
+        running.set()
+        return SimpleNamespace(pid=1234)
+    monkeypatch.setattr(desktop.subprocess, 'Popen', popen)
+    results, errors = [], []
+    barrier = threading.Barrier(2)
+    def launch():
+        try:
+            barrier.wait(timeout=5)
+            results.append(desktop.run_windows(None, False, lambda message: None))
+        except Exception as exc:
+            errors.append(exc)
+    threads = [threading.Thread(target=launch) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert not any(thread.is_alive() for thread in threads)
+    assert not errors and results == [0, 0]
+    assert len(calls) == 1
+
+
+def test_windows_start_lock_is_released_before_window(data, monkeypatch):
+    from rt.core.portable import lock_file
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(sm, 'api_is_up', lambda port: True)
+    monkeypatch.setattr(desktop, '_wait_for_api', lambda port: True)
+    monkeypatch.setattr(window, 'available', lambda: True)
+    def opened(base):
+        with open(data / 'run' / 'server-start.lock', 'a+b') as lock:
+            assert lock_file(lock, blocking=False)
+        return 0
+    monkeypatch.setattr(window, 'open_window', opened)
+    assert desktop.run_windows(8765, True, lambda message: None) == 0

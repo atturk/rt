@@ -242,24 +242,30 @@ def _serve(port: int) -> int:
                 pass
 
 
-def run_windows(port: int, open_browser: bool, say: Callable[[str], None], browser: bool = False) -> int:
+def run_windows(port: Optional[int], open_browser: bool, say: Callable[[str], None], browser: bool = False) -> int:
     """Il server vive in un processo nascosto, separato dalla finestra."""
     from rt.api.launcher import run_spa
-    from rt.services.service_manager import api_is_up
-    if not api_is_up(port):
-        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-        if not os.path.isfile(pythonw):
-            raise RuntimeError("Manca pythonw.exe nell'app: reinstalla RT.")
-        with open(os.path.join(paths.sub_dir("logs", create=True), "api.log"),
-                  "a", encoding="utf-8", newline="\n") as log:
-            proc = subprocess.Popen(
-                [pythonw, os.path.join(paths.project_root(), "bin", "rt"),
-                 "desktop", "--serve", "--port", str(port)],
-                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                creationflags=0x08000000 | 0x00000008 | 0x00000200, close_fds=True)
-        with open(_server_pid_path(), "w", encoding="utf-8", newline="\n") as f:
-            f.write(f"{proc.pid}\n")
-    if not _wait_for_api(port):
+    from rt.core.portable import lock_file
+    from rt.services.service_manager import api_is_up, choose_port
+    # Due aperture insieme devono scegliere la stessa porta e avviare un solo server.
+    with open(os.path.join(paths.sub_dir("run", create=True), "server-start.lock"), "a+b") as lock:
+        lock_file(lock)
+        port = port or choose_port(say)
+        if not api_is_up(port):
+            pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+            if not os.path.isfile(pythonw):
+                raise RuntimeError("Manca pythonw.exe nell'app: reinstalla RT.")
+            with open(os.path.join(paths.sub_dir("logs", create=True), "api.log"),
+                      "a", encoding="utf-8", newline="\n") as log:
+                proc = subprocess.Popen(
+                    [pythonw, os.path.join(paths.project_root(), "bin", "rt"),
+                     "desktop", "--serve", "--port", str(port)],
+                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                    creationflags=0x08000000 | 0x00000008 | 0x00000200, close_fds=True)
+            with open(_server_pid_path(), "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"{proc.pid}\n")
+        ready = _wait_for_api(port)
+    if not ready:
         say("❌ RT non risponde: controlla logs/api.log nella cartella dati.")
         _alert("RT non risponde. Controlla api.log nella cartella dei registri.")
         return 1
@@ -316,15 +322,15 @@ def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = F
         say("⚠️  Preparazione incompleta: RT parte lo stesso, i dettagli sono qui sopra.")
     if not serve:
         ensure_capture_browser(say)
+    from rt.services import service_manager as sm
+    if not serve and sys.platform == "win32" and bundle.kind() and os.environ.get("RT_NO_SERVICES") != "1":
+        return run_windows(port, open_browser, say, browser=browser)
     # la 8765, o un'altra libera (ricordata) se la occupa un altro programma
     port = port or choose_port(say)
-    from rt.services import service_manager as sm
     if serve:
         return _serve(port)
     if sm.supported() and os.environ.get("RT_NO_SERVICES") != "1":
         return run_macos(port, open_browser, say, browser=browser)
-    if sys.platform == "win32" and bundle.kind() and os.environ.get("RT_NO_SERVICES") != "1":
-        return run_windows(port, open_browser, say, browser=browser)
     return run_foreground(port, open_browser, say)
 
 
