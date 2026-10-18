@@ -226,7 +226,7 @@ def _smoke(window) -> None:
 
 
 def open_window(base_url: str, path: str = "/") -> int:
-    """Apre una sessione nella finestra; in caso di errore usa il browser."""
+    """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
     url = f"{base_url}/login?code={auth.create_login_code()}"
     window = None
