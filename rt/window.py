@@ -300,6 +300,15 @@ def _maintenance(window, command: str) -> None:
     threading.Thread(target=work, name=f"rt-{command}", daemon=True).start()
 
 
+def _check_permissions(window) -> None:
+    from rt import window_permissions
+    try:
+        window_permissions.check(window, _notice, _open_path)
+    except Exception as exc:
+        _log(f"Controllo dei permessi non riuscito: {exc}")
+        _notice(window, f"Non riesco a controllare i permessi: {exc}")
+
+
 def _menu(window, base_url: str):
     from webview.menu import Menu, MenuAction, MenuSeparator
 
@@ -330,6 +339,8 @@ def _menu(window, base_url: str):
         MenuAction("Mostra registri", lambda: _open_path(paths.sub_dir("logs", create=True))),
         MenuAction("Backup…", lambda: _maintenance(window, "backup")),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
+        *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
+          if sys.platform in ("darwin", "win32") else []),
         MenuSeparator(),
         MenuAction("Apri nel browser", browser),
         MenuAction("Ricarica", lambda: window.load_url(window.get_current_url() or base_url)),
@@ -552,6 +563,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         api._window = window
         pending_path = path if path.startswith("/") and not path.startswith("//") else "/"
         smoke_done = False
+        permissions_ready = False
         engine_error = []
 
         def initialized(renderer):
@@ -560,7 +572,14 @@ def open_window(base_url: str, path: str = "/") -> int:
                 return False
 
         def loaded():
-            nonlocal pending_path, smoke_done
+            nonlocal pending_path, smoke_done, permissions_ready
+            if sys.platform == "win32" and not permissions_ready:
+                permissions_ready = True
+                try:
+                    from rt import window_permissions
+                    window_permissions.install_windows(window, base_url)
+                except Exception as exc:
+                    _log(f"Permesso del microfono non configurato: {exc}")
             if pending_path != "/":
                 target, pending_path = pending_path, "/"
                 window.load_url(base_url + target)
@@ -573,6 +592,11 @@ def open_window(base_url: str, path: str = "/") -> int:
         window.events.initialized += initialized
         if sys.platform == "darwin":
             window.events.shown += _macos_menu
+            try:
+                from rt import window_permissions
+                window_permissions.install_macos()
+            except Exception as exc:
+                _log(f"Microfono non configurato nella finestra: {exc}")
         with open(_pid_path(), "w", encoding="utf-8", newline="\n") as f:
             f.write(f"{os.getpid()}\n")
         owns_pid = True

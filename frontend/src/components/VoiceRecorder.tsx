@@ -35,7 +35,10 @@ export function VoiceRecorder({ onRecorded, disabled }: { onRecorded: (audio: Fi
       recorder.current = rec
       setRecording(true)
     } catch (err) {
-      setError(err instanceof Error && err.name === 'NotAllowedError' ? 'Il browser non ha il permesso di usare il microfono.' : 'Microfono non disponibile.')
+      const denied = err instanceof Error && err.name === 'NotAllowedError'
+      // Nell'app il permesso si richiede dal menu RT (rt/window_permissions.py).
+      const inApp = 'pywebview' in window
+      setError(denied ? (inApp ? 'Microfono non consentito. Menu RT › Controlla permessi.' : 'Il browser non ha il permesso di usare il microfono.') : 'Microfono non disponibile.')
     }
   }
 
