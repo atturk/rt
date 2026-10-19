@@ -13,7 +13,7 @@ In un import con fonti (`ingest_sources_job` → `run_prepare` → `prepare_sour
 
 Tutto è sequenziale: prima finisce un audio, poi l'altro, poi il PDF pagina per pagina. In più la Preparazione **non emette nessun avanzamento**: la riga resta ferma su "Preparazione" per minuti, senza dire a che punto è.
 
-Nota: non ho misurato i tempi sulla lezione reale (i log della lezione non erano leggibili da qui). Le cause sotto vengono dal codice; il punto 5 aggiunge la misura.
+Nota: oggi RT non registra cosa succede dentro la Preparazione: nessun log esistente dice dove va il tempo. Le cause sotto vengono dal codice; il punto 5 aggiunge la misura direttamente nel registro del lavoro.
 
 ## Cosa fare
 
@@ -43,8 +43,13 @@ Controllare che `LessonProgress` / `JobProgress` mostrino già `message` e `curr
 - `compute_file_sha256` dello stesso file viene calcolato due volte per ogni materiale (in `prepare_source_update` e di nuovo in `material_pages`), e per ogni audio a ogni ripresa. Su audio lunghi (centinaia di MB) costa secondi. Calcolarlo una volta per fonte e per esecuzione: un parametro `checked=True` per `material_pages`, oppure una piccola cache in memoria `{(path, mtime, size): sha}` nella funzione.
 - `_extract` mette in memoria i PNG di tutte le pagine prima di iniziare (`list(_extract(real))`). Con il passaggio A va bene così, ma i PNG vanno scritti su disco e liberati man mano, senza tenerli tutti in RAM fino alla fine.
 
-### 5. Misura (per sapere dove va il tempo la prossima volta)
-Alla fine della Preparazione scrivere nel log del worker e nel risultato del job (`result["prepare_timing"]`) i secondi spesi in: trascrizione (per file), estrazione pagine, Vision (totale e numero di chiamate), unione audio. Bastano `time.monotonic()` attorno ai blocchi. In Dettagli non serve mostrarli.
+### 5. Misura: i tempi nel registro del lavoro (quello che Attilio vede già)
+Il registro sotto la riga "Preparazione" (In coda, Avviato dal worker, Lezione creata, Preparazione: avviata) oggi si ferma lì per minuti. Deve diventare lui stesso la diagnosi, senza file da cercare. Per ogni passaggio emettere un evento del job (lo stesso canale delle righe esistenti, `ctx.emit`/`ctx.progress`) all'inizio e alla fine, con la durata alla fine:
+- "Trascrizione di <file> (durata audio 1h 32m): avvio del motore"; poi "Trascrizione di <file>: finita in 4m 10s". Se il motore scrive su stdout le sue fasi (caricamento del modello, avanzamento), inoltrarle come messaggi di avanzamento: in `_run_transcribe_with_spinner` leggere l'output riga per riga invece di aspettare la fine. Così si vede se il tempo va nel caricamento del modello o nella trascrizione.
+- "Lettura di <file>: 63 pagine, 41 da descrivere col modello visivo (modello: <nome>)"; poi a ogni pagina "pagina k di N"; alla fine "Lettura di <file>: finita in 3m 05s (Vision 41 chiamate, media 4,4 s)".
+- "Unione degli audio: finita in 22s".
+- Alla fine della preparazione, una riga di riepilogo: "Preparazione finita in 7m 40s: trascrizione 4m 10s, lettura materiali 3m 05s (in parallelo), unione audio 22s".
+Gli stessi numeri vanno in `_state/prepare_timing.json` nella cartella della lezione e in una riga di `logs/worker.log`, così una lezione vecchia si può controllare anche dopo.
 
 ## Test (pytest)
 - `material_pages` con 6 pagine "sparse con figure" e `_describe` finto che dorme 0,2 s: con `parallel_pages=3` dura meno di 0,8 s. L'ordine di `pages` è 1..6 e ogni `page-N.json` esiste.
