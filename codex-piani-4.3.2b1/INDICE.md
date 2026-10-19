@@ -9,3 +9,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 5. `piano-backup-copia-codex.md`: il backup con copia, rimandato dalla 4.3.1. Il piano nomina come base `claude/rt-4.3.1-beta`: per questa beta usa `claude/rt-4.3.2-beta`, e la voce di changelog va nella sezione 4.3.2b1.
 6. `piano-ritocchi-dalla-4.3.1-codex.md`: tre ritocchi rimasti dalla 4.3.1 («da capo» senza arricchimento, icone delle unità che sfarfallano, collegamento all'ora perso durante un import).
 7. `piano-preparazione-veloce-codex.md`: preparazione più veloce (pagine lette in parallelo, materiali insieme alla trascrizione, avanzamento visibile).
+8. `piano-immagine-singola-miniatura-codex.md`: un'immagine da sola nel testo si mostra in miniatura.
