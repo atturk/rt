@@ -319,6 +319,11 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
         transition_to(lesson_path(lesson_dir, "info.yaml"), WorkflowState.OUTLINE_VALIDATED, allow_force=True)
     else:
         run_outline(lesson_dir, force=True, force_mock=mock, ctx=ctx)
+    # L'aggiornamento passa direttamente alla riscrittura, senza chiedere conferma:
+    # l'approvazione evita che la scheda disattivata nasconda il documento.
+    # Non risvegliare eventuali altri job in attesa sulla stessa lezione.
+    from rt.services.outline_service import approve_outline
+    approve_outline(lesson_dir, actor="source_update", channel="server", resume=False)
     outline = load_outline(lesson_dir)
     selected = changed_units(old_outline, prepared["previous_segments"], outline, prepared["segments"])
     result = run_rewrite(lesson_dir, force_mock=mock, ctx=ctx,

@@ -158,3 +158,44 @@ def test_reingest_runs_automatic_enrichment_only_when_enabled(tmp_path, monkeypa
     assert len(calls) == 1
     assert 'enrichment' not in run_source_update(lesson, mode='extend', mock=True)
     assert len(calls) == 1
+
+
+import pytest
+
+
+@pytest.mark.parametrize('mode', ['extend', 'rebuild'])
+@pytest.mark.parametrize('fails', [False, True])
+def test_source_update_approves_outline_before_rewrite_and_restores_on_failure(tmp_path, monkeypatch, mode, fails):
+    from rt.pipeline.source_update import run_source_update
+    from rt.pipeline.rewrite import run_rewrite
+    from rt.services.outline_service import is_outline_approved, get_outline_approval
+    from rt.services import jobs
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    monkeypatch.setattr('rt.services.classifier.classify_units', lambda *a, **k: None)
+    run_source_update(lesson, mode='rebuild', mock=True)
+    with open(lesson_path(lesson, 'outline.json'), 'rb') as stream:
+        old_outline = stream.read()
+    old_approval = get_outline_approval(lesson)
+    add_source(lesson, 'appunti', 'new.txt', b'new notes')
+    resumed = []
+    monkeypatch.setattr(jobs, 'resume_waiting_jobs', lambda *a: resumed.append(a))
+
+    def rewrite(*a, **kw):
+        assert is_outline_approved(lesson)
+        assert get_outline_approval(lesson)['actor'] == 'source_update'
+        if fails:
+            raise RuntimeError('rewrite failed')
+        return run_rewrite(*a, **kw)
+
+    monkeypatch.setattr('rt.pipeline.rewrite.run_rewrite', rewrite)
+    if fails:
+        with pytest.raises(RuntimeError, match='rewrite failed'):
+            run_source_update(lesson, mode=mode, mock=True)
+        with open(lesson_path(lesson, 'outline.json'), 'rb') as stream:
+            assert stream.read() == old_outline
+        assert get_outline_approval(lesson) == old_approval
+    else:
+        run_source_update(lesson, mode=mode, mock=True)
+    assert is_outline_approved(lesson)
+    assert resumed == []
