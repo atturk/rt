@@ -18,6 +18,8 @@ import { CalendarPage } from '@/routes/calendar'
 // La pagina legge la settimana e salva con le mutazioni: qui si sostituiscono con spie.
 const calendarMocks = vi.hoisted(() => ({
   week: null as unknown,
+  template: [] as unknown[],
+  currentDate: undefined as string | undefined,
   createOverride: vi.fn(),
   deleteOverride: vi.fn(),
   createTemplate: vi.fn(),
@@ -32,7 +34,8 @@ vi.mock('@/api/calendar', async (importOriginal) => {
   })
   return {
     ...actual,
-    useCalendarWeek: () => ({ data: calendarMocks.week, isPending: false, isError: false }),
+    useCalendarTemplate: () => ({ data: calendarMocks.template }),
+    useCalendarWeek: (date?: string) => { calendarMocks.currentDate = date; return { data: calendarMocks.week, isPending: false, isError: false } },
     useCreateOverride: () => mutation(calendarMocks.createOverride),
     useDeleteOverride: () => mutation(calendarMocks.deleteOverride),
     useCreateTemplateEntry: () => mutation(calendarMocks.createTemplate),
@@ -207,6 +210,7 @@ describe('Calendar components (CA1c)', () => {
     render(
       <WeekInfoPopup
         weekLabel="12–16 ottobre"
+        weekStart="2026-10-12"
         weekNumber="41"
         summary={summary}
         anchor={{ x: 100, y: 100, width: 50, height: 20 }}
@@ -387,7 +391,7 @@ describe('CalendarPage: modifica di un\'ora', () => {
 
   it('settimana tipo: chiude l\'ora dal lunedì e la ricrea valida dal lunedì', async () => {
     renderPage()
-    enterEditing(/^Modifica la settimana tipo/)
+    enterEditing(/^Modifica la settimana tipo, da questa settimana in poi$/)
     openEdit()
     fireEvent.change(screen.getByDisplayValue('09:30'), { target: { value: '10:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Salva' }))
@@ -441,4 +445,97 @@ describe('CalendarPage: modifica di un\'ora', () => {
     expect(onClose).toHaveBeenCalled()
     expect(openNewLesson).toHaveBeenCalledWith({ date: '2026-10-14', slotKey: 'tpl_42' })
   })
+})
+
+describe('CalendarPage: intervallo di settimane', () => {
+  const event = { ...dummyEvent, lesson: null, template_entry_id: 7, key: 'tpl_7' }
+  const week = {
+    start_date: '2026-10-12', end_date: '2026-10-16', week_number: '42', label: '12–16 ottobre',
+    days: [{ ...dummyDay, events: [event] }], summary: { hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] },
+  }
+  beforeEach(() => {
+    calendarMocks.week = week
+    calendarMocks.template = []
+    for (const mock of [calendarMocks.createTemplate, calendarMocks.deleteTemplate, calendarMocks.createOverride, calendarMocks.deleteOverride]) mock.mockReset().mockResolvedValue({})
+  })
+  function renderPage() { render(<MemoryRouter><CalendarPage /></MemoryRouter>) }
+  function chooseRange() {
+    fireEvent.click(screen.getByRole('button', { name: 'Modifica la settimana tipo in un intervallo di settimane' }))
+    // L'anno non dipende dal giorno in cui viene eseguita la suite.
+    while (Number(screen.getByTestId('calendar-range-year').textContent) > 2026) fireEvent.click(screen.getByRole('button', { name: 'Anno precedente' }))
+    while (Number(screen.getByTestId('calendar-range-year').textContent) < 2026) fireEvent.click(screen.getByRole('button', { name: 'Anno successivo' }))
+    const popup = screen.getByTestId('calendar-range-popup')
+    fireEvent.click(popup.querySelector('[data-week="2026-10-19"]')!)
+    fireEvent.click(popup.querySelector('[data-week="2026-10-12"]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Modifica queste settimane' }))
+  }
+  it('conferma il modo range, va alla prima settimana e aggiunge solo nelle date scelte', () => {
+    renderPage(); chooseRange()
+    expect(calendarMocks.currentDate).toBe('2026-10-12')
+    expect(screen.getByRole('button', { name: 'Cambia intervallo di settimane' })).toHaveTextContent('Settimane 42–43')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Aggiungi alle 08:30' })[0])
+    const popup = screen.getByRole('dialog', { name: 'Aggiungi ora' })
+    expect(popup).toHaveTextContent('Settimane 42–43')
+    fireEvent.change(within(popup).getByLabelText('Materia'), { target: { value: 'Fisica' } })
+    fireEvent.click(within(popup).getByRole('button', { name: 'Aggiungi' }))
+    expect(calendarMocks.createTemplate).toHaveBeenCalledWith(expect.objectContaining({ materia: 'Fisica', valid_from: '2026-10-12', valid_to: '2026-10-26' }))
+    expect(calendarMocks.createOverride).not.toHaveBeenCalled()
+  })
+  it('toglie l’ora solo nell’intervallo', () => {
+    renderPage(); chooseRange()
+    fireEvent.click(screen.getByRole('button', { name: "Togli quest'ora" }))
+    expect(calendarMocks.deleteTemplate).toHaveBeenCalledWith({ id: 7, from: '2026-10-12', to: '2026-10-26' })
+  })
+  it('crea la modifica prima di togliere la vecchia ora, usando gli stessi limiti', async () => {
+    renderPage(); chooseRange()
+    fireEvent.click(screen.getByTestId('calendar-event-tpl_7'))
+    const popup = screen.getByRole('dialog', { name: 'Modifica ora' })
+    fireEvent.change(within(popup).getByLabelText('Fine'), { target: { value: '12:00' } })
+    fireEvent.click(within(popup).getByRole('button', { name: 'Salva' }))
+    await waitFor(() => expect(calendarMocks.deleteTemplate).toHaveBeenCalledWith({ id: 7, from: '2026-10-12', to: '2026-10-26' }))
+    expect(calendarMocks.createTemplate).toHaveBeenCalledWith(expect.objectContaining({ end_time: '12:00', valid_from: '2026-10-12', valid_to: '2026-10-26' }))
+    expect(calendarMocks.createTemplate.mock.invocationCallOrder[0]).toBeLessThan(calendarMocks.deleteTemplate.mock.invocationCallOrder[0])
+  })
+  it('fuori intervallo impedisce modifiche e Fatto azzera la scelta', () => {
+    renderPage(); chooseRange()
+    calendarMocks.week = { ...week, start_date: '2026-10-26' }
+    fireEvent.click(screen.getByRole('button', { name: 'Settimana successiva' }))
+    expect(screen.getByText("Fuori dall'intervallo scelto")).toBeVisible()
+    expect(screen.queryByRole('button', { name: /Aggiungi alle/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: "Togli quest'ora" })).not.toBeInTheDocument()
+    const block = screen.getByTestId('calendar-event-tpl_7')
+    expect(block).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(block)
+    fireEvent.click(screen.getByTestId('calendar-day-header-Lun'))
+    expect(screen.queryByTestId('calendar-event-popup')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('calendar-day-menu')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Fatto' }))
+    expect(screen.queryByRole('button', { name: 'Cambia intervallo di settimane' })).not.toBeInTheDocument()
+    expect(screen.queryByText("Fuori dall'intervallo scelto")).not.toBeInTheDocument()
+  })
+  it('riapre la scelta dalla pillola e il riepilogo mostra l’anno del lunedì', () => {
+    renderPage(); chooseRange()
+    fireEvent.click(screen.getByRole('button', { name: 'Cambia intervallo di settimane' }))
+    expect(screen.getByRole('button', { name: 'Modifica queste settimane' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Riepilogo della settimana' }))
+    expect(screen.getByTestId('calendar-week-popup')).toHaveTextContent('Settimana 42 · 12–16 ottobre 2026')
+  })
+})
+
+it('nel riepilogo a cavallo di Capodanno usa l’anno del lunedì', () => {
+  render(<WeekInfoPopup weekLabel="29 dicembre–2 gennaio" weekStart="2025-12-29" weekNumber="1"
+    summary={{ hours_total: 0, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] }}
+    anchor={{ x: 100, y: 100, width: 20, height: 20 }} onClose={vi.fn()} />)
+  expect(screen.getByTestId('calendar-week-popup')).toHaveTextContent('Settimana 1 · 29 dicembre–2 gennaio 2025')
+})
+
+it('la vista giorno fuori intervallo conserva le informazioni e impedisce il clic di modifica', () => {
+  const onOpenEvent = vi.fn()
+  render(<CalendarDayList days={[dummyDay]} selectedDayIndex={0} onSelectDayIndex={vi.fn()} readOnly onOpenEvent={onOpenEvent} />)
+  const block = screen.getByTestId('calendar-mobile-event-tpl_1')
+  expect(block).toHaveAttribute('aria-disabled', 'true')
+  expect(block).toHaveTextContent('DATA MINING')
+  fireEvent.click(block)
+  expect(onOpenEvent).not.toHaveBeenCalled()
 })

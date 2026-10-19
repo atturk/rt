@@ -23,6 +23,7 @@ function fmtHour(h: number): string {
 export function CalendarWeekGrid({
   days,
   editing,
+  readOnly = false,
   selectedEventKey,
   onOpenEvent,
   onOpenDayMenu,
@@ -31,7 +32,8 @@ export function CalendarWeekGrid({
   onEditEvent,
 }: {
   days: CalendarDayView[]
-  editing: 'week' | 'tpl' | null
+  editing: 'week' | 'tpl' | 'range' | null
+  readOnly?: boolean
   selectedEventKey: string | null
   onOpenEvent: (event: CalendarEventView, anchor: PopupAnchor) => void
   onOpenDayMenu: (day: CalendarDayView, anchor: PopupAnchor) => void
@@ -63,13 +65,15 @@ export function CalendarWeekGrid({
           key={day.date}
           className="sticky top-0 z-10 flex h-12 items-center justify-center border-b border-l border-border bg-background"
         >
-          <Tooltip content="Segna tutto il giorno" side="bottom">
+          <Tooltip content="Segna tutto il giorno" side="bottom" disabled={readOnly}>
             {(trigger) => (
               <button
                 type="button"
                 data-testid={`calendar-day-header-${day.day_name}`}
+                aria-disabled={readOnly}
                 className="flex items-baseline gap-1.5 rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
                 onClick={(e) => {
+                  if (readOnly) return
                   const rect = e.currentTarget.getBoundingClientRect()
                   onOpenDayMenu(day, {
                     x: rect.left,
@@ -155,6 +159,7 @@ export function CalendarWeekGrid({
                       }}
                       className="absolute inset-x-1 flex items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground opacity-0 transition-opacity hover:opacity-100 hover:bg-muted/40"
                       onClick={(e) => {
+                        if (readOnly) return
                         const rect = e.currentTarget.getBoundingClientRect()
                         onOpenAdd(day, h, {
                           x: rect.left,
@@ -193,6 +198,7 @@ export function CalendarWeekGrid({
                     <button
                       type="button"
                       data-testid={`calendar-event-${ev.key}`}
+                      aria-disabled={readOnly}
                       style={{
                         backgroundColor: `color-mix(in oklch, ${color} var(--tint, 12%), var(--bg))`,
                         boxShadow: `inset 3px 0 0 ${color}`,
@@ -205,6 +211,7 @@ export function CalendarWeekGrid({
                           : ''
                       }`}
                       onClick={(e) => {
+                        if (readOnly) return
                         const rect = e.currentTarget.getBoundingClientRect()
                         const anchor = {
                           x: rect.left,

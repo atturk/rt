@@ -3631,6 +3631,8 @@ export interface components {
              * @default 2000-01-01
              */
             valid_from: string | null;
+            /** Valid To */
+            valid_to?: string | null;
         };
         /** CalendarTemplateEntryView */
         CalendarTemplateEntryView: {
@@ -8556,6 +8558,8 @@ export interface operations {
             query?: {
                 /** @description Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano */
                 from?: string | null;
+                /** @description Fine esclusa dell'intervallo (YYYY-MM-DD); richiede from */
+                to?: string | null;
             };
             header?: never;
             path: {

@@ -9,11 +9,13 @@ import type { PopupAnchor } from './CalendarPopups'
 
 export function CalendarDayList({
   days,
+  readOnly = false,
   selectedDayIndex,
   onSelectDayIndex,
   onOpenEvent,
 }: {
   days: CalendarDayView[]
+  readOnly?: boolean
   selectedDayIndex: number
   onSelectDayIndex: (index: number) => void
   onOpenEvent: (event: CalendarEventView, anchor: PopupAnchor) => void
@@ -77,6 +79,7 @@ export function CalendarDayList({
                       <button
                         type="button"
                         data-testid={`calendar-mobile-event-${ev.key}`}
+                        aria-disabled={readOnly}
                         style={{
                           backgroundColor: `color-mix(in oklch, ${color} var(--tint, 12%), var(--bg))`,
                           boxShadow: `inset 3px 0 0 ${color}`,
@@ -85,6 +88,7 @@ export function CalendarDayList({
                           ev.status === 'annullata' ? 'line-through opacity-60' : ''
                         }`}
                         onClick={(e) => {
+                          if (readOnly) return
                           const rect = e.currentTarget.getBoundingClientRect()
                           onOpenEvent(ev, {
                             x: rect.left,

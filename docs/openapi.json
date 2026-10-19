@@ -1490,6 +1490,20 @@
             ],
             "default": "2000-01-01",
             "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "description": "Data YYYY-MM-DD",
+                "maxLength": 10,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
           }
         },
         "required": [
@@ -11959,6 +11973,24 @@
               ],
               "description": "Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano",
               "title": "From"
+            }
+          },
+          {
+            "description": "Fine esclusa dell'intervallo (YYYY-MM-DD); richiede from",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Fine esclusa dell'intervallo (YYYY-MM-DD); richiede from",
+              "title": "To"
             }
           }
         ],
