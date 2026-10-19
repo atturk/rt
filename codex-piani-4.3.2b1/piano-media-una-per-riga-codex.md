@@ -1,6 +1,6 @@
 # Piano per Codex · 4.3.2b1 · Media della lezione: una pagina per riga
 
-Base: branch della beta 4.3.2 (dalla 4.3.1 stabile). File: `frontend/src/components/lesson/panels/MediaGallery.tsx`, `EnrichmentPanel.tsx` e i rispettivi test.
+Base: `claude/rt-4.3.2-beta`.3.1 stabile). File: `frontend/src/components/lesson/panels/MediaGallery.tsx`, `EnrichmentPanel.tsx` e i rispettivi test.
 
 ## Richiesta (Attilio)
 In Arricchimento › Media della lezione le pagine sono in una griglia a 3 colonne (`grid grid-cols-3`): nel pannello laterale le slide diventano miniature illeggibili. Serve una vista con una slide per riga, a tutta larghezza, con scorrimento verticale.

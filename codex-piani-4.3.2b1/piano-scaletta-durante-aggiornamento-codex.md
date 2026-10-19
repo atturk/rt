@@ -1,6 +1,6 @@
 # Piano per Codex · 4.3.2b1 · "Scaletta da approvare" resta a schermo durante l'aggiornamento della lezione
 
-Base: branch della beta 4.3.2. File: `rt/pipeline/source_update.py`, `rt/core/update_history.py`, test in `tests/test_source_update.py` e `tests/test_update_history.py`.
+Base: `claude/rt-4.3.2-beta`. File: `rt/pipeline/source_update.py`, `rt/core/update_history.py`, test in `tests/test_source_update.py` e `tests/test_update_history.py`.
 
 ## Il bug (segnalato da Attilio)
 Mentre una lezione si aggiorna con nuove fonti (Estendi, e anche Ricostruisci), al posto del testo compare la scheda gialla "Scaletta da approvare" con "Approva" e "Rigenera con queste modifiche" grigi (disattivati), senza conto alla rovescia. Resta lì finché l'aggiornamento non finisce, anche se la scaletta era già stata approvata.

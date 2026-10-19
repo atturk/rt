@@ -1,6 +1,6 @@
 # Piano per Codex · 4.3.2b1 · Anteprima grande tenendo premuto (vista a griglia)
 
-Base: branch della beta 4.3.2. Dipende dal piano `piano-media-una-per-riga-codex.md` (prop `view` di `MediaGallery`, componente `MediaCell`): implementarlo dopo, sullo stesso branch.
+Base: `claude/rt-4.3.2-beta`. Dipende dal piano `piano-media-una-per-riga-codex.md` (prop `view` di `MediaGallery`, componente `MediaCell`): implementarlo dopo, sullo stesso branch.
 File: `frontend/src/components/lesson/panels/MediaGallery.tsx` e `MediaGallery.test.tsx`.
 
 ## Richiesta (Attilio)
