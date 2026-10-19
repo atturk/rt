@@ -153,8 +153,9 @@ def create_template_entry(
             materia=data.materia.strip(),
             docente=data.docente.strip() if data.docente else None,
         )
-        from rt.services.subjects import register_subject
+        from rt.services.subjects import register_subject, register_teacher
         register_subject(session, entry.materia)
+        register_teacher(session, entry.materia, entry.docente)
         session.add(entry)
         session.flush()
         return schemas.CalendarTemplateEntryView(
@@ -251,8 +252,9 @@ def create_override(
             materia=data.materia.strip() if data.materia else None,
             docente=data.docente.strip() if data.docente else None,
         )
-        from rt.services.subjects import register_subject
+        from rt.services.subjects import register_subject, register_teacher
         register_subject(session, override.materia)
+        register_teacher(session, override.materia, override.docente)
         session.add(override)
         session.flush()
         return schemas.CalendarOverrideView(

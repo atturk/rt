@@ -53,7 +53,7 @@ vi.mock('@/api/hooks', async (importOriginal) => {
 
 vi.mock('@/api/subjects', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/subjects')>()
-  return { ...actual, useSubjects: () => ({ data: [] }) }
+  return { ...actual, useSubjects: () => ({ data: [] }), useTeacherSuggestions: () => [] }
 })
 
 const dummyEvent: CalendarEventView = {

@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { useOutline } from '@/api/jobs'
-import { useSubjects } from '@/api/subjects'
+import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { useSources, useSourcesJob, useUpdateLesson } from '@/api/sources'
 import { createPortal } from 'react-dom'
 import {
@@ -187,6 +187,7 @@ export function DetailsPanel({
   // come riserva finché il registro non è caricato.
   const allLessons = useLessons()
   const subjects = useSubjects()
+  const teachers = useTeacherSuggestions(materia)
   const subjectOptions = uniqueSubjects([
     l.materia,
     ...(Array.isArray(subjects.data) ? subjects.data.map((s) => s.nome) : []),
@@ -405,6 +406,7 @@ export function DetailsPanel({
           </label>
           <Input
             id="details-teacher"
+            list="details-known-teachers"
             value={docente}
             disabled={busy}
             onChange={(e) => setDocente(e.target.value)}
@@ -413,6 +415,7 @@ export function DetailsPanel({
               if (e.key === 'Enter') saveMetadata()
             }}
           />
+          <datalist id="details-known-teachers">{teachers.map(name => <option key={name} value={name} />)}</datalist>
         </div>
       </div>
 

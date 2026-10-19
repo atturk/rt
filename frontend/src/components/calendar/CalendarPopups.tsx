@@ -25,7 +25,7 @@ import { getSubjectColor } from './subjectColor'
 import { computePopupStyle } from './popupPosition'
 import { STATUS_LABELS } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
-import { useSubjects } from '@/api/subjects'
+import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
 
 
@@ -518,6 +518,7 @@ export function AddEventPopup({
   }
   const [endTime, setEndTime] = useState(defaultEndTime)
   const [docente, setDocente] = useState(initial?.docente ?? '')
+  const teachers = useTeacherSuggestions(materia)
   const popupRef = useRef<HTMLDivElement>(null)
   // Le materie delle lezioni come suggerimenti: il collegamento automatico confronta la materia.
   const lessonsQuery = useLessons()
@@ -561,7 +562,12 @@ export function AddEventPopup({
         {scope === 'week' ? `Solo settimana ${weekNumber}` : scope === 'range' ? rangeLabel : 'Settimana tipo, da qui in poi'}
       </div>
 
-      <div className="flex flex-col gap-2">
+      <form className="flex flex-col gap-2" onSubmit={e => {
+        e.preventDefault()
+        if (!materia.trim()) return
+        onAdd({ materia: materia.trim(), startTime, endTime, docente: docente.trim() || undefined })
+        onClose()
+      }}>
         <label className="flex flex-col gap-1">
           <span className="text-muted-foreground">Materia</span>
           <input
@@ -605,34 +611,27 @@ export function AddEventPopup({
           <span className="text-muted-foreground">Docente</span>
           <input
             type="text"
+            list="calendar-known-teachers"
             value={docente}
             onChange={(e) => setDocente(e.target.value)}
             placeholder="Facoltativo"
             className="rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary"
           />
+          <datalist id="calendar-known-teachers">{teachers.map(name => <option key={name} value={name} />)}</datalist>
         </label>
-      </div>
 
       <div className="flex justify-end gap-1 pt-1">
-        <IconButton label="Annulla" icon={X} side="top" onClick={onClose} />
+        <IconButton type="button" label="Annulla" icon={X} side="top" onClick={onClose} />
         <IconButton
           label={isEdit ? 'Salva' : 'Aggiungi'}
           icon={Check}
           side="top"
           className="bg-primary text-primary-foreground hover:opacity-90"
-          onClick={() => {
-            if (materia.trim()) {
-              onAdd({
-                materia: materia.trim(),
-                startTime,
-                endTime,
-                docente: docente.trim() || undefined,
-              })
-              onClose()
-            }
-          }}
+          type="submit"
+          disabled={!materia.trim()}
         />
       </div>
+      </form>
     </div>
   )
 }

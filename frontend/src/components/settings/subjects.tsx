@@ -1,11 +1,31 @@
 import { useState, type FormEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import { errorMessage } from '@/api/client'
-import { useCreateSubject, useDeleteSubject, useSubjects } from '@/api/subjects'
+import { useCreateSubject, useDeleteSubject, useSubjects, useSubjectTeachers, type SubjectItem } from '@/api/subjects'
 import { Alert } from '@/components/ui/alert'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Section } from './common'
+
+function TeacherRow({ subject, onError }: { subject: SubjectItem; onError: (error: string | null) => void }) {
+  const [name, setName] = useState('')
+  const mutation = useSubjectTeachers()
+  const save = async (nome: string, remove = false) => {
+    if (!nome.trim()) return
+    onError(null)
+    try {
+      await mutation.mutateAsync({ materia: subject.nome, nome: nome.trim(), remove })
+      if (!remove) setName('')
+    } catch (error) { onError(errorMessage(error)) }
+  }
+  return <form className="flex flex-wrap items-center gap-1.5" onSubmit={e => { e.preventDefault(); void save(name) }}>
+    {(subject.docenti ?? []).map(teacher => <span key={teacher} className="inline-flex items-center gap-1 rounded-full border px-2 text-meta">
+      {teacher}<IconButton icon={X} label={`Togli ${teacher} da ${subject.nome}`} className="size-6 min-h-6 min-w-6" disabled={mutation.isPending} onClick={() => void save(teacher, true)} />
+    </span>)}
+    <Input className="h-7 w-40 text-meta" aria-label={`Aggiungi docente a ${subject.nome}`} placeholder="Aggiungi docente" value={name} onChange={e => setName(e.target.value)} />
+    <IconButton type="submit" icon={Plus} label={`Aggiungi docente a ${subject.nome}`} disabled={!name.trim() || mutation.isPending} />
+  </form>
+}
 
 export function SubjectsSettingsSection() {
   const [newSubject, setNewSubject] = useState('')
@@ -44,7 +64,7 @@ export function SubjectsSettingsSection() {
   return (
     <Section id="subjects" title="Materie">
       <p className="text-body text-muted-foreground">
-        Compaiono nei menu dell'import, del calendario e dei tipi di domanda. Una materia scritta nell'import o nel calendario si aggiunge da sola.
+        Ogni materia ha i suoi docenti, proposti quando compili il campo Docente. Un docente scritto in una lezione o nel calendario si aggiunge da solo.
       </p>
 
       <form onSubmit={handleAdd} className="flex max-w-md items-center gap-2">
@@ -81,8 +101,9 @@ export function SubjectsSettingsSection() {
           return (
             <div
               key={sub.nome}
-              className="group flex items-center justify-between gap-3 px-3 py-2 text-body"
+              className="group flex flex-col gap-2 px-3 py-2 text-body"
             >
+              <div className="flex items-center justify-between gap-3">
               <span className="min-w-0 flex-1 truncate font-medium">{sub.nome}</span>
               <span className="text-meta text-muted-foreground tabular-nums">{countText}</span>
               {count === 0 ? (
@@ -96,6 +117,8 @@ export function SubjectsSettingsSection() {
               ) : (
                 <span className="w-[34px]" aria-hidden />
               )}
+              </div>
+              <TeacherRow subject={sub} onError={setError} />
             </div>
           )
         })}

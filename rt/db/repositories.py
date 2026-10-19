@@ -34,8 +34,10 @@ class LessonRepository:
         return lesson
 
     def update_fields(self, lesson: Lesson, fields: Dict[str, Any]) -> None:
-        from rt.services.subjects import register_subject
+        from rt.services.subjects import register_subject, register_teacher
         register_subject(self.session, fields.get("materia", lesson.materia))
+        if any(name in fields and fields[name] != getattr(lesson, name) for name in ("materia", "docente")):
+            register_teacher(self.session, fields.get("materia", lesson.materia), fields.get("docente", lesson.docente))
         for key, value in fields.items():
             if getattr(lesson, key) != value:
                 setattr(lesson, key, value)

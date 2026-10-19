@@ -9958,6 +9958,13 @@
       },
       "SubjectView": {
         "properties": {
+          "docenti": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Docenti",
+            "type": "array"
+          },
           "lezioni": {
             "title": "Lezioni",
             "type": "integer"
@@ -9969,7 +9976,8 @@
         },
         "required": [
           "nome",
-          "lezioni"
+          "lezioni",
+          "docenti"
         ],
         "title": "SubjectView",
         "type": "object"
@@ -28604,6 +28612,192 @@
           }
         ],
         "summary": "Delete Subject",
+        "tags": [
+          "subjects"
+        ]
+      }
+    },
+    "/api/v1/subjects/{nome}/teachers": {
+      "post": {
+        "operationId": "add_teacher_api_v1_subjects__nome__teachers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nome",
+            "required": true,
+            "schema": {
+              "title": "Nome",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Teacher",
+        "tags": [
+          "subjects"
+        ]
+      }
+    },
+    "/api/v1/subjects/{nome}/teachers/{docente}": {
+      "delete": {
+        "operationId": "delete_teacher_api_v1_subjects__nome__teachers__docente__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nome",
+            "required": true,
+            "schema": {
+              "title": "Nome",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "docente",
+            "required": true,
+            "schema": {
+              "title": "Docente",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Teacher",
         "tags": [
           "subjects"
         ]

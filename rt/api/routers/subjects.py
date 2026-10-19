@@ -15,6 +15,7 @@ class SubjectCreate(BaseModel):
 class SubjectView(BaseModel):
     nome: str
     lezioni: int
+    docenti: list[str]
 
 
 @router.get("/subjects", response_model=list[SubjectView])
@@ -30,4 +31,15 @@ def create_subject(body: SubjectCreate, _actor: Actor):
 @router.delete("/subjects/{nome}", status_code=204)
 def delete_subject(nome: str, _actor: Actor):
     subjects.delete_subject(nome)
+    return Response(status_code=204)
+
+
+@router.post("/subjects/{nome}/teachers", response_model=SubjectView, status_code=201)
+def add_teacher(nome: str, body: SubjectCreate, _actor: Actor):
+    return subjects.add_teacher(nome, body.nome)
+
+
+@router.delete("/subjects/{nome}/teachers/{docente}", status_code=204)
+def delete_teacher(nome: str, docente: str, _actor: Actor):
+    subjects.delete_teacher(nome, docente)
     return Response(status_code=204)

@@ -81,7 +81,9 @@ def test_custom_type_is_preserved_in_question_and_template():
 def test_alembic_0013_migrates_database_documents(tmp_path, monkeypatch):
     from alembic import command
     from rt.db.engine import create_db_engine, upgrade_database, alembic_config, current_revision
-    from rt.db.models import Lesson, LessonFile, StateDocument
+    from rt.db.models import LessonFile, StateDocument
+    from sqlalchemy import MetaData, Table
+    from datetime import datetime
     from sqlalchemy.orm import Session
     from tests.api_support import isolated_workspace
     isolated_workspace(tmp_path, monkeypatch)
@@ -92,13 +94,16 @@ def test_alembic_0013_migrates_database_documents(tmp_path, monkeypatch):
     bank = {'questions': [{'id': 'recall_000099', 'type': 'caso'},
                           {'id': 'recall_000001', 'type': 'quiz'}],
             'answers': [{'question_id': 'recall_000099'}]}
+    # La fixture deve usare lo schema 0012, senza le colonne delle migrazioni successive.
+    historical_lessons = Table('lessons', MetaData(), autoload_with=engine)
     with Session(engine) as session:
-        lesson = Lesson(path=str(tmp_path / 'db-lesson'), folder_name='db-lesson', materia='Medicina', storage='db')
-        session.add(lesson)
-        session.flush()
-        session.add(LessonFile(lesson_id=lesson.id, name='section_labels.json', content=json.dumps(
+        lesson_id = session.execute(historical_lessons.insert().values(
+            path=str(tmp_path / 'db-lesson'), folder_name='db-lesson', materia='Medicina', storage='db',
+            data='', titolo='', argomenti='', workflow_state='', created_at=datetime.now(), updated_at=datetime.now(),
+        )).inserted_primary_key[0]
+        session.add(LessonFile(lesson_id=lesson_id, name='section_labels.json', content=json.dumps(
             {'1': {'caso': 'esplicito', 'esercizio': 'svolto'}}).encode()))
-        session.add(LessonFile(lesson_id=lesson.id, name='recall_questions.json', content=json.dumps(bank).encode()))
+        session.add(LessonFile(lesson_id=lesson_id, name='recall_questions.json', content=json.dumps(bank).encode()))
         session.add(StateDocument(key=str(tmp_path / 'recall_questions.json'), payload=bank))
         session.commit()
     upgrade_database(url, engine)

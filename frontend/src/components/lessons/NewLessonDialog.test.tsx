@@ -500,3 +500,17 @@ describe('caricamento in background', () => {
   })
 })
 
+
+it('i docenti proposti dipendono dalla materia di Nuova lezione', async () => {
+  vi.spyOn(api, 'GET').mockImplementation((path) => Promise.resolve({ data: path === '/api/v1/subjects'
+    ? [{ nome: 'Biologia', lezioni: 0, docenti: ['Rossi'] }, { nome: 'Chimica', lezioni: 0, docenti: ['Verdi'] }]
+    : { events: [] }, response: new Response('{}') }) as never)
+  renderDialog()
+  const teacher = screen.getByLabelText('Docente')
+  const list = document.getElementById(teacher.getAttribute('list')!)!
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'Biologia' } })
+  await waitFor(() => expect(list.querySelectorAll('option')).toHaveLength(1))
+  expect(list.querySelector('option')).toHaveValue('Rossi')
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'Chimica' } })
+  expect(list.querySelector('option')).toHaveValue('Verdi')
+})

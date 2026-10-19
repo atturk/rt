@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap, type Schemas } from './client'
+import { subjectsKeys } from './subjects'
 
 export type CalendarWeekView = Schemas['CalendarWeekView']
 export type CalendarDayView = Schemas['CalendarDayView']
@@ -119,6 +120,7 @@ export function useCreateTemplateEntry() {
     mutationFn: (body: CalendarTemplateEntryCreate) => calendarApi.createTemplate(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
+      qc.invalidateQueries({ queryKey: subjectsKeys.all })
     },
   })
 }
@@ -139,6 +141,7 @@ export function useCreateOverride() {
     mutationFn: (body: CalendarOverrideCreate) => calendarApi.createOverride(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
+      qc.invalidateQueries({ queryKey: subjectsKeys.all })
     },
   })
 }
