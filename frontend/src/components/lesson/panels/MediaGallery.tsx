@@ -1,5 +1,6 @@
 import { CheckSquare, ChevronDown, Scissors } from 'lucide-react'
-import { useCallback, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { LessonImage } from '@/api/images'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -27,11 +28,20 @@ interface MediaCellProps {
   isSelected: boolean
   view: 'rows' | 'grid'
   lessonId?: number
+  isPeekActive?: boolean
   onImageClick: (img: LessonImage, flatIndex: number, shiftKey: boolean) => void
   onOpenViewer: (flatIndex: number) => void
   startLongPress: (index: number) => void
   cancelLongPress: () => void
   onCrop: (image: LessonImage) => void
+  onPointerDown: (
+    e: React.PointerEvent,
+    img: LessonImage,
+    captionLabel: string,
+    unitText: string | null,
+  ) => void
+  onPointerMove: (e: React.PointerEvent) => void
+  cancelPeekTimer: () => void
 }
 
 function MediaCell({
@@ -40,11 +50,15 @@ function MediaCell({
   isSelected,
   view,
   lessonId,
+  isPeekActive,
   onImageClick,
   onOpenViewer,
   startLongPress,
   cancelLongPress,
   onCrop,
+  onPointerDown,
+  onPointerMove,
+  cancelPeekTimer,
 }: MediaCellProps) {
   const unitText = img.units && img.units.length > 0 ? img.units.join(', ') : null
 
@@ -76,6 +90,11 @@ function MediaCell({
         type="button"
         draggable
         onDragStart={(e) => {
+          cancelPeekTimer()
+          if (isPeekActive) {
+            e.preventDefault()
+            return
+          }
           e.dataTransfer.setData(
             'application/x-rt-media-image',
             JSON.stringify({
@@ -102,6 +121,10 @@ function MediaCell({
             ? 'outline-2 outline-primary outline-offset-1 border-primary ring-2 ring-primary/20'
             : 'hover:border-foreground/40',
         )}
+        onPointerDown={(e) => onPointerDown(e, img, captionLabel, unitText)}
+        onPointerMove={onPointerMove}
+        onPointerUp={cancelPeekTimer}
+        onPointerLeave={cancelPeekTimer}
         onClick={(e) => onImageClick(img, flatIndex, e.shiftKey)}
         onDoubleClick={() => onOpenViewer(flatIndex)}
         onTouchStart={() => startLongPress(flatIndex)}
@@ -196,6 +219,71 @@ export function MediaGallery({
   const lastClickedIndexRef = useRef<number | null>(null)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [peek, setPeek] = useState<{ img: LessonImage; captionLabel: string; unitText: string | null } | null>(null)
+  const peekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pointerStartPosRef = useRef<{ x: number; y: number } | null>(null)
+  const peekShownRef = useRef<boolean>(false)
+
+  const cancelPeekTimer = useCallback(() => {
+    if (peekTimerRef.current) {
+      clearTimeout(peekTimerRef.current)
+      peekTimerRef.current = null
+    }
+    pointerStartPosRef.current = null
+  }, [])
+
+  useEffect(() => {
+    if (!peek) return
+
+    const closePeek = () => {
+      setPeek(null)
+    }
+
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closePeek()
+      }
+    }
+
+    window.addEventListener('pointerup', closePeek)
+    window.addEventListener('blur', closePeek)
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      window.removeEventListener('pointerup', closePeek)
+      window.removeEventListener('blur', closePeek)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [peek])
+
+  const handlePointerDown = useCallback((
+    e: React.PointerEvent,
+    img: LessonImage,
+    captionLabel: string,
+    unitText: string | null,
+  ) => {
+    if (view !== 'grid') return
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return
+
+    cancelPeekTimer()
+    pointerStartPosRef.current = { x: e.clientX, y: e.clientY }
+
+    peekTimerRef.current = setTimeout(() => {
+      setPeek({ img, captionLabel, unitText })
+      peekShownRef.current = true
+      peekTimerRef.current = null
+    }, 350)
+  }, [view, cancelPeekTimer])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!pointerStartPosRef.current || !peekTimerRef.current) return
+    const dx = Math.abs(e.clientX - pointerStartPosRef.current.x)
+    const dy = Math.abs(e.clientY - pointerStartPosRef.current.y)
+    if (dx > 5 || dy > 5) {
+      cancelPeekTimer()
+    }
+  }, [cancelPeekTimer])
+
   const groups = groupMediaImages(images)
   const flatImages = groups.flatMap((g) => g.images)
 
@@ -209,6 +297,10 @@ export function MediaGallery({
   }, [])
 
   const handleImageClick = (img: LessonImage, flatIndex: number, shiftKey: boolean) => {
+    if (peekShownRef.current) {
+      peekShownRef.current = false
+      return
+    }
     if (shiftKey && lastClickedIndexRef.current !== null) {
       const start = Math.min(lastClickedIndexRef.current, flatIndex)
       const end = Math.max(lastClickedIndexRef.current, flatIndex)
@@ -222,6 +314,14 @@ export function MediaGallery({
       const targetUnit = img.units?.[0] ?? null
       onScrollToMedia({ imageName: img.name, unitId: targetUnit })
     }
+  }
+
+  const handleDoubleClick = (flatIndex: number) => {
+    if (peekShownRef.current) {
+      peekShownRef.current = false
+      return
+    }
+    onOpenViewer(flatIndex)
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -317,11 +417,15 @@ export function MediaGallery({
                       isSelected={isSelected}
                       view={view}
                       lessonId={lessonId}
+                      isPeekActive={Boolean(peek)}
                       onImageClick={handleImageClick}
-                      onOpenViewer={onOpenViewer}
+                      onOpenViewer={handleDoubleClick}
                       startLongPress={startLongPress}
                       cancelLongPress={cancelLongPress}
                       onCrop={onCrop}
+                      onPointerDown={handlePointerDown}
+                      onPointerMove={handlePointerMove}
+                      cancelPeekTimer={cancelPeekTimer}
                     />
                   )
                 })}
@@ -330,6 +434,37 @@ export function MediaGallery({
           </div>
         )
       })}
+
+      {peek &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-label={
+              peek.img.page != null
+                ? `Anteprima pagina ${peek.img.page}`
+                : `Anteprima ${peek.captionLabel}`
+            }
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/40 pointer-events-none animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={peek.img.url}
+                alt={peek.img.alt_text || peek.img.name}
+                className="max-w-[min(90vw,1100px)] max-h-[80vh] object-contain rounded-lg shadow-2xl bg-background"
+              />
+              <div className="flex items-center gap-2 text-body text-white">
+                <span>{peek.captionLabel}</span>
+                <span>·</span>
+                {peek.img.in_document && peek.unitText ? (
+                  <b className="font-semibold text-white">{peek.unitText}</b>
+                ) : (
+                  <span>non usata</span>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import type { LessonImage } from '@/api/images'
@@ -244,6 +244,168 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     expect(onCrop).toHaveBeenCalledWith(mockImages[0])
 
     vi.useRealTimers()
+  })
+
+  describe('Anteprima tenendo premuto (peek in vista grid)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('pointerDown su cella in vista grid per 350 ms apre anteprima; pointerUp su window la chiude senza cambiare selezione', () => {
+      const onToggleSelect = vi.fn()
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={onToggleSelect}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      expect(cell).toHaveAttribute('aria-pressed', 'false')
+
+      // PointerDown con mouse (tasto sinistro = button 0)
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+
+      // Avanziamo di 350 ms
+      act(() => {
+        vi.advanceTimersByTime(350)
+      })
+
+      // Compare il dialog
+      expect(screen.getByRole('dialog', { name: 'Anteprima pagina 1' })).toBeInTheDocument()
+
+      // pointerUp su window chiude l'anteprima
+      fireEvent.pointerUp(window)
+      expect(screen.queryByRole('dialog', { name: 'Anteprima pagina 1' })).not.toBeInTheDocument()
+
+      // Il click che segue non cambia la selezione
+      fireEvent.click(cell)
+      expect(onToggleSelect).not.toHaveBeenCalled()
+      expect(cell).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('pointerDown e pointerUp prima di 350 ms: nessuna anteprima, il clic seleziona normalmente', () => {
+      const onToggleSelect = vi.fn()
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={onToggleSelect}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      fireEvent.pointerUp(cell)
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+
+      fireEvent.click(cell)
+      expect(onToggleSelect).toHaveBeenCalledWith(mockImages[0].name)
+    })
+
+    it('pointerDown poi pointerMove di 10 px annulla l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      fireEvent.pointerMove(cell, { clientX: 110, clientY: 100 })
+
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+    })
+
+    it('Escape chiude l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      act(() => {
+        vi.advanceTimersByTime(350)
+      })
+      expect(screen.getByRole('dialog', { name: 'Anteprima pagina 1' })).toBeInTheDocument()
+
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'Anteprima pagina 1' })).not.toBeInTheDocument()
+    })
+
+    it('in vista rows tenere premuto non apre l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="rows"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima/ })).not.toBeInTheDocument()
+    })
   })
 })
 
