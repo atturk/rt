@@ -9,6 +9,7 @@ import {
   copyMaterialPage,
   materialSourceId,
   cropMediaImage,
+  deleteMedia,
   removeFromText,
   useAddImages,
   useLessonImages,
@@ -23,6 +24,7 @@ import {
   ENRICHMENT_MEDIA_DROP_EVENT,
 } from '@/components/shell/globalFileDropUtils'
 import { Alert } from '@/components/ui/alert'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
@@ -62,6 +64,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const images = useLessonImages(id)
   const refreshImages = useRefreshImages(id)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const addImages = useAddImages(id)
   const outline = useOutline(id)
   const docQuery = useLessonDocument(id)
@@ -197,13 +200,17 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         alt_text: el.title || `${kindText} ${el.unit_id}`,
         slide_title: el.title || '',
         units: [el.unit_id],
-        in_document: true,
+        in_document: el.status !== 'dismissed',
         in_assets: true,
         page: null,
       }
     })
 
+  // Media dell'arricchimento: si tolgono dal testo e si eliminano con le azioni dell'elemento.
+  const enrichmentByName = new Map(completedElements.map((el) => [el.asset_image ? el.asset_image.split('/').pop()! : el.id, el]))
+
   const imageList: LessonImage[] = [...rawImageList, ...enrichmentImages].map((img) => {
+    if (img.source === 'enrichment') return img
     const detected = findUnitForImage(img.name, docQuery.data?.markdown)
     const units = img.units && img.units.length > 0
       ? img.units
@@ -235,9 +242,21 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  const selectedEnrichment = Array.from(selectedNames).map((n) => enrichmentByName.get(n)).filter((el) => el !== undefined)
+  // Un elemento dell'arricchimento torna nel testo al suo posto (in fondo all'unità).
+  const restoreEnrichment = async () => {
+    for (const el of selectedEnrichment) {
+      if (el.status === 'dismissed') await action.mutateAsync({ element: el.id, action: 'restore' }).catch(() => undefined)
+    }
+  }
+
   const handleInsertAtCursor = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
-    if (!selected.length) return
+    await restoreEnrichment()
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
+    if (!selected.length) {
+      setSelectedNames(new Set())
+      return
+    }
     const items: Array<{ path: string; alt_text: string }> = []
     for (const img of selected) {
       if (!img.in_assets) {
@@ -267,7 +286,12 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const handleAutoPlace = () => {
     if (selectedNames.size === 0) return
-    const names = Array.from(selectedNames)
+    void restoreEnrichment()
+    const names = Array.from(selectedNames).filter((n) => !enrichmentByName.has(n))
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     addImages.mutate(
       { selected_images: names },
       {
@@ -279,10 +303,19 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  // Le pagine dei materiali (non copiate o copiate) si tolgono togliendo la fonte.
+  const canDelete = imageList.some((img) => selectedNames.has(img.name) && img.in_assets && !img.source?.startsWith('material:'))
+
   const handleRemoveFromText = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
+    for (const el of selectedEnrichment) {
+      if (el.status !== 'dismissed') await action.mutateAsync({ element: el.id, action: 'dismiss' }).catch(() => undefined)
+    }
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
     const names = selected.map((s) => s.name)
-    if (!names.length) return
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     if (canInsertAtCursor) {
       // Editor aperto: il testo lo cambia l'editor e il salvataggio aggiorna il posizionamento.
       window.dispatchEvent(
@@ -293,6 +326,31 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         await removeFromText(id, names)
       } catch {
         // Lezione occupata o in modifica altrove: il testo resta com'era.
+      }
+    }
+    setSelectedNames(new Set())
+    void refreshImages()
+  }
+
+  const handleDelete = async () => {
+    setConfirmDelete(false)
+    for (const el of selectedEnrichment) {
+      await action.mutateAsync({ element: el.id, action: 'delete' }).catch(() => undefined)
+    }
+    const names = imageList
+      .filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name) && i.in_assets && !i.source?.startsWith('material:'))
+      .map((i) => i.name)
+    if (names.length) {
+      try {
+        if (canInsertAtCursor) {
+          // Editor aperto: il testo lo cambia l'editor, il server toglie posizionamento e file.
+          window.dispatchEvent(new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }))
+          await deleteMedia(id, names, false)
+        } else {
+          await deleteMedia(id, names)
+        }
+      } catch {
+        // Lezione occupata: i media restano.
       }
     }
     setSelectedNames(new Set())
@@ -702,8 +760,19 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           onInsertAtCursor={handleInsertAtCursor}
           onAutoPlace={handleAutoPlace}
           onRemoveFromText={handleRemoveFromText}
+          onDelete={() => setConfirmDelete(true)}
+          canDelete={canDelete}
           onClearSelection={() => setSelectedNames(new Set())}
         />
+        <ConfirmDialog
+          open={confirmDelete}
+          title={selectedNames.size === 1 ? 'Eliminare il media?' : `Eliminare ${selectedNames.size} media?`}
+          confirmLabel="Elimina"
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setConfirmDelete(false)}
+        >
+          Spariscono dal testo e dalla lezione.
+        </ConfirmDialog>
       </div>
 
       <hr className="border-border" />

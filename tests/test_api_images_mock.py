@@ -280,6 +280,29 @@ def test_remove_from_text_respects_editor_lease(api_client, ws, rt_db, tmp_path,
 
 
 
+def test_delete_media_removes_text_placement_description_and_file(api_client, ws, rt_db, tmp_path, monkeypatch):
+    from rt.pipeline.add_images import load_image_descriptions
+    lesson, lid, name = _placed_image(api_client, ws, rt_db, tmp_path, monkeypatch)
+    image_hash = next(h for h, d in load_image_descriptions(lesson).items() if d["filename"].endswith(name))
+    res = api_client.post(f"/api/v1/lessons/{lid}/media/delete", json={"image_names": [name]})
+    assert res.status_code == 200, res.text
+    assert res.json() == {"deleted": [name]}
+    assert name not in api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
+    assert image_hash not in _placement_hashes(lesson)
+    assert image_hash not in load_image_descriptions(lesson)
+    assert not os.path.exists(os.path.join(lesson, "assets", "images", name))
+    assert all(i["name"] != name for i in api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"])
+
+
+def test_delete_media_with_editor_open_leaves_text_to_the_editor(api_client, ws, rt_db, tmp_path, monkeypatch):
+    lesson, lid, name = _placed_image(api_client, ws, rt_db, tmp_path, monkeypatch)
+    assert api_client.post(f"/api/v1/lessons/{lid}/document/lease").status_code == 200
+    assert api_client.post(f"/api/v1/lessons/{lid}/media/delete", json={"image_names": [name]}).status_code == 409
+    res = api_client.post(f"/api/v1/lessons/{lid}/media/delete", json={"image_names": [name], "update_document": False})
+    assert res.status_code == 200, res.text
+    assert not os.path.exists(os.path.join(lesson, "assets", "images", name))
+
+
 def test_auto_place_selected_images_preserves_existing_placements(api_client, ws):
     import json
     from rt.storage import fs

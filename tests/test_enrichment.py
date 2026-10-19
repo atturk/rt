@@ -178,3 +178,15 @@ def test_snapshot_renders_initialized_interaction_without_network():
         pytest.skip("Chromium not installed in this test environment")
     html = standalone('<h2>Matrice dei vincoli</h2><svg width="300" height="100"><text x="10" y="30">[1, 1, 0]</text></svg><input type="range" aria-label="Parametro">')
     assert snapshot(html).startswith(b"\x89PNG")
+
+
+def test_dismissing_a_generated_element_takes_it_out_of_the_text_and_restore_puts_it_back(lesson):
+    path, _, _ = lesson
+    item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="A", description="D", prompt="Matrice"))
+    es.generate(path, item.id, mock=True)
+    assert "1.1" in es.document_blocks(path)
+    es.mutate(path, item.id, "dismiss")
+    assert es.document_blocks(path) == {}
+    assert es.get_element(es.load(path), item.id).asset_image  # resta nei media
+    es.mutate(path, item.id, "restore")
+    assert "1.1" in es.document_blocks(path)

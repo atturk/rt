@@ -415,6 +415,7 @@ describe('MediaSelectionBar', () => {
     const onInsertAtCursor = vi.fn()
     const onAutoPlace = vi.fn()
     const onRemoveFromText = vi.fn()
+    const onDelete = vi.fn()
     const onClearSelection = vi.fn()
 
     const { rerender } = render(
@@ -426,6 +427,8 @@ describe('MediaSelectionBar', () => {
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
         onRemoveFromText={onRemoveFromText}
+        onDelete={onDelete}
+        canDelete={false}
         onClearSelection={onClearSelection}
       />,
     )
@@ -443,6 +446,8 @@ describe('MediaSelectionBar', () => {
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
         onRemoveFromText={onRemoveFromText}
+        onDelete={onDelete}
+        canDelete={false}
         onClearSelection={onClearSelection}
       />,
     )
@@ -466,6 +471,8 @@ describe('MediaSelectionBar', () => {
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
         onRemoveFromText={onRemoveFromText}
+        onDelete={onDelete}
+        canDelete={true}
         onClearSelection={onClearSelection}
       />,
     )
@@ -481,6 +488,9 @@ describe('MediaSelectionBar', () => {
 
     fireEvent.click(screen.getByLabelText('Togli dal testo (resta nei media)'))
     expect(onRemoveFromText).toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText('Elimina dalla lezione'))
+    expect(onDelete).toHaveBeenCalled()
 
     fireEvent.click(screen.getByLabelText('Annulla la selezione'))
     expect(onClearSelection).toHaveBeenCalled()

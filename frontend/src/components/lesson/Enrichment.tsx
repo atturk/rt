@@ -92,6 +92,6 @@ export function EnrichmentSlots({ root, lessonId, documentKey }: { root: RefObje
 /** Schede dell'arricchimento nei riquadri delle unità (elementi DOM già al loro posto). */
 export function EnrichmentPortals({ slots, lessonId }: { slots: Record<string, HTMLElement>; lessonId: number }) {
   const query = useEnrichment(lessonId)
-  return <>{query.data?.elements.filter(e => e.asset_image || ['queued', 'generating', 'error'].includes(e.status) || e.status === 'suggestion' && !e.stale)
+  return <>{query.data?.elements.filter(e => (e.asset_image && e.status !== 'dismissed') || ['queued', 'generating', 'error'].includes(e.status) || e.status === 'suggestion' && !e.stale)
     .map(e => slots[e.unit_id] ? createPortal(<EnrichmentCard element={e} lessonId={lessonId} />, slots[e.unit_id], e.id) : null)}</>
 }

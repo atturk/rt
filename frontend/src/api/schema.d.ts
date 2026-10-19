@@ -1095,6 +1095,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/media/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano */
+        post: operations["delete_media_api_v1_lessons__lesson_id__media_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/media/images": {
         parameters: {
             query?: never;
@@ -4606,6 +4623,19 @@ export interface components {
             unit_id?: string | null;
             /** Unit Title */
             unit_title: string;
+        };
+        /** DeleteImagesRequest */
+        DeleteImagesRequest: {
+            /** Image Names */
+            image_names: string[];
+            /** Lease Token */
+            lease_token?: string | null;
+            /**
+             * Update Document
+             * @description False se il testo lo cambia l'editor aperto
+             * @default true
+             */
+            update_document: boolean;
         };
         /** DocumentEditCheck */
         DocumentEditCheck: {
@@ -12896,6 +12926,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditorImage"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_media_api_v1_lessons__lesson_id__media_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteImagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Autenticazione mancante o non valida */

@@ -216,6 +216,47 @@ def remove_images_from_lesson(lesson_id: int, lesson_dir: str, image_names: list
     return {'removed': sorted(names)}
 
 
+def _deletable(desc: dict) -> bool:
+    """Le pagine dei materiali si tolgono togliendo la fonte: eliminarne la copia la farebbe tornare."""
+    source = str(desc.get('source') or '')
+    return desc.get('crop_of') is not None or not source.startswith('material:')
+
+
+def delete_images(lesson_id: int, lesson_dir: str, image_names: list[str],
+                  lease_token: str | None = None, update_document: bool = True) -> dict:
+    """Elimina dalla lezione le immagini indicate: dal testo, da placement.json, da descriptions.json e
+    da assets/images. Con update_document=False il testo lo ha già cambiato l'editor aperto."""
+    from rt.pipeline.add_images import get_images_dir
+    names = {os.path.basename(n) for n in image_names if n}
+    if not names:
+        return {'deleted': []}
+    try:
+        with lesson_work_lock(lesson_dir):
+            with session_scope(_require_db()) as session:
+                _guard(session, lesson_id, lesson_dir, lease_token, document=update_document)
+            descriptions = load_image_descriptions(lesson_dir)
+            hashes = {h for h in _hashes_for_names(descriptions, names) if _deletable(descriptions[h])}
+            names = {os.path.basename(str(descriptions[h].get('filename') or '')) for h in hashes}
+            if not names:
+                return {'deleted': []}
+            if update_document:
+                def drop(line):
+                    refs = _IMAGE_LINE.findall(line)
+                    if refs and all(os.path.basename(r) in names for r in refs) and not _IMAGE_LINE.sub('', line).strip():
+                        return None
+                    return line
+                _rewrite_document(lesson_dir, drop)
+            _strip_placement(lesson_dir, hashes)
+            save_image_descriptions(lesson_dir, {h: d for h, d in descriptions.items() if h not in hashes})
+            for name in names:
+                path = os.path.join(get_images_dir(lesson_dir), name)
+                if fs.isfile(path):
+                    fs.remove(path)
+    except LessonBusy:
+        raise Conflict('lesson_busy', 'La lezione è in lavorazione.') from None
+    return {'deleted': sorted(names)}
+
+
 def _open_checked(path: str):
     try:
         with warnings.catch_warnings():
