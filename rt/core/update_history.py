@@ -1,6 +1,8 @@
 """Fotografie reversibili e ultime versioni della lezione, anche su storage DB."""
 import json
 import os
+import tempfile
+from dataclasses import dataclass
 from contextlib import nullcontext
 from datetime import datetime, timezone
 
@@ -32,25 +34,47 @@ def _write_pointer(lesson_dir, data):
     fs.replace(pointer + ".tmp", pointer)
 
 
-def _capture(lesson_dir, stamp=None):
+def _material_cache_files(lesson_dir):
+    """Anche la cache delle pagine deve tornare com'era dopo una rilettura delle fonti."""
+    found = []
+    def visit(relative):
+        folder = os.path.join(lesson_dir, relative)
+        if not fs.isdir(folder):
+            return
+        for name in fs.listdir(folder):
+            child = relative + "/" + name
+            path = os.path.join(lesson_dir, child)
+            if os.path.islink(path):
+                continue
+            if fs.isdir(path):
+                visit(child)
+            elif fs.isfile(path):
+                found.append(child)
+    visit("materials")
+    return sorted(found)
+
+
+def _capture(lesson_dir, stamp=None, *, include_material_cache=True):
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     history = os.path.join(lesson_dir, "history", stamp)
     fs.makedirs(history, exist_ok=True)
     entries = {}
+    material_cache = _material_cache_files(lesson_dir) if include_material_cache else []
     root_markdown = [name for name in fs.listdir(lesson_dir) if name.endswith(".md")
                      and fs.isfile(os.path.join(lesson_dir, name))]
-    for name in dict.fromkeys((*FILES, *root_markdown)):
+    for name in dict.fromkeys((*FILES, *root_markdown, *material_cache)):
         path = lesson_path(lesson_dir, name)
         entries[name] = fs.isfile(path)
         if entries[name]:
             destination = os.path.join(history, name)
             fs.makedirs(os.path.dirname(destination), exist_ok=True)
             fs.copy2(path, destination)
-    return {"timestamp": stamp, "files": entries, "root_markdown": root_markdown}
+    return {"timestamp": stamp, "files": entries, "root_markdown": root_markdown,
+            **({"material_cache": material_cache} if include_material_cache else {})}
 
 
-def snapshot_update(lesson_dir, *, keep_previous=False):
-    snapshot = _capture(lesson_dir)
+def snapshot_update(lesson_dir, *, keep_previous=False, include_material_cache=True):
+    snapshot = _capture(lesson_dir, include_material_cache=include_material_cache)
     old = _read_pointer(lesson_dir)
     _write_pointer(lesson_dir, snapshot)
     if old and not keep_previous:
@@ -58,10 +82,10 @@ def snapshot_update(lesson_dir, *, keep_previous=False):
     return snapshot["timestamp"]
 
 
-def begin_update(lesson_dir):
+def begin_update(lesson_dir, *, include_material_cache=True):
     """Fotografia dell'aggiornamento che parte; quella precedente resta finché non riesce."""
     previous = _read_pointer(lesson_dir)
-    snapshot_update(lesson_dir, keep_previous=True)
+    snapshot_update(lesson_dir, keep_previous=True, include_material_cache=include_material_cache)
     return previous
 
 
@@ -101,7 +125,18 @@ def _merge_newer_sources(restored, current):
     return json.dumps(restored_items, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+@dataclass(frozen=True)
+class _CacheCopy:
+    path: str
+
+
 def _restore_snapshot(lesson_dir, snapshot):
+    # Le immagini delle slide possono essere grandi: le copie di sicurezza restano su disco.
+    with tempfile.TemporaryDirectory(prefix="rt-restore-cache-") as cache_backup:
+        return _restore_snapshot_files(lesson_dir, snapshot, cache_backup)
+
+
+def _restore_snapshot_files(lesson_dir, snapshot, cache_backup):
     """Il chiamante tiene il lock della lezione; ripristino transazionale nel DB."""
     from rt.db.engine import get_database
     from rt.db.session import session_scope
@@ -112,19 +147,35 @@ def _restore_snapshot(lesson_dir, snapshot):
     content = {}
     for name, present in snapshot["files"].items():
         if present:
-            with fs.open(os.path.join(history, name), "rb") as stream:
-                content[name] = stream.read()
+            path = os.path.join(history, name)
+            if name.replace("\\", "/").startswith("materials/"):
+                # Verifica tutta la copia prima di modificare la lezione, senza accumularla in RAM.
+                with fs.materialize(path) as real, open(real, "rb") as stream:
+                    while stream.read(1 << 20):
+                        pass
+                content[name] = _CacheCopy(path)
+            else:
+                with fs.open(path, "rb") as stream:
+                    content[name] = stream.read()
         else:
             content[name] = None
     for name in fs.listdir(lesson_dir):
         if name.endswith(".md") and fs.isfile(os.path.join(lesson_dir, name)) and name not in snapshot["root_markdown"]:
             content.setdefault(name, None)
+    if "material_cache" in snapshot:
+        for name in _material_cache_files(lesson_dir):
+            content.setdefault(name, None)
     current = {}
     for name in content:
         path = lesson_path(lesson_dir, name)
         if fs.isfile(path):
-            with fs.open(path, "rb") as stream:
-                current[name] = stream.read()
+            if name.replace("\\", "/").startswith("materials/"):
+                backup_path = os.path.join(cache_backup, str(len(current)))
+                fs.copy2(path, backup_path)
+                current[name] = _CacheCopy(backup_path)
+            else:
+                with fs.open(path, "rb") as stream:
+                    current[name] = stream.read()
         else:
             current[name] = None
     highwater = _read_state(lesson_dir)["next_segment"]
@@ -137,9 +188,19 @@ def _restore_snapshot(lesson_dir, snapshot):
                     fs.remove(path)
             else:
                 fs.makedirs(os.path.dirname(path), exist_ok=True)
-                with fs.open(path + ".tmp", "wb") as stream:
-                    stream.write(data)
-                fs.replace(path + ".tmp", path)
+                if isinstance(data, _CacheCopy):
+                    stem, extension = os.path.splitext(path)
+                    temporary = stem + ".restore-tmp" + extension
+                    try:
+                        fs.copy2(data.path, temporary)
+                        fs.replace(temporary, path)
+                    finally:
+                        if fs.isfile(temporary):
+                            fs.remove(temporary)
+                else:
+                    with fs.open(path + ".tmp", "wb") as stream:
+                        stream.write(data)
+                    fs.replace(path + ".tmp", path)
     db = get_database()
     try:
         with session_scope(db) if db else nullcontext(), suspend_dual_write():
@@ -149,7 +210,8 @@ def _restore_snapshot(lesson_dir, snapshot):
             state["next_segment"] = max(state["next_segment"], highwater)
             _write_state(lesson_dir, state)
     except BaseException:
-        if not fs.is_db_lesson(lesson_dir):
+        # Il DB ripristina le righe, ma i file multimediali sono su disco: si recuperano anch'essi.
+        with session_scope(db) if db else nullcontext(), suspend_dual_write():
             restore(current)
         raise
     dual_write_lesson(lesson_dir)

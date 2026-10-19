@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import Literal, Optional
 
 from fastapi import APIRouter, File, Form, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
@@ -11,7 +11,7 @@ from rt.api import schemas
 from rt.api.jobs import enqueue_job, queue
 from rt.core.sources import Source, load_sources, add_source, remove_source
 from rt.core.update_history import has_update_snapshot, undo_update
-from rt.pipeline.source_update import sources_pending
+from rt.pipeline.source_update import sources_pending, reingest_availability
 
 from rt.services.sources_view import SourceView, LastUpdate, sources_view
 
@@ -22,6 +22,8 @@ class SourcesView(BaseModel):
     sources: list[SourceView]
     has_unused_sources: bool
     can_undo: bool
+    reingest_available: bool
+    reingest_reason: str | None = None
     ultimo_aggiornamento: LastUpdate | None = None
     principale: str
     ordine_usato: list[str]
@@ -33,6 +35,14 @@ class SourcesView(BaseModel):
 class UpdateRequest(BaseModel):
     mode: Literal["extend", "rebuild"] = "extend"
     mock: bool = False
+    reingest: bool = False
+    with_review: bool = False
+
+    @model_validator(mode="after")
+    def validate_reingest_mode(self):
+        if self.reingest and self.mode != "rebuild":
+            raise ValueError("Per rileggere le fonti usa Ricostruisci.")
+        return self
 
 
 class UndoUpdateResult(BaseModel):
@@ -167,6 +177,10 @@ def update_lesson(lesson_id: int, body: UpdateRequest, lesson_dir: LessonDir, ac
     with source_mutation(lesson_id, lesson_dir):
         if not load_sources(lesson_dir):
             raise ApiError(422, "sources_empty", "Aggiungi almeno una fonte prima di aggiornare.")
+        if body.reingest:
+            available = reingest_availability(lesson_dir)
+            if not available["reingest_available"]:
+                raise ApiError(409, "reingest_unavailable", available["reingest_reason"])
         from rt.core.source_selection import selection
         if body.mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
             raise ApiError(409, "rebuild_required", "Ordine o principale cambiati: usa Ricostruisci.")

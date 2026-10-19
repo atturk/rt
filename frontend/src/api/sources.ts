@@ -39,6 +39,8 @@ export type SourcesView = {
   sources: SourceItem[]
   has_unused_sources: boolean
   can_undo: boolean
+  reingest_available?: boolean
+  reingest_reason?: string | null
   ultimo_aggiornamento?: LastUpdateInfo | null
   principale: string
   ordine_usato: string[]
@@ -108,8 +110,8 @@ export const sourcesApi = {
   setPrimary: (lessonId: number, id: string): Promise<SourcesView> =>
     unwrap((api as any).PUT(`/api/v1/lessons/${lessonId}/sources/primary`, { body: { id } })),
 
-  updateLesson: (lessonId: number, mode: 'extend' | 'rebuild'): Promise<{ job_id: string }> =>
-    unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/update`, { body: { mode } })),
+  updateLesson: (lessonId: number, mode: 'extend' | 'rebuild', options: { reingest?: boolean; with_review?: boolean } = {}): Promise<{ job_id: string }> =>
+    unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/update`, { body: { mode, ...options } })),
 
   undoUpdate: (lessonId: number): Promise<{ status: string }> =>
     unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/update/undo`)),
@@ -170,7 +172,8 @@ export function useDeleteSource(lessonId: number) {
 export function useUpdateLesson(lessonId: number) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (mode: 'extend' | 'rebuild') => sourcesApi.updateLesson(lessonId, mode),
+    mutationFn: (input: 'extend' | 'rebuild' | { mode: 'rebuild'; reingest: true; with_review: boolean }) =>
+      typeof input === 'string' ? sourcesApi.updateLesson(lessonId, input) : sourcesApi.updateLesson(lessonId, input.mode, { reingest: input.reingest, with_review: input.with_review }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sourcesKeys.all(lessonId) })
       queryClient.invalidateQueries({ queryKey: sourcesKeys.versions(lessonId) })

@@ -89,7 +89,20 @@ def segment_source_ids(sources, state, primary):
     return {s.id for s in sources if s.tipo != "materiale"} or {primary}
 
 
-def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
+def reingest_availability(lesson_dir, sources=None):
+    """Una cache non sostituisce gli originali necessari per ricominciare da capo."""
+    sources = load_sources(lesson_dir) if sources is None else sources
+    if not sources:
+        return {"reingest_available": False, "reingest_reason": "La lezione non ha fonti registrate."}
+    for source in sources:
+        if not fs.isfile(os.path.join(lesson_dir, source.file)):
+            label = {"audio": "Audio originale non disponibile", "materiale": "Documento originale non disponibile",
+                     "appunti": "Appunti originali non disponibili"}[source.tipo]
+            return {"reingest_available": False, "reingest_reason": label + "."}
+    return {"reingest_available": True, "reingest_reason": None}
+
+
+def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
     sources = load_sources(lesson_dir)
     if not sources:
         raise ValueError("La lezione deve avere almeno una fonte")
@@ -100,7 +113,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
     state["next_segment"] = max(state["next_segment"], max((int(s.id[4:]) for s in previous), default=0) + 1)
     # Una sola volta: attribuisce alla prima fonte i segmenti storici già preparati.
     legacy = next((s for s in sources if s.id == "src_000001"), None)
-    if legacy and legacy.id not in cache and previous:
+    if legacy and legacy.id not in cache and previous and not reingest:
         originals = [s.model_copy(update={"source_file": legacy.id}) for s in previous]
         legacy_path = os.path.join(lesson_dir, legacy.file)
         # Audio storico mancante: la durata è la fine dell'ultimo segmento già preparato.
@@ -125,7 +138,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None):
                 duration = _duration(path)
             elif source.tipo == "materiale":
                 from rt.core.materials import material_pages
-                pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+                pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx, **({"refresh": True} if reingest else {}))
                 incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
                     start_formatted="00:00", end_formatted="00:00",
                     text_raw=page["testo"] or f"Pagina {page['numero']} senza testo leggibile",
@@ -228,11 +241,17 @@ def _check_extend_keeps_units(lesson_dir, outline):
                 raise ValidationError("Una fonte rimossa svuota un'unità: usa Ricostruisci")
 
 
-def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
+def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None, reingest=False, with_review=False):
     from rt.pipeline.outline import load_outline
     from rt.core.update_history import begin_update, finish_update, abort_update
     if mode not in ("extend", "rebuild"):
         raise ValueError("Modalità di aggiornamento non valida")
+    if reingest:
+        if mode != "rebuild":
+            raise ValueError("Per rileggere le fonti usa Ricostruisci.")
+        available = reingest_availability(lesson_dir)
+        if not available["reingest_available"]:
+            raise ValueError(available["reingest_reason"])
     from rt.core.source_selection import selection
     if mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
         raise ValueError("Ordine o principale cambiati: usa Ricostruisci")
@@ -241,9 +260,16 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     if mode == "extend" and old_outline:
         _check_extend_keeps_units(lesson_dir, old_outline)
     previously_used = _read_state(lesson_dir).get("used", [s.id for s in load_sources(lesson_dir) if s.id == "src_000001"])
-    previous_snapshot = begin_update(lesson_dir)
+    # Negli aggiornamenti normali una nuova conversione resta riutilizzabile dopo un errore.
+    previous_snapshot = begin_update(lesson_dir, include_material_cache=reingest)
     try:
-        result = _run_source_update(lesson_dir, old_outline, mode=mode, mock=mock, ctx=ctx)
+        if reingest:
+            state = _read_state(lesson_dir)
+            # Anche gli appunti hanno una cache: si rileggono tutti gli originali, senza riusare ID.
+            state["sources"] = {}
+            _write_state(lesson_dir, state)
+        options = {"reingest": reingest, "with_review": with_review} if reingest or with_review else {}
+        result = _run_source_update(lesson_dir, old_outline, mode=mode, mock=mock, ctx=ctx, **options)
         from rt.core.update_history import record_version
         summary = _read_state(lesson_dir)["ultimo_aggiornamento"]
         record_version(lesson_dir, mode,
@@ -262,13 +288,13 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None):
     return result
 
 
-def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
+def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=False, with_review=False):
     from rt.pipeline.outline import load_outline, run_outline
     from rt.pipeline.outline_extension import extend_outline
     from rt.pipeline.rewrite import run_rewrite
     from rt.core.idempotency import compute_source_fingerprint, compute_file_sha256, record_phase_fingerprint
     from rt.core.state import transition_to, WorkflowState
-    prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx)
+    prepared = prepare_source_update(lesson_dir, mock=mock, ctx=ctx, **({"reingest": True} if reingest else {}))
     from rt.core.manifest import init_or_update_manifest, save_manifest
     from rt.core.state import read_info_yaml
     info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))
@@ -299,6 +325,24 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx):
                          changed_unit_ids=selected if mode == "extend" else None, force=mode == "rebuild")
     if result["status"] != "draft_validated" or result.get("failed_units"):
         raise RuntimeError("Aggiornamento incompleto: la lezione è tornata com'era, puoi riprovare.")
+    if reingest or with_review:
+        from rt.pipeline.build import run_build, write_automatic_documents
+        if with_review:
+            from rt.pipeline.review import run_review
+            from rt.services.pipeline_service import raise_if_incomplete
+            from rt.pipeline.ledger import get_pending_issues
+            review = run_review(lesson_dir, force=True, force_mock=mock, ctx=ctx)
+            raise_if_incomplete("review", review)
+            result["review"] = review
+            pending = get_pending_issues(lesson_dir)
+        else:
+            pending = []
+        if ctx:
+            ctx.check_cancelled()
+        # Le correzioni scientifiche non si approvano da sole: il documento resta un'anteprima.
+        result["build"] = (write_automatic_documents(lesson_dir) if pending
+                           else run_build(lesson_dir, force=True, ctx=ctx))
+        result["pending_review"] = len(pending)
     from rt.services.sources_view import record_update_summary
     record_update_summary(lesson_dir, mode, old_outline, outline, selected)
     from rt.core.source_selection import record_used_selection
