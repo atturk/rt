@@ -16,3 +16,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 12. `piano-informazioni-su-rt-codex.md`: Informazioni su RT con logo, versione e build reali (anche in Impostazioni › Info).
 13. `piano-audio-codex.md`: l'audio che si blocca dopo pochi secondi (remux in cache fatto in parallelo e corrotto), con lock, controllo e rifacimento delle voci rotte.
 14. `piano-ricerca-fissata-codex.md`: pulsante con la puntina accanto a Cerca che fissa la vista di Lezioni (raggruppamento, ordine, ricerca, filtri); una modifica la sblocca.
+15. `piano-lettura-veloce-tasti-codex.md`: lettura veloce con L per entrare e uscire, S per lo stato, Option/Alt+frecce e due pulsanti per le unità, controlli al 25% durante la lettura.
