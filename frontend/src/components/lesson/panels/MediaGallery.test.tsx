@@ -79,10 +79,54 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     expect(screen.getByText('Dal web')).toBeInTheDocument()
 
     // Didascalie
-    expect(screen.getByText(/Pag\. 1 ·/)).toBeInTheDocument()
-    expect(screen.getByText(/Pag\. 2 ·/)).toBeInTheDocument()
+    expect(screen.getByText('Pag. 1')).toBeInTheDocument()
+    expect(screen.getByText('Pag. 2')).toBeInTheDocument()
     expect(screen.getByText('2.1')).toBeInTheDocument()
     expect(screen.getAllByText(/non usata/).length).toBe(2)
+  })
+
+  it('gestisce la vista rows (senza grid-cols-3, riquadro aspect-video) e grid (grid-cols-3)', () => {
+    const { rerender } = render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        view="rows"
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+        onCrop={vi.fn()}
+      />,
+    )
+
+    const group = screen.getByRole('group', { name: 'Documento1.pdf' })
+    expect(group).not.toHaveClass('grid-cols-3')
+    expect(group).toHaveClass('flex-col')
+    const button = screen.getByRole('button', { name: /Pagina 1/ })
+    expect(button).toHaveClass('aspect-video')
+    expect(button).not.toHaveClass('aspect-[4/3]')
+
+    rerender(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        view="grid"
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+        onCrop={vi.fn()}
+      />,
+    )
+
+    expect(group).toHaveClass('grid-cols-3')
+    expect(button).toHaveClass('aspect-[4/3]')
+    expect(button).not.toHaveClass('aspect-video')
+    expect(screen.getByText(/Pag\. 1 ·/)).toBeInTheDocument()
   })
 
   it('permette di comprimere ed espandere un gruppo', () => {

@@ -1,4 +1,4 @@
-import { FileText, Image, Layers, Search, Sparkles, Upload, X } from 'lucide-react'
+import { FileText, Image, Layers, LayoutGrid, Rows3, Search, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
@@ -83,6 +83,27 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const [activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
+
+  const [mediaView, setMediaView] = useState<'rows' | 'grid'>(() => {
+    try {
+      const saved = localStorage.getItem('rt.media.view')
+      return saved === 'grid' ? 'grid' : 'rows'
+    } catch {
+      return 'rows'
+    }
+  })
+
+  const toggleMediaView = () => {
+    setMediaView((prev) => {
+      const next = prev === 'rows' ? 'grid' : 'rows'
+      try {
+        localStorage.setItem('rt.media.view', next)
+      } catch {
+        // Ignora errori di localStorage
+      }
+      return next
+    })
+  }
 
   const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
     try {
@@ -344,6 +365,12 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             Media della lezione · {totalMedia}
           </h3>
           <div className="flex items-center gap-1">
+            <IconButton
+              label={mediaView === 'rows' ? 'Vista a griglia' : 'Una pagina per riga'}
+              icon={mediaView === 'rows' ? LayoutGrid : Rows3}
+              className="size-7"
+              onClick={toggleMediaView}
+            />
             <IconButton
               label="Aggiungi immagini (PDF o foto)"
               icon={Upload}
@@ -630,6 +657,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             lessonId={id}
             images={imageList}
             selectedNames={selectedNames}
+            view={mediaView}
             onToggleSelect={(name) =>
               setSelectedNames((prev) => {
                 const next = new Set(prev)

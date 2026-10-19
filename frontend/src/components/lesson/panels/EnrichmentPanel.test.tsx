@@ -104,7 +104,7 @@ describe('EnrichmentPanel', () => {
     // Formula del gap è proposta: mostra Genera
     expect(screen.getByRole('button', { name: /Genera/i })).toBeInTheDocument()
     // L'elemento completato Infografica 1.1 non è presente nella lista idee come proposta da generare
-    expect(screen.queryByText('Infografica 1.1')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Elenco idee' })).queryByText('Infografica 1.1')).not.toBeInTheDocument()
   })
 
   it('apre la scheda di caricamento e di ricerca web', async () => {
@@ -279,4 +279,27 @@ it('mostra i file scelti nella lista, permette di rimuoverli e Annulla li scarta
   expect(screen.queryByRole('list', { name: 'File scelti' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Carica' })).toBeDisabled()
 })
+
+it('di base la vista dei media è a righe, il pulsante passa a griglia e salva in localStorage', async () => {
+  localStorage.removeItem('rt.media.view')
+  mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Di base la vista è a righe: c'è il pulsante per passare a griglia
+  const toggleBtn = screen.getByRole('button', { name: 'Vista a griglia' })
+  expect(toggleBtn).toBeInTheDocument()
+
+  // Clic passa a griglia
+  fireEvent.click(toggleBtn)
+  expect(localStorage.getItem('rt.media.view')).toBe('grid')
+  expect(screen.getByRole('button', { name: 'Una pagina per riga' })).toBeInTheDocument()
+
+  // Clic torna a righe
+  fireEvent.click(screen.getByRole('button', { name: 'Una pagina per riga' }))
+  expect(localStorage.getItem('rt.media.view')).toBe('rows')
+  expect(screen.getByRole('button', { name: 'Vista a griglia' })).toBeInTheDocument()
+})
+
 
