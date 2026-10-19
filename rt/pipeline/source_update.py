@@ -334,7 +334,7 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
             review = run_review(lesson_dir, force=True, force_mock=mock, ctx=ctx)
             raise_if_incomplete("review", review)
             result["review"] = review
-            pending = get_pending_issues(lesson_dir)
+            _, pending = get_pending_issues(lesson_dir)
         else:
             pending = []
         if ctx:
@@ -343,6 +343,11 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
         result["build"] = (write_automatic_documents(lesson_dir) if pending
                            else run_build(lesson_dir, force=True, ctx=ctx))
         result["pending_review"] = len(pending)
+        if reingest and not pending:
+            from rt.services.context import RunContext
+            from rt.services.pipeline_service import automatic_enrichment
+            result["enrichment"] = automatic_enrichment(
+                lesson_dir, mock, ctx or RunContext(lesson_dir=lesson_dir, force_mock=mock))
     from rt.services.sources_view import record_update_summary
     record_update_summary(lesson_dir, mode, old_outline, outline, selected)
     from rt.core.source_selection import record_used_selection

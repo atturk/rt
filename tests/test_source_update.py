@@ -138,3 +138,23 @@ def test_prepare_source_update_multiple_audios_cleans_previous_merged(tmp_path, 
     assert new_audio.startswith("audio-") and new_audio != "audio-previous.m4a"
     assert (tmp_path / new_audio).exists()
 
+
+
+def test_reingest_runs_automatic_enrichment_only_when_enabled(tmp_path, monkeypatch):
+    from rt.pipeline.source_update import run_source_update
+    from rt.core.config import load_config
+    from rt.services import enrichment_service
+    from tests.test_source_reingest import prepared
+    lesson, _ = prepared(tmp_path, monkeypatch)
+    cfg = load_config()
+    calls = []
+    monkeypatch.setattr('rt.services.enrichment_service.analyze', lambda *a, **k: calls.append(k['ctx']) or {'ok': True})
+    monkeypatch.setattr('rt.core.config.load_config', lambda: cfg)
+    cfg.classifier.jobs['enrichment'].mode = 'pipeline'
+    assert run_source_update(lesson, mode='rebuild', mock=True, reingest=True)['enrichment'] == {'ok': True}
+    assert len(calls) == 1 and calls[0] is not None
+    cfg.classifier.jobs['enrichment'].mode = 'manual'
+    assert run_source_update(lesson, mode='rebuild', mock=True, reingest=True)['enrichment']['skipped'] == 'manual'
+    assert len(calls) == 1
+    assert 'enrichment' not in run_source_update(lesson, mode='extend', mock=True)
+    assert len(calls) == 1

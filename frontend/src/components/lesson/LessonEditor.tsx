@@ -255,13 +255,15 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       })
     })
   }, [navigate])
+  const shortcutKey = doc.sections.filter(section => !section.relevance).map(section => section.unit_id).join('|')
+  const shortcutUnits = useMemo(() => shortcutKey ? shortcutKey.split('|') : [], [shortcutKey])
   useEffect(() => {
     viewOf(handle.current)?.dispatch({ effects: setUnitShortcuts.of({
       lessonId,
-      units: doc.sections.filter(section => !section.relevance).map(section => section.unit_id),
+      units: shortcutUnits,
       navigate: openStudy,
     }) })
-  }, [doc.sections, lessonId, openStudy, source.key])
+  }, [shortcutUnits, lessonId, openStudy, source.key])
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush }

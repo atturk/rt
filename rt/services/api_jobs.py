@@ -90,7 +90,8 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         **{name: options.get(name, "") for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir, ctx.force_mock = lesson, bool(options.get("mock"))
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
-    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"))
+    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"),
+                         job.payload.get("calendar_materia"), job.payload.get("calendar_start"))
     with ctx.activate():
         run_prepare(lesson, ctx=ctx)
         if job.payload.get("run"):

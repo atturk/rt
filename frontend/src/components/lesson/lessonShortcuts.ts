@@ -16,7 +16,10 @@ class Shortcuts extends WidgetType {
     this.options = options
     this.unit = unit
   }
-  eq(other: Shortcuts) { return other.unit === this.unit && other.options === this.options }
+  eq(other: Shortcuts) {
+    return other.unit === this.unit && other.options.lessonId === this.options.lessonId
+      && other.options.navigate === this.options.navigate
+  }
   toDOM() {
     const node = createUnitShortcuts(this.options.lessonId, this.unit, this.options.navigate)
     node.classList.add('rt-editor-shortcuts')
