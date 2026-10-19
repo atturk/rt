@@ -18,6 +18,7 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 14. `piano-ricerca-fissata-codex.md`: pulsante con la puntina accanto a Cerca che fissa la vista di Lezioni (raggruppamento, ordine, ricerca, filtri); una modifica la sblocca.
 15. `piano-lettura-veloce-tasti-codex.md`: lettura veloce con L per entrare e uscire, S per lo stato, Option/Alt+frecce e due pulsanti per le unità, controlli al 25% durante la lettura.
 16. `piano-calendario-codex.md`: vista annuale, Vai alla settimana, griglia delle settimane senza leggenda, copia e incolla dello stampo dentro Modifica (anche su più settimane dalla vista annuale), esporta e importa l'orario nelle Impostazioni.
+17. `piano-permessi-microfono-codex.md`: nell'app la registrazione vocale funziona (permesso del microfono chiesto al primo uso) e il menu ha "Controlla permessi".
 
 ## Divisione del lavoro per la 4.3.2b1
 
