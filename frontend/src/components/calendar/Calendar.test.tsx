@@ -496,6 +496,16 @@ describe('CalendarPage: intervallo di settimane', () => {
     expect(calendarMocks.createTemplate).toHaveBeenCalledWith(expect.objectContaining({ end_time: '12:00', valid_from: '2026-10-12', valid_to: '2026-10-26' }))
     expect(calendarMocks.createTemplate.mock.invocationCallOrder[0]).toBeLessThan(calendarMocks.deleteTemplate.mock.invocationCallOrder[0])
   })
+  it('la modifica non allunga un\'ora oltre le settimane in cui valeva', async () => {
+    calendarMocks.template = [{ id: 7, day_of_week: 0, start_time: '08:30', end_time: '10:30', materia: 'Anatomia', valid_from: '2026-10-12', valid_to: '2026-10-19' }]
+    renderPage(); chooseRange()
+    fireEvent.click(screen.getByTestId('calendar-event-tpl_7'))
+    const popup = screen.getByRole('dialog', { name: 'Modifica ora' })
+    fireEvent.change(within(popup).getByLabelText('Fine'), { target: { value: '12:00' } })
+    fireEvent.click(within(popup).getByRole('button', { name: 'Salva' }))
+    await waitFor(() => expect(calendarMocks.deleteTemplate).toHaveBeenCalled())
+    expect(calendarMocks.createTemplate).toHaveBeenCalledWith(expect.objectContaining({ valid_from: '2026-10-12', valid_to: '2026-10-19' }))
+  })
   it('fuori intervallo impedisce modifiche e Fatto azzera la scelta', () => {
     renderPage(); chooseRange()
     calendarMocks.week = { ...week, start_date: '2026-10-26' }

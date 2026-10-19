@@ -1,4 +1,4 @@
-"""Il pacchetto conserva i moduli e toglie solo il bytecode che può rigenerare."""
+"""Il pacchetto toglie le parti superflue della libreria standard e conserva il bytecode."""
 import importlib.util
 from pathlib import Path
 
@@ -8,7 +8,7 @@ from scripts.build_app import _trim
 
 
 @pytest.mark.parametrize('target', ['macos', 'windows'])
-def test_trim_removes_only_regenerable_bytecode(tmp_path, target):
+def test_trim_keeps_modules_and_bytecode(tmp_path, target):
     lib = tmp_path / 'python' / ('Lib' if target == 'windows' else 'lib/python3.12')
     module = lib / 'site-packages' / 'esempio' / '__init__.py'
     module.parent.mkdir(parents=True)
@@ -37,6 +37,7 @@ def test_trim_removes_only_regenerable_bytecode(tmp_path, target):
     assert binary.read_bytes() == b'binario necessario'
     assert orphan.read_bytes() == b'modulo senza sorgente'
     assert other.read_bytes() == b'dati'
-    assert not cache.exists()
-    assert not empty_cache.parent.exists()
+    # Avvio veloce anche da un'app in sola lettura.
+    assert cache.read_bytes() == b'cache rigenerabile'
+    assert empty_cache.read_bytes() == b'cache'
     assert all(not (lib / name).exists() for name in ('test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip'))

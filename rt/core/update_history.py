@@ -35,7 +35,7 @@ def _write_pointer(lesson_dir, data):
 
 
 def _material_cache_files(lesson_dir):
-    """Anche la cache delle pagine deve tornare com'era dopo una rilettura delle fonti."""
+    """Solo la rilettura delle fonti fotografa la cache delle pagine: le versioni ne restano senza."""
     found = []
     def visit(relative):
         folder = os.path.join(lesson_dir, relative)
@@ -54,7 +54,7 @@ def _material_cache_files(lesson_dir):
     return sorted(found)
 
 
-def _capture(lesson_dir, stamp=None, *, include_material_cache=True):
+def _capture(lesson_dir, stamp=None, *, include_material_cache=False):
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     history = os.path.join(lesson_dir, "history", stamp)
     fs.makedirs(history, exist_ok=True)
@@ -73,7 +73,7 @@ def _capture(lesson_dir, stamp=None, *, include_material_cache=True):
             **({"material_cache": material_cache} if include_material_cache else {})}
 
 
-def snapshot_update(lesson_dir, *, keep_previous=False, include_material_cache=True):
+def snapshot_update(lesson_dir, *, keep_previous=False, include_material_cache=False):
     snapshot = _capture(lesson_dir, include_material_cache=include_material_cache)
     old = _read_pointer(lesson_dir)
     _write_pointer(lesson_dir, snapshot)
@@ -82,7 +82,7 @@ def snapshot_update(lesson_dir, *, keep_previous=False, include_material_cache=T
     return snapshot["timestamp"]
 
 
-def begin_update(lesson_dir, *, include_material_cache=True):
+def begin_update(lesson_dir, *, include_material_cache=False):
     """Fotografia dell'aggiornamento che parte; quella precedente resta finché non riesce."""
     previous = _read_pointer(lesson_dir)
     snapshot_update(lesson_dir, keep_previous=True, include_material_cache=include_material_cache)

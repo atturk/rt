@@ -167,7 +167,7 @@ def test_snapshot_restores_material_cache_on_database_storage(rt_db, tmp_path):
     for name, data in old.items():
         with fs.open(str(Path(lesson) / name), 'wb') as stream:
             stream.write(data)
-    snapshot_update(lesson)
+    snapshot_update(lesson, include_material_cache=True)
     for name in (*old, 'materials/abc/page-2.json'):
         with fs.open(str(Path(lesson) / name), 'wb') as stream:
             stream.write(b'dopo')
@@ -195,7 +195,7 @@ def test_failed_cache_restore_keeps_current_data_intact(rt_db, tmp_path, monkeyp
         fs.makedirs(str((Path(lesson) / name).parent), exist_ok=True)
         with fs.open(str(Path(lesson) / name), 'wb') as stream:
             stream.write(data)
-    snapshot_update(lesson)
+    snapshot_update(lesson, include_material_cache=True)
     for name in cached:
         with fs.open(str(Path(lesson) / name), 'wb') as stream:
             stream.write(b'dati attuali')
@@ -226,3 +226,22 @@ def test_missing_uncached_material_still_reports_why_reingest_is_unavailable(tmp
     assert view['reingest_available'] is False
     assert view['reingest_reason'] == 'Documento originale non disponibile.'
     assert next(s for s in view['sources'] if s.id == source.id).pagine is None
+
+
+def test_plain_rebuild_and_version_restore_leave_material_cache_alone(tmp_path, monkeypatch):
+    from rt.core.materials import material_pages
+    from rt.core.update_history import list_versions, restore_version
+    lesson, _ = prepared(tmp_path, monkeypatch)
+    monkeypatch.setattr('rt.core.materials._describe', lambda *a: 'Lettura')
+    update.run_source_update(lesson, mode='rebuild', mock=True)
+    first = list_versions(lesson)[0]['id']
+    source = add_source(lesson, 'materiale', 'foto.png', png_bytes())
+    material_pages(lesson, source)
+    update.prepare_source_update(lesson, mock=True)
+    update.run_source_update(lesson, mode='rebuild', mock=True)
+    cache = sorted(p.relative_to(tmp_path) for p in (tmp_path / 'materials').rglob('*') if p.is_file())
+    assert cache
+    # Le versioni non copiano le immagini delle pagine.
+    assert not [p for p in (tmp_path / 'history').rglob('*') if 'materials' in p.parts]
+    restore_version(lesson, first)
+    assert sorted(p.relative_to(tmp_path) for p in (tmp_path / 'materials').rglob('*') if p.is_file()) == cache

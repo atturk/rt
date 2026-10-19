@@ -929,6 +929,15 @@ function ReadingSkeleton() {
   )
 }
 
+/** La parte della selezione che cade nel testo dell'unità (Ctrl+A o titolo compresi). */
+function clipToRoot(range: Range, root: HTMLElement): Range | null {
+  if (!range.intersectsNode(root)) return null
+  const clipped = range.cloneRange()
+  if (!root.contains(range.startContainer)) clipped.setStart(root, 0)
+  if (!root.contains(range.endContainer)) clipped.setEnd(root, root.childNodes.length)
+  return clipped.collapsed ? null : clipped
+}
+
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
 export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
   lessonId: number
@@ -963,6 +972,9 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         raw.textContent = math.getAttribute('data-rt-source')
         math.after(raw)
       })
+    }, () => undefined).finally(() => {
+      // Anche se il motore delle formule non si carica, il testo resta usabile.
+      if (!alive) return
       setMathReady(unit.html)
       onReady(root)
     })
@@ -1023,8 +1035,8 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
       frame = 0
       const sel = window.getSelection()
       const range = sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null
-      const inside = range && root.contains(range.commonAncestorContainer)
-      const offsets = inside ? sourceOffsets(root, range) : null
+      const inside = range && clipToRoot(range, root)
+      const offsets = inside ? sourceOffsets(root, inside) : null
       for (const part of sourceParts(root)) {
         if (part.node.nodeType !== Node.ELEMENT_NODE) continue
         const selected = !!offsets && part.start < offsets.end && part.end > offsets.start
@@ -1042,8 +1054,10 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   const handleCopy = (event: React.ClipboardEvent) => {
     const sel = window.getSelection(), root = ref.current
     if (!root || !sel?.rangeCount || sel.isCollapsed) return
-    const range = sel.getRangeAt(0)
-    if (!root.contains(range.commonAncestorContainer)) return
+    const range = clipToRoot(sel.getRangeAt(0), root)
+    if (!range) return
+    // Senza formule la copia del browser va bene e tiene paragrafi e formattazione.
+    if (!sourceParts(root).some(p => p.node.nodeType === Node.ELEMENT_NODE && range.intersectsNode(p.node))) return
     const { text, start, end } = sourceOffsets(root, range)
     if (start === end) return
     event.preventDefault()
