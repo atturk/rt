@@ -1,6 +1,6 @@
 # Piano per Codex · 4.3.2b1 · File scelti in "Aggiungi PDF o foto"
 
-Base: `claude/rt-4.3.2-beta`.3.1 stabile). File: `frontend/src/components/lesson/panels/EnrichmentPanel.tsx` e il suo test `EnrichmentPanel.test.tsx`.
+Base: `claude/rt-4.3.2-beta`. File: `frontend/src/components/lesson/panels/EnrichmentPanel.tsx` e il suo test `EnrichmentPanel.test.tsx`.
 
 ## Il bug (segnalato da Attilio)
 In Arricchimento › Media della lezione › "Aggiungi PDF o foto", dopo aver scelto un file il pulsante dice "Carica (1)" ma il campo mostra "Choose Files / no files selected" e il file non compare da nessuna parte.
