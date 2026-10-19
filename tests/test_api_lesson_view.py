@@ -107,7 +107,7 @@ def test_playable_audio_keeps_original_when_remux_impossible(tmp_path, rt_db, mo
 def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
     from rt.services import audio_service
     adts = tmp_path / "c.m4a"
-    adts.write_bytes(b"\xff\xf1\x50\x80" + b"\x00" * 20)
+    adts.write_bytes(b"\xff\xf1\x50\x80" + b"\x00" * 16)
     calls = []
 
     def fake_ffmpeg(cmd, **kwargs):
@@ -115,6 +115,7 @@ def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
         with open(cmd[-1], "wb") as f:
             f.write(b"\x00\x00\x00\x18ftypM4A remuxed")
     monkeypatch.setattr(subprocess, "run", fake_ffmpeg)
+    monkeypatch.setattr(audio_service, "_probe_ok", lambda path: True)
     first = audio_service.playable_audio(str(adts))
     assert first != str(adts) and open(first, "rb").read().endswith(b"remuxed")
     assert audio_service.playable_audio(str(adts)) == first and len(calls) == 1
@@ -152,3 +153,70 @@ def test_relevance_exposes_review_included(api_client, lesson):
     assert response.status_code == 200
     expected = {unit.unit_id: unit_relevance.included(lesson, unit) for unit in load_draft(lesson).units}
     assert {row["unit_id"]: row["review_included"] for row in response.json()["units"]} == expected
+
+
+@pytest.fixture
+def real_adts(tmp_path):
+    from rt.core.media_tools import ffmpeg_path
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg:
+        pytest.skip("ffmpeg non disponibile")
+    path = tmp_path / "audio.m4a"
+    subprocess.run([ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=3", "-c:a", "aac", "-f", "adts", str(path)], check=True)
+    return path
+
+
+def test_playable_audio_concurrent_remux(real_adts, rt_db, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from rt.services import audio_service
+    barrier = threading.Barrier(8)
+    real_run = subprocess.run
+    calls = []
+
+    def counted(cmd, **kwargs):
+        if "-c:a" in cmd:
+            calls.append(cmd)
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", counted)
+
+    def play():
+        barrier.wait()
+        return audio_service.playable_audio(str(real_adts))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        paths = list(pool.map(lambda _: play(), range(8)))
+    assert len(set(paths)) == 1 and paths[0] != str(real_adts)
+    assert len(calls) == 1
+    assert audio_service._probe_ok(paths[0])
+    assert os.listdir(os.path.dirname(paths[0])) == [os.path.basename(paths[0])]
+
+
+def test_playable_audio_replaces_old_corrupt_cache(real_adts, rt_db):
+    from rt.services import audio_service
+    old = os.path.join(audio_service._cache_dir("audio"), audio_service._key(str(real_adts)) + ".m4a")
+    with open(old, "wb") as handle:
+        handle.write(b"corrupted")
+    result = audio_service.playable_audio(str(real_adts))
+    assert result.endswith(audio_service.REMUX_SUFFIX)
+    assert audio_service._probe_ok(result)
+    assert not os.path.exists(old)
+    assert os.listdir(os.path.dirname(result)) == [os.path.basename(result)]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_playable_audio_rejects_bad_output(tmp_path, rt_db, monkeypatch, raises):
+    from rt.services import audio_service
+    source = tmp_path / "broken.m4a"
+    source.write_bytes(b"ADTS invalid")
+
+    def empty(cmd, **kwargs):
+        if raises:
+            raise subprocess.CalledProcessError(1, cmd)
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", empty)
+    assert audio_service.playable_audio(str(source)) == str(source)
+    assert os.listdir(audio_service._cache_dir("audio")) == []
