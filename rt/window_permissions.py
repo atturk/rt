@@ -53,10 +53,14 @@ def decide(host: str, status: str, ask) -> int | None:
 
 
 def install_macos() -> None:
-    """Prima di webview.start: media attivi nel WKWebView e risposta alle richieste del microfono."""
+    """Prima di webview.start: media attivi nel WKWebView e risposta alle richieste del microfono.
+
+    Le classi di pywebview non si sostituiscono con sottoclassi: i loro metodi chiamano
+    super(BrowserView.WebKitHost, self) e andrebbero in ricorsione. Si aggiunge il metodo al
+    delegato esistente e si prepara la configurazione che pywebview crea."""
     import objc
     from PyObjCTools import AppHelper
-    from webview.platforms.cocoa import BrowserView
+    from webview.platforms import cocoa
 
     selector = b"webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:"
     try:
@@ -66,30 +70,46 @@ def install_macos() -> None:
     except Exception as exc:
         log.warning("Metadati del microfono non registrati: %s", exc)
 
-    base_host, base_delegate = BrowserView.WebKitHost, BrowserView.BrowserDelegate
+    def media_permission(self, webview, origin, frame, kind, handler):
+        def answer(granted):
+            AppHelper.callAfter(handler, GRANT if granted else DENY)
+        result = decide(str(origin.host() or ""), mic_status(), lambda: request_mic(answer))
+        if result is not None:
+            handler(result)
 
-    class RTMediaWebKitHost(base_host):
-        def initWithFrame_configuration_(self, frame, config):
-            prefs = config.preferences()
-            for key, value in (("mediaDevicesEnabled", True), ("mediaRecorderEnabled", True),
-                               ("mediaCaptureRequiresSecureConnection", False)):
-                try:
-                    prefs.setValue_forKey_(value, key)
-                except Exception as exc:
-                    log.info("Preferenza %s non disponibile: %s", key, exc)
-            return objc.super(RTMediaWebKitHost, self).initWithFrame_configuration_(frame, config)
+    objc.classAddMethods(cocoa.BrowserView.BrowserDelegate, [
+        objc.selector(media_permission, selector=selector, signature=b"v@:@@@q@?")])
 
-    class RTMediaBrowserDelegate(base_delegate):
-        def webView_requestMediaCapturePermissionForOrigin_initiatedByFrame_type_decisionHandler_(
-                self, webview, origin, frame, kind, handler):
-            def answer(granted):
-                AppHelper.callAfter(handler, GRANT if granted else DENY)
-            result = decide(str(origin.host() or ""), mic_status(), lambda: request_mic(answer))
-            if result is not None:
-                handler(result)
+    real = cocoa.WebKit
 
-    BrowserView.WebKitHost = RTMediaWebKitHost
-    BrowserView.BrowserDelegate = RTMediaBrowserDelegate
+    def configuration():
+        config = real.WKWebViewConfiguration.alloc().init()
+        prefs = config.preferences()
+        for key, value in (("mediaDevicesEnabled", True), ("mediaRecorderEnabled", True),
+                           ("mediaCaptureRequiresSecureConnection", False)):
+            try:
+                prefs.setValue_forKey_(value, key)
+            except Exception as exc:
+                log.info("Preferenza %s non disponibile: %s", key, exc)
+        return config
+
+    class _Alloc:
+        def init(self):
+            return configuration()
+
+    class _Configuration:
+        @staticmethod
+        def alloc():
+            return _Alloc()
+
+    class _WebKit:
+        """Il modulo WebKit visto da pywebview, con la configurazione già pronta per i media."""
+        WKWebViewConfiguration = _Configuration
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    cocoa.WebKit = _WebKit()
 
 
 def install_windows(window, base_url: str) -> None:
