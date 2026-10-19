@@ -14,3 +14,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 10. `piano-zoom-codex.md`: zoom dell'interfaccia (Aspetto, menu e Cmd +/− nell'app) e zoom del solo testo nello Studio con + e −.
 11. `piano-suggerimenti-pulsanti-disattivati-codex.md`: il suggerimento dei pulsanti a icona compare anche quando sono disattivati (con il motivo in Nuova lezione).
 12. `piano-informazioni-su-rt-codex.md`: Informazioni su RT con logo, versione e build reali (anche in Impostazioni › Info).
+13. `piano-audio-codex.md`: l'audio che si blocca dopo pochi secondi (remux in cache fatto in parallelo e corrotto), con lock, controllo e rifacimento delle voci rotte.
