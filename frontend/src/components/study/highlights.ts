@@ -189,7 +189,12 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
               try { h.fromStore(source.startMeta, source.endMeta, source.text, source.id) } finally { restore() }
             }
           } else {
-            h.fromStore(source.startMeta, source.endMeta, source.text, source.id)
+            // Le posizioni salvate prima del LaTeX visibile accanto alle formule non lo contano.
+            const raws = Array.from(root.querySelectorAll('.rt-math-src')).map(raw => [raw.previousSibling, raw] as const)
+            raws.forEach(([, raw]) => raw.remove())
+            try { h.fromStore(source.startMeta, source.endMeta, source.text, source.id) } finally {
+              raws.forEach(([math, raw]) => { if (math?.isConnected) math.parentNode!.insertBefore(raw, math.nextSibling) })
+            }
             const doms = h.getDoms(source.id)
             if (!doms.length) continue
             const range = document.createRange()

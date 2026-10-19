@@ -195,12 +195,19 @@ export function CalendarPage() {
     }
     try {
       if ((editing === 'tpl' || editing === 'range') && ev.template_entry_id) {
-        // La nuova ora vale nelle date scelte, poi si toglie la versione precedente.
+        // La nuova ora vale nelle date scelte, ma solo dove valeva la vecchia; poi si toglie
+        // la versione precedente.
+        const old = templateQuery.data?.find(t => t.id === ev.template_entry_id)
+        const chosenFrom = templateDates?.from ?? week.start_date
+        const from = old?.valid_from && old.valid_from > chosenFrom ? old.valid_from : chosenFrom
+        const ends = [templateDates?.to, old?.valid_to].filter((d): d is string => !!d).sort()
+        const to = ends[0]
+        if (to && to <= from) return
         await createTpl.mutateAsync({
           ...fields,
           day_of_week: ev.day_of_week,
-          valid_from: templateDates?.from ?? week.start_date,
-          ...(templateDates?.to ? { valid_to: templateDates.to } : {}),
+          valid_from: from,
+          ...(to ? { valid_to: to } : {}),
         })
         await deleteTpl.mutateAsync({ id: ev.template_entry_id, ...templateDates })
       } else if (ev.template_entry_id) {

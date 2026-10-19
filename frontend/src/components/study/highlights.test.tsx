@@ -68,3 +68,19 @@ it('evidenzia una formula anche su HTTP senza crypto.randomUUID', async () => {
     expect(root.querySelector('math')!.classList.contains('rt-hl-math')).toBe(true)
   } finally { vi.unstubAllGlobals() }
 })
+
+it('ritrova le evidenziazioni salvate prima del LaTeX accanto alle formule', async () => {
+  api.list.mockImplementation(async () => {
+    // Posizione come la calcolava web-highlighter senza lo span del sorgente.
+    const clone = screen.getByTestId('study-text').querySelector('p')!.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('.rt-math-src').forEach(raw => raw.remove())
+    const start = clone.textContent!.indexOf('dopo')
+    const meta = (offset: number) => ({ parentTagName: 'P', parentIndex: 0, textOffset: offset })
+    return [{ id: 7, color: 1, source: { id: 'vecchia', text: 'dopo', startMeta: meta(start), endMeta: meta(start + 4) } }]
+  })
+  render(<Harness />)
+  const root = screen.getByTestId('study-text')
+  await waitFor(() => expect(root.querySelector('.rt-hl-1')?.textContent).toBe('dopo'))
+  expect(root.querySelector('math')!.nextElementSibling?.matches('.rt-math-src')).toBe(true)
+  expect(sourceTextOf(root)).toBe(source)
+})
