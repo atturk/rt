@@ -184,6 +184,10 @@ def _menu(window, base_url: str):
         MenuAction("Apri nel browser", browser),
         MenuAction("Ricarica", lambda: window.load_url(window.get_current_url() or base_url)),
         MenuSeparator(),
+        MenuAction("Ingrandisci", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('in')")),
+        MenuAction("Riduci", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('out')")),
+        MenuAction("Dimensioni reali", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('reset')")),
+        MenuSeparator(),
         MenuAction("Esci da RT", quit_rt),
     ])]
 
@@ -248,7 +252,7 @@ def open_window(base_url: str, path: str = "/") -> int:
                     time.sleep(0.2)
                 _log("La finestra RT è già in apertura: riprova tra qualche secondo.")
                 return 1
-        url = f"{base_url}/login?code={auth.create_login_code()}"
+        url = f"{base_url}/login?code={auth.create_login_code()}&app=1"
         import webview
         if sys.platform == "darwin":
             from Foundation import NSBundle

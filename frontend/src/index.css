@@ -611,6 +611,9 @@
 .rt-reading {
   line-height: 1.75;
 }
+.rt-reading :is(h2, h3) {
+  font-size: calc(var(--size-body) * var(--study-text-scale, 1));
+}
 .rt-reading p {
   margin-bottom: 20px;
 }

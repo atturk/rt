@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
@@ -409,5 +409,45 @@ it('strumenti V e C: scorciatoie tastiera, accensione/spegnimento e tasto Esc', 
   fireEvent.keyDown(window, { key: 'Escape' })
   expect(btnC).toHaveAttribute('aria-pressed', 'false')
   expect(text).not.toHaveAttribute('data-hl-mode')
+})
+
+it('zoom testo: + porta --study-text-scale a 1.1, - torna a 1, in textarea o con Ctrl non cambia, con lettura veloce aperta non cambia, etichetta compare', async () => {
+  localStorage.clear()
+  renderStudy('/studio/lezione/1')
+  const studyText = screen.getByTestId('study-text')
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
+
+  // Con Ctrl premuto non cambia nulla
+  fireEvent.keyDown(window, { key: '+', ctrlKey: true })
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
+
+  // In una textarea o input non cambia nulla
+  const textarea = document.createElement('textarea')
+  document.body.appendChild(textarea)
+  textarea.focus()
+  fireEvent.keyDown(textarea, { key: '+' })
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
+  document.body.removeChild(textarea)
+
+  // Tasto + porta a 1.1 e compare l'etichetta "Testo 110%"
+  fireEvent.keyDown(window, { key: '+' })
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1.1')
+  const noticePlus = screen.getByTestId('study-scale-notice')
+  expect(noticePlus).toHaveAttribute('role', 'status')
+  expect(noticePlus).toHaveTextContent('Testo 110%')
+
+  // Tasto - torna a 1
+  fireEvent.keyDown(window, { key: '-' })
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
+  const noticeMinus = screen.getByTestId('study-scale-notice')
+  expect(noticeMinus).toHaveAttribute('role', 'status')
+  expect(noticeMinus).toHaveTextContent('Testo 100%')
+
+  // Con lettura veloce aperta non cambia nulla
+  await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+  fireEvent.keyDown(window, { key: 'l' })
+  await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+  fireEvent.keyDown(window, { key: '+' })
+  expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
 })
 

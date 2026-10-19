@@ -44,6 +44,37 @@ import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
 import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
 
+const STUDY_TEXT_SCALE_KEY = 'rt-device:study-text-scale'
+
+function getSavedStudyTextScale(): number {
+  try {
+    const raw = localStorage.getItem(STUDY_TEXT_SCALE_KEY)
+    if (raw) {
+      const val = parseFloat(raw)
+      if (Number.isFinite(val) && val >= 0.8 && val <= 2.0) {
+        return Math.round(val * 10) / 10
+      }
+    }
+  } catch {
+    return 1.0
+  }
+  return 1.0
+}
+
+function saveStudyTextScale(v: number): void {
+  try {
+    localStorage.setItem(STUDY_TEXT_SCALE_KEY, (Math.round(v * 10) / 10).toFixed(1))
+  } catch {
+    // Continua se localStorage non è disponibile
+  }
+}
+
+function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
+  if (!root) return null
+  const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('p, h2, h3, li, blockquote'))
+  return paragraphs.find(el => el.getBoundingClientRect().bottom > 60) ?? paragraphs[0] ?? null
+}
+
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
  * si legge un'unità intera, poi le sue domande una alla volta, poi l'unità dopo;
@@ -202,6 +233,18 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [zenMode, setZenMode] = useStudyZen(entry?.zen ?? false)
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
+  const [textScale, setTextScale] = useState(getSavedStudyTextScale)
+  const [scaleNotice, setScaleNotice] = useState<string | null>(null)
+  const scaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showScaleNotice = useCallback((val: number) => {
+    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+    setScaleNotice(`Testo ${Math.round(val * 100)}%`)
+    scaleTimerRef.current = setTimeout(() => {
+      setScaleNotice(null)
+      scaleTimerRef.current = null
+    }, 1000)
+  }, [])
   const savePosition = () => {
     readingScroll.current = window.scrollY
     const node = Array.from(textRoot?.querySelectorAll('p, h2, h3, li') ?? []).find(el => el.getBoundingClientRect().bottom > 52)
@@ -389,6 +432,26 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         return
       }
       if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
+
+      const isZoomIn = e.key === '+' || (!e.shiftKey && e.key === '=') || e.code === 'NumpadAdd'
+      const isZoomOut = !e.shiftKey && (e.key === '-' || e.code === 'NumpadSubtract')
+      if (isZoomIn || isZoomOut) {
+        e.preventDefault()
+        const topEl = findTopParagraph(textRoot)
+        const next = isZoomIn
+          ? Math.min(2.0, Math.round((textScale + 0.1) * 10) / 10)
+          : Math.max(0.8, Math.round((textScale - 0.1) * 10) / 10)
+        setTextScale(next)
+        saveStudyTextScale(next)
+        showScaleNotice(next)
+        if (topEl) {
+          requestAnimationFrame(() => {
+            topEl.scrollIntoView({ block: 'start' })
+          })
+        }
+        return
+      }
+
       if (e.shiftKey && key !== 'e') return
       if (key === 'z') { e.preventDefault(); toggleZen() }
       else if (key === 'l') {
@@ -438,7 +501,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -713,6 +776,15 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                   )}
                 </div>
               )}
+              {scaleNotice && (
+                <div
+                  role="status"
+                  className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2 pointer-events-none"
+                  data-testid="study-scale-notice"
+                >
+                  <span>{scaleNotice}</span>
+                </div>
+              )}
             </>
           }
           footer={
@@ -752,6 +824,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             unit={live}
             highlightMode={hlMode}
             onReady={setTextRoot}
+            textScale={textScale}
             notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
             activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
             onNoteClick={(note, rect) => {
@@ -1014,7 +1087,7 @@ function clipToRoot(range: Range, root: HTMLElement): Range | null {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
+export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection, textScale = 1 }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
@@ -1024,6 +1097,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   activeNoteId?: number | null
   onNoteClick?: (note: StudyNote, rect: DOMRect) => void
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
+  textScale?: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [mathReady, setMathReady] = useState<string | null>(null)
@@ -1189,6 +1263,10 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
         onClick={handleClick}
+        style={{
+          '--study-text-scale': String(textScale),
+          fontSize: 'calc(var(--size-body) * var(--study-text-scale, 1))',
+        } as React.CSSProperties}
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }}
       />
     </section>
