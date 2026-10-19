@@ -15,3 +15,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 11. `piano-suggerimenti-pulsanti-disattivati-codex.md`: il suggerimento dei pulsanti a icona compare anche quando sono disattivati (con il motivo in Nuova lezione).
 12. `piano-informazioni-su-rt-codex.md`: Informazioni su RT con logo, versione e build reali (anche in Impostazioni › Info).
 13. `piano-audio-codex.md`: l'audio che si blocca dopo pochi secondi (remux in cache fatto in parallelo e corrotto), con lock, controllo e rifacimento delle voci rotte.
+14. `piano-ricerca-fissata-codex.md`: pulsante con la puntina accanto a Cerca che fissa la vista di Lezioni (raggruppamento, ordine, ricerca, filtri); una modifica la sblocca.
