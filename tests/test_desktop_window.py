@@ -446,8 +446,9 @@ def test_mac_cmd_q_replaces_localized_default_quit(monkeypatch):
 
 def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     from rt._window_smoke import macos_menu
+    about_item = SimpleNamespace(title=lambda: 'Informazioni su RT', target=lambda: object(), keyEquivalent=lambda: '')
     exit_item = SimpleNamespace(title=lambda: 'Esci da RT', target=lambda: object(), keyEquivalent=lambda: 'q')
-    app_menu = SimpleNamespace(title=lambda: 'RT', itemArray=lambda: [exit_item])
+    app_menu = SimpleNamespace(title=lambda: 'RT', itemArray=lambda: [about_item, exit_item])
     roots = [SimpleNamespace(title=lambda: '', submenu=lambda: app_menu),
              SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica'))]
     main = SimpleNamespace(itemArray=lambda: roots, itemAtIndex_=lambda index: roots[index])
@@ -458,3 +459,43 @@ def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     monkeypatch.setitem(sys.modules, 'AppKit', appkit)
     monkeypatch.setitem(sys.modules, 'PyObjCTools', objc_tools)
     assert macos_menu() == ['Esci da RT', 'Modifica']
+
+
+def test_about_options():
+    # Con run e commit
+    info = {
+        "version": "4.3.2b1",
+        "run": "812",
+        "commit": "a1b2c3d",
+        "built_at": "2026-10-19T12:00:00Z",
+    }
+    versions = {
+        "channel": "beta",
+        "python": "3.12.3",
+        "webview": "6.2.1",
+        "macos": "15.1",
+        "arch": "arm64",
+    }
+    opts = window.about_options(info, versions)
+    assert opts["ApplicationName"] == "RT"
+    assert opts["ApplicationVersion"] == "4.3.2b1"
+    assert opts["Version"] == "build 812 · a1b2c3d"
+    assert "Canale aggiornamenti: beta" in opts["credits_lines"]
+    assert "Compilata il 19/10/2026" in opts["credits_lines"]
+    assert "Python 3.12.3 · pywebview 6.2.1" in opts["credits_lines"]
+    assert "macOS 15.1 · arm64" in opts["credits_lines"]
+
+    # Senza run (solo commit)
+    opts_commit_only = window.about_options({"version": "4.3.2b1", "commit": "a1b2c3d"}, versions)
+    assert opts_commit_only["Version"] == "a1b2c3d"
+
+    # Senza né run né commit: chiave Version omessa
+    opts_no_build = window.about_options({"version": "4.3.2b1"}, versions)
+    assert "Version" not in opts_no_build
+
+
+def test_windows_menu_has_about(monkeypatch, webview):
+    monkeypatch.setattr(sys, "platform", "win32")
+    menu = window._menu(webview.create_window.return_value, "http://127.0.0.1:8765")
+    items = menu[0].items
+    assert items[0].title == "Informazioni su RT"

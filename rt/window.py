@@ -173,7 +173,10 @@ def _menu(window, base_url: str):
         webbrowser.open(f"{base_url}/login?code={auth.create_login_code()}")
 
     # pywebview 6.2.1 inserisce __app__ nel menu dell'applicazione su macOS.
-    return [Menu("__app__" if sys.platform == "darwin" else "RT", [
+    actions = []
+    if sys.platform == "win32":
+        actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
+    actions.extend([
         MenuAction("Controlla aggiornamenti…", lambda: window.load_url(base_url + INFO_PATH)),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
@@ -189,21 +192,154 @@ def _menu(window, base_url: str):
         MenuAction("Dimensioni reali", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('reset')")),
         MenuSeparator(),
         MenuAction("Esci da RT", quit_rt),
-    ])]
+    ])
+    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions)]
+
+
+def about_options(info: dict, versions: dict | None = None) -> dict:
+    """Opzioni per il pannello Informazioni su RT del Mac."""
+    from datetime import datetime
+    import platform
+    versions = versions or {}
+    version = info.get("version") or versions.get("version")
+    if not version:
+        try:
+            from rt.core.version import get_current_version
+            version = get_current_version()
+        except Exception:
+            version = "4.3.2b1"
+
+    options: dict = {
+        "ApplicationName": "RT",
+        "ApplicationVersion": version,
+    }
+
+    run = info.get("run")
+    commit = info.get("commit")
+    if run and commit:
+        options["Version"] = f"build {run} · {commit}"
+    elif commit:
+        options["Version"] = str(commit)
+    elif run:
+        options["Version"] = f"build {run}"
+
+    channel = versions.get("channel")
+    if not channel:
+        try:
+            from rt.core.version import get_update_channel
+            channel = get_update_channel()
+        except Exception:
+            channel = "stable"
+    channel_label = "beta" if channel == "beta" else "stabile"
+    credits_lines = [f"Canale aggiornamenti: {channel_label}"]
+
+    built_at = info.get("built_at")
+    if built_at:
+        try:
+            dt = datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+            credits_lines.append(f"Compilata il {dt.strftime('%d/%m/%Y')}")
+        except Exception:
+            credits_lines.append(f"Compilata il {built_at}")
+
+    py_ver = versions.get("python") or platform.python_version()
+    webview_ver = versions.get("webview")
+    if not webview_ver:
+        try:
+            import webview
+            webview_ver = getattr(webview, "__version__", "6.2.1")
+        except Exception:
+            webview_ver = "6.2.1"
+    credits_lines.append(f"Python {py_ver} · pywebview {webview_ver}")
+
+    mac_ver = versions.get("macos") or platform.mac_ver()[0]
+    arch = versions.get("arch") or platform.machine()
+    credits_lines.append(f"macOS {mac_ver} · {arch}")
+
+    options["credits_lines"] = credits_lines
+    return options
+
+
+def _show_macos_about() -> None:
+    from AppKit import (NSApplication, NSAttributedString, NSColor, NSFont,
+                        NSFontAttributeName, NSForegroundColorAttributeName, NSImage)
+    from rt.core import bundle
+    info = bundle.build_info()
+    opts = about_options(info)
+    credits_text = "\n".join(opts.get("credits_lines", []))
+    attributes = {
+        NSFontAttributeName: NSFont.systemFontOfSize_(11.0),
+        NSForegroundColorAttributeName: NSColor.secondaryLabelColor(),
+    }
+    credits_attr = NSAttributedString.alloc().initWithString_attributes_(credits_text, attributes)
+    panel_opts = {
+        "ApplicationName": opts["ApplicationName"],
+        "ApplicationVersion": opts["ApplicationVersion"],
+        "Credits": credits_attr,
+    }
+    if "Version" in opts:
+        panel_opts["Version"] = opts["Version"]
+
+    app = bundle.app_path()
+    if app:
+        icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(icon_path):
+            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            if img:
+                panel_opts["ApplicationIcon"] = img
+    NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(panel_opts)
+
+
+_about_target = None
+
+
+def _get_about_target():
+    global _about_target
+    if _about_target is None:
+        try:
+            from Foundation import NSObject
+
+            class _AboutHandler(NSObject):
+                def showAbout_(self, sender):
+                    _show_macos_about()
+
+            _about_target = _AboutHandler.alloc().init()
+        except ImportError:
+            _about_target = object()
+    return _about_target
 
 
 def _macos_menu() -> None:
-    """Mantiene Modifica e assegna Cmd+Q all'uscita che ferma anche i servizi."""
+    """Mantiene Modifica, collega Informazioni su RT e assegna Cmd+Q all'uscita."""
     from AppKit import NSApplication
+    try:
+        from AppKit import NSImage
+    except ImportError:
+        NSImage = None
     from PyObjCTools import AppHelper
+    from rt.core import bundle
 
     def configure():
+        app = bundle.app_path()
+        if app and NSImage is not None:
+            icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
+            if os.path.isfile(icon_path):
+                img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+                if img:
+                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+
+        about_target = _get_about_target()
         menu = NSApplication.sharedApplication().mainMenu().itemAtIndex_(0).submenu()
         for item in list(menu.itemArray()):
+            title = item.title() if callable(item.title) else getattr(item, "title", "")
             if item.keyEquivalent() == "q" and item.target() is None:
                 menu.removeItem_(item)
-            elif item.title() == "Esci da RT":
+            elif title == "Esci da RT":
                 item.setKeyEquivalent_("q")
+            elif title.startswith("Informazioni su") or title.startswith("About "):
+                if hasattr(item, "setTarget_"):
+                    item.setTarget_(about_target)
+                if hasattr(item, "setAction_"):
+                    item.setAction_("showAbout:")
     AppHelper.callAfter(configure)
 
 
