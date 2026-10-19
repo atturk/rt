@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { getSubjectColor } from './subjectColor'
 import { StatusIcon } from './StatusIcon'
@@ -135,7 +135,7 @@ describe('Calendar components (CA1c)', () => {
 
     expect(screen.getByText('Lun')).toBeTruthy()
     expect(screen.getByText('DATA MINING')).toBeTruthy()
-    expect(screen.getByText('09:30–11:30')).toBeTruthy()
+    expect(within(screen.getByTestId('calendar-event-tpl_1')).getByText('09:30–11:30')).toBeVisible()
 
     // Clic sull'evento apre il popup
     const evBtn = screen.getByRole('button', { name: /DATA MINING/i })
