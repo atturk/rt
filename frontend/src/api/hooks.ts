@@ -1,3 +1,4 @@
+import { subjectsKeys } from './subjects'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap, type Schemas } from './client'
@@ -131,12 +132,14 @@ export function useRefreshLesson(id: number) {
 }
 
 export function useUpdateLessonMetadata(id: number) {
+  const queryClient = useQueryClient()
   const refresh = useRefreshLesson(id)
   return useMutation({
     mutationFn: (body: Schemas['LessonMetadataUpdate']) =>
       unwrap(api.PATCH('/api/v1/lessons/{lesson_id}/metadata', { params: { path: { lesson_id: id } }, body })),
     onSuccess: () => {
       void refresh()
+      void queryClient.invalidateQueries({ queryKey: subjectsKeys.all })
     },
   })
 }

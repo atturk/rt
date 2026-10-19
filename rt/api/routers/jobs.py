@@ -188,10 +188,11 @@ def create_lesson(
             if calendar_day.fromisoformat(calendar_date).isoformat() != calendar_date:
                 raise ValueError()
             with read_scope(get_database()) as session:
-                require_linkable_event(calendar_date, calendar_entry_id, session)
+                event = require_linkable_event(calendar_date, calendar_entry_id, session)
         except ValueError:
             raise ApiError(422, "validation_error", "Ora del calendario non trovata per questa data.") from None
-        calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date}
+        calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date,
+                    "calendar_materia": event.materia, "calendar_start": event.start_time}
     if materiali:
         from rt.core.materials import MATERIAL_EXTENSIONS, page_count
         if len(appunti.encode("utf-8")) > _max_upload_bytes():

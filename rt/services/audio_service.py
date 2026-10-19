@@ -14,15 +14,24 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 from typing import Dict, List, Optional
 
 from rt.core.media_tools import require_ffmpeg
+from rt.core.filelock import file_lock
 
 CACHE_KINDS = ("audio", "waveform")
 WAVEFORM_BARS = 300
 _computing: Dict[str, threading.Thread] = {}
 _lock = threading.Lock()
+REMUX_SUFFIX = ".v2.m4a"
+_remux_locks: Dict[str, threading.Lock] = {}
+
+
+def _remux_lock(key: str) -> threading.Lock:
+    with _lock:
+        return _remux_locks.setdefault(key, threading.Lock())
 
 
 def _cache_dir(kind: str) -> str:
@@ -84,24 +93,60 @@ def _is_mp4(path: str) -> bool:
         return handle.read(8)[4:8] == b"ftyp"
 
 
+def _valid_remux(target: str, original_size: int) -> bool:
+    try:
+        return (os.path.isfile(target) and _is_mp4(target)
+                and os.path.getsize(target) >= original_size * 0.9)
+    except OSError:
+        return False
+
+
+def _probe_ok(path: str) -> bool:
+    try:
+        if not _is_mp4(path):
+            return False
+        result = subprocess.run([require_ffmpeg(), "-nostdin", "-v", "error", "-i", path,
+                                 "-map", "0:a:0", "-t", "1", "-f", "null", "-"],
+                                capture_output=True, check=True, timeout=60)
+        return not result.stderr
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def playable_audio(path: str) -> str:
     """Il file da inviare al browser: l'originale, o un remux MP4 per un .m4a in AAC ADTS."""
     if os.path.splitext(path)[1].lower() != ".m4a" or _is_mp4(path):
         return path
-    target = os.path.join(_cache_dir("audio"), _key(path) + ".m4a")
-    if os.path.isfile(target):
+    key = _key(path)
+    target = os.path.join(_cache_dir("audio"), key + REMUX_SUFFIX)
+    original_size = os.path.getsize(path)
+    if _valid_remux(target, original_size):
         return target
-    temporary = target + ".tmp.m4a"
     try:
-        subprocess.run([require_ffmpeg(), "-nostdin", "-v", "error", "-y", "-i", path, "-c:a", "copy",
-                        "-movflags", "+faststart", temporary], check=True, capture_output=True, timeout=300)
-        os.replace(temporary, target)
-        return target
+        # Le Range concorrenti aspettano lo stesso remux, anche con due server avviati.
+        with _remux_lock(key), file_lock(target + ".lock", retries=750, backoff=0.1, stale_sec=600):
+            if _valid_remux(target, original_size):
+                return target
+            fd, temporary = tempfile.mkstemp(prefix=key + ".", suffix=".tmp.m4a", dir=os.path.dirname(target))
+            os.close(fd)
+            try:
+                subprocess.run([require_ffmpeg(), "-nostdin", "-v", "error", "-y", "-i", path, "-c:a", "copy",
+                                "-movflags", "+faststart", temporary], check=True, capture_output=True, timeout=300)
+                if not _valid_remux(temporary, original_size) or not _probe_ok(temporary):
+                    return path
+                os.replace(temporary, target)
+                try:
+                    os.remove(os.path.join(os.path.dirname(target), key + ".m4a"))
+                except OSError:
+                    pass
+                return target
+            finally:
+                try:
+                    os.remove(temporary)
+                except FileNotFoundError:
+                    pass
     except (OSError, subprocess.SubprocessError):
         return path
-    finally:
-        if os.path.exists(temporary):
-            os.remove(temporary)
 
 
 def _percentile(sorted_values: List[float], q: float) -> float:

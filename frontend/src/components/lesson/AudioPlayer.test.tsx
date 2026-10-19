@@ -98,9 +98,18 @@ describe('AudioPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1)
   })
 
-  it('se il browser non riesce a riprodurre lo dice', () => {
+  it('ricarica una sola volta e poi mostra l’errore', () => {
     const audio = renderPlayer()
+    audio.currentTime = 37
     fireEvent.error(audio)
+    const retrySource = audio.getAttribute('src')
+    expect(retrySource).toMatch(/audio\?r=\d+$/)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    audio.currentTime = 0
+    fireEvent.loadedMetadata(audio)
+    expect(audio.currentTime).toBe(37)
+    fireEvent.error(audio)
+    expect(audio).toHaveAttribute('src', retrySource)
     expect(screen.getByText('Il browser non riesce a riprodurre questo audio.')).toBeInTheDocument()
   })
 

@@ -189,7 +189,7 @@ def is_outline_approved(lesson_dir: str) -> bool:
     return bool(approval and current and approval.get("outline_sha256") == current)
 
 
-def approve_outline(lesson_dir: str, actor: str = "user", channel: str = "cli") -> Dict[str, Any]:
+def approve_outline(lesson_dir: str, actor: str = "user", channel: str = "cli", *, resume: bool = True) -> Dict[str, Any]:
     """Registra l'approvazione dell'outline corrente (scrittura atomica)."""
     _cancel_in_memory_timer(lesson_dir)
     current = _outline_hash(lesson_dir)
@@ -207,8 +207,9 @@ def approve_outline(lesson_dir: str, actor: str = "user", channel: str = "cli") 
         json.dump(record, f, ensure_ascii=False, indent=2)
     fs.replace(tmp, path)
     # Un job della coda fermo su questa approvazione riparte da solo (fase D).
-    from rt.services.jobs import resume_waiting_jobs
-    resume_waiting_jobs(lesson_dir, "outline_approval")
+    if resume:
+        from rt.services.jobs import resume_waiting_jobs
+        resume_waiting_jobs(lesson_dir, "outline_approval")
     return record
 
 

@@ -50,6 +50,7 @@ _STATE_ENTRIES: Set[str] = {
     "telegram_issue_queue.json",
     "telegram_pending.json",
     "telemetry_summary.json",
+    "prepare_timing.json",
     "llm_debug.log",
     "pre-elaborato.md",
     "rielaborato.md",

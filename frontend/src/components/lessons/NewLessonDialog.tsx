@@ -22,7 +22,7 @@ import { Link, useNavigate } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useSubjects } from '@/api/subjects'
+import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
   invalidateAfterJob,
@@ -196,9 +196,7 @@ export function NewLessonDialog({
   const subjects = Array.isArray(subjectsQuery.data)
     ? subjectsQuery.data.map((s) => s.nome)
     : [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
-  const teachers = [
-    ...new Set((lessons.data ?? []).map((l) => l.docente?.trim()).filter(Boolean)),
-  ].sort()
+  const teachers = useTeacherSuggestions(materia)
 
   const calendarDayQuery = useQuery({
     queryKey: calendarKeys.day(date),

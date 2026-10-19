@@ -79,7 +79,7 @@ export function phaseProgress(job: Pick<Job, 'type' | 'payload' | 'progress' | '
   let fraction = p.completed ? 1 : counted ? clamp(done / total) : 0
   let detail: string | null = null
   if (!p.completed && counted) {
-    if (current === 'setup') detail = typeof p.message === 'string' && p.message ? p.message : `${Math.round(fraction * 100)}%`
+    if (current === 'setup' || current === 'prepare') detail = typeof p.message === 'string' && p.message ? p.message : `${Math.round(fraction * 100)}%`
     else detail = UNIT_PHASES.has(current ?? '') ? `unità ${done} di ${total}` : `${done} di ${total}`
   } else if (!p.completed && typeof p.message === 'string' && p.message) detail = p.message
 

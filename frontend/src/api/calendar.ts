@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap, type Schemas } from './client'
+import { subjectsKeys } from './subjects'
 
 export type CalendarWeekView = Schemas['CalendarWeekView']
 export type CalendarDayView = Schemas['CalendarDayView']
@@ -119,6 +120,7 @@ export function useCreateTemplateEntry() {
     mutationFn: (body: CalendarTemplateEntryCreate) => calendarApi.createTemplate(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
+      qc.invalidateQueries({ queryKey: subjectsKeys.all })
     },
   })
 }
@@ -139,6 +141,7 @@ export function useCreateOverride() {
     mutationFn: (body: CalendarOverrideCreate) => calendarApi.createOverride(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
+      qc.invalidateQueries({ queryKey: subjectsKeys.all })
     },
   })
 }
@@ -180,5 +183,27 @@ export function useLinkLesson() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: calendarKeys.all })
     },
+  })
+}
+
+export type CalendarYearWeek = Schemas['CalendarYearWeek']
+export type CalendarSchedule = Schemas['CalendarSchedule']
+export type CalendarPasteEntry = Schemas['CalendarPasteEntry']
+export type CalendarImportResult = Schemas['CalendarImportResult']
+export const calendarTransferApi = {
+  year: (start: string): Promise<CalendarYearWeek[]> => unwrap(api.GET('/api/v1/calendar/year', { params: { query: { start } } })),
+  paste: (weeks: string[], entries: CalendarPasteEntry[]) => unwrap(api.POST('/api/v1/calendar/paste', { body: { weeks, entries } })),
+  export: (): Promise<CalendarSchedule> => unwrap(api.GET('/api/v1/calendar/export')),
+  import: (data: Record<string, unknown>, dry_run: boolean, from?: string, to?: string): Promise<CalendarImportResult> => unwrap(api.POST('/api/v1/calendar/import', {
+    body: { data, dry_run, ...(from ? { from, to } : {}) },
+  })),
+}
+export function useCalendarYear(start: string, enabled = true) {
+  return useQuery({ queryKey: [...calendarKeys.all, 'year', start], queryFn: () => calendarTransferApi.year(start), enabled })
+}
+export function usePasteCalendar() {
+  const client = useQueryClient()
+  return useMutation({ mutationFn: ({ weeks, entries }: { weeks: string[]; entries: CalendarPasteEntry[] }) => calendarTransferApi.paste(weeks, entries),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: calendarKeys.all }); void client.invalidateQueries({ queryKey: subjectsKeys.all }) },
   })
 }

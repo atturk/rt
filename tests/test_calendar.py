@@ -715,3 +715,33 @@ def test_template_range_failure_rolls_back_continuation_and_references(rt_db):
     assert calendar_service.list_template_entries(db=rt_db) == [old]
     after = _range_events(rt_db, "2026-10-26")[0]
     assert after.key == f"tpl_{old.id}" and after.note == "Da conservare"
+
+
+@pytest.mark.parametrize('removed', [False, True])
+def test_import_survives_template_split(rt_db, tmp_path, removed, caplog):
+    from types import SimpleNamespace
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import session_scope
+    from rt.services.materials_lesson_service import finish_import
+    lesson = tmp_path / 'importata'
+    lesson.mkdir()
+    (lesson / 'info.yaml').write_text('materia: Intervallo\ndata: 2026-10-26\nora: "09:00"\n')
+    with session_scope(rt_db) as session:
+        LessonRepository(session).get_or_create(str(lesson))
+    old = _range_template(rt_db)
+    payload = dict(calendar_entry_id=f'tpl_{old.id}', calendar_date='2026-10-26',
+                   calendar_materia=old.materia, calendar_start=old.start_time)
+    calendar_service.delete_template_entry(old.id, from_date='2026-10-12', to_date='2026-10-26', db=rt_db)
+    if removed:
+        new = next(e for e in calendar_service.list_template_entries(db=rt_db) if e.id != old.id)
+        calendar_service.delete_template_entry(new.id, db=rt_db)
+    outcome = SimpleNamespace(lesson_path=str(lesson))
+    assert finish_import(outcome, payload) is outcome
+    events = calendar_service.get_day_view('2026-10-26', db=rt_db).events
+    if removed:
+        assert not events
+        assert "Lezione importata, ma l'ora del calendario è cambiata" in caplog.text
+    else:
+        assert events[0].lesson is not None
+        assert events[0].key != payload['calendar_entry_id']
+        assert finish_import(outcome, payload) is outcome
