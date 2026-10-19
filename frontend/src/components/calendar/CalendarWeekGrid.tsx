@@ -3,7 +3,7 @@ import { AlertCircle, Ban, Plus, SkipForward, X } from 'lucide-react'
 import type { CalendarDayView, CalendarEventView } from '@/api/calendar'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getSubjectColor } from './subjectColor'
-import { StatusIcon } from './StatusIcon'
+import { EventStatus, EventTooltipContent } from './EventTooltipContent'
 import { getEventTooltip } from './calendarUtils'
 import type { PopupAnchor } from './CalendarPopups'
 
@@ -188,7 +188,7 @@ export function CalendarWeekGrid({
                   className="absolute inset-x-1"
                   style={{ top: `${top}px`, height: `${height}px` }}
                 >
-                <Tooltip content={editing ? `Modifica quest'ora\n${tooltip}` : tooltip} side="top">
+                <Tooltip content={<EventTooltipContent event={ev} editing={!!editing} />} side="top">
                   {(trigger) => (
                     <button
                       type="button"
@@ -237,9 +237,7 @@ export function CalendarWeekGrid({
                       )}
 
                       {/* Icona di stato in basso a destra */}
-                      <span className="absolute bottom-1.5 right-2">
-                        <StatusIcon event={ev} />
-                      </span>
+                      <EventStatus event={ev} className="absolute bottom-1.5 right-2" />
 
                       {/* Pallino arancione per modifiche specifiche ("Solo questa settimana") */}
                       {ev.is_modified && !editing && (

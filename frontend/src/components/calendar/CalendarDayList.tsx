@@ -2,7 +2,7 @@ import type { CalendarDayView, CalendarEventView } from '@/api/calendar'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getSubjectColor } from './subjectColor'
 
-import { StatusIcon } from './StatusIcon'
+import { EventStatus, EventTooltipContent } from './EventTooltipContent'
 import { getEventTooltip } from './calendarUtils'
 import type { PopupAnchor } from './CalendarPopups'
 
@@ -72,7 +72,7 @@ export function CalendarDayList({
                     {ev.end_time}
                   </div>
 
-                  <Tooltip content={tooltip} side="top">
+                  <Tooltip content={<EventTooltipContent event={ev} />} side="top">
                     {(trigger) => (
                       <button
                         type="button"
@@ -108,9 +108,7 @@ export function CalendarDayList({
                           </span>
                         )}
 
-                        <span className="absolute bottom-2 right-2.5">
-                          <StatusIcon event={ev} />
-                        </span>
+                        <EventStatus event={ev} className="absolute bottom-2 right-2.5" />
 
                         {ev.is_modified && (
                           <span

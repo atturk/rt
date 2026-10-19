@@ -276,3 +276,45 @@ test('calendario: seguita senza lezione resta importabile e viene collegata', as
     await page.request.delete(`/api/v1/calendar/template/${id}`, { headers: authHeaders() })
   }
 })
+
+test('calendario: suggerimento ordinato e nota immediata senza perdere il clic', async ({ page }) => {
+  await loginViaLink(page)
+  const created = await page.request.post('/api/v1/calendar/template', {
+    headers: authHeaders(), data: { day_of_week: 0, start_time: '12:30', end_time: '14:30', materia: 'Prova Nota', docente: 'Prof. Nota' },
+  })
+  expect(created.ok()).toBeTruthy()
+  const { id } = await created.json() as { id: number }
+  const key = `tpl_${id}`
+  try {
+    const week = await apiGet<{ days: { events: { key: string; date: string }[] }[] }>(page.request, '/calendar/week')
+    const event = week.days.flatMap(day => day.events).find(event => event.key === key)!
+    expect(event).toBeTruthy()
+    const saved = await page.request.post('/api/v1/calendar/entry-state', {
+      headers: authHeaders(), data: { date: event.date, entry_key: key, template_entry_id: id, note: 'Aula 2\nPortare gli appunti' },
+    })
+    expect(saved.ok()).toBeTruthy()
+    await page.goto('/calendario')
+    const block = page.getByTestId(`calendar-event-${key}`)
+    await expect(block).toBeVisible()
+    await block.hover({ position: { x: 20, y: 10 } })
+    const tooltip = page.getByRole('tooltip')
+    await expect(tooltip).toContainText('Prof. Nota')
+    await expect(tooltip.locator('.font-semibold')).toHaveText('Prova Nota')
+    await expect(tooltip.locator('.font-mono')).toHaveText('12:30–14:30')
+    await expect(tooltip.locator('.line-clamp-4')).toHaveText('Aula 2\nPortare gli appunti')
+    await page.mouse.move(0, 0)
+    await expect(tooltip).toHaveCount(0)
+    const note = block.getByTestId(`calendar-note-${key}`)
+    await note.hover()
+    await expect(tooltip).toHaveText('Aula 2\nPortare gli appunti')
+    await page.waitForTimeout(700)
+    await expect(tooltip).toHaveCount(1)
+    await expect(tooltip).toHaveText('Aula 2\nPortare gli appunti')
+    expect(await block.locator('button').count()).toBe(0)
+    await note.click()
+    await expect(page.getByTestId('calendar-event-popup')).toBeVisible()
+    await expect(tooltip).toHaveCount(0)
+  } finally {
+    await page.request.delete(`/api/v1/calendar/template/${id}`, { headers: authHeaders() })
+  }
+})
