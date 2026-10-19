@@ -32,6 +32,7 @@ import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { LinkMenuButton } from '@/components/ui/menu'
+import { MathText } from '@/components/MathText'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
@@ -508,7 +509,7 @@ export function QuestionsPanel({
                     {meta}
                   </p>
                   <p className="mt-0.5 text-body flex items-start gap-1.5">
-                    <span>{q.question_text}</span>
+                    <MathText text={q.question_text} />
                     {q.precedente && (
                       <Tooltip content="Precedente all'ultima aggiunta di fonti">
                         {(trigger) => (

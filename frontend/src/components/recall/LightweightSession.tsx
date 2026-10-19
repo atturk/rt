@@ -40,6 +40,7 @@ import {
   type RecallType,
 } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
+import { MathText } from '@/components/MathText'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
@@ -638,7 +639,7 @@ export function LightweightSession({
                   {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
                 </p>
                 <h2 className="text-heading font-semibold leading-relaxed flex items-center gap-2">
-                  <span>{currentQuestion.question_text}</span>
+                  <MathText text={currentQuestion.question_text} />
                   {currentQuestion.precedente && (
                     <Tooltip content="Precedente all'ultima aggiunta di fonti">
                       {(trigger) => (
@@ -678,7 +679,7 @@ export function LightweightSession({
                           )}
                         >
                           <span className="mr-2 font-semibold opacity-75">{letter}.</span>
-                          <span className="flex-1">{option}</span>
+                          <MathText text={option} className="flex-1" />
                         </Button>
                       )
                     })}
@@ -810,7 +811,7 @@ export function LightweightSession({
                   </p>
                   {evaluatedResult.explanation && (
                     <p className="mt-1 text-meta leading-relaxed">
-                      {evaluatedResult.explanation}
+                      <MathText text={evaluatedResult.explanation} />
                     </p>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
@@ -963,7 +964,7 @@ export function LightweightSession({
                 {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
               </p>
               <p className="mt-0.5 font-medium text-foreground flex items-center gap-1.5">
-                <span>{currentQuestion.question_text}</span>
+                <MathText text={currentQuestion.question_text} />
                 {currentQuestion.precedente && (
                   <Tooltip content="Precedente all'ultima aggiunta di fonti">
                     {(trigger) => (
