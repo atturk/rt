@@ -1,5 +1,5 @@
-import { Layers, Search, Sparkles, Upload, X } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { FileText, Image, Layers, LayoutGrid, Rows3, Search, Sparkles, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -9,6 +9,7 @@ import {
   copyMaterialPage,
   materialSourceId,
   cropMediaImage,
+  deleteMedia,
   removeFromText,
   useAddImages,
   useLessonImages,
@@ -16,12 +17,14 @@ import {
   type LessonImage,
 } from '@/api/images'
 import { useOutline } from '@/api/jobs'
+import { formatBytes } from '@/lib/jobs'
 import { JobProgress } from '@/components/JobProgress'
 import {
   ENRICHMENT_MEDIA_DRAG_EVENT,
   ENRICHMENT_MEDIA_DROP_EVENT,
 } from '@/components/shell/globalFileDropUtils'
 import { Alert } from '@/components/ui/alert'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
@@ -61,6 +64,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const images = useLessonImages(id)
   const refreshImages = useRefreshImages(id)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const addImages = useAddImages(id)
   const outline = useOutline(id)
   const docQuery = useLessonDocument(id)
@@ -83,6 +87,27 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const [activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
 
+  const [mediaView, setMediaView] = useState<'rows' | 'grid'>(() => {
+    try {
+      const saved = localStorage.getItem('rt.media.view')
+      return saved === 'grid' ? 'grid' : 'rows'
+    } catch {
+      return 'rows'
+    }
+  })
+
+  const toggleMediaView = () => {
+    setMediaView((prev) => {
+      const next = prev === 'rows' ? 'grid' : 'rows'
+      try {
+        localStorage.setItem('rt.media.view', next)
+      } catch {
+        // Ignora errori di localStorage
+      }
+      return next
+    })
+  }
+
   const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('rt-media-upload-mode')
@@ -102,6 +127,18 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       }
       return next
     })
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const closeUpload = () => {
+    setOpenUpload(false)
+    setUploadFiles([])
+    setUploadError(null)
+  }
+
+  const removeUploadFile = (index: number) => {
+    setUploadFiles((previous) => previous.filter((_, i) => i !== index))
   }
 
   const chooseUploadFiles = (files: File[]) => {
@@ -163,13 +200,17 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         alt_text: el.title || `${kindText} ${el.unit_id}`,
         slide_title: el.title || '',
         units: [el.unit_id],
-        in_document: true,
+        in_document: el.status !== 'dismissed',
         in_assets: true,
         page: null,
       }
     })
 
+  // Media dell'arricchimento: si tolgono dal testo e si eliminano con le azioni dell'elemento.
+  const enrichmentByName = new Map(completedElements.map((el) => [el.asset_image ? el.asset_image.split('/').pop()! : el.id, el]))
+
   const imageList: LessonImage[] = [...rawImageList, ...enrichmentImages].map((img) => {
+    if (img.source === 'enrichment') return img
     const detected = findUnitForImage(img.name, docQuery.data?.markdown)
     const units = img.units && img.units.length > 0
       ? img.units
@@ -201,9 +242,21 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  const selectedEnrichment = Array.from(selectedNames).map((n) => enrichmentByName.get(n)).filter((el) => el !== undefined)
+  // Un elemento dell'arricchimento torna nel testo al suo posto (in fondo all'unità).
+  const restoreEnrichment = async () => {
+    for (const el of selectedEnrichment) {
+      if (el.status === 'dismissed') await action.mutateAsync({ element: el.id, action: 'restore' }).catch(() => undefined)
+    }
+  }
+
   const handleInsertAtCursor = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
-    if (!selected.length) return
+    await restoreEnrichment()
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
+    if (!selected.length) {
+      setSelectedNames(new Set())
+      return
+    }
     const items: Array<{ path: string; alt_text: string }> = []
     for (const img of selected) {
       if (!img.in_assets) {
@@ -233,7 +286,12 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const handleAutoPlace = () => {
     if (selectedNames.size === 0) return
-    const names = Array.from(selectedNames)
+    void restoreEnrichment()
+    const names = Array.from(selectedNames).filter((n) => !enrichmentByName.has(n))
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     addImages.mutate(
       { selected_images: names },
       {
@@ -245,10 +303,19 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  // Le pagine dei materiali (non copiate o copiate) si tolgono togliendo la fonte.
+  const canDelete = imageList.some((img) => selectedNames.has(img.name) && img.in_assets && !img.source?.startsWith('material:'))
+
   const handleRemoveFromText = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
+    for (const el of selectedEnrichment) {
+      if (el.status !== 'dismissed') await action.mutateAsync({ element: el.id, action: 'dismiss' }).catch(() => undefined)
+    }
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
     const names = selected.map((s) => s.name)
-    if (!names.length) return
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     if (canInsertAtCursor) {
       // Editor aperto: il testo lo cambia l'editor e il salvataggio aggiorna il posizionamento.
       window.dispatchEvent(
@@ -259,6 +326,31 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         await removeFromText(id, names)
       } catch {
         // Lezione occupata o in modifica altrove: il testo resta com'era.
+      }
+    }
+    setSelectedNames(new Set())
+    void refreshImages()
+  }
+
+  const handleDelete = async () => {
+    setConfirmDelete(false)
+    for (const el of selectedEnrichment) {
+      await action.mutateAsync({ element: el.id, action: 'delete' }).catch(() => undefined)
+    }
+    const names = imageList
+      .filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name) && i.in_assets && !i.source?.startsWith('material:'))
+      .map((i) => i.name)
+    if (names.length) {
+      try {
+        if (canInsertAtCursor) {
+          // Editor aperto: il testo lo cambia l'editor, il server toglie posizionamento e file.
+          window.dispatchEvent(new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }))
+          await deleteMedia(id, names, false)
+        } else {
+          await deleteMedia(id, names)
+        }
+      } catch {
+        // Lezione occupata: i media restano.
       }
     }
     setSelectedNames(new Set())
@@ -332,13 +424,23 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           </h3>
           <div className="flex items-center gap-1">
             <IconButton
+              label={mediaView === 'rows' ? 'Vista a griglia' : 'Una pagina per riga'}
+              icon={mediaView === 'rows' ? LayoutGrid : Rows3}
+              className="size-7"
+              onClick={toggleMediaView}
+            />
+            <IconButton
               label="Aggiungi immagini (PDF o foto)"
               icon={Upload}
               className="size-7"
               active={openUpload}
               onClick={() => {
-                setOpenUpload(!openUpload)
-                setOpenSearch(false)
+                if (openUpload) {
+                  closeUpload()
+                } else {
+                  setOpenUpload(true)
+                  setOpenSearch(false)
+                }
               }}
             />
             <IconButton
@@ -348,7 +450,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               active={openSearch}
               onClick={() => {
                 setOpenSearch(!openSearch)
-                setOpenUpload(false)
+                closeUpload()
               }}
             />
           </div>
@@ -376,20 +478,68 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           >
             <div className="flex items-center justify-between">
               <span className="text-body font-semibold">Aggiungi PDF o foto</span>
-              <IconButton label="Chiudi" icon={X} className="size-6" onClick={() => setOpenUpload(false)} />
+              <IconButton label="Chiudi" icon={X} className="size-6" onClick={closeUpload} />
             </div>
             <form onSubmit={handleUploadSubmit} className="flex flex-col gap-2.5">
-              <Input
+              <input
+                ref={fileInputRef}
                 type="file"
-                aria-label="PDF o foto"
+                hidden
                 multiple
                 accept={ACCEPT}
-                className="h-auto py-1 text-meta"
+                aria-label="PDF o foto"
                 onChange={(e) => {
                   chooseUploadFiles(Array.from(e.target.files ?? []))
                   e.target.value = ''
                 }}
               />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="size-4" aria-hidden />
+                  {uploadFiles.length === 0 ? 'Scegli file' : 'Aggiungi altri'}
+                </Button>
+                {uploadFiles.length === 0 && (
+                  <span className="text-meta text-muted-foreground">oppure trascinali qui</span>
+                )}
+              </div>
+              {uploadFiles.length > 0 && (
+                <ul aria-label="File scelti" className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {uploadFiles.map((file, index) => {
+                    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+                    return (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-meta"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          {isPdf ? (
+                            <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          ) : (
+                            <Image className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          )}
+                          <span className="truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {formatBytes(file.size)}
+                          </span>
+                        </div>
+                        <IconButton
+                          label={`Rimuovi ${file.name}`}
+                          icon={X}
+                          className="size-6 shrink-0"
+                          onClick={() => removeUploadFile(index)}
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
               {uploadError && <Alert tone="danger">{uploadError}</Alert>}
               <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 p-2">
                 <Tooltip
@@ -429,7 +579,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 </p>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setOpenUpload(false)}>
+                <Button size="sm" variant="ghost" type="button" onClick={closeUpload}>
                   Annulla
                 </Button>
                 <Button size="sm" variant="default" type="submit" disabled={!uploadFiles.length || addImages.isPending}>
@@ -565,6 +715,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             lessonId={id}
             images={imageList}
             selectedNames={selectedNames}
+            view={mediaView}
             onToggleSelect={(name) =>
               setSelectedNames((prev) => {
                 const next = new Set(prev)
@@ -609,8 +760,19 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           onInsertAtCursor={handleInsertAtCursor}
           onAutoPlace={handleAutoPlace}
           onRemoveFromText={handleRemoveFromText}
+          onDelete={() => setConfirmDelete(true)}
+          canDelete={canDelete}
           onClearSelection={() => setSelectedNames(new Set())}
         />
+        <ConfirmDialog
+          open={confirmDelete}
+          title={selectedNames.size === 1 ? 'Eliminare il media?' : `Eliminare ${selectedNames.size} media?`}
+          confirmLabel="Elimina"
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setConfirmDelete(false)}
+        >
+          Spariscono dal testo e dalla lezione.
+        </ConfirmDialog>
       </div>
 
       <hr className="border-border" />

@@ -5,12 +5,48 @@ dipendenze e la web app già compilata. La cartella del codice ha un file BUNDLE
 quale sistema è stata costruita: così 'rt -u' e la pagina Info sanno che l'aggiornamento è
 il nuovo installer della release stabile, non il codice sorgente da sincronizzare.
 """
+from datetime import datetime
+import json
 import os
 import sys
 from typing import Optional
 
 MARKER = "BUNDLE"
+BUILD_INFO_FILE = "BUILD.json"
 MACOS, WINDOWS = "macos", "windows"
+
+
+def build_info(project_root: Optional[str] = None) -> dict:
+    """Legge BUILD.json e restituisce {} fuori dall'app o se il file è assente o rotto."""
+    from rt.core.paths import project_root as default_root
+    try:
+        path = os.path.join(project_root or default_root(), BUILD_INFO_FILE)
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def format_build(info: dict) -> Optional[str]:
+    """Formatta la riga di build per Impostazioni › Info (es. 'build 812 · a1b2c3d · 19/10/2026')."""
+    if not info:
+        return None
+    parts = []
+    run = info.get("run")
+    if run:
+        parts.append(f"build {run}")
+    commit = info.get("commit")
+    if commit:
+        parts.append(str(commit))
+    built_at = info.get("built_at")
+    if built_at:
+        try:
+            dt = datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+            parts.append(dt.strftime("%d/%m/%Y"))
+        except Exception:
+            parts.append(str(built_at))
+    return " · ".join(parts) if parts else None
 
 
 def kind(project_root: Optional[str] = None) -> Optional[str]:

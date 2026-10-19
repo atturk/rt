@@ -2,7 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { initZoom } from './lib/zoom'
 import './index.css'
+
+initZoom()
 
 // Le pagine si caricano a pezzi (routes/index.tsx): dopo un aggiornamento di RT una scheda aperta
 // chiede chunk che non esistono più. Si ricarica la pagina una volta (non in loop) per avere

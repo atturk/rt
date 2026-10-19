@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ListChecks, Sparkles, Unlink, X } from 'lucide-react'
+import { ArrowDownToLine, ListChecks, Sparkles, Trash2, Unlink, X } from 'lucide-react'
 
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,8 @@ interface MediaSelectionBarProps {
   onInsertAtCursor: () => void
   onAutoPlace: () => void
   onRemoveFromText: () => void
+  onDelete: () => void
+  canDelete: boolean
   onClearSelection: () => void
 }
 
@@ -22,6 +24,8 @@ export function MediaSelectionBar({
   onInsertAtCursor,
   onAutoPlace,
   onRemoveFromText,
+  onDelete,
+  canDelete,
   onClearSelection,
 }: MediaSelectionBarProps) {
   if (selectedCount === 0) return null
@@ -109,6 +113,27 @@ export function MediaSelectionBar({
             onClick={hasUsedSelected ? onRemoveFromText : undefined}
           >
             <Unlink className="size-4.5" aria-hidden />
+          </button>
+        )}
+      </Tooltip>
+
+      {/* Elimina */}
+      <Tooltip content={canDelete ? 'Elimina dalla lezione' : 'Elimina dalla lezione: le pagine dei materiali si tolgono con la fonte'} side="top">
+        {(trigger) => (
+          <button
+            type="button"
+            aria-label="Elimina dalla lezione"
+            aria-disabled={canDelete ? undefined : true}
+            className={cn(
+              'flex size-8 items-center justify-center rounded-lg transition-colors',
+              canDelete
+                ? 'text-background hover:bg-background/20 cursor-pointer'
+                : 'text-background opacity-35 cursor-default',
+            )}
+            {...trigger}
+            onClick={canDelete ? onDelete : undefined}
+          >
+            <Trash2 className="size-4.5" aria-hidden />
           </button>
         )}
       </Tooltip>

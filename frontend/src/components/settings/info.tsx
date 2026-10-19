@@ -31,6 +31,11 @@ export function InfoSection() {
                 {info.data.prerelease && <Badge tone="warning">Beta</Badge>}
               </span>
             </Row>
+            {info.data.build && (
+              <Row label="Build">
+                <span className="tabular-nums">{info.data.build}</span>
+              </Row>
+            )}
             <Row label="Canale di aggiornamento">
               {info.data.update_channel === 'beta' ? 'Beta (anche le versioni di prova)' : 'Stabile'}
             </Row>

@@ -96,7 +96,7 @@ describe('NewLessonDialog', () => {
     // Attivando Solo trascrizione: la revisione si disattiva
     fireEvent.click(soloBtn)
     expect(soloBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(reviewBtn).toBeDisabled()
+    expect(reviewBtn).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByTestId('pipeline-sentence')).toHaveTextContent(
       "Dopo l'importazione: solo trascrizione",
     )
@@ -313,6 +313,28 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       expect.anything(),
     )
   })
+
+  it('senza materiali mostra il motivo per Allega documenti alle unità e il clic non cambia stato', () => {
+    renderDialog()
+    const attachBtn = screen.getByTestId('attach-materials-btn')
+    expect(attachBtn).toHaveAttribute('aria-disabled', 'true')
+    expect(attachBtn).toHaveAccessibleDescription('Allega documenti alle unità: aggiungi almeno un documento')
+
+    // Clic non cambia lo stato (resta true)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(attachBtn)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Con un documento il clic lo attiva come oggi
+    const pdf = new File(['pdf content'], 'appunti.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [pdf] },
+    })
+    expect(attachBtn).not.toHaveAttribute('aria-disabled')
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(attachBtn)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'false')
+  })
 })
 
 describe('Materiali accettati e ore dal calendario', () => {
@@ -500,3 +522,17 @@ describe('caricamento in background', () => {
   })
 })
 
+
+it('i docenti proposti dipendono dalla materia di Nuova lezione', async () => {
+  vi.spyOn(api, 'GET').mockImplementation((path) => Promise.resolve({ data: path === '/api/v1/subjects'
+    ? [{ nome: 'Biologia', lezioni: 0, docenti: ['Rossi'] }, { nome: 'Chimica', lezioni: 0, docenti: ['Verdi'] }]
+    : { events: [] }, response: new Response('{}') }) as never)
+  renderDialog()
+  const teacher = screen.getByLabelText('Docente')
+  const list = document.getElementById(teacher.getAttribute('list')!)!
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'Biologia' } })
+  await waitFor(() => expect(list.querySelectorAll('option')).toHaveLength(1))
+  expect(list.querySelector('option')).toHaveValue('Rossi')
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'Chimica' } })
+  expect(list.querySelector('option')).toHaveValue('Verdi')
+})

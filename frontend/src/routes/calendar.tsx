@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Calendar as CalendarIcon,
+  CalendarSearch,
+  LayoutGrid,
+  ListChecks,
   CalendarRange,
   CalendarDays,
   CalendarSync,
@@ -15,6 +18,7 @@ import {
 
 import {
   useCalendarWeek,
+  useCalendarYear,
   useCalendarTemplate,
   useCreateOverride,
   useCreateTemplateEntry,
@@ -29,7 +33,6 @@ import {
   type CalendarEventView,
 } from '@/api/calendar'
 import { IconButton } from '@/components/ui/icon-button'
-import { Tooltip } from '@/components/ui/tooltip'
 import { useIsPhone } from '@/lib/phone'
 import {
   AddEventPopup,
@@ -41,8 +44,10 @@ import {
 } from '@/components/calendar/CalendarPopups'
 import { CalendarWeekGrid } from '@/components/calendar/CalendarWeekGrid'
 import { CalendarDayList } from '@/components/calendar/CalendarDayList'
+import { CalendarYearView } from '@/components/calendar/CalendarYearView'
+import { CalendarClipboardActions } from '@/components/calendar/CalendarClipboardActions'
 import { WeekRangePopup } from '@/components/calendar/WeekRangePopup'
-import { weekRangeLabel, type WeekRange } from '@/components/calendar/weekRange'
+import { academicYear, academicWeeks, weekRangeLabel, type WeekRange } from '@/components/calendar/weekRange'
 
 // Date in ora locale: toISOString() passa per UTC e sbaglia giorno vicino a mezzanotte e al cambio d'ora.
 function toLocalIso(d: Date): string {
@@ -72,10 +77,41 @@ function getTodayIso(): string {
   return toLocalIso(new Date())
 }
 
+const hoverSnapshot = () => typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover)').matches : true
+const subscribeHover = (change: () => void) => {
+  const media = window.matchMedia?.('(hover: hover)')
+  media?.addEventListener('change', change)
+  return () => media?.removeEventListener('change', change)
+}
+
 export function CalendarPage() {
   const isPhone = useIsPhone()
+  const hover = useSyncExternalStore(subscribeHover, hoverSnapshot, () => true)
   const [currentDate, setCurrentDate] = useState(getTodayIso)
-  const [desktopView, setDesktopView] = useState<'week' | 'day'>('week')
+  const [desktopView, setDesktopView] = useState<'week' | 'day' | 'year'>(() => {
+    try { const saved = sessionStorage.getItem('rt:calendar-view'); return saved === 'day' || saved === 'year' ? saved : 'week' } catch { return 'week' }
+  })
+  const setView = (view: 'week' | 'day' | 'year') => {
+    setDesktopView(view)
+    try { sessionStorage.setItem('rt:calendar-view', view) } catch { /* La vista resta nella pagina. */ }
+    setEditing(null)
+    setMultiple(false)
+    setMenuOpen(false)
+    closeAllPopups()
+  }
+  const [jumpAnchor, setJumpAnchor] = useState<PopupAnchor | null>(null)
+  const [selectedWeeks, setSelectedWeeks] = useState<string[]>([])
+  const [multiple, setMultiple] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const pencil = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const outside = (event: PointerEvent) => { if (!pencil.current?.contains(event.target as Node)) setMenuOpen(false) }
+    window.addEventListener('pointerdown', outside)
+    return () => window.removeEventListener('pointerdown', outside)
+  }, [])
+  const annual = !isPhone && desktopView === 'year'
+  const year = Math.max(2025, Math.min(2035, academicYear(currentDate)))
+  const yearQuery = useCalendarYear(academicWeeks(year)[0], annual)
   const [editing, setEditing] = useState<'week' | 'tpl' | 'range' | null>(null)
   const [rangeEdit, setRangeEdit] = useState<WeekRange | null>(null)
   const [rangeAnchor, setRangeAnchor] = useState<PopupAnchor | null>(null)
@@ -132,6 +168,7 @@ export function CalendarPage() {
   const dayMode = isPhone || desktopView === 'day'
 
   function closeAllPopups() {
+    setJumpAnchor(null)
     setRangeAnchor(null)
     setActiveEvent(null)
     setActiveDayMenu(null)
@@ -142,12 +179,12 @@ export function CalendarPage() {
 
   function handlePrev() {
     closeAllPopups()
-    setCurrentDate((cur) => (dayMode ? shiftWeekday(cur, -1) : shiftDate(cur, -7)))
+    setCurrentDate((cur) => annual ? academicWeeks(Math.max(2025, year - 1))[0] : dayMode ? shiftWeekday(cur, -1) : shiftDate(cur, -7))
   }
 
   function handleNext() {
     closeAllPopups()
-    setCurrentDate((cur) => (dayMode ? shiftWeekday(cur, 1) : shiftDate(cur, 7)))
+    setCurrentDate((cur) => annual ? academicWeeks(Math.min(2035, year + 1))[0] : dayMode ? shiftWeekday(cur, 1) : shiftDate(cur, 7))
   }
 
   function handleToday() {
@@ -246,19 +283,19 @@ export function CalendarPage() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header barra calendario */}
-      <header className="flex h-(--header-height) shrink-0 items-center gap-1 border-b border-border px-3 sm:px-4">
-        <h1 className="mr-2 text-base font-semibold">Calendario</h1>
+      <header className="relative flex h-(--header-height) shrink-0 items-center gap-1 border-b border-border px-3 sm:px-4">
+        <h1 className="mr-2 text-base font-semibold max-md:sr-only">Calendario</h1>
 
         <IconButton
-          label={dayMode ? 'Giorno precedente' : 'Settimana precedente'}
+          label={annual ? 'Anno precedente' : dayMode ? 'Giorno precedente' : 'Settimana precedente'}
           icon={ChevronLeft}
           side="bottom"
           onClick={handlePrev}
         />
 
-        <div className="min-w-[130px] sm:min-w-[160px] text-center">
-          <span data-testid="calendar-week-label" className="font-mono text-sm font-semibold text-foreground">
-            {week?.label || 'Caricamento…'}
+        <div className="min-w-[130px] sm:min-w-[160px] text-center max-md:min-w-0 max-md:flex-1">
+          <span data-testid="calendar-week-label" className="block truncate font-mono text-sm font-semibold text-foreground max-md:text-[11px]">
+            {annual ? `${year}/${String(year + 1).slice(-2)}` : week?.label || 'Caricamento…'}
           </span>
           {editing === 'range' && rangeEdit && <button type="button" onClick={openRange}
             className="mx-auto block max-w-40 truncate rounded-full bg-muted px-2 text-[10px]" aria-label="Cambia intervallo di settimane">
@@ -267,15 +304,20 @@ export function CalendarPage() {
         </div>
 
         <IconButton
-          label={dayMode ? 'Giorno successivo' : 'Settimana successiva'}
+          label={annual ? 'Anno successivo' : dayMode ? 'Giorno successivo' : 'Settimana successiva'}
           icon={ChevronRight}
           side="bottom"
           onClick={handleNext}
         />
 
         <IconButton label="Oggi" icon={CalendarIcon} side="bottom" onClick={handleToday} />
+        <IconButton label="Vai alla settimana" icon={CalendarSearch} onClick={event => {
+          closeAllPopups()
+          const rect = event.currentTarget.getBoundingClientRect()
+          setJumpAnchor({ x: rect.left, y: rect.bottom, width: rect.width, height: rect.height })
+        }} />
 
-        <div className="flex-1" />
+        <div className="flex-1 max-md:hidden" />
 
         {/* Bottone ⓘ Riepilogo settimana */}
         <IconButton
@@ -293,79 +335,21 @@ export function CalendarPage() {
           }}
         />
 
-        {/* Matita con le tre modalità di modifica dell'orario */}
-        {!isPhone && (
-          <div
-            className={`group flex items-center rounded-lg transition-colors focus-within:bg-muted ${
-              editing ? 'bg-muted' : 'hover:bg-muted'
-            }`}
-          >
-            {!editing ? (
-              <>
-                <Tooltip content="Modifica orario" side="bottom">
-                  {(t) => (
-                    <button
-                      type="button"
-                      className="inline-flex size-(--control-size) items-center justify-center rounded-md text-foreground group-hover:hidden"
-                      aria-label="Modifica orario"
-                      {...t}
-                    >
-                      <Pencil className="size-[18px]" />
-                    </button>
-                  )}
-                </Tooltip>
-
-                {/* All'hover/focus compaiono le opzioni di modifica */}
-                <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5 animate-in fade-in">
-                  <IconButton
-                    label="Modifica solo questa settimana"
-                    icon={CalendarRange}
-                    side="bottom"
-                    onClick={() => beginEditing('week')}
-                  />
-                  <IconButton
-                    label="Modifica la settimana tipo, da questa settimana in poi"
-                    icon={CalendarSync}
-                    side="bottom"
-                    onClick={() => beginEditing('tpl')}
-                  />
-                  <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} side="bottom" onClick={openRange} />
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-0.5">
-                <IconButton
-                  label="Modifica solo questa settimana"
-                  icon={CalendarRange}
-                  side="bottom"
-                  active={editing === 'week'}
-                  className={editing === 'week' ? 'bg-primary text-primary-foreground' : undefined}
-                  onClick={() => beginEditing('week')}
-                />
-                <IconButton
-                  label="Modifica la settimana tipo, da questa settimana in poi"
-                  icon={CalendarSync}
-                  side="bottom"
-                  active={editing === 'tpl'}
-                  className={editing === 'tpl' ? 'bg-primary text-primary-foreground' : undefined}
-                  onClick={() => beginEditing('tpl')}
-                />
-                <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} side="bottom" active={editing === 'range'} onClick={openRange} />
-                <IconButton
-                  label="Fatto"
-                  icon={Check}
-                  side="bottom"
-                  className="bg-primary text-primary-foreground hover:opacity-90 ml-1"
-                  onClick={() => {
-                    closeAllPopups()
-                    setEditing(null)
-                    setRangeEdit(null)
-                  }}
-                />
-              </div>
-            )}
+        <div ref={pencil} className={`group flex items-center rounded-lg focus-within:bg-muted ${editing || menuOpen || multiple ? 'bg-muted' : 'hover:bg-muted'}`}>
+          <IconButton label="Modifica orario" icon={Pencil} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}
+            className={hover && (editing || multiple || menuOpen) ? 'hidden' : hover ? 'group-hover:hidden' : undefined} />
+          <div className={`${menuOpen || hover && (editing || multiple) ? 'flex' : 'hidden [@media(hover:hover)]:group-hover:flex [@media(hover:hover)]:group-focus-within:flex'} items-center gap-0.5 ${hover ? '' : 'absolute right-3 top-full z-50 mt-1 rounded-lg border bg-card p-1 shadow-panel'}`}>
+            <CalendarClipboardActions week={week} yearWeeks={yearQuery.data ?? []} selected={selectedWeeks} annual={annual} />
+            {annual ? <IconButton icon={ListChecks} label="Seleziona più settimane" active={multiple} onClick={() => { setMultiple(value => !value); setMenuOpen(true) }} /> : <>
+              <IconButton label="Modifica solo questa settimana" icon={CalendarRange} active={editing === 'week'} onClick={() => beginEditing('week')} />
+              <IconButton label="Modifica la settimana tipo, da questa settimana in poi" icon={CalendarSync} active={editing === 'tpl'} onClick={() => beginEditing('tpl')} />
+              <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} active={editing === 'range'} onClick={openRange} />
+            </>}
+            {(editing || multiple || menuOpen) && <IconButton label="Fatto" icon={Check} onClick={() => {
+              closeAllPopups(); setEditing(null); setRangeEdit(null); setMultiple(false); setMenuOpen(false)
+            }} />}
           </div>
-        )}
+        </div>
 
         {/* Selettore vista Settimana / Giorno su desktop */}
         {!isPhone && (
@@ -375,15 +359,16 @@ export function CalendarPage() {
               icon={Columns2}
               side="bottom"
               active={desktopView === 'week'}
-              onClick={() => setDesktopView('week')}
+              onClick={() => setView('week')}
             />
             <IconButton
               label="Giorno"
               icon={Rows3}
               side="bottom"
               active={desktopView === 'day'}
-              onClick={() => setDesktopView('day')}
+              onClick={() => setView('day')}
             />
+            <IconButton label="Anno" icon={LayoutGrid} active={annual} onClick={() => { setView('year'); setSelectedWeeks([]) }} />
           </div>
         )}
       </header>
@@ -391,13 +376,20 @@ export function CalendarPage() {
       {outsideRange && <div className="border-b px-4 py-1 text-xs text-muted-foreground" role="status">Fuori dall'intervallo scelto</div>}
       {/* Corpo del calendario */}
       <div className="flex flex-1 min-h-0 overflow-auto">
-        {weekQuery.isPending && (
+        {annual && <>
+          {yearQuery.isPending && <span className="sr-only" role="status">Caricamento calendario</span>}
+          {yearQuery.isError && <p role="alert" className="p-4 text-danger">Errore nel caricamento del calendario</p>}
+          <CalendarYearView weeks={yearQuery.data ?? []} selected={selectedWeeks} onSelect={monday => {
+            setSelectedWeeks(current => multiple ? current.includes(monday) ? current.filter(w => w !== monday) : [...current, monday] : current.length === 1 && current[0] === monday ? [] : [monday])
+          }} onOpen={monday => { setCurrentDate(monday); setView('week'); setMultiple(false) }} />
+        </>}
+        {!annual && weekQuery.isPending && (
           <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
             Caricamento calendario…
           </div>
         )}
 
-        {weekQuery.isError && (
+        {!annual && weekQuery.isError && (
           <div className="flex flex-1 items-center justify-center p-8 text-sm text-danger">
             Errore nel caricamento del calendario: {weekQuery.error.message}
           </div>
@@ -450,6 +442,9 @@ export function CalendarPage() {
       </div>
 
       {/* Popups */}
+      {jumpAnchor && <WeekRangePopup navigate anchor={jumpAnchor} currentDate={currentDate} entries={templateQuery.data ?? []}
+        onClose={() => setJumpAnchor(null)} onConfirm={range => { closeAllPopups(); setCurrentDate(range.from); if (annual) setView('week') }} />}
+
       {rangeAnchor && <WeekRangePopup anchor={rangeAnchor} currentDate={currentDate} entries={templateQuery.data ?? []} initial={rangeEdit}
         onClose={() => setRangeAnchor(null)} onConfirm={range => {
           closeAllPopups(); setRangeEdit(range); setEditing('range'); setCurrentDate(range.from)

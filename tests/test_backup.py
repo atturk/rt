@@ -157,3 +157,89 @@ def test_restore_names_the_missing_media_store(data, tmp_path):
     shutil.copytree(snap, moved)
     with pytest.raises(bs.BackupError, match="manca la cartella .*media-store.*Nulla è stato modificato"):
         bs.restore_backup(str(moved), say=lambda _m: None, check_services=False)
+
+
+def test_backup_progress_reports_phases_in_order(data, tmp_path):
+    data_dir, db = data
+    _add_media(db, data_dir, 1, "audio1.m4a", b"audio-1")
+    _add_media(db, data_dir, 1, "audio2.m4a", b"audio-2")
+    events = []
+    bs.create_backup(str(tmp_path / "b"), say=lambda _m: None,
+                     progress=lambda fase, fatto, tot: events.append((fase, fatto, tot)))
+    assert events[0] == ("database", 0, 1)
+    assert events[1] == ("database", 1, 1)
+    media_events = [e for e in events if e[0] == "media"]
+    assert media_events == [("media", 1, 2), ("media", 2, 2)]
+    assert events[-1] == ("config", 1, 1)
+
+
+def test_export_backup_and_restore_zip(data, tmp_path, monkeypatch):
+    import zipfile
+    data_dir, db = data
+    rel = _add_media(db, data_dir, 1, "audio.m4a", b"audio-export")
+    snap = bs.create_backup(str(tmp_path / "b"), say=lambda _m: None).path
+
+    copy_events = []
+    zip_path = bs.export_backup(snap, str(tmp_path / "esportato.zip"),
+                                progress=lambda f, b, t: copy_events.append((f, b, t)))
+    assert os.path.isfile(zip_path)
+    assert copy_events[0][0] == "copia"
+    assert copy_events[-1][1] == copy_events[-1][2]  # bytes_written == total_bytes
+
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+        snap_base = os.path.basename(snap)
+        assert f"{snap_base}/manifest.json" in names
+        assert f"{snap_base}/rt.db" in names
+        media_files = [n for n in names if n.startswith("media-store/")]
+        assert len(media_files) == 1
+
+    # Ripristino in una cartella dati vergine usando il file .zip
+    other_data = tmp_path / "other_data"
+    monkeypatch.setenv("RT_DATA_DIR", str(other_data))
+    reset_database_cache()
+    data_service.init_data_dir(say=lambda _m: None)
+
+    aside = bs.restore_backup(zip_path, say=lambda _m: None, check_services=False)
+    assert os.path.isdir(aside)
+    reset_database_cache()
+    restored_db = get_database()
+    with session_scope(restored_db) as s:
+        assert s.get(Lesson, 1) is not None
+    assert (other_data / "media" / rel).read_bytes() == b"audio-export"
+
+
+def test_restore_zip_rejects_unsafe_paths(data, tmp_path):
+    import zipfile
+    bad_zip = tmp_path / "bad.zip"
+    with zipfile.ZipFile(bad_zip, "w") as zf:
+        zf.writestr("../pericolo.txt", "evil")
+        zf.writestr("rt-backup-20261019-120000/manifest.json", "{}")
+    with pytest.raises(bs.BackupError, match="non sicuro"):
+        bs.restore_backup(str(bad_zip), say=lambda _m: None, check_services=False)
+
+
+def test_export_error_cleans_up_part_file(data, tmp_path, monkeypatch):
+    data_dir, db = data
+    snap = bs.create_backup(str(tmp_path / "b"), say=lambda _m: None).path
+    target_zip = tmp_path / "fallito.zip"
+
+    def fail_progress(*_args):
+        raise RuntimeError("simulated disk error")
+
+    with pytest.raises(RuntimeError, match="simulated disk error"):
+        bs.export_backup(snap, str(target_zip), progress=fail_progress)
+
+    assert not os.path.exists(str(target_zip))
+    assert not os.path.exists(str(target_zip) + ".part")
+
+
+def test_cli_backup_progress_json(data, tmp_path, capsys):
+    from rt.cli import main
+    main(["backup", "--dest", str(tmp_path / "b"), "--progress-json"])
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
+    phases = [l.get("fase") for l in lines if "fase" in l]
+    assert "database" in phases and "config" in phases
+    last = lines[-1]
+    assert last.get("fine") is True
+    assert "percorso" in last and "riepilogo" in last

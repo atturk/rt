@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
 
-FILES = ("sources.json", "segments.json", "outline.json", "draft.json", "review_decisions.json",
+FILES = ("sources.json", "segments.json", "outline.json", "outline_approval.json", "draft.json", "review_decisions.json",
          "info.yaml", "manifest.json", "source_update.json", "transcript_normalized.md",
          "pipeline_version.json", "science_issues.json", "review_units.json", "review_sequence.json",
          "enrichment.json", "unit_relevance.json", "unit_question_types.json", "unit_prefilter.json",

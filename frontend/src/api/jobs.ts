@@ -1,3 +1,4 @@
+import { subjectsKeys } from './subjects'
 /**
  * Hook di job, importazione e outline (RT4-F4). Lo stato dei job si rilegge sempre dall'API:
  * il canale live (liveUpdates.ts) dice quando rileggere; lo stream SSE del singolo job
@@ -24,6 +25,7 @@ export const jobKeys = {
 
 /** Dopo un job o una decisione cambiano lezioni, fasi, outline e job: si rilegge tutto. */
 export function invalidateAfterJob(client: QueryClient, lessonId?: number | null) {
+  void client.invalidateQueries({ queryKey: subjectsKeys.all })
   void client.invalidateQueries({ queryKey: ['enrichment'] })
   void client.invalidateQueries({ queryKey: jobKeys.all })
   void client.invalidateQueries({ queryKey: queryKeys.allLessons })

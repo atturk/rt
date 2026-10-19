@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StudyFlow } from './Study'
 import type { Lesson } from '@/lib/format'
+import { api as apiClient } from '@/api/client'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(async () => [] as unknown[]),
@@ -194,6 +195,76 @@ describe('lettura veloce', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
     fireEvent.click(screen.getByRole('switch', { name: 'Virgola come pausa piena' }))
     expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-kind', 'fine')
+  })
+
+  it('l nella lettura normale apre la lettura veloce; l nella lettura veloce torna allo Studio', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+
+    // Con Shift non fa nulla
+    fireEvent.keyDown(window, { key: 'L', shiftKey: true })
+    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+
+    // Con il focus in un campo non fa nulla
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'l' })
+    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+    document.body.removeChild(input)
+
+    // l apre la lettura veloce
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+
+    // Shift+L in lettura veloce non chiude
+    fireEvent.keyDown(window, { key: 'L', shiftKey: true })
+    expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
+
+    // l chiude la lettura veloce
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
+  })
+
+  it('durante la riproduzione speed-reader-panel ha opacity-25 e in pausa no', async () => {
+    await open()
+    const panel = screen.getByTestId('speed-reader-panel')
+    expect(panel).toHaveClass('opacity-100')
+    expect(panel).not.toHaveClass('opacity-25')
+
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(panel).toHaveClass('opacity-25')
+
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(panel).toHaveClass('opacity-100')
+  })
+
+  it('Alt+ArrowRight passa all’unità seguente, chiama preventDefault, mostra zen-notice e all’ultima unità il pulsante è disattivato', async () => {
+    await open()
+    const nextBtn = screen.getByRole('button', { name: /Unità successiva/ })
+    expect(nextBtn).not.toHaveAttribute('aria-disabled', 'true')
+
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true })
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    window.dispatchEvent(event)
+
+    expect(preventDefaultSpy).toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Altro'))
+    expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+
+    // All'ultima unità non cambia nulla e il pulsante è disattivato
+    expect(screen.getByRole('button', { name: /Unità successiva/ })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('s in lettura veloce cambia lo stato e mostra l’avviso', async () => {
+    const put = vi.spyOn(apiClient, 'PUT').mockResolvedValue({ data: {}, response: new Response() } as never)
+    await open()
+    fireEvent.keyDown(window, { key: 's' })
+    await waitFor(() => expect(put).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
+      expect.objectContaining({ body: { status: 'in-apprendimento' } }),
+    ))
+    expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
   })
 })
 

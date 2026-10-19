@@ -298,6 +298,20 @@ def remove_from_text(
     )
 
 
+class DeleteImagesRequest(BaseModel):
+    image_names: list[str]
+    lease_token: Optional[str] = None
+    update_document: bool = Field(True, description="False se il testo lo cambia l'editor aperto")
+
+
+@router.post("/lessons/{lesson_id}/media/delete",
+             summary="Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano")
+def delete_media(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, req: DeleteImagesRequest):
+    from rt.services.editor_media_service import delete_images
+    return delete_images(lesson_id=lesson_id, lesson_dir=lesson_dir, image_names=req.image_names,
+                         lease_token=req.lease_token, update_document=req.update_document)
+
+
 class CropImageRequest(BaseModel):
     image_name: str = Field(..., description="Nome o identificativo dell'immagine da ritagliare")
     rect: list[float] = Field(..., min_length=4, max_length=4,

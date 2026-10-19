@@ -51,7 +51,7 @@ describe('imageStripDOM', () => {
     window.removeEventListener('rt-image-viewer-open', listener)
   })
 
-  it('mountDocumentImageStrips raggruppa paragrafi di immagini consecutive in una striscia', () => {
+  it('mountDocumentImageStrips trasforma sia immagini consecutive che immagini singole in strisce', () => {
     const container = document.createElement('div')
     container.innerHTML = `
       <p>Primo testo</p>
@@ -65,20 +65,27 @@ describe('imageStripDOM', () => {
 
     const cleanup = mountDocumentImageStrips(container)
 
-    // Le due immagini consecutive sono state trasformate in uno slot con striscia
+    // Ci sono 2 slot: uno per la serie di 2 immagini e uno per l'immagine singola
     const slots = container.querySelectorAll('.rt-image-strip-slot')
-    expect(slots).toHaveLength(1)
+    expect(slots).toHaveLength(2)
 
-    const strip = slots[0].querySelector('.rt-strip')
-    expect(strip).not.toBeNull()
-    expect((strip as HTMLElement)?.dataset.n).toBe('2')
+    const strip1 = slots[0].querySelector('.rt-strip')
+    expect(strip1).not.toBeNull()
+    expect((strip1 as HTMLElement)?.dataset.n).toBe('2')
 
-    // L'immagine singola resta un normale paragrafo img
-    const remainingPs = container.querySelectorAll('p')
-    const hasSingleImg = Array.from(remainingPs).some((p) => p.querySelector('img[src="/single.png"]'))
-    expect(hasSingleImg).toBe(true)
+    const strip2 = slots[1].querySelector('.rt-strip')
+    expect(strip2).not.toBeNull()
+    expect((strip2 as HTMLElement)?.dataset.n).toBe('1')
 
+    // Nessun paragrafo di immagine rimasto
+    const remainingImgs = container.querySelectorAll('p img')
+    expect(remainingImgs).toHaveLength(0)
+
+    // Lo smontaggio rimette i paragrafi originali
     cleanup()
+    const restoredImgs = container.querySelectorAll('p img')
+    expect(restoredImgs).toHaveLength(3)
+
     container.remove()
   })
 })

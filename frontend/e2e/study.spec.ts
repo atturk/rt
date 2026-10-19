@@ -611,11 +611,14 @@ test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande de
   await page.getByTestId('study-dots').locator('button').first().click()
   await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
   const controls = page.getByTestId('speed-reader-controls')
-  await expect(controls.getByRole('button')).toHaveCount(4)
+  // Quattro pulsanti tondi grandi più i due piccoli delle unità (Unità precedente/successiva).
+  await expect(controls.getByRole('button')).toHaveCount(6)
+  const main = controls.locator('button:not([aria-label^="Unità"])')
+  await expect(main).toHaveCount(4)
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 })
     const size = width === 390 ? 48 : 56
-    for (const button of await controls.getByRole('button').all()) {
+    for (const button of await main.all()) {
       await expect(button).toHaveCSS('width', `${size}px`)
       await expect(button).toHaveCSS('height', `${size}px`)
       expect(await button.evaluate(el => parseFloat(getComputedStyle(el).borderRadius))).toBeGreaterThanOrEqual(size / 2)

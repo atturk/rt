@@ -33,6 +33,7 @@ vi.mock('@/api/jobs', () => ({
 }))
 
 vi.mock('@/api/subjects', () => ({
+  useTeacherSuggestions: (materia: string) => materia === 'ANATOMIA' ? ['Bianchi'] : ['Rossi'],
   useSubjects: () => ({
     data: [
       { nome: 'FISIOLOGIA', lezioni: 1 },
@@ -348,4 +349,13 @@ it('le azioni restano indisponibili finché il job da capo non termina', () => {
   for (const label of ['Includi la revisione scientifica', 'Esegui la pipeline', 'Riesegui tutte le fasi', 'Riesegui tutto da capo']) {
     expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-disabled', 'true')
   }
+})
+
+it('i suggerimenti dei docenti seguono la materia nei Dettagli', () => {
+  render(<MemoryRouter><DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} /></MemoryRouter>)
+  const teacher = screen.getByLabelText('Docente')
+  const list = document.getElementById(teacher.getAttribute('list')!)!
+  expect(list.querySelector('option')).toHaveValue('Rossi')
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'ANATOMIA' } })
+  expect(list.querySelector('option')).toHaveValue('Bianchi')
 })

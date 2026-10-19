@@ -7,6 +7,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from contextvars import copy_context
 from contextlib import contextmanager
 
 from rt.core.idempotency import compute_file_sha256
@@ -164,41 +168,57 @@ def cached_pages(lesson_dir, source):
     return data['pages'] if data.get('impronta') == source.impronta else None
 
 
-def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False):
-    """Estrazione e Vision senza lock della lezione (possono durare minuti); il lock copre
-    solo le scritture. La cache è per pagina e per impronta, quindi due lavori concorrenti
-    sulla stessa fonte scrivono lo stesso contenuto."""
+def _elapsed(seconds):
+    seconds = max(0, round(seconds))
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    return ' '.join(value for value in (f'{hours}h' if hours else '', f'{minutes}m' if minutes else '',
+                                       f'{seconds}s' if seconds or not (hours or minutes) else '') if value)
+
+
+def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, checked=False, timing=None):
+    """Estrae su disco, poi descrive poche pagine alla volta; ogni risultato è riprendibile."""
+    from rt.core.config import load_config
+    from rt.core.material_page_filter import cleaned_page_texts, few_words
+    from rt.services.context import RunCancelled
+    started = time.monotonic()
+    cfg = load_config()
+    name = os.path.basename(source.file)
     path = os.path.join(lesson_dir, source.file)
-    if compute_file_sha256(path) != source.impronta:
+    if not checked and compute_file_sha256(path) != source.impronta:
         raise ValueError('Una fonte originale è cambiata: aggiungila come nuova fonte')
+    stats = timing if timing is not None else {}
+    stats.update(vision_calls=0, vision_seconds=0.0, pages=0, cached_pages=0)
+
+    def progress(current, total):
+        if ctx:
+            ctx.progress('prepare', current=current, total=total,
+                         message=f'Lettura di {name}: pagina {current} di {total}')
+
+    def finish(pages):
+        stats['pages'] = len(pages)
+        stats['seconds'] = time.monotonic() - started
+        calls = stats['vision_calls']
+        mean = stats['vision_seconds'] / calls if calls else 0
+        if ctx:
+            ctx.progress('prepare', message=f"Lettura di {name}: finita in {_elapsed(stats['seconds'])} "
+                         f"(Vision {calls} chiamate, media {mean:.1f} s)")
+        return pages
+
     cached = None if refresh else cached_pages(lesson_dir, source)
     if cached is not None and all('has_figures' in page for page in cached):
-        return cached
+        stats['cached_pages'] = len(cached)
+        progress(len(cached), len(cached))
+        return finish(cached)
     folder = os.path.join(lesson_dir, 'materials', source.impronta)
     with lesson_lock(lesson_dir):
         fs.makedirs(folder, exist_ok=True)
-    pages = []
-    # Cache per pagina: una ripresa dopo errore non ripete le chiamate Vision riuscite.
+    extracted = []
+    # I PNG si liberano a ogni iterazione, senza accumulare l'intero PDF in RAM.
     with fs.materialize(path) as real:
-        from rt.core.material_page_filter import cleaned_page_texts, few_words
-        extracted = list(_extract(real))
-        cleaned = cleaned_page_texts([text for text, _, _ in extracted])
-        for number, (text, images, has_figures) in enumerate(extracted, 1):
+        for number, (text, images, has_figures) in enumerate(_extract(real), 1):
             if ctx:
                 ctx.check_cancelled()
-            entry_path = os.path.join(folder, f'page-{number}.json')
-            if not refresh and fs.isfile(entry_path):
-                with fs.open(entry_path, encoding='utf-8') as stream:
-                    saved = json.load(stream)
-                if 'has_figures' in saved:
-                    pages.append(saved)
-                    continue
-            mapping_text = cleaned[number - 1]
-            sparse = few_words(mapping_text)
-            if sparse and has_figures:
-                described = '\n'.join(_describe(data, lesson_dir, mock) for data in images)
-                text = '\n'.join(filter(None, [text, described]))
-                mapping_text = described
             filenames = []
             with lesson_lock(lesson_dir):
                 for index, data in enumerate(images, 1):
@@ -206,21 +226,113 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False):
                     with fs.open(os.path.join(lesson_dir, relative), 'wb') as stream:
                         stream.write(data)
                     filenames.append(relative)
-                entry = {'numero': number, 'testo': text, 'immagini': filenames,
-                         'mapping_text': mapping_text, 'has_figures': has_figures,
-                         'mapping_skip': sparse and not has_figures}
-                with fs.open(entry_path + '.tmp', 'w', encoding='utf-8') as stream:
-                    json.dump(entry, stream, ensure_ascii=False)
-                fs.replace(entry_path + '.tmp', entry_path)
-            pages.append(entry)
-    if not pages:
+            extracted.append((text, filenames, has_figures))
+    if not extracted:
         raise ValueError('Il materiale non ha pagine')
+    cleaned = cleaned_page_texts([text for text, _, _ in extracted])
+    pages = [None] * len(extracted)
+    pending = []
+    completed = 0
+
+    def save(entry):
+        entry_path = os.path.join(folder, f"page-{entry['numero']}.json")
+        with lesson_lock(lesson_dir):
+            with fs.open(entry_path + '.tmp', 'w', encoding='utf-8') as stream:
+                json.dump(entry, stream, ensure_ascii=False)
+            fs.replace(entry_path + '.tmp', entry_path)
+        return entry
+
+    for number, (text, filenames, has_figures) in enumerate(extracted, 1):
+        entry_path = os.path.join(folder, f'page-{number}.json')
+        if not refresh and fs.isfile(entry_path):
+            with fs.open(entry_path, encoding='utf-8') as stream:
+                saved = json.load(stream)
+            if 'has_figures' in saved:
+                pages[number - 1] = saved
+                stats['cached_pages'] += 1
+                completed += 1
+                progress(completed, len(pages))
+                continue
+        mapping_text = cleaned[number - 1]
+        sparse = few_words(mapping_text)
+        entry = {'numero': number, 'testo': text, 'immagini': filenames,
+                 'mapping_text': mapping_text, 'has_figures': has_figures,
+                 'mapping_skip': sparse and not has_figures}
+        if sparse and has_figures and filenames:
+            pending.append(entry)
+        else:
+            pages[number - 1] = save(entry)
+            completed += 1
+            progress(completed, len(pages))
+    model = cfg.jobs['image_description'].primary.model if 'image_description' in cfg.jobs else 'predefinito'
+    if ctx:
+        ctx.progress('prepare', message=f'Lettura di {name}: {len(pages)} pagine, {len(pending)} da descrivere '
+                     f'col modello visivo (modello: {model})')
+    stopped = threading.Event()
+    failures = []
+
+    def describe(entry):
+        texts, seconds = [], 0.0
+        try:
+            for relative in entry['immagini']:
+                if stopped.is_set():
+                    raise RunCancelled('Lettura dei materiali interrotta')
+                if ctx:
+                    ctx.check_cancelled()
+                with fs.open(os.path.join(lesson_dir, relative), 'rb') as stream:
+                    data = stream.read()
+                before = time.monotonic()
+                texts.append(_describe(data, lesson_dir, mock))
+                seconds += time.monotonic() - before
+            described = '\n'.join(texts)
+            entry = dict(entry, testo='\n'.join(filter(None, [entry['testo'], described])), mapping_text=described)
+            return save(entry), len(texts), seconds
+        except BaseException as error:
+            if not isinstance(error, RunCancelled):
+                failures.append(error)
+            stopped.set()
+            raise
+
+    # Non accodare l'intero documento: dopo un errore/annullamento non partono altre pagine.
+    with ThreadPoolExecutor(max_workers=cfg.pipeline.parallel_pages, thread_name_prefix='rt-pages') as pool:
+        iterator = iter(pending)
+        active = set()
+        def submit_next():
+            if ctx:
+                ctx.check_cancelled()
+            entry = next(iterator, None)
+            if entry is not None and not stopped.is_set():
+                active.add(pool.submit(copy_context().run, describe, entry))
+        try:
+            for _ in range(min(cfg.pipeline.parallel_pages, len(pending))):
+                submit_next()
+            while active:
+                done, active = wait(active, return_when=FIRST_COMPLETED)
+                for future in done:
+                    entry, calls, seconds = future.result()
+                    pages[entry['numero'] - 1] = entry
+                    stats['vision_calls'] += calls
+                    stats['vision_seconds'] += seconds
+                    completed += 1
+                    progress(completed, len(pages))
+                if ctx:
+                    ctx.check_cancelled()
+                for _ in done:
+                    submit_next()
+        except BaseException:
+            stopped.set()
+            # Un worker fermato dall'errore di un altro non deve mascherare l'errore originale.
+            if failures:
+                raise failures[0]
+            raise
+    if ctx:
+        ctx.check_cancelled()
     cache_path = os.path.join(folder, 'pages.json')
     with lesson_lock(lesson_dir):
         with fs.open(cache_path + '.tmp', 'w', encoding='utf-8') as stream:
             json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
         fs.replace(cache_path + '.tmp', cache_path)
-    return pages
+    return finish(pages)
 
 
 def material_context_parts(lesson_dir, *, mock=False, ctx=None, include_materials: bool = True):

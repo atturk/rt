@@ -22,7 +22,7 @@ import { Link, useNavigate } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useSubjects } from '@/api/subjects'
+import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
   invalidateAfterJob,
@@ -196,9 +196,7 @@ export function NewLessonDialog({
   const subjects = Array.isArray(subjectsQuery.data)
     ? subjectsQuery.data.map((s) => s.nome)
     : [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
-  const teachers = [
-    ...new Set((lessons.data ?? []).map((l) => l.docente?.trim()).filter(Boolean)),
-  ].sort()
+  const teachers = useTeacherSuggestions(materia)
 
   const calendarDayQuery = useQuery({
     queryKey: calendarKeys.day(date),
@@ -972,7 +970,7 @@ export function NewLessonDialog({
                 icon={FileText}
                 aria-pressed={solo}
                 active={solo}
-                disabled={busy}
+                unavailable={busy ? 'importazione in corso' : null}
                 onClick={() => setSolo(!solo)}
               />
               <IconButton
@@ -980,7 +978,7 @@ export function NewLessonDialog({
                 icon={ShieldCheck}
                 aria-pressed={review}
                 active={review && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setReview(!review)}
               />
               <IconButton
@@ -988,7 +986,7 @@ export function NewLessonDialog({
                 icon={Image}
                 aria-pressed={enrichment}
                 active={enrichment && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setEnrichment(!enrichment)}
               />
               <IconButton
@@ -996,7 +994,15 @@ export function NewLessonDialog({
                 icon={Paperclip}
                 aria-pressed={attachMaterials}
                 active={attachMaterials && materialFiles.length > 0 && !solo}
-                disabled={busy || solo || materialFiles.length === 0}
+                unavailable={
+                  busy
+                    ? 'importazione in corso'
+                    : solo
+                      ? 'non con Solo trascrizione'
+                      : materialFiles.length === 0
+                        ? 'aggiungi almeno un documento'
+                        : null
+                }
                 onClick={() => setAttachMaterials(!attachMaterials)}
                 data-testid="attach-materials-btn"
               />

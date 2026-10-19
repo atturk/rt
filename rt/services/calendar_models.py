@@ -197,3 +197,77 @@ class CalendarDayImportHour(BaseModel):
 class CalendarDayImportView(BaseModel):
     date: str
     hours: List[CalendarDayImportHour] = Field(default_factory=list)
+
+
+class CalendarYearEvent(BaseModel):
+    start_hour: float
+    end_hour: float
+    materia: str
+    status: str
+    is_recorded: bool
+
+
+class CalendarYearDay(BaseModel):
+    date: str
+    status: str
+    events: List[CalendarYearEvent]
+
+
+class CalendarYearWeek(BaseModel):
+    start_date: str
+    week_number: int
+    days: List[CalendarYearDay]
+
+
+class CalendarPasteEntry(BaseModel):
+    day_of_week: int = Field(ge=0, le=6)
+    start_time: ClockTime
+    end_time: ClockTime
+    materia: str = Field(min_length=1, max_length=256)
+    docente: Optional[str] = Field(None, max_length=256)
+
+
+class CalendarPasteRequest(BaseModel):
+    weeks: List[IsoDate] = Field(min_length=1, max_length=53)
+    entries: List[CalendarPasteEntry] = Field(max_length=2000)
+
+
+class CalendarPasteResult(BaseModel):
+    weeks: List[str]
+
+
+class CalendarScheduleSubject(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    teachers: List[str] = Field(default_factory=list, max_length=2000)
+
+
+class CalendarScheduleOverride(BaseModel):
+    date: IsoDate
+    action: Literal['added', 'removed', 'modified']
+    start_time: Optional[ClockTime] = None
+    end_time: Optional[ClockTime] = None
+    materia: Optional[str] = Field(None, max_length=256)
+    docente: Optional[str] = Field(None, max_length=256)
+    template_index: Optional[int] = Field(None, ge=0)
+
+
+class CalendarSchedule(BaseModel):
+    format: Literal['rt-calendar']
+    version: Literal[1]
+    exported_at: str
+    subjects: List[CalendarScheduleSubject] = Field(max_length=2000)
+    template: List[CalendarTemplateEntryCreate] = Field(max_length=2000)
+    overrides: List[CalendarScheduleOverride] = Field(max_length=2000)
+
+
+class CalendarImportRequest(BaseModel):
+    data: dict
+    from_date: Optional[IsoDate] = Field(None, alias='from')
+    to_date: Optional[IsoDate] = Field(None, alias='to')
+    dry_run: bool = False
+
+
+class CalendarImportResult(BaseModel):
+    subjects: int
+    entries: int
+    conflicts: int

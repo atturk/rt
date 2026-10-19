@@ -9,7 +9,12 @@ import { filterLessons, type LessonListFilters } from './lessonSearch'
  * testo vive anche in uno stato locale: l'URL si aggiorna in modo asincrono e un campo legato
  * solo a lui perderebbe i tasti premuti in fretta.
  */
-export function useLessonFilters(): [LessonListFilters, (key: keyof LessonListFilters, value: string) => void, () => void] {
+export function useLessonFilters(): [
+  LessonListFilters,
+  (key: keyof LessonListFilters, value: string) => void,
+  () => void,
+  (values: Partial<{ q: string; materia: string; stato: string }>) => void,
+] {
   const [params, setParams] = useSearchParams()
   const urlQ = params.get('q') ?? ''
   const [q, setQ] = useState(urlQ)
@@ -54,11 +59,36 @@ export function useLessonFilters(): [LessonListFilters, (key: keyof LessonListFi
       { replace: true },
     )
   }
-  return [{ q, materia: params.get('materia') ?? '', state: params.get('stato') ?? '' }, setFilter, resetFilters]
+  function applyFilters(values: Partial<{ q: string; materia: string; stato: string }>) {
+    if (values.q !== undefined) {
+      setQ(values.q)
+      pending.current.push(values.q)
+    }
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (values.q !== undefined) {
+          if (values.q) next.set('q', values.q)
+          else next.delete('q')
+        }
+        if (values.materia !== undefined) {
+          if (values.materia) next.set('materia', values.materia)
+          else next.delete('materia')
+        }
+        if (values.stato !== undefined) {
+          if (values.stato) next.set('stato', values.stato)
+          else next.delete('stato')
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
+  return [{ q, materia: params.get('materia') ?? '', state: params.get('stato') ?? '' }, setFilter, resetFilters, applyFilters]
 }
 
 /** Elenco filtrato lato client: il filtro non chiama l'API a ogni tasto. */
 export function useFilteredLessons(lessons: Lesson[] | undefined) {
-  const [filters, setFilter, resetFilters] = useLessonFilters()
-  return { filters, setFilter, resetFilters, filtered: filterLessons(lessons ?? [], filters) }
+  const [filters, setFilter, resetFilters, applyFilters] = useLessonFilters()
+  return { filters, setFilter, resetFilters, applyFilters, filtered: filterLessons(lessons ?? [], filters) }
 }

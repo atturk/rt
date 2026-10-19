@@ -153,8 +153,9 @@ def create_template_entry(
             materia=data.materia.strip(),
             docente=data.docente.strip() if data.docente else None,
         )
-        from rt.services.subjects import register_subject
+        from rt.services.subjects import register_subject, register_teacher
         register_subject(session, entry.materia)
+        register_teacher(session, entry.materia, entry.docente)
         session.add(entry)
         session.flush()
         return schemas.CalendarTemplateEntryView(
@@ -186,40 +187,45 @@ def delete_template_entry(
             raise Invalid("invalid_date_range", "La fine dell'intervallo deve seguire l'inizio.")
     database = db or get_database()
     with session_scope(database) as session:
-        entry = session.get(CalendarTemplateEntry, entry_id)
-        if entry is None:
-            raise NotFound("template_entry_not_found", f"Slot {entry_id} non trovato.")
-        if to_date is not None:
-            # Un intervallo disgiunto non deve creare doppioni o parti vuote.
-            if entry.valid_from >= to_date or (entry.valid_to is not None and entry.valid_to <= from_date):
-                return
-            if entry.valid_to is None or entry.valid_to > to_date:
-                continuation = CalendarTemplateEntry(
-                    valid_from=max(to_date, entry.valid_from), valid_to=entry.valid_to,
-                    day_of_week=entry.day_of_week, start_time=entry.start_time,
-                    end_time=entry.end_time, materia=entry.materia, docente=entry.docente,
-                )
-                session.add(continuation)
-                session.flush()
-                for override in session.scalars(select(CalendarOverride).where(
-                    CalendarOverride.template_entry_id == entry.id, CalendarOverride.date >= to_date,
-                )):
-                    override.template_entry_id = continuation.id
-                for state in session.scalars(select(CalendarEntryState).where(
-                    or_(CalendarEntryState.template_entry_id == entry.id,
-                        CalendarEntryState.entry_key == f"tpl_{entry.id}"),
-                    CalendarEntryState.date >= to_date,
-                )):
-                    state.template_entry_id = continuation.id
-                    if state.entry_key == f"tpl_{entry.id}":
-                        state.entry_key = f"tpl_{continuation.id}"
-                # Salva i riferimenti prima di un eventuale DELETE con CASCADE.
-                session.flush()
-        if from_date is not None and entry.valid_from < from_date:
-            if entry.valid_to is None or entry.valid_to > from_date:
-                entry.valid_to = from_date
+        _delete_template_range(session, entry_id, from_date, to_date)
+
+
+def _delete_template_range(session, entry_id, from_date=None, to_date=None):
+    """Stessa operazione nella transazione di importazione dell'orario."""
+    entry = session.get(CalendarTemplateEntry, entry_id)
+    if entry is None:
+        raise NotFound("template_entry_not_found", f"Slot {entry_id} non trovato.")
+    if to_date is not None:
+        # Un intervallo disgiunto non deve creare doppioni o parti vuote.
+        if entry.valid_from >= to_date or (entry.valid_to is not None and entry.valid_to <= from_date):
             return
-        session.delete(entry)
+        if entry.valid_to is None or entry.valid_to > to_date:
+            continuation = CalendarTemplateEntry(
+                valid_from=max(to_date, entry.valid_from), valid_to=entry.valid_to,
+                day_of_week=entry.day_of_week, start_time=entry.start_time,
+                end_time=entry.end_time, materia=entry.materia, docente=entry.docente,
+            )
+            session.add(continuation)
+            session.flush()
+            for override in session.scalars(select(CalendarOverride).where(
+                CalendarOverride.template_entry_id == entry.id, CalendarOverride.date >= to_date,
+            )):
+                override.template_entry_id = continuation.id
+            for state in session.scalars(select(CalendarEntryState).where(
+                or_(CalendarEntryState.template_entry_id == entry.id,
+                    CalendarEntryState.entry_key == f"tpl_{entry.id}"),
+                CalendarEntryState.date >= to_date,
+            )):
+                state.template_entry_id = continuation.id
+                if state.entry_key == f"tpl_{entry.id}":
+                    state.entry_key = f"tpl_{continuation.id}"
+            # Salva i riferimenti prima di un eventuale DELETE con CASCADE.
+            session.flush()
+    if from_date is not None and entry.valid_from < from_date:
+        if entry.valid_to is None or entry.valid_to > from_date:
+            entry.valid_to = from_date
+        return
+    session.delete(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +257,9 @@ def create_override(
             materia=data.materia.strip() if data.materia else None,
             docente=data.docente.strip() if data.docente else None,
         )
-        from rt.services.subjects import register_subject
+        from rt.services.subjects import register_subject, register_teacher
         register_subject(session, override.materia)
+        register_teacher(session, override.materia, override.docente)
         session.add(override)
         session.flush()
         return schemas.CalendarOverrideView(
@@ -817,3 +824,26 @@ def get_day_import_view(target_date_str: str, db=None) -> schemas.CalendarDayImp
         date=day_view.date,
         hours=hours,
     )
+
+
+
+def get_year_view(start: str, db=None) -> List[schemas.CalendarYearWeek]:
+    monday = parse_date(start)
+    if monday.weekday() != 0 or (monday + datetime.timedelta(days=3)).month != 9 or monday.day not in (1, 2, 3, 4, 29, 30, 31):
+        raise Invalid('invalid_year_start', "Indica il lunedì della prima settimana di settembre.")
+    september = datetime.date((monday + datetime.timedelta(days=3)).year + 1, 9, 4)
+    end = september - datetime.timedelta(days=september.weekday())
+    dates = [monday + datetime.timedelta(days=i) for i in range((end - monday).days) if i % 7 < 5]
+    with read_scope(db or get_database()) as session:
+        resolved = _resolve_dates(session, dates, datetime.datetime.now())
+        weeks = []
+        for offset in range(0, len(dates), 5):
+            days = []
+            for day in dates[offset:offset + 5]:
+                events, state = resolved[day.isoformat()]
+                days.append(schemas.CalendarYearDay(date=day.isoformat(), status=state.status if state else '', events=[
+                    schemas.CalendarYearEvent(**event.model_dump(include={'start_hour', 'end_hour', 'materia', 'status', 'is_recorded'}))
+                    for event in events]))
+            weeks.append(schemas.CalendarYearWeek(start_date=dates[offset].isoformat(),
+                         week_number=dates[offset].isocalendar()[1], days=days))
+        return weeks

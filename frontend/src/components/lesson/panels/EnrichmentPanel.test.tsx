@@ -104,7 +104,7 @@ describe('EnrichmentPanel', () => {
     // Formula del gap è proposta: mostra Genera
     expect(screen.getByRole('button', { name: /Genera/i })).toBeInTheDocument()
     // L'elemento completato Infografica 1.1 non è presente nella lista idee come proposta da generare
-    expect(screen.queryByText('Infografica 1.1')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Elenco idee' })).queryByText('Infografica 1.1')).not.toBeInTheDocument()
   })
 
   it('apre la scheda di caricamento e di ricerca web', async () => {
@@ -230,3 +230,76 @@ it('AR5: illumina il pannello al trascinamento di media e apre il riquadro di ca
   expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeInTheDocument()
 })
+
+it('mostra i file scelti nella lista, permette di rimuoverli e Annulla li scarta', () => {
+  mockApi()
+  renderPanel()
+  fireEvent.click(screen.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }))
+
+  const input = screen.getByLabelText('PDF o foto')
+  const file1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
+  const file2 = new File(['img2'], 'foto.jpg', { type: 'image/jpeg' })
+
+  // Scegliendo un file, compare nella lista "File scelti" e il pulsante dice "Carica (1)"
+  fireEvent.change(input, { target: { files: [file1] } })
+  const list = screen.getByRole('list', { name: 'File scelti' })
+  expect(within(list).getByText('appunti.pdf')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Scegliendo un secondo file
+  fireEvent.change(input, { target: { files: [file2] } })
+  expect(within(list).getByText('foto.jpg')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (2)' })).toBeEnabled()
+
+  // Rimuovi toglie il file
+  fireEvent.click(screen.getByRole('button', { name: 'Rimuovi appunti.pdf' }))
+  expect(within(list).queryByText('appunti.pdf')).not.toBeInTheDocument()
+  expect(within(list).getByText('foto.jpg')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Rimuovendo anche il secondo, il pulsante torna a "Carica" disabilitato
+  fireEvent.click(screen.getByRole('button', { name: 'Rimuovi foto.jpg' }))
+  expect(screen.queryByRole('list', { name: 'File scelti' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica' })).toBeDisabled()
+
+  // File trascinato sulla scheda compare nella lista
+  const card = screen.getByTestId('enrichment-upload')
+  const dropFile = new File(['drop'], 'slide.pdf', { type: 'application/pdf' })
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [dropFile] } })
+  const updatedList = screen.getByRole('list', { name: 'File scelti' })
+  expect(within(updatedList).getByText('slide.pdf')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Premere Annulla e riaprire la scheda: lista vuota, Carica disabilitato
+  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+  expect(screen.queryByTestId('enrichment-upload')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }))
+  expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
+  expect(screen.queryByRole('list', { name: 'File scelti' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica' })).toBeDisabled()
+})
+
+it('di base la vista dei media è a righe, il pulsante passa a griglia e salva in localStorage', async () => {
+  localStorage.removeItem('rt.media.view')
+  mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Di base la vista è a righe: c'è il pulsante per passare a griglia
+  const toggleBtn = screen.getByRole('button', { name: 'Vista a griglia' })
+  expect(toggleBtn).toBeInTheDocument()
+
+  // Clic passa a griglia
+  fireEvent.click(toggleBtn)
+  expect(localStorage.getItem('rt.media.view')).toBe('grid')
+  expect(screen.getByRole('button', { name: 'Una pagina per riga' })).toBeInTheDocument()
+
+  // Clic torna a righe
+  fireEvent.click(screen.getByRole('button', { name: 'Una pagina per riga' }))
+  expect(localStorage.getItem('rt.media.view')).toBe('rows')
+  expect(screen.getByRole('button', { name: 'Vista a griglia' })).toBeInTheDocument()
+})
+
+

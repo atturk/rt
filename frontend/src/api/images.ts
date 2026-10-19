@@ -85,6 +85,14 @@ export function removeFromText(id: number, imageNames: string[], leaseToken?: st
   }))
 }
 
+/** Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano. */
+export function deleteMedia(id: number, imageNames: string[], updateDocument = true) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/delete', {
+    params: path(id),
+    body: { image_names: imageNames, update_document: updateDocument },
+  }))
+}
+
 /** Ritaglia un'immagine (come nuova immagine o sostituzione). */
 export function cropMediaImage(
   id: number,
