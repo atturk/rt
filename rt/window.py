@@ -128,7 +128,156 @@ def _command(command: str) -> subprocess.CompletedProcess:
                           **({"creationflags": 0x08000000} if sys.platform == "win32" else {}))
 
 
+class DesktopApi:
+    """API esposta da pywebview alla pagina JavaScript (window.pywebview.api)."""
+    def __init__(self, window=None):
+        self._window = window
+
+    def salva_copia_backup(self, percorso_snapshot: str) -> dict:
+        from rt.services import backup_service
+        import webview
+
+        if not self._window:
+            return {"errore": "Finestra non disponibile."}
+
+        dest_root = os.path.realpath(backup_service.default_dest())
+        target_path = os.path.realpath(os.path.expanduser(percorso_snapshot))
+        name = os.path.basename(target_path)
+        parent = os.path.dirname(target_path)
+        if not (name.startswith(backup_service.BACKUP_PREFIX) and parent == dest_root and os.path.isdir(target_path)):
+            return {"errore": "Percorso snapshot non valido."}
+
+        save_name = f"{name}.zip"
+        try:
+            import webview
+            dialog_type = getattr(webview, "SAVE_DIALOG", 10)
+            chosen = self._window.create_file_dialog(
+                dialog_type,
+                save_filename=save_name,
+                file_types=("Archivio zip (*.zip)",),
+            )
+        except Exception as exc:
+            _log(f"Errore create_file_dialog: {exc}")
+            return {"errore": str(exc)}
+
+        if not chosen:
+            return {"annullato": True}
+        if isinstance(chosen, (list, tuple)):
+            chosen = chosen[0] if chosen else None
+        if not chosen:
+            return {"annullato": True}
+
+        if not chosen.lower().endswith(".zip"):
+            chosen += ".zip"
+
+        _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia")
+        return {"avviato": True}
+
+
+_backup_lock = threading.Lock()
+_backup_running = False
+
+
+def _stream_backup(window, args: list[str], tipo: str = "backup") -> None:
+    global _backup_running
+    with _backup_lock:
+        if _backup_running:
+            window.evaluate_js(f"window.__rtBackup && window.__rtBackup({json.dumps({'inizio': True, 'tipo': tipo})})")
+            return
+        _backup_running = True
+
+    def work():
+        global _backup_running
+        has_client = False
+        fallback_lines = []
+        last_sent_time = 0.0
+        pending_event = None
+
+        def send_event(event: dict, immediate: bool = False):
+            nonlocal has_client, last_sent_time, pending_event
+            event.setdefault("tipo", tipo)
+            now = time.monotonic()
+            if not immediate and (now - last_sent_time < 0.1):
+                pending_event = event
+                return
+            pending_event = None
+            last_sent_time = now
+            try:
+                res = window.evaluate_js(f"Boolean(window.__rtBackup && (window.__rtBackup({json.dumps(event)}), true))")
+                if res:
+                    has_client = True
+            except Exception as exc:
+                _log(f"evaluate_js errore: {exc}")
+
+        try:
+            send_event({"inizio": True, "tipo": tipo}, immediate=True)
+
+            cmd = [sys.executable, os.path.join(paths.project_root(), "bin", "rt"), *args]
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = 0x08000000
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+                **kwargs,
+            )
+
+            final_event_sent = False
+            for line in iter(proc.stdout.readline, ""):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except Exception:
+                    fallback_lines.append(line)
+                    continue
+
+                if "fine" in event or "errore" in event:
+                    if pending_event:
+                        send_event(pending_event, immediate=True)
+                    send_event(event, immediate=True)
+                    final_event_sent = True
+                    if not has_client:
+                        if "riepilogo" in event:
+                            _notice(window, "\n".join(event["riepilogo"]))
+                        elif "errore" in event:
+                            _notice(window, event["errore"])
+                else:
+                    send_event(event, immediate=False)
+
+            proc.wait()
+            if pending_event and not final_event_sent:
+                send_event(pending_event, immediate=True)
+
+            if proc.returncode != 0 and not final_event_sent:
+                err_msg = "\n".join(fallback_lines).strip() or "Operazione non riuscita."
+                send_event({"errore": err_msg, "tipo": tipo}, immediate=True)
+                if not has_client:
+                    _notice(window, err_msg)
+        except Exception as exc:
+            _log(f"Backup {tipo} eccezione: {exc}")
+            send_event({"errore": str(exc), "tipo": tipo}, immediate=True)
+            if not has_client:
+                _notice(window, str(exc))
+        finally:
+            with _backup_lock:
+                _backup_running = False
+
+    threading.Thread(target=work, name=f"rt-stream-{tipo}", daemon=True).start()
+
+
 def _maintenance(window, command: str) -> None:
+    if command == "backup":
+        _stream_backup(window, ["backup", "--progress-json"], tipo="backup")
+        return
+
     def work():
         try:
             result = _command(command)
@@ -140,13 +289,8 @@ def _maintenance(window, command: str) -> None:
                 _open_path(target)
                 return
             if result.returncode:
-                raise RuntimeError(output.strip() or "Backup non riuscito.")
-            prefix = "✅ Backup completo: "
-            target = next((line[len(prefix):] for line in output.splitlines() if line.startswith(prefix)), "")
-            if not target:
-                raise RuntimeError("Il backup non ha indicato dove ha salvato i dati.")
+                raise RuntimeError(output.strip() or f"{command} non riuscito.")
             _notice(window, output.strip())
-            _open_path(os.path.dirname(target))
         except Exception as exc:
             _log(f"{command}: {exc}")
             _notice(window, str(exc))
@@ -398,8 +542,10 @@ def open_window(base_url: str, path: str = "/") -> int:
         webview.settings["ALLOW_DOWNLOADS"] = True
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
+        api = DesktopApi(None)
         window = webview.create_window("RT", url, width=1280, height=820, min_size=(900, 600),
-                                       text_select=True, zoomable=True)
+                                       text_select=True, zoomable=True, js_api=api)
+        api._window = window
         pending_path = path if path.startswith("/") and not path.startswith("//") else "/"
         smoke_done = False
         engine_error = []

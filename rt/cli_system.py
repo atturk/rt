@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sys
+from typing import List
 
 from rt.core import paths
 
@@ -157,10 +158,38 @@ def configure_backup_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--list", action="store_true", help="Elenca i backup nella cartella")
     p.add_argument("--allow-missing", action="store_true",
                    help="Salva anche se alcuni media referenziati nel database mancano")
+    p.add_argument("--progress-json", action="store_true", help="Stampa l'avanzamento in JSON riga per riga")
+    p.add_argument("--export", default=None, metavar="SNAPSHOT",
+                   help="Esporta uno snapshot in un archivio zip completo")
+    p.add_argument("--to", default=None, metavar="FILE.ZIP",
+                   help="File zip di destinazione per --export")
 
 
 def cmd_backup(args: argparse.Namespace) -> None:
     from rt.services import backup_service as bs
+    if getattr(args, "export", None):
+        if not args.to:
+            if args.progress_json:
+                print(json.dumps({"errore": "Destinazione mancante: specifica --to <file.zip>."}, ensure_ascii=False), flush=True)
+                sys.exit(1)
+            _fail("Destinazione mancante: specifica --to <file.zip>.")
+        if args.progress_json:
+            def on_progress(fase: str, fatto: int, totale: int):
+                print(json.dumps({"fase": fase, "fatto": fatto, "totale": totale}, ensure_ascii=False), flush=True)
+            try:
+                target = bs.export_backup(args.export, args.to, progress=on_progress)
+                print(json.dumps({"fine": True, "percorso": target}, ensure_ascii=False), flush=True)
+            except (bs.BackupError, Exception) as exc:
+                print(json.dumps({"errore": str(exc)}, ensure_ascii=False), flush=True)
+                sys.exit(1)
+        else:
+            try:
+                target = bs.export_backup(args.export, args.to)
+                print(f"✅ Copia salvata: {target}")
+            except bs.BackupError as exc:
+                _fail(str(exc))
+        return
+
     if args.list:
         found = bs.list_backups(args.dest)
         if not found:
@@ -168,6 +197,34 @@ def cmd_backup(args: argparse.Namespace) -> None:
         for b in found:
             print(f"{b['path']}  ({b['created']}, RT {b['rt_version']}, {b['media']} media)")
         return
+
+    if args.progress_json:
+        riepilogo: List[str] = []
+        def say(line: str):
+            riepilogo.append(line)
+        def on_progress(fase: str, fatto: int, totale: int):
+            print(json.dumps({"fase": fase, "fatto": fatto, "totale": totale}, ensure_ascii=False), flush=True)
+        try:
+            res = bs.create_backup(args.dest, say=say, allow_missing=args.allow_missing, progress=on_progress)
+        except (bs.BackupError, Exception) as exc:
+            print(json.dumps({"errore": str(exc)}, ensure_ascii=False), flush=True)
+            sys.exit(1)
+        riepilogo.append(f"✅ Backup completo: {res.path}")
+        if res.missing:
+            riepilogo.append(f"⚠️  {len(res.missing)} media referenziati mancavano e non sono nel backup.")
+        if res.folder_lessons:
+            riepilogo.append(f"⚠️  {len(res.folder_lessons)} lezioni sono ancora in cartella e non sono nel backup: "
+                             "spostale nel database con 'rt db migrate-storage'.")
+        payload: dict = {
+            "fine": True,
+            "percorso": res.path,
+            "riepilogo": riepilogo,
+        }
+        if res.master_key_warning:
+            payload["avviso_chiave"] = res.master_key_warning
+        print(json.dumps(payload, ensure_ascii=False), flush=True)
+        return
+
     try:
         res = bs.create_backup(args.dest, allow_missing=args.allow_missing)
     except bs.BackupError as exc:
@@ -183,7 +240,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
 
 def configure_restore_parser(p: argparse.ArgumentParser) -> None:
-    p.add_argument("source", help="Cartella rt-backup-<data>, o la cartella dei backup (usa il più recente)")
+    p.add_argument("source", help="Cartella rt-backup-<data>, file .zip (da «Salva una copia»), o la cartella dei backup (usa il più recente)")
     p.add_argument("--yes", action="store_true", help="Non chiedere conferma")
 
 

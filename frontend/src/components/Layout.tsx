@@ -11,6 +11,7 @@ import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
+import { BackupDialog } from '@/components/shell/BackupDialog'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
@@ -163,6 +164,7 @@ export function Layout() {
         onDropFiles={(files) => openNewLesson({ initialFiles: files })}
       />
       <ImageViewer />
+      <BackupDialog />
       {newLessonOptions && (
         <Suspense fallback={null}>
           <NewLessonDialog

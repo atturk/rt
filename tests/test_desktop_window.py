@@ -499,3 +499,133 @@ def test_windows_menu_has_about(monkeypatch, webview):
     menu = window._menu(webview.create_window.return_value, "http://127.0.0.1:8765")
     items = menu[0].items
     assert items[0].title == "Informazioni su RT"
+
+
+def test_backup_stream_events_in_order(monkeypatch):
+    import io
+    import time
+    fake_window = Mock()
+    fake_window.evaluate_js = Mock(return_value=True)
+
+    lines = [
+        json.dumps({"fase": "database", "fatto": 0, "totale": 1}) + "\n",
+        json.dumps({"fase": "media", "fatto": 1, "totale": 1}) + "\n",
+        json.dumps({"fine": True, "percorso": "/backups/rt-backup-1", "riepilogo": ["ok"]}) + "\n",
+    ]
+
+    class FakeStdout:
+        def __init__(self, items):
+            self.items = list(items)
+        def readline(self):
+            if not self.items:
+                return ""
+            item = self.items.pop(0)
+            time.sleep(0.12)  # simula intervallo > 0.1s tra eventi
+            return item
+
+    class FakeProc:
+        def __init__(self, *args, **kwargs):
+            self.stdout = FakeStdout(lines)
+            self.returncode = 0
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(window.subprocess, "Popen", FakeProc)
+    window._stream_backup(fake_window, ["backup", "--progress-json"], tipo="backup")
+    time.sleep(0.5)
+
+    calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+    # Inizio, database, media, fine
+    assert any("inizio" in c for c in calls)
+    assert any("database" in c for c in calls)
+    assert any("fine" in c and "rt-backup-1" in c for c in calls)
+
+
+def test_backup_stream_reports_error(monkeypatch):
+    import io
+    import time
+    fake_window = Mock()
+    fake_window.evaluate_js = Mock(return_value=True)
+
+    stdout_stream = io.StringIO(json.dumps({"errore": "errore disco"}) + "\n")
+
+    class FakeProc:
+        def __init__(self, *args, **kwargs):
+            self.stdout = stdout_stream
+            self.returncode = 1
+        def wait(self):
+            return 1
+
+    monkeypatch.setattr(window.subprocess, "Popen", FakeProc)
+    window._stream_backup(fake_window, ["backup", "--progress-json"], tipo="backup")
+    time.sleep(0.3)
+
+    calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+    assert any("errore disco" in c for c in calls)
+
+
+def test_backup_stream_fallback_notice_without_handler(monkeypatch):
+    import io
+    import time
+    fake_window = Mock()
+    fake_window.evaluate_js = Mock(return_value=False)
+    notice = Mock()
+    monkeypatch.setattr(window, "_notice", notice)
+
+    lines = [
+        json.dumps({"fine": True, "percorso": "/backups/b1", "riepilogo": ["linea 1", "linea 2"]}) + "\n",
+    ]
+    stdout_stream = io.StringIO("".join(lines))
+
+    class FakeProc:
+        def __init__(self, *args, **kwargs):
+            self.stdout = stdout_stream
+            self.returncode = 0
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(window.subprocess, "Popen", FakeProc)
+    window._stream_backup(fake_window, ["backup", "--progress-json"], tipo="backup")
+    time.sleep(0.3)
+
+    notice.assert_called_once_with(fake_window, "linea 1\nlinea 2")
+
+
+def test_desktop_api_salva_copia_backup_rejects_foreign_path(data, webview):
+    fake_window = Mock()
+    api = window.DesktopApi(fake_window)
+    res = api.salva_copia_backup("/tmp/non-rt-backup")
+    assert res == {"errore": "Percorso snapshot non valido."}
+    assert fake_window.create_file_dialog.call_count == 0
+
+
+def test_desktop_api_salva_copia_backup_cancellation(data, monkeypatch, webview):
+    backup_dir = data / "backups" / "rt-backup-20261019-120000"
+    backup_dir.mkdir(parents=True)
+    fake_window = Mock()
+    fake_window.create_file_dialog = Mock(return_value=None)
+    stream = Mock()
+    monkeypatch.setattr(window, "_stream_backup", stream)
+
+    api = window.DesktopApi(fake_window)
+    res = api.salva_copia_backup(str(backup_dir))
+    assert res == {"annullato": True}
+    assert stream.call_count == 0
+
+
+def test_desktop_api_salva_copia_backup_starts_stream(data, monkeypatch, webview):
+    backup_dir = data / "backups" / "rt-backup-20261019-120000"
+    backup_dir.mkdir(parents=True)
+    fake_window = Mock()
+    fake_window.create_file_dialog = Mock(return_value=["/chiavetta/copia"])
+    stream = Mock()
+    monkeypatch.setattr(window, "_stream_backup", stream)
+
+    api = window.DesktopApi(fake_window)
+    res = api.salva_copia_backup(str(backup_dir))
+    assert res == {"avviato": True}
+    assert stream.call_count == 1
+    args, kwargs = stream.call_args
+    assert kwargs.get("tipo") == "copia"
+    assert "/chiavetta/copia.zip" in args[1]
+

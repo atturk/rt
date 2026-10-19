@@ -113,7 +113,8 @@ def _folder_lessons(db) -> List[str]:
 # ---------------------------------------------------------------- backup
 
 def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print,
-                  allow_missing: bool = False) -> BackupResult:
+                  allow_missing: bool = False,
+                  progress: Optional[Callable[[str, int, int], None]] = None) -> BackupResult:
     from rt.db.engine import require_database, sqlite_file
     from rt.storage import fs
 
@@ -135,6 +136,8 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
     result = BackupResult(path=snap, missing=missing)
     try:
         # 1. database
+        if progress:
+            progress("database", 0, 1)
         db_file = sqlite_file(db.url)
         if db_file:
             from rt.services.data_service import sqlite_copy
@@ -146,13 +149,21 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
         else:
             raise BackupError(f"Backup non supportato per il database {db.engine.dialect.name}.")
         say(f"🗄  Database salvato ({db_entry}).")
+        if progress:
+            progress("database", 1, 1)
 
         # 2. media, incrementale per hash
         entries = []
         on_disk = _walk_media(media_dir)
-        for rel in sorted(set(inventory) | set(on_disk)):
+        media_candidates = sorted(set(inventory) | set(on_disk))
+        total_media = len(media_candidates)
+        if total_media == 0 and progress:
+            progress("media", 0, 0)
+        for i, rel in enumerate(media_candidates, 1):
             src = os.path.join(media_dir, rel)
             if not os.path.isfile(src):
+                if progress:
+                    progress("media", i, total_media)
                 continue
             sha = str(inventory.get(rel, {}).get("sha256") or "") or sha256_file(src)
             size = os.path.getsize(src)
@@ -162,6 +173,8 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
                 result.media_copied += 1
                 result.bytes_copied += size
             entries.append({"path": rel, "sha256": sha, "size": size, "referenced": rel in inventory})
+            if progress:
+                progress("media", i, total_media)
         result.media_total = len(entries)
         say(f"🎧 Media: {result.media_total} file, {result.media_copied} nuovi copiati "
             f"({result.bytes_copied / 1_048_576:.1f} MB).")
@@ -179,6 +192,8 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
         if os.path.isdir(state_dir):
             shutil.copytree(state_dir, os.path.join(tmp_snap, "telegram-state"))
         say("⚙️  Configurazione e segreti cifrati salvati.")
+        if progress:
+            progress("config", 1, 1)
 
         from rt.core.version import get_current_version
         manifest = {
@@ -203,6 +218,80 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
     result.folder_lessons = _folder_lessons(db)
     result.master_key_warning = master_key_warning()
     return result
+
+
+def export_backup(snapshot: str, target_zip: str,
+                  progress: Optional[Callable[[str, int, int], None]] = None) -> str:
+    import zipfile
+    snap = resolve_snapshot(snapshot)
+    if not os.path.isdir(snap):
+        raise BackupError(f"Lo snapshot {snap} non è una cartella di backup valida.")
+    manifest_path = os.path.join(snap, MANIFEST)
+    if not os.path.isfile(manifest_path):
+        raise BackupError(f"Manifest mancante in {snap}.")
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    store_root = os.path.dirname(snap)
+    absent = [e["path"] for e in manifest.get("media") or []
+              if not os.path.isfile(_store_path(store_root, e["sha256"]))]
+    if absent:
+        store = os.path.join(store_root, STORE)
+        where = (f"manca la cartella {store}" if not os.path.isdir(store)
+                 else f"in {store} mancano {len(absent)} media su {len(manifest.get('media') or [])}")
+        raise BackupError(f"Backup incompleto: {where} (es. {absent[0]}).")
+
+    target_zip = os.path.abspath(os.path.expanduser(target_zip))
+    if not target_zip.lower().endswith(".zip"):
+        target_zip += ".zip"
+    os.makedirs(os.path.dirname(target_zip), exist_ok=True)
+    part_file = target_zip + ".part"
+
+    snap_base = os.path.basename(snap)
+    files_to_pack: List[tuple[str, str, int]] = []
+    for root, _dirs, files in os.walk(snap):
+        for f in sorted(files):
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, snap).replace(os.sep, "/")
+            arcname = f"{snap_base}/{rel}"
+            files_to_pack.append((full, arcname, os.path.getsize(full)))
+
+    seen_sha = set()
+    for entry in manifest.get("media") or []:
+        sha = entry["sha256"]
+        if sha in seen_sha:
+            continue
+        seen_sha.add(sha)
+        media_full = _store_path(store_root, sha)
+        media_arcname = f"{STORE}/{sha[:2]}/{sha}"
+        files_to_pack.append((media_full, media_arcname, os.path.getsize(media_full)))
+
+    total_bytes = sum(sz for _, _, sz in files_to_pack)
+    bytes_written = 0
+    if progress:
+        progress("copia", 0, total_bytes)
+
+    try:
+        with zipfile.ZipFile(part_file, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
+            for full, arcname, _size in files_to_pack:
+                with open(full, "rb") as src_f, zf.open(arcname, "w") as dst_f:
+                    while True:
+                        chunk = src_f.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        dst_f.write(chunk)
+                        bytes_written += len(chunk)
+                        if progress:
+                            progress("copia", bytes_written, total_bytes)
+        os.replace(part_file, target_zip)
+    except Exception:
+        if os.path.exists(part_file):
+            try:
+                os.remove(part_file)
+            except OSError:
+                pass
+        raise
+    return target_zip
 
 
 def _walk_media(media_dir: str) -> List[str]:
@@ -257,8 +346,10 @@ def list_backups(dest: Optional[str] = None) -> List[Dict[str, object]]:
 # ---------------------------------------------------------------- ripristino
 
 def resolve_snapshot(path: str) -> str:
-    """Accetta una cartella rt-backup-* o la cartella dei backup (prende il più recente)."""
+    """Accetta una cartella rt-backup-*, un file .zip o la cartella dei backup (prende il più recente)."""
     path = os.path.abspath(os.path.expanduser(path))
+    if os.path.isfile(path) and path.lower().endswith(".zip"):
+        return path
     if os.path.isfile(os.path.join(path, MANIFEST)):
         return path
     found = list_backups(path)
@@ -270,88 +361,115 @@ def resolve_snapshot(path: str) -> str:
 def restore_backup(source: str, say: Callable[[str], None] = print, check_services: bool = True) -> str:
     """Ripristina un backup nella cartella dati attiva. DB, config e .env attuali vengono
     prima spostati in <dati>/backups/prima-del-ripristino-<data>. Restituisce quella cartella."""
+    import zipfile
     from rt.db.engine import current_database_url, reset_database_cache, sqlite_file
+
     snap = resolve_snapshot(source)
-    with open(os.path.join(snap, MANIFEST), encoding="utf-8") as f:
-        manifest = json.load(f)
-    if int(manifest.get("format", 0)) > FORMAT:
-        raise BackupError("Il backup viene da una versione di RT più recente: aggiorna RT prima.")
-    store_root = os.path.dirname(snap)
-    absent = [e["path"] for e in manifest.get("media") or []
-              if not os.path.isfile(_store_path(store_root, e["sha256"]))]
-    if absent:
-        store = os.path.join(store_root, STORE)
-        where = (f"manca la cartella {store}" if not os.path.isdir(store)
-                 else f"in {store} mancano {len(absent)} media su {len(manifest.get('media') or [])}")
-        raise BackupError(f"Backup incompleto: {where} (es. {absent[0]}). I media stanno in {STORE}/, "
-                          f"accanto a {os.path.basename(snap)}: se hai copiato il backup da un altro disco, "
-                          f"copia tutta la cartella che li contiene entrambi. Nulla è stato modificato.")
-    if check_services:
-        from rt.services.data_service import running_services
-        busy = running_services()
-        if busy:
-            raise BackupError("Prima del ripristino ferma " + ", ".join(busy) + " ('rt service stop').")
+    tmp_restore: Optional[str] = None
+    try:
+        if os.path.isfile(snap) and (snap.lower().endswith(".zip") or zipfile.is_zipfile(snap)):
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            tmp_restore = os.path.join(paths.data_dir(), "backups", f"tmp-restore-{stamp}-{os.getpid()}")
+            os.makedirs(tmp_restore, exist_ok=True)
+            with zipfile.ZipFile(snap, "r") as zf:
+                for member in zf.infolist():
+                    name = member.filename
+                    p = name.replace("\\", "/")
+                    parts = [part for part in p.split("/") if part]
+                    if p.startswith("/") or ":" in p or ".." in parts:
+                        raise BackupError(f"Percorso non sicuro nell'archivio di backup: {name}")
+                zf.extractall(tmp_restore)
 
-    data = paths.data_dir()
-    url = current_database_url()
-    db_file = sqlite_file(url) if url else None
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    aside = os.path.join(data, "backups", f"prima-del-ripristino-{stamp}")
-    os.makedirs(aside, exist_ok=True)
+            candidate_dirs = [d for d in os.listdir(tmp_restore)
+                              if d.startswith(BACKUP_PREFIX) and os.path.isdir(os.path.join(tmp_restore, d))]
+            if not candidate_dirs or not os.path.isfile(os.path.join(tmp_restore, candidate_dirs[0], MANIFEST)):
+                raise BackupError(f"Nessun backup valido nello zip {os.path.basename(snap)}.")
+            snap = os.path.join(tmp_restore, candidate_dirs[0])
 
-    # 1. database
-    if manifest["database"] == "rt.db":
-        if not db_file:
-            raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database.")
-        reset_database_cache()  # su Windows un file SQLite aperto non si può spostare
-        for suffix in ("", "-wal", "-shm"):
-            if os.path.exists(db_file + suffix):
-                shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))
-        os.makedirs(os.path.dirname(db_file), exist_ok=True)
-        shutil.copy2(os.path.join(snap, "rt.db"), db_file)
-    else:
-        _pg_restore(url, os.path.join(snap, "rt.pgdump"))
-    reset_database_cache()
-    say("🗄  Database ripristinato.")
+        with open(os.path.join(snap, MANIFEST), encoding="utf-8") as f:
+            manifest = json.load(f)
+        if int(manifest.get("format", 0)) > FORMAT:
+            raise BackupError("Il backup viene da una versione di RT più recente: aggiorna RT prima.")
+        store_root = os.path.dirname(snap)
+        absent = [e["path"] for e in manifest.get("media") or []
+                  if not os.path.isfile(_store_path(store_root, e["sha256"]))]
+        if absent:
+            store = os.path.join(store_root, STORE)
+            where = (f"manca la cartella {store}" if not os.path.isdir(store)
+                     else f"in {store} mancano {len(absent)} media su {len(manifest.get('media') or [])}")
+            raise BackupError(f"Backup incompleto: {where} (es. {absent[0]}). I media stanno in {STORE}/, "
+                              f"accanto a {os.path.basename(snap)}: se hai copiato il backup da un altro disco, "
+                              f"copia tutta la cartella che li contiene entrambi, oppure usa lo zip salvato con "
+                              f"«Salva una copia». Nulla è stato modificato.")
+        if check_services:
+            from rt.services.data_service import running_services
+            busy = running_services()
+            if busy:
+                raise BackupError("Prima del ripristino ferma " + ", ".join(busy) + " ('rt service stop').")
 
-    # 2. configurazione e .env
-    home = paths.config_home()
-    if os.path.isdir(os.path.join(snap, "config")):
-        current = os.path.join(home, "config")
-        if os.path.isdir(current):
-            shutil.move(current, os.path.join(aside, "config"))
-        shutil.copytree(os.path.join(snap, "config"), current)
-    if os.path.isfile(os.path.join(snap, "env")):
-        current_env = os.path.join(home, ".env")
-        if os.path.isfile(current_env):
-            shutil.move(current_env, os.path.join(aside, "env"))
-        shutil.copy2(os.path.join(snap, "env"), current_env)
-    if os.path.isdir(os.path.join(snap, "telegram-state")):
-        from rt.core.config import load_config
-        state_dir = load_config().telegram.state_dir
-        if os.path.isdir(state_dir):
-            shutil.move(state_dir, os.path.join(aside, "telegram-state"))
-        shutil.copytree(os.path.join(snap, "telegram-state"), state_dir)
-    say("⚙️  Configurazione ripristinata.")
+        data = paths.data_dir()
+        url = current_database_url()
+        db_file = sqlite_file(url) if url else None
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        aside = os.path.join(data, "backups", f"prima-del-ripristino-{stamp}")
+        os.makedirs(aside, exist_ok=True)
 
-    # 3. media: si copiano solo quelli mancanti o diversi
-    from rt.db.engine import require_database
-    from rt.storage import fs
-    db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
-    media_dir = fs.media_dir(db)
-    copied = 0
-    for entry in manifest.get("media") or []:
-        target = os.path.join(media_dir, entry["path"])
-        if os.path.isfile(target) and os.path.getsize(target) == entry["size"] and sha256_file(target) == entry["sha256"]:
-            continue
-        _copy_atomic(_store_path(store_root, entry["sha256"]), target)
-        copied += 1
-    say(f"🎧 Media ripristinati: {copied} copiati, {len(manifest.get('media') or []) - copied} già presenti.")
-    problems = verify_media(db, media_dir)
-    if problems:
-        say(f"⚠️  {len(problems)} media referenziati mancano ancora (es. {problems[0]}).")
-    say(f"📦 I dati sostituiti sono in {aside}.")
-    return aside
+        # 1. database
+        if manifest["database"] == "rt.db":
+            if not db_file:
+                raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database.")
+            reset_database_cache()  # su Windows un file SQLite aperto non si può spostare
+            for suffix in ("", "-wal", "-shm"):
+                if os.path.exists(db_file + suffix):
+                    shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))
+            os.makedirs(os.path.dirname(db_file), exist_ok=True)
+            shutil.copy2(os.path.join(snap, "rt.db"), db_file)
+        else:
+            _pg_restore(url, os.path.join(snap, "rt.pgdump"))
+        reset_database_cache()
+        say("🗄  Database ripristinato.")
+
+        # 2. configurazione e .env
+        home = paths.config_home()
+        if os.path.isdir(os.path.join(snap, "config")):
+            current = os.path.join(home, "config")
+            if os.path.isdir(current):
+                shutil.move(current, os.path.join(aside, "config"))
+            shutil.copytree(os.path.join(snap, "config"), current)
+        if os.path.isfile(os.path.join(snap, "env")):
+            current_env = os.path.join(home, ".env")
+            if os.path.isfile(current_env):
+                shutil.move(current_env, os.path.join(aside, "env"))
+            shutil.copy2(os.path.join(snap, "env"), current_env)
+        if os.path.isdir(os.path.join(snap, "telegram-state")):
+            from rt.core.config import load_config
+            state_dir = load_config().telegram.state_dir
+            if os.path.isdir(state_dir):
+                shutil.move(state_dir, os.path.join(aside, "telegram-state"))
+            shutil.copytree(os.path.join(snap, "telegram-state"), state_dir)
+        say("⚙️  Configurazione ripristinata.")
+
+        # 3. media: si copiano solo quelli mancanti o diversi
+        from rt.db.engine import require_database
+        from rt.storage import fs
+        db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
+        media_dir = fs.media_dir(db)
+        copied = 0
+        for entry in manifest.get("media") or []:
+            target = os.path.join(media_dir, entry["path"])
+            if os.path.isfile(target) and os.path.getsize(target) == entry["size"] and sha256_file(target) == entry["sha256"]:
+                continue
+            _copy_atomic(_store_path(store_root, entry["sha256"]), target)
+            copied += 1
+        say(f"🎧 Media ripristinati: {copied} copiati, {len(manifest.get('media') or []) - copied} già presenti.")
+        problems = verify_media(db, media_dir)
+        if problems:
+            say(f"⚠️  {len(problems)} media referenziati mancano ancora (es. {problems[0]}).")
+        say(f"📦 I dati sostituiti sono in {aside}.")
+        return aside
+    finally:
+        if tmp_restore and os.path.exists(tmp_restore):
+            shutil.rmtree(tmp_restore, ignore_errors=True)
 
 
 def _pg_restore(url: str, dump: str) -> None:
