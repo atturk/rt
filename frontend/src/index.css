@@ -298,6 +298,30 @@
   margin-left: 8px;
   vertical-align: 1px;
 }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity .12s;
+}
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts:hover,
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts:focus-within { opacity: 1; }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--size-meta) * 1.5 + 2px);
+  width: 23px;
+  border-radius: 8px;
+  color: var(--mute);
+}
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a:hover { color: var(--fg); }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts svg { width: 13px; height: 13px; }
+@media (hover: none) { :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts { opacity: 1; } }
+@media print { :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts { display: none; } }
+.rt-lesson-editor .rt-editor-shortcuts { margin-left: 6px; vertical-align: middle; }
 .rt-document .rt-relevance-tag {
   border-radius: 8px;
   background: var(--soft);

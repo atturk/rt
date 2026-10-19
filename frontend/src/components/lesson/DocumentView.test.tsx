@@ -1,10 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
 import { AudioProvider } from './audio'
 import { DocumentView } from './DocumentView'
+import { unmountDomTooltip } from '@/components/ui/dom-tooltip'
+
+vi.mock('@/components/ui/dom-tooltip', () => ({ mountDomTooltip: vi.fn(), unmountDomTooltip: vi.fn() }))
+
+function CurrentLocation() {
+  const location = useLocation()
+  return <output data-testid="document-location">{location.pathname + location.search}</output>
+}
 
 const doc = {
   final: false, pending: false,
@@ -14,6 +22,33 @@ const doc = {
 }
 
 describe('DocumentView', () => {
+  it('link di Studio e ripasso anche senza timestamp, niente link organizzativi o duplicati, cleanup completo', () => {
+    const document = { ...doc, html: doc.html + '<h3 data-unit-id="1.3">Organizzazione</h3>', sections: [
+      { unit_id: '1.1', title: 'Primo', start_segment_id: 'seg_1', end_segment_id: 'seg_2', start_seconds: 0, end_seconds: 60, start_formatted: '00:00' },
+      { unit_id: '1.2', title: 'Secondo', start_segment_id: 'seg_3', end_segment_id: 'seg_4', start_seconds: null, end_seconds: null },
+      { unit_id: '1.3', title: 'Organizzazione', start_segment_id: 'seg_5', end_segment_id: 'seg_5', start_seconds: null, end_seconds: null, relevance: 'organizational' as const },
+    ] }
+    const client = new QueryClient()
+    const tree = (hasAudio: boolean) => <QueryClientProvider client={client}><MemoryRouter initialEntries={['/lezioni/7']}>
+      <CurrentLocation /><AudioProvider><DocumentView document={document} hasAudio={hasAudio} lessonId={7} /></AudioProvider>
+    </MemoryRouter></QueryClientProvider>
+    const view = render(tree(false))
+    for (const unit of ['1.1', '1.2']) {
+      expect(screen.getByRole('link', { name: `Studia l'unità ${unit}` })).toHaveAttribute('href', `/studio/lezione/7?unita=${unit}`)
+      expect(screen.getByRole('link', { name: `Ripassa l'unità ${unit}` })).toHaveAttribute('href', `/studio/lezione/7?unita=${unit}&azione=ripasso`)
+    }
+    expect(screen.queryByRole('link', { name: /l'unità 1.3/ })).not.toBeInTheDocument()
+    const oldLinks = screen.getAllByRole('link')
+    view.rerender(tree(true))
+    expect(screen.getAllByRole('link')).toHaveLength(4)
+    for (const link of oldLinks) expect(unmountDomTooltip).toHaveBeenCalledWith(link)
+    fireEvent.click(screen.getByRole('link', { name: "Studia l'unità 1.2" }))
+    expect(screen.getByTestId('document-location')).toHaveTextContent('/studio/lezione/7?unita=1.2')
+    const remaining = screen.getAllByRole('link')
+    view.unmount()
+    for (const link of remaining) expect(unmountDomTooltip).toHaveBeenCalledWith(link)
+  })
+
   it('il link "Vai all\'unità" (#unit-<id>) porta in vista e segna quell\'unità', () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
