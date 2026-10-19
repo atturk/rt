@@ -30,7 +30,11 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
     await expect(li).toHaveAttribute('data-status', row.status)
   }
   expect(detail.outline_approved).toBe(true)
-  await expect(page.getByTestId('validation-outline')).toContainText('valida')
+  await expect(page.getByTestId('validation-outline')).toHaveAccessibleName('Scaletta valida')
+  await page.getByTestId('validation-outline').click()
+  await expect(page.getByRole('dialog', { name: 'Scaletta valida' })).toContainText('Segmenti')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('validation-outline')).toHaveAttribute('aria-expanded', 'false')
   await page.getByTestId('details-panel').getByRole('button', { name: /^dettaglio/ }).click()
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 
@@ -239,4 +243,30 @@ test('sezioni richiudibili: la freccia accanto al titolo chiude e riapre la sezi
   if (process.env.RT_E2E_SHOT) await page.screenshot({ path: `${process.env.RT_E2E_SHOT}/fold-closed.png` })
   await placeholder.click()
   await expect(placeholder).toHaveCount(0)
+})
+
+
+test('Fasi a icone: conferme delle due riesecuzioni anche sul telefono', async ({ page }) => {
+  await loginViaLink(page)
+  const id = await lessonId(page, 'BIOCHIMICA')
+  await page.goto(`/lezioni/${id}`)
+  const panel = await openLessonDetails(page)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    const phases = panel.getByTestId('phase-panel')
+    await expect(phases.getByRole('button', { name: 'Esegui la pipeline' })).toBeVisible()
+    await expect(phases.getByText('Pipeline completa')).toHaveCount(0)
+    await phases.getByRole('button', { name: 'Riesegui tutte le fasi' }).click()
+    const force = page.getByRole('dialog', { name: 'Rifare tutte le fasi?' })
+    await expect(force).toBeVisible()
+    await expect(force).toContainText("con il loro costo")
+    await force.getByRole('button', { name: 'Annulla' }).click()
+    const fromSources = phases.getByRole('button', { name: 'Riesegui tutto da capo' })
+    await expect(fromSources).not.toHaveAttribute('aria-disabled', 'true')
+    await fromSources.click()
+    const restart = page.getByRole('dialog', { name: 'Rieseguire tutto da capo?' })
+    await expect(restart).toBeVisible()
+    await expect(restart).toContainText('note di studio')
+    await restart.getByRole('button', { name: 'Annulla' }).click()
+  }
 })

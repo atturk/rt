@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   Calendar as CalendarIcon,
   CalendarRange,
+  CalendarDays,
   CalendarSync,
   Check,
   ChevronLeft,
@@ -14,6 +15,7 @@ import {
 
 import {
   useCalendarWeek,
+  useCalendarTemplate,
   useCreateOverride,
   useCreateTemplateEntry,
   useDeleteOverride,
@@ -39,6 +41,8 @@ import {
 } from '@/components/calendar/CalendarPopups'
 import { CalendarWeekGrid } from '@/components/calendar/CalendarWeekGrid'
 import { CalendarDayList } from '@/components/calendar/CalendarDayList'
+import { WeekRangePopup } from '@/components/calendar/WeekRangePopup'
+import { weekRangeLabel, type WeekRange } from '@/components/calendar/weekRange'
 
 // Date in ora locale: toISOString() passa per UTC e sbaglia giorno vicino a mezzanotte e al cambio d'ora.
 function toLocalIso(d: Date): string {
@@ -72,7 +76,9 @@ export function CalendarPage() {
   const isPhone = useIsPhone()
   const [currentDate, setCurrentDate] = useState(getTodayIso)
   const [desktopView, setDesktopView] = useState<'week' | 'day'>('week')
-  const [editing, setEditing] = useState<'week' | 'tpl' | null>(null)
+  const [editing, setEditing] = useState<'week' | 'tpl' | 'range' | null>(null)
+  const [rangeEdit, setRangeEdit] = useState<WeekRange | null>(null)
+  const [rangeAnchor, setRangeAnchor] = useState<PopupAnchor | null>(null)
 
   // Popups state: dell'ora si tiene solo la chiave, i dati si leggono sempre dalla settimana aggiornata
   const [activeEventRef, setActiveEvent] = useState<{
@@ -96,6 +102,7 @@ export function CalendarPage() {
 
   // API queries & mutations
   const weekQuery = useCalendarWeek(currentDate)
+  const templateQuery = useCalendarTemplate()
   const createTpl = useCreateTemplateEntry()
   const deleteTpl = useDeleteTemplateEntry()
   const createOv = useCreateOverride()
@@ -106,6 +113,9 @@ export function CalendarPage() {
 
   const week = weekQuery.data
   const days = week?.days ?? []
+  const outsideRange = editing === 'range' && (!rangeEdit || !week || week.start_date < rangeEdit.from || week.start_date >= rangeEdit.to)
+  const gridEditing = outsideRange ? null : editing
+  const templateDates: { from: string; to?: string } | null = editing === 'range' ? rangeEdit : week ? { from: week.start_date } : null
   const liveEvent = activeEventRef
     ? days
         .flatMap((d) => d.events)
@@ -122,6 +132,7 @@ export function CalendarPage() {
   const dayMode = isPhone || desktopView === 'day'
 
   function closeAllPopups() {
+    setRangeAnchor(null)
     setActiveEvent(null)
     setActiveDayMenu(null)
     setInfoAnchor(null)
@@ -145,6 +156,7 @@ export function CalendarPage() {
   }
 
   function handleRemoveEvent(ev: CalendarEventView) {
+    if (outsideRange) return
     if (editing === 'week') {
       if (ev.override_id) {
         deleteOv.mutate(ev.override_id)
@@ -155,10 +167,10 @@ export function CalendarPage() {
           template_entry_id: ev.template_entry_id,
         })
       }
-    } else if (editing === 'tpl') {
+    } else if (editing === 'tpl' || editing === 'range') {
       if (ev.template_entry_id) {
-        // Da questa settimana in poi: le settimane prima conservano l'ora, i suoi stati e le note.
-        deleteTpl.mutate({ id: ev.template_entry_id, from: week?.start_date })
+        // Si applica solo alla validità scelta; gli stati prima e dopo restano conservati.
+        deleteTpl.mutate({ id: ev.template_entry_id, ...templateDates })
       } else if (ev.override_id) {
         deleteOv.mutate(ev.override_id)
       }
@@ -168,7 +180,7 @@ export function CalendarPage() {
   // Modifica di un'ora: si crea la versione nuova e poi si toglie la vecchia, così un errore a metà
   // non fa sparire l'ora.
   async function handleEditEvent(ev: CalendarEventView, data: EventFormValues) {
-    if (!week) return
+    if (!week || outsideRange) return
     const unchanged =
       data.materia === ev.materia &&
       data.startTime === ev.start_time &&
@@ -182,14 +194,22 @@ export function CalendarPage() {
       docente: data.docente,
     }
     try {
-      if (editing === 'tpl' && ev.template_entry_id) {
-        // Da questa settimana in poi: le settimane prima conservano l'ora com'era.
+      if ((editing === 'tpl' || editing === 'range') && ev.template_entry_id) {
+        // La nuova ora vale nelle date scelte, ma solo dove valeva la vecchia; poi si toglie
+        // la versione precedente.
+        const old = templateQuery.data?.find(t => t.id === ev.template_entry_id)
+        const chosenFrom = templateDates?.from ?? week.start_date
+        const from = old?.valid_from && old.valid_from > chosenFrom ? old.valid_from : chosenFrom
+        const ends = [templateDates?.to, old?.valid_to].filter((d): d is string => !!d).sort()
+        const to = ends[0]
+        if (to && to <= from) return
         await createTpl.mutateAsync({
           ...fields,
           day_of_week: ev.day_of_week,
-          valid_from: week.start_date,
+          valid_from: from,
+          ...(to ? { valid_to: to } : {}),
         })
-        await deleteTpl.mutateAsync({ id: ev.template_entry_id, from: week.start_date })
+        await deleteTpl.mutateAsync({ id: ev.template_entry_id, ...templateDates })
       } else if (ev.template_entry_id) {
         // Solo questa settimana: una modifica puntuale dell'ora della settimana tipo, che
         // sostituisce quella eventualmente già presente per lo stesso giorno.
@@ -211,6 +231,18 @@ export function CalendarPage() {
     }
   }
 
+  function openRange(event: React.MouseEvent<HTMLButtonElement>) {
+    closeAllPopups()
+    const rect = event.currentTarget.getBoundingClientRect()
+    setRangeAnchor({ x: rect.left, y: rect.bottom, width: rect.width, height: rect.height })
+  }
+
+  function beginEditing(mode: 'week' | 'tpl') {
+    closeAllPopups()
+    setEditing(mode)
+    setRangeEdit(null)
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header barra calendario */}
@@ -224,12 +256,15 @@ export function CalendarPage() {
           onClick={handlePrev}
         />
 
-        <span
-          data-testid="calendar-week-label"
-          className="min-w-[130px] sm:min-w-[160px] text-center font-mono text-sm font-semibold text-foreground"
-        >
-          {week?.label || 'Caricamento…'}
-        </span>
+        <div className="min-w-[130px] sm:min-w-[160px] text-center">
+          <span data-testid="calendar-week-label" className="font-mono text-sm font-semibold text-foreground">
+            {week?.label || 'Caricamento…'}
+          </span>
+          {editing === 'range' && rangeEdit && <button type="button" onClick={openRange}
+            className="mx-auto block max-w-40 truncate rounded-full bg-muted px-2 text-[10px]" aria-label="Cambia intervallo di settimane">
+            {weekRangeLabel(rangeEdit)}
+          </button>}
+        </div>
 
         <IconButton
           label={dayMode ? 'Giorno successivo' : 'Settimana successiva'}
@@ -258,7 +293,7 @@ export function CalendarPage() {
           }}
         />
 
-        {/* Matita di modifica orario che si divide in due icone */}
+        {/* Matita con le tre modalità di modifica dell'orario */}
         {!isPhone && (
           <div
             className={`group flex items-center rounded-lg transition-colors focus-within:bg-muted ${
@@ -280,26 +315,21 @@ export function CalendarPage() {
                   )}
                 </Tooltip>
 
-                {/* All'hover/focus compaiono le due opzioni di modifica */}
+                {/* All'hover/focus compaiono le opzioni di modifica */}
                 <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5 animate-in fade-in">
                   <IconButton
                     label="Modifica solo questa settimana"
                     icon={CalendarRange}
                     side="bottom"
-                    onClick={() => {
-                      closeAllPopups()
-                      setEditing('week')
-                    }}
+                    onClick={() => beginEditing('week')}
                   />
                   <IconButton
                     label="Modifica la settimana tipo, da questa settimana in poi"
                     icon={CalendarSync}
                     side="bottom"
-                    onClick={() => {
-                      closeAllPopups()
-                      setEditing('tpl')
-                    }}
+                    onClick={() => beginEditing('tpl')}
                   />
+                  <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} side="bottom" onClick={openRange} />
                 </div>
               </>
             ) : (
@@ -310,7 +340,7 @@ export function CalendarPage() {
                   side="bottom"
                   active={editing === 'week'}
                   className={editing === 'week' ? 'bg-primary text-primary-foreground' : undefined}
-                  onClick={() => setEditing('week')}
+                  onClick={() => beginEditing('week')}
                 />
                 <IconButton
                   label="Modifica la settimana tipo, da questa settimana in poi"
@@ -318,8 +348,9 @@ export function CalendarPage() {
                   side="bottom"
                   active={editing === 'tpl'}
                   className={editing === 'tpl' ? 'bg-primary text-primary-foreground' : undefined}
-                  onClick={() => setEditing('tpl')}
+                  onClick={() => beginEditing('tpl')}
                 />
+                <IconButton label="Modifica la settimana tipo in un intervallo di settimane" icon={CalendarDays} side="bottom" active={editing === 'range'} onClick={openRange} />
                 <IconButton
                   label="Fatto"
                   icon={Check}
@@ -328,6 +359,7 @@ export function CalendarPage() {
                   onClick={() => {
                     closeAllPopups()
                     setEditing(null)
+                    setRangeEdit(null)
                   }}
                 />
               </div>
@@ -356,6 +388,7 @@ export function CalendarPage() {
         )}
       </header>
 
+      {outsideRange && <div className="border-b px-4 py-1 text-xs text-muted-foreground" role="status">Fuori dall'intervallo scelto</div>}
       {/* Corpo del calendario */}
       <div className="flex flex-1 min-h-0 overflow-auto">
         {weekQuery.isPending && (
@@ -373,13 +406,16 @@ export function CalendarPage() {
         {week && !isPhone && desktopView === 'week' && (
           <CalendarWeekGrid
             days={days}
-            editing={editing}
+            editing={gridEditing}
+            readOnly={outsideRange}
             selectedEventKey={activeEvent?.event.key ?? null}
             onOpenEvent={(event, anchor) => {
+              if (outsideRange) return
               closeAllPopups()
               setActiveEvent({ event, anchor })
             }}
             onOpenDayMenu={(day, anchor) => {
+              if (outsideRange) return
               closeAllPopups()
               setActiveDayMenu({ day, anchor })
             }}
@@ -399,11 +435,13 @@ export function CalendarPage() {
           <CalendarDayList
             days={days}
             selectedDayIndex={selectedDayIndex}
+            readOnly={outsideRange}
             onSelectDayIndex={(i) => {
               closeAllPopups()
               if (days[i]) setCurrentDate(days[i].date)
             }}
             onOpenEvent={(event, anchor) => {
+              if (outsideRange) return
               closeAllPopups()
               setActiveEvent({ event, anchor })
             }}
@@ -412,6 +450,11 @@ export function CalendarPage() {
       </div>
 
       {/* Popups */}
+      {rangeAnchor && <WeekRangePopup anchor={rangeAnchor} currentDate={currentDate} entries={templateQuery.data ?? []} initial={rangeEdit}
+        onClose={() => setRangeAnchor(null)} onConfirm={range => {
+          closeAllPopups(); setRangeEdit(range); setEditing('range'); setCurrentDate(range.from)
+        }} />}
+
       {activeEvent && (
         <EventPopup
           event={activeEvent.event}
@@ -464,6 +507,7 @@ export function CalendarPage() {
       {infoAnchor && week && (
         <WeekInfoPopup
           weekLabel={week.label}
+          weekStart={week.start_date}
           weekNumber={week.week_number}
           summary={week.summary}
           anchor={infoAnchor}
@@ -471,9 +515,10 @@ export function CalendarPage() {
         />
       )}
 
-      {addSlot && editing && week && (
+      {addSlot && editing && week && !outsideRange && (
         <AddEventPopup
           scope={editing}
+          rangeLabel={rangeEdit ? weekRangeLabel(rangeEdit) : undefined}
           weekNumber={week.week_number}
           defaultStartTime={`${String(Math.floor(addSlot.hour)).padStart(2, '0')}:${String(
             Math.round((addSlot.hour - Math.floor(addSlot.hour)) * 60),
@@ -490,24 +535,26 @@ export function CalendarPage() {
                 materia,
                 docente,
               })
-            } else if (editing === 'tpl') {
+            } else if (editing === 'tpl' || editing === 'range') {
               createTpl.mutate({
                 day_of_week: addSlot.day.day_of_week,
                 start_time: startTime,
                 end_time: endTime,
                 materia,
                 docente,
-                valid_from: week.start_date,
+                valid_from: templateDates?.from ?? week.start_date,
+                ...(templateDates?.to ? { valid_to: templateDates.to } : {}),
               })
             }
           }}
         />
       )}
 
-      {editSlot && editing && week && (
+      {editSlot && editing && week && !outsideRange && (
         <AddEventPopup
           key={`${editSlot.event.date}-${editSlot.event.key}`}
           scope={editing}
+          rangeLabel={rangeEdit ? weekRangeLabel(rangeEdit) : undefined}
           weekNumber={week.week_number}
           initial={{
             materia: editSlot.event.materia,

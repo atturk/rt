@@ -578,3 +578,140 @@ def test_cancelled_hour_rejects_import_and_link(client, rt_db, tmp_path, whole_d
     for response in [linked, imported]:
         assert response.status_code == 422, response.text
         assert 'Ora annullata' in response.text
+
+
+def _range_template(rt_db, valid_from="2026-09-07", valid_to=None):
+    return calendar_service.create_template_entry(schemas.CalendarTemplateEntryCreate(
+        day_of_week=0, start_time="09:00", end_time="11:00", materia="Intervallo",
+        docente="Prof. Rossi", valid_from=valid_from, valid_to=valid_to,
+    ), db=rt_db)
+
+
+def _range_events(rt_db, date):
+    return calendar_service.get_week_view(date, db=rt_db).days[0].events
+
+
+def test_template_added_only_in_range(rt_db):
+    entry = _range_template(rt_db, "2026-10-12", "2026-10-26")
+    assert entry.valid_to == "2026-10-26"
+    assert not _range_events(rt_db, "2026-10-05")
+    assert [e.template_entry_id for e in _range_events(rt_db, "2026-10-12")] == [entry.id]
+    assert _range_events(rt_db, "2026-10-19")
+    assert not _range_events(rt_db, "2026-10-26")
+
+
+@pytest.mark.parametrize("start", ["2026-09-07", "2026-10-12", "2026-10-19"])
+@pytest.mark.parametrize("end", [None, "2026-11-09"])
+def test_template_range_preserves_future_data(rt_db, tmp_path, start, end):
+    from rt.db.models import CalendarEntryState, CalendarOverride
+    from rt.db.repositories import LessonRepository
+    from rt.db.session import session_scope
+
+    old = _range_template(rt_db, start, end)
+    key = f"tpl_{old.id}"
+    lesson_dir = tmp_path / "lezione"
+    lesson_dir.mkdir()
+    (lesson_dir / "info.yaml").write_text("titolo: 'Lezione collegata'\nmateria: 'Altro'\n", encoding="utf-8")
+    with session_scope(rt_db) as session:
+        lesson = LessonRepository(session).get_or_create(str(lesson_dir))
+        lesson.titolo = "Lezione collegata"
+        lesson_id = lesson.id
+    calendar_service.set_entry_state(schemas.CalendarEntryStateSet(
+        date="2026-10-26", entry_key=key, template_entry_id=old.id, note="Portare il libro",
+    ), db=rt_db)
+    calendar_service.link_lesson(schemas.CalendarLinkLessonRequest(
+        date="2026-10-26", entry_key=key, template_entry_id=old.id, lesson_id=lesson_id,
+    ), db=rt_db)
+    # Anche i vecchi stati scritti senza la chiave esterna devono seguire la nuova chiave.
+    calendar_service.set_entry_state(schemas.CalendarEntryStateSet(
+        date="2026-11-02", entry_key=key, status="saltare", note="Nota senza riferimento",
+    ), db=rt_db)
+    override = calendar_service.create_override(schemas.CalendarOverrideCreate(
+        date="2026-10-26", template_entry_id=old.id, action="modified",
+        start_time="10:00", end_time="12:00", materia="Intervallo", docente="Prof. Verdi",
+    ), db=rt_db)
+    calendar_service.delete_template_entry(old.id, from_date="2026-10-12", to_date="2026-10-26", db=rt_db)
+    entries = calendar_service.list_template_entries(db=rt_db)
+    continuation = next(e for e in entries if e.id != old.id)
+    assert (continuation.valid_from, continuation.valid_to) == ("2026-10-26", end)
+    assert (continuation.start_time, continuation.end_time, continuation.docente) == ("09:00", "11:00", "Prof. Rossi")
+    assert all(e.valid_to is None or e.valid_from < e.valid_to for e in entries)
+    assert not _range_events(rt_db, "2026-10-12")
+    assert not _range_events(rt_db, "2026-10-19")
+    after = _range_events(rt_db, "2026-10-26")[0]
+    assert after.key == f"tpl_{continuation.id}"
+    assert after.note == "Portare il libro" and after.status == "seguita"
+    assert after.lesson.id == lesson_id
+    assert after.is_modified and after.docente == "Prof. Verdi" and after.start_time == "10:00"
+    later = _range_events(rt_db, "2026-11-02")[0]
+    assert later.status == "saltare" and later.note == "Nota senza riferimento"
+    with session_scope(rt_db) as session:
+        assert session.get(CalendarOverride, override.id).template_entry_id == continuation.id
+        states = session.scalars(select(CalendarEntryState)).all()
+        assert all(s.template_entry_id == continuation.id and s.entry_key == f"tpl_{continuation.id}" for s in states)
+        assert next(s for s in states if s.date == "2026-10-26").manual_link
+    if start < "2026-10-12":
+        assert _range_events(rt_db, "2026-09-07")
+        assert next(e for e in entries if e.id == old.id).valid_to == "2026-10-12"
+    else:
+        assert all(e.id != old.id for e in entries)
+    if end:
+        assert not _range_events(rt_db, end)
+
+
+@pytest.mark.parametrize("cut_from,cut_to", [("2026-09-07", "2026-10-12"), ("2026-10-26", "2026-11-09")])
+def test_template_disjoint_range_is_noop(rt_db, cut_from, cut_to):
+    entry = _range_template(rt_db, "2026-10-12", "2026-10-26")
+    calendar_service.delete_template_entry(entry.id, from_date=cut_from, to_date=cut_to, db=rt_db)
+    assert calendar_service.list_template_entries(db=rt_db) == [entry]
+
+
+@pytest.mark.parametrize("cut_from,cut_to", [("2026-10-12", "2026-10-26"), ("2026-10-05", "2026-11-02")])
+def test_template_range_covering_whole_validity_leaves_nothing(rt_db, cut_from, cut_to):
+    entry = _range_template(rt_db, "2026-10-12", "2026-10-26")
+    calendar_service.delete_template_entry(entry.id, from_date=cut_from, to_date=cut_to, db=rt_db)
+    assert not calendar_service.list_template_entries(db=rt_db)
+
+
+@pytest.mark.parametrize("end", ["2026-10-12", "2026-10-05"])
+def test_template_api_rejects_invalid_range(client, end):
+    result = client.post("/api/v1/calendar/template", json={
+        "day_of_week": 0, "start_time": "09:00", "end_time": "11:00", "materia": "Intervallo",
+        "valid_from": "2026-10-12", "valid_to": end,
+    })
+    assert result.status_code in (400, 422)
+    assert result.json()["error"]["code"] == "invalid_date_range"
+
+
+def test_template_api_delete_requires_start_and_ordered_end(client):
+    result = client.post("/api/v1/calendar/template", json={
+        "day_of_week": 0, "start_time": "09:00", "end_time": "11:00", "materia": "Intervallo",
+        "valid_from": "2026-10-12", "valid_to": "2026-11-09",
+    })
+    assert result.status_code == 201
+    entry = result.json()
+    assert entry["valid_to"] == "2026-11-09"
+    for query in ["to=2026-10-26", "from=2026-10-26&to=2026-10-26", "from=2026-10-26&to=2026-10-19"]:
+        response = client.delete(f"/api/v1/calendar/template/{entry['id']}?{query}")
+        assert response.status_code in (400, 422)
+    assert client.delete(f"/api/v1/calendar/template/{entry['id']}?from=2026-10-19&to=2026-10-26").status_code == 204
+
+
+def test_template_range_failure_rolls_back_continuation_and_references(rt_db):
+    from sqlalchemy import event
+    from rt.db.models import CalendarTemplateEntry
+    old = _range_template(rt_db, "2026-10-12")
+    calendar_service.set_entry_state(schemas.CalendarEntryStateSet(
+        date="2026-10-26", entry_key=f"tpl_{old.id}", template_entry_id=old.id, note="Da conservare",
+    ), db=rt_db)
+    def fail_delete(_mapper, _connection, _target):
+        raise RuntimeError("Errore durante la modifica")
+    event.listen(CalendarTemplateEntry, "before_delete", fail_delete)
+    try:
+        with pytest.raises(RuntimeError, match="Errore durante"):
+            calendar_service.delete_template_entry(old.id, from_date="2026-10-12", to_date="2026-10-26", db=rt_db)
+    finally:
+        event.remove(CalendarTemplateEntry, "before_delete", fail_delete)
+    assert calendar_service.list_template_entries(db=rt_db) == [old]
+    after = _range_events(rt_db, "2026-10-26")[0]
+    assert after.key == f"tpl_{old.id}" and after.note == "Da conservare"

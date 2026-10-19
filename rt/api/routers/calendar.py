@@ -72,8 +72,11 @@ def delete_template_entry(
         alias="from",
         description="Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano",
     ),
+    to_date: Optional[str] = Query(
+        None, alias="to", description="Fine esclusa dell'intervallo (YYYY-MM-DD); richiede from",
+    ),
 ):
-    calendar_service.delete_template_entry(entry_id, from_date=from_date)
+    calendar_service.delete_template_entry(entry_id, from_date=from_date, to_date=to_date)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

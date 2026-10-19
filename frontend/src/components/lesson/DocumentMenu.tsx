@@ -66,6 +66,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
   const selectedBefore = useRef<Range | null | undefined>(undefined)
 
   const open = (event: MouseEvent) => {
+    if ((event.target as HTMLElement).closest('.rt-unit-shortcuts')) return
     if (event.altKey) {
       setMenu(null)
       return
@@ -110,6 +111,7 @@ export function DocumentMenu({ lessonId, unitIds, ready, locate, beforeReview, r
 
   return (
     <div ref={root} onContextMenu={open} onMouseDownCapture={(event) => {
+      if ((event.target as HTMLElement).closest('.rt-unit-shortcuts')) return
       if (event.altKey || !(event.button === 2 || (event.button === 0 && event.ctrlKey && macCtrlClick()))) return
       const article = root.current?.querySelector('article')
       if (!article?.contains(event.target as Node)) return

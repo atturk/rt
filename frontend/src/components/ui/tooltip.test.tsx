@@ -67,3 +67,18 @@ it('senza hover non si apre mai', () => {
   fireEvent.mouseEnter(one); fireEvent.focus(one); tick(1000)
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 })
+
+it('la nota immediata annulla il suggerimento annidato ancora in attesa', () => {
+  render(<Tooltip content="Ora">{parent => <button {...parent}>Blocco
+    <Tooltip content="Nota" delay={0} describe={false}>{child => <span {...child} data-testid="nota">Stato</span>}</Tooltip>
+  </button>}</Tooltip>)
+  const block = screen.getByRole('button'), note = screen.getByTestId('nota')
+  fireEvent.mouseEnter(block); tick(100); fireEvent.mouseEnter(note)
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Nota')
+  tick(1000)
+  expect(screen.getAllByRole('tooltip')).toHaveLength(1)
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Nota')
+  expect(note).not.toHaveAttribute('aria-describedby')
+  fireEvent.mouseLeave(note)
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+})

@@ -1,5 +1,39 @@
 # Novità di RT
 
+## 4.3.1 — 2026-10-19
+
+### Novità
+
+- L'app apre RT nella sua finestra, già autenticata, invece che nel browser. Chiudere la finestra lascia RT acceso in background; **Esci da RT** nel menu lo spegne. Il menu raccoglie aggiornamenti, cartella dati, registri, backup, diagnostica e **Apri nel browser**.
+- Su Windows sparisce la finestra nera del terminale: il server di RT gira nascosto.
+- Sul Mac con Apple Silicon, `rt -u` propone di passare all'app con un sì (anche con `rt app install`): lezioni, configurazione e chiavi restano in `~/.rt`, e i comandi `rt` della vecchia cartella passano all'app.
+- Studio: copiando un testo con formule si copia il LaTeX, come nella pagina della lezione. Durante la selezione le formule si mostrano in LaTeX, l'evidenziatore non le rompe più e Verifica e Chiedi ricevono la citazione esatta.
+- Fasi della lezione a sole icone: esegui la pipeline, riesegui tutti i passaggi oppure ricomincia da capo rileggendo anche le fonti (trascrizione e documenti). La validazione di scaletta e bozza è uno scudo sulla riga della fase.
+- Accanto all'orario di ogni unità due piccole icone portano allo Studio di quell'unità o alle sue domande; se non ci sono domande si apre la generazione. Sul computer compaiono passandoci sopra, sul telefono si vedono sempre.
+- Calendario: la settimana tipo si modifica anche per un intervallo di settimane, scelto da una griglia annuale che mostra le settimane già modificate (dal 2025 al 2035). Il riepilogo della settimana mostra l'anno.
+- Calendario: la nota di un'ora si legge passando sull'icona accanto all'orologio, e il riquadro di un'ora è più ordinato.
+
+### Correzioni
+
+- Cambiando la materia di una lezione si può scegliere qualunque materia, anche senza lezioni.
+- Tolta dai dettagli della lezione la riga Cartella.
+- La diagnostica dell'app trova macparakeet-cli installato con Homebrew.
+- Nel pannello Verifica e Chiedi dei dettagli le formule e la formattazione si vedono correttamente, e il pulsante per espandere la citazione è allineato.
+- Le evidenziazioni fatte prima dell'aggiornamento restano al loro posto anche vicino alle formule.
+- Le versioni di una lezione occupano meno spazio e ripristinarle non costringe a rileggere i materiali.
+- Modificare un'ora del calendario non la allunga alle settimane in cui non c'era.
+
+## 4.3.1b1 — 2026-10-17
+
+### Novità
+
+- Sul Mac con Apple Silicon, `rt -u` propone di passare all'app con un sì. Puoi farlo anche con `rt app install`: lezioni, configurazione e chiavi restano in `~/.rt`.
+- La vecchia cartella resta al suo posto, ma i suoi comandi `rt` passano all'app, anche per vedere la versione e aggiornare. Se l'app manca, RT avvisa e si ferma per proteggere i dati.
+- Se hai ancora un `rt web` acceso nel terminale, RT ti chiede di fermarlo prima del passaggio. Se usi una beta più recente dell'app, aspetta la prossima stabile per evitare di aprire i dati con una versione vecchia.
+- L'app apre RT nella sua finestra, già autenticata, invece che nel browser. Chiudere la finestra lascia RT acceso in background; **Esci da RT** nel menu lo spegne.
+- Il menu dell'app raccoglie aggiornamenti, cartella dati, registri, backup, diagnostica e **Apri nel browser**.
+- Su Windows sparisce la finestra nera del terminale: il server di RT gira nascosto.
+
 ## 4.3.0 — 2026-10-17
 
 ### Cambiamenti

@@ -10,7 +10,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from rt.services import calendar_models as schemas
@@ -139,10 +139,14 @@ def create_template_entry(
     if time_to_float(start_norm) >= time_to_float(end_norm):
         raise Invalid("invalid_time_range", "L'orario di inizio deve precedere la fine.")
 
+    valid_from = data.valid_from or "2000-01-01"
+    if data.valid_to is not None and data.valid_to <= valid_from:
+        raise Invalid("invalid_date_range", "La fine dell'intervallo deve seguire l'inizio.")
     database = db or get_database()
     with session_scope(database) as session:
         entry = CalendarTemplateEntry(
-            valid_from=data.valid_from or "2000-01-01",
+            valid_from=valid_from,
+            valid_to=data.valid_to,
             day_of_week=data.day_of_week,
             start_time=start_norm,
             end_time=end_norm,
@@ -156,6 +160,7 @@ def create_template_entry(
         return schemas.CalendarTemplateEntryView(
             id=entry.id,
             valid_from=entry.valid_from,
+            valid_to=entry.valid_to,
             day_of_week=entry.day_of_week,
             start_time=entry.start_time,
             end_time=entry.end_time,
@@ -165,20 +170,51 @@ def create_template_entry(
         )
 
 
-def delete_template_entry(entry_id: int, from_date: Optional[str] = None, db=None) -> None:
-    """Toglie un'ora dalla settimana tipo.
+def delete_template_entry(
+    entry_id: int, from_date: Optional[str] = None, to_date: Optional[str] = None, db=None
+) -> None:
+    """Toglie un'ora da una data in poi, oppure solo nell'intervallo [from_date, to_date).
 
-    Con from_date l'ora smette di valere da quella data: le settimane precedenti
-    la conservano insieme a stati, note e collegamenti. Si cancella davvero solo
-    se non era ancora mai valsa prima di from_date.
+    La continuazione conserva note, stati, lezioni collegate e modifiche future.
+    Senza date si cancella l'ora, come prima.
     """
     if from_date is not None:
         from_date = parse_date(from_date).isoformat()
+    if to_date is not None:
+        to_date = parse_date(to_date).isoformat()
+        if from_date is None or to_date <= from_date:
+            raise Invalid("invalid_date_range", "La fine dell'intervallo deve seguire l'inizio.")
     database = db or get_database()
     with session_scope(database) as session:
         entry = session.get(CalendarTemplateEntry, entry_id)
         if entry is None:
             raise NotFound("template_entry_not_found", f"Slot {entry_id} non trovato.")
+        if to_date is not None:
+            # Un intervallo disgiunto non deve creare doppioni o parti vuote.
+            if entry.valid_from >= to_date or (entry.valid_to is not None and entry.valid_to <= from_date):
+                return
+            if entry.valid_to is None or entry.valid_to > to_date:
+                continuation = CalendarTemplateEntry(
+                    valid_from=max(to_date, entry.valid_from), valid_to=entry.valid_to,
+                    day_of_week=entry.day_of_week, start_time=entry.start_time,
+                    end_time=entry.end_time, materia=entry.materia, docente=entry.docente,
+                )
+                session.add(continuation)
+                session.flush()
+                for override in session.scalars(select(CalendarOverride).where(
+                    CalendarOverride.template_entry_id == entry.id, CalendarOverride.date >= to_date,
+                )):
+                    override.template_entry_id = continuation.id
+                for state in session.scalars(select(CalendarEntryState).where(
+                    or_(CalendarEntryState.template_entry_id == entry.id,
+                        CalendarEntryState.entry_key == f"tpl_{entry.id}"),
+                    CalendarEntryState.date >= to_date,
+                )):
+                    state.template_entry_id = continuation.id
+                    if state.entry_key == f"tpl_{entry.id}":
+                        state.entry_key = f"tpl_{continuation.id}"
+                # Salva i riferimenti prima di un eventuale DELETE con CASCADE.
+                session.flush()
         if from_date is not None and entry.valid_from < from_date:
             if entry.valid_to is None or entry.valid_to > from_date:
                 entry.valid_to = from_date

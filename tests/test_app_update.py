@@ -115,3 +115,33 @@ def test_desktop_setup_runs_once_per_version(tmp_path, monkeypatch):
     (tmp_path / desktop.STAMP_FILE).write_text("4.2.5\n")
     assert not desktop.needs_setup("4.2.5")
     assert desktop.needs_setup("4.3.0")
+
+
+def test_macos_update_closes_window_before_swapping_apps(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    app = tmp_path / "RT.app"
+    app.mkdir()
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path / "dati"))
+    monkeypatch.setattr(bundle, "app_path", lambda root=None: str(app))
+    monkeypatch.setattr(app_update, "_run", lambda command: None)
+    monkeypatch.setattr(app_update.os.path, "isdir", lambda path: True)
+    monkeypatch.setattr(app_update.subprocess, "run", Mock())
+    popen = Mock()
+    monkeypatch.setattr(app_update.subprocess, "Popen", popen)
+    app_update.install_macos(str(tmp_path / "nuova.dmg"))
+    command = popen.call_args.args[0]
+    script = command[-1]
+    assert 'kill "$PID"' in script
+    assert script.index('kill "$PID"') < script.index('mv "$APP"')
+    assert 'open "$APP" --args --after-update' in script
+    assert popen.call_args.kwargs["env"]["WINDOW_PID"] == str(tmp_path / "dati" / "run" / "window.pid")
+
+
+def test_copy_dmg_preserves_existing_target(tmp_path):
+    target = tmp_path / "RT.app"
+    target.mkdir()
+    personal = target / "personale.txt"
+    personal.write_text("da conservare")
+    with pytest.raises(app_update.AppUpdateError, match="esiste già"):
+        app_update.copy_app_from_dmg(str(tmp_path / "RT.dmg"), str(target))
+    assert personal.read_text() == "da conservare"

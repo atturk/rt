@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
 import { StudyFlow } from './Study'
@@ -56,11 +56,17 @@ vi.mock('@/api/recall', async (importOriginal) => {
   }
 })
 
-function renderStudy() {
+function CurrentLocation() {
+  const location = useLocation()
+  return <output data-testid="study-location">{location.pathname + location.search + location.hash}</output>
+}
+
+function renderStudy(entry: string | { pathname: string; search: string; state: { enter: string } } = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
+        <CurrentLocation />
         <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -68,6 +74,49 @@ function renderStudy() {
 }
 
 describe('StudyFlow unit navigation', () => {
+  it('unita apre la lettura richiesta e ripulisce solo i parametri di ingresso', () => {
+    renderStudy('/studio/lezione/1?unita=1.2&filtro=si#ancora')
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
+    expect(screen.getByTestId('study-location')).toHaveTextContent('/studio/lezione/1?filtro=si#ancora')
+    expect(screen.getByRole('link', { name: 'Esci' })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
+  })
+
+  it('unita ha precedenza sull’ingresso dall’ultima unità', () => {
+    renderStudy({ pathname: '/studio/lezione/1', search: '?unita=1.2', state: { enter: 'last' } })
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
+  })
+
+  it('ripasso con domande apre la sessione dell’unità richiesta', () => {
+    renderStudy('/studio/lezione/1?unita=1.2&azione=ripasso')
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Acidosi metabolica')
+    expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Torna allo studio' })[0])
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
+  })
+
+  it('ripasso senza domande apre Genera una sola volta su quell’unità', () => {
+    renderStudy('/studio/lezione/1?unita=2.1&azione=ripasso')
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
+    expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Prelievo arterioso')
+    expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
+    fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
+    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+  })
+
+  it('un’unità inesistente ignora anche l’azione e conserva l’ingresso precedente', () => {
+    renderStudy({ pathname: '/studio/lezione/1', search: '?unita=assente&azione=ripasso', state: { enter: 'last' } })
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
+    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('recall-session-page')).not.toBeInTheDocument()
+    expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
+  })
+
   it('le frecce ai limiti mostrano la fascia e annunciano il limite senza finire lo Studio', () => {
     localStorage.clear()
     renderStudy()

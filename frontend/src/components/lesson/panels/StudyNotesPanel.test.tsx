@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StudyNotesPanel } from './StudyNotesPanel'
@@ -151,6 +151,22 @@ describe('StudyNotesPanel', () => {
     // Go back
     fireEvent.click(screen.getByTestId('study-notes-back'))
     expect(onSelectNote).toHaveBeenCalledWith(null)
+  })
+
+  it('la risposta nel dettaglio è Markdown resa con le formule, come nel popup dello Studio', async () => {
+    const note = mockNotes[0]
+    const saved = note.spiegazione_html
+    note.spiegazione_html = '<p>Il vettore <strong>R</strong> vale $\\underline{R}_{12}$.</p>'
+    try {
+      renderPanel()
+      fireEvent.click(screen.getByTestId('note-item-1'))
+      const answer = screen.getByTestId('detail-answer')
+      expect(answer.querySelector('strong')).toHaveTextContent('R')
+      await waitFor(() => expect(answer.querySelector('math')).not.toBeNull())
+      expect(answer).not.toHaveTextContent('$')
+    } finally {
+      note.spiegazione_html = saved
+    }
   })
 
   it('applies correction in detail view', () => {

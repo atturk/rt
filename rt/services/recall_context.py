@@ -44,7 +44,9 @@ def lesson_context(lesson_dir, *, include_structure=False):
     stamps = []
     for name in ("info.yaml", "outline.json"):
         try:
-            stamps.append(fs.getmtime(lesson_path(lesson_dir, name)))
+            # anche la dimensione: su Windows due scritture ravvicinate possono avere lo stesso mtime
+            path = lesson_path(lesson_dir, name)
+            stamps.append((fs.getmtime(path), fs.getsize(path)))
         except OSError:
             stamps.append(None)
     context = _lesson_context(str(lesson_dir), *stamps)
@@ -54,7 +56,7 @@ def lesson_context(lesson_dir, *, include_structure=False):
 
 
 @lru_cache(maxsize=256)
-def _lesson_context(lesson_dir, info_mtime, outline_mtime):
+def _lesson_context(lesson_dir, info_stamp, outline_stamp):
     info, outline = {}, {}
     for name, reader in [("info.yaml", yaml.safe_load), ("outline.json", json.loads)]:
         try:

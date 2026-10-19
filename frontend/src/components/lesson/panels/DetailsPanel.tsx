@@ -1,11 +1,14 @@
-import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, Trash2, Tags } from 'lucide-react'
-import { useId, useState, type FormEvent } from 'react'
+import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, RotateCw, ListRestart, ShieldCheck, ShieldAlert, Trash2, Tags } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useClassifier } from '@/api/classifier'
 import { useStudyNotes } from '@/api/studyNotes'
 import { useNavigate } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
 import { useOutline } from '@/api/jobs'
+import { useSubjects } from '@/api/subjects'
+import { useSources, useSourcesJob, useUpdateLesson } from '@/api/sources'
+import { createPortal } from 'react-dom'
 import {
   isActiveJob,
   useDeleteLesson,
@@ -19,12 +22,13 @@ import {
   useValidatePhase,
 } from '@/api/hooks'
 import { Alert } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
+import { IconButton } from '@/components/ui/icon-button'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
+import { useMenuPosition } from '@/lib/useMenuPosition'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -62,25 +66,63 @@ function formatValue(value: unknown): string {
 }
 
 function Validation({ title, report }: { title: string; report: Record<string, unknown> | null | undefined }) {
-  if (!report) return null
+  return report ? <ValidationPopover title={title} report={report} /> : null
+}
+
+function ValidationPopover({ title, report }: { title: string; report: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null), menu = useRef<HTMLDivElement>(null)
+  const id = useId()
+  const position = useMenuPosition(open, root, menu)
   const valid = report.valid === true
-  const rows = Object.entries(report).filter(([k]) => k !== 'valid')
-  return (
-    <details className="rounded-lg border px-3 py-2 text-meta" open={!valid} data-testid={`validation-${title}`}>
-      <summary className="flex cursor-pointer items-center gap-2 font-semibold">
-        {title === 'outline' ? 'Validazione scaletta' : 'Validazione bozza'}
-        <Badge tone={valid ? 'success' : 'danger'}>{valid ? 'valida' : 'non valida'}</Badge>
-      </summary>
-      <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] gap-x-3 gap-y-1">
-        {rows.map(([key, value]) => (
-          <div key={key} className="contents">
-            <dt className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">{VALIDATION_LABELS[key] ?? key}</dt>
-            <dd className="min-w-0 text-right tabular-nums [overflow-wrap:anywhere]">{formatValue(value)}</dd>
-          </div>
-        ))}
+  const label = `${title === 'outline' ? 'Scaletta' : 'Bozza'} ${valid ? 'valida' : 'non valida: apri per i dettagli'}`
+  useEffect(() => {
+    if (!open) return
+    menu.current?.focus({ preventScroll: true })
+    const outside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault(); event.stopPropagation()
+      setOpen(false)
+      root.current?.querySelector('button')?.focus({ preventScroll: true })
+    }
+    document.addEventListener('pointerdown', outside)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', outside)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open, position.host])
+  return <div ref={root} className="inline-flex">
+    <IconButton label={label} icon={valid ? ShieldCheck : ShieldAlert} active={open}
+      className={`size-7 min-w-7 [&_svg]:size-3.5 ${valid ? 'text-study-learned' : 'text-danger'}`}
+      data-testid={`validation-${title}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
+      onClick={() => setOpen(!open)} />
+    {open && createPortal(<div ref={menu} id={id} role="dialog" aria-label={label} tabIndex={-1} style={position.style}
+      className="fixed z-50 max-h-[calc(100dvh-1rem)] w-72 max-w-[calc(100vw-1rem)] overflow-auto rounded-lg border bg-card p-3 text-meta shadow-panel">
+      <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] gap-x-3 gap-y-1">
+        {Object.entries(report).filter(([key]) => key !== 'valid').map(([key, value]) => <div key={key} className="contents">
+          <dt className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">{VALIDATION_LABELS[key] ?? key}</dt>
+          <dd className="min-w-0 text-right tabular-nums [overflow-wrap:anywhere]">{formatValue(value)}</dd>
+        </div>)}
       </dl>
-    </details>
-  )
+    </div>, position.host)}
+  </div>
+}
+
+// Senza duplicati che differiscono solo per maiuscole: vince la prima grafia
+// (quella della lezione corrente, poi quella del registro).
+function uniqueSubjects(names: (string | null | undefined)[]): string[] {
+  const byKey = new Map<string, string>()
+  for (const raw of names) {
+    const name = (raw ?? '').trim()
+    if (!name) continue
+    const key = name.toLocaleLowerCase()
+    if (!byKey.has(key)) byKey.set(key, name)
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b))
 }
 
 function formatDataOra(data: string, ora: string): string {
@@ -141,10 +183,15 @@ export function DetailsPanel({
     setDocente(l.docente || '')
   }
 
+  // Tutte le materie del registro (anche senza lezioni), più quelle delle lezioni
+  // come riserva finché il registro non è caricato.
   const allLessons = useLessons()
-  const subjectOptions = Array.from(
-    new Set([l.materia, ...(allLessons.data ?? []).map((les) => les.materia)].filter(Boolean) as string[]),
-  ).sort()
+  const subjects = useSubjects()
+  const subjectOptions = uniqueSubjects([
+    l.materia,
+    ...(Array.isArray(subjects.data) ? subjects.data.map((s) => s.nome) : []),
+    ...(allLessons.data ?? []).map((les) => les.materia),
+  ])
 
   const updateMetadata = useUpdateLessonMetadata(l.id)
 
@@ -184,6 +231,10 @@ export function DetailsPanel({
   const jobs = useLessonJobs(l.id)
   const run = useRunJob(l.id)
   const validate = useValidatePhase(l.id)
+  const sources = useSources(l.id)
+  const updateSources = useUpdateLesson(l.id)
+  const sourceJob = useSourcesJob(l.id)
+  const [confirmPipeline, setConfirmPipeline] = useState<'force' | 'reingest' | null>(null)
 
   const [withReview, setWithReview] = useState(false)
   const [openOptionsPhase, setOpenOptionsPhase] = useState<Phase | null>(null)
@@ -192,7 +243,7 @@ export function DetailsPanel({
   const [forcePhase, setForcePhase] = useState<Record<string, boolean>>({})
   const [confirmValidate, setConfirmValidate] = useState<Phase | null>(null)
 
-  const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending
+  const busy = editingDocument || (jobs.data ?? []).some((j) => j.type !== 'documents' && isActiveJob(j.state)) || run.isPending || validate.isPending || updateSources.isPending || sourceJob.running
   const buildWarnings = phases.data?.phases.find((p) => p.phase === 'build')?.warnings ?? []
 
   const start = (
@@ -365,10 +416,6 @@ export function DetailsPanel({
         </div>
       </div>
 
-      <p className="text-meta text-muted-foreground">
-        Cartella: <span className="font-mono text-foreground [overflow-wrap:anywhere]">{l.folder_name}</span>
-      </p>
-
       {updateMetadata.isError && <Alert tone="danger">{errorMessage(updateMetadata.error)}</Alert>}
 
       {/* Riepilogo */}
@@ -443,19 +490,16 @@ export function DetailsPanel({
       <div className="flex flex-col gap-2" data-testid="phase-panel">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Fasi</h3>
-          <div className="flex items-center gap-2.5">
-            <label className="flex items-center gap-1.5 text-meta">
-              <input
-                type="checkbox"
-                checked={withReview}
-                onChange={(e) => setWithReview(e.target.checked)}
-                className="size-3.5 rounded border"
-              />
-              con la revisione
-            </label>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => start({ type: 'run_pipeline' })}>
-              <Play className="size-3.5" /> Pipeline completa
-            </Button>
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+            <IconButton label="Includi la revisione scientifica" icon={ShieldCheck} active={withReview} aria-pressed={withReview}
+              unavailable={busy ? 'Lavorazione in corso' : null} onClick={() => setWithReview(!withReview)} />
+            <IconButton label="Esegui la pipeline" hint="Solo le fasi da fare" icon={Play}
+              unavailable={busy ? 'Lavorazione in corso' : null} onClick={() => start({ type: 'run_pipeline' })} />
+            <IconButton label="Riesegui tutte le fasi" hint="Anche quelle già fatte" icon={RotateCw}
+              unavailable={busy ? 'Lavorazione in corso' : null} onClick={() => setConfirmPipeline('force')} />
+            <IconButton label="Riesegui tutto da capo" hint="Anche trascrizione e lettura dei documenti" icon={ListRestart}
+              unavailable={busy ? 'Lavorazione in corso' : !sources.data?.reingest_available ? sources.data?.reingest_reason ?? 'Fonti originali non disponibili' : null}
+              onClick={() => setConfirmPipeline('reingest')} />
           </div>
         </div>
 
@@ -466,6 +510,8 @@ export function DetailsPanel({
         )}
         {phases.isError && <Alert tone="danger">{errorMessage(phases.error)}</Alert>}
         {run.isError && <Alert tone="danger">{errorMessage(run.error)}</Alert>}
+        {updateSources.isError && <Alert tone="danger">{errorMessage(updateSources.error)}</Alert>}
+        {sourceJob.error && <Alert tone="danger">{sourceJob.error}</Alert>}
 
         <ul className="flex flex-col divide-y divide-border/60">
           {PHASE_ORDER.map((phaseKey) => {
@@ -506,6 +552,9 @@ export function DetailsPanel({
                   <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground" title={statusLabel}>
                     {statusLabel}
                   </span>
+                  {(phase === 'outline' || phase === 'rewrite') && <Validation
+                    title={phase === 'outline' ? 'outline' : 'draft'}
+                    report={phase === 'outline' ? phases.data?.outline_validation : phases.data?.draft_validation} />}
                   {phase !== 'build' && (
                     <LinkMenuButton
                       label={`Azioni su ${PHASE_LABELS[phase] ?? phase}`}
@@ -631,8 +680,21 @@ export function DetailsPanel({
         })()}
 
         {phases.data?.validation_error && <Alert tone="danger">{phases.data.validation_error}</Alert>}
-        <Validation title="outline" report={phases.data?.outline_validation} />
-        <Validation title="draft" report={phases.data?.draft_validation} />
+        <ConfirmDialog open={confirmPipeline !== null} title={confirmPipeline === 'reingest' ? 'Rieseguire tutto da capo?' : 'Rifare tutte le fasi?'}
+          confirmLabel="Riesegui" onCancel={() => setConfirmPipeline(null)}
+          confirmDisabled={busy || (confirmPipeline === 'reingest' && !sources.data?.reingest_available)}
+          onConfirm={() => {
+            if (busy) return
+            if (confirmPipeline === 'reingest') {
+              if (!sources.data?.reingest_available) return
+              updateSources.mutate({ mode: 'rebuild', reingest: true, with_review: withReview }, { onSuccess: queued => sourceJob.start(queued.job_id) })
+            } else start({ type: 'run_pipeline', force: true })
+            setConfirmPipeline(null)
+          }}>
+          {confirmPipeline === 'reingest'
+            ? "Si rifanno anche la trascrizione degli audio e la lettura dei documenti: richiedono tempo. Scaletta e rielaborazione si rifanno con l'IA, con il loro costo. Le note di studio sui vecchi passaggi potrebbero risultare cambiate. Le versioni precedenti restano in Versioni."
+            : "Scaletta e rielaborazione si rifanno con l'IA, con il loro costo. Le versioni precedenti restano in Versioni."}
+        </ConfirmDialog>
       </div>
 
       <hr className="border-border" />

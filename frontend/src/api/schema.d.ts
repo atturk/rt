@@ -2946,6 +2946,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/quit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ferma RT e il worker (solo da questo computer) */
+        post: operations["quit_system_api_v1_system_quit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/tailnet": {
         parameters: {
             query?: never;
@@ -3614,6 +3631,8 @@ export interface components {
              * @default 2000-01-01
              */
             valid_from: string | null;
+            /** Valid To */
+            valid_to?: string | null;
         };
         /** CalendarTemplateEntryView */
         CalendarTemplateEntryView: {
@@ -7090,6 +7109,10 @@ export interface components {
             principale: string;
             /** Principale Usato */
             principale_usato: string | null;
+            /** Reingest Available */
+            reingest_available: boolean;
+            /** Reingest Reason */
+            reingest_reason?: string | null;
             /** Solo Ricostruzione */
             solo_ricostruzione: boolean;
             /** Sources */
@@ -7728,6 +7751,16 @@ export interface components {
              * @enum {string}
              */
             mode: "extend" | "rebuild";
+            /**
+             * Reingest
+             * @default false
+             */
+            reingest: boolean;
+            /**
+             * With Review
+             * @default false
+             */
+            with_review: boolean;
         };
         /** UploadInventoryItem */
         UploadInventoryItem: {
@@ -8525,6 +8558,8 @@ export interface operations {
             query?: {
                 /** @description Da questa data (YYYY-MM-DD) l'ora non vale piu'; le settimane prima la conservano */
                 from?: string | null;
+                /** @description Fine esclusa dell'intervallo (YYYY-MM-DD); richiede from */
+                to?: string | null;
             };
             header?: never;
             path: {
@@ -20972,6 +21007,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
+    quit_system_api_v1_system_quit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 
 // Un solo suggerimento aperto; il gruppo resta caldo per 300 ms dopo la chiusura.
 let activeTooltip: (() => void) | null = null
+let pendingTooltip: (() => void) | null = null
 let lastClosed: number | null = null
 
 const canHover = () => !window.matchMedia?.('(hover: none)').matches
@@ -34,12 +35,14 @@ export function Tooltip({
   side = 'top',
   describe = true,
   disabled = false,
+  delay = 600,
   children,
 }: {
   content: React.ReactNode
   side?: Side
   describe?: boolean
   disabled?: boolean
+  delay?: number
   children: (props: TooltipTriggerProps) => React.ReactNode
 }) {
   const id = React.useId()
@@ -54,6 +57,7 @@ export function Tooltip({
   const hide = React.useCallback(function hideTooltip() {
     clearTimeout(timer.current)
     timer.current = undefined
+    if (pendingTooltip === hideTooltip) pendingTooltip = null
     if (activeTooltip === hideTooltip) {
       activeTooltip = null
       lastClosed = Date.now()
@@ -63,6 +67,10 @@ export function Tooltip({
   React.useEffect(() => hide, [hide])
 
   const show = React.useCallback(() => {
+    clearTimeout(timer.current)
+    timer.current = undefined
+    if (pendingTooltip !== hide) pendingTooltip?.()
+    pendingTooltip = null
     if (!trigger || disabled || suppressed.current || !canHover()) return
     if (activeTooltip !== hide) activeTooltip?.()
     activeTooltip = hide
@@ -74,9 +82,12 @@ export function Tooltip({
     suppressed.current = false
     if (!canHover() || disabled) return
     clearTimeout(timer.current)
-    if (activeTooltip || (lastClosed !== null && Date.now() - lastClosed < 300)) show()
-    else timer.current = setTimeout(show, 600)
-  }, [disabled, show])
+    // Un trigger annidato deve annullare anche l'apertura ancora in attesa del genitore.
+    if (pendingTooltip !== hide) pendingTooltip?.()
+    pendingTooltip = hide
+    if (delay === 0 || activeTooltip || (lastClosed !== null && Date.now() - lastClosed < 300)) show()
+    else timer.current = setTimeout(show, delay)
+  }, [disabled, delay, hide, show])
 
   const focus = React.useCallback(() => { if (trigger?.matches(':focus-visible')) show() }, [trigger, show])
   const pointerDown = React.useCallback(() => { suppressed.current = true; hide() }, [hide])

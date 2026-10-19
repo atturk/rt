@@ -31,7 +31,8 @@ import { lessonTitle, type Lesson } from '@/lib/format'
 import { formatDuration, longDate, subjectName } from '@/lib/lessonsPage'
 import { withImageUrls } from '@/lib/images'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
-import { renderDelimitedMath } from '@/lib/math'
+import { DELIMITED, renderDelimitedMath } from '@/lib/math'
+import { sourceOffsets, sourceParts, sourceTextOf } from '@/lib/sourceText'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { useRsvpLayout, useZenLayout, useStudyZen } from '@/lib/zen'
@@ -90,16 +91,37 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
-      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
+      const requested = onlyUnits ? -1 : loaded.units.findIndex(u => u.id === new URLSearchParams(location.search).get('unita'))
+      setUnitIndex(requested >= 0 ? requested : enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
       enterLast.current = false
       enterFirst.current = false
     }
-  }, [loaded, units, onlyUnits])
+  }, [loaded, units, onlyUnits, location.search])
   const unit = units?.[unitIndex] ?? null
   const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
   const studyBack = { to: lessonUrl, label: back.label, state: { fromStudy: true } }
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
   const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
+  useEffect(() => {
+    if (!units || !loaded || onlyUnits) return
+    const params = new URLSearchParams(location.search)
+    if (!params.has('unita') && !params.has('azione')) return
+    const requested = params.get('unita')
+    const index = requested ? units.findIndex(u => u.id === requested) : unitIndex
+    if (index >= 0 && units[index]) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setUnitIndex(index)
+      setPhase('lettura')
+      if (params.get('azione') === 'ripasso') {
+        const target = loaded.units.find(u => u.id === units[index].id) ?? units[index]
+        if (target.questions > 0) setPhase('domande')
+        else setGenerateOpen(true)
+      }
+    }
+    params.delete('unita')
+    params.delete('azione')
+    navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
+  }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
   const status = useStudyStatus(lesson?.id ?? 0)
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate
@@ -907,12 +929,16 @@ function ReadingSkeleton() {
   )
 }
 
-/** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-/** Il testo della striscia di immagini non fa parte della lezione: le ancore non lo contano. */
-const outsideImageStrips: NodeFilter = {
-  acceptNode: (node) => node.parentElement?.closest('.rt-image-strip-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+/** La parte della selezione che cade nel testo dell'unità (Ctrl+A o titolo compresi). */
+function clipToRoot(range: Range, root: HTMLElement): Range | null {
+  if (!range.intersectsNode(root)) return null
+  const clipped = range.cloneRange()
+  if (!root.contains(range.startContainer)) clipped.setStart(root, 0)
+  if (!root.contains(range.endContainer)) clipped.setEnd(root, root.childNodes.length)
+  return clipped.collapsed ? null : clipped
 }
 
+/** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
 export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
   lessonId: number
   unit: StudyUnit
@@ -925,6 +951,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [mathReady, setMathReady] = useState<string | null>(null)
   // Strisce di immagini consecutive, rimontate a ogni unità (prima di formule e lettura veloce).
   useEffect(() => {
     const root = ref.current
@@ -935,7 +962,22 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
     const root = ref.current
     if (!root) return
     let alive = true
-    void renderDelimitedMath(root).finally(() => { if (alive) onReady(root) })
+    void renderDelimitedMath(root).then(() => {
+      if (!alive) return
+      root.querySelectorAll('math[data-rt-source]').forEach(math => {
+        if (math.nextElementSibling?.matches('.rt-math-src')) return
+        const raw = document.createElement('span')
+        raw.className = 'rt-math-src'
+        raw.setAttribute('aria-hidden', 'true')
+        raw.textContent = math.getAttribute('data-rt-source')
+        math.after(raw)
+      })
+    }, () => undefined).finally(() => {
+      // Anche se il motore delle formule non si carica, il testo resta usabile.
+      if (!alive) return
+      setMathReady(unit.html)
+      onReady(root)
+    })
     return () => {
       alive = false
       onReady(null)
@@ -946,103 +988,110 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
     const root = ref.current
     if (!root) return
 
-    const existing = root.querySelectorAll('.rt-sn')
-    existing.forEach((span) => {
-      const parent = span.parentNode
-      if (!parent) return
-      while (span.firstChild) {
-        parent.insertBefore(span.firstChild, span)
-      }
-      span.remove()
+    if (mathReady !== unit.html && unit.html.search(DELIMITED) >= 0) return
+    root.querySelectorAll('math.rt-sn-math').forEach(math => {
+      math.classList.remove('rt-sn-math', 'rt-sn-v', 'rt-sn-c', 'rt-sn-bad', 'rt-sn-changed')
+      math.removeAttribute('data-note-id')
     })
+    root.querySelectorAll('span.rt-sn').forEach(span => span.replaceWith(...Array.from(span.childNodes)))
     root.normalize()
 
     for (const n of notes ?? []) {
-      if (n.id !== activeNoteId) continue
-      if (n.anchor_state === 'non_ritrovata') continue
-      // L'ancora è sul markdown: nel testo reso grassetto, corsivo e codice non hanno i segni.
-      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '').replace(/\*\*|__|[*`]/g, '').trim()
+      if (n.id !== activeNoteId || n.anchor_state === 'non_ritrovata') continue
+      // Togli i segni Markdown soltanto fuori dalle formule (es. \underline e pedici).
+      const targetQuote = String(n.current_quote || (n.anchor as { quote?: string } | undefined)?.quote || '')
+        .split(DELIMITED).map((part, i) => i % 2 ? part : part.replace(/\*\*|__|[*`]/g, '')).join('').trim()
       if (!targetQuote) continue
-
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
-      let node = walker.nextNode() as Text | null
-      let found = false
-      while (node && !found) {
-        const idx = node.textContent?.indexOf(targetQuote) ?? -1
-        if (idx !== -1) {
-          try {
-            const range = document.createRange()
-            range.setStart(node, idx)
-            range.setEnd(node, idx + targetQuote.length)
-            const span = document.createElement('span')
-            let cls = 'rt-sn ' + (n.kind === 'verifica' ? 'rt-sn-v' : 'rt-sn-c')
-            if (n.kind === 'verifica' && n.response?.esito === 'errato') cls += ' rt-sn-bad'
-            if (n.anchor_state === 'cambiata') cls += ' rt-sn-changed'
-            span.className = cls
-            span.dataset.noteId = String(n.id)
-            range.surroundContents(span)
-            found = true
-          } catch {
-            //
-          }
-          break
+      const start = sourceTextOf(root).indexOf(targetQuote)
+      if (start < 0) continue
+      const end = start + targetQuote.length
+      let cls = n.kind === 'verifica' ? 'rt-sn-v' : 'rt-sn-c'
+      if (n.kind === 'verifica' && n.response?.esito === 'errato') cls += ' rt-sn-bad'
+      if (n.anchor_state === 'cambiata') cls += ' rt-sn-changed'
+      for (const part of sourceParts(root)) {
+        if (part.end <= start || part.start >= end) continue
+        if (part.node.nodeType !== Node.TEXT_NODE) {
+          const math = part.node as Element
+          math.classList.add('rt-sn-math', ...cls.split(' '))
+          math.setAttribute('data-note-id', String(n.id))
+        } else {
+          const range = document.createRange()
+          range.setStart(part.node, Math.max(0, start - part.start))
+          range.setEnd(part.node, Math.min(part.text.length, end - part.start))
+          const span = document.createElement('span')
+          span.className = 'rt-sn ' + cls
+          span.dataset.noteId = String(n.id)
+          range.surroundContents(span)
         }
-        node = walker.nextNode() as Text | null
       }
     }
-  }, [notes, activeNoteId, unit.html])
+  }, [notes, activeNoteId, unit.html, mathReady])
+
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const sel = window.getSelection()
+      const range = sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null
+      const inside = range && clipToRoot(range, root)
+      const offsets = inside ? sourceOffsets(root, inside) : null
+      for (const part of sourceParts(root)) {
+        if (part.node.nodeType !== Node.ELEMENT_NODE) continue
+        const selected = !!offsets && part.start < offsets.end && part.end > offsets.start
+        ;(part.node as Element).classList.toggle('rt-math-raw', selected)
+      }
+    }
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update) }
+    document.addEventListener('selectionchange', schedule)
+    return () => {
+      document.removeEventListener('selectionchange', schedule)
+      cancelAnimationFrame(frame)
+    }
+  }, [unit.html])
+
+  const handleCopy = (event: React.ClipboardEvent) => {
+    const sel = window.getSelection(), root = ref.current
+    if (!root || !sel?.rangeCount || sel.isCollapsed) return
+    const range = clipToRoot(sel.getRangeAt(0), root)
+    if (!range) return
+    // Senza formule la copia del browser va bene e tiene paragrafi e formattazione.
+    if (!sourceParts(root).some(p => p.node.nodeType === Node.ELEMENT_NODE && range.intersectsNode(p.node))) return
+    const { text, start, end } = sourceOffsets(root, range)
+    if (start === end) return
+    event.preventDefault()
+    event.clipboardData.setData('text/plain', text.slice(start, end))
+  }
 
   const handleMouseUp = () => {
     if (highlightMode !== 'verifica' && highlightMode !== 'chiedi') return
-    const sel = window.getSelection()
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return
-    const text = sel.toString().trim()
-    if (!text) return
-
+    const sel = window.getSelection(), root = ref.current
+    if (!root || !sel?.rangeCount || sel.isCollapsed) return
     const range = sel.getRangeAt(0)
-    const root = ref.current
-    if (!root || !root.contains(range.commonAncestorContainer)) return
-
-    const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, outsideImageStrips)
-    let offset = 0
-    let startOffset = -1
-    let endOffset = -1
-    let curr = treeWalker.nextNode()
-    while (curr) {
-      if (curr === range.startContainer) {
-        startOffset = offset + range.startOffset
-      }
-      if (curr === range.endContainer) {
-        endOffset = offset + range.endOffset
-        break
-      }
-      offset += curr.textContent?.length || 0
-      curr = treeWalker.nextNode()
-    }
-
-    if (startOffset === -1 || endOffset === -1 || startOffset >= endOffset) return
-    const fullText = root.textContent || ''
-    const quote = fullText.slice(startOffset, endOffset).trim()
+    if (!root.contains(range.commonAncestorContainer)) return
+    const offsets = sourceOffsets(root, range)
+    const selected = offsets.text.slice(offsets.start, offsets.end)
+    const quote = selected.trim()
     if (!quote) return
-
-    const prefix = fullText.slice(Math.max(0, startOffset - 40), startOffset)
-    const suffix = fullText.slice(endOffset, endOffset + 40)
+    const start = offsets.start + selected.length - selected.trimStart().length
+    const end = start + quote.length
     const rect = range.getBoundingClientRect()
     sel.removeAllRanges()
-
     onSelection?.(quote, {
       quote,
-      prefix,
-      suffix,
-      start: startOffset,
-      end: endOffset,
+      prefix: offsets.text.slice(Math.max(0, start - 40), start),
+      suffix: offsets.text.slice(end, end + 40),
+      start,
+      end,
     }, rect)
   }
 
   const handleClick = (e: React.MouseEvent) => {
-    const target = (e.target as HTMLElement).closest<HTMLElement>('.rt-sn')
-    if (target && target.dataset.noteId && notes) {
-      const noteId = Number(target.dataset.noteId)
+    const target = (e.target as Element).closest('.rt-sn, .rt-sn-math')
+    const id = target?.getAttribute('data-note-id')
+    if (target && id && notes) {
+      const noteId = Number(id)
       const found = notes.find((n) => n.id === noteId)
       if (found) {
         e.preventDefault()
@@ -1061,6 +1110,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         data-testid="study-text"
         data-unit-id={unit.id}
         data-hl-mode={highlightMode === 'gomma' ? 'erase' : highlightMode === 'verifica' ? 'verifica' : highlightMode === 'chiedi' ? 'chiedi' : undefined}
+        onCopy={handleCopy}
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
         onClick={handleClick}

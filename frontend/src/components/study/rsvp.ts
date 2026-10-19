@@ -129,7 +129,7 @@ export function formatRemaining(seconds: number): string {
   return m ? `${m} min ${seconds % 60} s` : `${seconds} s`
 }
 
-const SKIP = '.katex, .katex-display, math, img, picture, figure, table, svg, video, audio, pre, .rt-image-strip-slot'
+const SKIP = '.rt-math-src, .katex, .katex-display, math, img, picture, figure, table, svg, video, audio, pre, .rt-image-strip-slot'
 const BLOCK = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, dd, dt, td, th, figcaption, div'
 
 function skipLabel(el: Element): string {
@@ -164,14 +164,16 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
   })
   // Gli elementi saltati non si visitano: restano nel Contesto come segnaposto, al loro posto.
   const marks: { node: Node; label: string }[] = []
-  root.querySelectorAll(SKIP).forEach((el) => { if (!el.parentElement?.closest(SKIP)) marks.push({ node: el, label: skipLabel(el) }) })
+  root.querySelectorAll(SKIP).forEach((el) => { if (!el.matches('.rt-math-src') && !el.parentElement?.closest(SKIP)) marks.push({ node: el, label: skipLabel(el) }) })
   const emitMark = (mark: { node: Node; label: string }) => {
     const para = paraOf(mark.node)
     const el = mark.node as Element
-    const hl = !!el.closest('.rt-hl')
+    const hl = !!el.closest('.rt-hl, .rt-hl-math')
     if (el.matches('.katex, .katex-display, math')) {
       const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? el.getAttribute('aria-label') ?? el.textContent ?? ''
-      const math = { html: el.outerHTML, tex, complex: formulaMetrics(tex).complex }
+      const rendered = el.cloneNode(true) as Element
+      rendered.classList.remove('rt-math-raw')
+      const math = { html: rendered.outerHTML, tex, complex: formulaMetrics(tex).complex }
       paragraphs[para].push({ text: tex, index: words.length, math, ...(hl ? { hl: true } : {}) })
       words.push({ text: tex, para, math, ...(hl ? { hl: true } : {}) })
     } else paragraphs[para].push({ text: mark.label, index: null })

@@ -30,6 +30,7 @@ class CalendarTemplateEntryCreate(BaseModel):
     materia: str = Field(min_length=1, max_length=256)
     docente: Optional[str] = Field(None, max_length=256)
     valid_from: Optional[IsoDate] = "2000-01-01"
+    valid_to: Optional[IsoDate] = None
 
 
 class CalendarTemplateEntryView(BaseModel):

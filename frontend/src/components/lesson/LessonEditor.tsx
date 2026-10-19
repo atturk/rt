@@ -6,7 +6,7 @@ import { Check, Circle, LoaderCircle, Lock } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type MouseEvent } from 'react'
-import { useLocation, useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
 import { imageKeys, uploadEditorImage } from '@/api/images'
@@ -38,6 +38,7 @@ import { lessonFolding } from './lessonFolding'
 import { editorKeymap, type ShortcutPreferences } from './markdownShortcuts'
 import { usePreference } from '@/lib/preferences'
 import { SEEK_EVENT, timecodeLock } from './timecodeLock'
+import { lessonShortcuts, setUnitShortcuts } from './lessonShortcuts'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
 // Solo su Mac ctrl+clic è un clic destro; altrove ctrl+clic aggiunge un cursore.
@@ -113,6 +114,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const selectedIssue = reviewItems?.find((i) => issueOf(i).id === params.get('issue')) ?? sortIssues(reviewItems?.filter((i) => !i.decision) ?? [], parseIssueOrder(params.get('ordine')), (item) => ({ ...issueOf(item), startSeconds: item.context?.start_s }))[0]
   const selectedIssueId = selectedIssue ? issueOf(selectedIssue).id : null
   const { hash, state: routerState } = useLocation()
+  const navigate = useNavigate()
   const studyNotes = useStudyNotes(lessonId)
   const notesPanelOpen = params.get('panel') === 'note'
   const selectedNoteId = params.get('note') ? Number(params.get('note')) : null
@@ -180,6 +182,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     shortcutCompartment.of(editorKeymap({})),
     lessonFolding,
     timecodeLock,
+    lessonShortcuts,
     lessonUnits,
     lessonReview,
     lessonStudyNotes,
@@ -241,6 +244,24 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       setLease(null)
     }
   }, [text, save, lessonId])
+  // I widget restano gli stessi mentre si scrive, ma il clic usa sempre il salvataggio attuale.
+  const shortcutFlush = useRef(flush)
+  useEffect(() => { shortcutFlush.current = flush }, [flush])
+  const openStudy = useCallback((href: string) => {
+    void shortcutFlush.current().then(() => navigate(href)).catch(error => {
+      const problems = problemsOf(error)
+      setStatus(problems ? { kind: 'invalid', problems } : {
+        kind: 'error', message: errorMessage(error), busy: error instanceof ApiError && error.code === 'document_edit_busy',
+      })
+    })
+  }, [navigate])
+  useEffect(() => {
+    viewOf(handle.current)?.dispatch({ effects: setUnitShortcuts.of({
+      lessonId,
+      units: doc.sections.filter(section => !section.relevance).map(section => section.unit_id),
+      navigate: openStudy,
+    }) })
+  }, [doc.sections, lessonId, openStudy, source.key])
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush }
@@ -516,6 +537,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
           data-testid="lesson-document"
           data-active-unit={current ?? ''}
           onMouseDownCapture={(e) => {
+            if ((e.target as HTMLElement).closest('.rt-unit-shortcuts')) return
             if (e.altKey || !(e.button === 2 || (e.button === 0 && e.ctrlKey && macCtrlClick()))) return
             selectedBefore.current = !(viewOf(handle.current)?.state.selection.main.empty ?? true)
             // il clic destro non sposta il cursore: niente scorrimento che chiuderebbe il menu

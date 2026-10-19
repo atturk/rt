@@ -101,6 +101,7 @@ ultimi caratteri; il valore completo solo con `POST /settings/telegram/reveal`).
 | `PUT /secrets/{name}` | Scrive un segreto dichiarato (archivio cifrato se inizializzato, altrimenti `.env`) | `rt secrets set` |
 | `POST /settings/telegram/reveal` `{field: bot_token\|chat_id}` | Valore completo del token o del Chat ID, solo su richiesta esplicita (`Cache-Control: no-store`); `GET /settings` ne dà solo l'anteprima (`bot_token_preview`, `chat_id_preview`, es. `1234…wXyZ`) | — |
 | `GET /telegram/notifications?limit=` | Ultime notifiche inviate nella chat (lezione pronta, decisione da prendere, errore, prova), dal registro `notifications.jsonl` nella cartella di stato Telegram | — |
+| `POST /system/quit` | Ferma API e worker dell'app; richiede autenticazione e provenienza loopback. 403 da altri dispositivi, 409 se il server è gestito dai servizi | — |
 | `POST /system/choose-folder` `{start?}` | Finestra di Finder (`osascript` 'choose folder') e percorso POSIX scelto; `unavailable` fuori da macOS (o con `RT_NATIVE_FOLDER_PICKER=0`), `cancelled` se annullata. Solo da loopback | — |
 | `GET /system/folders?path=` | Sottocartelle (niente file, niente cartelle nascoste) di una cartella della home, per il navigatore della SPA. Solo da loopback e dentro la home | — |
 

@@ -8,7 +8,7 @@ from typing import Literal
 from rt.core.sources import Source, load_sources
 from rt.core.lesson_paths import lesson_path
 from rt.core.update_history import has_update_snapshot
-from rt.pipeline.source_update import _read_state, _write_state, _duration, sources_pending
+from rt.pipeline.source_update import _read_state, _write_state, _duration, sources_pending, reingest_availability
 from rt.storage import fs
 
 
@@ -39,13 +39,13 @@ def sources_view(lesson_dir):
         values.update(nome="Appunti" if source.tipo == "appunti" else os.path.basename(source.file),
                       usata=source.id in used)
         path = os.path.join(lesson_dir, source.file)
-        if source.tipo == "appunti":
+        if source.tipo == "appunti" and fs.isfile(path):
             with fs.open(path, encoding="utf-8") as stream:
                 values["parole"] = len(stream.read().split())
         elif source.tipo == "materiale":
             from rt.core.materials import cached_pages, page_count
             cached = cached_pages(lesson_dir, source)
-            values["pagine"] = len(cached) if cached is not None else page_count(path)
+            values["pagine"] = len(cached) if cached is not None else page_count(path) if fs.isfile(path) else None
         elif source.tipo == "audio":
             values["durata_s"] = state.get("sources", {}).get(source.id, {}).get("duration")
             if values["durata_s"] is None:
@@ -57,7 +57,7 @@ def sources_view(lesson_dir):
     return {"sources": views, "has_unused_sources": sources_pending(lesson_dir),
             "can_undo": has_update_snapshot(lesson_dir),
             "ultimo_aggiornamento": state.get("ultimo_aggiornamento"),
-            **selection(lesson_dir)}
+            **selection(lesson_dir), **reingest_availability(lesson_dir, sources)}
 
 
 def record_update_summary(lesson_dir, mode, old_outline, outline, selected):

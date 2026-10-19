@@ -22,6 +22,7 @@ import type {
 import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getSubjectColor } from './subjectColor'
+import { computePopupStyle } from './popupPosition'
 import { STATUS_LABELS } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
 import { useSubjects } from '@/api/subjects'
@@ -33,33 +34,6 @@ export type PopupAnchor = {
   y: number
   width: number
   height: number
-}
-
-function computePopupStyle(anchor: PopupAnchor, width = 270): React.CSSProperties {
-  const pad = 12
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1000
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-
-  let left = anchor.x + anchor.width + 8
-  if (left + width > vw - pad) {
-    left = anchor.x - width - 8
-  }
-  if (left < pad) {
-    left = pad
-  }
-
-  let top = anchor.y
-  if (top + 320 > vh - pad) {
-    top = Math.max(pad, vh - 330)
-  }
-
-  return {
-    position: 'fixed',
-    left: `${left}px`,
-    top: `${top}px`,
-    width: `${width}px`,
-    zIndex: 60,
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -407,12 +381,14 @@ export function DayMenuPopup({
 
 export function WeekInfoPopup({
   weekLabel,
+  weekStart,
   weekNumber,
   summary,
   anchor,
   onClose,
 }: {
   weekLabel: string
+  weekStart: string
   weekNumber: string
   summary: CalendarWeekSummary
   anchor: PopupAnchor
@@ -449,7 +425,7 @@ export function WeekInfoPopup({
       className="flex flex-col gap-2.5 rounded-xl border bg-background p-3 text-xs shadow-xl"
     >
       <div className="font-semibold uppercase tracking-wider text-muted-foreground">
-        Settimana {weekNumber} · {weekLabel}
+        Settimana {weekNumber} · {weekLabel} <span className="font-normal">{weekStart.slice(0, 4)}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
@@ -514,6 +490,7 @@ export type EventFormValues = {
  */
 export function AddEventPopup({
   scope,
+  rangeLabel,
   weekNumber,
   defaultStartTime = '09:00',
   initial,
@@ -521,7 +498,8 @@ export function AddEventPopup({
   onClose,
   onAdd,
 }: {
-  scope: 'week' | 'tpl'
+  scope: 'week' | 'tpl' | 'range'
+  rangeLabel?: string
   weekNumber: string
   defaultStartTime?: string
   initial?: EventFormValues
@@ -580,7 +558,7 @@ export function AddEventPopup({
     >
       <div className="font-semibold uppercase tracking-wider text-muted-foreground">
         {isEdit ? 'Modifica ora · ' : ''}
-        {scope === 'week' ? `Solo settimana ${weekNumber}` : 'Settimana tipo, da qui in poi'}
+        {scope === 'week' ? `Solo settimana ${weekNumber}` : scope === 'range' ? rangeLabel : 'Settimana tipo, da qui in poi'}
       </div>
 
       <div className="flex flex-col gap-2">
