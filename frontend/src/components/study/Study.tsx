@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons } from '@/api/hooks'
@@ -233,13 +233,52 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const frame = requestAnimationFrame(restore)
     return () => cancelAnimationFrame(frame)
   }, [zenMode, phase, rereading])
-  const [notice, setNotice] = useState<{ kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi'; label: string; off?: boolean; color?: number; status?: StudyUnit['status'] } | null>(null)
+  const [notice, setNotice] = useState<{
+    kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi' | 'unit'
+    label: string
+    off?: boolean
+    color?: number
+    status?: StudyUnit['status']
+    direction?: -1 | 1
+  } | null>(null)
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(null), 1200)
     return () => clearTimeout(timer)
   }, [notice])
   const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
+  const openReader = useCallback(() => {
+    if (!textRoot) return
+    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    window.scrollTo?.({ top: 0 })
+    setSpeedReading(true)
+    setReaderMounted(true)
+    setIndexOpen(false)
+    setDetailsOpen(false)
+  }, [textRoot, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
+
+  const resumeReader = useRef(false)
+  const handleUnitChange = (direction: -1 | 1, playing = false) => {
+    if (!units) return
+    const nextIndex = unitIndex + direction
+    if (nextIndex < 0 || nextIndex >= units.length) return
+    resumeReader.current = playing
+    goToUnit(nextIndex)
+    const nextUnit = units[nextIndex]
+    setNotice({
+      kind: 'unit',
+      direction,
+      label: `Unità ${nextUnit?.id ?? ''}`,
+    })
+  }
+
+  const handleStatusFromReader = () => {
+    if (status.isPending) return
+    changeStatus()
+    const next = nextStudyStatus(live?.status)
+    setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+  }
+
   useEffect(() => {
     setRsvpLayout({ active: speedReading, tint })
     return () => setRsvpLayout({ active: false, tint: null })
@@ -352,6 +391,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
       if (e.shiftKey && key !== 'e') return
       if (key === 'z') { e.preventDefault(); toggleZen() }
+      else if (key === 'l') {
+        if (textRoot) {
+          e.preventDefault()
+          openReader()
+        }
+      }
       else if (key === 'd') { e.preventDefault(); review() }
       else if (key === 'e' || key === 'g') {
         e.preventDefault()
@@ -393,7 +438,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -525,14 +570,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <IconButton
         label="Lettura veloce"
         icon={Gauge}
-        onClick={() => {
-          textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
-          window.scrollTo?.({ top: 0 })
-          setSpeedReading(true)
-          setReaderMounted(true)
-          setIndexOpen(false)
-          setDetailsOpen(false)
-        }}
+        onClick={openReader}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
@@ -572,15 +610,52 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           zenMinHeight={zenMinHeight}
           zenBar={zenMode ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
-          notice={zenMode && notice ? <div className="fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel" data-testid="zen-notice" aria-hidden>
-            {notice.kind === 'status' ? <StudyStatusIcon status={notice.status} /> : <div className="relative">
-              {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
-              {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
-              {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
-            </div>}
-          </div> : undefined}
+          notice={(zenMode || speedReading) && notice ? (
+            <div
+              className={cn(
+                'fixed left-1/2 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel',
+                speedReading ? 'top-1/3' : 'top-16',
+              )}
+              data-testid="zen-notice"
+              aria-hidden
+            >
+              {notice.kind === 'status' ? (
+                <StudyStatusIcon status={notice.status} />
+              ) : notice.kind === 'unit' ? (
+                notice.direction === -1 ? <SkipBack className="size-6" /> : <SkipForward className="size-6" />
+              ) : (
+                <div className="relative">
+                  {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
+                  {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
+                  {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
+                </div>
+              )}
+            </div>
+          ) : undefined}
           edge={edge}
-          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? (
+            <SpeedReader
+              key={`${lesson!.id}-${unit.id}`}
+              source={textRoot}
+              active={speedReading}
+              context={readerContext}
+              settings={readerSettings}
+              onSettingsChange={setReaderSettings}
+              settingsButton={settingsButton}
+              blocked={indexOpen || generateOpen}
+              questions={live.questions}
+              onReview={() => { closeReader(); setPhase('domande') }}
+              onGenerate={() => setGenerateOpen(true)}
+              onTintChange={setTint}
+              onClose={closeReader}
+              onUnit={handleUnitChange}
+              canPrevUnit={unitIndex > 0}
+              canNextUnit={unitIndex < units.length - 1}
+              // oxlint-disable-next-line react/refs
+              autoStart={resumeReader.current}
+              onStatus={handleStatusFromReader}
+            />
+          ) : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,
@@ -670,7 +745,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
           <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
-          <span className="sr-only" aria-live="polite">{zenMode ? notice?.label : null}</span>
+          <span className="sr-only" aria-live="polite">{(zenMode || speedReading) ? notice?.label : null}</span>
           <UnitText
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}

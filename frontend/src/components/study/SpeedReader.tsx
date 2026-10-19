@@ -1,6 +1,7 @@
-import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, SkipBack, SkipForward, Sparkles, X, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
+import { isMacKeyboard } from '@/components/lesson/markdownShortcuts'
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { Checkbox } from '@/components/settings/common'
@@ -21,11 +22,19 @@ const ORPS = [['prima', 'Prima'], ['bilanciata', 'Bilanciata'], ['dopo', 'Dopo']
 const STEPS = [1, 3, 5, 10]
 
 /** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
-export function SpeedReader({ source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose }: {
+export function SpeedReader({
+  source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose,
+  onUnit, canPrevUnit, canNextUnit, autoStart, onStatus,
+}: {
   source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
   settingsButton: RefObject<HTMLElement | null>; blocked: boolean
   questions: number; onReview: () => void; onGenerate: () => void
   onTintChange: (tint: RsvpPreference['irlen']) => void; onClose: () => void
+  onUnit: (direction: -1 | 1, playing?: boolean) => void
+  canPrevUnit: boolean
+  canNextUnit: boolean
+  autoStart?: boolean
+  onStatus?: () => void
 }) {
   const [saved, save] = useRsvpPrefs()
   const [prefs, setPrefs] = useState<RsvpPreference>(saved)
@@ -43,6 +52,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
   const [sound] = useState(createSound)
   const prefsRef = useRef(prefs)
   const ramp = useRef(0)
+  const autoStarted = useRef(false)
   const persist = useRef<ReturnType<typeof setTimeout>>(undefined)
   useLayoutEffect(() => { prefsRef.current = prefs }, [prefs])
 
@@ -134,6 +144,14 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     if (index >= words.length - 1 && atLastPiece) { setIndex(0); setPieceIndex(0) }
     setPlaying(true)
   }, [words.length, index, atLastPiece, sound])
+
+  useEffect(() => {
+    if (autoStart && !autoStarted.current && words.length > 0) {
+      autoStarted.current = true
+      play()
+    }
+  }, [autoStart, words.length, play])
+
   const toggle = useCallback(() => (playing ? setPlaying(false) : play()), [playing, play])
   const jump = useCallback((to: number) => {
     setIndex(Math.max(0, Math.min(words.length - 1, to)))
@@ -144,9 +162,33 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
   useEffect(() => {
     if (!active || blocked) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey) return
+      if (e.altKey) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          e.stopPropagation()
+          const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
+          if (field) return
+          if (e.key === 'ArrowLeft') onUnit(-1, playing)
+          else onUnit(1, playing)
+        }
+        return
+      }
       const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
       if (field && e.key !== 'Escape') return
+      const key = e.key.toLowerCase()
+      if (key === 'l' && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+        return
+      }
+      if (key === 's' && !e.shiftKey) {
+        e.preventDefault()
+        e.stopPropagation()
+        onStatus?.()
+        return
+      }
       const keys: Record<string, () => void> = {
         ' ': toggle,
         ArrowLeft: () => jump(previousSentence(words, index)),
@@ -168,7 +210,7 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose])
+  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose, onUnit, playing, onStatus])
 
   const closeSettings = () => { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
 
@@ -178,6 +220,9 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
   const progress = words.length ? (index + 1) / words.length : 0
   const animate = playing && full && !matchMedia?.('(prefers-reduced-motion: reduce)').matches
   const para = paragraphs[words[index]?.para ?? 0] ?? []
+  const mac = isMacKeyboard()
+  const prevLabel = mac ? 'Unità precedente (⌥←)' : 'Unità precedente (Alt+←)'
+  const nextLabel = mac ? 'Unità successiva (⌥→)' : 'Unità successiva (Alt+→)'
 
   return (
     <div
@@ -226,28 +271,74 @@ export function SpeedReader({ source, active, context, settings, onSettingsChang
         {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
 
-      <div className="grid grid-cols-1 items-center justify-items-center gap-x-5 gap-y-1 text-meta text-muted-foreground">
-        <span>Velocità <b className="font-normal text-foreground">{prefs.wpm}</b> parole/min</span>
-        <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="w-[220px] accent-accent-foreground justify-self-center"
-          onChange={(e) => update({ wpm: Number(e.target.value) })} />
-      </div>
+      <div
+        data-testid="speed-reader-panel"
+        className={cn(
+          'transition-opacity duration-300 motion-reduce:transition-none hover:opacity-100 focus-within:opacity-100',
+          playing ? 'opacity-25' : 'opacity-100',
+        )}
+      >
+        <div className="flex items-center justify-center gap-4 text-meta text-muted-foreground">
+          {phone && (
+            <RoundButton
+              label={prevLabel}
+              icon={SkipBack}
+              onClick={() => onUnit(-1, playing)}
+              unavailable={canPrevUnit ? null : 'prima unità'}
+              small
+            />
+          )}
+          <div className="grid grid-cols-1 items-center justify-items-center gap-x-5 gap-y-1">
+            <span>Velocità <b className="font-normal text-foreground">{prefs.wpm}</b> parole/min</span>
+            <input type="range" min={MIN_WPM} max={MAX_WPM} step={25} value={prefs.wpm} aria-label="Velocità" className="w-[220px] max-md:w-[170px] accent-accent-foreground justify-self-center"
+              onChange={(e) => update({ wpm: Number(e.target.value) })} />
+          </div>
+          {phone && (
+            <RoundButton
+              label={nextLabel}
+              icon={SkipForward}
+              onClick={() => onUnit(1, playing)}
+              unavailable={canNextUnit ? null : 'ultima unità'}
+              small
+            />
+          )}
+        </div>
 
-      <div className="mt-1.5 flex items-center justify-center gap-6 max-md:gap-4" data-testid="speed-reader-controls">
-        <RoundButton label={`Indietro di ${prefs.step} parole`} icon={Rewind} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`} />
-        <RoundButton label={playing ? 'Pausa' : 'Avvia'} icon={playing ? Pause : Play} onClick={toggle} note={playing ? 'Pausa' : 'Play'} primary testId="speed-reader-play" badge={
-          <svg className="pointer-events-none absolute -inset-1.5 -rotate-90" style={{ width: 'calc(100% + 12px)', height: 'calc(100% + 12px)' }} viewBox="0 0 104 104" aria-hidden>
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
-            <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
-              strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
-          </svg>
-        } />
-        <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
-        <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
-          icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
-          onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
-      </div>
-      <div className="mt-3 text-center text-meta text-muted-foreground" data-testid="speed-reader-count">
-        {words.length ? `${index + 1} / ${words.length} parole · ${formatRemaining(remaining)}` : ''}
+        <div className="mt-1.5 flex items-center justify-center gap-6 max-md:gap-4" data-testid="speed-reader-controls">
+          {!phone && (
+            <RoundButton
+              label={prevLabel}
+              icon={SkipBack}
+              onClick={() => onUnit(-1, playing)}
+              unavailable={canPrevUnit ? null : 'prima unità'}
+              small
+            />
+          )}
+          <RoundButton label={`Indietro di ${prefs.step} parole`} icon={Rewind} onClick={() => jump(index - prefs.step)} note={`−${prefs.step}`} />
+          <RoundButton label={playing ? 'Pausa' : 'Avvia'} icon={playing ? Pause : Play} onClick={toggle} note={playing ? 'Pausa' : 'Play'} primary testId="speed-reader-play" badge={
+            <svg className="pointer-events-none absolute -inset-1.5 -rotate-90" style={{ width: 'calc(100% + 12px)', height: 'calc(100% + 12px)' }} viewBox="0 0 104 104" aria-hidden>
+              <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--border)" />
+              <circle cx="52" cy="52" r="50" fill="none" strokeWidth="2" stroke="var(--rsvp-focus)" strokeLinecap="round"
+                strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
+            </svg>
+          } />
+          <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
+          <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
+            icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
+            onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
+          {!phone && (
+            <RoundButton
+              label={nextLabel}
+              icon={SkipForward}
+              onClick={() => onUnit(1, playing)}
+              unavailable={canNextUnit ? null : 'ultima unità'}
+              small
+            />
+          )}
+        </div>
+        <div className="mt-3 text-center text-meta text-muted-foreground" data-testid="speed-reader-count">
+          {words.length ? `${index + 1} / ${words.length} parole · ${formatRemaining(remaining)}` : ''}
+        </div>
       </div>
       {settings && (
         <SettingsPanel anchor={settingsButton} phone={phone} prefs={prefs} update={update} onDone={closeSettings}
@@ -281,13 +372,14 @@ function FormulaWord({ html }: { html: string }) {
 
 function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
 
-function RoundButton({ label, icon, onClick, note, primary, badge, testId }: {
-  label: string; icon: LucideIcon; onClick: () => void; note: string; primary?: boolean; badge?: ReactNode; testId?: string
+function RoundButton({ label, icon, onClick, note, primary, badge, testId, small, unavailable }: {
+  label: string; icon: LucideIcon; onClick: () => void; note?: string; primary?: boolean; badge?: ReactNode; testId?: string; small?: boolean; unavailable?: string | null
 }) {
   return <div className="flex flex-col items-center gap-2">
-    <IconButton label={label} icon={icon} onClick={onClick} variant={primary ? 'solid' : 'ghost'} badge={badge} data-testid={testId}
-      className={cn('size-14 min-w-14 rounded-full border border-border max-md:size-12 max-md:min-w-12 [&_svg]:size-5', !primary && 'bg-muted')} />
-    <span className="text-meta text-muted-foreground">{note}</span>
+    <IconButton label={label} icon={icon} onClick={onClick} variant={primary ? 'solid' : 'ghost'} badge={badge} data-testid={testId} unavailable={unavailable}
+      className={cn(small ? 'size-11 min-w-11 max-md:size-10 max-md:min-w-10 [&_svg]:size-4' : 'size-14 min-w-14 max-md:size-12 max-md:min-w-12 [&_svg]:size-5',
+        'rounded-full border border-border', !primary && 'bg-muted')} />
+    {note ? <span className="text-meta text-muted-foreground">{note}</span> : <span className="text-meta text-muted-foreground invisible" aria-hidden>&nbsp;</span>}
   </div>
 }
 
