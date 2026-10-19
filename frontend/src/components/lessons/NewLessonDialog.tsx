@@ -972,7 +972,7 @@ export function NewLessonDialog({
                 icon={FileText}
                 aria-pressed={solo}
                 active={solo}
-                disabled={busy}
+                unavailable={busy ? 'importazione in corso' : null}
                 onClick={() => setSolo(!solo)}
               />
               <IconButton
@@ -980,7 +980,7 @@ export function NewLessonDialog({
                 icon={ShieldCheck}
                 aria-pressed={review}
                 active={review && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setReview(!review)}
               />
               <IconButton
@@ -988,7 +988,7 @@ export function NewLessonDialog({
                 icon={Image}
                 aria-pressed={enrichment}
                 active={enrichment && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setEnrichment(!enrichment)}
               />
               <IconButton
@@ -996,7 +996,15 @@ export function NewLessonDialog({
                 icon={Paperclip}
                 aria-pressed={attachMaterials}
                 active={attachMaterials && materialFiles.length > 0 && !solo}
-                disabled={busy || solo || materialFiles.length === 0}
+                unavailable={
+                  busy
+                    ? 'importazione in corso'
+                    : solo
+                      ? 'non con Solo trascrizione'
+                      : materialFiles.length === 0
+                        ? 'aggiungi almeno un documento'
+                        : null
+                }
                 onClick={() => setAttachMaterials(!attachMaterials)}
                 data-testid="attach-materials-btn"
               />

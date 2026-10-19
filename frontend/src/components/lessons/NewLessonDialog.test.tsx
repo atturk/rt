@@ -96,7 +96,7 @@ describe('NewLessonDialog', () => {
     // Attivando Solo trascrizione: la revisione si disattiva
     fireEvent.click(soloBtn)
     expect(soloBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(reviewBtn).toBeDisabled()
+    expect(reviewBtn).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByTestId('pipeline-sentence')).toHaveTextContent(
       "Dopo l'importazione: solo trascrizione",
     )
@@ -312,6 +312,28 @@ describe('Import nuovo (wireframe RT-import.html)', () => {
       }),
       expect.anything(),
     )
+  })
+
+  it('senza materiali mostra il motivo per Allega documenti alle unità e il clic non cambia stato', () => {
+    renderDialog()
+    const attachBtn = screen.getByTestId('attach-materials-btn')
+    expect(attachBtn).toHaveAttribute('aria-disabled', 'true')
+    expect(attachBtn).toHaveAccessibleDescription('Allega documenti alle unità: aggiungi almeno un documento')
+
+    // Clic non cambia lo stato (resta true)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(attachBtn)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Con un documento il clic lo attiva come oggi
+    const pdf = new File(['pdf content'], 'appunti.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
+      target: { files: [pdf] },
+    })
+    expect(attachBtn).not.toHaveAttribute('aria-disabled')
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(attachBtn)
+    expect(attachBtn).toHaveAttribute('aria-pressed', 'false')
   })
 })
 
