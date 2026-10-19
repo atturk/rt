@@ -12,3 +12,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 8. `piano-immagine-singola-miniatura-codex.md`: un'immagine da sola nel testo si mostra in miniatura.
 9. `piano-docenti-per-materia-codex.md`: docenti per materia in Impostazioni, suggeriti nel campo Docente, Invio nel popup del calendario.
 10. `piano-zoom-codex.md`: zoom dell'interfaccia (Aspetto, menu e Cmd +/− nell'app) e zoom del solo testo nello Studio con + e −.
+11. `piano-suggerimenti-pulsanti-disattivati-codex.md`: il suggerimento dei pulsanti a icona compare anche quando sono disattivati (con il motivo in Nuova lezione).
