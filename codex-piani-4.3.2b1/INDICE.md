@@ -11,3 +11,4 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 7. `piano-preparazione-veloce-codex.md`: preparazione più veloce (pagine lette in parallelo, materiali insieme alla trascrizione, avanzamento visibile).
 8. `piano-immagine-singola-miniatura-codex.md`: un'immagine da sola nel testo si mostra in miniatura.
 9. `piano-docenti-per-materia-codex.md`: docenti per materia in Impostazioni, suggeriti nel campo Docente, Invio nel popup del calendario.
+10. `piano-zoom-codex.md`: zoom dell'interfaccia (Aspetto, menu e Cmd +/− nell'app) e zoom del solo testo nello Studio con + e −.
