@@ -131,7 +131,8 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)
-  const placedImage = page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`)
+  // L'immagine si vede nella striscia di miniature; quella dell'editor sotto resta nascosta.
+  const placedImage = page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`).filter({ visible: true })
   await scrollDocumentTo(page, placedImage)
   await expect(placedImage).toBeVisible()
 

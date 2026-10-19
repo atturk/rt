@@ -90,7 +90,8 @@ export function isAppWindow(): boolean {
       sessionStorage.setItem('rt-app', '1')
       return true
     }
-    return sessionStorage.getItem('rt-app') === '1'
+    // La finestra dell'app (pywebview) espone window.pywebview; il redirect di /login perde ?app=1.
+    return sessionStorage.getItem('rt-app') === '1' || 'pywebview' in window
   } catch {
     return false
   }

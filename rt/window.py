@@ -150,7 +150,7 @@ class DesktopApi:
         save_name = f"{name}.zip"
         try:
             import webview
-            dialog_type = getattr(webview, "SAVE_DIALOG", 10)
+            dialog_type = webview.FileDialog.SAVE
             chosen = self._window.create_file_dialog(
                 dialog_type,
                 save_filename=save_name,
@@ -170,7 +170,8 @@ class DesktopApi:
         if not chosen.lower().endswith(".zip"):
             chosen += ".zip"
 
-        _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia")
+        if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
+            return {"errore": "Un backup è già in corso."}
         return {"avviato": True}
 
 
@@ -178,12 +179,13 @@ _backup_lock = threading.Lock()
 _backup_running = False
 
 
-def _stream_backup(window, args: list[str], tipo: str = "backup") -> None:
+def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
     global _backup_running
     with _backup_lock:
         if _backup_running:
-            window.evaluate_js(f"window.__rtBackup && window.__rtBackup({json.dumps({'inizio': True, 'tipo': tipo})})")
-            return
+            # Un backup o una copia è già in corso: il popup resta su quello, il nuovo non parte.
+            _notice(window, "Un backup è già in corso.")
+            return False
         _backup_running = True
 
     def work():
@@ -271,6 +273,7 @@ def _stream_backup(window, args: list[str], tipo: str = "backup") -> None:
                 _backup_running = False
 
     threading.Thread(target=work, name=f"rt-stream-{tipo}", daemon=True).start()
+    return True
 
 
 def _maintenance(window, command: str) -> None:
@@ -349,14 +352,15 @@ def about_options(info: dict, versions: dict | None = None) -> dict:
     if not version:
         try:
             from rt.core.version import get_current_version
-            version = get_current_version()
+            version = get_current_version(paths.project_root())
         except Exception:
-            version = "4.3.2b1"
+            version = None
+        if version == "sconosciuta":
+            version = None
 
-    options: dict = {
-        "ApplicationName": "RT",
-        "ApplicationVersion": version,
-    }
+    options: dict = {"ApplicationName": "RT"}
+    if version:
+        options["ApplicationVersion"] = version
 
     run = info.get("run")
     commit = info.get("commit")
@@ -389,11 +393,11 @@ def about_options(info: dict, versions: dict | None = None) -> dict:
     webview_ver = versions.get("webview")
     if not webview_ver:
         try:
-            import webview
-            webview_ver = getattr(webview, "__version__", "6.2.1")
+            from importlib.metadata import version as package_version
+            webview_ver = package_version("pywebview")
         except Exception:
-            webview_ver = "6.2.1"
-    credits_lines.append(f"Python {py_ver} · pywebview {webview_ver}")
+            webview_ver = None
+    credits_lines.append(f"Python {py_ver}" + (f" · pywebview {webview_ver}" if webview_ver else ""))
 
     mac_ver = versions.get("macos") or platform.mac_ver()[0]
     arch = versions.get("arch") or platform.machine()

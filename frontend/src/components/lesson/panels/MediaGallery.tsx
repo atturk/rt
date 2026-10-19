@@ -237,22 +237,25 @@ export function MediaGallery({
 
     const closePeek = () => {
       setPeek(null)
+      // Il clic che segue il rilascio (se cade sulla miniatura) è già passato: poi un clic vale di nuovo.
+      setTimeout(() => { peekShownRef.current = false }, 0)
     }
 
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopImmediatePropagation() // Esc chiude solo l'anteprima, non toglie la selezione
         closePeek()
       }
     }
 
     window.addEventListener('pointerup', closePeek)
     window.addEventListener('blur', closePeek)
-    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
 
     return () => {
       window.removeEventListener('pointerup', closePeek)
       window.removeEventListener('blur', closePeek)
-      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDown, true)
     }
   }, [peek])
 

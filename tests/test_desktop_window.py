@@ -23,6 +23,7 @@ def data(tmp_path, monkeypatch):
 def webview(monkeypatch):
     fake = ModuleType("webview")
     fake.settings = {}
+    fake.FileDialog = SimpleNamespace(OPEN=10, FOLDER=20, SAVE=30)
     fake_window = Mock()
     fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event())
     fake.create_window = Mock(return_value=fake_window)

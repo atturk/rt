@@ -73,6 +73,7 @@ export function IconButton({
           aria-disabled={isUnavailable ? true : undefined}
           onClick={isUnavailable ? (event) => { event.preventDefault() } : onClick}
           onKeyDown={(event) => {
+            trigger.onKeyDown(event) // Esc chiude il suggerimento
             if (isUnavailable) {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()

@@ -289,7 +289,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const timer = setTimeout(() => setNotice(null), 1200)
     return () => clearTimeout(timer)
   }, [notice])
-  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
+  // Cambio d'unità durante la lettura veloce: il lettore della nuova unità riparte da solo.
+  const resumeReader = useRef(false)
+  const closeReader = useCallback(() => { resumeReader.current = false; setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
   const openReader = useCallback(() => {
     if (!textRoot) return
     textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
@@ -300,7 +302,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     setDetailsOpen(false)
   }, [textRoot, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
 
-  const resumeReader = useRef(false)
   const handleUnitChange = (direction: -1 | 1, playing = false) => {
     if (!units) return
     const nextIndex = unitIndex + direction
@@ -715,7 +716,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
               canPrevUnit={unitIndex > 0}
               canNextUnit={unitIndex < units.length - 1}
               // oxlint-disable-next-line react/refs
-              autoStart={resumeReader.current}
+              autoStart={resumeReader.current && speedReading}
               onStatus={handleStatusFromReader}
             />
           ) : undefined}

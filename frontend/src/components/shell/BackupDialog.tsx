@@ -135,10 +135,12 @@ export function BackupDialog() {
     setSavingCopy(true)
     try {
       const res = await window.pywebview.api.salva_copia_backup(state.percorso)
+      // Gli eventi della copia possono arrivare prima della risposta: non si sovrascrivono.
       if (res?.avviato) {
-        setState({ kind: 'in_corso', tipo: 'copia' })
+        setState((prev) => (prev?.kind === 'finito_backup' ? { kind: 'in_corso', tipo: 'copia' } : prev))
       } else if (res?.errore) {
-        setState({ kind: 'errore', messaggio: res.errore })
+        const messaggio = res.errore
+        setState((prev) => (prev?.kind === 'finito_backup' ? { kind: 'errore', messaggio } : prev))
       }
     } catch (exc) {
       setState({ kind: 'errore', messaggio: String(exc) })
