@@ -117,6 +117,8 @@ export function LightweightSession({
   const activeLessonId = questionLessonId ?? lessonId ?? 0
   // Valutazione delle risposte aperte: job in corso, poi esito letto dallo storico
   const [evaluationJob, setEvaluationJob] = useState<string | null>(null)
+  // Valutazione fallita (es. registrazione senza parlato): resta visibile l'errore e si può rispondere di nuovo
+  const [failedEvaluationJob, setFailedEvaluationJob] = useState<string | null>(null)
   // Rigenerazione della domanda: job in corso
   const [regenerationJob, setRegenerationJob] = useState<string | null>(null)
   const history = useRecallHistory(activeLessonId, false)
@@ -206,6 +208,7 @@ export function LightweightSession({
       setShowVoiceRecorder(false)
       setEvaluatedResult(null)
       setEvaluationJob(null)
+      setFailedEvaluationJob(null)
       setRegenerationJob(null)
       setCurrentVote(null)
       setDiscardModalOpen(false)
@@ -307,6 +310,7 @@ export function LightweightSession({
         questionId: currentQuestion.id,
         answer: writtenAnswer.trim(),
       })
+      setFailedEvaluationJob(null)
       if (result.job) setEvaluationJob(result.job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
@@ -321,6 +325,7 @@ export function LightweightSession({
         questionId: currentQuestion.id,
         audio,
       })
+      setFailedEvaluationJob(null)
       setEvaluationJob(job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
@@ -328,7 +333,12 @@ export function LightweightSession({
   }
 
   // Fine della valutazione: esito e commento del modello dalla risposta salvata
-  const evaluationFinished = async () => {
+  const evaluationFinished = async (state: string) => {
+    if (state !== 'succeeded') {
+      setFailedEvaluationJob(evaluationJob)
+      setEvaluationJob(null)
+      return
+    }
     const questionId = currentQuestion?.id
     const { data } = await history.refetch()
     const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
@@ -768,7 +778,10 @@ export function LightweightSession({
               )}
 
               {evaluationJob && (
-                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={() => void evaluationFinished()} />
+                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={(state) => void evaluationFinished(state)} />
+              )}
+              {failedEvaluationJob && !evaluationJob && (
+                <JobProgress jobId={failedEvaluationJob} label="Valutazione della risposta" />
               )}
               {regenerationJob && (
                 <JobProgress jobId={regenerationJob} label="Rigenerazione della domanda" onFinished={regenerationFinished} />

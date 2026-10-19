@@ -301,6 +301,7 @@ def _recall_message(head: str, generated: int, rows: list) -> str:
 
 
 MOCK_VOICE_TRANSCRIPT = "Risposta vocale di prova (trascrizione mock)."
+NO_SPEECH = "Nessun parlato rilevato nella registrazione."
 
 
 def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -317,6 +318,9 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             answer = transcribe_voice_answer(p["audio_path"], load_config().telegram.recall.stt_engine)
         is_voice = True
         _cleanup_upload(p)
+        if not answer.strip():
+            # Registrazione muta (microfono spento, solo rumore): niente valutazione né risposta salvata.
+            raise ValueError(NO_SPEECH)
     evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,
                                       force_mock=bool(p.get("mock")), mark_answered=False)
     if evaluation is None:

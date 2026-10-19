@@ -98,6 +98,22 @@ def test_voice_answer_in_mock_skips_stt(api_client, ws, rt_db):
     assert voice[-1]["evaluation"]
 
 
+def test_silent_voice_answer_fails_without_evaluation(ws, tmp_path, monkeypatch):
+    """Registrazione senza parlato: il job fallisce con un messaggio chiaro e non valuta né salva nulla."""
+    from types import SimpleNamespace
+
+    import rt.core.recall_stt as recall_stt
+    import rt.services.recall_service as recall_service
+    from rt.services.api_jobs import NO_SPEECH, recall_evaluate_job
+    audio = tmp_path / "risposta.webm"
+    audio.write_bytes(b"x")
+    monkeypatch.setattr(recall_stt, "transcribe_voice_answer", lambda path, engine: "  ")
+    monkeypatch.setattr(recall_service, "handle_recall_answer", lambda *a, **k: pytest.fail("valutata"))
+    job = SimpleNamespace(payload={"question_id": "q1", "audio_path": str(audio), "mock": False}, lesson_path=str(ws))
+    with pytest.raises(ValueError, match=NO_SPEECH):
+        recall_evaluate_job(job, None)
+
+
 def test_web_search_requires_searxng_before_enqueue(api_client, ws, rt_db):
     """RT4-FA7: senza SearXNG l'errore arriva subito e rimanda alle Impostazioni."""
     run_mock_pipeline(make_lesson(ws))

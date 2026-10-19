@@ -24,6 +24,7 @@ import { DocumentMenu, type PartLocator } from './DocumentMenu'
 import { EditorAudioLines } from './EditorAudioLines'
 import { reviewSelection } from './reviewSelection'
 import { EnrichmentPortals } from './Enrichment'
+import { lessonEnrichmentBlocks } from './lessonEnrichmentBlocks'
 import { lessonMath } from './lessonMath'
 import { lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
 import { lessonImageStrips } from './lessonImageStrips'
@@ -188,6 +189,7 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
     lessonStudyNotes,
     lessonClassifier,
     lessonMath,
+    lessonEnrichmentBlocks,
     lessonImages(lessonId),
     lessonImageStrips(lessonId),
     lessonImageUploads({ upload: uploadImage, started: uploadStarted }),
