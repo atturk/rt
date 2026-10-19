@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from './format'
 import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
+import { usePreference } from './preferences'
 
 /**
  * Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c, 04): elenco a righe raggruppato per
@@ -34,6 +35,57 @@ export function groupBackground(index: number, mode: string | undefined): string
   if (mode === 'niente') return undefined
   if (mode === 'grigi') return 'var(--group-gray)'
   return `var(--group-${(index % 4) + 1})`
+}
+
+export type LessonsView = { group: LessonsGrouping; sort: LessonsSort; q: string; materia: string; stato: string }
+export const PINNED_VIEW_PREF = 'lessons.pinned'
+
+export function parsePinnedView(raw: unknown): LessonsView | null {
+  try {
+    let data = raw
+    if (typeof raw === 'string') {
+      data = JSON.parse(raw)
+    }
+    if (!data || typeof data !== 'object') return null
+    const obj = data as Partial<LessonsView>
+    if (!obj.group || !(obj.group in GROUPING_LABELS)) return null
+    if (!obj.sort || !(obj.sort in SORT_OPTIONS)) return null
+    return {
+      group: obj.group as LessonsGrouping,
+      sort: obj.sort as LessonsSort,
+      q: typeof obj.q === 'string' ? obj.q : '',
+      materia: typeof obj.materia === 'string' ? obj.materia : '',
+      stato: typeof obj.stato === 'string' ? obj.stato : '',
+    }
+  } catch {
+    return null
+  }
+}
+
+export function sameView(a: LessonsView, b: LessonsView): boolean {
+  return (
+    a.group === b.group &&
+    a.sort === b.sort &&
+    a.q.trim() === b.q.trim() &&
+    a.materia === b.materia &&
+    a.stato === b.stato
+  )
+}
+
+export function usePinnedLessonsView(): {
+  pinned: LessonsView | null
+  pin: (view: LessonsView) => void
+  unpin: () => void
+} {
+  const [pref, setPref] = usePreference<LessonsView | undefined>(PINNED_VIEW_PREF, undefined)
+  const pinned = parsePinnedView(pref)
+  const pin = useCallback((view: LessonsView) => {
+    setPref(view)
+  }, [setPref])
+  const unpin = useCallback(() => {
+    setPref(undefined)
+  }, [setPref])
+  return { pinned, pin, unpin }
 }
 
 export type LessonsPrefs = { group: LessonsGrouping; sort: LessonsSort }

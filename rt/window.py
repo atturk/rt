@@ -128,7 +128,159 @@ def _command(command: str) -> subprocess.CompletedProcess:
                           **({"creationflags": 0x08000000} if sys.platform == "win32" else {}))
 
 
+class DesktopApi:
+    """API esposta da pywebview alla pagina JavaScript (window.pywebview.api)."""
+    def __init__(self, window=None):
+        self._window = window
+
+    def salva_copia_backup(self, percorso_snapshot: str) -> dict:
+        from rt.services import backup_service
+        import webview
+
+        if not self._window:
+            return {"errore": "Finestra non disponibile."}
+
+        dest_root = os.path.realpath(backup_service.default_dest())
+        target_path = os.path.realpath(os.path.expanduser(percorso_snapshot))
+        name = os.path.basename(target_path)
+        parent = os.path.dirname(target_path)
+        if not (name.startswith(backup_service.BACKUP_PREFIX) and parent == dest_root and os.path.isdir(target_path)):
+            return {"errore": "Percorso snapshot non valido."}
+
+        save_name = f"{name}.zip"
+        try:
+            import webview
+            dialog_type = webview.FileDialog.SAVE
+            chosen = self._window.create_file_dialog(
+                dialog_type,
+                save_filename=save_name,
+                file_types=("Archivio zip (*.zip)",),
+            )
+        except Exception as exc:
+            _log(f"Errore create_file_dialog: {exc}")
+            return {"errore": str(exc)}
+
+        if not chosen:
+            return {"annullato": True}
+        if isinstance(chosen, (list, tuple)):
+            chosen = chosen[0] if chosen else None
+        if not chosen:
+            return {"annullato": True}
+
+        if not chosen.lower().endswith(".zip"):
+            chosen += ".zip"
+
+        if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
+            return {"errore": "Un backup è già in corso."}
+        return {"avviato": True}
+
+
+_backup_lock = threading.Lock()
+_backup_running = False
+
+
+def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
+    global _backup_running
+    with _backup_lock:
+        if _backup_running:
+            # Un backup o una copia è già in corso: il popup resta su quello, il nuovo non parte.
+            _notice(window, "Un backup è già in corso.")
+            return False
+        _backup_running = True
+
+    def work():
+        global _backup_running
+        has_client = False
+        fallback_lines = []
+        last_sent_time = 0.0
+        pending_event = None
+
+        def send_event(event: dict, immediate: bool = False):
+            nonlocal has_client, last_sent_time, pending_event
+            event.setdefault("tipo", tipo)
+            now = time.monotonic()
+            if not immediate and (now - last_sent_time < 0.1):
+                pending_event = event
+                return
+            pending_event = None
+            last_sent_time = now
+            try:
+                res = window.evaluate_js(f"Boolean(window.__rtBackup && (window.__rtBackup({json.dumps(event)}), true))")
+                if res:
+                    has_client = True
+            except Exception as exc:
+                _log(f"evaluate_js errore: {exc}")
+
+        try:
+            send_event({"inizio": True, "tipo": tipo}, immediate=True)
+
+            cmd = [sys.executable, os.path.join(paths.project_root(), "bin", "rt"), *args]
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = 0x08000000
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+                **kwargs,
+            )
+
+            final_event_sent = False
+            for line in iter(proc.stdout.readline, ""):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except Exception:
+                    fallback_lines.append(line)
+                    continue
+
+                if "fine" in event or "errore" in event:
+                    if pending_event:
+                        send_event(pending_event, immediate=True)
+                    send_event(event, immediate=True)
+                    final_event_sent = True
+                    if not has_client:
+                        if "riepilogo" in event:
+                            _notice(window, "\n".join(event["riepilogo"]))
+                        elif "errore" in event:
+                            _notice(window, event["errore"])
+                else:
+                    send_event(event, immediate=False)
+
+            proc.wait()
+            if pending_event and not final_event_sent:
+                send_event(pending_event, immediate=True)
+
+            if proc.returncode != 0 and not final_event_sent:
+                err_msg = "\n".join(fallback_lines).strip() or "Operazione non riuscita."
+                send_event({"errore": err_msg, "tipo": tipo}, immediate=True)
+                if not has_client:
+                    _notice(window, err_msg)
+        except Exception as exc:
+            _log(f"Backup {tipo} eccezione: {exc}")
+            send_event({"errore": str(exc), "tipo": tipo}, immediate=True)
+            if not has_client:
+                _notice(window, str(exc))
+        finally:
+            with _backup_lock:
+                _backup_running = False
+
+    threading.Thread(target=work, name=f"rt-stream-{tipo}", daemon=True).start()
+    return True
+
+
 def _maintenance(window, command: str) -> None:
+    if command == "backup":
+        _stream_backup(window, ["backup", "--progress-json"], tipo="backup")
+        return
+
     def work():
         try:
             result = _command(command)
@@ -140,13 +292,8 @@ def _maintenance(window, command: str) -> None:
                 _open_path(target)
                 return
             if result.returncode:
-                raise RuntimeError(output.strip() or "Backup non riuscito.")
-            prefix = "✅ Backup completo: "
-            target = next((line[len(prefix):] for line in output.splitlines() if line.startswith(prefix)), "")
-            if not target:
-                raise RuntimeError("Il backup non ha indicato dove ha salvato i dati.")
+                raise RuntimeError(output.strip() or f"{command} non riuscito.")
             _notice(window, output.strip())
-            _open_path(os.path.dirname(target))
         except Exception as exc:
             _log(f"{command}: {exc}")
             _notice(window, str(exc))
@@ -173,7 +320,10 @@ def _menu(window, base_url: str):
         webbrowser.open(f"{base_url}/login?code={auth.create_login_code()}")
 
     # pywebview 6.2.1 inserisce __app__ nel menu dell'applicazione su macOS.
-    return [Menu("__app__" if sys.platform == "darwin" else "RT", [
+    actions = []
+    if sys.platform == "win32":
+        actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
+    actions.extend([
         MenuAction("Controlla aggiornamenti…", lambda: window.load_url(base_url + INFO_PATH)),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
@@ -184,22 +334,160 @@ def _menu(window, base_url: str):
         MenuAction("Apri nel browser", browser),
         MenuAction("Ricarica", lambda: window.load_url(window.get_current_url() or base_url)),
         MenuSeparator(),
+        MenuAction("Ingrandisci", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('in')")),
+        MenuAction("Riduci", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('out')")),
+        MenuAction("Dimensioni reali", lambda: window.evaluate_js("window.rtZoom && window.rtZoom('reset')")),
+        MenuSeparator(),
         MenuAction("Esci da RT", quit_rt),
-    ])]
+    ])
+    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions)]
+
+
+def about_options(info: dict, versions: dict | None = None) -> dict:
+    """Opzioni per il pannello Informazioni su RT del Mac."""
+    from datetime import datetime
+    import platform
+    versions = versions or {}
+    version = info.get("version") or versions.get("version")
+    if not version:
+        try:
+            from rt.core.version import get_current_version
+            version = get_current_version(paths.project_root())
+        except Exception:
+            version = None
+        if version == "sconosciuta":
+            version = None
+
+    options: dict = {"ApplicationName": "RT"}
+    if version:
+        options["ApplicationVersion"] = version
+
+    run = info.get("run")
+    commit = info.get("commit")
+    if run and commit:
+        options["Version"] = f"build {run} · {commit}"
+    elif commit:
+        options["Version"] = str(commit)
+    elif run:
+        options["Version"] = f"build {run}"
+
+    channel = versions.get("channel")
+    if not channel:
+        try:
+            from rt.core.version import get_update_channel
+            channel = get_update_channel()
+        except Exception:
+            channel = "stable"
+    channel_label = "beta" if channel == "beta" else "stabile"
+    credits_lines = [f"Canale aggiornamenti: {channel_label}"]
+
+    built_at = info.get("built_at")
+    if built_at:
+        try:
+            dt = datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+            credits_lines.append(f"Compilata il {dt.strftime('%d/%m/%Y')}")
+        except Exception:
+            credits_lines.append(f"Compilata il {built_at}")
+
+    py_ver = versions.get("python") or platform.python_version()
+    webview_ver = versions.get("webview")
+    if not webview_ver:
+        try:
+            from importlib.metadata import version as package_version
+            webview_ver = package_version("pywebview")
+        except Exception:
+            webview_ver = None
+    credits_lines.append(f"Python {py_ver}" + (f" · pywebview {webview_ver}" if webview_ver else ""))
+
+    mac_ver = versions.get("macos") or platform.mac_ver()[0]
+    arch = versions.get("arch") or platform.machine()
+    credits_lines.append(f"macOS {mac_ver} · {arch}")
+
+    options["credits_lines"] = credits_lines
+    return options
+
+
+def _show_macos_about() -> None:
+    from AppKit import (NSApplication, NSAttributedString, NSColor, NSFont,
+                        NSFontAttributeName, NSForegroundColorAttributeName, NSImage)
+    from rt.core import bundle
+    info = bundle.build_info()
+    opts = about_options(info)
+    credits_text = "\n".join(opts.get("credits_lines", []))
+    attributes = {
+        NSFontAttributeName: NSFont.systemFontOfSize_(11.0),
+        NSForegroundColorAttributeName: NSColor.secondaryLabelColor(),
+    }
+    credits_attr = NSAttributedString.alloc().initWithString_attributes_(credits_text, attributes)
+    panel_opts = {
+        "ApplicationName": opts["ApplicationName"],
+        "ApplicationVersion": opts["ApplicationVersion"],
+        "Credits": credits_attr,
+    }
+    if "Version" in opts:
+        panel_opts["Version"] = opts["Version"]
+
+    app = bundle.app_path()
+    if app:
+        icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(icon_path):
+            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            if img:
+                panel_opts["ApplicationIcon"] = img
+    NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(panel_opts)
+
+
+_about_target = None
+
+
+def _get_about_target():
+    global _about_target
+    if _about_target is None:
+        try:
+            from Foundation import NSObject
+
+            class _AboutHandler(NSObject):
+                def showAbout_(self, sender):
+                    _show_macos_about()
+
+            _about_target = _AboutHandler.alloc().init()
+        except ImportError:
+            _about_target = object()
+    return _about_target
 
 
 def _macos_menu() -> None:
-    """Mantiene Modifica e assegna Cmd+Q all'uscita che ferma anche i servizi."""
+    """Mantiene Modifica, collega Informazioni su RT e assegna Cmd+Q all'uscita."""
     from AppKit import NSApplication
+    try:
+        from AppKit import NSImage
+    except ImportError:
+        NSImage = None
     from PyObjCTools import AppHelper
+    from rt.core import bundle
 
     def configure():
+        app = bundle.app_path()
+        if app and NSImage is not None:
+            icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
+            if os.path.isfile(icon_path):
+                img = NSImage.alloc().initWithContentsOfFile_(icon_path)
+                if img:
+                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+
+        about_target = _get_about_target()
         menu = NSApplication.sharedApplication().mainMenu().itemAtIndex_(0).submenu()
         for item in list(menu.itemArray()):
+            title = item.title() if callable(item.title) else getattr(item, "title", "")
             if item.keyEquivalent() == "q" and item.target() is None:
                 menu.removeItem_(item)
-            elif item.title() == "Esci da RT":
+            elif title == "Esci da RT":
                 item.setKeyEquivalent_("q")
+            elif title.startswith("Informazioni su") or title.startswith("About "):
+                if hasattr(item, "setTarget_"):
+                    item.setTarget_(about_target)
+                if hasattr(item, "setAction_"):
+                    item.setAction_("showAbout:")
     AppHelper.callAfter(configure)
 
 
@@ -248,7 +536,7 @@ def open_window(base_url: str, path: str = "/") -> int:
                     time.sleep(0.2)
                 _log("La finestra RT è già in apertura: riprova tra qualche secondo.")
                 return 1
-        url = f"{base_url}/login?code={auth.create_login_code()}"
+        url = f"{base_url}/login?code={auth.create_login_code()}&app=1"
         import webview
         if sys.platform == "darwin":
             from Foundation import NSBundle
@@ -258,8 +546,10 @@ def open_window(base_url: str, path: str = "/") -> int:
         webview.settings["ALLOW_DOWNLOADS"] = True
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
+        api = DesktopApi(None)
         window = webview.create_window("RT", url, width=1280, height=820, min_size=(900, 600),
-                                       text_select=True, zoomable=True)
+                                       text_select=True, zoomable=True, js_api=api)
+        api._window = window
         pending_path = path if path.startswith("/") and not path.startswith("//") else "/"
         smoke_done = False
         engine_error = []

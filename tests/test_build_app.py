@@ -41,3 +41,31 @@ def test_trim_keeps_modules_and_bytecode(tmp_path, target):
     assert cache.read_bytes() == b'cache rigenerabile'
     assert empty_cache.read_bytes() == b'cache'
     assert all(not (lib / name).exists() for name in ('test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip'))
+
+
+def test_write_build_info(tmp_path):
+    import json
+    from scripts.build_app import write_build_info, read_version
+
+    env_full = {
+        "GITHUB_SHA": "1234567890abcdef",
+        "GITHUB_RUN_NUMBER": "812",
+    }
+    info_full = write_build_info(str(tmp_path), "macos", env=env_full)
+    assert info_full["version"] == read_version()
+    assert info_full["target"] == "macos"
+    assert info_full["commit"] == "1234567"
+    assert info_full["run"] == "812"
+    assert "built_at" in info_full
+
+    saved_full = json.loads((tmp_path / "BUILD.json").read_text(encoding="utf-8"))
+    assert saved_full == info_full
+
+    # Solo campi disponibili: senza GITHUB_RUN_NUMBER
+    payload_min = tmp_path / "min"
+    payload_min.mkdir()
+    env_min = {"GITHUB_SHA": "abcdef12345"}
+    info_min = write_build_info(str(payload_min), "windows", env=env_min)
+    assert info_min["target"] == "windows"
+    assert info_min["commit"] == "abcdef1"
+    assert "run" not in info_min

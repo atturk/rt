@@ -1,5 +1,5 @@
-import { Layers, Search, Sparkles, Upload, X } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { FileText, Image, Layers, LayoutGrid, Rows3, Search, Sparkles, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
 import { errorMessage, type Schemas } from '@/api/client'
@@ -16,6 +16,7 @@ import {
   type LessonImage,
 } from '@/api/images'
 import { useOutline } from '@/api/jobs'
+import { formatBytes } from '@/lib/jobs'
 import { JobProgress } from '@/components/JobProgress'
 import {
   ENRICHMENT_MEDIA_DRAG_EVENT,
@@ -83,6 +84,27 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const [activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
 
+  const [mediaView, setMediaView] = useState<'rows' | 'grid'>(() => {
+    try {
+      const saved = localStorage.getItem('rt.media.view')
+      return saved === 'grid' ? 'grid' : 'rows'
+    } catch {
+      return 'rows'
+    }
+  })
+
+  const toggleMediaView = () => {
+    setMediaView((prev) => {
+      const next = prev === 'rows' ? 'grid' : 'rows'
+      try {
+        localStorage.setItem('rt.media.view', next)
+      } catch {
+        // Ignora errori di localStorage
+      }
+      return next
+    })
+  }
+
   const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('rt-media-upload-mode')
@@ -102,6 +124,18 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       }
       return next
     })
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const closeUpload = () => {
+    setOpenUpload(false)
+    setUploadFiles([])
+    setUploadError(null)
+  }
+
+  const removeUploadFile = (index: number) => {
+    setUploadFiles((previous) => previous.filter((_, i) => i !== index))
   }
 
   const chooseUploadFiles = (files: File[]) => {
@@ -332,13 +366,23 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           </h3>
           <div className="flex items-center gap-1">
             <IconButton
+              label={mediaView === 'rows' ? 'Vista a griglia' : 'Una pagina per riga'}
+              icon={mediaView === 'rows' ? LayoutGrid : Rows3}
+              className="size-7"
+              onClick={toggleMediaView}
+            />
+            <IconButton
               label="Aggiungi immagini (PDF o foto)"
               icon={Upload}
               className="size-7"
               active={openUpload}
               onClick={() => {
-                setOpenUpload(!openUpload)
-                setOpenSearch(false)
+                if (openUpload) {
+                  closeUpload()
+                } else {
+                  setOpenUpload(true)
+                  setOpenSearch(false)
+                }
               }}
             />
             <IconButton
@@ -348,7 +392,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               active={openSearch}
               onClick={() => {
                 setOpenSearch(!openSearch)
-                setOpenUpload(false)
+                closeUpload()
               }}
             />
           </div>
@@ -376,20 +420,68 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           >
             <div className="flex items-center justify-between">
               <span className="text-body font-semibold">Aggiungi PDF o foto</span>
-              <IconButton label="Chiudi" icon={X} className="size-6" onClick={() => setOpenUpload(false)} />
+              <IconButton label="Chiudi" icon={X} className="size-6" onClick={closeUpload} />
             </div>
             <form onSubmit={handleUploadSubmit} className="flex flex-col gap-2.5">
-              <Input
+              <input
+                ref={fileInputRef}
                 type="file"
-                aria-label="PDF o foto"
+                hidden
                 multiple
                 accept={ACCEPT}
-                className="h-auto py-1 text-meta"
+                aria-label="PDF o foto"
                 onChange={(e) => {
                   chooseUploadFiles(Array.from(e.target.files ?? []))
                   e.target.value = ''
                 }}
               />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="size-4" aria-hidden />
+                  {uploadFiles.length === 0 ? 'Scegli file' : 'Aggiungi altri'}
+                </Button>
+                {uploadFiles.length === 0 && (
+                  <span className="text-meta text-muted-foreground">oppure trascinali qui</span>
+                )}
+              </div>
+              {uploadFiles.length > 0 && (
+                <ul aria-label="File scelti" className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {uploadFiles.map((file, index) => {
+                    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+                    return (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-meta"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          {isPdf ? (
+                            <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          ) : (
+                            <Image className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          )}
+                          <span className="truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {formatBytes(file.size)}
+                          </span>
+                        </div>
+                        <IconButton
+                          label={`Rimuovi ${file.name}`}
+                          icon={X}
+                          className="size-6 shrink-0"
+                          onClick={() => removeUploadFile(index)}
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
               {uploadError && <Alert tone="danger">{uploadError}</Alert>}
               <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 p-2">
                 <Tooltip
@@ -429,7 +521,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 </p>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setOpenUpload(false)}>
+                <Button size="sm" variant="ghost" type="button" onClick={closeUpload}>
                   Annulla
                 </Button>
                 <Button size="sm" variant="default" type="submit" disabled={!uploadFiles.length || addImages.isPending}>
@@ -565,6 +657,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
             lessonId={id}
             images={imageList}
             selectedNames={selectedNames}
+            view={mediaView}
             onToggleSelect={(name) =>
               setSelectedNames((prev) => {
                 const next = new Set(prev)

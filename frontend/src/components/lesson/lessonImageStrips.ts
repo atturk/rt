@@ -1,6 +1,6 @@
 import { type EditorState, type Extension, type Range, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
-import { buildImageStripDOM } from '@/components/images/imageStripDOM'
+import { buildImageStripDOM, MIN_STRIP_IMAGES } from '@/components/images/imageStripDOM'
 import { parseImageAlt, type ImageItem } from '@/components/images/imageUtils'
 
 const MARKDOWN_IMAGE_LINE_RE = /^!\[(.*)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)\s*$/
@@ -66,7 +66,7 @@ export function findMarkdownImageStrips(state: EditorState, lessonId: number): S
       continue
     } else {
       // Testo ordinario: chiude l'eventuale striscia
-      if (currentImages.length >= 2 && stripStartLine > 0 && stripEndLine > 0) {
+      if (currentImages.length >= MIN_STRIP_IMAGES && stripStartLine > 0 && stripEndLine > 0) {
         strips.push({
           from: doc.line(stripStartLine).from,
           to: doc.line(stripEndLine).to,
@@ -81,7 +81,7 @@ export function findMarkdownImageStrips(state: EditorState, lessonId: number): S
     }
   }
 
-  if (currentImages.length >= 2 && stripStartLine > 0 && stripEndLine > 0) {
+  if (currentImages.length >= MIN_STRIP_IMAGES && stripStartLine > 0 && stripEndLine > 0) {
     strips.push({
       from: doc.line(stripStartLine).from,
       to: doc.line(stripEndLine).to,
@@ -95,11 +95,10 @@ export function findMarkdownImageStrips(state: EditorState, lessonId: number): S
 }
 
 /**
- * Estensione CodeMirror per la gestione delle immagini consecutive in striscia:
- * - 2 o più immagini consecutive formano una striscia
- * - Con cursore fuori dalla striscia: rimpiazzo visivo con la striscia di miniature (~90px)
+ * Estensione CodeMirror per la gestione delle immagini in striscia di miniature:
+ * - Immagini singole o serie consecutive formano una striscia (~90px)
+ * - Con cursore fuori dalla striscia: rimpiazzo visivo con la striscia di miniature
  * - Con cursore dentro la striscia: compaiono le righe markdown per la modifica
- * - Un'immagine singola resta invariata
  */
 export function lessonImageStrips(lessonId: number): Extension {
   const build = (state: EditorState): DecorationSet => {

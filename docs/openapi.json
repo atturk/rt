@@ -10400,6 +10400,18 @@
       },
       "SystemInfo": {
         "properties": {
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Informazioni di build per l'app (build N · commit · data)",
+            "title": "Build"
+          },
           "config_dir": {
             "description": "Cartella config/ in uso",
             "title": "Config Dir",

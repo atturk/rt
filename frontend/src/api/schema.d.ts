@@ -7594,6 +7594,11 @@ export interface components {
         /** SystemInfo */
         SystemInfo: {
             /**
+             * Build
+             * @description Informazioni di build per l'app (build N · commit · data)
+             */
+            build?: string | null;
+            /**
              * Config Dir
              * @description Cartella config/ in uso
              */

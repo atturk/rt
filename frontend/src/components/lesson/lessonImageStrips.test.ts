@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { findMarkdownImageStrips, lessonImageStrips } from './lessonImageStrips'
 
 describe('lessonImageStrips', () => {
-  it('trova blocchi di 2 o più immagini consecutive nel testo markdown', () => {
+  it('trova sia immagini consecutive che immagini singole nel testo markdown', () => {
     const text = [
       '### 1.1 Unità',
       '00:00',
@@ -23,11 +23,16 @@ describe('lessonImageStrips', () => {
     const state = EditorState.create({ doc: text })
     const strips = findMarkdownImageStrips(state, 1)
 
-    expect(strips).toHaveLength(1)
+    // Trova 2 strisce: una con 2 immagini e una con 1 immagine
+    expect(strips).toHaveLength(2)
+
     expect(strips[0].images).toHaveLength(2)
     expect(strips[0].images[0].docName).toBe('Doc.pdf')
     expect(strips[0].images[0].pageNumber).toBe(1)
     expect(strips[0].images[1].pageNumber).toBe(2)
+
+    expect(strips[1].images).toHaveLength(1)
+    expect(strips[1].images[0].docName).toBe('Singola')
   })
 
   it('mostra il widget della striscia quando la selezione è fuori, e mostra il testo quando il cursore entra', () => {
@@ -60,6 +65,37 @@ describe('lessonImageStrips', () => {
     })
 
     // Le righe markdown compaiono come testo (il widget è tolto per permettere la modifica)
+    expect(parent.querySelector('.rt-strip')).toBeNull()
+
+    view.destroy()
+    parent.remove()
+  })
+
+  it('anche per una sola immagine, con cursore fuori compare la striscia e con cursore dentro il markdown', () => {
+    const text = [
+      '### 1.1 Unità',
+      '![Singola](assets/images/single.png)',
+      'Testo successivo.',
+    ].join('\n')
+
+    const parent = document.createElement('div')
+    document.body.append(parent)
+
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: text,
+        selection: { anchor: text.indexOf('Testo successivo.') },
+        extensions: [lessonImageStrips(1)],
+      }),
+    })
+
+    expect(parent.querySelector('.rt-strip')).not.toBeNull()
+
+    view.dispatch({
+      selection: { anchor: text.indexOf('![Singola]') + 2 },
+    })
+
     expect(parent.querySelector('.rt-strip')).toBeNull()
 
     view.destroy()

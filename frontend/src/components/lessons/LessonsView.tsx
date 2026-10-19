@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -33,13 +33,15 @@ const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente
 // ---------------------------------------------------------------- intestazione
 
 /** Azioni dell'intestazione: raggruppa (icone), ordina, cerca, seleziona; sul telefono Raggruppa e Ordina a un tocco. */
-export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting }: {
+export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting, fixed = false, onToggleFixed }: {
   prefs: LessonsPrefs
   onPrefs: (patch: Partial<LessonsPrefs>) => void
   query: string
   onQuery: (q: string) => void
   selecting: boolean
   onSelecting: (on: boolean) => void
+  fixed?: boolean
+  onToggleFixed?: () => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [savedDateChoice, setSavedDateChoice] = useState<'data' | 'mese'>(() => (prefs.group === 'mese' ? 'mese' : 'data'))
@@ -151,6 +153,14 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           />
         </>
       )}
+      <IconButton
+        label={fixed ? 'Vista fissata: tocca per non fissarla più' : 'Fissa questa vista'}
+        icon={Pin}
+        active={fixed}
+        aria-pressed={fixed}
+        className={cn(fixed && '[&_svg]:fill-current')}
+        onClick={onToggleFixed}
+      />
       {/* Un solo campo "Cerca": il landmark non ha un nome suo, che lo ripeterebbe. */}
       <form
         role="search"

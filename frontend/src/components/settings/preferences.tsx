@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap } from '@/api/client'
@@ -10,6 +10,7 @@ import { usePreference } from '@/lib/preferences'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
+import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
@@ -32,8 +33,19 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [highlighter, setHighlighter] = useHighlighterPrefs()
   const [rsvp, setRsvp] = useRsvpPrefs()
   const [rate, setRate] = usePreference('audio.rate', 1)
+  const [zoom, setZoomState] = useState(getZoom)
   const save = useGeneralPreference()
   const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
+
+  useEffect(() => {
+    const onZoomChange = (e: Event) => {
+      const z = (e as CustomEvent<{ zoom: number }>).detail?.zoom
+      setZoomState(z ?? getZoom())
+    }
+    window.addEventListener('rt-zoom-change', onZoomChange)
+    return () => window.removeEventListener('rt-zoom-change', onZoomChange)
+  }, [])
+
   return <>
     <Section id="aspetto" title="Aspetto">
       <Field label="Tema" htmlFor="pref-theme"><SlideToggle label="Tema" value={theme} onChange={setTheme}
@@ -42,6 +54,18 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         <Select id="pref-sfondo" value={preferences.sfondo_gruppi} disabled={save.isPending} onChange={e => save.mutate({ sfondo_gruppi: e.target.value as typeof preferences.sfondo_gruppi })}>
           <option value="colori">Colori</option><option value="grigi">Grigi</option><option value="niente">Niente</option>
         </Select>
+      </Field>
+      <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
+        <div className="flex items-center gap-2">
+          <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
+            {ZOOM_LEVELS.map(level => (
+              <option key={level} value={level}>{Math.round(level * 100)}%</option>
+            ))}
+          </Select>
+          <Button type="button" variant="outline" size="sm" onClick={resetZoom} disabled={zoom === 1}>
+            100%
+          </Button>
+        </div>
       </Field>
       <SaveFeedback mutation={save} />
     </Section>

@@ -125,11 +125,39 @@ def build_payload(target: str, payload: str, archive: str, spa_dist: str) -> str
         f.write(version + "\n")
     with open(os.path.join(payload, "BUNDLE"), "w", encoding="utf-8") as f:
         f.write(target + "\n")
+    write_build_info(payload, target)
     _trim(payload, target)
     # prova: il Python dell'app importa RT e risponde alla versione
     subprocess.run([python, os.path.join(payload, "bin", "rt"), "desktop", "--help"], check=True,
                    stdout=subprocess.DEVNULL, env={**os.environ, "RT_UPDATE_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1"})
     return python
+
+
+def write_build_info(payload: str, target: str, env: dict | None = None) -> dict:
+    """Scrive BUILD.json nel payload dell'app con i soli dati reali di build disponibili."""
+    from datetime import datetime, timezone
+    environ = os.environ if env is None else env
+    info: dict[str, str] = {"version": read_version(), "target": target}
+    commit = (environ.get("GITHUB_SHA") or "")[:7]
+    if not commit:
+        try:
+            res = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True, cwd=ROOT)
+            if res.returncode == 0 and res.stdout.strip():
+                commit = res.stdout.strip()
+        except Exception:
+            pass
+    if commit:
+        info["commit"] = commit
+    info["built_at"] = datetime.now(timezone.utc).isoformat()
+    run = environ.get("GITHUB_RUN_NUMBER")
+    if run:
+        info["run"] = str(run)
+    path = os.path.join(payload, "BUILD.json")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(info, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    return info
 
 
 def _prepare_macos_dependencies(payload: str) -> None:

@@ -141,7 +141,7 @@ it.each([false, true])('modifica col doppio clic o un tocco sul telefono=%s', ph
   const box = screen.getByTestId('proposed-correction')
   if (phone) fireEvent.click(box); else fireEvent.doubleClick(box)
   expect(screen.getByRole('textbox', { name: 'Correzione proposta' })).toHaveValue('Il pH è 7.')
-  expect(screen.getByRole('button', { name: 'Ripristina la correzione proposta' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Ripristina la correzione proposta' })).toHaveAttribute('aria-disabled', 'true')
 })
 it('clic fuori applica il testo cambiato, senza cambi non decide', async () => {
   mount()
@@ -183,7 +183,7 @@ it('il testo vuoto non si applica; Ctrl+Invio applica il testo scritto', async (
   fireEvent.change(screen.getByRole('textbox'), { target: { value: ' ' } })
   fireEvent.mouseDown(document.body)
   expect(state.decide).not.toHaveBeenCalled()
-  expect(screen.getByRole('button', { name: 'Applica la tua correzione' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Applica la tua correzione' })).toHaveAttribute('aria-disabled', 'true')
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Il pH è 7,4.' } })
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', ctrlKey: true })
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,4.' }))
@@ -436,8 +436,8 @@ it('durante la verifica decide e annulla su una unità finita, mentre le altre s
 it('una issue della unità ancora pendente non si decide', () => {
   state.jobs = [{ id: 'j', type: 'review_unit', state: 'running', payload: { unit: '1.1' }, attempts: 0, cancel_requested: false, progress: { pending_units: ['1.1'], running_units: ['1.1'] } } as Schemas['Job']]
   mount()
-  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toHaveAttribute('aria-disabled', 'true')
+  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toHaveAttribute('aria-disabled', 'true')
 })
 it('il riepilogo sostituisce l’elenco quando tutta la lezione è decisa; Mostra decise lo riapre', () => {
   state.units = [unit('1.1', 'issues', 1)]

@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, selectionDetails, shortDate, sortSelection, subjectName,
+  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -184,3 +184,42 @@ it('esclude le ignorate dal denominatore, le mostra nella barra e non nel sottot
   expect(lessonSubtitle(rows[0], 'data', NOW)).not.toContain('ignorate')
   expect(selectionDetails([lesson(1, { unit_count: 2, study_ignored: 2 })]).studyUnits).toBe(0)
 })
+
+describe('vista fissata', () => {
+  it('parsePinnedView scarta valori non validi', () => {
+    expect(parsePinnedView(null)).toBeNull()
+    expect(parsePinnedView(undefined)).toBeNull()
+    expect(parsePinnedView('')).toBeNull()
+    expect(parsePinnedView('non json')).toBeNull()
+    expect(parsePinnedView({})).toBeNull()
+    expect(parsePinnedView({ group: 'invalid', sort: 'recenti' })).toBeNull()
+    expect(parsePinnedView({ group: 'data', sort: 'invalid' })).toBeNull()
+    expect(parsePinnedView({ group: 'data', sort: 'recenti', q: 'bio', materia: 'PATOLOGIA', stato: '' })).toEqual({
+      group: 'data',
+      sort: 'recenti',
+      q: 'bio',
+      materia: 'PATOLOGIA',
+      stato: '',
+    })
+    expect(parsePinnedView(JSON.stringify({ group: 'materia', sort: 'titolo', q: 'test' }))).toEqual({
+      group: 'materia',
+      sort: 'titolo',
+      q: 'test',
+      materia: '',
+      stato: '',
+    })
+  })
+
+  it('sameView ignora spazi ai lati della ricerca', () => {
+    const a: LessonsView = { group: 'data', sort: 'recenti', q: '  bio ', materia: 'FISIOLOGIA', stato: '' }
+    const b: LessonsView = { group: 'data', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(a, b)).toBe(true)
+
+    const c: LessonsView = { group: 'data', sort: 'recenti', q: 'bio2', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(a, c)).toBe(false)
+
+    const d: LessonsView = { group: 'materia', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(b, d)).toBe(false)
+  })
+})
+

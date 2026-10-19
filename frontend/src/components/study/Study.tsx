@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons } from '@/api/hooks'
@@ -43,6 +43,37 @@ import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
 import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
+
+const STUDY_TEXT_SCALE_KEY = 'rt-device:study-text-scale'
+
+function getSavedStudyTextScale(): number {
+  try {
+    const raw = localStorage.getItem(STUDY_TEXT_SCALE_KEY)
+    if (raw) {
+      const val = parseFloat(raw)
+      if (Number.isFinite(val) && val >= 0.8 && val <= 2.0) {
+        return Math.round(val * 10) / 10
+      }
+    }
+  } catch {
+    return 1.0
+  }
+  return 1.0
+}
+
+function saveStudyTextScale(v: number): void {
+  try {
+    localStorage.setItem(STUDY_TEXT_SCALE_KEY, (Math.round(v * 10) / 10).toFixed(1))
+  } catch {
+    // Continua se localStorage non è disponibile
+  }
+}
+
+function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
+  if (!root) return null
+  const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('p, h2, h3, li, blockquote'))
+  return paragraphs.find(el => el.getBoundingClientRect().bottom > 60) ?? paragraphs[0] ?? null
+}
 
 /**
  * Studio (schermate 05, 05b, 06, wireframe Studio-Indice.dc.html):
@@ -202,6 +233,18 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [zenMode, setZenMode] = useStudyZen(entry?.zen ?? false)
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
+  const [textScale, setTextScale] = useState(getSavedStudyTextScale)
+  const [scaleNotice, setScaleNotice] = useState<string | null>(null)
+  const scaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showScaleNotice = useCallback((val: number) => {
+    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+    setScaleNotice(`Testo ${Math.round(val * 100)}%`)
+    scaleTimerRef.current = setTimeout(() => {
+      setScaleNotice(null)
+      scaleTimerRef.current = null
+    }, 1000)
+  }, [])
   const savePosition = () => {
     readingScroll.current = window.scrollY
     const node = Array.from(textRoot?.querySelectorAll('p, h2, h3, li') ?? []).find(el => el.getBoundingClientRect().bottom > 52)
@@ -233,13 +276,53 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const frame = requestAnimationFrame(restore)
     return () => cancelAnimationFrame(frame)
   }, [zenMode, phase, rereading])
-  const [notice, setNotice] = useState<{ kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi'; label: string; off?: boolean; color?: number; status?: StudyUnit['status'] } | null>(null)
+  const [notice, setNotice] = useState<{
+    kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi' | 'unit'
+    label: string
+    off?: boolean
+    color?: number
+    status?: StudyUnit['status']
+    direction?: -1 | 1
+  } | null>(null)
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(null), 1200)
     return () => clearTimeout(timer)
   }, [notice])
-  const closeReader = useCallback(() => { setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
+  // Cambio d'unità durante la lettura veloce: il lettore della nuova unità riparte da solo.
+  const resumeReader = useRef(false)
+  const closeReader = useCallback(() => { resumeReader.current = false; setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
+  const openReader = useCallback(() => {
+    if (!textRoot) return
+    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    window.scrollTo?.({ top: 0 })
+    setSpeedReading(true)
+    setReaderMounted(true)
+    setIndexOpen(false)
+    setDetailsOpen(false)
+  }, [textRoot, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
+
+  const handleUnitChange = (direction: -1 | 1, playing = false) => {
+    if (!units) return
+    const nextIndex = unitIndex + direction
+    if (nextIndex < 0 || nextIndex >= units.length) return
+    resumeReader.current = playing
+    goToUnit(nextIndex)
+    const nextUnit = units[nextIndex]
+    setNotice({
+      kind: 'unit',
+      direction,
+      label: `Unità ${nextUnit?.id ?? ''}`,
+    })
+  }
+
+  const handleStatusFromReader = () => {
+    if (status.isPending) return
+    changeStatus()
+    const next = nextStudyStatus(live?.status)
+    setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+  }
+
   useEffect(() => {
     setRsvpLayout({ active: speedReading, tint })
     return () => setRsvpLayout({ active: false, tint: null })
@@ -350,8 +433,34 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         return
       }
       if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
+
+      const isZoomIn = e.key === '+' || (!e.shiftKey && e.key === '=') || e.code === 'NumpadAdd'
+      const isZoomOut = !e.shiftKey && (e.key === '-' || e.code === 'NumpadSubtract')
+      if (isZoomIn || isZoomOut) {
+        e.preventDefault()
+        const topEl = findTopParagraph(textRoot)
+        const next = isZoomIn
+          ? Math.min(2.0, Math.round((textScale + 0.1) * 10) / 10)
+          : Math.max(0.8, Math.round((textScale - 0.1) * 10) / 10)
+        setTextScale(next)
+        saveStudyTextScale(next)
+        showScaleNotice(next)
+        if (topEl) {
+          requestAnimationFrame(() => {
+            topEl.scrollIntoView({ block: 'start' })
+          })
+        }
+        return
+      }
+
       if (e.shiftKey && key !== 'e') return
       if (key === 'z') { e.preventDefault(); toggleZen() }
+      else if (key === 'l') {
+        if (textRoot) {
+          e.preventDefault()
+          openReader()
+        }
+      }
       else if (key === 'd') { e.preventDefault(); review() }
       else if (key === 'e' || key === 'g') {
         e.preventDefault()
@@ -393,7 +502,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -525,14 +634,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       <IconButton
         label="Lettura veloce"
         icon={Gauge}
-        onClick={() => {
-          textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
-          window.scrollTo?.({ top: 0 })
-          setSpeedReading(true)
-          setReaderMounted(true)
-          setIndexOpen(false)
-          setDetailsOpen(false)
-        }}
+        onClick={openReader}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
@@ -572,15 +674,52 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           zenMinHeight={zenMinHeight}
           zenBar={zenMode ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
-          notice={zenMode && notice ? <div className="fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel" data-testid="zen-notice" aria-hidden>
-            {notice.kind === 'status' ? <StudyStatusIcon status={notice.status} /> : <div className="relative">
-              {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
-              {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
-              {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
-            </div>}
-          </div> : undefined}
+          notice={(zenMode || speedReading) && notice ? (
+            <div
+              className={cn(
+                'fixed left-1/2 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel',
+                speedReading ? 'top-1/3' : 'top-16',
+              )}
+              data-testid="zen-notice"
+              aria-hidden
+            >
+              {notice.kind === 'status' ? (
+                <StudyStatusIcon status={notice.status} />
+              ) : notice.kind === 'unit' ? (
+                notice.direction === -1 ? <SkipBack className="size-6" /> : <SkipForward className="size-6" />
+              ) : (
+                <div className="relative">
+                  {notice.kind === 'pen' ? <HighlighterIcon className="size-6" /> : notice.kind === 'eraser' ? <Eraser className="size-6" /> : notice.kind === 'verifica' ? <CheckCircle2 className="size-6 text-[#155f52]" /> : <HelpCircle className="size-6 text-[#c7761a]" />}
+                  {notice.off && <Slash className="absolute inset-0 size-6 text-muted-foreground" />}
+                  {notice.kind === 'pen' && <span className={`absolute -bottom-1 inset-x-0 h-1 rounded rt-hl-${notice.color}`} />}
+                </div>
+              )}
+            </div>
+          ) : undefined}
           edge={edge}
-          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? <SpeedReader key={`${lesson!.id}-${unit.id}`} source={textRoot} active={speedReading} context={readerContext} settings={readerSettings} onSettingsChange={setReaderSettings} settingsButton={settingsButton} blocked={indexOpen || generateOpen} questions={live.questions} onReview={() => { closeReader(); setPhase('domande') }} onGenerate={() => setGenerateOpen(true)} onTintChange={setTint} onClose={closeReader} /> : undefined}
+          reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? (
+            <SpeedReader
+              key={`${lesson!.id}-${unit.id}`}
+              source={textRoot}
+              active={speedReading}
+              context={readerContext}
+              settings={readerSettings}
+              onSettingsChange={setReaderSettings}
+              settingsButton={settingsButton}
+              blocked={indexOpen || generateOpen}
+              questions={live.questions}
+              onReview={() => { closeReader(); setPhase('domande') }}
+              onGenerate={() => setGenerateOpen(true)}
+              onTintChange={setTint}
+              onClose={closeReader}
+              onUnit={handleUnitChange}
+              canPrevUnit={unitIndex > 0}
+              canNextUnit={unitIndex < units.length - 1}
+              // oxlint-disable-next-line react/refs
+              autoStart={resumeReader.current && speedReading}
+              onStatus={handleStatusFromReader}
+            />
+          ) : undefined}
           readingProps={{
             onPointerDown: handlePointerDown,
             onPointerUp: handlePointerUp,
@@ -638,6 +777,15 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                   )}
                 </div>
               )}
+              {scaleNotice && (
+                <div
+                  role="status"
+                  className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2 pointer-events-none"
+                  data-testid="study-scale-notice"
+                >
+                  <span>{scaleNotice}</span>
+                </div>
+              )}
             </>
           }
           footer={
@@ -670,13 +818,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
           <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
-          <span className="sr-only" aria-live="polite">{zenMode ? notice?.label : null}</span>
+          <span className="sr-only" aria-live="polite">{(zenMode || speedReading) ? notice?.label : null}</span>
           <UnitText
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
             unit={live}
             highlightMode={hlMode}
             onReady={setTextRoot}
+            textScale={textScale}
             notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
             activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
             onNoteClick={(note, rect) => {
@@ -939,7 +1088,7 @@ function clipToRoot(range: Range, root: HTMLElement): Range | null {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection }: {
+export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection, textScale = 1 }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
@@ -949,6 +1098,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   activeNoteId?: number | null
   onNoteClick?: (note: StudyNote, rect: DOMRect) => void
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
+  textScale?: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [mathReady, setMathReady] = useState<string | null>(null)
@@ -1114,6 +1264,10 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         onMouseUp={handleMouseUp}
         onTouchEnd={handleMouseUp}
         onClick={handleClick}
+        style={{
+          '--study-text-scale': String(textScale),
+          fontSize: 'calc(var(--size-body) * var(--study-text-scale, 1))',
+        } as React.CSSProperties}
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }}
       />
     </section>
