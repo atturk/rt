@@ -17,3 +17,9 @@ Base: `claude/rt-4.3.2-beta`, creato da main alla 4.3.1 stabile. Ogni PR va vers
 13. `piano-audio-codex.md`: l'audio che si blocca dopo pochi secondi (remux in cache fatto in parallelo e corrotto), con lock, controllo e rifacimento delle voci rotte.
 14. `piano-ricerca-fissata-codex.md`: pulsante con la puntina accanto a Cerca che fissa la vista di Lezioni (raggruppamento, ordine, ricerca, filtri); una modifica la sblocca.
 15. `piano-lettura-veloce-tasti-codex.md`: lettura veloce con L per entrare e uscire, S per lo stato, Option/Alt+frecce e due pulsanti per le unità, controlli al 25% durante la lettura.
+16. `piano-calendario-codex.md`: vista annuale, Vai alla settimana, griglia delle settimane senza leggenda, copia e incolla dello stampo dentro Modifica (anche su più settimane dalla vista annuale), esporta e importa l'orario nelle Impostazioni.
+
+## Divisione del lavoro per la 4.3.2b1
+
+- Codex, ramo `codex/4.3.2b1`: piani 13, 8, 4, 7, 9, 16. Prompt: `TASK-codex.md`.
+- agy, ramo `agy/4.3.2b1`: piani 11, 1, 2, 3, 6, 14, 15, 10, 12, 5. Prompt: `TASK-agy.md`.
