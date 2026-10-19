@@ -541,6 +541,10 @@ class DbJobQueue:
                     else:
                         merged[key] = value
                 row.payload = json_safe(merged)
+            # Una pipeline forzata ("Rifare tutte le fasi") ha già rifatto le fasi prima della
+            # decisione: ripresa ancora forzata rifarebbe la scaletta, che va di nuovo approvata,
+            # e così all'infinito. Come per Riprova, l'idempotenza rifà solo ciò che serve.
+            row.payload = unforced_payload(row.type, row.payload or {})
             row.state = JobState.QUEUED.value
             row.decision = None
             row.attempts = 0
@@ -657,15 +661,20 @@ def detect_stt_capability(requested: Optional[str] = "auto", mock: bool = False)
     return "macparakeet" if sys.platform == "darwin" else None
 
 
-def retry_payload(job_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Payload del nuovo tentativo: lo stesso, ma una pipeline o una fase forzata non riparte
-    da zero. Il job fallito ha già rifatto (e salvato nel checkpoint) una parte delle unità:
-    senza 'force' l'idempotenza salta le fasi valide e le unità già fatte. Il rewrite di una
-    sola unità resta forzato: è l'unità stessa da rifare."""
+def unforced_payload(job_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Lo stesso payload, ma una pipeline o una fase forzata non riparte da zero: senza
+    'force' l'idempotenza salta le fasi valide e le unità già fatte. Il rewrite di una sola
+    unità resta forzato: è l'unità stessa da rifare."""
     out = json_safe(payload)
     if job_type in ("run_pipeline", "run_phase") and isinstance(out.get("options"), dict):
         out["options"] = {**out["options"], "force": False}
     return out
+
+
+def retry_payload(job_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Payload del nuovo tentativo: il job fallito ha già rifatto (e salvato nel checkpoint)
+    una parte delle unità, quindi non si forza più (vedi unforced_payload)."""
+    return unforced_payload(job_type, payload)
 
 
 def get_job_queue() -> DbJobQueue:

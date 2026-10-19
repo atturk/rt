@@ -178,3 +178,42 @@ def test_cli_run_queue_without_worker_warns(queue, tmp_path, capsys, monkeypatch
     assert "Nessun worker attivo" in out.out and "cancelled" in out.err
 
 
+
+
+def test_forced_run_resumes_after_outline_approval_without_regenerating_it(queue, tmp_path, monkeypatch):
+    """4.3.1: 'Rifare tutte le fasi' (run_pipeline con force) ripreso dopo l'approvazione
+    rifaceva la scaletta, che tornava da approvare: loop infinito con l'approvazione automatica."""
+    from rt.llm.client import LLMClient
+    from tests.test_jobs import three_unit_outline
+    original = LLMClient._generate_mock_response
+    calls = []
+
+    def varying(self, job_name, prompt, response_model):
+        calls.append(job_name)
+        if response_model.__name__ == "Outline":
+            # ogni generazione dà una scaletta diversa, come un LLM vero
+            outline = three_unit_outline()
+            outline.lesson_title = f"Lezione {sum(1 for c in calls if c == job_name)}"
+            return outline
+        return original(self, job_name, prompt, response_model)
+
+    monkeypatch.setattr(LLMClient, "_generate_mock_response", varying)
+    lesson_dir = make_lesson(tmp_path / "lezioni")
+    queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir, with_review=False))
+    assert _worker(queue).run_once().state == "succeeded"
+
+    job_id = queue.enqueue(RUN_PIPELINE, lesson_dir,
+                           _payload(lesson_dir, with_review=False, auto_accept=False, force=True))
+    worker = _worker(queue)
+    job = worker.run_once()
+    assert job.state == "waiting_for_decision" and job.decision["kind"] == "outline_approval"
+    outlines = calls.count("outline")
+    rewrites = calls.count("rewrite")
+
+    outline_service.approve_outline(lesson_dir, actor="server", channel="server")
+    assert queue.get(job_id).state == "queued"
+    job = worker.run_once()
+    assert job.state == "succeeded", (job.state, job.decision, job.error)
+    assert calls.count("outline") == outlines  # la scaletta approvata non si rifà
+    assert calls.count("rewrite") > rewrites   # la rielaborazione sì, sulla nuova scaletta
+    assert queue.get(job_id).payload["options"]["force"] is False
