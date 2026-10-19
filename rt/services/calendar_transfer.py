@@ -29,10 +29,12 @@ def paste_week(data: schemas.CalendarPasteRequest, db=None):
     with session_scope(db or get_database()) as session:
         dates = [calendar.parse_date(week) + datetime.timedelta(days=i) for week in weeks for i in range(7)]
         resolved = calendar._resolve_dates(session, dates, datetime.datetime.now())
+        kept = set()
         for date, (events, _) in resolved.items():
             for event in events:
                 # Le ore già seguite, registrate, saltate o annullate restano al loro posto.
                 if event.is_recorded or event.status != 'seguire':
+                    kept.add((date, event.start_time, event.end_time, event.materia.casefold()))
                     continue
                 if event.override_id:
                     override = session.get(CalendarOverride, event.override_id)
@@ -43,10 +45,14 @@ def paste_week(data: schemas.CalendarPasteRequest, db=None):
         session.flush()
         for week in weeks:
             for entry in data.entries:
-                session.add(CalendarOverride(date=(calendar.parse_date(week) + datetime.timedelta(days=entry.day_of_week)).isoformat(),
-                                            action='added', **entry.model_dump(exclude={'day_of_week'})))
-                register_teacher(session, entry.materia, entry.docente)
-                register_subject(session, entry.materia)
+                date = (calendar.parse_date(week) + datetime.timedelta(days=entry.day_of_week)).isoformat()
+                # Un'ora rimasta al suo posto identica a quella incollata non si duplica.
+                if (date, entry.start_time, entry.end_time, entry.materia.casefold()) in kept:
+                    continue
+                session.add(CalendarOverride(date=date, action='added', **entry.model_dump(exclude={'day_of_week'})))
+        for materia, docente in dict.fromkeys((entry.materia, entry.docente) for entry in data.entries):
+            register_teacher(session, materia, docente)
+            register_subject(session, materia)
         session.flush()
     return schemas.CalendarPasteResult(weeks=weeks)
 
@@ -181,10 +187,13 @@ def import_schedule(request: schemas.CalendarImportRequest, db=None):
                 register_teacher(session, subject.name, name)
         session.flush()
         restored = calendar._resolve_dates(session, state_dates, datetime.datetime.now()) if states else {}
+        used = set()
         for signature, data in saved:
             matches = [event for event in restored[signature[0]][0] if _signature(signature[0], event) == signature]
-            if len(matches) == 1:
+            # (date, entry_key) è unico: due stati con la stessa firma ne ripristinano uno solo.
+            if len(matches) == 1 and (signature[0], matches[0].key) not in used:
                 event = matches[0]
+                used.add((signature[0], event.key))
                 session.add(CalendarEntryState(date=signature[0], entry_key=event.key,
                     template_entry_id=event.template_entry_id, override_id=event.override_id, **data))
         return result

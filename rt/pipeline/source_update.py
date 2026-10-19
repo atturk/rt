@@ -1,5 +1,6 @@
 """Preparazione incrementale richiesta dall'utente; gli originali restano intatti."""
 import json
+import logging
 import os
 import re
 import tempfile
@@ -168,6 +169,10 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                     ctx.check_cancelled()
                 path = os.path.join(lesson_dir, source.file)
                 if source.id not in cache:
+                    # Un errore nella lettura dei materiali si mostra subito, non a trascrizione finita.
+                    for future in futures.values():
+                        if future.done() and not future.cancelled() and future.exception() is not None:
+                            future.result()
                     if source.tipo == "audio":
                         number = next(i for i, item in enumerate(audio_pending, 1) if item.id == source.id)
                         name = os.path.basename(source.file)
@@ -271,15 +276,19 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                f"unione audio {_elapsed(timing['merge_seconds'])}")
     if ctx:
         ctx.progress('prepare', message=summary)
-    timing_path = lesson_path(lesson_dir, 'prepare_timing.json')
-    with fs.open(timing_path + '.tmp', 'w', encoding='utf-8') as stream:
-        json.dump(timing, stream, ensure_ascii=False, indent=2)
-    fs.replace(timing_path + '.tmp', timing_path)
-    from rt.services.logs_service import log_path
-    worker_log = log_path('worker')
-    os.makedirs(os.path.dirname(worker_log), exist_ok=True)
-    with open(worker_log, 'a', encoding='utf-8') as stream:
-        stream.write(json.dumps({'lesson': lesson_dir, 'message': summary, **timing}, ensure_ascii=False) + '\n')
+    # I tempi sono solo diagnostica: un errore di scrittura non fa fallire una preparazione finita.
+    try:
+        timing_path = lesson_path(lesson_dir, 'prepare_timing.json')
+        with fs.open(timing_path + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump(timing, stream, ensure_ascii=False, indent=2)
+        fs.replace(timing_path + '.tmp', timing_path)
+        from rt.services.logs_service import log_path
+        worker_log = log_path('worker')
+        os.makedirs(os.path.dirname(worker_log), exist_ok=True)
+        with open(worker_log, 'a', encoding='utf-8') as stream:
+            stream.write(json.dumps({'lesson': lesson_dir, 'message': summary, **timing}, ensure_ascii=False) + '\n')
+    except OSError as exc:
+        logging.getLogger(__name__).warning("Tempi della preparazione non salvati: %s", exc)
     return {"previous_segments": previous, "segments": ordered}
 
 

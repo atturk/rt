@@ -63,6 +63,16 @@ def test_paste_preserves_recorded_and_nondefault_hours_and_replaces_others(rt_db
     assert week.days[0].events[-1].is_recorded
 
 
+def test_paste_does_not_duplicate_a_kept_identical_hour(rt_db):
+    future = (datetime.date.today() + datetime.timedelta(days=14))
+    monday = (future - datetime.timedelta(days=future.weekday())).isoformat()
+    entry = template(rt_db)
+    calendar.set_entry_state(schemas.CalendarEntryStateSet(date=monday, entry_key=f'tpl_{entry.id}', status='saltare'), db=rt_db)
+    paste_week(schemas.CalendarPasteRequest(weeks=[monday], entries=[schemas.CalendarPasteEntry(
+        day_of_week=0, start_time='09:00', end_time='11:00', materia='biologia', docente='Rossi')]), db=rt_db)
+    assert [e.materia for e in calendar.get_week_view(monday, db=rt_db).days[0].events] == ['Biologia']
+
+
 def test_paste_is_atomic_on_database_error(rt_db, monkeypatch):
     import rt.services.calendar_transfer as transfer
     future = datetime.date.today() + datetime.timedelta(days=14)

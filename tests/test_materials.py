@@ -144,19 +144,25 @@ def test_material_pages_parallel_order_cache_and_context(tmp_path, monkeypatch):
     marker.set('copied')
     source = _parallel_source(tmp_path, monkeypatch)
     calls = []
+    import threading
+    running, peak, guard = [0], [0], threading.Lock()
 
     def describe(*args):
         assert marker.get() == 'copied'
         calls.append(1)
+        with guard:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
         time.sleep(.2)
+        with guard:
+            running[0] -= 1
         return 'Testo visivo'
 
     monkeypatch.setattr('rt.core.materials._describe', describe)
     reporter = ListReporter()
     ctx = RunContext(reporter=reporter)
-    started = time.monotonic()
     pages = material_pages(str(tmp_path), source, ctx=ctx)
-    assert time.monotonic() - started < .8
+    assert peak[0] >= 2  # pagine lette in parallelo (il tempo reale varia troppo sui runner)
     assert [p['numero'] for p in pages] == list(range(1, 7))
     folder = tmp_path / 'materials' / source.impronta
     assert all((folder / f'page-{n}.json').exists() for n in range(1, 7))
