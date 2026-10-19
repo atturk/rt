@@ -199,3 +199,95 @@ def test_source_update_approves_outline_before_rewrite_and_restores_on_failure(t
         run_source_update(lesson, mode=mode, mock=True)
     assert is_outline_approved(lesson)
     assert resumed == []
+
+
+def test_prepare_overlaps_audio_and_materials_with_stable_ids_and_timing(tmp_path, monkeypatch):
+    import shutil
+    import time
+    from concurrent.futures import Future
+    from rt.pipeline import source_update
+    from rt.services.context import RunContext
+    from rt.services.events import ListReporter
+    from tests.test_materials import png_bytes
+    original = tmp_path / 'parallel'
+    original.mkdir()
+    legacy(original)
+    (original / 'segments.json').unlink()
+    add_source(str(original), 'materiale', 'slide.png', png_bytes())
+    sequential = tmp_path / 'sequential'
+    shutil.copytree(original, sequential)
+
+    def transcribe(*a, **kw):
+        time.sleep(.5)
+        return [Segment(id='seg_000001', index=1, start_seconds=0, end_seconds=1,
+                        start_formatted='00:00', end_formatted='00:01', text_raw='audio')]
+
+    def describe(*a):
+        time.sleep(.5)
+        return 'materiale'
+
+    monkeypatch.setattr(source_update, '_transcribe', transcribe)
+    monkeypatch.setattr(source_update, '_duration', lambda _: 2)
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    reporter = ListReporter()
+    started = time.monotonic()
+    parallel_result = prepare_source_update(str(original), ctx=RunContext(reporter=reporter))
+    assert time.monotonic() - started < .9
+    with open(lesson_path(str(original), 'prepare_timing.json')) as stream:
+        timing = json.load(stream)
+    assert timing['parallel']
+    assert timing['transcription_seconds'] >= .5 and timing['materials_seconds'] >= .5
+    assert timing['materials'][0]['vision_calls'] == 1
+    messages = [getattr(e, 'message', '') for e in reporter.events]
+    assert any('Trascrizione di original.wav' in m for m in messages)
+    assert any('Lettura di slide.png: pagina 1 di 1' in m for m in messages)
+    assert any('Preparazione finita in' in m for m in messages)
+    from rt.services.logs_service import log_path
+    assert 'Preparazione finita in' in open(log_path('worker')).read()
+
+    class SequentialExecutor:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def submit(self, fn, *args):
+            result = Future()
+            result.set_result(fn(*args))
+            return result
+
+    monkeypatch.setattr(source_update, 'ThreadPoolExecutor', SequentialExecutor)
+    sequential_result = prepare_source_update(str(sequential))
+    assert parallel_result['segments'] == sequential_result['segments']
+    assert source_update._read_state(str(original))['sources'] == source_update._read_state(str(sequential))['sources']
+
+
+def test_prepare_failure_waits_for_materials_and_stops_new_pages(tmp_path, monkeypatch):
+    import threading
+    import time
+    from rt.services.context import RunContext
+    from tests.test_materials import _parallel_source
+    from rt.pipeline import source_update
+    legacy(tmp_path)
+    (tmp_path / 'segments.json').unlink()
+    _parallel_source(tmp_path, monkeypatch)
+    started = threading.Event()
+    finished = []
+
+    def transcribe(*a, **kw):
+        assert started.wait(3)
+        raise ValueError('STT fallita')
+
+    def describe(*a):
+        started.set()
+        time.sleep(.05)
+        finished.append(1)
+        return 'pagina'
+
+    monkeypatch.setattr(source_update, '_transcribe', transcribe)
+    monkeypatch.setattr(source_update, '_duration', lambda _: 2)
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    with pytest.raises(ValueError, match='STT fallita'):
+        prepare_source_update(str(tmp_path), ctx=RunContext())
+    count = len(finished)
+    assert 1 <= count <= 3
+    time.sleep(.1)
+    assert len(finished) == count

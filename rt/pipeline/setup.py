@@ -330,11 +330,12 @@ def generate_deterministic_mock_asr(
 
 
 def _run_transcribe_with_spinner(cmd: List[str], label: str,
-                                 on_percent: Optional[Callable[[int], None]] = None) -> subprocess.CompletedProcess:
+                                 on_percent: Optional[Callable[[int], None]] = None,
+                                 on_message: Optional[Callable[[str], None]] = None,
+                                 cancel_token=None) -> subprocess.CompletedProcess:
     """on_percent riceve la percentuale che macparakeet-cli stampa (solo quando cambia):
     l'interfaccia web la mostra nella barra del job."""
     console = Console()
-    last_pct: Optional[int] = None
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -343,6 +344,20 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str,
         bufsize=1
     )
     start = time.monotonic()
+    unsubscribe = cancel_token.on_cancel(proc.terminate) if cancel_token else lambda: None
+    try:
+        return _read_transcription(proc, cmd, label, console, start, on_percent, on_message)
+    finally:
+        unsubscribe()
+        if proc.poll() is None:
+            proc.terminate()
+        proc.wait()
+        if cancel_token:
+            cancel_token.raise_if_cancelled()
+
+
+def _read_transcription(proc, cmd, label, console, start, on_percent, on_message):
+    last_pct = None
     last_status_text = label
     with console.status(f"[cyan]{label}...", spinner="dots") as status:
         if proc.stdout:
@@ -353,6 +368,8 @@ def _run_transcribe_with_spinner(cmd: List[str], label: str,
                 if line:
                     line_str = line.strip()
                     if line_str:
+                        if on_message:
+                            on_message(line_str)
                         match = re.search(r"(\d+)%", line_str)
                         if match:
                             pct = match.group(1)
