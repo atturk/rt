@@ -7,12 +7,14 @@ import { PageHeader } from '@/components/shell/PageHeader'
 import { Button } from '@/components/ui/button'
 import type { Lesson } from '@/lib/format'
 
-/** Studio di una lezione (dalla riga di Lezioni e dall'intestazione della lezione); con ?unita= le domande di una parte. */
+/** Studio della lezione; ?unita= apre la lettura, ?parte= limita le domande a una parte. */
 export function StudyLessonPage() {
   const id = Number(useParams().lessonId)
   const [params] = useSearchParams()
   const lesson = useLesson(id)
-  const only = params.get('unita')?.split(',').map((u) => u.trim()).filter(Boolean) ?? null
+  // Le vecchie liste separate da virgole restano ingressi alle domande di una parte.
+  const part = params.get('parte') ?? (params.get('unita')?.includes(',') ? params.get('unita') : null)
+  const only = part?.split(',').map((u) => u.trim()).filter(Boolean) ?? null
   const back = { to: `/lezioni/${id}`, label: 'Esci' }
   if (lesson.isError) return <Failure back={back} error={lesson.error} retry={() => void lesson.refetch()} />
   if (!lesson.data) return <Loading back={back} />

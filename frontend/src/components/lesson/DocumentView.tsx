@@ -1,6 +1,6 @@
 import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import type { Schemas } from '@/api/client'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
@@ -10,6 +10,7 @@ import { renderDelimitedMath } from '@/lib/math'
 import { cn } from '@/lib/utils'
 import { useLessonAudio } from './audio'
 import { EnrichmentSlots } from './Enrichment'
+import { createUnitShortcuts } from './unitShortcuts'
 
 type Props = {
   document: Schemas['LessonDocument']
@@ -68,6 +69,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   const { currentTime, seek } = useLessonAudio()
   const current = hasAudio ? activeUnit(doc.sections, currentTime) : null
   const { hash, state: routerState } = useLocation()
+  const navigate = useNavigate()
 
   // Pulsante timecode dentro ogni intestazione di unità.
   useEffect(() => {
@@ -75,7 +77,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
     if (!root) return
     void renderDelimitedMath(root)
     // L'effetto può ripartire sullo stesso HTML (StrictMode, audio pronto): niente doppioni.
-    root.querySelectorAll('.rt-unit-meta').forEach((el) => { el.querySelectorAll('button').forEach(unmountDomTooltip); el.remove() })
+    root.querySelectorAll('.rt-unit-meta').forEach((el) => { el.querySelectorAll<HTMLElement>('button, a').forEach(unmountDomTooltip); el.remove() })
     for (const section of doc.sections) {
       const heading = root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
       if (!heading) continue
@@ -92,6 +94,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
         button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
         meta.append(button)
       }
+      if (!section.relevance) meta.append(createUnitShortcuts(lessonId, section.unit_id, navigate))
       if (section.relevance) {
         const tag = window.document.createElement('span')
         tag.className = 'rt-relevance-tag'
@@ -100,8 +103,8 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
       }
       if (meta.childNodes.length) heading.append(meta)
     }
-    return () => root.querySelectorAll('.rt-unit-meta button').forEach(node => unmountDomTooltip(node as HTMLElement))
-  }, [doc, hasAudio])
+    return () => root.querySelectorAll('.rt-unit-meta button, .rt-unit-meta a').forEach(node => unmountDomTooltip(node as HTMLElement))
+  }, [doc, hasAudio, lessonId, navigate])
 
   // Strisce di immagini consecutive (IM1c)
   useEffect(() => {

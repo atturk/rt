@@ -91,16 +91,37 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
-      setUnitIndex(enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
+      const requested = onlyUnits ? -1 : loaded.units.findIndex(u => u.id === new URLSearchParams(location.search).get('unita'))
+      setUnitIndex(requested >= 0 ? requested : enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
       enterLast.current = false
       enterFirst.current = false
     }
-  }, [loaded, units, onlyUnits])
+  }, [loaded, units, onlyUnits, location.search])
   const unit = units?.[unitIndex] ?? null
   const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
   const studyBack = { to: lessonUrl, label: back.label, state: { fromStudy: true } }
   const live = loaded?.units.find((u) => u.id === unit?.id) ?? unit
   const liveUnits = units?.map(u => loaded?.units.find(current => current.id === u.id) ?? u) ?? []
+  useEffect(() => {
+    if (!units || !loaded || onlyUnits) return
+    const params = new URLSearchParams(location.search)
+    if (!params.has('unita') && !params.has('azione')) return
+    const requested = params.get('unita')
+    const index = requested ? units.findIndex(u => u.id === requested) : unitIndex
+    if (index >= 0 && units[index]) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setUnitIndex(index)
+      setPhase('lettura')
+      if (params.get('azione') === 'ripasso') {
+        const target = loaded.units.find(u => u.id === units[index].id) ?? units[index]
+        if (target.questions > 0) setPhase('domande')
+        else setGenerateOpen(true)
+      }
+    }
+    params.delete('unita')
+    params.delete('azione')
+    navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
+  }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
   const status = useStudyStatus(lesson?.id ?? 0)
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate

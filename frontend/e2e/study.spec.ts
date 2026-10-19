@@ -39,6 +39,54 @@ async function lesson(page: Page, materia: string) {
   return l
 }
 
+test('Scorciatoie nel documento: Studio sull’unità e ripasso senza domande, senza ripetere l’ingresso', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'STUDIO_NAV')
+  const data = await apiGet<Study>(page.request, `/lessons/${l.id}/study`)
+  const unit = data.units[1]
+  expect(unit.questions).toBe(0)
+  await page.goto(`/lezioni/${l.id}`)
+  const study = page.getByRole('link', { name: `Studia l'unità ${unit.id}`, exact: true })
+  const shortcuts = study.locator('..')
+  await expect(shortcuts).toHaveCSS('opacity', '0')
+  const before = await shortcuts.boundingBox()
+  await shortcuts.hover()
+  await expect(shortcuts).toHaveCSS('opacity', '1')
+  expect(await shortcuts.boundingBox()).toEqual(before)
+  const editor = page.getByRole('textbox', { name: 'Documento della lezione', exact: true })
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+End')
+  await page.keyboard.insertText('\n\nTesto salvato prima dello Studio.')
+  await study.click()
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', unit.id)
+  expect((await apiGet<{ markdown: string }>(page.request, `/lessons/${l.id}/document`)).markdown).toContain('Testo salvato prima dello Studio.')
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
+  await page.getByRole('link', { name: 'Esci', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id}$`))
+  await page.getByRole('link', { name: `Ripassa l'unità ${unit.id}`, exact: true }).click()
+  await expect(page.getByTestId('study-generate-modal')).toContainText(unit.title)
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', unit.id)
+  await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('study-generate-modal')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await expect(page.getByTestId('study-generate-modal')).toHaveCount(0)
+})
+
+test.describe('Scorciatoie su telefono', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
+  test('visibili senza passaggio del mouse e nascoste in stampa', async ({ page }) => {
+    await loginViaLink(page)
+    const l = await lesson(page, 'STUDIO_NAV')
+    await page.goto(`/lezioni/${l.id}`)
+    const shortcuts = page.getByRole('link', { name: "Studia l'unità 1.2", exact: true, includeHidden: true }).locator('..')
+    await expect(shortcuts).toHaveCSS('opacity', '1')
+    await page.emulateMedia({ media: 'print' })
+    await expect(shortcuts).toHaveCSS('display', 'none')
+  })
+})
+
 /** Risponde alla domanda mostrata: la prima alternativa del quiz, o un testo per le aperte.
  *  Dalla 4.2.2b3 le domande dello Studio sono la sessione di ripasso vera e propria. */
 async function answer(page: Page) {
@@ -88,7 +136,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   }
 
   // "Domande su questa parte": lo Studio della prima unità, con le domande da generare.
-  await page.goto(`/studio/lezione/${l.id}?unita=${first.id}`)
+  await page.goto(`/studio/lezione/${l.id}?parte=${first.id}`)
   await expect(page.getByTestId('study-no-questions')).toContainText(first.id)
   const generated = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
   await page.getByRole('button', { name: 'Genera le domande' }).click()
@@ -196,10 +244,14 @@ test('A2: altezza intestazione su Lezioni, Studio e Ripasso (desktop e 390px) e 
 
     // 2. Pagina Studio (/studio/lezione/:id)
     await page.goto(`/studio/lezione/${l.id}`)
+    await expect(page.getByTestId('study-text')).toBeVisible()
     const studyHeader = page.locator('header').first()
     await expect(studyHeader).toBeVisible()
-    const sBox = (await studyHeader.boundingBox())!
-    expect(Math.abs(sBox.height - viewport.expected)).toBeLessThanOrEqual(2)
+    // Il caricamento sostituisce l'intestazione: misura il nodo attuale, senza usare un box staccato.
+    await expect.poll(async () => {
+      const box = await studyHeader.boundingBox()
+      return box ? Math.abs(box.height - viewport.expected) : Number.POSITIVE_INFINITY
+    }).toBeLessThanOrEqual(2)
 
     // 3. Pagina Ripasso (/lezioni/:id/sessione)
     await page.goto(`/lezioni/${l.id}/sessione`)
