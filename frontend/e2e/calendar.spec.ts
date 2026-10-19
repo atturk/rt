@@ -318,3 +318,47 @@ test('calendario: suggerimento ordinato e nota immediata senza perdere il clic',
     await page.request.delete(`/api/v1/calendar/template/${id}`, { headers: authHeaders() })
   }
 })
+
+test('calendario: aggiunge un’ora solo nelle settimane scelte', async ({ page }) => {
+  await loginViaLink(page)
+  const week = await apiGet<{ start_date: string }>(page.request, '/calendar/week')
+  const shift = (days: number) => new Date(Date.parse(`${week.start_date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+  const from = week.start_date, last = shift(7), to = shift(14)
+  let createdId: number | undefined
+  try {
+    await page.goto('/calendario')
+    await page.getByRole('button', { name: 'Modifica orario' }).focus()
+    await page.getByRole('button', { name: 'Modifica la settimana tipo in un intervallo di settimane' }).click()
+    const popup = page.getByRole('dialog', { name: 'Intervallo di settimane' })
+    await popup.locator(`[data-week="${from}"]`).click()
+    if (!await popup.locator(`[data-week="${last}"]`).count()) await popup.getByRole('button', { name: 'Anno successivo' }).click()
+    await popup.locator(`[data-week="${last}"]`).click()
+    await test.info().attach('Intervallo di settimane', { body: await popup.screenshot(), contentType: 'image/png' })
+    await popup.getByRole('button', { name: 'Modifica queste settimane' }).click()
+    await expect(popup).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Cambia intervallo di settimane' })).toBeVisible()
+    await page.getByRole('button', { name: 'Aggiungi alle 08:30', exact: true }).first().click()
+    const add = page.getByRole('dialog', { name: 'Aggiungi ora' })
+    await add.getByLabel('Materia').fill('Prova Intervallo')
+    const response = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/calendar/template')
+    await add.getByRole('button', { name: 'Aggiungi', exact: true }).click()
+    const saved = await response
+    expect(saved.ok()).toBeTruthy()
+    const created = await saved.json() as { id: number; valid_from: string; valid_to: string }
+    createdId = created.id
+    expect(created.valid_from).toBe(from)
+    expect(created.valid_to).toBe(to)
+    const block = page.getByTestId(`calendar-event-tpl_${createdId}`)
+    await expect(block).toBeVisible()
+    await page.getByRole('button', { name: 'Settimana successiva' }).click()
+    await expect(block).toBeVisible()
+    await page.getByRole('button', { name: 'Settimana successiva' }).click()
+    await expect(page.getByText("Fuori dall'intervallo scelto")).toBeVisible()
+    await expect(block).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Aggiungi alle/ })).toHaveCount(0)
+    const outside = await apiGet<{ days: { events: { key: string }[] }[] }>(page.request, `/calendar/week?date=${to}`)
+    expect(outside.days.flatMap(day => day.events).some(event => event.key === `tpl_${createdId}`)).toBe(false)
+  } finally {
+    if (createdId) await page.request.delete(`/api/v1/calendar/template/${createdId}`, { headers: authHeaders() })
+  }
+})
