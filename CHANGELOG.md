@@ -1,5 +1,33 @@
 # Novità di RT
 
+## 4.3.2b1 — 2026-10-19
+
+### Novità
+
+- Calendario: vista annuale, **Vai alla settimana** con la griglia delle settimane (mesi separati, settimane passate e future distinte, senza leggenda), copia e incolla di una settimana stampo dentro Modifica, anche su più settimane dalla vista annuale.
+- Impostazioni › Materie: esporta l'orario del calendario e importalo da un file `.rtcal`, tutto o solo in un periodo, con avviso se sostituisce un orario esistente.
+- Docenti per materia: si salvano da soli, si suggeriscono nel campo Docente e si gestiscono in Impostazioni › Materie. Nel popup del calendario Invio conferma.
+- Lezioni: la puntina accanto a Cerca fissa la vista (raggruppamento, ordine, ricerca e filtri) e la ritrova al rientro; una modifica la sblocca.
+- Lettura veloce: L entra ed esce dalla lettura veloce, S cambia lo stato di studio, Option/Alt+frecce e due pulsanti piccoli passano all'unità precedente o successiva; durante la lettura i controlli si attenuano.
+- Zoom dell'interfaccia (Aspetto, menu dell'app e Cmd/Ctrl +/−) e zoom del solo testo nello Studio con + e −.
+- Media della lezione: vista con una pagina per riga, anteprima grande tenendo premuto su una miniatura, file scelti visibili in **Aggiungi PDF o foto**, anche un'immagine sola nel testo si mostra in miniatura.
+- Media: nuovo pulsante **Elimina** nella selezione. **Togli dal testo** funziona anche sugli elementi dell'arricchimento, che restano nei media.
+- **Informazioni su RT** con logo, versione e build reali, anche in Impostazioni › Info.
+- Backup con avanzamento e **Salva una copia…** in un file zip.
+- Preparazione più veloce: pagine dei materiali lette in parallelo e insieme alla trascrizione, avanzamento più chiaro e tempi registrati.
+- Nell'app la registrazione vocale funziona: RT chiede il permesso del microfono al primo uso. Il menu ha **Controlla permessi**, che lo richiede o apre l'impostazione di sistema se era stato negato.
+- I pulsanti a icona disattivati mostrano comunque il suggerimento, con il motivo dove serve.
+
+### Correzioni
+
+- L'audio della lezione non si interrompe più dopo pochi secondi al primo ascolto: la copia riproducibile si prepara una volta sola e quelle rovinate dalle versioni precedenti vengono rifatte.
+- Le formule nelle domande (testo, alternative e commento della valutazione) si vedono rese.
+- Una risposta vocale senza parlato non viene più valutata: RT dice che non ha rilevato parlato e si può rispondere di nuovo. Una lezione con trascrizione vuota lo dice chiaramente.
+- Nell'editor non compaiono più i commenti tecnici dei blocchi dell'arricchimento.
+- Nelle visualizzazioni le frecce dei vettori non diventano più quadratini (vale per quelle generate da ora).
+- La scheda **Scaletta da approvare** resta visibile durante l'aggiornamento della lezione.
+- «Da capo» senza arricchimento, icone delle unità che non sfarfallano, collegamento all'ora del calendario conservato durante un import.
+
 ## 4.3.1.1 — 2026-10-19
 
 ### Correzioni
