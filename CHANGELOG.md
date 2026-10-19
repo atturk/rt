@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.1.1 — 2026-10-19
+
+### Correzioni
+
+- **Rifare tutte le fasi** non si blocca più in un ciclo sulla scaletta: approvata la scaletta, la lezione passa alla rielaborazione invece di rigenerarla e chiederne di nuovo l'approvazione all'infinito.
+
 ## 4.3.1 — 2026-10-19
 
 ### Novità
