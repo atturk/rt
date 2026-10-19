@@ -19,6 +19,7 @@ runner di GitHub hanno già.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import plistlib
@@ -128,7 +129,7 @@ def build_payload(target: str, payload: str, archive: str, spa_dist: str) -> str
     _trim(payload, target)
     # prova: il Python dell'app importa RT e risponde alla versione
     subprocess.run([python, os.path.join(payload, "bin", "rt"), "desktop", "--help"], check=True,
-                   stdout=subprocess.DEVNULL, env={**os.environ, "RT_UPDATE_OFFLINE": "1"})
+                   stdout=subprocess.DEVNULL, env={**os.environ, "RT_UPDATE_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1"})
     return python
 
 
@@ -160,6 +161,26 @@ def _trim(payload: str, target: str) -> None:
         lib = next((os.path.join(base, d) for d in os.listdir(base) if d.startswith("python3")), base)
     for name in ("test", "idlelib", "tkinter", "turtledemo", "ensurepip"):
         shutil.rmtree(os.path.join(lib, name), ignore_errors=True)
+    # pip compila le librerie installate: il bytecode si rigenera e appesantisce il pacchetto.
+    # Si conservano i moduli senza sorgente e gli eventuali altri dati nelle cartelle cache.
+    removed = 0
+    for directory, _folders, files in os.walk(os.path.join(payload, "python"), topdown=False):
+        if os.path.basename(directory) != "__pycache__":
+            continue
+        for name in files:
+            if not name.endswith('.pyc'):
+                continue
+            path = os.path.join(directory, name)
+            try:
+                source = importlib.util.source_from_cache(path)
+            except ValueError:
+                continue
+            if os.path.isfile(source):
+                removed += os.path.getsize(path)
+                os.remove(path)
+        if not os.listdir(directory):
+            os.rmdir(directory)
+    say(f"🧹 Cache Python rigenerabile: rimossi {removed / (1 << 20):.2f} MiB.")
 
 
 def read_version() -> str:
