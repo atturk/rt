@@ -140,3 +140,27 @@ def link_lesson(
     _actor: Actor,
 ):
     return calendar_service.link_lesson(body)
+
+
+@router.get('/calendar/year', response_model=List[schemas.CalendarYearWeek])
+def get_year(_actor: Actor, start: str):
+    return calendar_service.get_year_view(start)
+
+
+@router.post('/calendar/paste', response_model=schemas.CalendarPasteResult)
+def paste_week(body: schemas.CalendarPasteRequest, _actor: Actor):
+    from rt.services.calendar_transfer import paste_week
+    return paste_week(body)
+
+
+@router.get('/calendar/export', response_model=schemas.CalendarSchedule)
+def export_schedule(_actor: Actor, response: Response):
+    from rt.services.calendar_transfer import export_schedule
+    response.headers['Content-Disposition'] = f'attachment; filename="rt-orario-{dt_date.today().isoformat()}.rtcal"'
+    return export_schedule()
+
+
+@router.post('/calendar/import', response_model=schemas.CalendarImportResult)
+def import_schedule(body: schemas.CalendarImportRequest, _actor: Actor):
+    from rt.services.calendar_transfer import import_schedule
+    return import_schedule(body)

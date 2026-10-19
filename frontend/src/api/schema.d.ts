@@ -107,6 +107,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Schedule */
+        get: operations["export_schedule_api_v1_calendar_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Schedule */
+        post: operations["import_schedule_api_v1_calendar_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/link-lesson": {
         parameters: {
             query?: never;
@@ -158,6 +192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/paste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Paste Week */
+        post: operations["paste_week_api_v1_calendar_paste_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/template": {
         parameters: {
             query?: never;
@@ -202,6 +253,23 @@ export interface paths {
         };
         /** Vista settimanale del calendario (lun–ven) con stati, lezioni e riassunto */
         get: operations["get_week_view_api_v1_calendar_week_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/year": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Year */
+        get: operations["get_year_api_v1_calendar_year_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3547,6 +3615,31 @@ export interface components {
             /** Template Entry Id */
             template_entry_id?: number | null;
         };
+        /** CalendarImportRequest */
+        CalendarImportRequest: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** From */
+            from?: string | null;
+            /** To */
+            to?: string | null;
+        };
+        /** CalendarImportResult */
+        CalendarImportResult: {
+            /** Conflicts */
+            conflicts: number;
+            /** Entries */
+            entries: number;
+            /** Subjects */
+            subjects: number;
+        };
         /** CalendarLessonSummary */
         CalendarLessonSummary: {
             /** Data */
@@ -3638,6 +3731,88 @@ export interface components {
             start_time?: string | null;
             /** Template Entry Id */
             template_entry_id?: number | null;
+        };
+        /** CalendarPasteEntry */
+        CalendarPasteEntry: {
+            /** Day Of Week */
+            day_of_week: number;
+            /** Docente */
+            docente?: string | null;
+            /**
+             * End Time
+             * @description Orario HH:MM
+             */
+            end_time: string;
+            /** Materia */
+            materia: string;
+            /**
+             * Start Time
+             * @description Orario HH:MM
+             */
+            start_time: string;
+        };
+        /** CalendarPasteRequest */
+        CalendarPasteRequest: {
+            /** Entries */
+            entries: components["schemas"]["CalendarPasteEntry"][];
+            /** Weeks */
+            weeks: string[];
+        };
+        /** CalendarPasteResult */
+        CalendarPasteResult: {
+            /** Weeks */
+            weeks: string[];
+        };
+        /** CalendarSchedule */
+        CalendarSchedule: {
+            /** Exported At */
+            exported_at: string;
+            /**
+             * Format
+             * @constant
+             */
+            format: "rt-calendar";
+            /** Overrides */
+            overrides: components["schemas"]["CalendarScheduleOverride"][];
+            /** Subjects */
+            subjects: components["schemas"]["CalendarScheduleSubject"][];
+            /** Template */
+            template: components["schemas"]["CalendarTemplateEntryCreate"][];
+            /**
+             * Version
+             * @constant
+             */
+            version: 1;
+        };
+        /** CalendarScheduleOverride */
+        CalendarScheduleOverride: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "added" | "removed" | "modified";
+            /**
+             * Date
+             * @description Data YYYY-MM-DD
+             */
+            date: string;
+            /** Docente */
+            docente?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Materia */
+            materia?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** Template Index */
+            template_index?: number | null;
+        };
+        /** CalendarScheduleSubject */
+        CalendarScheduleSubject: {
+            /** Name */
+            name: string;
+            /** Teachers */
+            teachers?: string[];
         };
         /** CalendarTemplateEntryCreate */
         CalendarTemplateEntryCreate: {
@@ -3736,6 +3911,37 @@ export interface components {
             summary: components["schemas"]["CalendarWeekSummary"];
             /** Week Number */
             week_number: string;
+        };
+        /** CalendarYearDay */
+        CalendarYearDay: {
+            /** Date */
+            date: string;
+            /** Events */
+            events: components["schemas"]["CalendarYearEvent"][];
+            /** Status */
+            status: string;
+        };
+        /** CalendarYearEvent */
+        CalendarYearEvent: {
+            /** End Hour */
+            end_hour: number;
+            /** Is Recorded */
+            is_recorded: boolean;
+            /** Materia */
+            materia: string;
+            /** Start Hour */
+            start_hour: number;
+            /** Status */
+            status: string;
+        };
+        /** CalendarYearWeek */
+        CalendarYearWeek: {
+            /** Days */
+            days: components["schemas"]["CalendarYearDay"][];
+            /** Start Date */
+            start_date: string;
+            /** Week Number */
+            week_number: number;
         };
         /** Cap */
         Cap: {
@@ -8252,6 +8458,140 @@ export interface operations {
             };
         };
     };
+    export_schedule_api_v1_calendar_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSchedule"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_schedule_api_v1_calendar_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarImportResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     link_lesson_api_v1_calendar_link_lesson_post: {
         parameters: {
             query?: never;
@@ -8407,6 +8747,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    paste_week_api_v1_calendar_paste_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarPasteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPasteResult"];
+                };
             };
             /** @description Autenticazione mancante o non valida */
             401: {
@@ -8678,6 +9087,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarWeekView"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_year_api_v1_calendar_year_get: {
+        parameters: {
+            query: {
+                start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarYearWeek"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */

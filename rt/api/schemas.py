@@ -862,6 +862,8 @@ class StudyNoteApplyResponse(BaseModel):
 # Calendario (4.2.5 CA1)
 # ---------------------------------------------------------------------------
 from rt.services.calendar_models import (  # noqa: F401
+    CalendarYearWeek, CalendarPasteRequest, CalendarPasteResult, CalendarSchedule,
+    CalendarImportRequest, CalendarImportResult,
     CalendarTemplateEntryCreate,
     CalendarTemplateEntryView,
     CalendarOverrideCreate,

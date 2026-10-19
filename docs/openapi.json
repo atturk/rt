@@ -1137,6 +1137,76 @@
         "title": "CalendarEventView",
         "type": "object"
       },
+      "CalendarImportRequest": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "description": "Data YYYY-MM-DD",
+                "maxLength": 10,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "description": "Data YYYY-MM-DD",
+                "maxLength": 10,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "CalendarImportRequest",
+        "type": "object"
+      },
+      "CalendarImportResult": {
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "subjects": {
+            "title": "Subjects",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subjects",
+          "entries",
+          "conflicts"
+        ],
+        "title": "CalendarImportResult",
+        "type": "object"
+      },
       "CalendarLessonSummary": {
         "properties": {
           "data": {
@@ -1435,6 +1505,267 @@
         "title": "CalendarOverrideView",
         "type": "object"
       },
+      "CalendarPasteEntry": {
+        "properties": {
+          "day_of_week": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Day Of Week",
+            "type": "integer"
+          },
+          "docente": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docente"
+          },
+          "end_time": {
+            "description": "Orario HH:MM",
+            "maxLength": 5,
+            "minLength": 3,
+            "title": "End Time",
+            "type": "string"
+          },
+          "materia": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Materia",
+            "type": "string"
+          },
+          "start_time": {
+            "description": "Orario HH:MM",
+            "maxLength": 5,
+            "minLength": 3,
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day_of_week",
+          "start_time",
+          "end_time",
+          "materia"
+        ],
+        "title": "CalendarPasteEntry",
+        "type": "object"
+      },
+      "CalendarPasteRequest": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarPasteEntry"
+            },
+            "maxItems": 2000,
+            "title": "Entries",
+            "type": "array"
+          },
+          "weeks": {
+            "items": {
+              "description": "Data YYYY-MM-DD",
+              "maxLength": 10,
+              "minLength": 10,
+              "type": "string"
+            },
+            "maxItems": 53,
+            "minItems": 1,
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weeks",
+          "entries"
+        ],
+        "title": "CalendarPasteRequest",
+        "type": "object"
+      },
+      "CalendarPasteResult": {
+        "properties": {
+          "weeks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weeks"
+        ],
+        "title": "CalendarPasteResult",
+        "type": "object"
+      },
+      "CalendarSchedule": {
+        "properties": {
+          "exported_at": {
+            "title": "Exported At",
+            "type": "string"
+          },
+          "format": {
+            "const": "rt-calendar",
+            "title": "Format",
+            "type": "string"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarScheduleOverride"
+            },
+            "maxItems": 2000,
+            "title": "Overrides",
+            "type": "array"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarScheduleSubject"
+            },
+            "maxItems": 2000,
+            "title": "Subjects",
+            "type": "array"
+          },
+          "template": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarTemplateEntryCreate"
+            },
+            "maxItems": 2000,
+            "title": "Template",
+            "type": "array"
+          },
+          "version": {
+            "const": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "format",
+          "version",
+          "exported_at",
+          "subjects",
+          "template",
+          "overrides"
+        ],
+        "title": "CalendarSchedule",
+        "type": "object"
+      },
+      "CalendarScheduleOverride": {
+        "properties": {
+          "action": {
+            "enum": [
+              "added",
+              "removed",
+              "modified"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "date": {
+            "description": "Data YYYY-MM-DD",
+            "maxLength": 10,
+            "minLength": 10,
+            "title": "Date",
+            "type": "string"
+          },
+          "docente": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docente"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "description": "Orario HH:MM",
+                "maxLength": 5,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "materia": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materia"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "description": "Orario HH:MM",
+                "maxLength": 5,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "template_index": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Index"
+          }
+        },
+        "required": [
+          "date",
+          "action"
+        ],
+        "title": "CalendarScheduleOverride",
+        "type": "object"
+      },
+      "CalendarScheduleSubject": {
+        "properties": {
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "teachers": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2000,
+            "title": "Teachers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CalendarScheduleSubject",
+        "type": "object"
+      },
       "CalendarTemplateEntryCreate": {
         "properties": {
           "day_of_week": {
@@ -1712,6 +2043,91 @@
           "summary"
         ],
         "title": "CalendarWeekView",
+        "type": "object"
+      },
+      "CalendarYearDay": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarYearEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "events"
+        ],
+        "title": "CalendarYearDay",
+        "type": "object"
+      },
+      "CalendarYearEvent": {
+        "properties": {
+          "end_hour": {
+            "title": "End Hour",
+            "type": "number"
+          },
+          "is_recorded": {
+            "title": "Is Recorded",
+            "type": "boolean"
+          },
+          "materia": {
+            "title": "Materia",
+            "type": "string"
+          },
+          "start_hour": {
+            "title": "Start Hour",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_hour",
+          "end_hour",
+          "materia",
+          "status",
+          "is_recorded"
+        ],
+        "title": "CalendarYearEvent",
+        "type": "object"
+      },
+      "CalendarYearWeek": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarYearDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "week_number": {
+            "title": "Week Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_date",
+          "week_number",
+          "days"
+        ],
+        "title": "CalendarYearWeek",
         "type": "object"
       },
       "Cap": {
@@ -11536,6 +11952,168 @@
         ]
       }
     },
+    "/api/v1/calendar/export": {
+      "get": {
+        "operationId": "export_schedule_api_v1_calendar_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSchedule"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Schedule",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/import": {
+      "post": {
+        "operationId": "import_schedule_api_v1_calendar_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Schedule",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
     "/api/v1/calendar/link-lesson": {
       "post": {
         "operationId": "link_lesson_api_v1_calendar_link_lesson_post",
@@ -11783,6 +12361,92 @@
           }
         ],
         "summary": "Elimina una modifica puntuale della settimana",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/paste": {
+      "post": {
+        "operationId": "paste_week_api_v1_calendar_paste_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarPasteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPasteResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Paste Week",
         "tags": [
           "calendar"
         ]
@@ -12159,6 +12823,97 @@
           }
         ],
         "summary": "Vista settimanale del calendario (lun–ven) con stati, lezioni e riassunto",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/year": {
+      "get": {
+        "operationId": "get_year_api_v1_calendar_year_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "title": "Start",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalendarYearWeek"
+                  },
+                  "title": "Response Get Year Api V1 Calendar Year Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Year",
         "tags": [
           "calendar"
         ]

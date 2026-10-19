@@ -34,6 +34,8 @@ vi.mock('@/api/calendar', async (importOriginal) => {
   })
   return {
     ...actual,
+    useCalendarYear: () => ({ data: [], isPending: false, isError: false }),
+    usePasteCalendar: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useCalendarTemplate: () => ({ data: calendarMocks.template }),
     useCalendarWeek: (date?: string) => { calendarMocks.currentDate = date; return { data: calendarMocks.week, isPending: false, isError: false } },
     useCreateOverride: () => mutation(calendarMocks.createOverride),
@@ -303,6 +305,7 @@ describe('CalendarPage: modifica di un\'ora', () => {
   } as unknown as CalendarWeekView
 
   beforeEach(() => {
+  sessionStorage.removeItem('rt:calendar-view')
     calendarMocks.week = week
     for (const fn of [
       calendarMocks.createOverride,
@@ -454,6 +457,7 @@ describe('CalendarPage: intervallo di settimane', () => {
     days: [{ ...dummyDay, events: [event] }], summary: { hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] },
   }
   beforeEach(() => {
+  sessionStorage.removeItem('rt:calendar-view')
     calendarMocks.week = week
     calendarMocks.template = []
     for (const mock of [calendarMocks.createTemplate, calendarMocks.deleteTemplate, calendarMocks.createOverride, calendarMocks.deleteOverride]) mock.mockReset().mockResolvedValue({})

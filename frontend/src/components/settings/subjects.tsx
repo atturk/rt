@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/alert'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Section } from './common'
+import { CalendarScheduleSettings } from './CalendarScheduleSettings'
 
 function TeacherRow({ subject, onError }: { subject: SubjectItem; onError: (error: string | null) => void }) {
   const [name, setName] = useState('')
@@ -63,6 +64,7 @@ export function SubjectsSettingsSection() {
 
   return (
     <Section id="subjects" title="Materie">
+      <CalendarScheduleSettings onError={setError} />
       <p className="text-body text-muted-foreground">
         Ogni materia ha i suoi docenti, proposti quando compili il campo Docente. Un docente scritto in una lezione o nel calendario si aggiunge da solo.
       </p>
