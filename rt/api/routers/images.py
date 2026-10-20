@@ -101,6 +101,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             return []
         found_units = []
         current_unit = None
+        base_name = img_name.split("#")[0]
         for line in document.splitlines():
             sub = re.match(r"^###\s+([0-9]+(?:\.[0-9]+)*)", line)
             if sub:
@@ -109,9 +110,20 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                 macro = re.match(r"^##\s+([0-9]+)", line)
                 if macro:
                     current_unit = macro.group(1)
-            if img_name in line and current_unit and current_unit not in found_units:
+            if base_name in line and current_unit and current_unit not in found_units:
                 found_units.append(current_unit)
         return found_units
+
+    def _is_in_document(name: str, rel: str, units: list[str]) -> bool:
+        if bool(units):
+            return True
+        for target in (name, rel):
+            if not target:
+                continue
+            base = target.split("#")[0]
+            if base in document:
+                return True
+        return False
 
     images: list[LessonImage] = []
     processed_desc_hashes = set()
@@ -153,7 +165,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     page=num,
                     in_assets=True,
                     units=units,
-                    in_document=bool(units) or (bool(rel) and rel in document),
+                    in_document=_is_in_document(name, rel, units),
                     slide_title=str(found_desc.get("slide_title") or ""),
                     alt_text=str(found_desc.get("alt_text") or f"{src_name}, pagina {num}"),
                     crop_of=found_desc.get("crop_of"),
@@ -220,7 +232,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             page=page_num,
             in_assets=True,
             units=units,
-            in_document=bool(units) or (bool(rel) and rel in document),
+            in_document=_is_in_document(name, rel, units),
             slide_title=str(desc.get("slide_title") or ""),
             alt_text=str(desc.get("alt_text") or ""),
             crop_of=desc.get("crop_of"),

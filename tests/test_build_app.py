@@ -1,5 +1,6 @@
 """Il pacchetto toglie le parti superflue della libreria standard e conserva il bytecode."""
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -69,3 +70,73 @@ def test_write_build_info(tmp_path):
     assert info_min["target"] == "windows"
     assert info_min["commit"] == "abcdef1"
     assert "run" not in info_min
+
+
+def test_launcher_disables_bytecode():
+    from scripts.build_app import LAUNCHER
+    assert "export PYTHONDONTWRITEBYTECODE=1" in LAUNCHER
+
+
+def test_dmg_background_dimensions():
+    from PIL import Image
+    root = Path(__file__).resolve().parent.parent
+    bg_1x = root / "packaging" / "dmg" / "background.png"
+    bg_2x = root / "packaging" / "dmg" / "background@2x.png"
+
+    assert bg_1x.is_file()
+    assert bg_2x.is_file()
+
+    with Image.open(bg_1x) as img1:
+        assert img1.size == (660, 400)
+
+    with Image.open(bg_2x) as img2:
+        assert img2.size == (1320, 800)
+
+
+def test_build_macos_signs_macho_then_bundle_and_runs_dmgbuild(tmp_path, monkeypatch):
+    import scripts.build_app as build_app
+
+    work = tmp_path / "work"
+    out = tmp_path / "dist"
+    work.mkdir()
+    out.mkdir()
+
+    calls = []
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return type("CompletedProcess", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(build_app.subprocess, "run", fake_run)
+    monkeypatch.setattr(build_app, "read_version", lambda: "4.3.2b2")
+
+    def fake_build_payload(target, payload, archive, spa_dist):
+        os.makedirs(payload, exist_ok=True)
+        # un Mach-O binario (con magic Mach-O 64-bit)
+        macho = Path(payload) / "native.dylib"
+        macho.write_bytes(b"\xcf\xfa\xed\xfe" + b"\x00" * 20)
+        # un file di testo non-Mach-O
+        text = Path(payload) / "note.txt"
+        text.write_text("ciao", encoding="utf-8")
+
+    monkeypatch.setattr(build_app, "build_payload", fake_build_payload)
+
+    dmg = build_app.build_macos(str(work), str(out), "fake.tar.gz", "fake_dist")
+    assert dmg.endswith("RT-4.3.2b2-macos-arm64.dmg")
+
+    # Controlla sequenza chiamate codesign
+    codesign_calls = [c for c in calls if c[0] == "codesign"]
+    assert len(codesign_calls) == 3
+
+    # 1. Firma del Mach-O interno
+    assert codesign_calls[0] == ["codesign", "--force", "--sign", "-", "--timestamp=none", str(work / "dmg" / "RT.app" / "Contents" / "Resources" / "app" / "native.dylib")]
+    # 2. Firma del bundle RT.app
+    assert codesign_calls[1] == ["codesign", "--force", "--sign", "-", "--timestamp=none", str(work / "dmg" / "RT.app")]
+    # 3. Verifica del bundle
+    assert codesign_calls[2] == ["codesign", "--verify", "--strict", "--verbose=2", str(work / "dmg" / "RT.app")]
+
+    # 4. dmgbuild
+    dmgbuild_call = next(c for c in calls if "dmgbuild" in c)
+    assert "-s" in dmgbuild_call
+    assert f"app={work / 'dmg' / 'RT.app'}" in dmgbuild_call
+    assert dmgbuild_call[-2:] == ["RT", dmg]
+

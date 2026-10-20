@@ -3237,6 +3237,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/opened-files/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scarica un file consegnato dall'app per l'apertura */
+        get: operations["get_opened_file_api_v1_system_opened_files__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/quit": {
         parameters: {
             query?: never;
@@ -3278,11 +3295,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Aggiornamento dell'app: ultima versione stabile e stato dell'installazione */
+        /** Aggiornamento dell'app: ultima versione e stato dell'installazione */
         get: operations["system_update_api_v1_system_update_get"];
         put?: never;
-        /** Scarica e installa l'ultima versione stabile (solo app installata) */
+        /** Avvia il download dell'aggiornamento (solo app installata) */
         post: operations["start_system_update_api_v1_system_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/update/channel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Imposta il canale di aggiornamento (stable o beta) */
+        put: operations["set_update_channel_endpoint_api_v1_system_update_channel_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/update/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Installa l'aggiornamento già pronto su disco */
+        post: operations["install_system_update_api_v1_system_update_install_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3463,9 +3514,15 @@ export interface components {
             asset_size?: number | null;
             /**
              * Available
-             * @description C'è una versione stabile più recente con l'installer per questo sistema
+             * @description C'è una versione più recente con l'installer per questo sistema
              */
             available: boolean;
+            /**
+             * Channel
+             * @description Canale di aggiornamento
+             * @default stable
+             */
+            channel: string;
             /** Current */
             current: string;
             /**
@@ -3475,15 +3532,27 @@ export interface components {
             error?: string | null;
             /**
              * Latest
-             * @description Ultima versione stabile pubblicata (le beta non contano)
+             * @description Ultima versione pubblicata
              */
             latest?: string | null;
             /** Notes Url */
             notes_url?: string | null;
+            /**
+             * Prerelease
+             * @description True se la versione disponibile è una beta
+             * @default false
+             */
+            prerelease: boolean;
             progress: components["schemas"]["UpdateProgress"];
             /**
+             * Ready
+             * @description True se l'installer è già scaricato e verificato su disco
+             * @default false
+             */
+            ready: boolean;
+            /**
              * Releases Url
-             * @description Pagina delle release: le beta si scaricano a mano da qui
+             * @description Pagina delle release
              */
             releases_url: string;
             /**
@@ -6851,6 +6920,8 @@ export interface components {
             answer_text: string;
             /** Answered At */
             answered_at: string;
+            /** Attempt Id */
+            attempt_id?: string | null;
             /**
              * Dont Know
              * @default false
@@ -6952,6 +7023,8 @@ export interface components {
         };
         /** RecallQuestion */
         RecallQuestion: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Comment */
             comment?: string | null;
             /** Correct Index */
@@ -6994,6 +7067,8 @@ export interface components {
         };
         /** RecallQuestionDetail */
         RecallQuestionDetail: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Classifier Level */
             classifier_level?: number | null;
             /** Comment */
@@ -8345,6 +8420,14 @@ export interface components {
              */
             total: number;
         };
+        /** UpdateChannelRequest */
+        UpdateChannelRequest: {
+            /**
+             * Channel
+             * @description Canale di aggiornamento: 'stable' o 'beta'
+             */
+            channel: string;
+        };
         /** UpdateProgress */
         UpdateProgress: {
             /**
@@ -8357,7 +8440,7 @@ export interface components {
             error?: string | null;
             /**
              * Phase
-             * @description idle, downloading, installing o error
+             * @description idle, downloading, ready, installing o error
              */
             phase: string;
             /**
@@ -22959,6 +23042,46 @@ export interface operations {
             };
         };
     };
+    get_opened_file_api_v1_system_opened_files__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     quit_system_api_v1_system_quit_post: {
         parameters: {
             query?: never;
@@ -23056,6 +23179,68 @@ export interface operations {
         };
     };
     start_system_update_api_v1_system_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_update_channel_endpoint_api_v1_system_update_channel_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_system_update_api_v1_system_update_install_post: {
         parameters: {
             query?: never;
             header?: never;

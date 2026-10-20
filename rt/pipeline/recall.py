@@ -64,7 +64,7 @@ def load_recall_bank(lesson_dir: str) -> RecallBank:
         migrated = migrate_bank(data)
         bank = RecallBank.model_validate(migrated)
         # Le banche storiche hanno il voto negativo ma nessuno stato di scarto.
-        votes = {a.question_id: a for a in bank.answers if a.vote}
+        votes = {a.question_id: a for a in sorted(bank.answers, key=lambda a: a.answered_at) if a.vote}
         for question in bank.questions:
             answer = votes.get(question.id)
             if answer and answer.vote == 'down' and question.status != RecallQuestionStatus.DISCARDED:
@@ -227,10 +227,20 @@ def get_next_pending_question(
             selected = pending[0]
 
         if selected:
-            selected.status = RecallQuestionStatus.ASKED  # è l'oggetto del bank, non una copia
+            if selected.status != RecallQuestionStatus.ASKED:
+                selected.status = RecallQuestionStatus.ASKED
+                selected.asked_at = datetime.now().isoformat()
             save_recall_bank(bank, lesson_dir)
 
         return selected
+
+
+def current_answers(bank: RecallBank, question: RecallQuestion) -> list[RecallAnswer]:
+    """Le risposte della domanda con answered_at >= question.asked_at (o tutte se asked_at è None)."""
+    answers = [a for a in bank.answers if a.question_id == question.id]
+    if question.asked_at is None:
+        return answers
+    return [a for a in answers if a.answered_at >= question.asked_at]
 
 def on_unit(question: RecallQuestion, unit_id: str) -> bool:
     """Quiz e mirate nelle unità citate; personalizzate sull’ultima subunità; vaste escluse."""
@@ -256,31 +266,37 @@ def record_recall_answer(
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
-        for q in bank.questions:
-            if q.id == question_id:
-                if mark_answered and q.status != RecallQuestionStatus.DISCARDED:
-                    q.status = RecallQuestionStatus.ANSWERED
-                break
+        question = next((q for q in bank.questions if q.id == question_id), None)
+        if question and mark_answered and question.status != RecallQuestionStatus.DISCARDED:
+            question.status = RecallQuestionStatus.ANSWERED
+
         if answer_text.strip() == '[Non lo so]':
             outcome = 'sbagliata'
         elif outcome is None:
             outcome = getattr(evaluation, 'outcome', None)
-            question = next((q for q in bank.questions if q.id == question_id), None)
             if question and question.type == RecallQuestionType.QUIZ and question.options \
                     and question.correct_index is not None and 0 <= question.correct_index < len(question.options) \
                     and answer_text.strip():
                 outcome = 'corretta' if answer_text == question.options[question.correct_index] else 'sbagliata'
-        existing = next((a for a in bank.answers if a.question_id == question_id), None)
-        if existing:
-            existing.outcome = outcome
-            existing.answer_text = answer_text
-            existing.is_voice = is_voice
-            existing.evaluation = evaluation
+
+        # Cerca riga con solo voto creata durante questo giro
+        existing_vote_only = None
+        for a in reversed(bank.answers):
+            if a.question_id == question_id and not a.answer_text.strip():
+                if question is None or question.asked_at is None or a.answered_at >= question.asked_at:
+                    existing_vote_only = a
+                    break
+
+        if existing_vote_only is not None:
+            existing_vote_only.outcome = outcome
+            existing_vote_only.answer_text = answer_text
+            existing_vote_only.is_voice = is_voice
+            existing_vote_only.evaluation = evaluation
             if vote is not None:
-                existing.vote = vote
-            existing.dont_know = answer_text.strip() == '[Non lo so]'
-            existing.answered_at = datetime.now().isoformat()
-            ans = existing
+                existing_vote_only.vote = vote
+            existing_vote_only.dont_know = answer_text.strip() == '[Non lo so]'
+            existing_vote_only.answered_at = datetime.now().isoformat()
+            ans = existing_vote_only
         else:
             ans = RecallAnswer(
                 question_id=question_id,
@@ -322,12 +338,13 @@ def record_recall_vote(lesson_dir: str, question_id: str, vote: str, reasons=Non
     """
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
-        answer = next((a for a in bank.answers if a.question_id == question_id), None)
-        if not answer:
+        answers = [a for a in bank.answers if a.question_id == question_id]
+        if answers:
+            answer = max(answers, key=lambda a: a.answered_at)
+            answer.vote = vote
+        else:
             answer = RecallAnswer(question_id=question_id, answer_text="", is_voice=False, vote=vote)
             bank.answers.append(answer)
-        else:
-            answer.vote = vote
         answer.vote_reasons = list(dict.fromkeys(reasons or []))
         answer.vote_comment = comment
         question = next((q for q in bank.questions if q.id == question_id), None)
@@ -338,7 +355,8 @@ def record_recall_vote(lesson_dir: str, question_id: str, vote: str, reasons=Non
                 question.status = RecallQuestionStatus.DISCARDED
                 question.discard_reasons, question.comment = answer.vote_reasons, comment
             elif question.status == RecallQuestionStatus.DISCARDED:
-                question.status = RecallQuestionStatus.ANSWERED if answer.answer_text else (question.discarded_from or RecallQuestionStatus.PENDING)
+                has_any_answer_text = any(a.answer_text.strip() for a in answers) or bool(answer.answer_text.strip())
+                question.status = RecallQuestionStatus.ANSWERED if has_any_answer_text else (question.discarded_from or RecallQuestionStatus.PENDING)
                 question.discard_reasons, question.comment, question.discarded_from = [], None, None
         save_recall_bank(bank, lesson_dir)
 

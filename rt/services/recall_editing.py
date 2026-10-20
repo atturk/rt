@@ -87,6 +87,9 @@ def set_question_status(lesson_dir: str, question_id: str, status: str) -> Recal
         bank = load_recall_bank(lesson_dir)
         question = _find(bank, question_id)
         if question.status != wanted:
+            if wanted == RecallQuestionStatus.ASKED:
+                from datetime import datetime
+                question.asked_at = datetime.now().isoformat()
             question.status = wanted
             question.discarded_from = None
             save_recall_bank(bank, lesson_dir)
@@ -94,8 +97,10 @@ def set_question_status(lesson_dir: str, question_id: str, status: str) -> Recal
 
 
 def _last_outcome(bank, question_id: str) -> Optional[str]:
-    answers = [a for a in bank.answers if a.question_id == question_id]
-    return answers[-1].outcome if answers else None
+    answers = [a for a in bank.answers if a.question_id == question_id and a.answer_text.strip()]
+    if not answers:
+        return None
+    return max(answers, key=lambda a: a.answered_at).outcome
 
 
 def restore_questions(lesson_dir: str, scope: str) -> int:
@@ -176,11 +181,11 @@ def regenerate_comment(lesson_dir: str, question_id: str, *, force_mock: bool = 
 
 def mark_answer_seen(lesson_dir: str, question_id: str) -> None:
     """La valutazione aperta diventa risposta quando viene mostrata nel ripasso web."""
-    from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank
+    from rt.pipeline.recall import load_recall_bank, recall_bank_lock, save_recall_bank, current_answers
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         question = _find(bank, question_id)
         if question.status == RecallQuestionStatus.ASKED and any(
-                a.question_id == question_id and a.evaluation for a in bank.answers):
+                a.evaluation for a in current_answers(bank, question)):
             question.status = RecallQuestionStatus.ANSWERED
             save_recall_bank(bank, lesson_dir)

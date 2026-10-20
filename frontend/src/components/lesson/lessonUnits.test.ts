@@ -1,6 +1,7 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { lessonUnits, setLinkedUnit, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonImageStrips } from './lessonImageStrips'
+import { lessonImages, lessonUnits, setLinkedUnit, setUnitTasks, unitRanges } from './lessonUnits'
 import { timecodeLock } from './timecodeLock'
 
 it('affianca gli stati ai titoli e lo scheletro all’unità corrente senza modificare il Markdown', () => {
@@ -41,4 +42,56 @@ it('segna l’unità raggiunta dal link e toglie il segno cambiando destinazione
   expect(parent.querySelector('.rt-claim-unit')).toBeNull()
   expect(view.state.doc.toString()).toBe(doc)
   view.destroy()
+})
+
+it('le immagini con didascalia con parentesi [ ] e #w= applicano la larghezza; il clic seleziona o apre il visore', () => {
+  const doc = '### 1.1 Prima\n00:00\n![[MOCK] Didascalia](assets/images/foto.png#w=320)\nTesto.'
+  const parent = document.createElement('div')
+  document.body.appendChild(parent)
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc,
+      extensions: [lessonImageStrips(1), lessonImages(1)],
+      selection: { anchor: doc.length },
+    }),
+  })
+
+  const img = parent.querySelector('img') as HTMLImageElement
+  expect(img).toBeInTheDocument()
+  expect(img.style.width).toBe('320px')
+
+  // 1. Con il pannello aperto
+  const panel = document.createElement('div')
+  panel.setAttribute('data-testid', 'enrichment-panel')
+  document.body.appendChild(panel)
+
+  const selectListener = vi.fn()
+  const viewerListener = vi.fn()
+  window.addEventListener('rt-media-select', selectListener)
+  window.addEventListener('rt-image-viewer-open', viewerListener)
+
+  img.click()
+
+  expect(selectListener).toHaveBeenCalledWith(
+    expect.objectContaining({ detail: { name: 'foto.png' } }),
+  )
+  expect(viewerListener).not.toHaveBeenCalled()
+
+  // 2. Con il pannello chiuso
+  panel.remove()
+  selectListener.mockClear()
+  viewerListener.mockClear()
+
+  img.click()
+
+  expect(selectListener).not.toHaveBeenCalled()
+  expect(viewerListener).toHaveBeenCalledWith(
+    expect.objectContaining({ detail: { index: 0, images: expect.arrayContaining([expect.objectContaining({ src: '/api/v1/lessons/1/assets/images/foto.png' })]) } }),
+  )
+
+  window.removeEventListener('rt-media-select', selectListener)
+  window.removeEventListener('rt-image-viewer-open', viewerListener)
+  view.destroy()
+  parent.remove()
 })

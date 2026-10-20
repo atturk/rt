@@ -281,9 +281,10 @@ def question_resume_view(lesson_dir, question, actor=None):
     result = question_view(question, lesson_dir=lesson_dir)
     if question.type == RecallQuestionType.QUIZ or question.status != RecallQuestionStatus.ASKED:
         return result
-    from rt.pipeline.recall import load_recall_bank
-    saved = next((a for a in reversed(load_recall_bank(lesson_dir).answers)
-                  if a.question_id == question.id and a.evaluation), None)
+    from rt.pipeline.recall import load_recall_bank, current_answers
+    bank = load_recall_bank(lesson_dir)
+    cur = current_answers(bank, question)
+    saved = next((a for a in reversed(cur) if a.evaluation), None)
     if saved is not None:
         result['saved_evaluation'] = {key: getattr(saved, key) for key in ('answer_text', 'evaluation', 'outcome')}
     else:
@@ -331,7 +332,8 @@ def recall_history(lesson_dir: str) -> dict:
     bank = load_recall_bank(lesson_dir)
     outcomes = _latest_outcomes(bank)
     questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id), lesson_dir=lesson_dir) for q in bank.questions]
-    return {"questions": questions, "answers": [a.model_dump(mode="json") for a in bank.answers]}
+    answers = sorted(bank.answers, key=lambda a: a.answered_at, reverse=True)
+    return {"questions": questions, "answers": [a.model_dump(mode="json") for a in answers]}
 
 
 def question_list(lesson_dir: str, reveal: bool = False) -> dict:
@@ -341,7 +343,10 @@ def question_list(lesson_dir: str, reveal: bool = False) -> dict:
     from rt.pipeline.recall import load_recall_bank
     from rt.pipeline.ledger import load_resolved_draft
     bank = load_recall_bank(lesson_dir)
-    votes = {a.question_id: a.vote for a in bank.answers if a.vote}
+    votes = {}
+    for a in sorted(bank.answers, key=lambda a: a.answered_at):
+        if a.vote:
+            votes[a.question_id] = a.vote
     outcomes = _latest_outcomes(bank)
     try:
         titles = {u.unit_id: u.title for u in load_resolved_draft(lesson_dir).units}

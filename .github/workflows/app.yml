@@ -152,7 +152,9 @@ jobs:
       - name: Build dmg
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/build_app.py --out dist
+        run: |
+          python -m pip install dmgbuild==1.6.7
+          python scripts/build_app.py --out dist
       - name: Check installer size
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -162,9 +164,16 @@ jobs:
           dmg=$(ls dist/RT-*-macos-arm64.dmg)
           mkdir -p "$RUNNER_TEMP/mnt" "$RUNNER_TEMP/Applications"
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/mnt" "$dmg"
+          visible_items=$(ls -1 "$RUNNER_TEMP/mnt")
+          expected_items=$'Applications\nRT.app'
+          if [ "$visible_items" != "$expected_items" ]; then
+            echo "Elementi inattesi nel DMG: $visible_items"
+            exit 1
+          fi
           ditto "$RUNNER_TEMP/mnt/RT.app" "$RUNNER_TEMP/Applications/RT.app"
           hdiutil detach "$RUNNER_TEMP/mnt"
           test -x "$RUNNER_TEMP/Applications/RT.app/Contents/MacOS/RT"
+          codesign --verify --strict "$RUNNER_TEMP/Applications/RT.app"
       - name: Start the app
         run: |
           app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
@@ -174,6 +183,18 @@ jobs:
           app="$RUNNER_TEMP/Applications/RT.app/Contents/Resources/app"
           python scripts/window_smoke.py "$app/python/bin/python3" "$app" --data "$RUNNER_TEMP/rt-window" --quit
           python scripts/window_smoke.py "$app/python/bin/python3" "$app" --data "$RUNNER_TEMP/rt-window"
+      - name: Open file with the app
+        run: |
+          echo "Testo per la nuova lezione" > "$RUNNER_TEMP/prova.txt"
+          open -a "$RUNNER_TEMP/Applications/RT.app" "$RUNNER_TEMP/prova.txt"
+          sleep 3
+          grep -q "File aperto:" "$RUNNER_TEMP/rt-window/logs/desktop.log" || {
+            echo "desktop.log:"
+            cat "$RUNNER_TEMP/rt-window/logs/desktop.log" || true
+            exit 1
+          }
+      - name: Verify signature intact after runtime
+        run: codesign --verify --strict "$RUNNER_TEMP/Applications/RT.app"
       - uses: actions/cache@v4
         with:
           path: .stt-models

@@ -4,9 +4,12 @@ export type BackupEvent =
   | { fine: true; percorso: string; riepilogo?: string[]; avviso_chiave?: string; tipo?: 'backup' | 'copia' }
   | { errore: string; tipo?: 'backup' | 'copia' }
 
+export type OpenedFileItem = { token: string; name: string; size: number }
+
 declare global {
   interface Window {
     __rtBackup?: (evento: BackupEvent) => void
+    rtOpenedFiles?: (items: OpenedFileItem[]) => void
     pywebview?: {
       api: {
         salva_copia_backup: (percorsoSnapshot: string) => Promise<{
@@ -14,6 +17,10 @@ declare global {
           annullato?: boolean
           errore?: string
         }>
+        apri_aggiornamento?: () => Promise<void> | void
+        badge?: (count: number) => Promise<void> | void
+        notifica?: (titolo: string, testo: string, percorso?: string | null) => Promise<void> | void
+        file_in_attesa?: () => Promise<OpenedFileItem[]> | OpenedFileItem[]
       }
     }
   }

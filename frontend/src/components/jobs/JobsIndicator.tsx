@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/alert'
 import { decisionLabel, decisionLink, isActive } from '@/lib/jobs'
 import { isUploadActive, useUploads } from '@/lib/uploadQueue'
 import { cn } from '@/lib/utils'
+import { computeJobsBadgeCount } from './useDesktopJobSignals'
 
 /**
  * Badge sulla voce "Job" del menu: numero di job attivi e decisioni in attesa, da ogni pagina.
@@ -15,9 +16,10 @@ import { cn } from '@/lib/utils'
 export function JobsNavBadge() {
   const jobs = useJobs({ limit: 50 })
   const workers = useWorkers()
+  const uploads = useUploads()
   const active = (jobs.data ?? []).filter((j) => isActive(j.state)).length
   const waiting = (jobs.data ?? []).filter((j) => j.state === 'waiting_for_decision').length
-  const uploading = useUploads().filter(isUploadActive).length
+  const uploading = uploads.filter(isUploadActive).length
   const noWorker = workers.data?.length === 0 && active > 0
   const label = [
     active ? `${active} job attivi` : 'Nessun job attivo',
@@ -27,7 +29,7 @@ export function JobsNavBadge() {
   ]
     .filter(Boolean)
     .join(', ')
-  const count = active + waiting + uploading
+  const count = computeJobsBadgeCount(jobs.data, uploads)
   return (
     <span data-testid="jobs-indicator" data-active={active} data-waiting={waiting} data-uploading={uploading} className="inline-flex">
       <span className="sr-only">: {label}</span>

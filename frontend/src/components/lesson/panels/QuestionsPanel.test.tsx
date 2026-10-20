@@ -354,3 +354,23 @@ it('mostra icona precedente con tooltip per le domande precedenti', () => {
   renderPanel()
   expect(screen.getByTestId('question-precedente-icon')).toBeInTheDocument()
 })
+
+it('mostra il pulsante Risposte con almeno una risposta e non lo mostra senza', async () => {
+  const recallApi = await import('@/api/recall')
+  vi.mocked(recallApi.useRecallHistory).mockReturnValue({
+    data: { answers: [{ question_id: 'q1', answered_at: '2026-10-01' }] },
+  } as never)
+  const { unmount } = renderPanel()
+  expect(screen.getByRole('button', { name: 'Risposte' })).toBeInTheDocument()
+
+  unmount()
+
+  vi.mocked(recallApi.useRecallHistory).mockReturnValue({
+    data: { answers: [] },
+  } as never)
+  vi.mocked(recallApi.useRestorable).mockReturnValue({
+    data: { asked: 0, wrong: 0 },
+  } as never)
+  renderPanel()
+  expect(screen.queryByRole('button', { name: 'Risposte' })).not.toBeInTheDocument()
+})

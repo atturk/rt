@@ -1,9 +1,8 @@
-import { Prec, StateEffect, StateField, type EditorState } from '@codemirror/state'
-import { dropCursor, EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
+import { Prec, StateEffect, StateField, type EditorState, type Range } from '@codemirror/state'
+import { Decoration, type DecorationSet, dropCursor, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { copyMaterialPage, materialSourceId } from '@/api/images'
-import { unitRanges } from './lessonUnits'
-import { timecodeSpans } from './timecodeLock'
+import { readPreference } from '@/lib/preferences'
 
 export const EDITOR_INSERT_IMAGES_EVENT = 'rt-editor-insert-images'
 export const EDITOR_REMOVE_IMAGES_EVENT = 'rt-editor-remove-images'
@@ -35,20 +34,221 @@ type Options = {
   started: (task: Promise<void>) => void
 }
 
+export type DropTargetResult = {
+  insertAt: number
+  headingLine?: number
+  label?: string
+  subunitRange?: { from: number; to: number }
+}
+
+const TIMECODE_RE = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*$/
+const IMAGE_LINE_RE = /^!\[.*?\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#[^)]*)?\)$/
+
+/**
+ * Calcola dove inserire un'immagine trascinata o incollata.
+ * - 'heading': la sottounità (###, o la macro ## se non ci sono sottounità) sotto il puntatore;
+ *   l'immagine va dopo titolo, timecode e immagini già sotto il titolo.
+ * - 'free': inizio del blocco sotto il puntatore, mai dentro un titolo.
+ */
+export function dropTarget(
+  state: EditorState,
+  pos: number,
+  mode: 'heading' | 'free',
+): DropTargetResult {
+  const clampedPos = Math.max(0, Math.min(pos, state.doc.length))
+  const line = state.doc.lineAt(clampedPos)
+
+  if (mode === 'free') {
+    // Mai dentro un titolo: se cade su un titolo, va sotto il titolo (+ eventuale timecode)
+    if (line.text.trim().startsWith('#')) {
+      let insertLine = line.number + 1
+      if (insertLine <= state.doc.lines) {
+        const nextLine = state.doc.line(insertLine)
+        if (TIMECODE_RE.test(nextLine.text)) {
+          insertLine++
+        }
+      }
+      const insertAt = insertLine <= state.doc.lines ? state.doc.line(insertLine).from : state.doc.length
+      return { insertAt }
+    }
+
+    // Inizio del blocco sotto il puntatore
+    if (line.text.trim() === '') {
+      return { insertAt: line.from }
+    }
+
+    let n = line.number
+    while (n > 1) {
+      const prev = state.doc.line(n - 1)
+      if (prev.text.trim() === '' || prev.text.trim().startsWith('#')) break
+      n--
+    }
+    return { insertAt: state.doc.line(n).from }
+  }
+
+  // mode === 'heading'
+  const docLines = state.doc.lines
+
+  type UnitInfo = {
+    headingLine: number
+    title: string
+    from: number
+    to: number
+  }
+
+  type MacroSection = {
+    headingLine: number
+    title: string
+    from: number
+    to: number
+    subunits: UnitInfo[]
+  }
+
+  const macros: MacroSection[] = []
+  let currentMacro: MacroSection | null = null
+  let currentSub: UnitInfo | null = null
+
+  for (let n = 1; n <= docLines; n++) {
+    const l = state.doc.line(n)
+    const text = l.text
+
+    if (/^##\s+/.test(text)) {
+      if (currentSub) {
+        currentSub.to = state.doc.line(n - 1).to
+        currentSub = null
+      }
+      if (currentMacro) {
+        currentMacro.to = state.doc.line(n - 1).to
+      }
+      const m = /^##\s+(.*)$/.exec(text)
+      currentMacro = {
+        headingLine: n,
+        title: m ? m[1].trim() : text.trim(),
+        from: l.from,
+        to: state.doc.length,
+        subunits: [],
+      }
+      macros.push(currentMacro)
+    } else if (/^###\s+/.test(text)) {
+      if (currentSub) {
+        currentSub.to = state.doc.line(n - 1).to
+      }
+      const m = /^###\s+(.*)$/.exec(text)
+      currentSub = {
+        headingLine: n,
+        title: m ? m[1].trim() : text.trim(),
+        from: l.from,
+        to: state.doc.length,
+      }
+      if (currentMacro) {
+        currentMacro.subunits.push(currentSub)
+      }
+    }
+  }
+  if (currentSub) currentSub.to = state.doc.length
+  if (currentMacro) currentMacro.to = state.doc.length
+
+  let chosenTarget: UnitInfo | null = null
+
+  for (const macro of macros) {
+    if (clampedPos >= macro.from && clampedPos <= macro.to) {
+      if (macro.subunits.length > 0) {
+        for (const sub of macro.subunits) {
+          if (clampedPos >= sub.from && clampedPos <= sub.to) {
+            chosenTarget = sub
+            break
+          }
+        }
+        if (!chosenTarget && macro.subunits.length > 0) {
+          chosenTarget = macro.subunits[0]
+        }
+      } else {
+        // Macro senza sottounità
+        chosenTarget = {
+          headingLine: macro.headingLine,
+          title: macro.title,
+          from: macro.from,
+          to: macro.to,
+        }
+      }
+      break
+    }
+  }
+
+  // Se il documento ha solo ### senza sezioni ##
+  if (!chosenTarget) {
+    const allSubs: UnitInfo[] = []
+    for (let n = 1; n <= docLines; n++) {
+      const l = state.doc.line(n)
+      if (/^###\s+/.test(l.text)) {
+        if (allSubs.length > 0) allSubs[allSubs.length - 1].to = state.doc.line(n - 1).to
+        const m = /^###\s+(.*)$/.exec(l.text)
+        allSubs.push({
+          headingLine: n,
+          title: m ? m[1].trim() : l.text.trim(),
+          from: l.from,
+          to: state.doc.length,
+        })
+      }
+    }
+    for (const sub of allSubs) {
+      if (clampedPos >= sub.from && clampedPos <= sub.to) {
+        chosenTarget = sub
+        break
+      }
+    }
+    if (!chosenTarget && allSubs.length > 0) {
+      chosenTarget = allSubs[0]
+    }
+  }
+
+  if (!chosenTarget) {
+    return { insertAt: clampedPos }
+  }
+
+  // Avanza dopo la riga del titolo, eventuale timecode e immagini già sotto il titolo
+  let curLineNum = chosenTarget.headingLine + 1
+  let timecodeChecked = false
+
+  while (curLineNum <= docLines) {
+    const curLine = state.doc.line(curLineNum)
+    const trimmed = curLine.text.trim()
+
+    if (trimmed === '') {
+      curLineNum++
+      continue
+    }
+
+    if (!timecodeChecked && TIMECODE_RE.test(trimmed)) {
+      timecodeChecked = true
+      curLineNum++
+      continue
+    }
+    timecodeChecked = true
+
+    if (IMAGE_LINE_RE.test(trimmed)) {
+      curLineNum++
+      continue
+    }
+
+    break
+  }
+
+  const insertAt = curLineNum <= docLines ? state.doc.line(curLineNum).from : state.doc.length
+  const displayTitle = chosenTarget.title.length > 28 ? chosenTarget.title.slice(0, 27) + '…' : chosenTarget.title
+  const label = `Sotto «${displayTitle}»`
+
+  return {
+    insertAt,
+    headingLine: chosenTarget.headingLine,
+    label,
+    subunitRange: { from: chosenTarget.from, to: chosenTarget.to },
+  }
+}
+
 export function findInsertPosition(state: EditorState, position: number): number {
-  let pos = position
-  const line = state.doc.lineAt(pos)
-  if (line.text.trim().startsWith('#')) {
-    const next = line.number + 1
-    pos = next <= state.doc.lines ? state.doc.line(next).from : state.doc.length
-  }
-  const unit = unitRanges(state).find((u) => pos >= u.from && pos <= u.to)
-  const timecode = unit && timecodeSpans(state).find((s) => s.from >= unit.from && s.to <= unit.to)
-  if (timecode && pos <= timecode.to) {
-    const next = state.doc.lineAt(timecode.to).number + 1
-    pos = next <= state.doc.lines ? state.doc.line(next).from : timecode.to
-  }
-  return pos
+  const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+  return dropTarget(state, position, mode).insertAt
 }
 
 export function formatImagesMarkdown(items: Array<{ path: string; alt_text: string }>): string {
@@ -63,14 +263,14 @@ export function formatImagesMarkdown(items: Array<{ path: string; alt_text: stri
 }
 
 export function removeImagesFromDocument(view: EditorView, imageNames: string[]): boolean {
-  const namesSet = new Set(imageNames.map((n) => n.split('/').pop()!))
+  const namesSet = new Set(imageNames.map((n) => n.split('/').pop()!.split('#')[0]))
   const doc = view.state.doc
   const linesToRemove: Array<{ from: number; to: number }> = []
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i)
     const text = line.text.trim()
-    const match = /^!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)$/.exec(text)
+    const match = /^!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#[^)]*)?\)$/.exec(text)
     if (match && namesSet.has(match[2])) {
       const from = line.from > 0 && doc.sliceString(line.from - 1, line.from) === '\n' ? line.from - 1 : line.from
       linesToRemove.push({ from, to: line.to })
@@ -90,22 +290,23 @@ export function replaceImageInDocument(
   newName: string,
   newAltText?: string,
 ): boolean {
-  const origClean = originalName.split('/').pop()!
-  const newClean = newName.split('/').pop()!
+  const origClean = originalName.split('/').pop()!.split('#')[0]
+  const newClean = newName.split('/').pop()!.split('#')[0]
   const doc = view.state.doc
   const changes: Array<{ from: number; to: number; insert: string }> = []
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i)
     const text = line.text
-    const regex = /!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)\)/g
+    const regex = /!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:(#[^)]*))?\)/g
     let match: RegExpExecArray | null
     while ((match = regex.exec(text)) !== null) {
       if (match[2] === origClean) {
         const from = line.from + match.index
         const to = from + match[0].length
         const alt = newAltText !== undefined ? newAltText.replace(/[\\[\]\r\n]/g, ' ') : match[1]
-        const replacement = `![${alt}](assets/images/${newClean})`
+        const hash = match[3] || ''
+        const replacement = `![${alt}](assets/images/${newClean}${hash})`
         changes.push({ from, to, insert: replacement })
       }
     }
@@ -117,13 +318,69 @@ export function replaceImageInDocument(
   return true
 }
 
+class DropLineWidget extends WidgetType {
+  readonly label?: string
+  constructor(label?: string) {
+    super()
+    this.label = label
+  }
+  eq(other: DropLineWidget) {
+    return this.label === other.label
+  }
+  toDOM() {
+    const wrap = document.createElement('div')
+    wrap.className = 'cm-drop-line-widget'
+    if (this.label) {
+      const badge = document.createElement('span')
+      badge.className = 'cm-drop-line-label'
+      badge.textContent = this.label
+      wrap.appendChild(badge)
+    }
+    return wrap
+  }
+}
+
+export const setDropHighlight = StateEffect.define<DropTargetResult | null>()
+
+export const dropHighlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setDropHighlight)) {
+        const target = effect.value
+        if (!target) return Decoration.none
+        const ranges: Range<Decoration>[] = []
+        if (target.subunitRange) {
+          const doc = tr.state.doc
+          const startLine = doc.lineAt(Math.max(0, Math.min(target.subunitRange.from, doc.length))).number
+          const endLine = doc.lineAt(Math.max(0, Math.min(target.subunitRange.to, doc.length))).number
+          for (let n = startLine; n <= endLine; n++) {
+            const line = doc.line(n)
+            ranges.push(Decoration.line({ class: 'cm-drop-unit-highlight' }).range(line.from))
+          }
+        }
+        const at = Math.min(target.insertAt, tr.state.doc.length)
+        ranges.push(
+          Decoration.widget({
+            widget: new DropLineWidget(target.label),
+            block: true,
+            side: -1,
+          }).range(at),
+        )
+        return Decoration.set(ranges, true)
+      }
+    }
+    return tr.docChanged ? decorations.map(tr.changes) : decorations
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
 /** Incolla e trascina file: nel documento entra soltanto il riferimento relativo restituito dall'API. */
 export function lessonImageUploads(options: Options) {
   const insert = (view: EditorView, files: File[], position: number) => {
     if (!files.length || view.state.readOnly) return false
-    const pos = findInsertPosition(view.state, position)
     const id = Symbol('immagini')
-    view.dispatch({ effects: addAnchor.of({ id, position: pos }) })
+    view.dispatch({ effects: addAnchor.of({ id, position }) })
     const task = (async () => {
       try {
         for (const file of files) {
@@ -148,9 +405,8 @@ export function lessonImageUploads(options: Options) {
     position: number,
   ) => {
     if (view.state.readOnly) return false
-    const pos = findInsertPosition(view.state, position)
     const id = Symbol('media-insert')
-    view.dispatch({ effects: addAnchor.of({ id, position: pos }) })
+    view.dispatch({ effects: addAnchor.of({ id, position }) })
 
     const task = (async () => {
       try {
@@ -159,7 +415,6 @@ export function lessonImageUploads(options: Options) {
 
         if (!item.in_assets) {
           const sourceId = materialSourceId(item.source)
-          // Senza una pagina copiata in assets non si inserisce un riferimento rotto.
           if (!sourceId || item.page == null || item.lessonId == null) return
           const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
           finalPath = copied.path
@@ -193,7 +448,9 @@ export function lessonImageUploads(options: Options) {
           const custom = e as CustomEvent<{ items: Array<{ path: string; alt_text: string }> }>
           const items = custom.detail?.items
           if (!items || items.length === 0 || this.view.state.readOnly) return
-          const pos = findInsertPosition(this.view.state, this.view.state.selection.main.from)
+          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+          const target = dropTarget(this.view.state, this.view.state.selection.main.from, mode)
+          const pos = target.insertAt
           const textToInsert = formatImagesMarkdown(items)
           this.view.dispatch({
             changes: { from: pos, insert: textToInsert },
@@ -255,25 +512,32 @@ export function lessonImageUploads(options: Options) {
     anchors,
     alive,
     mediaSyncPlugin,
+    dropHighlightField,
     dropCursor(),
     Prec.highest(
       EditorView.domEventHandlers({
         paste(event, view) {
           const files = Array.from(event.clipboardData?.files ?? []).filter(supported)
-          if (!insert(view, files, view.state.selection.main.from)) return false
+          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+          const target = dropTarget(view.state, view.state.selection.main.from, mode)
+          if (!insert(view, files, target.insertAt)) return false
           event.preventDefault()
           return true
         },
         drop(event, view) {
+          view.dispatch({ effects: setDropHighlight.of(null) })
+          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+          const at =
+            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+            view.state.selection.main.head
+          const target = dropTarget(view.state, at, mode)
+
           const mediaData = event.dataTransfer?.getData(RT_MEDIA_DRAG_TYPE)
           if (mediaData) {
             event.preventDefault()
-            const at =
-              view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-              view.state.selection.main.head
             try {
               const item = JSON.parse(mediaData)
-              insertMediaItem(view, item, at)
+              insertMediaItem(view, item, target.insertAt)
               return true
             } catch {
               return false
@@ -281,10 +545,7 @@ export function lessonImageUploads(options: Options) {
           }
 
           const files = Array.from(event.dataTransfer?.files ?? []).filter(supported)
-          const at =
-            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-            view.state.selection.main.head
-          if (!insert(view, files, at)) return false
+          if (!insert(view, files, target.insertAt)) return false
           event.preventDefault()
           return true
         },
@@ -292,11 +553,24 @@ export function lessonImageUploads(options: Options) {
           if (
             !view.state.readOnly &&
             (Array.from(event.dataTransfer?.files ?? []).some(supported) ||
-              event.dataTransfer?.types.includes(RT_MEDIA_DRAG_TYPE))
+              event.dataTransfer?.types.includes(RT_MEDIA_DRAG_TYPE) ||
+              event.dataTransfer?.types.includes('Files'))
           ) {
             event.preventDefault()
             if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+            const at =
+              view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+              view.state.selection.main.head
+            const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+            const target = dropTarget(view.state, at, mode)
+            view.dispatch({ effects: setDropHighlight.of(target) })
             return true
+          }
+          return false
+        },
+        dragleave(event, view) {
+          if (!event.relatedTarget || !view.dom.contains(event.relatedTarget as Node)) {
+            view.dispatch({ effects: setDropHighlight.of(null) })
           }
           return false
         },

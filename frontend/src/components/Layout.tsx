@@ -7,15 +7,19 @@ import { ApiError } from '@/api/client'
 import { useMe } from '@/api/hooks'
 import { useLiveUpdates } from '@/api/liveUpdates'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
+import { useDesktopJobSignals } from '@/components/jobs/useDesktopJobSignals'
+import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
+import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
+import { useUpdatePopup } from '@/components/settings/useAppUpdate'
 import { cn } from '@/lib/utils'
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -104,6 +108,9 @@ export function Layout() {
   const phone = useIsPhone()
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
+  useUpdatePopup()
+  useDesktopJobSignals()
+  const { error: openedFileError, clearError: clearOpenedFileError } = useOpenedFiles(openNewLesson)
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -123,6 +130,16 @@ export function Layout() {
   // le altre restano nei margini di prima.
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
+
+  if (path.startsWith('/app/')) {
+    return (
+      <main className="min-h-dvh bg-background">
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
+      </main>
+    )
+  }
   return (
     <ReturnAddressContext value={returnAddress}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
       <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>
@@ -165,6 +182,20 @@ export function Layout() {
       />
       <ImageViewer />
       <BackupDialog />
+      {openedFileError && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-md">
+          <Alert tone="danger" className="flex items-center justify-between gap-2">
+            <span>{openedFileError}</span>
+            <button
+              type="button"
+              onClick={clearOpenedFileError}
+              className="text-xs underline hover:no-underline"
+            >
+              Chiudi
+            </button>
+          </Alert>
+        </div>
+      )}
       {newLessonOptions && (
         <Suspense fallback={null}>
           <NewLessonDialog

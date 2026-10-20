@@ -85,9 +85,11 @@ function MediaCell({
     <div
       className={cn('group relative flex flex-col gap-1 min-w-0', view === 'rows' && 'w-full')}
       data-testid={`media-cell-${img.name}`}
+      data-image-name={img.name}
     >
       <button
         type="button"
+        data-image-name={img.name}
         draggable
         onDragStart={(e) => {
           cancelPeekTimer()

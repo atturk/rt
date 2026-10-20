@@ -128,10 +128,64 @@ def _command(command: str) -> subprocess.CompletedProcess:
                           **({"creationflags": 0x08000000} if sys.platform == "win32" else {}))
 
 
+_window_start_time = 0.0
+_announced_tokens = set()
+
+
 class DesktopApi:
     """API esposta da pywebview alla pagina JavaScript (window.pywebview.api)."""
-    def __init__(self, window=None):
+    def __init__(self, window=None, base_url: str = ""):
         self._window = window
+        self._base_url = base_url.rstrip("/")
+        self._update_window = None
+
+    def file_in_attesa(self) -> list:
+        from rt.core import opened_files
+        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+        for it in items:
+            _announced_tokens.add(it["token"])
+        return items
+
+    def apri_aggiornamento(self):
+        import webview
+        if self._update_window is not None:
+            if hasattr(self._update_window, "show"):
+                self._update_window.show()
+            return self._update_window
+
+        base = self._base_url
+        if not base and self._window and hasattr(self._window, "get_current_url"):
+            curr = self._window.get_current_url() or ""
+            if "://" in curr:
+                parts = curr.split("/", 3)
+                base = f"{parts[0]}//{parts[2]}"
+        url = f"{base}/app/aggiornamento" if base else "/app/aggiornamento"
+
+        popup = webview.create_window(
+            "Aggiornamento di RT",
+            url,
+            width=420,
+            height=240,
+            resizable=False,
+            on_top=True,
+        )
+        self._update_window = popup
+
+        def _on_closed():
+            self._update_window = None
+
+        if hasattr(popup, "events") and hasattr(popup.events, "closed"):
+            popup.events.closed += _on_closed
+
+        return popup
+
+    def badge(self, count: int) -> None:
+        from rt import window_signals
+        window_signals.badge(count)
+
+    def notifica(self, titolo: str, testo: str, percorso: str | None = None) -> None:
+        from rt import window_signals
+        window_signals.notifica(titolo, testo, percorso=percorso, window=self._window, base_url=self._base_url)
 
     def salva_copia_backup(self, percorso_snapshot: str) -> dict:
         from rt.services import backup_service
@@ -309,8 +363,15 @@ def _check_permissions(window) -> None:
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
 
 
-def _menu(window, base_url: str):
+def _menu(window, base_url: str, api=None):
     from webview.menu import Menu, MenuAction, MenuSeparator
+
+    def _open_update():
+        target_api = api or getattr(window, "js_api", None)
+        if target_api and hasattr(target_api, "apri_aggiornamento"):
+            target_api.apri_aggiornamento()
+        else:
+            DesktopApi(window, base_url=base_url).apri_aggiornamento()
 
     def quit_rt():
         if window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?"):
@@ -333,7 +394,7 @@ def _menu(window, base_url: str):
     if sys.platform == "win32":
         actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
     actions.extend([
-        MenuAction("Controlla aggiornamenti…", lambda: window.load_url(base_url + INFO_PATH)),
+        MenuAction("Controlla aggiornamenti…", _open_update),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
         MenuAction("Mostra registri", lambda: _open_path(paths.sub_dir("logs", create=True))),
@@ -526,12 +587,49 @@ def _smoke(window) -> None:
         window.destroy()
 
 
+def install_macos_open_files(window=None) -> None:
+    """Registra application:openFiles: sul delegato dell'applicazione di pywebview."""
+    try:
+        import objc
+        from webview.platforms import cocoa
+
+        selector = b"application:openFiles:"
+
+        def open_files(self, app, filenames):
+            from rt.core import opened_files
+            items = []
+            for p in filenames or []:
+                reg = opened_files.register_file(str(p))
+                if reg:
+                    items.append({"token": reg["token"], "name": reg["name"], "size": reg["size"]})
+                    _announced_tokens.add(reg["token"])
+            if items and window:
+                window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+            if hasattr(app, "replyToOpenOrPrint_"):
+                app.replyToOpenOrPrint_(0)
+
+        objc.classAddMethods(
+            cocoa.BrowserView.AppDelegate,
+            [objc.selector(open_files, selector=selector, signature=b"v@:@@")],
+        )
+    except Exception as exc:
+        _log(f"Metodo openFiles non registrato: {exc}")
+
+
 def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
+    from rt.core import opened_files
+    global _window_start_time
+    _window_start_time = time.time()
+    try:
+        opened_files.cleanup_expired(600)
+    except Exception:
+        pass
     window = None
     owns_pid = False
     lock = None
+    stop_watcher = threading.Event()
     try:
         if sys.platform == "win32" and _activate_existing():
             return 0
@@ -557,7 +655,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         webview.settings["ALLOW_DOWNLOADS"] = True
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
-        api = DesktopApi(None)
+        api = DesktopApi(None, base_url=base_url)
         window = webview.create_window("RT", url, width=1280, height=820, min_size=(900, 600),
                                        text_select=True, zoomable=True, js_api=api)
         api._window = window
@@ -597,13 +695,32 @@ def open_window(base_url: str, path: str = "/") -> int:
                 window_permissions.install_macos()
             except Exception as exc:
                 _log(f"Microfono non configurato nella finestra: {exc}")
+            try:
+                install_macos_open_files(window)
+            except Exception as exc:
+                _log(f"Open files macOS non configurato: {exc}")
+
+        def _watch_opened_files():
+            while not stop_watcher.is_set():
+                time.sleep(1)
+                try:
+                    from rt.core import opened_files
+                    items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+                    if items:
+                        for it in items:
+                            _announced_tokens.add(it["token"])
+                        window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                except Exception as exc:
+                    _log(f"Errore controllo file aperti: {exc}")
+
+        threading.Thread(target=_watch_opened_files, name="rt-opened-watcher", daemon=True).start()
         with open(_pid_path(), "w", encoding="utf-8", newline="\n") as f:
             f.write(f"{os.getpid()}\n")
         owns_pid = True
         options = {}
         if sys.platform == "win32":
             options["icon"] = os.path.join(paths.project_root(), "rt.ico")
-        webview.start(menu=_menu(window, base_url), private_mode=False,
+        webview.start(menu=_menu(window, base_url, api=api), private_mode=False,
                       localization=LOCALIZATION,
                       storage_path=os.path.join(paths.data_dir(), "webview"),
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)
@@ -623,6 +740,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         webbrowser.open(f"{base_url}/login?code={auth.create_login_code()}")
         return 0
     finally:
+        stop_watcher.set()
         if owns_pid and _read_pid() == os.getpid():
             try:
                 os.remove(_pid_path())

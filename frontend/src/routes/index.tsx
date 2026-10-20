@@ -104,6 +104,7 @@ const recallArea: Area = {
     { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.LightweightSession), handle: bare },
     { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.LightweightSession), handle: bare },
     { path: 'lezioni/:lessonId/sessione', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/risposte', Component: page(recall, (m) => m.RecallAnswersPage), handle: bare },
     { path: 'lezioni/:lessonId/recall/domande', element: <RedirectLessonPanel panel="domande" /> },
   ],
 }
@@ -147,7 +148,11 @@ const calendarArea: Area = {
   routes: [{ path: 'calendario', Component: page(calendar, (m) => m.CalendarPage), handle: bare }],
 }
 
-export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
+const appArea: Area = {
+  routes: [{ path: 'app/aggiornamento', Component: page(settings, (m) => m.UpdatePopup), handle: bare }],
+}
+
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 
