@@ -168,6 +168,14 @@ class DesktopApi:
 
         return popup
 
+    def badge(self, count: int) -> None:
+        from rt import window_signals
+        window_signals.badge(count)
+
+    def notifica(self, titolo: str, testo: str, percorso: str | None = None) -> None:
+        from rt import window_signals
+        window_signals.notifica(titolo, testo, percorso=percorso, window=self._window, base_url=self._base_url)
+
     def salva_copia_backup(self, percorso_snapshot: str) -> dict:
         from rt.services import backup_service
         import webview

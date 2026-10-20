@@ -25,6 +25,8 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   export_lessons: 'Esportazione di lezioni',
 }
 
+export const QUIET_JOB_TYPES = new Set(['recall_evaluate', 'recall_comment', 'credential_test'])
+
 export const JOB_STATE_LABELS: Record<string, string> = {
   queued: 'In coda',
   running: 'In esecuzione',

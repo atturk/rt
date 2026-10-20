@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client'
 import { useMe } from '@/api/hooks'
 import { useLiveUpdates } from '@/api/liveUpdates'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
+import { useDesktopJobSignals } from '@/components/jobs/useDesktopJobSignals'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
@@ -106,6 +107,7 @@ export function Layout() {
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
   useUpdatePopup()
+  useDesktopJobSignals()
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />

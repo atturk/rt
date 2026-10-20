@@ -15,6 +15,8 @@ declare global {
           errore?: string
         }>
         apri_aggiornamento?: () => Promise<void> | void
+        badge?: (count: number) => Promise<void> | void
+        notifica?: (titolo: string, testo: string, percorso?: string | null) => Promise<void> | void
       }
     }
   }
