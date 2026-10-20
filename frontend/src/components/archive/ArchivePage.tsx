@@ -403,6 +403,7 @@ function ArchiveDetailPanel({
                 units: [],
                 in_document: false,
                 macro_ids: [],
+                descritta: true,
               }}
               onClose={() => setCropping(false)}
               isPending={pending}

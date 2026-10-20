@@ -186,15 +186,23 @@ jobs:
       - name: Open file with the app
         run: |
           echo "Testo per la nuova lezione" > "$RUNNER_TEMP/prova.txt"
-          open -a "$RUNNER_TEMP/Applications/RT.app" "$RUNNER_TEMP/prova.txt"
-          sleep 3
-          grep -q "File aperto:" "$RUNNER_TEMP/rt-window/logs/desktop.log" || {
+          # La finestra dello smoke si è chiusa: open avvia una nuova istanza, che deve usare
+          # la stessa cartella dati per scrivere nel log controllato qui sotto.
+          open -a "$RUNNER_TEMP/Applications/RT.app" --env "RT_DATA_DIR=$RUNNER_TEMP/rt-window" \
+            --env RT_API_PORT=8798 --env RT_UPDATE_OFFLINE=1 "$RUNNER_TEMP/prova.txt"
+          found=0
+          for _ in $(seq 1 60); do
+            if grep -q "File aperto:" "$RUNNER_TEMP/rt-window/logs/desktop.log" 2>/dev/null; then found=1; break; fi
+            sleep 1
+          done
+          pkill -f "RT.app/Contents/Resources/app/python" || true
+          if [ "$found" != 1 ]; then
             echo "desktop.log:"
             cat "$RUNNER_TEMP/rt-window/logs/desktop.log" || true
             exit 1
-          }
+          fi
       - name: Verify signature intact after runtime
-        run: codesign --verify --strict "$RUNNER_TEMP/Applications/RT.app"
+        run: codesign --verify --strict --verbose=4 "$RUNNER_TEMP/Applications/RT.app"
       - uses: actions/cache@v4
         with:
           path: .stt-models

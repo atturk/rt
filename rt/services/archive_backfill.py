@@ -13,19 +13,26 @@ def lesson_directories():
     from rt.db.models import Lesson
     from rt.db.session import session_scope
     from sqlalchemy import select
-    found = set()
+    # Chiave canonica: su Windows lo stesso percorso arriva dal DB e dal disco in forme diverse
+    # (nome breve RUNNER~1, maiuscole), e la lezione si conterebbe due volte.
+    found = {}
+
+    def add(path):
+        found.setdefault(os.path.normcase(os.path.realpath(path)), path)
+
     db = get_database()
     if db:
         with session_scope(db) as session:
-            found.update(session.scalars(select(Lesson.path)))
+            for path in session.scalars(select(Lesson.path)):
+                add(path)
     root = load_config().telegram.lessons_root
     if root and os.path.isdir(root):
         for top, dirs, files in os.walk(root):
             dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('history', 'sources', 'assets', 'materials', '_state')]
             if 'info.yaml' in files:
-                found.add(top)
+                add(top)
                 dirs[:] = []
-    return sorted(found)
+    return sorted(found.values())
 
 
 def archive_backfill(directories=None):

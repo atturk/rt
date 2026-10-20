@@ -26,6 +26,7 @@ const JOB_TYPES: Record<string, string> = {
   rewrite_unit: 'Rielaborazione unità',
   ingest_audio: 'Importazione audio',
   add_images: 'Immagini',
+  describe_images: 'Descrizione delle immagini',
   outline_revision: 'Revisione scaletta',
 }
 

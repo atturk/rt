@@ -256,6 +256,19 @@ def _lesson_id(client):
     return client.get("/api/v1/lessons").json()[0]["id"]
 
 
+def test_preview_zip_all_reimports(api_client, api_lesson):
+    """Il LEGGIMI e il Markdown "(anteprima)" sono fuori dal manifesto ma non bloccano l'import."""
+    from rt.services.lesson_import_service import import_archive
+    res = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/export", params={"format": "zip", "scope": "all"})
+    assert "%28anteprima%29.zip" in res.headers["content-disposition"]
+    copy = io.BytesIO()  # stessa lezione con un altro nome, per non urtare quella esistente
+    with zipfile.ZipFile(io.BytesIO(res.content)) as source, zipfile.ZipFile(copy, "w") as target:
+        for name in source.namelist():
+            target.writestr("Copia/" + name.split("/", 1)[1], source.read(name))
+    imported = import_archive(io.BytesIO(copy.getvalue()))
+    assert api_client.get(f"/api/v1/lessons/{imported}").status_code == 200
+
+
 def test_api_phase_report_exposes_build_warnings(api_client, api_lesson):
     lesson_id = _lesson_id(api_client)
     phases = {p["phase"]: p for p in api_client.get(f"/api/v1/lessons/{lesson_id}/phases").json()["phases"]}

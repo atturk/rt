@@ -1283,6 +1283,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/media/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Descrive le immagini indicate con vision (o usa la descrizione in archivio) */
+        post: operations["describe_media_api_v1_lessons__lesson_id__media_describe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}/media/images": {
         parameters: {
             query?: never;
@@ -5002,16 +5019,38 @@ export interface components {
         };
         /** DeleteImagesRequest */
         DeleteImagesRequest: {
-            /** Image Names */
-            image_names: string[];
+            /**
+             * Image Names
+             * @description Alias per names
+             */
+            image_names?: string[] | null;
             /** Lease Token */
             lease_token?: string | null;
+            /**
+             * Names
+             * @description Nomi delle immagini da eliminare
+             */
+            names?: string[];
             /**
              * Update Document
              * @description False se il testo lo cambia l'editor aperto
              * @default true
              */
             update_document: boolean;
+        };
+        /** DescribeImagesRequest */
+        DescribeImagesRequest: {
+            /**
+             * Mock
+             * @description Usa mock LLM
+             * @default false
+             */
+            mock: boolean;
+            /**
+             * Names
+             * @description Nomi o identificativi delle immagini da descrivere
+             */
+            names: string[];
         };
         /** DocumentEditCheck */
         DocumentEditCheck: {
@@ -6093,6 +6132,12 @@ export interface components {
              * @description Hash o identificativo dell'immagine originale se ritaglio
              */
             crop_of?: string | null;
+            /**
+             * Descritta
+             * @description True se l'immagine ha una descrizione vision (summary_keywords, ocr_text o visual_elements)
+             * @default true
+             */
+            descritta: boolean;
             /**
              * In Assets
              * @description True se il file è già presente in assets/images
@@ -14200,6 +14245,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    describe_media_api_v1_lessons__lesson_id__media_describe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeImagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

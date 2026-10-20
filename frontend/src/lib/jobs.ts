@@ -13,6 +13,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   rewrite_unit: 'Rielaborazione di una unità',
   outline_revision: 'Revisione della scaletta',
   add_images: 'Immagini',
+  describe_images: 'Descrizione delle immagini',
   recall_generate: 'Domande di recall',
   recall_batch: 'Domande di recall',
   recall_rules_update: 'Aggiorna regole dai voti',

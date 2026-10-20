@@ -6,6 +6,7 @@ import { type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
+import { useCopyFormat } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
@@ -32,6 +33,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [theme, setTheme] = usePreference<ThemePreference>('theme', 'sistema')
   const [highlighter, setHighlighter] = useHighlighterPrefs()
   const [rsvp, setRsvp] = useRsvpPrefs()
+  const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
   const [zoom, setZoomState] = useState(getZoom)
   const save = useGeneralPreference()
@@ -72,6 +74,12 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
     <Section id="studio" title="Studio">
       <div className="flex flex-wrap justify-between gap-2 text-body"><span>Colori dell’evidenziatore</span><span className="text-muted-foreground">Giallo, verde, azzurro, rosa, arancio</span></div>
       <Checkbox id="pref-arrows" label="Frecce per cambiare unità" checked={highlighter.arrows} onChange={arrows => setHighlighter({ ...highlighter, arrows })} />
+    </Section>
+    <Section id="copia" title="Copia">
+      <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
+      <Checkbox id="copy-italic" label="Corsivo" checked={copy.italic} onChange={italic => setCopy({ ...copy, italic })} />
+      <Checkbox id="copy-highlights" label="Evidenziazioni" checked={copy.highlights} onChange={highlights => setCopy({ ...copy, highlights })} />
+      <Checkbox id="copy-color" label="Colore del testo" checked={copy.color} onChange={color => setCopy({ ...copy, color })} />
     </Section>
     <Section id="lettura-veloce" title="Lettura veloce">
       <Field label="Velocità (parole/min)" htmlFor="rsvp-wpm"><Input id="rsvp-wpm" type="number" min={100} max={900} step={25} value={rsvp.wpm}

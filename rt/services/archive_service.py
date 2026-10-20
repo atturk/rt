@@ -228,10 +228,13 @@ def crop(sha, n, rect, replace=False):
             meta['ritagli'] = {**meta.get('ritagli', {}), str(n): rect}
             archive.write_json(os.path.join(archive.entry_dir(sha), 'meta.json'), meta)
             return row(meta)
-    with tempfile.NamedTemporaryFile(suffix='.png') as temp:
+    # delete=False: su Windows un file temporaneo aperto non si riapre per leggerlo.
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp:
         temp.write(output.getvalue())
-        temp.flush()
+    try:
         result = archive.register_image(temp.name)
+    finally:
+        os.unlink(temp.name)
     archive.save_meta(result['impronta'], {'nome': f"{meta['nome']} · pag. {n}", 'ritaglio_di': {'sha': sha, 'pagina': n}})
     return row(require_entry(result['impronta']))
 

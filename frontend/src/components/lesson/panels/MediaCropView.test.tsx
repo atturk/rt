@@ -15,6 +15,7 @@ const mockImage: LessonImage = {
   in_document: true,
   units: ['1.2'],
   in_assets: true,
+  descritta: true,
 }
 
 describe('MediaCropView (MS1f)', () => {

@@ -213,3 +213,72 @@ def archive_backfill_job(job, ctx):
 
 
 register_handler('archive_backfill', archive_backfill_job)
+
+
+def describe_images_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
+    import os
+    from rt.core.image_extract import ExtractedImage
+    from rt.pipeline.add_images import (
+        compute_image_hash,
+        describe_new_images,
+        get_images_dir,
+        load_image_descriptions,
+    )
+    from rt.services.editor_media_service import _hashes_for_names
+    from rt.storage import fs
+
+    lesson_dir = _lesson_dir(job)
+    names = job.payload.get("names") or []
+    force_mock = bool(job.payload.get("mock"))
+
+    descriptions = load_image_descriptions(lesson_dir)
+
+    def _is_described(desc: dict | None) -> bool:
+        if not desc:
+            return False
+        return bool(desc.get("summary_keywords") or desc.get("ocr_text") or desc.get("visual_elements"))
+
+    to_describe: list[tuple[ExtractedImage, str]] = []
+    for raw_name in names:
+        base = os.path.basename(raw_name)
+        matches = _hashes_for_names(descriptions, {base})
+        if not matches and base in descriptions:
+            matches = {base}
+
+        matched_hashes = list(matches)
+        if matched_hashes:
+            for h in matched_hashes:
+                desc = descriptions.get(h)
+                if _is_described(desc):
+                    continue
+                filename = os.path.basename(str(desc.get("filename") or base))
+                img_path = os.path.join(get_images_dir(lesson_dir), filename)
+                if not fs.isfile(img_path):
+                    continue
+                with fs.open(img_path, "rb") as f:
+                    data = f.read()
+                source_label = str(desc.get("source") or f"folder:{filename}")
+                to_describe.append((ExtractedImage(image_bytes=data, source_label=source_label), h))
+        else:
+            img_path = os.path.join(get_images_dir(lesson_dir), base)
+            if fs.isfile(img_path):
+                with fs.open(img_path, "rb") as f:
+                    data = f.read()
+                h = compute_image_hash(data)
+                desc = descriptions.get(h)
+                if not _is_described(desc):
+                    to_describe.append((ExtractedImage(image_bytes=data, source_label=f"folder:{base}"), h))
+
+    if not to_describe:
+        return JobOutcome(state=JobState.SUCCEEDED, result={"described": []})
+
+    with ctx.activate():
+        def report(current: int, total: int):
+            ctx.progress("describe_images", current, total, f"Descrivo immagine {current}/{total}")
+
+        describe_new_images(lesson_dir, to_describe, force_mock=force_mock, progress=report)
+
+    return JobOutcome(state=JobState.SUCCEEDED, result={"described": [h for _, h in to_describe]})
+
+
+register_handler("describe_images", describe_images_job)

@@ -253,7 +253,7 @@ def test_smoke_reads_the_native_page(data, monkeypatch):
 
 @pytest.mark.parametrize('owner,expected', [(1234, True), (9876, False)])
 def test_activate_existing_checks_window_owner(data, monkeypatch, owner, expected):
-    (data / 'run').mkdir()
+    (data / 'run').mkdir(exist_ok=True)
     (data / 'run' / 'window.pid').write_text('1234\n')
     monkeypatch.setattr(sys, 'platform', 'win32')
     monkeypatch.setattr(window, '_pid_alive', lambda pid: pid == 1234)
@@ -268,7 +268,7 @@ def test_activate_existing_checks_window_owner(data, monkeypatch, owner, expecte
 
 
 def test_windows_quit_falls_back_to_taskkill(data, rt_db, monkeypatch):
-    (data / 'run').mkdir()
+    (data / 'run').mkdir(exist_ok=True)
     (data / 'run' / 'server.pid').write_text('1234\n')
     monkeypatch.setattr(sys, 'platform', 'win32')
     monkeypatch.setattr(window, '_pid_alive', lambda pid: True)
@@ -534,9 +534,14 @@ def test_backup_stream_events_in_order(monkeypatch):
 
     monkeypatch.setattr(window.subprocess, "Popen", FakeProc)
     window._stream_backup(fake_window, ["backup", "--progress-json"], tipo="backup")
-    time.sleep(0.5)
-
-    calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+    # Il thread legge un evento ogni 0.12s: si aspetta la fine invece di un tempo fisso.
+    deadline = time.monotonic() + 5
+    calls = []
+    while time.monotonic() < deadline:
+        calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+        if any("fine" in c and "rt-backup-1" in c for c in calls):
+            break
+        time.sleep(0.05)
     # Inizio, database, media, fine
     assert any("inizio" in c for c in calls)
     assert any("database" in c for c in calls)

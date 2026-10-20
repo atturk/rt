@@ -7,11 +7,20 @@ import { api } from '@/api/client'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { EnrichmentPanel } from './EnrichmentPanel'
 
+const mockNavigate = vi.fn()
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 const ok = (data: unknown) => ({ data, error: undefined, response: new Response('{}', { status: 200 }) })
 
 const sampleImages = [
-  { name: 'img1.png', url: '/api/v1/lessons/5/img1.png', in_document: true, macro_ids: ['1'] },
-  { name: 'img2.png', url: '/api/v1/lessons/5/img2.png', in_document: false, source: 'pdf' },
+  { name: 'img1.png', url: '/api/v1/lessons/5/img1.png', in_document: true, macro_ids: ['1'], descritta: true, in_assets: true },
+  { name: 'img2.png', url: '/api/v1/lessons/5/img2.png', in_document: false, source: 'pdf', descritta: false, in_assets: true },
 ]
 
 const sampleElements = [
@@ -29,6 +38,9 @@ const sampleElements = [
 
 function mockApi() {
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/lessons/{lesson_id}') return Promise.resolve(ok({ id: 5, materia: 'FISIOLOGIA' }))
+    if (path === '/api/v1/archive/summary') return Promise.resolve(ok({ file: 124, da_continuare: 2 }))
+    if (path === '/api/v1/lessons/{lesson_id}/sources') return Promise.resolve(ok({ sources: [] }))
     if (path === '/api/v1/lessons/{lesson_id}/images') return Promise.resolve(ok({ images: sampleImages }))
     if (path === '/api/v1/lessons/{lesson_id}/enrichment')
       return Promise.resolve(ok({ elements: sampleElements, units: [{ id: '1.3', title: 'Gap' }] }))
@@ -320,6 +332,117 @@ it('la galleria seleziona e scrolla all’evento rt-media-select', async () => {
   expect(scrollMock).toHaveBeenCalled()
   const btn = cell.querySelector('button')
   expect(btn).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('mostra il pulsante Archivio in cima con i conteggi e porta ad archivio con da', async () => {
+  mockApi()
+  renderPanel()
+
+  const archiveBtn = await screen.findByTestId('open-archive-button')
+  expect(archiveBtn).toBeInTheDocument()
+  expect(within(archiveBtn).getByText('Archivio')).toBeInTheDocument()
+  expect(await within(archiveBtn).findByText('124 file · 2 PDF da continuare')).toBeInTheDocument()
+
+  fireEvent.click(archiveBtn)
+  expect(mockNavigate).toHaveBeenCalledWith('/archivio?da=5')
+})
+
+it('filtro Da descrivere mostra il numero e il puntino arancione sulle non descritte', async () => {
+  mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Bottone Da descrivere con badge conteggio (1 non descritta)
+  const undescribedFilter = screen.getByTestId('filter-undescribed')
+  expect(undescribedFilter).toBeInTheDocument()
+  expect(within(undescribedFilter).getByText('1')).toBeInTheDocument()
+
+  // Puntino arancione su img2.png
+  const dot = screen.getByTestId('undescribed-dot')
+  expect(dot).toBeInTheDocument()
+  expect(dot).toHaveClass('bg-warning')
+
+  // Clic su Da descrivere filtra la galleria
+  fireEvent.click(undescribedFilter)
+  expect(screen.queryByTestId('media-cell-img1.png')).not.toBeInTheDocument()
+  expect(screen.getByTestId('media-cell-img2.png')).toBeInTheDocument()
+
+  // Clic su Tutti mostra di nuovo tutte le immagini
+  fireEvent.click(screen.getByTestId('filter-all'))
+  expect(screen.getByTestId('media-cell-img1.png')).toBeInTheDocument()
+  expect(screen.getByTestId('media-cell-img2.png')).toBeInTheDocument()
+})
+
+it('barra di selezione: Descrivi, Ritaglia e Elimina con conferma', async () => {
+  const post = mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // 1. Seleziona img1.png (già descritta)
+  fireEvent.click(screen.getByTestId('media-cell-img1.png').querySelector('button')!)
+  expect(await screen.findByTestId('media-selection-bar')).toBeInTheDocument()
+  expect(screen.getByText('1 scelto')).toBeInTheDocument()
+
+  // Descrivi disattivato perché è già descritta
+  const descBtn = screen.getByTestId('describe-media-button')
+  expect(descBtn).toHaveAttribute('aria-disabled', 'true')
+
+  // Ritaglia attivo con 1 immagine selezionata
+  const cropBtn = screen.getByTestId('crop-media-button')
+  expect(cropBtn).not.toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(cropBtn)
+  expect(mockNavigate).toHaveBeenCalledWith('/archivio?da=5&file=img1&pagina=1&ritaglia=1')
+
+  // 2. Seleziona anche img2.png (non descritta)
+  fireEvent.click(screen.getByTestId('media-cell-img2.png').querySelector('button')!)
+  expect(screen.getByText('2 scelti')).toBeInTheDocument()
+
+  // Descrivi ora attivo (c'è img2 non descritta)
+  expect(descBtn).not.toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(descBtn)
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/media/describe',
+      expect.objectContaining({
+        params: { path: { lesson_id: 5 } },
+        body: expect.objectContaining({ names: ['img2.png'] }),
+      }),
+    ),
+  )
+
+  // Dopo la descrizione la selezione viene azzerata
+  await vi.waitFor(() => expect(screen.queryByTestId('media-selection-bar')).not.toBeInTheDocument())
+
+  // 3. Elimina con conferma
+  // Seleziona img1 per testare elimina
+  fireEvent.click(screen.getByTestId('media-cell-img1.png').querySelector('button')!)
+  const deleteBtn = await screen.findByTestId('delete-media-button')
+  fireEvent.click(deleteBtn)
+
+  const confirmDialog = await screen.findByRole('dialog')
+  expect(within(confirmDialog).getByText('Eliminare dalla lezione?')).toBeInTheDocument()
+  fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Elimina' }))
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/media/delete',
+      expect.objectContaining({
+        params: { path: { lesson_id: 5 } },
+      }),
+    ),
+  )
+})
+
+it('nessun pulsante forbici Scissors sulle miniature della galleria', async () => {
+  mockApi()
+  renderPanel()
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Nessun pulsante ritaglia o forbici nelle miniature
+  const gallery = screen.getByTestId('media-gallery')
+  expect(within(gallery).queryByLabelText(/Ritaglia/i)).not.toBeInTheDocument()
 })
 
 
