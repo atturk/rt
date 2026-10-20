@@ -26,9 +26,12 @@ export function CalendarYearView({ weeks, selected, onSelect, onOpen }: {
           const past = shiftWeekDate(week.start_date, 7) <= today
           const hours = week.days.flatMap(day => day.events).reduce((n, e) => n + (e.status === 'annullata' ? 0 : e.end_hour - e.start_hour), 0)
           const title = weekTitle(week.start_date, hours, changed)
-          return <Tooltip key={week.start_date} content={title} describe={false}>{trigger => <button {...trigger} type="button" aria-label={title} aria-pressed={selected.includes(week.start_date)} data-week={week.start_date}
-            data-changed={changed} data-current={current} className={cn('flex w-full items-center gap-2 rounded border border-transparent p-1', current && 'border-foreground', selected.includes(week.start_date) && 'ring-2 ring-success')}
-            style={changed ? { boxShadow: 'inset 3px 0 0 var(--study-learning)' } : undefined}
+          const isSelected = selected.includes(week.start_date)
+          // Barretta del cambio d'orario e anello della selezione sono entrambi box-shadow: vanno uniti.
+          const shadows = [changed && 'inset 3px 0 0 var(--study-learning)', isSelected && '0 0 0 2px var(--success)'].filter(Boolean)
+          return <Tooltip key={week.start_date} content={title} describe={false}>{trigger => <button {...trigger} type="button" aria-label={title} aria-pressed={isSelected} data-week={week.start_date}
+            data-changed={changed} data-current={current} className={cn('flex w-full items-center gap-2 rounded border border-transparent p-1', current && 'border-foreground')}
+            style={shadows.length ? { boxShadow: shadows.join(', ') } : undefined}
             onClick={() => onSelect(week.start_date)} onDoubleClick={() => onOpen(week.start_date)}
             onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); onOpen(week.start_date) } }}>
             <span className="w-5 shrink-0 font-mono text-[10px] text-muted-foreground">{week.week_number}</span>
