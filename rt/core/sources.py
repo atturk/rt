@@ -106,10 +106,13 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                 total = (cached or {}).get('pagine_totali') or page_count(source_path)
             else:
                 import tempfile
-                with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1]) as tmp:
+                # delete=False: su Windows un file temporaneo aperto non si riapre per leggerlo.
+                with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as tmp:
                     tmp.write(content)
-                    tmp.flush()
+                try:
                     total = page_count(tmp.name)
+                finally:
+                    os.unlink(tmp.name)
             pagine = parse_pages(pagine, total)
         estrai = estrai or default_extraction(filename)
     sources = load_sources(lesson_dir)
