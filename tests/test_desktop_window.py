@@ -253,7 +253,7 @@ def test_smoke_reads_the_native_page(data, monkeypatch):
 
 @pytest.mark.parametrize('owner,expected', [(1234, True), (9876, False)])
 def test_activate_existing_checks_window_owner(data, monkeypatch, owner, expected):
-    (data / 'run').mkdir()
+    (data / 'run').mkdir(exist_ok=True)
     (data / 'run' / 'window.pid').write_text('1234\n')
     monkeypatch.setattr(sys, 'platform', 'win32')
     monkeypatch.setattr(window, '_pid_alive', lambda pid: pid == 1234)
@@ -268,7 +268,7 @@ def test_activate_existing_checks_window_owner(data, monkeypatch, owner, expecte
 
 
 def test_windows_quit_falls_back_to_taskkill(data, rt_db, monkeypatch):
-    (data / 'run').mkdir()
+    (data / 'run').mkdir(exist_ok=True)
     (data / 'run' / 'server.pid').write_text('1234\n')
     monkeypatch.setattr(sys, 'platform', 'win32')
     monkeypatch.setattr(window, '_pid_alive', lambda pid: True)
