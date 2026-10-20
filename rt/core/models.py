@@ -21,6 +21,8 @@ class Segment(BaseModel):
     end_formatted: str = Field(..., description="Formato MM:SS o H:MM:SS")
     text_raw: str = Field(..., description="Trascrizione ASR grezza immutata")
     source_file: Optional[str] = None
+    integra: bool = Field(default=False, exclude_if=lambda value: not value)
+    fonte: Optional[str] = Field(default=None, exclude_if=lambda value: value is None)
     speaker: Optional[str] = None
     confidence: Optional[float] = None
     flags: List[str] = Field(default_factory=list)

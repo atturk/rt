@@ -37,8 +37,12 @@ def selection(lesson_dir):
     # Una principale tolta e mai usata non richiede ricostruzione.
     if used_primary not in ids and used_primary not in removed_used:
         primary_changed = False
+    # Nei registri precedenti Integra si comportava come Contesto.
+    used_uses = state.get('usi_usati', {})
+    use_changed = any(s.id in used and (s.uso == 'integra') != (used_uses.get(s.id) == 'integra')
+                      for s in sources)
     return {'fonti_tolte_usate': removed_used, 'principale': primary, 'ordine_usato': used, 'principale_usato': used_primary,
-            'solo_ricostruzione': bool(removed_used) or reordered or primary_changed}
+            'solo_ricostruzione': bool(removed_used) or reordered or primary_changed or use_changed}
 
 
 @lesson_locked
@@ -66,7 +70,8 @@ def record_used_selection(lesson_dir):
     sources = load_sources(lesson_dir)
     state = _read_state(lesson_dir)
     state.update(principale=current['principale'], principale_usato=current['principale'],
-                 ordine_usato=[s.id for s in sources], audio_usato=[s.id for s in sources if s.tipo == 'audio'])
+                 ordine_usato=[s.id for s in sources], audio_usato=[s.id for s in sources if s.tipo == 'audio'],
+                 usi_usati={s.id: s.uso for s in sources})
     _write_state(lesson_dir, state)
 
 

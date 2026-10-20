@@ -198,10 +198,16 @@ def remove_source(lesson_dir: str, source_id: str) -> None:
 @lesson_locked
 def update_source(lesson_dir, source_id, **options):
     from rt.core.source_options import parse_pages
+    from rt.core.source_selection import selection
+    from rt.pipeline.source_update import _read_state, _write_state
     sources = load_sources(lesson_dir)
     source = next((s for s in sources if s.id == source_id), None)
     if source is None:
         raise KeyError(source_id)
+    state = _read_state(lesson_dir)
+    # Conserva anche per le lezioni storiche l'insieme usato, prima che la fonte
+    # modificata venga segnata come pendente e la sua cache invalidata.
+    state.setdefault('ordine_usato', selection(lesson_dir)['ordine_usato'])
     if 'pagine' in options:
         from rt.core.materials import page_count
         source.pagine = parse_pages(options['pagine'], page_count(os.path.join(lesson_dir, source.file)))
@@ -214,8 +220,6 @@ def update_source(lesson_dir, source_id, **options):
             raise ValueError('Uso non valido')
         source.uso = 'contesto' if options['uso'] == 'guida' else options['uso']
     _save(lesson_dir, sources)
-    from rt.pipeline.source_update import _read_state, _write_state
-    state = _read_state(lesson_dir)
     state['used'] = [sid for sid in state.get('used', []) if sid != source_id]
     state.get('sources', {}).pop(source_id, None)
     _write_state(lesson_dir, state)

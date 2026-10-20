@@ -9,7 +9,7 @@ import os
 import json
 from typing import Dict, Any, List, Optional
 from rt.core.models import Outline, LessonTopics
-from rt.core.segments import load_segments_json
+from rt.core.segments import load_segments_json, segment_content
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import init_or_update_manifest
 from rt.llm.client import LLMClient
@@ -142,7 +142,7 @@ def _run_outline(lesson_dir: str, force: bool = False, force_mock: bool = False)
     # Costruzione sommario segmenti per prompt
     summary_lines = []
     for s in segments_data.segments:
-        text_preview = " ".join(s.text_raw.split()[:18])
+        text_preview = " ".join(segment_content(s).split()[:18])
         summary_lines.append(f"[{s.id}] {s.start_formatted} - {s.end_formatted}: {text_preview}")
     segments_summary = "\n".join(summary_lines)
     
