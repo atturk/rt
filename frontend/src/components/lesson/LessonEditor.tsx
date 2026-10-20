@@ -97,7 +97,26 @@ type Props = {
  * si salvano da sole nella bozza dopo una breve pausa; i timecode sono bloccati (clic: ascolta,
  * triplo clic: modifica). Il documento finale va poi ricreato con la fase Documento.
  */
-export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
+function extractImageNames(doc: string): Set<string> {
+  const set = new Set<string>()
+  const regex = /!\[[^\]]*\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#[^)]*)?\)/g
+  let m: RegExpExecArray | null
+  while ((m = regex.exec(doc)) !== null) {
+    set.add(m[1])
+  }
+  return set
+}
+
+function areSetsEqual<T>(a: Set<T>, b: Set<T>): boolean {
+  if (a.size !== b.size) return false
+  for (const item of a) {
+    if (!b.has(item)) return false
+  }
+  return true
+}
+
+export function LessonEditor({
+ lessonId, document: doc, hasAudio, ready, locked, onEditingChange, actionsRef, reviewOpen = false, classifierOpen = false, onDocumentChange, unitTasks }: Props) {
   const handle = useRef<AtomicCodeMirrorEditorHandle | null>(null)
   const surface = useRef<HTMLDivElement>(null)
   const [showToolbar] = usePreference('editor.toolbar', true)
@@ -212,6 +231,8 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
   const persist = useCallback(async (markdown: string, recover = false) => {
     setStatus({ kind: 'saving' })
     try {
+      const prevImages = extractImageNames(saved.current)
+      const nextImages = extractImageNames(markdown)
       const token = leaseRef.current ?? (await acquire(recover))
       const result = await unwrap(api.PUT('/api/v1/lessons/{lesson_id}/document/draft', {
         params: { path: { lesson_id: lessonId } }, body: { markdown, lease_token: token },
@@ -221,6 +242,9 @@ export function LessonEditor({ lessonId, document: doc, hasAudio, ready, locked,
       // rilegge documento, fasi e build da rifare
       void client.invalidateQueries({ queryKey: lessonKeys.all(lessonId) })
       void client.invalidateQueries({ queryKey: ['lessons'] })
+      if (!areSetsEqual(prevImages, nextImages)) {
+        void client.invalidateQueries({ queryKey: imageKeys.list(lessonId) })
+      }
     } catch (error) {
       const problems = problemsOf(error)
       if (problems) setStatus({ kind: 'invalid', problems })

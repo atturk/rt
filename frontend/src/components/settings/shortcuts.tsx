@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { SlideToggle } from '@/components/ui/slide-toggle'
 import { usePreference } from '@/lib/preferences'
 import { Field, Section, SettingsSelect } from './common'
 
@@ -27,6 +28,7 @@ type Conflict = { command: EditorCommand; other: EditorCommand; key: string; pre
 
 export function EditorShortcutsSection() {
   const [toolbar, saveToolbar] = usePreference('editor.toolbar', true)
+  const [imageDrop, setImageDrop] = usePreference<'heading' | 'free'>('editor.image-drop', 'heading')
   const [preferences, save] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [search, setSearch] = useState('')
   const [recording, setRecording] = useState<string | null>(null)
@@ -62,6 +64,17 @@ export function EditorShortcutsSection() {
       <SettingsSelect id="editor-toolbar" value={toolbar ? 'si' : 'no'} onChange={e => saveToolbar(e.target.value === 'si')}>
         <option value="si">Sì</option><option value="no">No</option>
       </SettingsSelect>
+    </Field>
+    <Field label="Immagini trascinate" htmlFor="pref-image-drop">
+      <SlideToggle<'heading' | 'free'>
+        label="Immagini trascinate"
+        value={imageDrop}
+        onChange={setImageDrop}
+        options={[
+          { value: 'heading', label: 'Sotto il titolo' },
+          { value: 'free', label: 'Dove le lascio' },
+        ]}
+      />
     </Field>
     <Input type="search" aria-label="Cerca comando o combinazione" placeholder="Cerca comando o combinazione" value={search} onChange={e => { setSearch(e.target.value); setRecording(null) }} />
     {message && <Alert tone="warning">{message}</Alert>}

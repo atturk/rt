@@ -1,4 +1,4 @@
-import { FileText, Image, Layers, LayoutGrid, Rows3, Search, Sparkles, Upload, X } from 'lucide-react'
+import { FileText, Image, Layers, LayoutGrid, Rows3, ScanEye, Search, Sparkles, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router'
 
@@ -43,7 +43,8 @@ const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
 
 function findUnitForImage(imageName: string, markdown?: string): string | null {
   if (!markdown || !imageName) return null
-  const idx = markdown.indexOf(imageName)
+  const clean = imageName.split('#')[0]
+  const idx = markdown.indexOf(clean)
   if (idx === -1) return null
   const before = markdown.slice(0, idx)
   const matches = [...before.matchAll(/^###\s+(\S+)/gm)]
@@ -168,14 +169,25 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         setCanInsertAtCursor(Boolean(custom.detail.hasCursor))
       }
     }
+    const onMediaSelect = (e: Event) => {
+      const custom = e as CustomEvent<{ name: string }>
+      const name = custom.detail?.name
+      if (!name) return
+      const clean = name.split('#')[0]
+      setSelectedNames(new Set([clean]))
+      const el = document.querySelector(`[data-image-name="${CSS.escape(clean)}"]`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
     window.addEventListener('rt-editor-cursor-state', onCursorState)
+    window.addEventListener('rt-media-select', onMediaSelect)
     window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
     return () => {
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
       window.removeEventListener('rt-editor-cursor-state', onCursorState)
+      window.removeEventListener('rt-media-select', onMediaSelect)
     }
   }, [])
 
@@ -461,7 +473,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           <Card
             data-file-drop-target
             data-testid="enrichment-upload"
-            className={cn('flex flex-col gap-2.5 p-3', draggingUpload && 'border-foreground bg-muted')}
+            className={cn('relative flex flex-col gap-2.5 p-3 overflow-hidden', draggingUpload && 'border-foreground bg-muted')}
             onDragOver={(event) => {
               if (!Array.from(event.dataTransfer.types).includes('Files')) return
               event.preventDefault()
@@ -476,6 +488,15 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               chooseUploadFiles(Array.from(event.dataTransfer.files))
             }}
           >
+            {draggingUpload && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-primary/10 p-6 text-center font-medium text-foreground pointer-events-none"
+                data-testid="enrichment-upload-drop-zone"
+              >
+                <ScanEye className="size-8 text-primary" aria-hidden />
+                <span>Analizza e aggiungi</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-body font-semibold">Aggiungi PDF o foto</span>
               <IconButton label="Chiudi" icon={X} className="size-6" onClick={closeUpload} />

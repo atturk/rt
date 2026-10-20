@@ -302,4 +302,24 @@ it('di base la vista dei media è a righe, il pulsante passa a griglia e salva i
   expect(screen.getByRole('button', { name: 'Vista a griglia' })).toBeInTheDocument()
 })
 
+it('la galleria seleziona e scrolla all’evento rt-media-select', async () => {
+  mockApi()
+  renderPanel()
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  const cell = await screen.findByTestId('media-cell-img1.png')
+  const scrollMock = vi.fn()
+  cell.scrollIntoView = scrollMock
+
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-media-select', { detail: { name: 'img1.png' } }),
+    )
+  })
+
+  expect(scrollMock).toHaveBeenCalled()
+  const btn = cell.querySelector('button')
+  expect(btn).toHaveAttribute('aria-pressed', 'true')
+})
+
 

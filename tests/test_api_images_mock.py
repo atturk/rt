@@ -473,3 +473,29 @@ def test_crop_replace_with_editor_open_leaves_text_to_the_editor(api_client, ws,
                                 "update_document": False, "lease_token": token})
     assert res.status_code == 201, res.text
     assert f"assets/images/{name}" in api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
+
+
+def test_image_in_document_status_with_markdown_changes_and_hash_width(api_client, ws, rt_db, tmp_path, monkeypatch):
+    lesson, lid, name = _placed_image(api_client, ws, rt_db, tmp_path, monkeypatch)
+    images = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    target = next(img for img in images if img["name"] == name)
+    assert target["in_document"] is True
+
+    # Tolta dal Markdown: resta nell'elenco con in_document = False
+    doc = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
+    cleaned_doc = "\n".join(line for line in doc.splitlines() if name not in line)
+    saved = api_client.put(f"/api/v1/lessons/{lid}/document/draft", json={"markdown": cleaned_doc})
+    assert saved.status_code == 200
+    images = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    target = next(img for img in images if img["name"] == name)
+    assert target["in_document"] is False
+
+    # Con #w=320 nel Markdown: risulta usata (in_document = True) e collegata all'unità
+    doc_with_width = doc.replace(f"assets/images/{name}", f"assets/images/{name}#w=320")
+    saved = api_client.put(f"/api/v1/lessons/{lid}/document/draft", json={"markdown": doc_with_width})
+    assert saved.status_code == 200
+    images = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    target = next(img for img in images if img["name"] == name)
+    assert target["in_document"] is True
+    assert len(target["units"]) > 0
+

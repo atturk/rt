@@ -1,4 +1,5 @@
 import { mountDomTooltip } from '@/components/ui/dom-tooltip'
+import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
 import {
   formatStripLabel,
   getStripClosedPreference,
@@ -101,11 +102,21 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
       e.preventDefault()
       e.stopPropagation()
       options?.onImageClick?.(idx)
-      window.dispatchEvent(
-        new CustomEvent('rt-image-viewer-open', {
-          detail: { images, index: idx },
-        })
-      )
+      if (isEnrichmentPanelOpen()) {
+        const rawName = img.src.split('/').pop()?.split('#')[0]
+        const name = rawName ? decodeURIComponent(rawName) : ''
+        window.dispatchEvent(
+          new CustomEvent('rt-media-select', {
+            detail: { name },
+          }),
+        )
+      } else {
+        window.dispatchEvent(
+          new CustomEvent('rt-image-viewer-open', {
+            detail: { images, index: idx },
+          }),
+        )
+      }
     }
     thumbs.append(thumb)
   })

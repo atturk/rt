@@ -153,7 +153,8 @@ def _image_ref_errors(lesson_dir: str, text: str, first_line: int, known: set) -
     errors = []
     for offset, line in enumerate(text.split("\n")):
         for target in IMAGE_REF_RE.findall(line):
-            if target.startswith(LOCAL_IMAGE_PREFIX) and target not in known:
+            base_target = target.split("#")[0]
+            if base_target.startswith(LOCAL_IMAGE_PREFIX) and base_target not in known:
                 errors.append({"line": first_line + offset,
                                "message": f"Immagine non trovata nella lezione: {target}."})
     return errors
@@ -210,7 +211,8 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
             new_edits["macros"][macro_id] = {"title": got.title}
         for n, image_line in got.images:
             target = IMAGE_LINE_RE.match(image_line).group(2)
-            h = hash_by_file.get(target)
+            base_target = target.split("#")[0]
+            h = hash_by_file.get(base_target)
             if h is None:
                 errors.append({"line": n, "message": f"Immagine non trovata nella lezione: {target}."})
             else:
@@ -236,7 +238,8 @@ def plan_document_edit(lesson_dir: str, markdown: str) -> Dict[str, Any]:
 
             for n, image_line in unit.images:
                 target = IMAGE_LINE_RE.match(image_line).group(2)
-                h = hash_by_file.get(target)
+                base_target = target.split("#")[0]
+                h = hash_by_file.get(base_target)
                 if h is None:
                     errors.append({"line": n, "message": f"Immagine non trovata nella lezione: {target}."})
                 else:

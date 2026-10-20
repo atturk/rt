@@ -1,7 +1,7 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
-import { lessonImageUploads } from './lessonImages'
+import { dropTarget, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument } from './lessonImages'
 import { timecodeLock } from './timecodeLock'
 const markdown = '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto.'
 const image: Schemas['EditorImage'] = { path: 'assets/images/a.png', name: 'a.png', url: '/api/v1/lessons/1/assets/images/a.png', alt_text: 'Figura' }
@@ -210,6 +210,103 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
     expect(doc).toContain('Testo normale.')
     view.destroy()
     parent.remove()
+  })
+})
+
+describe('dropTarget (Piano 9)', () => {
+  it('con "Sotto il titolo": puntatore a metà paragrafo di 2.2 va dopo titolo, timecode e immagini già lì', () => {
+    const text = [
+      '## 1. Macro 1',
+      '### 1.1 Sub 1',
+      '00:01',
+      'Testo 1.',
+      '',
+      '## 2. Macro 2',
+      '### 2.2 Metaboliti',
+      '05:30',
+      '![già](assets/images/vecchia.png)',
+      'Primo paragrafo di 2.2 riga 1',
+      'Secondo rigo del paragrafo.',
+    ].join('\n')
+
+    const state = EditorState.create({ doc: text })
+    const pos = text.indexOf('Primo paragrafo') + 8
+    const target = dropTarget(state, pos, 'heading')
+
+    expect(target.insertAt).toBe(text.indexOf('Primo paragrafo'))
+    expect(target.label).toBe('Sotto «2.2 Metaboliti»')
+    expect(target.headingLine).toBe(7)
+  })
+
+  it('con "Sotto il titolo": puntatore su una macro senza sottounità va sotto la macro', () => {
+    const text = [
+      '## 1. Sezione con sub',
+      '### 1.1 Unità 1',
+      '01:00',
+      'Testo.',
+      '',
+      '## 2. Macro senza sottounità',
+      'Testo della macro.',
+    ].join('\n')
+
+    const state = EditorState.create({ doc: text })
+    const pos = text.indexOf('Testo della macro')
+    const target = dropTarget(state, pos, 'heading')
+
+    expect(target.insertAt).toBe(text.indexOf('Testo della macro'))
+    expect(target.label).toBe('Sotto «2. Macro senza sottounità»')
+    expect(target.headingLine).toBe(6)
+  })
+
+  it('con "Dove le lascio": inizio del blocco, mai dentro un titolo', () => {
+    const text = [
+      '### 2.2 Metaboliti',
+      '05:30',
+      '',
+      'Primo paragrafo riga 1',
+      'primo paragrafo riga 2',
+      '',
+      'Secondo paragrafo.',
+    ].join('\n')
+
+    const state = EditorState.create({ doc: text })
+
+    // Puntatore a metà della seconda riga del primo paragrafo
+    const posInPara = text.indexOf('primo paragrafo riga 2') + 5
+    const targetPara = dropTarget(state, posInPara, 'free')
+    expect(targetPara.insertAt).toBe(text.indexOf('Primo paragrafo riga 1'))
+    expect(targetPara.label).toBeUndefined()
+
+    // Puntatore sul titolo ### 2.2 Metaboliti: non va dentro il titolo, va dopo titolo e timecode
+    const posInTitle = 5
+    const targetTitle = dropTarget(state, posInTitle, 'free')
+    expect(targetTitle.insertAt).toBe(state.doc.line(3).from)
+    expect(targetTitle.label).toBeUndefined()
+  })
+
+  it('#w=320 viene riconosciuto da removeImagesFromDocument e replaceImageInDocument', () => {
+    const source = [
+      '### 1.1 Unità',
+      '00:00',
+      '',
+      '![Foto](assets/images/pic.png#w=320)',
+      '',
+      'Testo.',
+    ].join('\n')
+
+    const view = new EditorView({ state: EditorState.create({ doc: source }) })
+
+    // replace preserva il frammento di larghezza
+    const replaced = replaceImageInDocument(view, 'pic.png', 'cropped.png', 'Nuovo Alt')
+    expect(replaced).toBe(true)
+    expect(view.state.doc.toString()).toContain('![Nuovo Alt](assets/images/cropped.png#w=320)')
+    expect(view.state.doc.toString()).not.toContain('pic.png')
+
+    // remove riconosce l'immagine anche con #w=320
+    const removed = removeImagesFromDocument(view, ['cropped.png'])
+    expect(removed).toBe(true)
+    expect(view.state.doc.toString()).not.toContain('cropped.png')
+    expect(view.state.doc.toString()).toContain('Testo.')
   })
 })
 

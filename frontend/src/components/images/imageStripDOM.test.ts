@@ -51,6 +51,46 @@ describe('imageStripDOM', () => {
     window.removeEventListener('rt-image-viewer-open', listener)
   })
 
+  it('con il pannello aperto emette rt-media-select e non apre il visualizzatore; con il pannello chiuso apre il visualizzatore', () => {
+    const images = [
+      { src: '/api/v1/lessons/1/assets/images/foto.png', alt: 'Doc.pdf, pagina 1', docName: 'Doc.pdf', pageNumber: 1 },
+    ]
+    const strip = buildImageStripDOM(images)
+    const thumb = strip.querySelector('.thumb') as HTMLButtonElement
+
+    // 1. Con il pannello aperto
+    const panelDiv = document.createElement('div')
+    panelDiv.setAttribute('data-testid', 'enrichment-panel')
+    document.body.appendChild(panelDiv)
+
+    const mediaSelectListener = vi.fn()
+    const viewerOpenListener = vi.fn()
+    window.addEventListener('rt-media-select', mediaSelectListener)
+    window.addEventListener('rt-image-viewer-open', viewerOpenListener)
+
+    thumb.click()
+
+    expect(mediaSelectListener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { name: 'foto.png' } }),
+    )
+    expect(viewerOpenListener).not.toHaveBeenCalled()
+
+    // 2. Con il pannello chiuso
+    panelDiv.remove()
+    mediaSelectListener.mockClear()
+    viewerOpenListener.mockClear()
+
+    thumb.click()
+
+    expect(mediaSelectListener).not.toHaveBeenCalled()
+    expect(viewerOpenListener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { images, index: 0 } }),
+    )
+
+    window.removeEventListener('rt-media-select', mediaSelectListener)
+    window.removeEventListener('rt-image-viewer-open', viewerOpenListener)
+  })
+
   it('mountDocumentImageStrips trasforma sia immagini consecutive che immagini singole in strisce', () => {
     const container = document.createElement('div')
     container.innerHTML = `
