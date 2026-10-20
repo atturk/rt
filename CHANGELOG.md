@@ -22,6 +22,7 @@
 - Un archivio completo di una lezione ancora in anteprima ("(anteprima).zip") si importa di nuovo: prima era rifiutato con "File non dichiarati nel manifesto".
 - Studio: entrando in lettura nessuno strumento è selezionato; con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano di nuovo.
 - Windows: aggiungere un materiale scegliendo le pagine e ritagliare una pagina dell'archivio non falliscono più; l'archivio non conta due volte la stessa lezione.
+- Calendario annuale: la settimana selezionata si vede anche quando ha la barretta del cambio d'orario.
 
 ## 4.3.2b1 — 2026-10-19
 
