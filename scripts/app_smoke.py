@@ -17,7 +17,8 @@ import urllib.request
 python, root = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 port = 8799
 data = tempfile.mkdtemp(prefix="rt-app-smoke-")
-env = {**os.environ, "RT_DATA_DIR": data, "RT_NO_SERVICES": "1", "RT_UPDATE_OFFLINE": "1", "RT_API_PORT": str(port)}
+env = {**os.environ, "RT_DATA_DIR": data, "RT_NO_SERVICES": "1", "RT_UPDATE_OFFLINE": "1", "RT_API_PORT": str(port),
+       "PYTHONDONTWRITEBYTECODE": "1"}
 log_path = os.path.join(data, "desktop-console.log")
 with open(os.path.join(root, "VERSION"), encoding="utf-8") as f:
     version = f.read().strip()

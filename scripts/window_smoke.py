@@ -36,7 +36,8 @@ def main():
     base = f"http://127.0.0.1:{port}"
     settings = {"RT_DATA_DIR": str(data), "RT_WINDOW_SMOKE": "1", "RT_API_PORT": str(port),
                 "RT_UPDATE_OFFLINE": "1"}
-    env = {**os.environ, **settings}
+    # Il "python -c" di Esci salta bin/rt: senza questa variabile scriverebbe __pycache__ nel bundle.
+    env = {**os.environ, **settings, "PYTHONDONTWRITEBYTECODE": "1"}
     env.pop("RT_NO_SERVICES", None)
     env.pop("RT_NO_WINDOW", None)
     proc = None
