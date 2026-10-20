@@ -17,7 +17,7 @@ export function formatSourceSize(source: SourceItem): string {
     return source.parole != null ? `${new Intl.NumberFormat('it-IT').format(source.parole)} parole` : ''
   }
   if (source.tipo === 'materiale') {
-    return source.pagine != null ? `${source.pagine} ${source.pagine === 1 ? 'pagina' : 'pagine'}` : ''
+    return source.pagine_totali != null ? `${source.pagine_totali} ${source.pagine_totali === 1 ? 'pagina' : 'pagine'}` : ''
   }
   return ''
 }

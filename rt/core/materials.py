@@ -17,7 +17,7 @@ from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_lock import lesson_lock
 from rt.storage import fs
 
-MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx'}
+MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt'}
 
 
 def page_count(path):
@@ -30,6 +30,8 @@ def page_count(path):
         if suffix == '.pptx':
             from pptx import Presentation
             return len(Presentation(real).slides)
+        if suffix in ('.txt', '.docx'):
+            return len(list(_document_pages(real)))
         from PIL import Image
         from pillow_heif import register_heif_opener
         register_heif_opener()
@@ -138,9 +140,55 @@ def _slide_content(slide):
     return '\n'.join(texts).strip(), images
 
 
+def _document_pages(real, images=False):
+    """Circa 400 parole, paragrafi indivisibili; ogni titolo apre una pagina."""
+    blocks = []
+    if real.lower().endswith('.txt'):
+        with open(real, 'rb') as stream:
+            data = stream.read()
+        try:
+            text = data.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            text = data.decode('cp1252')
+        import re
+        blocks = [(p.strip(), False, []) for p in re.split(r'\n\s*\n', text) if p.strip()]
+    else:
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+        document = Document(real)
+        for element in document.element.body:
+            if element.tag.endswith('}p'):
+                paragraph = Paragraph(element, document)
+                pictures = []
+                if images:
+                    for blip in element.xpath('.//a:blip'):
+                        rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                        if rid and rid in document.part.related_parts:
+                            pictures.append(_png_image(document.part.related_parts[rid].blob))
+                blocks.append((paragraph.text, paragraph.style.name.startswith('Heading'), pictures))
+            elif element.tag.endswith('}tbl'):
+                table = Table(element, document)
+                blocks.append(('\n'.join(' | '.join(c.text for c in row.cells) for row in table.rows), False, []))
+    texts, pictures, words = [], [], 0
+    for text, heading, imgs in blocks:
+        count = len(text.split())
+        if texts and (heading or words + count > 400):
+            yield '\n\n'.join(texts), pictures, bool(pictures)
+            texts, pictures, words = [], [], 0
+        if text.strip():
+            texts.append(text)
+        pictures.extend(imgs)
+        words += count
+    if texts or pictures:
+        yield '\n\n'.join(texts), pictures, bool(pictures)
+
+
 def _extract(real):
     suffix = os.path.splitext(real)[1].lower()
-    if suffix == '.pdf':
+    if suffix in ('.docx', '.txt'):
+        yield from _document_pages(real, images=True)
+    elif suffix == '.pdf':
         import fitz
         from rt.core.material_page_filter import pdf_pages_have_figures
         with fitz.open(real) as document:
@@ -161,7 +209,9 @@ def _extract(real):
 
 def _extract_text(real):
     suffix = os.path.splitext(real)[1].lower()
-    if suffix == '.pdf':
+    if suffix in ('.docx', '.txt'):
+        yield from _document_pages(real)
+    elif suffix == '.pdf':
         import fitz
         with fitz.open(real) as document:
             for page in document:
@@ -229,7 +279,8 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                          f"(Vision {calls} chiamate, media {mean:.1f} s)")
         return pages
 
-    mode = getattr(source, 'estrai', None) or 'immagini'
+    from rt.core.source_options import default_extraction
+    mode = getattr(source, 'estrai', None) or default_extraction(source.file)
     from rt.core.archive import load_meta
     cached = None if refresh else cached_pages(lesson_dir, source)
     previous_mode = (load_meta(source.impronta) or {}).get('estrai', 'testo')

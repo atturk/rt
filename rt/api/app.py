@@ -55,7 +55,7 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
         from fastapi.middleware.cors import CORSMiddleware
         app.add_middleware(
             CORSMiddleware, allow_origins=origins, allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
             allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Last-Event-ID"],
         )
 
@@ -85,7 +85,7 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
 
 
 def _domain_routers() -> list:
-    from rt.api.routers import subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, readonly, recall, review, settings, study_notes, study_progress
-    return [lessons.router, review.router, jobs.router, recall.router, settings.router, images.router,
+    from rt.api.routers import archive, subjects, calendar, enrichment, folders, highlights, images, jobs, lessons, lesson_sources, readonly, recall, review, settings, study_notes, study_progress
+    return [archive.router, lessons.router, review.router, jobs.router, recall.router, settings.router, images.router,
             folders.router, enrichment.router, highlights.router, study_progress.router,
             study_notes.router, subjects.router, calendar.router, lesson_sources.router, readonly.router]

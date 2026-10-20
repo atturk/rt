@@ -272,6 +272,56 @@
         "title": "AppUpdate",
         "type": "object"
       },
+      "ArchiveUsage": {
+        "properties": {
+          "data": {
+            "title": "Data",
+            "type": "string"
+          },
+          "lezione_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lezione Id"
+          },
+          "materia": {
+            "title": "Materia",
+            "type": "string"
+          },
+          "pagine": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine"
+          },
+          "titolo": {
+            "title": "Titolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lezione_id",
+          "titolo",
+          "data",
+          "pagine",
+          "materia"
+        ],
+        "title": "ArchiveUsage",
+        "type": "object"
+      },
       "BatchIn": {
         "properties": {
           "lesson_ids": {
@@ -526,6 +576,11 @@
             "title": "Mock",
             "type": "boolean"
           },
+          "opzioni": {
+            "default": "{}",
+            "title": "Opzioni",
+            "type": "string"
+          },
           "ora": {
             "default": "",
             "description": "Ora della lezione (HH:MM, facoltativa)",
@@ -598,6 +653,21 @@
       },
       "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
         "properties": {
+          "estrai": {
+            "anyOf": [
+              {
+                "enum": [
+                  "testo",
+                  "immagini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrai"
+          },
           "file": {
             "anyOf": [
               {
@@ -625,6 +695,17 @@
             ],
             "title": "Ordine"
           },
+          "pagine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine"
+          },
           "testo": {
             "anyOf": [
               {
@@ -649,6 +730,22 @@
             "default": true,
             "title": "Unisci",
             "type": "boolean"
+          },
+          "uso": {
+            "anyOf": [
+              {
+                "enum": [
+                  "guida",
+                  "contesto",
+                  "integra"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uso"
           }
         },
         "required": [
@@ -6489,6 +6586,68 @@
         "title": "LoginLink",
         "type": "object"
       },
+      "LookupEntry": {
+        "properties": {
+          "da_continuare": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Da Continuare"
+          },
+          "impronta": {
+            "title": "Impronta",
+            "type": "string"
+          },
+          "pagine_totali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine Totali"
+          },
+          "usate": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveUsage"
+            },
+            "title": "Usate",
+            "type": "array"
+          }
+        },
+        "required": [
+          "impronta",
+          "pagine_totali",
+          "usate",
+          "da_continuare"
+        ],
+        "title": "LookupEntry",
+        "type": "object"
+      },
+      "LookupRequest": {
+        "properties": {
+          "sha": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Sha",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sha"
+        ],
+        "title": "LookupRequest",
+        "type": "object"
+      },
       "ManualValidation": {
         "properties": {
           "actor": {
@@ -9527,6 +9686,21 @@
             "title": "Aggiunta Il",
             "type": "string"
           },
+          "estrai": {
+            "anyOf": [
+              {
+                "enum": [
+                  "testo",
+                  "immagini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrai"
+          },
           "file": {
             "title": "File",
             "type": "string"
@@ -9543,6 +9717,20 @@
             "minimum": 1.0,
             "title": "Ordine",
             "type": "integer"
+          },
+          "pagine": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine"
           },
           "parti": {
             "anyOf": [
@@ -9577,6 +9765,21 @@
             ],
             "title": "Tipo",
             "type": "string"
+          },
+          "uso": {
+            "anyOf": [
+              {
+                "enum": [
+                  "contesto",
+                  "integra"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uso"
           }
         },
         "required": [
@@ -9588,6 +9791,60 @@
           "ordine"
         ],
         "title": "Source",
+        "type": "object"
+      },
+      "SourceOptions": {
+        "properties": {
+          "estrai": {
+            "anyOf": [
+              {
+                "enum": [
+                  "testo",
+                  "immagini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrai"
+          },
+          "pagine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine"
+          },
+          "uso": {
+            "anyOf": [
+              {
+                "enum": [
+                  "guida",
+                  "contesto",
+                  "integra"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uso"
+          }
+        },
+        "title": "SourceOptions",
         "type": "object"
       },
       "SourceOrder": {
@@ -9671,6 +9928,21 @@
             ],
             "title": "Durata S"
           },
+          "estrai": {
+            "anyOf": [
+              {
+                "enum": [
+                  "testo",
+                  "immagini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrai"
+          },
           "file": {
             "title": "File",
             "type": "string"
@@ -9695,13 +9967,27 @@
           "pagine": {
             "anyOf": [
               {
-                "type": "integer"
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Pagine"
+          },
+          "pagine_totali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine Totali"
           },
           "parole": {
             "anyOf": [
@@ -9751,6 +10037,21 @@
           "usata": {
             "title": "Usata",
             "type": "boolean"
+          },
+          "uso": {
+            "anyOf": [
+              {
+                "enum": [
+                  "contesto",
+                  "integra"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uso"
           }
         },
         "required": [
@@ -11599,6 +11900,103 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/archive/lookup": {
+      "post": {
+        "operationId": "lookup_api_v1_archive_lookup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/LookupEntry"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Lookup Api V1 Archive Lookup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lookup",
+        "tags": [
+          "archivio"
+        ]
+      }
+    },
     "/api/v1/auth/login-link": {
       "post": {
         "operationId": "create_login_link_api_v1_auth_login_link_post",
@@ -22532,6 +22930,112 @@
           }
         ],
         "summary": "Toglie una fonte dall'elenco; la lezione cambia solo con Aggiorna",
+        "tags": [
+          "lezioni"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_source_api_v1_lessons__lesson_id__sources__sid__patch",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceOptions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Source"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Source",
         "tags": [
           "lezioni"
         ]

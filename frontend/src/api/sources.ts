@@ -1,7 +1,8 @@
 // Contratto 4.2.5b2: alla fusione si passa a schema.d.ts
+import type { SourceOptions } from './archive'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, errorMessage, unwrap } from './client'
+import { api, errorMessage, unwrap, type Schemas } from './client'
 import { invalidateAfterJob } from './jobs'
 import { jobFinished, useJobStatus } from './jobStatus'
 
@@ -22,7 +23,10 @@ export type SourceItem = {
   ordine: number
   nome: string
   durata_s?: number | null
-  pagine?: number | null
+  pagine?: number[] | null
+  pagine_totali?: number | null
+  estrai?: 'testo' | 'immagini' | null
+  uso?: 'contesto' | 'integra' | null
   parole?: number | null
   usata: boolean
   parti?: SourcePartItem[] | null
@@ -91,12 +95,16 @@ export const sourcesApi = {
     return unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/sources`, { bodySerializer: () => form, body: form }))
   },
 
-  addMaterials: (lessonId: number, files: File[]): Promise<SourceItem[]> => {
+  addMaterials: (lessonId: number, files: File[], options: SourceOptions = {}): Promise<SourceItem[]> => {
     const form = new FormData()
     form.append('tipo', 'materiale')
+    for (const [key, value] of Object.entries(options)) if (value != null) form.append(key, Array.isArray(value) ? value.join(',') : value)
     for (const f of files) form.append('file', f, f.name)
     return unwrap((api as any).POST(`/api/v1/lessons/${lessonId}/sources`, { bodySerializer: () => form, body: form }))
   },
+
+  patchSource: (lessonId: number, sid: string, options: SourceOptions): Promise<Schemas['Source']> =>
+    unwrap(api.PATCH('/api/v1/lessons/{lesson_id}/sources/{sid}', { params: { path: { lesson_id: lessonId, sid } }, body: options })),
 
   deleteSource: (lessonId: number, sid: string): Promise<void> =>
     unwrap((api as any).DELETE(`/api/v1/lessons/${lessonId}/sources/${encodeURIComponent(sid)}`)),

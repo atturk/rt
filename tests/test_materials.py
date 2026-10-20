@@ -104,7 +104,7 @@ def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, 
     assert len(response.json()) == 2
     view = api_client.get(url).json()
     materials = [s for s in view['sources'] if s['tipo'] == 'materiale']
-    assert [(s['nome'], s['pagine'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
+    assert [(s['nome'], s['pagine_totali'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
 
 
 def test_single_material_response_and_invalid_order_are_compatible_and_atomic(api_client, rt_db, tmp_path, monkeypatch):

@@ -13,7 +13,7 @@ from rt.storage import fs
 
 
 def create_source_lesson(*, audio, materiali, appunti='', principale=None, allega_materiali=True,
-                         unisci=True,
+                         unisci=True, opzioni=None,
                          date, materia, argomenti='', docente='', ora='', dest_dir):
     date = parse_flexible_date(date)
     materia = sanitize_filename_part((materia or '').strip().upper())
@@ -68,7 +68,7 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     else:
         audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
     notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
-    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path) for path in materiali]
+    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path, **(opzioni or {}).get(os.path.basename(path), {})) for path in materiali]
     if audio_sources:
         primary = audio_sources[0]
     elif principale in ('Appunti', 'appunti.txt') and notes:
@@ -79,7 +79,8 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
         primary = documents[0]
     else:
         primary = notes
-    set_primary(lesson_dir, primary.id)
+    guide = [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida']
+    set_primary(lesson_dir, guide[-1].id if guide else primary.id)
     from rt.db.sync import dual_write_lesson
     dual_write_lesson(lesson_dir)
     return lesson_dir

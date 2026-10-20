@@ -536,3 +536,16 @@ it('i docenti proposti dipendono dalla materia di Nuova lezione', async () => {
   fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'Chimica' } })
   expect(list.querySelector('option')).toHaveValue('Verdi')
 })
+
+it('accepts DOCX and TXT and sends extraction options for each file', async () => {
+  const files = [new File(['word'], 'notes.docx'), new File(['text'], 'notes.txt')]
+  renderDialog(true, vi.fn(), undefined, undefined, files)
+  expect(await screen.findByTestId('material-thumb-0')).toBeInTheDocument()
+  expect(screen.getByTestId('material-thumb-1')).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'BIOCHIMICA' } })
+  fireEvent.submit(screen.getByRole('form', { name: 'Nuova lezione' }))
+  await waitFor(() => expect(mutateCreate).toHaveBeenCalledWith(expect.objectContaining({
+    materiali: files,
+    opzioni: { 'notes.docx': { estrai: 'testo', uso: 'guida' }, 'notes.txt': { estrai: 'testo', uso: 'contesto' } },
+  }), {}))
+})

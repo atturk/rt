@@ -40,6 +40,9 @@ class Source(BaseModel):
     ordine: int = Field(ge=1)
     rimossa_il: str | None = None
     parti: list[SourcePart] | None = None
+    pagine: list[int] | None = None
+    estrai: Literal['testo', 'immagini'] | None = None
+    uso: Literal['contesto', 'integra'] | None = None
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
@@ -85,11 +88,28 @@ def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Sour
 def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes | None, ordine: int | None = None,
                source_path: str | None = None,
-               parti: list[SourcePart] | list[dict] | None = None) -> Source:
+               parti: list[SourcePart] | list[dict] | None = None,
+               pagine=None, estrai=None, uso=None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
+    from rt.core.source_options import parse_pages, default_extraction
+    if estrai not in (None, 'testo', 'immagini') or uso not in (None, 'guida', 'contesto', 'integra'):
+        raise ValueError('Opzioni della fonte non valide')
+    if tipo == 'materiale':
+        from rt.core.materials import page_count
+        if pagine is not None:
+            if source_path is not None:
+                total = page_count(source_path)
+            else:
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1]) as tmp:
+                    tmp.write(content)
+                    tmp.flush()
+                    total = page_count(tmp.name)
+            pagine = parse_pages(pagine, total)
+        estrai = estrai or default_extraction(filename)
     sources = load_sources(lesson_dir)
     from rt.core.source_selection import selection
     previous_primary = selection(lesson_dir)["principale"]
@@ -137,7 +157,7 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
                     aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
-                    parti=parsed_parts)
+                    parti=parsed_parts, pagine=pagine, estrai=estrai, uso='contesto' if uso == 'guida' else uso)
     if tipo != 'appunti':
         register_file(path, nome=name, tipo=file_type(path, tipo), sha=source.impronta, alias=[upload_sha])
     sources.insert(position - 1, source)
@@ -154,6 +174,9 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     elif "principale" not in state:
         state["principale"] = previous_primary or source.id
         _write_state(lesson_dir, state)
+    if uso == 'guida':
+        from rt.core.source_selection import set_primary
+        set_primary(lesson_dir, source.id)
     return source
 
 
@@ -168,3 +191,33 @@ def remove_source(lesson_dir: str, source_id: str) -> None:
     for index, item in enumerate((s for s in sources if not s.rimossa_il), 1):
         item.ordine = index
     _save(lesson_dir, sources)
+
+
+@lesson_locked
+def update_source(lesson_dir, source_id, **options):
+    from rt.core.source_options import parse_pages
+    sources = load_sources(lesson_dir)
+    source = next((s for s in sources if s.id == source_id), None)
+    if source is None:
+        raise KeyError(source_id)
+    if 'pagine' in options:
+        from rt.core.materials import page_count
+        source.pagine = parse_pages(options['pagine'], page_count(os.path.join(lesson_dir, source.file)))
+    if 'estrai' in options:
+        if options['estrai'] not in (None, 'testo', 'immagini'):
+            raise ValueError('Estrai non valido')
+        source.estrai = options['estrai']
+    if 'uso' in options:
+        if options['uso'] not in (None, 'guida', 'contesto', 'integra'):
+            raise ValueError('Uso non valido')
+        source.uso = 'contesto' if options['uso'] == 'guida' else options['uso']
+    _save(lesson_dir, sources)
+    from rt.pipeline.source_update import _read_state, _write_state
+    state = _read_state(lesson_dir)
+    state['used'] = [sid for sid in state.get('used', []) if sid != source_id]
+    state.get('sources', {}).pop(source_id, None)
+    _write_state(lesson_dir, state)
+    if options.get('uso') == 'guida':
+        from rt.core.source_selection import set_primary
+        set_primary(lesson_dir, source_id)
+    return source
