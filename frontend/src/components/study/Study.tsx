@@ -1608,7 +1608,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
   return (
     <div className="relative flex items-center gap-1 max-md:gap-0.5" ref={ref}>
       <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5 max-md:p-0" data-testid="highlight-tools">
-        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo · E`}>{(trigger) => <button
+        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo, dopo l’ultimo si spegne · E`}>{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'evidenzia'}
@@ -1616,7 +1616,12 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           data-color={color}
           data-testid="highlight-pen"
           className={segment}
-          onClick={() => (mode === 'evidenzia' ? onColor((color + 1) % HIGHLIGHT_COLORS.length) : onMode('evidenzia'))}
+          onClick={() => {
+            if (mode !== 'evidenzia') onMode('evidenzia')
+            // Dopo l'ultimo colore si spegne, e la prossima volta riparte dal primo.
+            else if (color === HIGHLIGHT_COLORS.length - 1) { onColor(0); onMode(null) }
+            else onColor(color + 1)
+          }}
         >
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
