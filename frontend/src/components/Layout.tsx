@@ -8,11 +8,13 @@ import { useMe } from '@/api/hooks'
 import { useLiveUpdates } from '@/api/liveUpdates'
 import { JobsNavBadge } from '@/components/jobs/JobsIndicator'
 import { useDesktopJobSignals } from '@/components/jobs/useDesktopJobSignals'
+import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
+import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
@@ -108,6 +110,7 @@ export function Layout() {
   useLiveUpdates(me.isSuccess)
   useUpdatePopup()
   useDesktopJobSignals()
+  const { error: openedFileError, clearError: clearOpenedFileError } = useOpenedFiles(openNewLesson)
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -179,6 +182,20 @@ export function Layout() {
       />
       <ImageViewer />
       <BackupDialog />
+      {openedFileError && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-md">
+          <Alert tone="danger" className="flex items-center justify-between gap-2">
+            <span>{openedFileError}</span>
+            <button
+              type="button"
+              onClick={clearOpenedFileError}
+              className="text-xs underline hover:no-underline"
+            >
+              Chiudi
+            </button>
+          </Alert>
+        </div>
+      )}
       {newLessonOptions && (
         <Suspense fallback={null}>
           <NewLessonDialog

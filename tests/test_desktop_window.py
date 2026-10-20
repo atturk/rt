@@ -667,3 +667,97 @@ def test_menu_calls_apri_aggiornamento(webview):
     api.apri_aggiornamento.assert_called_once()
 
 
+def test_desktop_open_argument_registers_and_activates_existing(data, monkeypatch):
+    test_file = data / "test.pdf"
+    test_file.write_text("dummy")
+
+    registered = []
+    from rt.core import opened_files
+    orig_reg = opened_files.register_file
+
+    def fake_reg(p):
+        registered.append(p)
+        return orig_reg(p)
+    monkeypatch.setattr(opened_files, "register_file", fake_reg)
+
+    activate_mock = Mock(return_value=True)
+    monkeypatch.setattr(window, "_activate_existing", activate_mock)
+
+    run_mock = Mock()
+    monkeypatch.setattr(desktop, "run", run_mock)
+
+    args = argparse.Namespace(open=[str(test_file)], after_update=False, port=None, no_browser=False, browser=False, serve=False)
+    desktop.cmd_desktop(args)
+
+    assert registered == [str(test_file)]
+    activate_mock.assert_called_once()
+    run_mock.assert_not_called()
+
+
+def test_desktop_api_file_in_attesa(data, monkeypatch):
+    test_file = data / "test.pdf"
+    test_file.write_text("dummy")
+
+    from rt.core import opened_files
+    reg = opened_files.register_file(str(test_file))
+    assert reg is not None
+
+    fake_win = Mock()
+    api = window.DesktopApi(fake_win)
+    res = api.file_in_attesa()
+    assert len(res) >= 1
+    item = next(it for it in res if it["token"] == reg["token"])
+    assert item["name"] == "test.pdf"
+
+    # Second call returns empty because it's marked announced
+    res2 = api.file_in_attesa()
+    assert not any(it["token"] == reg["token"] for it in res2)
+
+
+def test_install_macos_open_files(data, webview, monkeypatch):
+    test_file = data / "test.docx"
+    test_file.write_text("dummy")
+
+    fake_objc = ModuleType("objc")
+    injected_methods = {}
+
+    def fake_selector(fn, selector, signature):
+        injected_methods[selector] = fn
+        return fn
+    fake_objc.selector = fake_selector
+
+    def fake_class_add_methods(cls, methods):
+        pass
+    fake_objc.classAddMethods = fake_class_add_methods
+    monkeypatch.setitem(sys.modules, "objc", fake_objc)
+
+    cocoa_mod = ModuleType("webview.platforms.cocoa")
+
+    class AppDelegate:
+        pass
+    cocoa_mod.BrowserView = SimpleNamespace(AppDelegate=AppDelegate)
+
+    webview.__path__ = []
+    platforms_mod = ModuleType("webview.platforms")
+    platforms_mod.__path__ = []
+    platforms_mod.cocoa = cocoa_mod
+    monkeypatch.setitem(sys.modules, "webview.platforms", platforms_mod)
+    monkeypatch.setitem(sys.modules, "webview.platforms.cocoa", cocoa_mod)
+    webview.platforms = platforms_mod
+
+    fake_window = Mock()
+    window.install_macos_open_files(fake_window)
+
+    open_files_fn = injected_methods.get(b"application:openFiles:")
+    assert open_files_fn is not None
+
+    fake_app = Mock()
+    open_files_fn(AppDelegate(), fake_app, [str(test_file)])
+    assert fake_window.evaluate_js.call_count == 1
+    call_str = fake_window.evaluate_js.call_args[0][0]
+    assert "window.rtOpenedFiles" in call_str
+    assert "test.docx" in call_str
+    fake_app.replyToOpenOrPrint_.assert_called_once_with(0)
+
+
+

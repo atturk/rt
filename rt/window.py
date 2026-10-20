@@ -128,12 +128,23 @@ def _command(command: str) -> subprocess.CompletedProcess:
                           **({"creationflags": 0x08000000} if sys.platform == "win32" else {}))
 
 
+_window_start_time = 0.0
+_announced_tokens = set()
+
+
 class DesktopApi:
     """API esposta da pywebview alla pagina JavaScript (window.pywebview.api)."""
     def __init__(self, window=None, base_url: str = ""):
         self._window = window
         self._base_url = base_url.rstrip("/")
         self._update_window = None
+
+    def file_in_attesa(self) -> list:
+        from rt.core import opened_files
+        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+        for it in items:
+            _announced_tokens.add(it["token"])
+        return items
 
     def apri_aggiornamento(self):
         import webview
@@ -576,12 +587,49 @@ def _smoke(window) -> None:
         window.destroy()
 
 
+def install_macos_open_files(window=None) -> None:
+    """Registra application:openFiles: sul delegato dell'applicazione di pywebview."""
+    try:
+        import objc
+        from webview.platforms import cocoa
+
+        selector = b"application:openFiles:"
+
+        def open_files(self, app, filenames):
+            from rt.core import opened_files
+            items = []
+            for p in filenames or []:
+                reg = opened_files.register_file(str(p))
+                if reg:
+                    items.append({"token": reg["token"], "name": reg["name"], "size": reg["size"]})
+                    _announced_tokens.add(reg["token"])
+            if items and window:
+                window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+            if hasattr(app, "replyToOpenOrPrint_"):
+                app.replyToOpenOrPrint_(0)
+
+        objc.classAddMethods(
+            cocoa.BrowserView.AppDelegate,
+            [objc.selector(open_files, selector=selector, signature=b"v@:@@")],
+        )
+    except Exception as exc:
+        _log(f"Metodo openFiles non registrato: {exc}")
+
+
 def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
+    from rt.core import opened_files
+    global _window_start_time
+    _window_start_time = time.time()
+    try:
+        opened_files.cleanup_expired(600)
+    except Exception:
+        pass
     window = None
     owns_pid = False
     lock = None
+    stop_watcher = threading.Event()
     try:
         if sys.platform == "win32" and _activate_existing():
             return 0
@@ -647,6 +695,25 @@ def open_window(base_url: str, path: str = "/") -> int:
                 window_permissions.install_macos()
             except Exception as exc:
                 _log(f"Microfono non configurato nella finestra: {exc}")
+            try:
+                install_macos_open_files(window)
+            except Exception as exc:
+                _log(f"Open files macOS non configurato: {exc}")
+
+        def _watch_opened_files():
+            while not stop_watcher.is_set():
+                time.sleep(1)
+                try:
+                    from rt.core import opened_files
+                    items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+                    if items:
+                        for it in items:
+                            _announced_tokens.add(it["token"])
+                        window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                except Exception as exc:
+                    _log(f"Errore controllo file aperti: {exc}")
+
+        threading.Thread(target=_watch_opened_files, name="rt-opened-watcher", daemon=True).start()
         with open(_pid_path(), "w", encoding="utf-8", newline="\n") as f:
             f.write(f"{os.getpid()}\n")
         owns_pid = True
@@ -673,6 +740,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         webbrowser.open(f"{base_url}/login?code={auth.create_login_code()}")
         return 0
     finally:
+        stop_watcher.set()
         if owns_pid and _read_pid() == os.getpid():
             try:
                 os.remove(_pid_path())

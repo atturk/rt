@@ -1,4 +1,5 @@
 """Stato del servizio e sessione della SPA."""
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Request, Response
@@ -210,6 +211,19 @@ def set_update_channel_endpoint(payload: UpdateChannelRequest, _actor: Actor) ->
     except (ValueError, OSError) as exc:
         raise ApiError(400, "invalid_channel", str(exc)) from None
     return _app_update(refresh=True)
+
+
+@router.get("/system/opened-files/{token}",
+            summary="Scarica un file consegnato dall'app per l'apertura",
+            responses={404: {"model": ErrorResponse}})
+def get_opened_file(token: str, _actor: Actor):
+    from fastapi.responses import FileResponse
+    from rt.core import opened_files
+    file_path = opened_files.consume_token(token)
+    if not file_path:
+        raise ApiError(404, "not_found", "File aperto non trovato o token scaduto.")
+    name = os.path.basename(file_path)
+    return FileResponse(file_path, filename=name)
 
 
 class ChangelogGroup(BaseModel):

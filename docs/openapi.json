@@ -30070,6 +30070,61 @@
         ]
       }
     },
+    "/api/v1/system/opened-files/{token}": {
+      "get": {
+        "operationId": "get_opened_file_api_v1_system_opened_files__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scarica un file consegnato dall'app per l'apertura",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
     "/api/v1/system/quit": {
       "post": {
         "operationId": "quit_system_api_v1_system_quit_post",

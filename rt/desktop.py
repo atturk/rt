@@ -341,9 +341,20 @@ def configure_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--after-update", action="store_true",
                    help="Riapre RT dopo un aggiornamento dell'app")
+    p.add_argument("--open", nargs="*", default=None,
+                   help="Apre uno o più file con RT")
 
 
 def cmd_desktop(args: argparse.Namespace) -> None:
+    open_files = getattr(args, "open", None)
+    if open_files is not None:
+        from rt import window
+        from rt.core import opened_files
+        for p in open_files:
+            opened_files.register_file(p)
+        if window._activate_existing():
+            return
+
     if getattr(args, "after_update", False):
         try:
             from rt.core import app_update

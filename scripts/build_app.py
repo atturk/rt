@@ -229,6 +229,20 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
             "LSApplicationCategoryType": "public.app-category.education",
             "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
             "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+            "CFBundleDocumentTypes": [{
+                "CFBundleTypeName": "File supportati da RT",
+                "CFBundleTypeRole": "Viewer",
+                "LSHandlerRank": "Alternate",
+                "LSItemContentTypes": [
+                    "public.audio",
+                    "com.adobe.pdf",
+                    "public.image",
+                    "public.plain-text",
+                    "org.openxmlformats.wordprocessingml.document",
+                    "org.openxmlformats.presentationml.presentation",
+                    "public.zip-archive",
+                ],
+            }],
         }, f)
     os.symlink("/Applications", os.path.join(work, "dmg", "Applications"))
     os.makedirs(out, exist_ok=True)

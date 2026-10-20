@@ -56,8 +56,30 @@ Source: "{#IconFile}"; DestDir: "{app}"; DestName: "rt.ico"; Flags: ignoreversio
 
 [Icons]
 Name: "{autoprograms}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Comment: "Apre RT"
-Name: "{autodesktop}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Tasks: desktopicon
+Name: "{autodesktop}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop --open"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Tasks: desktopicon
 Name: "{userstartup}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop --no-browser"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Flags: runminimized; Tasks: startup
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\RT.File"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.File"; ValueType: string; ValueName: ""; ValueData: "File RT"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.File\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\python\pythonw.exe"" {#RtCmd} desktop --open ""%1"""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.aac\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.ogg\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.flac\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.wma\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.opus\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.pptx\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.docx\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.png\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.jpg\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.jpeg\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.webp\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.zip\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; Description: "Apri RT"; Flags: postinstall nowait skipifsilent
