@@ -202,8 +202,50 @@ LAUNCHER = """#!/bin/sh
 # Doppio clic su RT: prepara dati e servizi, poi apre la finestra RT (rt/desktop.py)
 APP="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
 cd "$HOME" || exit 1
+export PYTHONDONTWRITEBYTECODE=1
 exec "$APP/python/bin/python3" "$APP/bin/rt" desktop "$@"
 """
+
+MACHO_MAGICS = {
+    b"\xfe\xed\xfa\xce",
+    b"\xce\xfa\xed\xfe",
+    b"\xfe\xed\xfa\xcf",
+    b"\xcf\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+    b"\xbe\xba\xfe\xca",
+    b"\xca\xfe\xba\xbf",
+    b"\xbf\xba\xfe\xca",
+}
+
+
+def _is_macho(path: str) -> bool:
+    if os.path.islink(path) or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) in MACHO_MAGICS
+    except OSError:
+        return False
+
+
+def sign_macos_app(app: str) -> None:
+    say("✍️  Firma ad-hoc dei binari Mach-O interni...")
+    payload = os.path.join(app, "Contents", "Resources", "app")
+    macho_files = []
+    for root, _dirs, files in os.walk(payload):
+        for name in files:
+            path = os.path.join(root, name)
+            if _is_macho(path):
+                macho_files.append(path)
+
+    for path in sorted(macho_files):
+        subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", path], check=True)
+
+    say("✍️  Firma ad-hoc del bundle RT.app...")
+    subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", app], check=True)
+
+    say("🔍 Verifica firma di RT.app...")
+    subprocess.run(["codesign", "--verify", "--strict", "--verbose=2", app], check=True)
 
 
 def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
@@ -244,14 +286,19 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
                 ],
             }],
         }, f)
-    os.symlink("/Applications", os.path.join(work, "dmg", "Applications"))
+    sign_macos_app(app)
     os.makedirs(out, exist_ok=True)
     dmg = os.path.join(out, ASSET_NAMES["macos"].format(version=version))
     if os.path.exists(dmg):
         os.remove(dmg)
-    say("💿 Creo il .dmg...")
-    subprocess.run(["hdiutil", "create", "-volname", "RT", "-srcfolder", os.path.join(work, "dmg"),
-                    "-ov", "-format", "UDZO", dmg], check=True)
+    settings_path = os.path.join(ROOT, "packaging", "dmg", "settings.py")
+    say("💿 Creo il .dmg con dmgbuild...")
+    subprocess.run([
+        sys.executable, "-m", "dmgbuild",
+        "-s", settings_path,
+        "-D", f"app={app}",
+        "RT", dmg,
+    ], check=True)
     return dmg
 
 
