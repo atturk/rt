@@ -146,7 +146,11 @@ const calendarArea: Area = {
   routes: [{ path: 'calendario', Component: page(calendar, (m) => m.CalendarPage), handle: bare }],
 }
 
-export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea]
+const appArea: Area = {
+  routes: [{ path: 'app/aggiornamento', Component: page(settings, (m) => m.UpdatePopup), handle: bare }],
+}
+
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

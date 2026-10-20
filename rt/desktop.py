@@ -344,6 +344,12 @@ def configure_parser(p: argparse.ArgumentParser) -> None:
 
 
 def cmd_desktop(args: argparse.Namespace) -> None:
+    if getattr(args, "after_update", False):
+        try:
+            from rt.core import app_update
+            app_update.cleanup(None)
+        except Exception:
+            pass
     # pythonw può partire senza stream: uvicorn e i messaggi hanno comunque un registro.
     if sys.platform == "win32":
         for name in ("stdout", "stderr"):

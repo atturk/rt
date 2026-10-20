@@ -25,7 +25,7 @@ def webview(monkeypatch):
     fake.settings = {}
     fake.FileDialog = SimpleNamespace(OPEN=10, FOLDER=20, SAVE=30)
     fake_window = Mock()
-    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event())
+    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event(), closed=Event())
     fake.create_window = Mock(return_value=fake_window)
     fake.start = Mock()
     menu = ModuleType("webview.menu")
@@ -160,15 +160,16 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
             "Diagnostica", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
         items[0].function()
-        webview.create_window.return_value.load_url.assert_called_once_with(
-            "http://127.0.0.1:8765/impostazioni/info-aggiornamenti")
+        webview.create_window.assert_called_with(
+            "Aggiornamento di RT", "http://127.0.0.1:8765/app/aggiornamento",
+            width=420, height=240, resizable=False, on_top=True)
         # Azioni di zoom
         zoom_in = next(x for x in items if getattr(x, "title", None) == "Ingrandisci")
         zoom_in.function()
         webview.create_window.return_value.evaluate_js.assert_called_with("window.rtZoom && window.rtZoom('in')")
     webview.start.side_effect = start
     assert window.open_window("http://127.0.0.1:8765") == 0
-    assert "code=monouso&app=1" in webview.create_window.call_args.args[1]
+    assert "code=monouso&app=1" in webview.create_window.call_args_list[0].args[1]
     assert webview.settings == {"ALLOW_DOWNLOADS": True, "OPEN_EXTERNAL_LINKS_IN_BROWSER": True,
                                "OPEN_DEVTOOLS_IN_DEBUG": False}
     assert not (data / "run" / "window.pid").exists()
@@ -629,4 +630,40 @@ def test_desktop_api_salva_copia_backup_starts_stream(data, monkeypatch, webview
     args, kwargs = stream.call_args
     assert kwargs.get("tipo") == "copia"
     assert "/chiavetta/copia.zip" in args[1]
+
+
+def test_desktop_api_apri_aggiornamento_creates_single_window(webview):
+    popup = Mock()
+    popup.events = SimpleNamespace(closed=Event())
+    popup.show = Mock()
+    webview.create_window.return_value = popup
+
+    api = window.DesktopApi(Mock(), base_url="http://127.0.0.1:8765")
+    win1 = api.apri_aggiornamento()
+    assert win1 is popup
+    assert webview.create_window.call_count == 1
+    assert webview.create_window.call_args.args[0] == "Aggiornamento di RT"
+    assert webview.create_window.call_args.args[1] == "http://127.0.0.1:8765/app/aggiornamento"
+    assert webview.create_window.call_args.kwargs == {"width": 420, "height": 240, "resizable": False, "on_top": True}
+
+    # Seconda chiamata: non crea un'altra finestra, chiama show()
+    win2 = api.apri_aggiornamento()
+    assert win2 is popup
+    assert webview.create_window.call_count == 1
+    popup.show.assert_called_once()
+
+    # Chiusura della finestra: azzera il riferimento
+    for cb in popup.events.closed.callbacks:
+        cb()
+    win3 = api.apri_aggiornamento()
+    assert webview.create_window.call_count == 2
+
+
+def test_menu_calls_apri_aggiornamento(webview):
+    api = Mock()
+    menu = window._menu(webview.create_window.return_value, "http://127.0.0.1:8765", api=api)
+    item = next(x for x in menu[0].items if getattr(x, "title", None) == "Controlla aggiornamenti…")
+    item.function()
+    api.apri_aggiornamento.assert_called_once()
+
 

@@ -14,6 +14,7 @@ declare global {
           annullato?: boolean
           errore?: string
         }>
+        apri_aggiornamento?: () => Promise<void> | void
       }
     }
   }

@@ -15,6 +15,17 @@ DMG = "RT-4.3.0-macos-arm64.dmg"
 EXE = "RT-4.3.0-windows-x64-setup.exe"
 
 
+@pytest.fixture(autouse=True)
+def _reset_update_state():
+    yield
+    app_update.STATE.phase = "idle"
+    app_update.STATE.error = None
+    app_update.STATE.downloaded = 0
+    app_update.STATE.total = None
+    app_update.STATE.target = None
+    app_update.STATE.last_check = None
+
+
 def release(tag="v4.3.0", prerelease=False, names=(DMG, EXE, "SHA256SUMS")):
     return {"tag_name": tag, "prerelease": prerelease, "draft": False,
             "html_url": f"https://github.com/atturk/rt/releases/tag/{tag}",
@@ -89,13 +100,144 @@ def test_bundle_marker_and_app_path(tmp_path):
 
 def test_rt_u_in_the_app_uses_the_installer(tmp_path, monkeypatch, capsys):
     from rt.core import version
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path / "data"))
     (tmp_path / "BUNDLE").write_text("windows")
     (tmp_path / "VERSION").write_text("4.2.5")
     monkeypatch.setattr(app_update, "_get_json", lambda url, timeout: release(tag="v4.2.5"))
     assert version.run_update(str(tmp_path)) == 0
     assert "già aggiornato" in capsys.readouterr().out
     assert version.run_update(str(tmp_path), version.BETA) == 0
-    assert "releases" in capsys.readouterr().out
+    assert version.get_update_channel() == "beta"
+
+
+def test_effective_channel(tmp_path, monkeypatch):
+    from rt.core import version
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    # Senza file: "stable" per versioni stabili, "beta" per prerelease
+    assert not os.path.exists(version.channel_file())
+    assert app_update.effective_channel("4.2.5") == "stable"
+    assert app_update.effective_channel("4.3.0b1") == "beta"
+
+    # Con file impostato: segue il file
+    version.set_update_channel("beta")
+    assert app_update.effective_channel("4.2.5") == "beta"
+    version.set_update_channel("stable")
+    assert app_update.effective_channel("4.3.0b1") == "stable"
+
+
+def test_beta_channel_picks_highest_release_with_installer_and_sums(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    (tmp_path / "BUNDLE").write_text("windows")
+    (tmp_path / "VERSION").write_text("4.2.5")
+    from rt.core import version
+    version.set_update_channel("beta")
+
+    # Lista di release restituita da GitHub
+    # 4.4.0b2: manca SHA256SUMS -> da scartare
+    # 4.4.0b1: valida con EXE e SHA256SUMS -> deve scegliere questa
+    # 4.3.0: stabile precedente
+    rel_4_4_b2 = release(tag="v4.4.0b2", prerelease=True, names=(EXE,))
+    rel_4_4_b1 = release(tag="v4.4.0b1", prerelease=True, names=(
+        "RT-4.4.0b1-windows-x64-setup.exe", "SHA256SUMS"))
+    rel_4_3_0 = release(tag="v4.3.0", prerelease=False, names=(EXE, "SHA256SUMS"))
+
+    monkeypatch.setattr(app_update, "_get_json", lambda url, timeout: [rel_4_4_b2, rel_4_4_b1, rel_4_3_0])
+    info = app_update.check(project_root=str(tmp_path))
+    assert info.available
+    assert info.latest == "4.4.0b1"
+    assert info.prerelease is True
+    assert info.asset_name == "RT-4.4.0b1-windows-x64-setup.exe"
+
+
+def test_download_ready_file_and_truncated(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"setup-payload-content" * 50
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+
+    info = _info()
+    path = app_update.download(info, opener=_opener({EXE: payload, "SHA256SUMS": sums}))
+    assert os.path.exists(path)
+
+    # ready_file() lo ritrova
+    found = app_update.ready_file(info)
+    assert found == path
+
+    # Con file troncato ready_file() dà None
+    with open(path, "wb") as f:
+        f.write(payload[:20])
+    assert app_update.ready_file(info) is None
+
+
+def test_start_install_rejects_altered_hash(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"valid-setup" * 100
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+
+    info = _info()
+    path = app_update.download(info, opener=_opener({EXE: payload, "SHA256SUMS": sums}))
+    assert app_update.ready_file(info) == path
+
+    # Modifica il contenuto mantenendo la stessa dimensione
+    with open(path, "wb") as f:
+        f.write(b"x" * len(payload))
+    assert os.path.getsize(path) == len(payload)
+
+    with pytest.raises(app_update.AppUpdateError, match="Hash dell'installer"):
+        app_update.start_install(info)
+    # L'installer è stato eliminato da cleanup
+    assert not os.path.exists(path)
+
+
+def test_cleanup_keeps_only_specified_asset(tmp_path, monkeypatch):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    updates = tmp_path / "updates"
+    updates.mkdir()
+
+    keep_exe = updates / EXE
+    keep_exe.write_text("keep-me")
+    other_dmg = updates / DMG
+    other_dmg.write_text("delete-me")
+    part_file = updates / "other.exe.part"
+    part_file.write_text("partial")
+    ready_json = updates / "ready.json"
+    ready_json.write_text(f'{{"version": "4.3.0", "asset_name": "{EXE}", "sha256": "abc", "size": 7}}')
+
+    app_update.cleanup(EXE)
+    assert keep_exe.is_file()
+    assert ready_json.is_file()
+    assert not other_dmg.exists()
+    assert not part_file.exists()
+
+    # cleanup(None) cancella tutto
+    app_update.cleanup(None)
+    assert not keep_exe.exists()
+    assert not ready_json.exists()
+
+
+def test_api_download_does_not_install_and_install_requires_ready(api_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    info = app_update.UpdateCheck(
+        supported=True,
+        current="4.2.5",
+        latest="4.3.0",
+        available=True,
+        asset_name=EXE,
+        asset_size=100,
+        notes_url="https://example.com",
+    )
+    monkeypatch.setattr(app_update, "cached_check", lambda refresh=False: info)
+    started = []
+    monkeypatch.setattr(app_update, "start_download", lambda inf: started.append(inf) or True)
+
+    # POST /system/update avvia solo il download
+    res = api_client.post("/api/v1/system/update")
+    assert res.status_code == 202
+    assert len(started) == 1
+
+    # POST /system/update/install dà 409 not_ready se il file non c'è
+    res_inst = api_client.post("/api/v1/system/update/install")
+    assert res_inst.status_code == 409
+    assert res_inst.json()["error"]["code"] == "not_ready"
 
 
 def test_api_reports_update_state(api_client):

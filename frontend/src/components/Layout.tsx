@@ -16,6 +16,7 @@ import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
+import { useUpdatePopup } from '@/components/settings/useAppUpdate'
 import { cn } from '@/lib/utils'
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -104,6 +105,7 @@ export function Layout() {
   const phone = useIsPhone()
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
+  useUpdatePopup()
 
   if (me.isError && me.error instanceof ApiError && me.error.status === 401) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -123,6 +125,16 @@ export function Layout() {
   // le altre restano nei margini di prima.
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
+
+  if (path.startsWith('/app/')) {
+    return (
+      <main className="min-h-dvh bg-background">
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
+      </main>
+    )
+  }
   return (
     <ReturnAddressContext value={returnAddress}><StudyZenContext value={studyZen}><RsvpLayoutContext value={setRsvp}><ZenContext value={setZen}><NewLessonContext value={openNewLesson}>
       <div className="rt-layout flex min-h-dvh bg-background" data-rsvp={rsvp.active || undefined} data-zen={zen.active || undefined} data-tint={layout.active ? layout.tint ?? undefined : undefined}>

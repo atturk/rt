@@ -119,3 +119,5 @@ function InfoActions() {
   </div>
 }
 export function InfoSettingsPage() { return <><InfoSection /><InfoActions /></> }
+export { UpdatePopup } from '@/components/settings/UpdatePopup'
+

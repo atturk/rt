@@ -205,9 +205,15 @@
             "title": "Asset Size"
           },
           "available": {
-            "description": "C'è una versione stabile più recente con l'installer per questo sistema",
+            "description": "C'è una versione più recente con l'installer per questo sistema",
             "title": "Available",
             "type": "boolean"
+          },
+          "channel": {
+            "default": "stable",
+            "description": "Canale di aggiornamento",
+            "title": "Channel",
+            "type": "string"
           },
           "current": {
             "title": "Current",
@@ -234,7 +240,7 @@
                 "type": "null"
               }
             ],
-            "description": "Ultima versione stabile pubblicata (le beta non contano)",
+            "description": "Ultima versione pubblicata",
             "title": "Latest"
           },
           "notes_url": {
@@ -248,11 +254,23 @@
             ],
             "title": "Notes Url"
           },
+          "prerelease": {
+            "default": false,
+            "description": "True se la versione disponibile è una beta",
+            "title": "Prerelease",
+            "type": "boolean"
+          },
           "progress": {
             "$ref": "#/components/schemas/UpdateProgress"
           },
+          "ready": {
+            "default": false,
+            "description": "True se l'installer è già scaricato e verificato su disco",
+            "title": "Ready",
+            "type": "boolean"
+          },
           "releases_url": {
-            "description": "Pagina delle release: le beta si scaricano a mano da qui",
+            "description": "Pagina delle release",
             "title": "Releases Url",
             "type": "string"
           },
@@ -11187,6 +11205,20 @@
         "title": "UnitRelevanceSummary",
         "type": "object"
       },
+      "UpdateChannelRequest": {
+        "properties": {
+          "channel": {
+            "description": "Canale di aggiornamento: 'stable' o 'beta'",
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "title": "UpdateChannelRequest",
+        "type": "object"
+      },
       "UpdateProgress": {
         "properties": {
           "downloaded": {
@@ -11207,7 +11239,7 @@
             "title": "Error"
           },
           "phase": {
-            "description": "idle, downloading, installing o error",
+            "description": "idle, downloading, ready, installing o error",
             "title": "Phase",
             "type": "string"
           },
@@ -30155,7 +30187,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Aggiornamento dell'app: ultima versione stabile e stato dell'installazione",
+        "summary": "Aggiornamento dell'app: ultima versione e stato dell'installazione",
         "tags": [
           "sistema"
         ]
@@ -30189,7 +30221,89 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Scarica e installa l'ultima versione stabile (solo app installata)",
+        "summary": "Avvia il download dell'aggiornamento (solo app installata)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/update/channel": {
+      "put": {
+        "operationId": "set_update_channel_endpoint_api_v1_system_update_channel_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChannelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Imposta il canale di aggiornamento (stable o beta)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/update/install": {
+      "post": {
+        "operationId": "install_system_update_api_v1_system_update_install_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Installa l'aggiornamento già pronto su disco",
         "tags": [
           "sistema"
         ]

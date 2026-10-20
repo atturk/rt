@@ -130,8 +130,43 @@ def _command(command: str) -> subprocess.CompletedProcess:
 
 class DesktopApi:
     """API esposta da pywebview alla pagina JavaScript (window.pywebview.api)."""
-    def __init__(self, window=None):
+    def __init__(self, window=None, base_url: str = ""):
         self._window = window
+        self._base_url = base_url.rstrip("/")
+        self._update_window = None
+
+    def apri_aggiornamento(self):
+        import webview
+        if self._update_window is not None:
+            if hasattr(self._update_window, "show"):
+                self._update_window.show()
+            return self._update_window
+
+        base = self._base_url
+        if not base and self._window and hasattr(self._window, "get_current_url"):
+            curr = self._window.get_current_url() or ""
+            if "://" in curr:
+                parts = curr.split("/", 3)
+                base = f"{parts[0]}//{parts[2]}"
+        url = f"{base}/app/aggiornamento" if base else "/app/aggiornamento"
+
+        popup = webview.create_window(
+            "Aggiornamento di RT",
+            url,
+            width=420,
+            height=240,
+            resizable=False,
+            on_top=True,
+        )
+        self._update_window = popup
+
+        def _on_closed():
+            self._update_window = None
+
+        if hasattr(popup, "events") and hasattr(popup.events, "closed"):
+            popup.events.closed += _on_closed
+
+        return popup
 
     def salva_copia_backup(self, percorso_snapshot: str) -> dict:
         from rt.services import backup_service
@@ -309,8 +344,15 @@ def _check_permissions(window) -> None:
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
 
 
-def _menu(window, base_url: str):
+def _menu(window, base_url: str, api=None):
     from webview.menu import Menu, MenuAction, MenuSeparator
+
+    def _open_update():
+        target_api = api or getattr(window, "js_api", None)
+        if target_api and hasattr(target_api, "apri_aggiornamento"):
+            target_api.apri_aggiornamento()
+        else:
+            DesktopApi(window, base_url=base_url).apri_aggiornamento()
 
     def quit_rt():
         if window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?"):
@@ -333,7 +375,7 @@ def _menu(window, base_url: str):
     if sys.platform == "win32":
         actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
     actions.extend([
-        MenuAction("Controlla aggiornamenti…", lambda: window.load_url(base_url + INFO_PATH)),
+        MenuAction("Controlla aggiornamenti…", _open_update),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
         MenuAction("Mostra registri", lambda: _open_path(paths.sub_dir("logs", create=True))),
@@ -557,7 +599,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         webview.settings["ALLOW_DOWNLOADS"] = True
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False
-        api = DesktopApi(None)
+        api = DesktopApi(None, base_url=base_url)
         window = webview.create_window("RT", url, width=1280, height=820, min_size=(900, 600),
                                        text_select=True, zoomable=True, js_api=api)
         api._window = window
@@ -603,7 +645,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         options = {}
         if sys.platform == "win32":
             options["icon"] = os.path.join(paths.project_root(), "rt.ico")
-        webview.start(menu=_menu(window, base_url), private_mode=False,
+        webview.start(menu=_menu(window, base_url, api=api), private_mode=False,
                       localization=LOCALIZATION,
                       storage_path=os.path.join(paths.data_dir(), "webview"),
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)

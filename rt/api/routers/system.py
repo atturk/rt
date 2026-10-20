@@ -123,7 +123,7 @@ def system_info(_actor: Actor) -> SystemInfo:
 
 
 class UpdateProgress(BaseModel):
-    phase: str = Field(description="idle, downloading, installing o error")
+    phase: str = Field(description="idle, downloading, ready, installing o error")
     downloaded: int = Field(0, description="Byte già scaricati")
     total: Optional[int] = Field(None, description="Dimensione dell'installer in byte")
     error: Optional[str] = None
@@ -134,14 +134,21 @@ class AppUpdate(BaseModel):
     supported: bool = Field(description="True per l'app installata (RT.app, setup per Windows): si aggiorna da qui. "
                                         "False per install.sh, git o Docker: 'rt -u'")
     current: str
-    latest: Optional[str] = Field(None, description="Ultima versione stabile pubblicata (le beta non contano)")
-    available: bool = Field(description="C'è una versione stabile più recente con l'installer per questo sistema")
+    latest: Optional[str] = Field(None, description="Ultima versione pubblicata")
+    available: bool = Field(description="C'è una versione più recente con l'installer per questo sistema")
     asset_name: Optional[str] = None
     asset_size: Optional[int] = None
     notes_url: Optional[str] = None
-    releases_url: str = Field(description="Pagina delle release: le beta si scaricano a mano da qui")
+    releases_url: str = Field(description="Pagina delle release")
     error: Optional[str] = Field(None, description="Controllo non riuscito (rete, GitHub)")
+    channel: str = Field("stable", description="Canale di aggiornamento")
+    prerelease: bool = Field(False, description="True se la versione disponibile è una beta")
+    ready: bool = Field(False, description="True se l'installer è già scaricato e verificato su disco")
     progress: UpdateProgress
+
+
+class UpdateChannelRequest(BaseModel):
+    channel: str = Field(description="Canale di aggiornamento: 'stable' o 'beta'")
 
 
 def _app_update(refresh: bool) -> AppUpdate:
@@ -155,24 +162,54 @@ def _app_update(refresh: bool) -> AppUpdate:
 
 
 @router.get("/system/update", response_model=AppUpdate,
-            summary="Aggiornamento dell'app: ultima versione stabile e stato dell'installazione")
+            summary="Aggiornamento dell'app: ultima versione e stato dell'installazione")
 def system_update(_actor: Actor, refresh: bool = False) -> AppUpdate:
     return _app_update(refresh)
 
 
 @router.post("/system/update", response_model=AppUpdate, status_code=202,
-             summary="Scarica e installa l'ultima versione stabile (solo app installata)",
+             summary="Avvia il download dell'aggiornamento (solo app installata)",
              responses={409: {"model": ErrorResponse}})
 def start_system_update(_actor: Actor) -> AppUpdate:
     from rt.core import app_update
-    info = app_update.cached_check(refresh=True)
+    info = app_update.cached_check(refresh=False)
     if not info.supported:
         raise ApiError(409, "update_unsupported", "Questa installazione si aggiorna da terminale con 'rt -u'.")
     if not info.available:
-        raise ApiError(409, "no_update", info.error or "Nessuna versione stabile più recente da installare.")
-    if not app_update.start(info):
+        raise ApiError(409, "no_update", info.error or "Nessun aggiornamento disponibile da scaricare.")
+    if app_update.ready_file(info):
+        return _app_update(False)
+    if not app_update.start_download(info):
         raise ApiError(409, "update_running", "Un aggiornamento è già in corso.")
     return _app_update(False)
+
+
+@router.post("/system/update/install", response_model=AppUpdate, status_code=202,
+             summary="Installa l'aggiornamento già pronto su disco",
+             responses={409: {"model": ErrorResponse}})
+def install_system_update(_actor: Actor) -> AppUpdate:
+    from rt.core import app_update
+    info = app_update.cached_check(refresh=False)
+    if not info.supported:
+        raise ApiError(409, "update_unsupported", "Questa installazione si aggiorna da terminale con 'rt -u'.")
+    if not app_update.ready_file(info):
+        raise ApiError(409, "not_ready", "Nessun aggiornamento pronto per l'installazione.")
+    try:
+        app_update.start_install(info)
+    except app_update.AppUpdateError as exc:
+        raise ApiError(409, "not_ready", str(exc)) from None
+    return _app_update(False)
+
+
+@router.put("/system/update/channel", response_model=AppUpdate,
+            summary="Imposta il canale di aggiornamento (stable o beta)")
+def set_update_channel_endpoint(payload: UpdateChannelRequest, _actor: Actor) -> AppUpdate:
+    from rt.core.version import set_update_channel
+    try:
+        set_update_channel(payload.channel)
+    except (ValueError, OSError) as exc:
+        raise ApiError(400, "invalid_channel", str(exc)) from None
+    return _app_update(refresh=True)
 
 
 class ChangelogGroup(BaseModel):
