@@ -4036,11 +4036,19 @@
       "DeleteImagesRequest": {
         "properties": {
           "image_names": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Image Names",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Alias per names",
+            "title": "Image Names"
           },
           "lease_token": {
             "anyOf": [
@@ -4053,6 +4061,14 @@
             ],
             "title": "Lease Token"
           },
+          "names": {
+            "description": "Nomi delle immagini da eliminare",
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
           "update_document": {
             "default": true,
             "description": "False se il testo lo cambia l'editor aperto",
@@ -4060,10 +4076,30 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "image_names"
-        ],
         "title": "DeleteImagesRequest",
+        "type": "object"
+      },
+      "DescribeImagesRequest": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "description": "Usa mock LLM",
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "names": {
+            "description": "Nomi o identificativi delle immagini da descrivere",
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "title": "DescribeImagesRequest",
         "type": "object"
       },
       "DocumentEditCheck": {
@@ -6409,6 +6445,12 @@
             ],
             "description": "Hash o identificativo dell'immagine originale se ritaglio",
             "title": "Crop Of"
+          },
+          "descritta": {
+            "default": true,
+            "description": "True se l'immagine ha una descrizione vision (summary_keywords, ocr_text o visual_elements)",
+            "title": "Descritta",
+            "type": "boolean"
           },
           "in_assets": {
             "default": true,
@@ -20124,6 +20166,105 @@
           }
         ],
         "summary": "Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/describe": {
+      "post": {
+        "operationId": "describe_media_api_v1_lessons__lesson_id__media_describe_post",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescribeImagesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Descrive le immagini indicate con vision (o usa la descrizione in archivio)",
         "tags": [
           "immagini"
         ]

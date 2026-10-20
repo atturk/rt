@@ -18,7 +18,7 @@ interface MediaGalleryProps {
   onSelectAll: () => void
   onClearSelection: () => void
   onOpenViewer: (flatIndex: number) => void
-  onCrop: (image: LessonImage) => void
+  onCrop?: (image: LessonImage) => void
   onScrollToMedia?: (target: { imageName?: string | null; unitId?: string | null }) => void
 }
 
@@ -33,7 +33,6 @@ interface MediaCellProps {
   onOpenViewer: (flatIndex: number) => void
   startLongPress: (index: number) => void
   cancelLongPress: () => void
-  onCrop: (image: LessonImage) => void
   onPointerDown: (
     e: React.PointerEvent,
     img: LessonImage,
@@ -55,7 +54,6 @@ function MediaCell({
   onOpenViewer,
   startLongPress,
   cancelLongPress,
-  onCrop,
   onPointerDown,
   onPointerMove,
   cancelPeekTimer,
@@ -159,24 +157,15 @@ function MediaCell({
             <Scissors className="size-3" aria-hidden />
           </span>
         )}
-      </button>
-
-      <Tooltip content="Ritaglia" side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label={`Ritaglia ${img.page ? 'la pagina ' + img.page : 'l\'immagine'}`}
-            className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-md bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black/85 cursor-pointer z-10 [@media(hover:none)]:opacity-100"
-            {...trigger}
-            onClick={(e) => {
-              e.stopPropagation()
-              onCrop(img)
-            }}
-          >
-            <Scissors className="size-3.5" aria-hidden />
-          </button>
+        {!img.descritta && (
+          <span
+            className="absolute right-1.5 top-1.5 size-2 rounded-full bg-warning pointer-events-none"
+            data-testid="undescribed-dot"
+            title="Da descrivere"
+            aria-hidden
+          />
         )}
-      </Tooltip>
+      </button>
 
       {view === 'rows' ? (
         <div className="flex items-center justify-between gap-2 text-meta text-muted-foreground tabular-nums">
@@ -214,7 +203,6 @@ export function MediaGallery({
   onSelectAll,
   onClearSelection,
   onOpenViewer,
-  onCrop,
   onScrollToMedia,
 }: MediaGalleryProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -427,7 +415,6 @@ export function MediaGallery({
                       onOpenViewer={handleDoubleClick}
                       startLongPress={startLongPress}
                       cancelLongPress={cancelLongPress}
-                      onCrop={onCrop}
                       onPointerDown={handlePointerDown}
                       onPointerMove={handlePointerMove}
                       cancelPeekTimer={cancelPeekTimer}

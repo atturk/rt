@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { api, unwrap } from './client'
 
 export type SourceOptions = {
@@ -107,4 +108,15 @@ export const archiveFilesApi = {
         body: { lesson_id, pagine },
       }),
     ),
+  summary: (materia?: string | null): Promise<ArchiveSummary> =>
+    unwrap(api.GET('/api/v1/archive/summary', { params: { query: { materia: materia || undefined } } })),
+}
+
+export type ArchiveSummary = { file: number; da_continuare: number }
+
+export function useArchiveSummary(materia?: string | null) {
+  return useQuery({
+    queryKey: ['archive', 'summary', materia ?? ''],
+    queryFn: () => archiveFilesApi.summary(materia),
+  })
 }
