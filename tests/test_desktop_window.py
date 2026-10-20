@@ -534,9 +534,14 @@ def test_backup_stream_events_in_order(monkeypatch):
 
     monkeypatch.setattr(window.subprocess, "Popen", FakeProc)
     window._stream_backup(fake_window, ["backup", "--progress-json"], tipo="backup")
-    time.sleep(0.5)
-
-    calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+    # Il thread legge un evento ogni 0.12s: si aspetta la fine invece di un tempo fisso.
+    deadline = time.monotonic() + 5
+    calls = []
+    while time.monotonic() < deadline:
+        calls = [c.args[0] for c in fake_window.evaluate_js.call_args_list]
+        if any("fine" in c and "rt-backup-1" in c for c in calls):
+            break
+        time.sleep(0.05)
     # Inizio, database, media, fine
     assert any("inizio" in c for c in calls)
     assert any("database" in c for c in calls)
