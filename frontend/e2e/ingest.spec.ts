@@ -107,10 +107,10 @@ test('errori leggibili su formato e campi mancanti', async ({ page }) => {
   await loginViaLink(page)
   await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('button', { name: 'Nuova lezione' }).click()
   const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
-  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({ name: 'appunti.txt', mimeType: 'text/plain', buffer: Buffer.from('ciao') })
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles({ name: 'appunti.odt', mimeType: 'application/vnd.oasis.opendocument.text', buffer: Buffer.from('ciao') })
   await dialog.getByLabel('Materia', { exact: true }).fill('X')
   await dialog.getByRole('button', { name: 'Avvia' }).click()
-  await expect(dialog.getByRole('alert')).toContainText('Formato non supportato: appunti.txt')
+  await expect(dialog.getByRole('alert')).toContainText('Formato non supportato: appunti.odt')
   await expect(dialog).toBeVisible()
 })
 
