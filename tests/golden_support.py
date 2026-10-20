@@ -114,8 +114,11 @@ def _run_cli(argv: List[str], cwd: str, stdin: str) -> Tuple[int, str, str]:
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     env.pop("COLUMNS", None)
+    # Ogni lato CLI ha un archivio proprio: i confronti CLI/API partono entrambi senza cache.
+    env['RT_TEST_DATA_HOME'] = os.path.join(cwd, '.test-data')
+    bootstrap = "import os; from rt.core import paths; paths.DEFAULT_DATA_DIR = os.environ['RT_TEST_DATA_HOME']; from rt.cli import main; main()"
     proc = subprocess.run(
-        [sys.executable, "-c", "from rt.cli import main; main()"] + argv,
+        [sys.executable, "-c", bootstrap] + argv,
         cwd=cwd,
         input=stdin,
         capture_output=True,

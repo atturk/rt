@@ -15,7 +15,7 @@ from rt.storage import fs
 class SourceView(Source):
     nome: str
     durata_s: float | None = None
-    pagine: int | None = None
+    pagine_totali: int | None = None
     parole: int | None = None
     usata: bool
 
@@ -45,7 +45,9 @@ def sources_view(lesson_dir):
         elif source.tipo == "materiale":
             from rt.core.materials import cached_pages, page_count
             cached = cached_pages(lesson_dir, source)
-            values["pagine"] = len(cached) if cached is not None else page_count(path) if fs.isfile(path) else None
+            from rt.core.archive import load_meta
+            meta = load_meta(source.impronta) if source.impronta else None
+            values["pagine_totali"] = (meta or {}).get('pagine_totali') or (page_count(path) if fs.isfile(path) else len(cached) if cached is not None else None)
         elif source.tipo == "audio":
             values["durata_s"] = state.get("sources", {}).get(source.id, {}).get("duration")
             if values["durata_s"] is None:

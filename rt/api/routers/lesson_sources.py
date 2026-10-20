@@ -1,5 +1,5 @@
 """Fonti immutabili e aggiornamenti espliciti delle lezioni."""
-from contextlib import contextmanager
+from rt.services.source_mutation import source_mutation
 from typing import Literal, Optional
 
 from fastapi import APIRouter, File, Form, UploadFile
@@ -49,23 +49,6 @@ class UndoUpdateResult(BaseModel):
     status: Literal["update_undone"]
 
 
-@contextmanager
-def source_mutation(lesson_id, lesson_dir, *, allow_documents=True):
-    from rt.core.process_lock import lesson_work_lock, LessonBusy
-    from rt.services.document_edit_lease import assert_editable
-    try:
-        with lesson_work_lock(lesson_dir):
-            assert_editable(lesson_id)
-            busy = [job for job in queue().list(state=["queued", "running", "waiting_for_decision"],
-                                               lesson_id=lesson_dir)
-                    if job.type != "documents" or not allow_documents]
-            if busy:
-                raise ApiError(409, "lesson_busy", "La lezione ha un lavoro attivo o in attesa.")
-            yield
-    except LessonBusy:
-        raise ApiError(409, "lesson_busy", "La lezione è in lavorazione.") from None
-
-
 @router.get("/lessons/{lesson_id}/sources", response_model=SourcesView,
             summary="Fonti della lezione e stato delle fonti non ancora usate")
 def get_sources(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
@@ -78,7 +61,9 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 tipo: Literal["audio", "appunti", "materiale"] = Form(...),
                 file: Optional[list[UploadFile]] = File(None), testo: Optional[str] = Form(None),
                 ordine: Optional[int] = Form(None, ge=1),
-                unisci: bool = Form(True)):
+                unisci: bool = Form(True), pagine: Optional[str] = Form(None),
+                estrai: Optional[Literal['testo', 'immagini']] = Form(None),
+                uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None)):
     from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
@@ -92,14 +77,16 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
             saved = _save_uploads(file, MATERIAL_EXTENSIONS, target)
             for path in saved:
                 try:
-                    page_count(path)
+                    from rt.core.source_options import parse_pages
+                    parse_pages(pagine, page_count(path))
                 except Exception:
                     raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
             with source_mutation(lesson_id, lesson_dir):
                 if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
                     raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
                 added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
-                                    None if ordine is None else ordine + i, source_path=path)
+                                    None if ordine is None else ordine + i, source_path=path,
+                                    pagine=pagine, estrai=estrai, uso=uso)
                          for i, path in enumerate(saved)]
                 return added[0] if len(added) == 1 else added
         finally:
@@ -159,6 +146,24 @@ def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_p
             return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path, parti=parti)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
+
+
+class SourceOptions(BaseModel):
+    pagine: str | list[int] | None = None
+    estrai: Literal['testo', 'immagini'] | None = None
+    uso: Literal['guida', 'contesto', 'integra'] | None = None
+
+
+@router.patch('/lessons/{lesson_id}/sources/{sid}', response_model=Source)
+def patch_source(lesson_id: int, sid: str, body: SourceOptions, lesson_dir: LessonDir, _actor: Actor):
+    from rt.core.sources import update_source
+    with source_mutation(lesson_id, lesson_dir):
+        try:
+            return update_source(lesson_dir, sid, **body.model_dump(exclude_unset=True))
+        except KeyError:
+            raise ApiError(404, 'source_not_found', 'Fonte non trovata.') from None
+        except ValueError as exc:
+            raise ApiError(422, 'validation_error', str(exc)) from None
 
 
 @router.delete("/lessons/{lesson_id}/sources/{sid}", status_code=204,

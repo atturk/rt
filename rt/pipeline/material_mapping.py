@@ -6,6 +6,7 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1b: Valutazione sì/no tramite Jev Decision API con aggregazione a macro-unità (>= 3).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
+from rt.core.archive import page_image_path
 
 import json
 import math
@@ -589,7 +590,7 @@ def assign_material_pages(
 
                 if target_unit_id and enabled and page.get("immagini"):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()
@@ -626,7 +627,7 @@ def assign_material_pages(
 
                 if enabled and page.get("immagini") and (assigned_units or assigned_macros):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()

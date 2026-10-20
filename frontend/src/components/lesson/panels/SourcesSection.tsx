@@ -1,6 +1,11 @@
+import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
+import { compressPages, type SourceOptions } from '@/api/archive'
 import { useState, useRef, type DragEvent, type KeyboardEvent } from 'react'
 import {
   FileText,
+  Pencil,
+  MoreHorizontal,
+  GitMerge,
   GripVertical,
   Mic,
   Paperclip,
@@ -37,6 +42,8 @@ import { cn } from '@/lib/utils'
 import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
+  const [pendingMaterials, setPendingMaterials] = useState<File[]>([])
+  const [editingSource, setEditingSource] = useState<SourceItem | null>(null)
   const sourcesQuery = useSources(lessonId)
   const versionsQuery = useVersions(lessonId)
   const reorderMutation = useReorderSources(lessonId)
@@ -113,15 +120,19 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
   const handleMaterialsSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
-    setActionError(null)
-    try {
-      await sourcesApi.addMaterials(lessonId, files)
-      sourcesQuery.refetch()
-    } catch (err) {
-      setActionError(errorMessage(err))
-    } finally {
-      if (materialsInputRef.current) materialsInputRef.current.value = ''
+    setPendingMaterials(files)
+    if (materialsInputRef.current) materialsInputRef.current.value = ''
+  }
+
+  const saveMaterial = async (options: SourceOptions) => {
+    if (editingSource) {
+      await sourcesApi.patchSource(lessonId, editingSource.id, options)
+      setEditingSource(null)
+    } else {
+      await sourcesApi.addMaterials(lessonId, [pendingMaterials[0]], options)
+      setPendingMaterials((files) => files.slice(1))
     }
+    await sourcesQuery.refetch()
   }
 
   const handleNotesSubmit = async () => {
@@ -263,6 +274,15 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
   return (
     <div className="flex flex-col gap-3" data-testid="sources-section">
+      {(editingSource || pendingMaterials.length > 0) && <AddSourceDialog
+        key={editingSource?.id ?? pendingMaterials[0]?.name}
+        file={editingSource ? undefined : pendingMaterials[0]}
+        source={editingSource ?? undefined}
+        initial={editingSource ? { pagine: editingSource.pagine, estrai: editingSource.estrai ?? undefined,
+          uso: sourcesView?.principale === editingSource.id ? 'guida' : editingSource.uso ?? 'contesto' } : undefined}
+        hasSources={sources.length > 0}
+        submitLabel={editingSource ? 'Fatto' : 'Aggiungi'}
+        onClose={() => { setPendingMaterials([]); setEditingSource(null) }} onSubmit={saveMaterial} />}
       {/* Intestazione Fonti */}
       <div className="relative flex items-center justify-between">
         <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
@@ -291,7 +311,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           ref={materialsInputRef}
           type="file"
           multiple
-          accept=".pdf,.png,.jpg,.jpeg,.heic,.pptx"
+          accept=".pdf,.png,.jpg,.jpeg,.heic,.pptx,.docx,.txt"
           className="hidden"
           onChange={handleMaterialsSelected}
         />
@@ -435,9 +455,12 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
               {/* Nome ed eventuali parti */}
               <div className="flex flex-col min-w-0 flex-1">
+                {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
+                {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
                 <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? 'Registrazione unita' : s.nome}</span>
               </div>
 
+              {s.tipo === 'materiale' && <LinkMenuButton icon={MoreHorizontal} label={`Opzioni ${s.nome}`} items={[{ label: 'Modifica', icon: Pencil, onSelect: () => setEditingSource(s) }]} />}
               {/* Misura */}
               {sizeText && (
                 <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>

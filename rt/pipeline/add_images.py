@@ -9,6 +9,7 @@ scelto finisce in assets/images/placement.json (rt.pipeline.image_placement), ch
 l'anteprima mostra subito e il build include nel documento finale; se il documento finale
 c'era già, diventa non aggiornato finché non si rifà il build.
 """
+from rt.core.archive import page_image_path, register_image, entry_dir, read_json
 import os
 import json
 import hashlib
@@ -66,6 +67,11 @@ def save_image_descriptions(lesson_dir: str, data: Dict[str, Any]) -> None:
     with fs.open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
+    for description in data.values():
+        image = os.path.join(lesson_dir, description.get('filename', ''))
+        if fs.isfile(image):
+            register_image(image, description if any(description.get(k) for k in
+                           ('ocr_text', 'slide_title', 'visual_elements')) else None)
 
 
 def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: str = ".png") -> str:
@@ -82,6 +88,7 @@ def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: st
         with fs.open(tmp_path, "wb") as f:
             f.write(image_bytes)
         fs.replace(tmp_path, full_path)
+    register_image(full_path)
     return f"assets/images/{filename}"
 
 
@@ -155,6 +162,15 @@ def describe_new_images(
         if progress:
             progress(i - 1, len(new_images))
         mime_type, ext = _get_image_mime_type(img.source_label)
+        cached = read_json(os.path.join(entry_dir(img_hash), 'descrizione.json'))
+        if cached:
+            existing_descriptions[img_hash] = {**cached,
+                'filename': save_raw_image(lesson_dir, img.image_bytes, img_hash, ext=ext),
+                'source': img.source_label}
+            save_image_descriptions(lesson_dir, existing_descriptions)
+            if progress:
+                progress(i, len(new_images))
+            continue
         b64_data = base64.b64encode(img.image_bytes).decode("utf-8")
         image_data_url = f"data:{mime_type};base64,{b64_data}"
 
@@ -545,10 +561,10 @@ def resolve_selected_images(
                         img_rel = p["immagini"][0]
             if not img_rel:
                 cand = os.path.join("materials", mat_match.impronta, f"page-{page_num}-1.png")
-                if fs.isfile(os.path.join(lesson_dir, cand)):
+                if fs.isfile(page_image_path(mat_match.impronta, cand)):
                     img_rel = cand
-            if img_rel and fs.isfile(os.path.join(lesson_dir, img_rel)):
-                with fs.open(os.path.join(lesson_dir, img_rel), "rb") as f:
+            if img_rel and fs.isfile(page_image_path(mat_match.impronta, img_rel)):
+                with fs.open(page_image_path(mat_match.impronta, img_rel), "rb") as f:
                     data = f.read()
                 h = compute_image_hash(data)
                 rel = save_raw_image(lesson_dir, data, h)

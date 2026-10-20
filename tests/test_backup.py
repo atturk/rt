@@ -243,3 +243,15 @@ def test_cli_backup_progress_json(data, tmp_path, capsys):
     last = lines[-1]
     assert last.get("fine") is True
     assert "percorso" in last and "riepilogo" in last
+
+
+def test_archive_roundtrip_and_incremental_store(data, tmp_path):
+    data_dir, _db = data
+    from rt.core.archive import register_file, original_path
+    original = tmp_path / 'source.txt'
+    original.write_text('contenuto condiviso')
+    meta = register_file(str(original), nome='source.txt', tipo='testo')
+    snap = bs.create_backup(str(tmp_path / 'backup'), say=lambda _: None).path
+    shutil.rmtree(data_dir / 'archivio')
+    bs.restore_backup(snap, say=lambda _: None, check_services=False)
+    assert open(original_path(meta['impronta'])).read() == 'contenuto condiviso'

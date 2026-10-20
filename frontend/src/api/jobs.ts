@@ -97,6 +97,7 @@ export function useRetryJob() {
 export type NewLesson = {
   files: File[]
   materiali?: File[]
+  opzioni?: Record<string, import('./archive').SourceOptions>
   principale?: string
   allega_materiali?: boolean
   calendar_entry_id?: string
@@ -122,6 +123,7 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   if (input.materiali) {
     for (const file of input.materiali) form.append('materiali', file, file.name)
   }
+  if (input.opzioni) form.append('opzioni', JSON.stringify(input.opzioni))
   if (input.principale) form.append('principale', input.principale)
   if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
   if (input.unisci !== undefined) form.append('unisci', String(input.unisci))

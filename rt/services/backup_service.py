@@ -179,6 +179,16 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
         say(f"🎧 Media: {result.media_total} file, {result.media_copied} nuovi copiati "
             f"({result.bytes_copied / 1_048_576:.1f} MB).")
 
+        archive_entries = []
+        archive = os.path.join(paths.data_dir(), 'archivio')
+        for rel in _walk_media(archive):
+            src = os.path.join(archive, rel)
+            sha = sha256_file(src)
+            target = _store_path(dest, sha)
+            if not os.path.isfile(target):
+                _copy_atomic(src, target)
+            archive_entries.append({'path': rel, 'sha256': sha, 'size': os.path.getsize(src)})
+
         # 3. configurazione, segreti cifrati, .env, stato del bot
         from rt.core.config import load_config
         home = paths.config_home()
@@ -203,6 +213,7 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
             "database": db_entry,
             "data_dir": paths.data_dir(),
             "media": entries,
+            "archivio": archive_entries,
             "missing_media": missing,
         }
         with open(os.path.join(tmp_snap, MANIFEST), "w", encoding="utf-8") as f:
@@ -233,7 +244,7 @@ def export_backup(snapshot: str, target_zip: str,
         manifest = json.load(f)
 
     store_root = os.path.dirname(snap)
-    absent = [e["path"] for e in manifest.get("media") or []
+    absent = [e["path"] for e in (manifest.get("media") or []) + (manifest.get("archivio") or [])
               if not os.path.isfile(_store_path(store_root, e["sha256"]))]
     if absent:
         store = os.path.join(store_root, STORE)
@@ -257,7 +268,7 @@ def export_backup(snapshot: str, target_zip: str,
             files_to_pack.append((full, arcname, os.path.getsize(full)))
 
     seen_sha = set()
-    for entry in manifest.get("media") or []:
+    for entry in (manifest.get("media") or []) + (manifest.get("archivio") or []):
         sha = entry["sha256"]
         if sha in seen_sha:
             continue
@@ -391,7 +402,7 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         if int(manifest.get("format", 0)) > FORMAT:
             raise BackupError("Il backup viene da una versione di RT più recente: aggiorna RT prima.")
         store_root = os.path.dirname(snap)
-        absent = [e["path"] for e in manifest.get("media") or []
+        absent = [e["path"] for e in (manifest.get("media") or []) + (manifest.get("archivio") or [])
                   if not os.path.isfile(_store_path(store_root, e["sha256"]))]
         if absent:
             store = os.path.join(store_root, STORE)
@@ -461,6 +472,12 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
                 continue
             _copy_atomic(_store_path(store_root, entry["sha256"]), target)
             copied += 1
+        for entry in manifest.get('archivio') or []:
+            target = os.path.abspath(os.path.join(data, 'archivio', entry['path']))
+            root = os.path.abspath(os.path.join(data, 'archivio'))
+            if not target.startswith(root + os.sep):
+                raise BackupError('Percorso archivio non valido nel backup.')
+            _copy_atomic(_store_path(store_root, entry['sha256']), target)
         say(f"🎧 Media ripristinati: {copied} copiati, {len(manifest.get('media') or []) - copied} già presenti.")
         problems = verify_media(db, media_dir)
         if problems:

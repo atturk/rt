@@ -590,8 +590,19 @@ def run_setup(
 
     # La conversione è opzionale e non modifica mai il file sorgente. Il nome definitivo
     # serve anche nei metadati del trascritto, compresi i rami mock e skip-transcribe.
+    from rt.core.archive import find, original_path, register_file, cached_transcript, store_transcript, transcript_engine
+    from rt.core.idempotency import compute_file_sha256
+    upload_sha = compute_file_sha256(primary_audio) if len(cleaned_audios) == 1 else None
+    archived = find(upload_sha) if upload_sha else None
     transcoded_audio = False
-    if len(cleaned_audios) == 1 and os.path.splitext(primary_audio_name)[1].lower() not in EFFICIENT_AUDIO_EXTENSIONS:
+    if archived:
+        primary_audio_name = os.path.splitext(primary_audio_name)[0] + archived['estensione']
+        cached_original = original_path(archived['impronta'])
+        target_audio = os.path.join(target_folder_path, primary_audio_name)
+        if not (os.path.isfile(target_audio) and os.path.samefile(cached_original, target_audio)):
+            fs.copy2(cached_original, target_audio)
+        transcoded_audio = True
+    elif len(cleaned_audios) == 1 and os.path.splitext(primary_audio_name)[1].lower() not in EFFICIENT_AUDIO_EXTENSIONS:
         with tempfile.TemporaryDirectory(prefix="rt_audio_") as audio_temp_dir:
             converted_name = os.path.splitext(primary_audio_name)[0] + ".m4a"
             converted_path = os.path.join(audio_temp_dir, converted_name)
@@ -599,13 +610,41 @@ def run_setup(
                 fs.copy2(converted_path, os.path.join(target_folder_path, converted_name))
                 primary_audio_name = converted_name
                 transcoded_audio = True
+    engine = transcript_engine(mock_asr)
+    cached = cached_transcript(archived['impronta'], engine) if archived else None
 
     # 5. ESECUZIONE TRASCRIZIONE ASR
     json_path = os.path.join(target_folder_path, "trascritto grezzo.json")
     md_path = os.path.join(target_folder_path, "trascritto grezzo.md")
 
     merged_audio = None
-    if mock_asr:
+    if cached and not skip_transcribe:
+        raw = cached.get('raw')
+        if raw is None:
+            raw = {'segments': [{'startMs': item['start_seconds'] * 1000, 'endMs': item['end_seconds'] * 1000,
+                                'text': item['text_raw']} for item in cached['segments']]}
+        with fs.open(json_path, 'w', encoding='utf-8') as stream:
+            json.dump(raw, stream, ensure_ascii=False, indent=2)
+        markdown = cached.get('markdown')
+        if markdown:
+            import re
+            header, separator, body = markdown.partition('\n---\n')
+            for key, value in {'data': date_val, 'materia': materia_val, 'argomenti': argomenti_val,
+                               'file_audio': primary_audio_name, 'cartella': folder_name,
+                               'data_trascrizione': datetime.datetime.now().isoformat()}.items():
+                header = re.sub(r'^' + key + r':.*$', lambda _: f"{key}: '{value}'", header, flags=re.MULTILINE)
+            markdown = header + separator + body
+        else:
+            lines = ["---", f"data: '{date_val}'", f"materia: '{materia_val}'", f"argomenti: '{argomenti_val}'",
+                     f"file_audio: '{primary_audio_name}'", f"modello: '{engine}'", "fase: trascritto_grezzo", "---", ""]
+            from rt.core.timestamp import format_timestamp
+            lines.extend(f"**[{format_timestamp(s['start_seconds'])} - {format_timestamp(s['end_seconds'])}]** {s['text_raw']}\n"
+                         for s in cached['segments'])
+            markdown = '\n'.join(lines)
+        with fs.open(md_path, 'w', encoding='utf-8') as stream:
+            stream.write(markdown)
+        current_state, current_status = 'setup_completato', 'pronto_per_rielaborazione'
+    elif mock_asr:
         # Mock ASR deterministico offline
         json_path, md_path = generate_deterministic_mock_asr(
             audio_path=primary_audio_name,
@@ -805,6 +844,20 @@ stato: in_attesa_di_trascrizione
         dest_audio = os.path.join(target_folder_path, os.path.basename(aud_file))
         if os.path.abspath(aud_file) != os.path.abspath(dest_audio):
             fs.copy2(aud_file, dest_audio)
+
+    stored_audio = os.path.join(target_folder_path, primary_audio_name)
+    if fs.isfile(stored_audio):
+        meta = register_file(stored_audio, nome=primary_audio_name, tipo='audio', alias=[upload_sha] if upload_sha else [])
+        if not skip_transcribe and fs.isfile(json_path):
+            from rt.core.segments import parse_segments_from_json
+            with fs.open(json_path, encoding='utf-8') as stream:
+                raw = json.load(stream)
+            segments = parse_segments_from_json(json_path)
+            with fs.open(md_path, encoding='utf-8') as stream:
+                markdown = stream.read()
+            store_transcript(meta['impronta'], engine, {'raw': raw, 'markdown': markdown,
+                'segments': [segment.model_dump() for segment in segments],
+                'duration': max((segment.end_seconds for segment in segments), default=0)})
 
     # 7. Creazione atomica di info.yaml (Parte N)
     info_yaml_path = os.path.join(target_folder_path, "info.yaml")

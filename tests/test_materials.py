@@ -104,7 +104,7 @@ def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, 
     assert len(response.json()) == 2
     view = api_client.get(url).json()
     materials = [s for s in view['sources'] if s['tipo'] == 'materiale']
-    assert [(s['nome'], s['pagine'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
+    assert [(s['nome'], s['pagine_totali'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
 
 
 def test_single_material_response_and_invalid_order_are_compatible_and_atomic(api_client, rt_db, tmp_path, monkeypatch):
@@ -127,7 +127,7 @@ def test_single_material_response_and_invalid_order_are_compatible_and_atomic(ap
 def _parallel_source(tmp_path, monkeypatch, count=6):
     import rt.core.materials as materials
     from rt.core.config import load_config
-    source = add_source(str(tmp_path), 'materiale', 'parallel.png', png_bytes())
+    source = add_source(str(tmp_path), 'materiale', 'parallel.pdf', pdf_bytes())
     monkeypatch.setattr(materials, '_extract', lambda _: (('', [png_bytes()], True) for _ in range(count)))
     cfg = load_config()
     cfg.pipeline.parallel_pages = 3
@@ -164,7 +164,9 @@ def test_material_pages_parallel_order_cache_and_context(tmp_path, monkeypatch):
     pages = material_pages(str(tmp_path), source, ctx=ctx)
     assert peak[0] >= 2  # pagine lette in parallelo (il tempo reale varia troppo sui runner)
     assert [p['numero'] for p in pages] == list(range(1, 7))
-    folder = tmp_path / 'materials' / source.impronta
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
     assert all((folder / f'page-{n}.json').exists() for n in range(1, 7))
     (folder / 'pages.json').unlink()
     for n in range(4, 7):
@@ -197,7 +199,9 @@ def test_material_pages_cancel_keeps_finished_pages(tmp_path, monkeypatch):
     with pytest.raises(RunCancelled):
         material_pages(str(tmp_path), source, ctx=ctx)
     assert len(calls) == 3
-    folder = tmp_path / 'materials' / source.impronta
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
     assert len(list(folder.glob('page-*.json'))) == 3
     assert not (folder / 'pages.json').exists()
 
@@ -223,7 +227,9 @@ def test_material_pages_error_saves_other_running_pages(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match='Vision fallita'):
         material_pages(str(tmp_path), source, ctx=RunContext())
     assert len(calls) == 3
-    folder = tmp_path / 'materials' / source.impronta
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
     assert len(list(folder.glob('page-*.json'))) == 2
 
 
