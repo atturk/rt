@@ -170,7 +170,7 @@ def _rewrite_document(lesson_dir: str, change) -> bool:
 
 
 def _hashes_for_names(descriptions: dict, names: set[str]) -> set[str]:
-    return {h for h, d in descriptions.items() if os.path.basename(str(d.get('filename') or '')) in names}
+    return {h for h, d in descriptions.items() if h in names or os.path.basename(str(d.get('filename') or '')) in names}
 
 
 def _strip_placement(lesson_dir: str, hashes: set[str], replacement: str | None = None) -> None:
@@ -207,7 +207,7 @@ def remove_images_from_lesson(lesson_id: int, lesson_dir: str, image_names: list
 
             def drop(line):
                 refs = _IMAGE_LINE.findall(line)
-                if refs and all(os.path.basename(r) in names for r in refs) and not _IMAGE_LINE.sub('', line).strip():
+                if refs and all(os.path.basename(r).split('#')[0] in names for r in refs) and not _IMAGE_LINE.sub('', line).strip():
                     return None
                 return line
             _rewrite_document(lesson_dir, drop)
@@ -243,16 +243,19 @@ def delete_images(lesson_id: int, lesson_dir: str, image_names: list[str],
             if update_document:
                 def drop(line):
                     refs = _IMAGE_LINE.findall(line)
-                    if refs and all(os.path.basename(r) in names for r in refs) and not _IMAGE_LINE.sub('', line).strip():
+                    if refs and all(os.path.basename(r).split('#')[0] in names for r in refs) and not _IMAGE_LINE.sub('', line).strip():
                         return None
                     return line
                 _rewrite_document(lesson_dir, drop)
             _strip_placement(lesson_dir, hashes)
-            save_image_descriptions(lesson_dir, {h: d for h, d in descriptions.items() if h not in hashes})
+            remaining_descriptions = {h: d for h, d in descriptions.items() if h not in hashes}
+            save_image_descriptions(lesson_dir, remaining_descriptions)
+            remaining_filenames = {os.path.basename(str(d.get('filename') or '')) for d in remaining_descriptions.values()}
             for name in names:
-                path = os.path.join(get_images_dir(lesson_dir), name)
-                if fs.isfile(path):
-                    fs.remove(path)
+                if name not in remaining_filenames:
+                    path = os.path.join(get_images_dir(lesson_dir), name)
+                    if fs.isfile(path):
+                        fs.remove(path)
     except LessonBusy:
         raise Conflict('lesson_busy', 'La lezione è in lavorazione.') from None
     return {'deleted': sorted(names)}

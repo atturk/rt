@@ -17,6 +17,7 @@ const mockImages: LessonImage[] = [
     in_document: false,
     units: [],
     in_assets: false,
+    descritta: false,
   },
   {
     name: 'source1-p2.png',
@@ -29,6 +30,7 @@ const mockImages: LessonImage[] = [
     in_document: true,
     units: ['2.1'],
     in_assets: true,
+    descritta: true,
   },
   {
     name: 'source1-p3.png',
@@ -41,6 +43,7 @@ const mockImages: LessonImage[] = [
     in_document: false,
     units: [],
     in_assets: false,
+    descritta: true,
   },
   {
     name: 'web-img1.png',
@@ -53,6 +56,7 @@ const mockImages: LessonImage[] = [
     in_document: true,
     units: ['1.2'],
     in_assets: true,
+    descritta: true,
   },
 ]
 
@@ -208,10 +212,9 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     expect(onClearSelection).toHaveBeenCalled()
   })
 
-  it('MS1b: doppio clic e tocco lungo aprono il visore, forbici apre ritaglio', () => {
+  it('MS1b: doppio clic e tocco lungo aprono il visore, nessun pulsante forbici sulle miniature', () => {
     vi.useFakeTimers()
     const onOpenViewer = vi.fn()
-    const onCrop = vi.fn()
 
     render(
       <MediaGallery
@@ -223,11 +226,13 @@ describe('MediaGallery (MS1a & MS1b)', () => {
         onSelectAll={vi.fn()}
         onClearSelection={vi.fn()}
         onOpenViewer={onOpenViewer}
-        onCrop={onCrop}
       />,
     )
 
     const cell1 = screen.getByLabelText(/Pagina 1, non usata/)
+
+    // Puntino arancione sulle non descritte
+    expect(screen.getByTestId('undescribed-dot')).toBeInTheDocument()
 
     // Doppio clic
     fireEvent.doubleClick(cell1)
@@ -238,10 +243,8 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     vi.advanceTimersByTime(500)
     expect(onOpenViewer).toHaveBeenCalledWith(0)
 
-    // Icona forbici
-    const cropBtn = screen.getByLabelText('Ritaglia la pagina 1')
-    fireEvent.click(cropBtn)
-    expect(onCrop).toHaveBeenCalledWith(mockImages[0])
+    // Nessun pulsante forbici sulle miniature
+    expect(screen.queryByLabelText(/Ritaglia/i)).not.toBeInTheDocument()
 
     vi.useRealTimers()
   })
@@ -411,25 +414,26 @@ describe('MediaGallery (MS1a & MS1b)', () => {
 
 describe('MediaSelectionBar', () => {
   it('mostra il conteggio e lo stato corretto dei pulsanti', () => {
-    const onSelectAll = vi.fn()
+    const onDescribe = vi.fn()
     const onInsertAtCursor = vi.fn()
     const onAutoPlace = vi.fn()
+    const onCrop = vi.fn()
     const onRemoveFromText = vi.fn()
     const onDelete = vi.fn()
-    const onClearSelection = vi.fn()
 
     const { rerender } = render(
       <MediaSelectionBar
         selectedCount={0}
+        canDescribe={false}
         hasUsedSelected={false}
         canInsertAtCursor={false}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
         onDelete={onDelete}
         canDelete={false}
-        onClearSelection={onClearSelection}
       />,
     )
 
@@ -440,59 +444,78 @@ describe('MediaSelectionBar', () => {
     rerender(
       <MediaSelectionBar
         selectedCount={1}
+        canDescribe={false}
         hasUsedSelected={false}
         canInsertAtCursor={false}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
         onDelete={onDelete}
         canDelete={false}
-        onClearSelection={onClearSelection}
       />,
     )
-    expect(screen.getByText('1 selezionata')).toBeInTheDocument()
+    expect(screen.getByText('1 scelto')).toBeInTheDocument()
+
+    // Descrivi è disattivato se canDescribe è false
+    const descBtn = screen.getByLabelText(/Descrivi/i)
+    expect(descBtn).toHaveAttribute('aria-disabled', 'true')
 
     // Inserisci al cursore è disabilitato se canInsertAtCursor è false
-    const insBtn = screen.getByLabelText('Inserisci al cursore')
-    expect(insBtn).toBeDisabled()
+    const insBtn = screen.getByLabelText(/Inserisci al cursore/i)
+    expect(insBtn).toHaveAttribute('aria-disabled', 'true')
+
+    // Ritaglia è attivo con 1 sola immagine
+    const cropBtn = screen.getByLabelText(/^Ritaglia$/i)
+    expect(cropBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(cropBtn)
+    expect(onCrop).toHaveBeenCalled()
 
     // Togli dal testo è disabilitato se hasUsedSelected è false
-    const removeBtn = screen.getByLabelText('Togli dal testo (resta nei media)')
-    expect(removeBtn).toBeDisabled()
+    const removeBtn = screen.getByLabelText(/Togli dal testo/i)
+    expect(removeBtn).toHaveAttribute('aria-disabled', 'true')
 
-    // Con elementi usati e cursore abilitato
+    // Con 2 elementi selezionati, da descrivere, usati e cursore abilitato
     rerender(
       <MediaSelectionBar
         selectedCount={2}
+        canDescribe={true}
         hasUsedSelected={true}
         canInsertAtCursor={true}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
         onDelete={onDelete}
         canDelete={true}
-        onClearSelection={onClearSelection}
       />,
     )
-    expect(screen.getByText('2 selezionate')).toBeInTheDocument()
-    expect(screen.getByLabelText('Inserisci al cursore')).not.toBeDisabled()
-    expect(screen.getByLabelText('Togli dal testo (resta nei media)')).not.toBeDisabled()
+    expect(screen.getByText('2 scelti')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByLabelText('Inserisci al cursore'))
+    // Descrivi è attivo se canDescribe è true
+    const activeDescBtn = screen.getByLabelText(/^Descrivi$/i)
+    expect(activeDescBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(activeDescBtn)
+    expect(onDescribe).toHaveBeenCalled()
+
+    // Ritaglia è disattivato con 2 immagini
+    const disabledCropBtn = screen.getByTestId('crop-media-button')
+    expect(disabledCropBtn).toHaveAttribute('aria-disabled', 'true')
+
+    const activeInsBtn = screen.getByLabelText(/^Inserisci al cursore$/i)
+    expect(activeInsBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(activeInsBtn)
     expect(onInsertAtCursor).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Colloca in automatico le selezionate'))
+    fireEvent.click(screen.getByLabelText(/^Posiziona$/i))
     expect(onAutoPlace).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Togli dal testo (resta nei media)'))
+    fireEvent.click(screen.getByLabelText(/^Togli dal testo$/i))
     expect(onRemoveFromText).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Elimina dalla lezione'))
+    fireEvent.click(screen.getByLabelText(/^Elimina dalla lezione$/i))
     expect(onDelete).toHaveBeenCalled()
-
-    fireEvent.click(screen.getByLabelText('Annulla la selezione'))
-    expect(onClearSelection).toHaveBeenCalled()
   })
 })

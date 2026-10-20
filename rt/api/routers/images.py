@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.storage import fs
@@ -35,6 +36,7 @@ class LessonImage(BaseModel):
                                           "altrimenti l'anteprima dalla bozza)")
     crop_of: Optional[str] = Field(None, description="Hash o identificativo dell'immagine originale se ritaglio")
     crop_index: Optional[int] = Field(None, description="Indice progressivo del ritaglio per la pagina")
+    descritta: bool = Field(True, description="True se l'immagine ha una descrizione vision (summary_keywords, ocr_text o visual_elements)")
 
 
 class LessonImages(BaseModel):
@@ -81,6 +83,12 @@ def copy_material_page(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, req
 
 def _asset_url(lesson_id: int, name: str) -> str:
     return f"/api/v1/lessons/{lesson_id}/assets/images/{name}"
+
+
+def _is_described(desc: Optional[dict]) -> bool:
+    if not desc:
+        return False
+    return bool(desc.get("summary_keywords") or desc.get("ocr_text") or desc.get("visual_elements"))
 
 
 @router.get("/lessons/{lesson_id}/images", response_model=LessonImages,
@@ -170,6 +178,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     alt_text=str(found_desc.get("alt_text") or f"{src_name}, pagina {num}"),
                     crop_of=found_desc.get("crop_of"),
                     crop_index=found_desc.get("crop_index"),
+                    descritta=_is_described(found_desc),
                     macro_ids=[mid for mid, hashes in placement.get("macros", {}).items() if found_hash in hashes],
                 ))
             else:
@@ -188,6 +197,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     in_document=False,
                     slide_title="",
                     alt_text=f"{src_name}, pagina {num}",
+                    descritta=False,
                     macro_ids=[],
                 ))
 
@@ -237,6 +247,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             alt_text=str(desc.get("alt_text") or ""),
             crop_of=desc.get("crop_of"),
             crop_index=desc.get("crop_index"),
+            descritta=_is_described(desc),
             macro_ids=[mid for mid, hashes in placement.get("macros", {}).items() if h in hashes],
         ))
 
@@ -316,17 +327,33 @@ def remove_from_text(
     )
 
 
+class DescribeImagesRequest(BaseModel):
+    names: list[str] = Field(..., description="Nomi o identificativi delle immagini da descrivere")
+    mock: bool = Field(False, description="Usa mock LLM")
+
+
+@router.post("/lessons/{lesson_id}/media/describe", response_model=schemas.JobAccepted, status_code=202,
+             summary="Descrive le immagini indicate con vision (o usa la descrizione in archivio)")
+def describe_media(lesson_id: int, lesson_dir: LessonDir, actor: Actor, req: DescribeImagesRequest):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job("describe_images", lesson_dir, {"names": req.names, "mock": req.mock}, actor)
+
+
 class DeleteImagesRequest(BaseModel):
-    image_names: list[str]
+    names: list[str] = Field(default_factory=list, description="Nomi delle immagini da eliminare")
+    image_names: Optional[list[str]] = Field(None, description="Alias per names")
     lease_token: Optional[str] = None
     update_document: bool = Field(True, description="False se il testo lo cambia l'editor aperto")
+
+    def get_names(self) -> list[str]:
+        return self.names or self.image_names or []
 
 
 @router.post("/lessons/{lesson_id}/media/delete",
              summary="Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano")
 def delete_media(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, req: DeleteImagesRequest):
     from rt.services.editor_media_service import delete_images
-    return delete_images(lesson_id=lesson_id, lesson_dir=lesson_dir, image_names=req.image_names,
+    return delete_images(lesson_id=lesson_id, lesson_dir=lesson_dir, image_names=req.get_names(),
                          lease_token=req.lease_token, update_document=req.update_document)
 
 

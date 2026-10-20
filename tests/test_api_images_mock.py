@@ -499,3 +499,203 @@ def test_image_in_document_status_with_markdown_changes_and_hash_width(api_clien
     assert target["in_document"] is True
     assert len(target["units"]) > 0
 
+
+def test_descritta_flag_true_and_false(api_client, ws, rt_db):
+    from rt.pipeline.add_images import save_image_descriptions
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # 1. Immagine descritta (con summary_keywords)
+    img_dir = os.path.join(lesson, "assets", "images")
+    os.makedirs(img_dir, exist_ok=True)
+    img1_path = os.path.join(img_dir, "img_described.png")
+    _png(img1_path)
+    # 2. Immagine non descritta (ad es. da editor o pages_only: niente summary_keywords, ocr_text o visual_elements)
+    img2_path = os.path.join(img_dir, "img_undescribed.png")
+    _png(img2_path)
+
+    save_image_descriptions(lesson, {
+        "hash1": {
+            "filename": "assets/images/img_described.png",
+            "source": "folder:img_described.png",
+            "summary_keywords": ["cuore", "anatomia"],
+            "ocr_text": "Ventricolo",
+            "visual_elements": ["schema"],
+            "alt_text": "Cuore",
+        },
+        "hash2": {
+            "filename": "assets/images/img_undescribed.png",
+            "source": "editor:img_undescribed.png",
+            "summary_keywords": [],
+            "ocr_text": "",
+            "visual_elements": [],
+            "alt_text": "Foto",
+        },
+    })
+
+    res = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    by_name = {img["name"]: img for img in res}
+
+    assert by_name["img_described.png"]["descritta"] is True
+    assert by_name["img_undescribed.png"]["descritta"] is False
+
+
+def test_media_describe_only_undescribed_and_uses_archive_cache(api_client, ws, rt_db, monkeypatch):
+    from rt.pipeline.add_images import (
+        compute_image_hash,
+        load_image_descriptions,
+        save_image_descriptions,
+    )
+    from rt.core.archive import entry_dir, write_json
+    from rt.services.job_handlers import describe_images_job
+    from rt.api.jobs import queue
+    from rt.services.context import RunContext
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    from PIL import Image
+    img_dir = os.path.join(lesson, "assets", "images")
+    os.makedirs(img_dir, exist_ok=True)
+    img1_path = os.path.join(img_dir, "img_desc.png")
+    Image.new("RGB", (24, 24), (200, 30, 30)).save(img1_path, format="PNG")
+    with open(img1_path, "rb") as f:
+        h1 = compute_image_hash(f.read())
+
+    img2_path = os.path.join(img_dir, "img_undesc.png")
+    Image.new("RGB", (25, 25), (30, 200, 30)).save(img2_path, format="PNG")
+    with open(img2_path, "rb") as f:
+        h2 = compute_image_hash(f.read())
+
+    save_image_descriptions(lesson, {
+        h1: {
+            "filename": "assets/images/img_desc.png",
+            "source": "folder:img_desc.png",
+            "summary_keywords": ["gia_descritta"],
+            "ocr_text": "Testo presente",
+            "visual_elements": [],
+            "alt_text": "Descritta",
+        },
+        h2: {
+            "filename": "assets/images/img_undesc.png",
+            "source": "folder:img_undesc.png",
+            "summary_keywords": [],
+            "ocr_text": "",
+            "visual_elements": [],
+            "alt_text": "Non descritta",
+        },
+    })
+
+    # Mettiamo in cache dell'archivio la descrizione per h2
+    archive_dir = entry_dir(h2)
+    os.makedirs(archive_dir, exist_ok=True)
+    write_json(os.path.join(archive_dir, "descrizione.json"), {
+        "slide_title": "Titolo Archivio",
+        "ocr_text": "Testo dall'archivio",
+        "visual_elements": ["grafico archivio"],
+        "summary_keywords": ["parola1", "parola2"],
+        "alt_text": "Alt da archivio",
+    })
+
+    # Se un modello vision venisse chiamato, solleva AssertionError
+    def fail_call_structured(*args, **kwargs):
+        raise AssertionError("Vision LLM non deve essere chiamata: la descrizione è in archivio!")
+
+    import rt.llm.client as llm_client
+    monkeypatch.setattr(llm_client.LLMClient, "call_structured", fail_call_structured)
+
+    # Chiamata API POST /lessons/{id}/media/describe con entrambi i file
+    post_res = api_client.post(
+        f"/api/v1/lessons/{lid}/media/describe",
+        json={"names": ["img_desc.png", "img_undesc.png"]},
+    )
+    assert post_res.status_code == 202
+    job_id = post_res.json()["job_id"]
+
+    # Esegue il job
+    job_row = queue().get(job_id)
+    ctx = RunContext()
+    outcome = describe_images_job(job_row, ctx)
+    assert outcome.result["described"] == [h2]
+
+    # Verifica che descriptions.json sia stato aggiornato con i dati dall'archivio
+    updated_descs = load_image_descriptions(lesson)
+    assert updated_descs[h2]["summary_keywords"] == ["parola1", "parola2"]
+    assert updated_descs[h2]["ocr_text"] == "Testo dall'archivio"
+
+    # Verifica che ora l'API riporti descritta = True
+    images = api_client.get(f"/api/v1/lessons/{lid}/images").json()["images"]
+    by_name = {img["name"]: img for img in images}
+    h2_filename = os.path.basename(updated_descs[h2]["filename"])
+    assert by_name[h2_filename]["descritta"] is True
+
+
+def test_delete_media_removes_entry_leaves_shared_file_and_archive(api_client, ws, rt_db):
+    from rt.pipeline.add_images import (
+        load_image_descriptions,
+        save_image_descriptions,
+    )
+    from rt.core.archive import entry_dir, write_json
+    from rt.pipeline.image_placement import load_image_placement, save_image_placement
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = _lesson_id(api_client)
+
+    # File condiviso su disco
+    img_dir = os.path.join(lesson, "assets", "images")
+    os.makedirs(img_dir, exist_ok=True)
+    shared_name = "shared_asset.png"
+    shared_path = os.path.join(img_dir, shared_name)
+    _png(shared_path)
+    h1 = "a" * 64
+    h2 = "b" * 64
+
+    save_image_descriptions(lesson, {
+        h1: {
+            "filename": f"assets/images/{shared_name}",
+            "source": "folder:source_one.png",
+            "summary_keywords": ["uno"],
+            "alt_text": "Primo",
+        },
+        h2: {
+            "filename": f"assets/images/{shared_name}",
+            "source": "folder:source_two.png",
+            "summary_keywords": ["due"],
+            "alt_text": "Secondo",
+        },
+    })
+
+    # h1 nel testo e in placement
+    doc = f"# Titolo\n\n### 1.1 Unita\n![Primo](assets/images/{shared_name})\n"
+    api_client.put(f"/api/v1/lessons/{lid}/document/draft", json={"markdown": doc})
+    save_image_placement(lesson, {"1": [h1, h2]}, False, units={"1.1": [h1]})
+
+    # Crea file e descrizione nell'archivio
+    archive_dir = entry_dir(h1)
+    os.makedirs(archive_dir, exist_ok=True)
+    write_json(os.path.join(archive_dir, "descrizione.json"), {"archived": True})
+
+    # Elimina h1 passando names: [h1]
+    del_res = api_client.post(f"/api/v1/lessons/{lid}/media/delete", json={"names": [h1]})
+    assert del_res.status_code == 200
+
+    # h1 eliminato da descriptions, ma h2 rimane
+    descs = load_image_descriptions(lesson)
+    assert h1 not in descs
+    assert h2 in descs
+
+    # Il file su disco NON è stato eliminato perché h2 lo usa ancora
+    assert os.path.exists(shared_path)
+
+    # h1 tolto dal documento e da placement
+    doc_after = api_client.get(f"/api/v1/lessons/{lid}/document").json()["markdown"]
+    assert shared_name not in doc_after
+    placement = load_image_placement(lesson)
+    assert h1 not in placement.get("units", {}).get("1.1", [])
+
+    # L'archivio è intatto
+    assert os.path.exists(os.path.join(archive_dir, "descrizione.json"))
+
