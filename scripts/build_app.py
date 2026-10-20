@@ -297,6 +297,7 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
         sys.executable, "-m", "dmgbuild",
         "-s", settings_path,
         "-D", f"app={app}",
+        "-D", f"dir={os.path.dirname(settings_path)}",
         "RT", dmg,
     ], check=True)
     return dmg

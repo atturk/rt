@@ -6,8 +6,10 @@ app_name = os.path.basename(app) if app else "RT.app"
 files = [app] if app else []
 symlinks = {"Applications": "/Applications"}
 
-background = os.path.join(os.path.dirname(__file__), "background.png")
-icon = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icons", "rt.icns")
+# dmgbuild esegue questo file con exec(): __file__ non esiste, la cartella arriva da build_app.py.
+here = defines["dir"]
+background = os.path.join(here, "background.png")
+icon = os.path.join(os.path.dirname(here), "icons", "rt.icns")
 
 window_rect = ((200, 120), (660, 400))
 icon_size = 128
