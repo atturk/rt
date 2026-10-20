@@ -202,7 +202,7 @@ jobs:
             exit 1
           fi
       - name: Verify signature intact after runtime
-        run: codesign --verify --strict "$RUNNER_TEMP/Applications/RT.app"
+        run: codesign --verify --strict --verbose=4 "$RUNNER_TEMP/Applications/RT.app"
       - uses: actions/cache@v4
         with:
           path: .stt-models
