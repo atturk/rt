@@ -1,5 +1,28 @@
 # Novità di RT
 
+## 4.3.2b2 — 2026-10-20
+
+### Novità
+
+- **Archivio delle fonti**: un PDF, un audio o un'immagine già usati in una lezione non si rielaborano più quando tornano in un'altra (niente nuove trascrizioni né descrizioni).
+- Nuova pagina **Archivio**, dal pannello Arricchimento: tutti i file mai aggiunti, con le pagine usate da ogni lezione. Le pagine si possono ignorare (l'AI non le legge più), ritagliare o eliminare, e un file o alcune sue pagine si aggiungono a un'altra lezione senza rielaborarli.
+- **Aggiungi fonte** riconosce i file già nell'archivio e propone le pagine da dove ci si era fermati; per ogni fonte si sceglie cosa estrarre (solo testo o anche immagini) e come usarla (Guida, Contesto, Integra). Si possono aggiungere documenti Word (.docx) e file di testo (.txt).
+- Uso **Integra**: una fonte da integrare entra davvero nella lezione. La scaletta la vede e può aggiungere unità per gli argomenti che la registrazione non tratta.
+- Pannello Arricchimento: pulsante Archivio in cima, filtro **Da descrivere** e una barra della selezione nuova con Descrivi, Posiziona, Inserisci, Ritaglia, Togli dal testo ed Elimina dalla lezione.
+- Un'immagine trascinata nel testo va sotto il titolo della sottounità su cui la lasci, evidenziata mentre trascini. In Impostazioni › Editor si può scegliere "Dove le lascio", e allora le immagini si ridimensionano dagli angoli. Con il pannello Arricchimento aperto, un clic su un'immagine del testo la seleziona fra i media.
+- Le domande riposte si possono rispondere davvero: la vecchia risposta e la correzione non compaiono più subito. Ogni risposta resta nello storico, e la pagina **Risposte** (dal pannello Domande) le mostra tutte per la lezione.
+- Copia: il testo copiato da RT (per esempio in Anki) tiene grassetto, corsivo ed evidenziazioni ma non il colore del testo; le formule arrivano come `\( \)` e `\[ \]`. In Impostazioni › Aspetto e lettura › **Copia** si sceglie cosa tenere.
+- Nell'app gli aggiornamenti arrivano in un popup: si scaricano mentre usi RT e si installano quando vuoi con **Installa e riavvia**. Il file scaricato resta anche se chiudi RT. Chi è sul canale beta riceve anche le beta dall'app.
+- Nell'app arriva una notifica quando un lavoro lungo finisce o aspetta una tua decisione, e l'icona nel Dock mostra quanti lavori sono in corso.
+- Puoi aprire audio e PDF con RT dal Finder ("Apri con") o trascinandoli sull'icona nel Dock: si apre Nuova lezione con quei file.
+- Il DMG spiega nello sfondo come installare RT e come aprirlo la prima volta con "Apri comunque". RT.app ha una firma ad-hoc: macOS non la dà più per danneggiata.
+
+### Correzioni
+
+- Un archivio completo di una lezione ancora in anteprima ("(anteprima).zip") si importa di nuovo: prima era rifiutato con "File non dichiarati nel manifesto".
+- Studio: entrando in lettura nessuno strumento è selezionato; con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano di nuovo.
+- Windows: aggiungere un materiale scegliendo le pagine e ritagliare una pagina dell'archivio non falliscono più; l'archivio non conta due volte la stessa lezione.
+
 ## 4.3.2b1 — 2026-10-19
 
 ### Novità
