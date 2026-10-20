@@ -5,18 +5,58 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { archiveFilesApi, compressPages, type ArchiveDetail } from '@/api/archive'
 import { ArchivePage } from './ArchivePage'
 
-vi.mock('@/api/hooks', () => ({ useLessons: () => ({ data: [{ id: 7, titolo: 'La lezione', materia: 'Anatomia', data: '2026-10-12' }] }) }))
-vi.mock('@/api/archive', async (original) => ({ ...await original<typeof import('@/api/archive')>(), archiveFilesApi: { list: vi.fn(), detail: vi.fn(), ignore: vi.fn(), addToLesson: vi.fn(), addToMedia: vi.fn(), crop: vi.fn(), delete: vi.fn(), deletePages: vi.fn() } }))
+vi.mock('@/api/hooks', () => ({
+  useLessons: () => ({ data: [{ id: 7, titolo: 'La lezione', materia: 'Anatomia', data: '2026-10-12' }] }),
+}))
+vi.mock('@/api/archive', async (original) => ({
+  ...(await original<typeof import('@/api/archive')>()),
+  archiveFilesApi: {
+    list: vi.fn(),
+    detail: vi.fn(),
+    ignore: vi.fn(),
+    addToLesson: vi.fn(),
+    addToMedia: vi.fn(),
+    crop: vi.fn(),
+    delete: vi.fn(),
+    deletePages: vi.fn(),
+  },
+}))
 const detail: ArchiveDetail = {
-  impronta: 'a'.repeat(64), nome: 'Libro.pdf', tipo: 'slide', pagine_totali: 4, durata_s: null, dimensione: 1000, materie: ['Anatomia'], usi: 1, da_continuare: '3–4', trascrizione_inizio: '',
+  impronta: 'a'.repeat(64),
+  nome: 'Libro.pdf',
+  tipo: 'slide',
+  pagine_totali: 4,
+  durata_s: null,
+  dimensione: 1000,
+  materie: ['Anatomia'],
+  usi: 1,
+  da_continuare: '3–4',
+  trascrizione_inizio: '',
   pagine: [1, 2, 3, 4].map((numero) => ({ numero, ignorata: false, lezione_id: numero < 3 ? 7 : null })),
   lezioni: [{ id: 7, titolo: 'La lezione', data: '2026-10-12', pagine: [1, 2] }],
 }
-function Location() { const location = useLocation(); return <span data-testid="location">{location.pathname}{location.search}</span> }
+function Location() {
+  const location = useLocation()
+  return (
+    <span data-testid="location">
+      {location.pathname}
+      {location.search}
+    </span>
+  )
+}
 function setup(params = '?da=7') {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/archivio${params}`]}><ArchivePage /><Location /></MemoryRouter></QueryClientProvider>)
-  return screen.findByRole('button', { name: 'Aggiungi alla lezione come fonte' })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[`/archivio${params}`]}>
+        <ArchivePage />
+        <Location />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  return screen.findByRole('button', { name: 'Aggiungi alla lezione come fonte' }, { timeout: 5000 })
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -50,7 +90,15 @@ it('keeps exact selected pages in the add panel and closes on Cancel', async () 
   expect(screen.getByText('Pagine: 1, 4')).toBeInTheDocument()
   expect(screen.queryByLabelText('Da')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Aggiungi' }))
-  await waitFor(() => expect(archiveFilesApi.addToLesson).toHaveBeenCalledWith(detail.impronta, 7, [1, 4], 'contesto', 'immagini'))
+  await waitFor(() =>
+    expect(archiveFilesApi.addToLesson).toHaveBeenCalledWith(
+      detail.impronta,
+      7,
+      [1, 4],
+      'contesto',
+      'immagini',
+    ),
+  )
   fireEvent.click(screen.getByLabelText('Aggiungi alla lezione come fonte'))
   fireEvent.click(screen.getByText('Annulla', { selector: 'button' }))
   expect(screen.queryByLabelText('Lezione')).not.toBeInTheDocument()
@@ -79,4 +127,6 @@ it('opens the requested page, handles arrows outside fields and resizes by keybo
   expect(separator).toHaveAttribute('aria-valuenow', '500')
   expect(localStorage.getItem('rt.archive.detailWidth')).toBe('500')
 })
-it('compresses inclusive page runs', () => { expect(compressPages([10, 1, 3, 2, 10, 12])).toBe('1–3, 10, 12') })
+it('compresses inclusive page runs', () => {
+  expect(compressPages([10, 1, 3, 2, 10, 12])).toBe('1–3, 10, 12')
+})

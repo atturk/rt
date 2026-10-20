@@ -2,9 +2,12 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
+from rt.api.routers.images import EditorImage
+from rt.core.sources import Source
 from rt.services import archive_service
 
 router = APIRouter(tags=['archivio'])
@@ -115,12 +118,9 @@ def detail(sha: str, _actor: Actor):
     return archive_service.detail(sha)
 
 
-from fastapi.responses import FileResponse
-
-
-@router.get('/archive/{sha}/pages/{n}.png', response_class=FileResponse)
+@router.get('/archive/{sha}/pages/{n}.png', response_class=Response, responses={200: {'content': {'image/png': {}}}})
 def page_image(sha: str, n: int, _actor: Actor):
-    return FileResponse(archive_service.image_path(sha, n), media_type='image/png',
+    return Response(archive_service.page_bytes(sha, n), media_type='image/png',
         headers={'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff'})
 
 
@@ -142,10 +142,6 @@ def crop(sha: str, n: int, body: CropRequest, _actor: Actor):
 @router.delete('/archive/{sha}', status_code=204)
 def delete_entry(sha: str, _actor: Actor):
     archive_service.delete_entry(sha)
-
-
-from rt.core.sources import Source
-from rt.api.routers.images import EditorImage
 
 
 @router.post('/archive/{sha}/add-to-lesson', response_model=Source, status_code=201)

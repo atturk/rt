@@ -1,4 +1,3 @@
-from rt.core.archive import page_image_path
 """
 rt.pipeline.material_mapping
 Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
@@ -7,6 +6,7 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1b: Valutazione sì/no tramite Jev Decision API con aggregazione a macro-unità (>= 3).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
+from rt.core.archive import page_image_path
 
 import json
 import math

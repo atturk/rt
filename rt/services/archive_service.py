@@ -12,11 +12,18 @@ def archive_usages(sha):
     from rt.core.lesson_paths import lesson_path
     usages = []
     for directory in lesson_directories():
-        sources = [s for s in load_sources(directory) if s.impronta == sha]
+        sources = [s for s in load_sources(directory) if s.impronta and (archive.find(s.impronta) or {}).get('impronta', s.impronta) == sha]
+        image_used = False
         if not sources:
+            from rt.pipeline.add_images import load_image_descriptions
+            from rt.storage import fs
+            descriptions = load_image_descriptions(directory)
+            description = descriptions.get(sha)
+            image_used = bool(description and fs.isfile(os.path.join(directory, description.get('filename', ''))))
+        if not sources and not image_used:
             continue
         info = read_info_yaml(lesson_path(directory, 'info.yaml'))
-        pages = None if any(s.pagine is None for s in sources) else sorted({n for s in sources for n in s.pagine})
+        pages = None if image_used or any(s.pagine is None for s in sources) else sorted({n for s in sources for n in s.pagine})
         usages.append({'lezione_id': lesson_id_for_dir(directory), 'titolo': info.get('titolo') or info.get('argomenti') or os.path.basename(directory),
             'data': str(info.get('data') or ''), 'pagine': pages, 'materia': info.get('materia') or ''})
     return sorted(usages, key=lambda u: (u['data'], u['lezione_id'] or 0))
@@ -116,6 +123,34 @@ def image_path(sha, n):
     return path
 
 
+
+def page_bytes(sha, n):
+    """Anteprima su richiesta: il modo testo non crea una cache di immagini."""
+    from rt.services.errors import NotFound
+    meta = require_entry(sha)
+    try:
+        with open(image_path(sha, n), 'rb') as stream:
+            return stream.read()
+    except NotFound:
+        data = archive.read_json(os.path.join(archive.entry_dir(meta['impronta']), 'pages.json'), {})
+        page = next((p for p in data.get('pages', []) if p['numero'] == n), None)
+        if not page or n in meta.get('eliminate', []):
+            raise
+    if meta['estensione'] == '.pdf':
+        import fitz
+        with fitz.open(archive.original_path(sha)) as document:
+            return document[n - 1].get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes('png')
+    import io
+    import textwrap
+    from PIL import Image, ImageDraw, ImageFont
+    image = Image.new('RGB', (900, 1200), 'white')
+    draw = ImageDraw.Draw(image)
+    text = '\n'.join(textwrap.fill(line, width=70) for line in page.get('testo', '').splitlines())
+    draw.multiline_text((45, 45), text[:5000], fill='#26313b', font=ImageFont.load_default(size=20), spacing=6)
+    output = io.BytesIO()
+    image.save(output, 'PNG')
+    return output.getvalue()
+
 def validate_pages(sha, pages):
     from rt.services.errors import Invalid
     meta = require_entry(sha)
@@ -128,7 +163,7 @@ def validate_pages(sha, pages):
 def set_ignored(sha, pages, ignored):
     meta = require_entry(sha)
     sha = meta['impronta']
-    with archive.archive_lock(sha):
+    with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
         validate_pages(sha, pages)
         meta = require_entry(sha)
         previous = set(meta.get('ignorate', []))
@@ -140,7 +175,7 @@ def set_ignored(sha, pages, ignored):
 def delete_pages(sha, pages):
     meta = require_entry(sha)
     sha = meta['impronta']
-    with archive.archive_lock(sha):
+    with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
         validate_pages(sha, pages)
         meta = require_entry(sha)
         meta['eliminate'] = sorted(set(meta.get('eliminate', [])) | set(pages))
@@ -169,9 +204,10 @@ def crop(sha, n, rect, replace=False):
     left, top, width, height = rect
     if width <= 0 or height <= 0 or left + width > 1.000001 or top + height > 1.000001:
         raise Invalid('crop_invalid', 'Ritaglio non valido.')
-    with archive.archive_lock(sha):
-        path = image_path(sha, n)
-        with Image.open(path) as image:
+    with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
+        data = page_bytes(sha, n)
+        path = archive.page_image_path(sha, f'page-{n}-1.png')
+        with Image.open(io.BytesIO(data)) as image:
             w, h = image.size
             box = (int(left * w), int(top * h), max(int(left * w) + 1, round((left + width) * w)),
                    max(int(top * h) + 1, round((top + height) * h)))
@@ -183,6 +219,12 @@ def crop(sha, n, rect, replace=False):
             with os.fdopen(fd, 'wb') as stream:
                 stream.write(output.getvalue())
             os.replace(temp, path)
+            pages_path = os.path.join(archive.entry_dir(sha), 'pages.json')
+            pages_data = archive.read_json(pages_path)
+            for page in pages_data['pages']:
+                if page['numero'] == n:
+                    page['immagini'] = [os.path.basename(path)]
+            archive.write_json(pages_path, pages_data)
             meta['ritagli'] = {**meta.get('ritagli', {}), str(n): rect}
             archive.write_json(os.path.join(archive.entry_dir(sha), 'meta.json'), meta)
             return row(meta)
@@ -203,7 +245,7 @@ def delete_entry(sha):
         usages = archive_usages(sha)
         if usages:
             raise Conflict('archive_in_use', 'File usato da una lezione.', {'lezioni': usages})
-        with archive.archive_lock(sha):
+        with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
             shutil.rmtree(archive.entry_dir(sha))
         with archive.archive_lock():
             index_path = os.path.join(archive.archive_dir(), 'alias.json')
@@ -239,11 +281,9 @@ def add_to_media(sha, lesson_id, pages):
                 _guard(session, lesson_id, directory, None, document=False)
             validate_pages(sha, pages)
             # Controlla tutte le immagini prima di iniziare la copia.
-            paths = [(n, image_path(sha, n)) for n in pages]
+            contents = [(n, page_bytes(sha, n)) for n in pages]
             descriptions = load_image_descriptions(directory)
-            for n, path in paths:
-                with open(path, 'rb') as stream:
-                    data = stream.read()
+            for n, data in contents:
                 image_hash = compute_image_hash(data)
                 relative = save_raw_image(directory, data, image_hash)
                 description = archive.read_json(os.path.join(archive.entry_dir(image_hash), 'descrizione.json'), {})

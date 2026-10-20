@@ -1,7 +1,6 @@
 """Popolamento una tantum, riprendibile, senza elaborazione dei file."""
 import logging
 import os
-from pathlib import Path
 
 from rt.core.archive import (archive_dir, archive_lock, read_json, write_json, register_file,
                              register_image, file_type, import_material_cache, save_meta, store_transcript)
@@ -21,7 +20,11 @@ def lesson_directories():
             found.update(session.scalars(select(Lesson.path)))
     root = load_config().telegram.lessons_root
     if root and os.path.isdir(root):
-        found.update(str(p.parent) for p in Path(root).rglob('info.yaml'))
+        for top, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('history', 'sources', 'assets', 'materials', '_state')]
+            if 'info.yaml' in files:
+                found.add(top)
+                dirs[:] = []
     return sorted(found)
 
 
@@ -40,8 +43,23 @@ def archive_backfill(directories=None):
                     path = os.path.join(directory, source.file)
                     if not fs.isfile(path) or source.tipo == 'appunti':
                         continue
-                    meta = register_file(path, nome=os.path.basename(source.file),
-                        tipo=file_type(source.file, source.tipo), sha=source.impronta)
+                    if source.tipo == 'audio' and path.lower().endswith('.wav'):
+                        from rt.core.archive import find
+                        meta = find(source.impronta)
+                        if meta is None:
+                            import tempfile
+                            from rt.pipeline.setup import transcode_audio_for_storage
+                            with tempfile.TemporaryDirectory(prefix='rt-backfill-') as temp:
+                                converted = os.path.join(temp, 'originale.m4a')
+                                with fs.materialize(path) as real:
+                                    converted_ok = transcode_audio_for_storage(real, converted)
+                                if not converted_ok:
+                                    logging.getLogger(__name__).warning('Audio non convertibile: %s', path)
+                                    continue
+                                meta = register_file(converted, nome=os.path.basename(source.file), tipo='audio', alias=[source.impronta])
+                    else:
+                        meta = register_file(path, nome=os.path.basename(source.file),
+                            tipo=file_type(source.file, source.tipo), sha=source.impronta)
                     if source.tipo == 'materiale':
                         import_material_cache(directory, source)
                         from rt.core.archive import pages_for_use

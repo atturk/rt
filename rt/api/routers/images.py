@@ -1,6 +1,6 @@
-from rt.core.archive import page_image_path, import_material_cache
 """Immagini integrate da 'rt add-images' (RT4-F6): elenco con le descrizioni e file serviti
 per l'anteprima nel documento. Il caricamento (POST /lessons/{id}/images) è un job, in jobs.py."""
+from rt.core.archive import page_image_path, import_material_cache
 import mimetypes
 import os
 import re

@@ -597,7 +597,10 @@ def run_setup(
     transcoded_audio = False
     if archived:
         primary_audio_name = os.path.splitext(primary_audio_name)[0] + archived['estensione']
-        fs.copy2(original_path(archived['impronta']), os.path.join(target_folder_path, primary_audio_name))
+        cached_original = original_path(archived['impronta'])
+        target_audio = os.path.join(target_folder_path, primary_audio_name)
+        if not (os.path.isfile(target_audio) and os.path.samefile(cached_original, target_audio)):
+            fs.copy2(cached_original, target_audio)
         transcoded_audio = True
     elif len(cleaned_audios) == 1 and os.path.splitext(primary_audio_name)[1].lower() not in EFFICIENT_AUDIO_EXTENSIONS:
         with tempfile.TemporaryDirectory(prefix="rt_audio_") as audio_temp_dir:
@@ -621,9 +624,25 @@ def run_setup(
             raw = {'segments': [{'startMs': item['start_seconds'] * 1000, 'endMs': item['end_seconds'] * 1000,
                                 'text': item['text_raw']} for item in cached['segments']]}
         with fs.open(json_path, 'w', encoding='utf-8') as stream:
-            json.dump(raw, stream, ensure_ascii=False)
+            json.dump(raw, stream, ensure_ascii=False, indent=2)
+        markdown = cached.get('markdown')
+        if markdown:
+            import re
+            header, separator, body = markdown.partition('\n---\n')
+            for key, value in {'data': date_val, 'materia': materia_val, 'argomenti': argomenti_val,
+                               'file_audio': primary_audio_name, 'cartella': folder_name,
+                               'data_trascrizione': datetime.datetime.now().isoformat()}.items():
+                header = re.sub(r'^' + key + r':.*$', lambda _: f"{key}: '{value}'", header, flags=re.MULTILINE)
+            markdown = header + separator + body
+        else:
+            lines = ["---", f"data: '{date_val}'", f"materia: '{materia_val}'", f"argomenti: '{argomenti_val}'",
+                     f"file_audio: '{primary_audio_name}'", f"modello: '{engine}'", "fase: trascritto_grezzo", "---", ""]
+            from rt.core.timestamp import format_timestamp
+            lines.extend(f"**[{format_timestamp(s['start_seconds'])} - {format_timestamp(s['end_seconds'])}]** {s['text_raw']}\n"
+                         for s in cached['segments'])
+            markdown = '\n'.join(lines)
         with fs.open(md_path, 'w', encoding='utf-8') as stream:
-            stream.write('\n'.join(item['text_raw'] for item in cached['segments']))
+            stream.write(markdown)
         current_state, current_status = 'setup_completato', 'pronto_per_rielaborazione'
     elif mock_asr:
         # Mock ASR deterministico offline
@@ -834,7 +853,9 @@ stato: in_attesa_di_trascrizione
             with fs.open(json_path, encoding='utf-8') as stream:
                 raw = json.load(stream)
             segments = parse_segments_from_json(json_path)
-            store_transcript(meta['impronta'], engine, {'raw': raw,
+            with fs.open(md_path, encoding='utf-8') as stream:
+                markdown = stream.read()
+            store_transcript(meta['impronta'], engine, {'raw': raw, 'markdown': markdown,
                 'segments': [segment.model_dump() for segment in segments],
                 'duration': max((segment.end_seconds for segment in segments), default=0)})
 

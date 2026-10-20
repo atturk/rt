@@ -127,7 +127,7 @@ def test_single_material_response_and_invalid_order_are_compatible_and_atomic(ap
 def _parallel_source(tmp_path, monkeypatch, count=6):
     import rt.core.materials as materials
     from rt.core.config import load_config
-    source = add_source(str(tmp_path), 'materiale', 'parallel.png', png_bytes())
+    source = add_source(str(tmp_path), 'materiale', 'parallel.pdf', pdf_bytes())
     monkeypatch.setattr(materials, '_extract', lambda _: (('', [png_bytes()], True) for _ in range(count)))
     cfg = load_config()
     cfg.pipeline.parallel_pages = 3

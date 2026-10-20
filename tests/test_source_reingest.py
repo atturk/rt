@@ -61,27 +61,30 @@ def test_material_refresh_ignores_both_complete_and_per_page_cache(tmp_path, mon
     assert len(calls) == 2
 
 
-def test_reingest_failure_restores_material_cache_and_source_state(tmp_path, monkeypatch):
+def test_reingest_failure_preserves_shared_cache_and_restores_source_state(tmp_path, monkeypatch):
     from rt.core.materials import material_pages
     lesson, _ = prepared(tmp_path, monkeypatch)
     source = add_source(lesson, 'materiale', 'foto.png', png_bytes())
     monkeypatch.setattr('rt.core.materials._describe', lambda *a: 'Prima lettura')
     material_pages(lesson, source)
     update.prepare_source_update(lesson, mock=True)
-    before = {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'materials').rglob('*') if p.is_file()}
+    from rt.core.archive import entry_dir
+    archive = Path(entry_dir(source.impronta))
+    before = (archive / 'pages.json').read_bytes()
     cache = update._read_state(lesson)
     segments = (tmp_path / 'segments.json').read_bytes()
     monkeypatch.setattr('rt.core.materials._describe', lambda *a: 'Seconda lettura')
     def fail(*args, **kwargs):
         update.prepare_source_update(lesson, mock=True, reingest=True)
         assert material_pages(lesson, source)[0]['testo'] == 'Seconda lettura'
-        (tmp_path / 'materials' / 'nuovo.tmp').write_bytes(b'parziale')
+        (tmp_path / 'parziale.md').write_text('parziale')
         raise RuntimeError('Errore dopo la rilettura')
     monkeypatch.setattr(update, '_run_source_update', fail)
     with pytest.raises(RuntimeError, match='dopo la rilettura'):
         update.run_source_update(lesson, mode='rebuild', mock=True, reingest=True)
-    after = {p.relative_to(tmp_path): p.read_bytes() for p in (tmp_path / 'materials').rglob('*') if p.is_file()}
-    assert after == before
+    assert (archive / 'pages.json').read_bytes() != before
+    assert material_pages(lesson, source)[0]['testo'] == 'Seconda lettura'
+    assert not (tmp_path / 'parziale.md').exists()
     assert update._read_state(lesson)['sources'] == cache['sources']
     assert update._read_state(lesson)['next_segment'] > cache['next_segment']
     assert (tmp_path / 'segments.json').read_bytes() == segments
@@ -225,7 +228,9 @@ def test_missing_uncached_material_still_reports_why_reingest_is_unavailable(tmp
     view = sources_view(lesson)
     assert view['reingest_available'] is False
     assert view['reingest_reason'] == 'Documento originale non disponibile.'
-    assert next(s for s in view['sources'] if s.id == source.id).pagine is None
+    view_source = next(s for s in view['sources'] if s.id == source.id)
+    assert view_source.pagine is None
+    assert view_source.pagine_totali == 1  # Il conteggio resta noto nell'archivio, anche senza la copia privata.
 
 
 def test_plain_rebuild_and_version_restore_leave_material_cache_alone(tmp_path, monkeypatch):
@@ -239,9 +244,11 @@ def test_plain_rebuild_and_version_restore_leave_material_cache_alone(tmp_path, 
     material_pages(lesson, source)
     update.prepare_source_update(lesson, mock=True)
     update.run_source_update(lesson, mode='rebuild', mock=True)
-    cache = sorted(p.relative_to(tmp_path) for p in (tmp_path / 'materials').rglob('*') if p.is_file())
+    from rt.core.archive import entry_dir
+    archive = Path(entry_dir(source.impronta))
+    cache = {p.name: p.read_bytes() for p in archive.iterdir() if p.is_file()}
     assert cache
     # Le versioni non copiano le immagini delle pagine.
     assert not [p for p in (tmp_path / 'history').rglob('*') if 'materials' in p.parts]
     restore_version(lesson, first)
-    assert sorted(p.relative_to(tmp_path) for p in (tmp_path / 'materials').rglob('*') if p.is_file()) == cache
+    assert {p.name: p.read_bytes() for p in archive.iterdir() if p.is_file()} == cache

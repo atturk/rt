@@ -9174,7 +9174,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "image/png": unknown;
+                };
             };
             /** @description Autenticazione mancante o non valida */
             401: {

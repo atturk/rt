@@ -169,7 +169,13 @@ def _document_pages(real, images=False):
                 blocks.append((paragraph.text, paragraph.style.name.startswith('Heading'), pictures))
             elif element.tag.endswith('}tbl'):
                 table = Table(element, document)
-                blocks.append(('\n'.join(' | '.join(c.text for c in row.cells) for row in table.rows), False, []))
+                pictures = []
+                if images:
+                    for blip in element.xpath('.//a:blip'):
+                        rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                        if rid and rid in document.part.related_parts:
+                            pictures.append(_png_image(document.part.related_parts[rid].blob))
+                blocks.append(('\n'.join(' | '.join(c.text for c in row.cells) for row in table.rows), False, pictures))
     texts, pictures, words = [], [], 0
     for text, heading, imgs in blocks:
         count = len(text.split())
@@ -222,6 +228,20 @@ def _extract_text(real):
             yield _slide_content(slide)[0], [], False
     else:
         yield '', [], False
+
+
+def _extract_images(real, previous):
+    """Upgrade di una cache testuale: conserva il testo, rende le sole immagini mancanti."""
+    if real.lower().endswith('.pdf'):
+        import fitz
+        from rt.core.material_page_filter import pdf_pages_have_figures
+        with fitz.open(real) as document:
+            figures = pdf_pages_have_figures(document)
+            for i, page in enumerate(document):
+                old = previous[i] if i < len(previous) else {}
+                yield old.get('testo', ''), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], figures[i]
+    else:
+        yield from _extract(real)
 
 
 def cached_pages(lesson_dir, source):
@@ -298,15 +318,21 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
     extracted = []
     # I PNG si liberano a ogni iterazione, senza accumulare l'intero PDF in RAM.
     with fs.materialize(path) as real:
-        for number, (text, images, has_figures) in enumerate(_extract_text(real) if mode == 'testo' else _extract(real), 1):
+        from rt.core.archive import read_json
+        previous = read_json(os.path.join(folder, 'pages.json'), {}).get('pages', [])
+        extraction = (_extract_images(real, previous) if upgrading and previous else _extract(real)) if mode != 'testo' else _extract_text(real)
+        crops = (load_meta(source.impronta) or {}).get('ritagli', {})
+        for number, (text, images, has_figures) in enumerate(extraction, 1):
             if ctx:
                 ctx.check_cancelled()
             filenames = []
             with lesson_lock(lesson_dir):
                 for index, data in enumerate(images, 1):
                     relative = f'page-{number}-{index}.png'
-                    with fs.open(os.path.join(folder, relative), 'wb') as stream:
-                        stream.write(data)
+                    if str(number) not in crops or not fs.isfile(os.path.join(folder, relative)):
+                        with fs.open(os.path.join(folder, relative) + '.tmp', 'wb') as stream:
+                            stream.write(data)
+                        fs.replace(os.path.join(folder, relative) + '.tmp', os.path.join(folder, relative))
                     filenames.append(relative)
             extracted.append((text, filenames, has_figures))
     if not extracted:
@@ -333,6 +359,10 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 if upgrading:
                     saved['immagini'] = filenames
                     saved['has_figures'] = has_figures
+                    saved['mapping_skip'] = few_words(saved.get('mapping_text', saved.get('testo', ''))) and not has_figures
+                    if few_words(saved.get('mapping_text', saved.get('testo', ''))) and has_figures and filenames:
+                        pending.append(saved)
+                        continue
                     save(saved)
                 pages[number - 1] = saved
                 stats['cached_pages'] += 1
@@ -360,6 +390,11 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
     def describe(entry):
         texts, seconds = [], 0.0
         try:
+            from rt.core.archive import read_json, write_json, archive_lock
+            reusable = read_json(os.path.join(folder, 'descrizione.json')) if file_type(source.file) == 'immagine' else None
+            if reusable and not refresh:
+                described = '\n'.join(str(reusable.get(key) or '') for key in ('slide_title', 'ocr_text', 'visual_elements'))
+                return save(dict(entry, testo=described, mapping_text=described)), 0, 0.0
             for relative in entry['immagini']:
                 if stopped.is_set():
                     raise RunCancelled('Lettura dei materiali interrotta')
@@ -371,6 +406,9 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 texts.append(_describe(data, lesson_dir, mock))
                 seconds += time.monotonic() - before
             described = '\n'.join(texts)
+            if file_type(source.file) == 'immagine':
+                with archive_lock(source.impronta):
+                    write_json(os.path.join(folder, 'descrizione.json'), {'ocr_text': described})
             entry = dict(entry, testo='\n'.join(filter(None, [entry['testo'], described])), mapping_text=described)
             return save(entry), len(texts), seconds
         except BaseException as error:

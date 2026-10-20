@@ -103,3 +103,19 @@ def test_text_mode_hides_images_in_shared_full_cache(tmp_path):
     assert material_pages(directory, source)[0]['immagini'] == []
     from rt.core.archive import pages_for_use
     assert pages_for_use(source.impronta)[0]['immagini']
+
+
+def test_docx_embedded_images_in_paragraphs_and_tables(tmp_path):
+    from docx import Document
+    from tests.test_materials import png_bytes
+    document = Document()
+    document.add_paragraph('Testo completo di una pagina con illustrazioni incorporate e tabella.')
+    document.add_picture(io.BytesIO(png_bytes()))
+    table = document.add_table(rows=1, cols=1)
+    table.cell(0, 0).paragraphs[0].add_run().add_picture(io.BytesIO(png_bytes()))
+    stream = io.BytesIO()
+    document.save(stream)
+    directory = lesson(tmp_path, 'word-images')
+    source = add_source(directory, 'materiale', 'images.docx', stream.getvalue(), estrai='immagini')
+    pages = material_pages(directory, source, mock=True)
+    assert len(pages[0]['immagini']) == 2

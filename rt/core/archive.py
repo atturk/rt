@@ -86,6 +86,20 @@ def file_type(path, tipo=None):
 
 def register_file(path, *, nome, tipo, sha=None, alias=None):
     sha = sha or compute_file_sha256(path)
+    if tipo == 'audio' and os.path.splitext(path)[1].lower() != '.m4a':
+        previous = find(sha)
+        if previous and os.path.isfile(original_path(previous['impronta'])):
+            return previous
+        import tempfile
+        from rt.pipeline.setup import transcode_audio_for_storage
+        with tempfile.TemporaryDirectory(prefix='rt-archive-audio-') as temp:
+            converted = os.path.join(temp, 'originale.m4a')
+            with fs.materialize(path) as real:
+                converted_ok = transcode_audio_for_storage(real, converted)
+            if converted_ok:
+                return register_file(converted, nome=nome, tipo=tipo, alias=list(set([sha, *(alias or [])])))
+        # La fonte privata resta disponibile se ffmpeg rifiuta il file.
+        return {'impronta': sha, 'estensione': os.path.splitext(path)[1].lower()}
     folder = entry_dir(sha)
     with archive_lock(sha):
         os.makedirs(folder, exist_ok=True)
@@ -97,9 +111,6 @@ def register_file(path, *, nome, tipo, sha=None, alias=None):
         target = os.path.join(folder, 'originale' + meta['estensione'])
         if not os.path.exists(target):
             with fs.materialize(path) as real:
-                # WAV non ottimizzati non entrano nell'archivio.
-                if tipo == 'audio' and meta['estensione'] == '.wav':
-                    return meta
                 try:
                     os.link(real, target)
                 except OSError:
@@ -200,8 +211,16 @@ def register_image(path, description=None):
                 output.write(data)
         except (OSError, ValueError):
             return meta
-    if not os.path.isfile(os.path.join(entry_dir(sha), 'pages.json')):
-        text = (description or {}).get('ocr_text', '')
-        write_json(os.path.join(entry_dir(sha), 'pages.json'), {'impronta': sha, 'pages': [
-            {'numero': 1, 'testo': text, 'immagini': ['page-1-1.png'], 'has_figures': True}]})
+    pages_path = os.path.join(entry_dir(sha), 'pages.json')
+    with archive_lock(sha):
+        data = read_json(pages_path)
+        meaningful = description and any(description.get(k) for k in ('ocr_text', 'slide_title', 'visual_elements'))
+        if data is None or (meaningful and not all('mapping_text' in p for p in data.get('pages', []))):
+            text = '\n'.join(str(description.get(k) or '') for k in ('slide_title', 'ocr_text', 'visual_elements')) if meaningful else ''
+            page = {'numero': 1, 'testo': text, 'immagini': ['page-1-1.png']}
+            if meaningful:
+                page.update(has_figures=True, mapping_text=text, mapping_skip=False)
+                current = load_meta(sha)
+                write_json(os.path.join(entry_dir(sha), 'meta.json'), {**current, 'estrai': 'immagini'})
+            write_json(pages_path, {'impronta': sha, 'pages': [page]})
     return meta

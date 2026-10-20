@@ -1,4 +1,3 @@
-from rt.core.archive import page_image_path, register_image, entry_dir, read_json
 """
 rt.pipeline.add_images
 Comando supplementare (fuori da 'rt run', come review-asr/recall) che integra immagini
@@ -10,6 +9,7 @@ scelto finisce in assets/images/placement.json (rt.pipeline.image_placement), ch
 l'anteprima mostra subito e il build include nel documento finale; se il documento finale
 c'era già, diventa non aggiornato finché non si rifà il build.
 """
+from rt.core.archive import page_image_path, register_image, entry_dir, read_json
 import os
 import json
 import hashlib

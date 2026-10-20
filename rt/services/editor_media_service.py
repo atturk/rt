@@ -1,5 +1,5 @@
-from rt.core.archive import page_image_path
 """Immagini inserite a mano: media della lezione, senza descrizione o collocazione LLM."""
+from rt.core.archive import page_image_path
 import io
 import os
 import re

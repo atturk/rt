@@ -111,3 +111,39 @@ def test_reuse_as_source_and_media_without_models(api_client, archive_lesson, mo
     assert media.status_code == 201, media.text
     assert len(media.json()) == 2
     assert len(list((Path(second) / 'assets/images').glob('*.png'))) == 2
+
+
+def test_media_image_is_counted_as_in_use(api_client, archive_lesson):
+    lid, directory, _source, _root = archive_lesson
+    from rt.pipeline.add_images import save_raw_image, save_image_descriptions, compute_image_hash
+    from tests.test_materials import png_bytes
+    content = png_bytes()
+    sha = compute_image_hash(content)
+    path = save_raw_image(directory, content, sha)
+    save_image_descriptions(directory, {sha: {'filename': path, 'source': 'editor:photo.png'}})
+    detail = api_client.get(f'/api/v1/archive/{sha}').json()
+    assert detail['usi'] == 1 and detail['lezioni'][0]['id'] == lid
+    assert api_client.delete(f'/api/v1/archive/{sha}').status_code == 409
+
+
+def test_text_only_preview_does_not_populate_image_cache(api_client, archive_lesson):
+    _, directory, _, _ = archive_lesson
+    source = add_source(directory, 'materiale', 'Testo.txt', b'Pagina di testo senza immagini')
+    material_pages(directory, source)
+    response = api_client.get(f'/api/v1/archive/{source.impronta}/pages/1.png')
+    assert response.status_code == 200 and response.headers['content-type'] == 'image/png'
+    assert list(Path(archive.entry_dir(source.impronta)).glob('*.png')) == []
+    assert archive.load_meta(source.impronta)['estrai'] == 'testo'
+
+
+def test_history_snapshots_are_not_counted_as_lessons(api_client, archive_lesson):
+    lid, directory, source, _ = archive_lesson
+    from rt.core.sources import _save
+    history = Path(directory) / 'history' / 'old-version'
+    history.mkdir(parents=True)
+    (history / 'info.yaml').write_text('materia: Storica\ndata: 2026-01-01\n')
+    _save(str(history), [source])
+    response = api_client.get(f'/api/v1/archive/{source.impronta}')
+    assert response.status_code == 200
+    assert response.json()['usi'] == 1
+    assert response.json()['lezioni'][0]['id'] == lid

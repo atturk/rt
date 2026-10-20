@@ -13206,6 +13206,9 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "image/png": {}
+            },
             "description": "Successful Response"
           },
           "401": {

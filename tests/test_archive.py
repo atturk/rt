@@ -105,3 +105,61 @@ def test_upgrade_only_adds_images(tmp_path, monkeypatch):
     after = material_pages(directory, source)
     assert after[0]['immagini'] and after[0]['testo'] == before[0]['testo']
     assert archive.load_meta(source.impronta)['estrai'] == 'immagini'
+
+
+def test_editor_image_gets_vision_once_then_reused_as_source(tmp_path, monkeypatch):
+    from rt.pipeline.add_images import save_raw_image, compute_image_hash
+    directory = lesson(tmp_path, 'editor')
+    content = png_bytes()
+    save_raw_image(directory, content, compute_image_hash(content))
+    source = add_source(directory, 'materiale', 'photo.png', content)
+    describe = Mock(return_value='Figura descritta')
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    assert 'Figura descritta' in material_pages(directory, source)[0]['testo']
+    assert describe.call_count == 1
+    assert archive.read_json(str(Path(archive.entry_dir(source.impronta)) / 'descrizione.json'))['ocr_text'] == 'Figura descritta'
+
+
+def test_enrichment_vision_is_reused_in_another_lesson(tmp_path, monkeypatch):
+    from rt.pipeline.add_images import save_raw_image, save_image_descriptions, compute_image_hash
+    first, second = lesson(tmp_path, 'enrichment'), lesson(tmp_path, 'material')
+    content = png_bytes()
+    sha = compute_image_hash(content)
+    relative = save_raw_image(first, content, sha)
+    save_image_descriptions(first, {sha: {'filename': relative, 'ocr_text': 'Vision condivisa'}})
+    source = add_source(second, 'materiale', 'photo.png', content)
+    monkeypatch.setattr('rt.core.materials._describe', Mock(side_effect=AssertionError('vision ripetuta')))
+    monkeypatch.setattr('rt.core.materials._extract', Mock(side_effect=AssertionError('estrazione ripetuta')))
+    assert 'Vision condivisa' in material_pages(second, source)[0]['testo']
+
+
+def test_backfill_optimizes_legacy_wav_and_preserves_known_engine(tmp_path, monkeypatch):
+    from rt.services.archive_backfill import archive_backfill
+    from rt.pipeline.source_update import _write_state
+    directory = lesson(tmp_path, 'legacy-wav')
+    monkeypatch.setattr('rt.pipeline.setup.transcode_audio_for_storage', lambda *_: False)
+    source = add_source(directory, 'audio', 'old.wav', b'legacy wav')
+    _write_state(directory, {'sources': {source.id: {'motore': 'macparakeet', 'segments': [], 'duration': 12}}})
+    def convert(_path, target):
+        Path(target).write_bytes(b'optimized m4a')
+        return True
+    monkeypatch.setattr('rt.pipeline.setup.transcode_audio_for_storage', convert)
+    archive_backfill([directory])
+    entry = archive.find(source.impronta)
+    assert entry['estensione'] == '.m4a'
+    assert archive.cached_transcript(source.impronta, 'macparakeet')['duration'] == 12
+    assert not list(Path(archive.archive_dir()).rglob('originale.wav'))
+
+
+def test_archive_keeps_only_m4a_for_compressed_audio(tmp_path, monkeypatch):
+    directory = lesson(tmp_path, 'compressed')
+    def convert(_path, target):
+        Path(target).write_bytes(b'optimized compressed audio')
+        return True
+    monkeypatch.setattr('rt.pipeline.setup.transcode_audio_for_storage', convert)
+    first = add_source(directory, 'audio', 'recording.mp3', b'original mp3')
+    entry = archive.find(first.impronta)
+    assert entry['estensione'] == '.m4a'
+    assert Path(archive.original_path(first.impronta)).suffix == '.m4a'
+    assert not list(Path(archive.archive_dir()).rglob('originale.mp3'))
+    assert (Path(directory) / first.file).read_bytes() == b'original mp3'
