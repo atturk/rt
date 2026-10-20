@@ -10,4 +10,6 @@ Si parte da `claude/rt-4.3.2-beta` dopo l'uscita di v4.3.2b2.
 I file dei due piani non si sovrappongono. Unico punto comune possibile: lo schema OpenAPI (lo
 rigenero io all'unione).
 
+Correzioni dirette già fatte sul ramo `claude/rt-4.3.2b3` (da unire nella beta dopo v4.3.2b2): evidenziatore dello Studio che si spegne dopo l'ultimo colore.
+
 I task con i prompt per Codex e agy si scrivono quando la lista della beta è chiusa.
