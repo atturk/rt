@@ -7588,6 +7588,17 @@
             "title": "Answered At",
             "type": "string"
           },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
           "dont_know": {
             "default": false,
             "title": "Dont Know",
@@ -7832,6 +7843,17 @@
       },
       "RecallQuestion": {
         "properties": {
+          "asked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asked At"
+          },
           "comment": {
             "anyOf": [
               {
@@ -8005,6 +8027,17 @@
       },
       "RecallQuestionDetail": {
         "properties": {
+          "asked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asked At"
+          },
           "classifier_level": {
             "anyOf": [
               {

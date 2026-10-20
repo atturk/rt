@@ -497,6 +497,7 @@ class RecallQuestion(BaseModel):
     discard_reasons: List[str] = Field(default_factory=list)
     comment: Optional[str] = None
     status: str
+    asked_at: Optional[str] = None
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
 
@@ -588,6 +589,7 @@ class RecallUnitSelection(BaseModel):
 
 
 class RecallAnswerRecord(BaseModel):
+    attempt_id: Optional[str] = None
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     question_id: str
     answer_text: str

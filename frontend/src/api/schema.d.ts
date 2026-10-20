@@ -6585,6 +6585,8 @@ export interface components {
             answer_text: string;
             /** Answered At */
             answered_at: string;
+            /** Attempt Id */
+            attempt_id?: string | null;
             /**
              * Dont Know
              * @default false
@@ -6686,6 +6688,8 @@ export interface components {
         };
         /** RecallQuestion */
         RecallQuestion: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Comment */
             comment?: string | null;
             /** Correct Index */
@@ -6728,6 +6732,8 @@ export interface components {
         };
         /** RecallQuestionDetail */
         RecallQuestionDetail: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Classifier Level */
             classifier_level?: number | null;
             /** Comment */

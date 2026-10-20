@@ -353,15 +353,28 @@ class TestAnswerAndVote:
         q = next(q for q in bank.questions if q.id == "recall_000001")
         assert q.status == RecallQuestionStatus.ANSWERED
 
-    def test_record_answer_updates_existing(self, lesson_dir):
+    def test_record_answer_adds_new_attempt(self, lesson_dir):
         self._setup_question(lesson_dir)
         record_recall_answer(lesson_dir, "recall_000001", "Prima risposta.")
-        record_recall_answer(lesson_dir, "recall_000001", "Risposta aggiornata.", evaluation="buona")
+        record_recall_answer(lesson_dir, "recall_000001", "Seconda risposta.", evaluation="buona")
         bank = load_recall_bank(lesson_dir)
         answers = [a for a in bank.answers if a.question_id == "recall_000001"]
-        assert len(answers) == 1
-        assert answers[0].answer_text == "Risposta aggiornata."
-        assert answers[0].evaluation == "buona"
+        assert len(answers) == 2
+        assert answers[0].answer_text == "Prima risposta."
+        assert answers[1].answer_text == "Seconda risposta."
+        assert answers[1].evaluation == "buona"
+        assert answers[0].attempt_id != answers[1].attempt_id
+
+    def test_record_vote_on_last_attempt(self, lesson_dir):
+        self._setup_question(lesson_dir)
+        record_recall_answer(lesson_dir, "recall_000001", "Prima.")
+        record_recall_answer(lesson_dir, "recall_000001", "Seconda.")
+        record_recall_vote(lesson_dir, "recall_000001", "up")
+        bank = load_recall_bank(lesson_dir)
+        answers = [a for a in bank.answers if a.question_id == "recall_000001"]
+        assert len(answers) == 2
+        assert answers[0].vote is None
+        assert answers[1].vote == "up"
 
     def test_record_vote_on_existing_answer(self, lesson_dir):
         self._setup_question(lesson_dir)
@@ -806,7 +819,7 @@ def test_quiz_outcome_uses_choice_and_updates_the_last_answer(lesson_dir):
     assert question_list(lesson_dir)['questions'][0]['outcome'] == 'corretta'
     assert answer_dont_know(lesson_dir, q.id)['question']['outcome'] == 'sbagliata'
     assert recall_history(lesson_dir)['answers'][0]['outcome'] == 'sbagliata'
-    assert len(load_recall_bank(lesson_dir).answers) == 1
+    assert len(load_recall_bank(lesson_dir).answers) == 3
 
 
 def test_outcome_contract_rejects_unknown_values_and_accepts_old_answers():

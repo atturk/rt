@@ -103,6 +103,7 @@ const recallArea: Area = {
     { path: 'recall/selezione/:ids', Component: page(recall, (m) => m.LightweightSession), handle: bare },
     { path: 'lezioni/:lessonId/recall', Component: page(recall, (m) => m.LightweightSession), handle: bare },
     { path: 'lezioni/:lessonId/sessione', Component: page(recall, (m) => m.LightweightSession), handle: bare },
+    { path: 'lezioni/:lessonId/risposte', Component: page(recall, (m) => m.RecallAnswersPage), handle: bare },
     { path: 'lezioni/:lessonId/recall/domande', element: <RedirectLessonPanel panel="domande" /> },
   ],
 }
