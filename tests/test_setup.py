@@ -35,7 +35,10 @@ def test_rt_setup_clean_initialization(tmp_path):
         "-o", dest_dir,
         "--skip-transcribe"
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    # Il sottoprocesso non eredita il DEFAULT_DATA_DIR sostituito dalla fixture:
+    # usa un archivio temporaneo anche nella CLI, senza scrivere in ~/.rt.
+    env = dict(os.environ, RT_DATA_DIR=os.path.join(dest_dir, 'data'))
+    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     assert res.returncode == 0, f"'rt setup' fallito: {res.stderr}"
     
     folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta innata e complemento"

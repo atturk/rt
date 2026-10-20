@@ -114,3 +114,45 @@ def test_removing_unused_source_never_requires_update(tmp_path):
     assert not sources_pending(lesson)
     assert selection(lesson)['fonti_tolte_usate'] == []
     assert not selection(lesson)['solo_ricostruzione']
+
+
+def test_legacy_used_integra_requires_rebuild_without_saved_uses(tmp_path):
+    from rt.pipeline.source_update import _read_state, _write_state
+    from rt.core.sources import update_source
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    source = add_source(lesson, 'appunti', 'old.txt', b'Fonte usata come contesto', uso='integra')
+    state = _read_state(lesson)
+    state['used'] = [s.id for s in load_sources(lesson)]
+    _write_state(lesson, state)
+    assert selection(lesson)['solo_ricostruzione']
+    update_source(lesson, source.id, uso='contesto')
+    assert not selection(lesson)['solo_ricostruzione']
+
+
+def test_prepare_records_uses_without_materials(tmp_path):
+    from rt.pipeline.source_update import prepare_source_update, _read_state
+    from rt.core.sources import update_source
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    source = add_source(lesson, 'appunti', 'extra.txt', b'Argomento aggiuntivo', uso='integra')
+    prepare_source_update(lesson)
+    assert _read_state(lesson)['usi_usati'] == {'src_000001': None, source.id: 'integra'}
+    update_source(lesson, source.id, uso='contesto')
+    assert selection(lesson)['solo_ricostruzione']
+
+
+def test_change_to_integra_preserves_legacy_used_selection(tmp_path):
+    from rt.core.sources import update_source
+    from rt.pipeline.source_update import _read_state, _write_state
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    source = add_source(lesson, 'appunti', 'old.txt', b'Appunti gia usati')
+    state = _read_state(lesson)
+    state['used'] = [s.id for s in load_sources(lesson)]
+    _write_state(lesson, state)
+    assert 'ordine_usato' not in state and 'usi_usati' not in state
+    update_source(lesson, source.id, uso='integra')
+    assert selection(lesson)['solo_ricostruzione']
+    update_source(lesson, source.id, uso='contesto')
+    assert not selection(lesson)['solo_ricostruzione']

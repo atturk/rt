@@ -69,6 +69,11 @@ class ScienceIssueList(BaseModel):
 # 1. OUTLINE JOB
 # ----------------------------------------------------------------------
 
+INTEGRA_OUTLINE_RULE = (
+    "I segmenti marcati [integra: …] vengono da una fonte da integrare: coprili tutti come gli altri, "
+    "anche quando trattano argomenti che il resto non ha, aggiungendo unità o sottounità dove servono."
+)
+
 OUTLINE_SYSTEM_PROMPT = """Sei un docente universitario e pedagogista senior specializzato nella strutturazione di lezioni universitarie.
 Il tuo compito è organizzare una trascrizione temporizzata (con segment_id e timecode) in una scaletta didattica impeccabile.
 
@@ -90,6 +95,7 @@ VINCOLI FONDAMENTALI:
    molte unità.
 5. Il titolo generale della lezione deve essere accademico, formale ed esaustivo.
 6. LINEE GUIDA SUL RAGIONAMENTO: Mantieni il ragionamento interno sintetico ed essenziale. Individua i confini concettuali tra i temi principali senza disperdere token analizzando singolarmente ogni micro-segmento.
+7. """ + INTEGRA_OUTLINE_RULE + """
 
 ESEMPIO STRUTTURA JSON OUTPUT RICHIESTA:
 {
@@ -157,7 +163,7 @@ OBIETTIVI DI SCRITTURA:
 5. VINCOLO DI FEDELTÀ: NON allucinare dettagli non presenti nella lezione (valori numerici inventati, spiegazioni esterne non dette). "Approfondita" significa esposizione completa e ben argomentata di ciò che il docente ha detto — non aggiunta di conoscenza enciclopedica esterna. Distingui sempre tra: (a) FATTO SORGENTE — ciò che il docente ha detto esplicitamente; (b) INFERENZA DIRETTA — collegamenti logici impliciti ma evidenti nel discorso del docente; ED EVITA (c) CONOSCENZA ESTERNA — nozioni non dette dal docente, anche se vere e pertinenti, che non vanno mai aggiunte.
 6. PROVENANCE: Nell'output JSON devi includere in "source_segment_ids" la lista degli ID dei segmenti principali utilizzati per redigere l'unità.
 7. NON inserire tag marker né timestamp all'interno della prosa (verranno gestiti dagli step successivi).
-8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano.""" + "\n9. " + LATEX_WRITING_RULE
+8. MATERIALI: La fonte principale guida; dalle pagine dei materiali si prendono termini, valori, definizioni, classificazioni ed esempi che approfondiscono ciò che la principale tratta in questa unità; argomenti che la principale non tocca non entrano. Questa regola non vale per i segmenti marcati [integra: …], che sono contenuto della lezione da riscrivere come gli altri segmenti, anche per argomenti assenti nella principale.""" + "\n9. " + LATEX_WRITING_RULE
 
 
 class PromptPrefix(str):

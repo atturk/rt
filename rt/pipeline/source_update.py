@@ -95,14 +95,15 @@ def sources_pending(lesson_dir):
 
 
 def segment_source_ids(sources, state, primary):
-    """Fonti che diventano segmenti della scaletta. Come nella b1 audio e appunti si
-    concatenano; i materiali restano contesto. Solo una principale non audio scelta
-    (appunti) o un materiale principale costruisce da sola la scaletta."""
+    """La principale guida la scaletta; le fonti Integra vi partecipano sempre."""
+    sources = [s for s in sources if not s.rimossa_il]
     primary_source = next((s for s in sources if s.id == primary), None)
     if primary_source is not None and (primary_source.tipo == "materiale" or (
             primary_source.tipo != "audio" and state.get("primary_explicit"))):
-        return {primary}
-    return {s.id for s in sources if s.tipo != "materiale"} or {primary}
+        selected = {primary}
+    else:
+        selected = {s.id for s in sources if s.tipo != "materiale"} or {primary}
+    return selected | {s.id for s in sources if s.uso == "integra"}
 
 
 def reingest_availability(lesson_dir, sources=None):
@@ -146,6 +147,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
     in_segments = segment_source_ids(sources, state, primary)
     offset = 0.0
     ordered = []
+    source_offsets = {}
     # Un solo hash per fonte, condiviso con material_pages tramite checked=True.
     for source in sources:
         if ctx:
@@ -222,15 +224,7 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                         cache[source.id]['motore'] = transcript_engine(mock)
                     # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
                     _write_state(lesson_dir, state)
-                if source.id not in in_segments:
-                    offset += cache[source.id]["duration"]
-                    continue
-                for item in cache[source.id]["segments"]:
-                    segment = Segment.model_validate(item)
-                    start, end = segment.start_seconds + offset, segment.end_seconds + offset
-                    ordered.append(segment.model_copy(update={"index": len(ordered) + 1,
-                                   "start_seconds": start, "end_seconds": end,
-                                   "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end)}))
+                source_offsets[source.id] = offset
                 offset += cache[source.id]["duration"]
         except BaseException:
             material_ctx.cancel_token.cancel()
@@ -239,6 +233,20 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
             raise
         finally:
             unsubscribe()
+    # Le fonti Integra aggiuntive seguono i segmenti ordinari. Gli offset restano
+    # quelli dell'audio originale: pagine e appunti non consumano tempo.
+    segment_sources = sorted((s for s in sources if s.id in in_segments),
+                             key=lambda s: s.uso == "integra" and s.id != primary)
+    for source in segment_sources:
+        for item in cache[source.id]["segments"]:
+            segment = Segment.model_validate(item)
+            start = segment.start_seconds + source_offsets[source.id]
+            end = segment.end_seconds + source_offsets[source.id]
+            ordered.append(segment.model_copy(update={"index": len(ordered) + 1,
+                           "start_seconds": start, "end_seconds": end,
+                           "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end),
+                           "integra": source.uso == "integra",
+                           "fonte": os.path.basename(source.file) if source.uso == "integra" else None}))
     info_path = lesson_path(lesson_dir, "info.yaml")
     old_audio = ""
     if fs.isfile(info_path):
@@ -277,9 +285,8 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                 fs.remove(os.path.join(lesson_dir, candidate))
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
-    if any(s.tipo == "materiale" for s in sources):
-        from rt.core.source_selection import record_used_selection
-        record_used_selection(lesson_dir)
+    from rt.core.source_selection import record_used_selection
+    record_used_selection(lesson_dir)
     timing['total_seconds'] = time.monotonic() - started
     summary = (f"Preparazione finita in {_elapsed(timing['total_seconds'])}: "
                f"trascrizione {_elapsed(timing['transcription_seconds'])}, "
@@ -351,7 +358,7 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None, reinge
             raise ValueError(available["reingest_reason"])
     from rt.core.source_selection import selection
     if mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
-        raise ValueError("Ordine o principale cambiati: usa Ricostruisci")
+        raise ValueError("Ordine, principale o uso Integra cambiati: usa Ricostruisci")
     old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
     load_sources(lesson_dir)
     if mode == "extend" and old_outline:

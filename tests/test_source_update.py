@@ -60,6 +60,18 @@ def test_notes_use_paragraphs_and_do_not_shift_audio(tmp_path):
     assert [s.index for s in load_segments_json(str(tmp_path / "segments.json")).segments] == [1, 2, 3]
 
 
+def test_integra_before_audio_is_appended_without_changing_audio_time(tmp_path):
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    first = add_source(lesson, 'appunti', 'first.txt', b'Prima integrazione', uso='integra', ordine=1)
+    second = add_source(lesson, 'appunti', 'second.txt', b'Seconda integrazione', uso='integra')
+    result = prepare_source_update(lesson)['segments']
+    assert [s.source_file for s in result] == ['src_000001', first.id, second.id]
+    assert result[0].start_seconds == 0 and result[0].end_seconds == 1
+    assert all(s.integra for s in result[1:])
+    assert load_segments_json(str(tmp_path / 'segments.json')).audio_duration_seconds == 2
+
+
 def test_force_prepare_after_undo_preserves_legacy_duration_and_pending_sources(tmp_path, monkeypatch):
     from rt.pipeline.prepare import run_prepare
     from rt.core.update_history import undo_update

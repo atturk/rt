@@ -281,6 +281,12 @@ def validate_and_refine_segments(segments: List[Segment]) -> List[Segment]:
     return segments
 
 
+def segment_content(segment: Segment) -> str:
+    """Il marcatore distingue il contenuto da integrare dal semplice contesto."""
+    prefix = f"[integra: {segment.fonte}] " if segment.integra else ""
+    return prefix + segment.text_raw
+
+
 def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Optional[str] = None,
                        audio_duration_seconds: Optional[float] = None) -> None:
     """Salva i segmenti strutturati in segments.json in modo atomico."""

@@ -1,11 +1,11 @@
 """Scaletta estesa: la struttura precedente è un vincolo, non un suggerimento."""
 from rt.core.models import OutlineUnit
 from rt.core.lesson_paths import lesson_path
-from rt.core.segments import load_segments_json
+from rt.core.segments import load_segments_json, segment_content
 from rt.pipeline.outline import load_outline, save_outline, _generate_validated_outline
 from rt.pipeline.validator import validate_outline, ValidationError
 from rt.llm.client import LLMClient
-from rt.llm.prompts import OUTLINE_SYSTEM_PROMPT
+from rt.llm.prompts import OUTLINE_SYSTEM_PROMPT, INTEGRA_OUTLINE_RULE
 from rt.services.prompt_settings import effective_system
 
 
@@ -85,9 +85,10 @@ def extend_outline(lesson_dir, previous_segments, *, mock=False, ctx=None):
         "Estendi la scaletta fissa: conserva ID, titoli, ordine, macrosezioni e appartenenza dei segmenti esistenti. "
         "Puoi aggiungere nuove unità o allungare le confinanti solo con segmenti nuovi. "
         "Copri tutti i segmenti esattamente una volta. Non spostare alcuna unità esistente.\n"
+        + INTEGRA_OUTLINE_RULE + "\n"
         "SCALETTA FISSA:\n" + previous.model_dump_json() + "\n"
         "SEGMENTI NELL'ORDINE ATTUALE (testo solo dei nuovi):\n" + "\n".join(
-            f"[{s.id}] " + (s.text_raw if s.id not in old_ids else "(esistente, fisso)") for s in current.segments)
+            f"[{s.id}] " + (segment_content(s) if s.id not in old_ids else "(esistente, fisso)") for s in current.segments)
     )
     validator = lambda candidate: validate_extension(candidate, previous, previous_segments, current)
     if mock:
