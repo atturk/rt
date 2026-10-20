@@ -61,6 +61,8 @@ describe('evidenziatore dello Studio', () => {
   it('un clic sull’evidenziatore attivo cambia colore a giro, e il colore resta', () => {
     renderStudy()
     const pen = screen.getByTestId('highlight-pen')
+    expect(pen).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(pen)
     expect(pen).toHaveAttribute('aria-pressed', 'true')
     expect(pen).toHaveAttribute('data-color', '0')
     for (const expected of ['1', '2', '3', '4', '0', '1']) {
@@ -279,6 +281,9 @@ it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
 
 it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi', () => {
   renderStudy()
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.keyDown(window, { key: 'e' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
   fireEvent.keyDown(window, { key: 'e' })
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
   fireEvent.keyDown(window, { key: 'g' })
@@ -293,6 +298,26 @@ it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi',
   fireEvent.keyDown(window, { key: 'E', shiftKey: true })
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('data-color', '1')
+})
+
+it('con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano, con altri dialoghi no', () => {
+  renderStudy()
+  const popup = document.createElement('div')
+  popup.setAttribute('role', 'dialog')
+  popup.dataset.testid = 'study-note-popup'
+  popup.append(document.createElement('button'))
+  document.body.append(popup)
+  fireEvent.keyDown(window, { key: 'g' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.keyDown(popup.firstChild!, { key: 'e' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
+  popup.remove()
+  const other = document.createElement('div')
+  other.setAttribute('role', 'dialog')
+  document.body.append(other)
+  fireEvent.keyDown(window, { key: 'g' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'false')
+  other.remove()
 })
 
 it('Z entra in zen, resta al cambio di unità; Esc chiude prima le impostazioni', () => {
@@ -336,6 +361,7 @@ it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {
 it('il triplo clic non seleziona il paragrafo', async () => {
   renderStudy()
   await waitFor(() => expect(api.list).toHaveBeenCalled())
+  fireEvent.click(screen.getByTestId('highlight-pen'))
   expect(fireEvent.mouseDown(screen.getByTestId('study-text'), { detail: 3 })).toBe(false)
   expect(api.add).not.toHaveBeenCalled()
 })

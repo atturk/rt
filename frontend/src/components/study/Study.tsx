@@ -220,7 +220,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const titleButtonRef = useRef<HTMLButtonElement>(null)
   const [highlighterPrefs, setHighlighterPrefs] = useHighlighterPrefs()
-  const [hlMode, setHlMode] = useState<HighlightMode>('evidenzia')
+  const [hlMode, setHlMode] = useState<HighlightMode>(null)
   const [textRoot, setTextRoot] = useState<HTMLElement | null>(null)
   const [speedReading, setSpeedReading] = useState(false)
   const [readerMounted, setReaderMounted] = useState(false)
@@ -427,12 +427,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const key = e.key.toLowerCase()
       const target = e.target as HTMLElement | null
-      if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      // Il riquadro di Chiedi/Verifica non è modale: fuori dai suoi campi le scorciatoie restano attive.
+      if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]:not([data-testid="study-note-popup"])')) return
       if (zenSettings) {
         if (e.key === 'Escape') { e.preventDefault(); setZenSettings(false) }
         return
       }
-      if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return
+      if (indexOpen || detailsOpen || generateOpen || document.querySelector('dialog[open], [role="dialog"]:not([data-testid="study-note-popup"]), [role="menu"]')) return
 
       const isZoomIn = e.key === '+' || (!e.shiftKey && e.key === '=') || e.code === 'NumpadAdd'
       const isZoomOut = !e.shiftKey && (e.key === '-' || e.code === 'NumpadSubtract')

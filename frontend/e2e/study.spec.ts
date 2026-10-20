@@ -272,6 +272,7 @@ test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomm
   await page.goto(`/studio/lezione/${l.id}`)
   const text = page.getByTestId('study-text')
   await expect(text).toHaveText(/\S.{40,}/)
+  await page.getByTestId('highlight-pen').click()
   // Selezione delle prime parole del primo paragrafo, come col mouse.
   const selected = await text.evaluate((root) => {
     const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
@@ -571,6 +572,7 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
     await page.goto(`/studio/lezione/${l.id}`)
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
       const range = document.createRange()
@@ -771,6 +773,7 @@ test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricame
     await page.getByTestId('study-dots').locator('button').first().click()
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
       const range = document.createRange()
