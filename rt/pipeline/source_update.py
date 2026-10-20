@@ -47,6 +47,12 @@ def _transcribe(path, mock=False, ctx=None):
     from rt.core.config import load_config, load_env_file
     from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
                                    generate_deterministic_mock_asr, _run_transcribe_with_spinner)
+    from rt.core.archive import cached_transcript, store_transcript, transcript_engine
+    from rt.core.idempotency import compute_file_sha256
+    sha, engine = compute_file_sha256(path), transcript_engine(mock)
+    cached = cached_transcript(sha, engine)
+    if cached:
+        return [Segment.model_validate(item) for item in cached['segments']]
     stt = load_config().transcription
     with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
         if mock:
@@ -73,7 +79,10 @@ def _transcribe(path, mock=False, ctx=None):
             if result.returncode or not candidates:
                 raise ValueError("Trascrizione della nuova fonte fallita")
             raw_path = candidates[0]
-        return parse_segments_from_json(raw_path)
+        segments = parse_segments_from_json(raw_path)
+        store_transcript(sha, engine, {'segments': [s.model_dump() for s in segments],
+                                     'duration': max((s.end_seconds for s in segments), default=0)})
+        return segments
 
 
 def sources_pending(lesson_dir):
@@ -208,6 +217,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                         assigned.append(segment.model_copy(update={"id": f"seg_{state['next_segment']:06d}", "source_file": source.id}))
                         state["next_segment"] += 1
                     cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
+                    if source.tipo == 'audio':
+                        from rt.core.archive import transcript_engine
+                        cache[source.id]['motore'] = transcript_engine(mock)
                     # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
                     _write_state(lesson_dir, state)
                 if source.id not in in_segments:

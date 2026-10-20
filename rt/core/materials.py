@@ -159,13 +159,28 @@ def _extract(real):
             yield '', [_png_image(stream.read())], True
 
 
+def _extract_text(real):
+    suffix = os.path.splitext(real)[1].lower()
+    if suffix == '.pdf':
+        import fitz
+        with fitz.open(real) as document:
+            for page in document:
+                yield page.get_text().strip(), [], False
+    elif suffix == '.pptx':
+        from pptx import Presentation
+        for slide in Presentation(real).slides:
+            yield _slide_content(slide)[0], [], False
+    else:
+        yield '', [], False
+
+
 def cached_pages(lesson_dir, source):
-    path = os.path.join(lesson_dir, 'materials', source.impronta, 'pages.json')
-    if not fs.isfile(path):
+    if not source.impronta:
         return None
-    with fs.open(path, encoding='utf-8') as stream:
-        data = json.load(stream)
-    return data['pages'] if data.get('impronta') == source.impronta else None
+    from rt.core.archive import import_material_cache, entry_dir, read_json, pages_for_use
+    import_material_cache(lesson_dir, source)
+    data = read_json(os.path.join(entry_dir(source.impronta), 'pages.json'))
+    return pages_for_use(source.impronta, getattr(source, 'pagine', None)) if data else None
 
 
 def _elapsed(seconds):
@@ -176,13 +191,22 @@ def _elapsed(seconds):
                                        f'{seconds}s' if seconds or not (hours or minutes) else '') if value)
 
 
-def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, checked=False, timing=None):
+def material_pages(lesson_dir, source, **kwargs):
+    from rt.core.archive import archive_lock
+    with archive_lock(source.impronta + '-extract'):
+        return _material_pages(lesson_dir, source, **kwargs)
+
+
+def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, checked=False, timing=None):
     """Estrae su disco, poi descrive poche pagine alla volta; ogni risultato è riprendibile."""
     from rt.core.config import load_config
     from rt.core.material_page_filter import cleaned_page_texts, few_words
     from rt.services.context import RunCancelled
     started = time.monotonic()
     cfg = load_config()
+    from rt.core.archive import register_file, file_type, entry_dir, pages_for_use, save_meta
+    register_file(os.path.join(lesson_dir, source.file), nome=os.path.basename(source.file),
+                  tipo=file_type(source.file), sha=source.impronta)
     name = os.path.basename(source.file)
     path = os.path.join(lesson_dir, source.file)
     if not checked and compute_file_sha256(path) != source.impronta:
@@ -205,25 +229,29 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, c
                          f"(Vision {calls} chiamate, media {mean:.1f} s)")
         return pages
 
+    mode = getattr(source, 'estrai', None) or 'immagini'
+    from rt.core.archive import load_meta
     cached = None if refresh else cached_pages(lesson_dir, source)
-    if cached is not None and all('has_figures' in page for page in cached):
+    previous_mode = (load_meta(source.impronta) or {}).get('estrai', 'testo')
+    upgrading = mode == 'immagini' and previous_mode == 'testo'
+    if cached is not None and not upgrading and all('has_figures' in page for page in cached):
         stats['cached_pages'] = len(cached)
         progress(len(cached), len(cached))
         return finish(cached)
-    folder = os.path.join(lesson_dir, 'materials', source.impronta)
+    folder = entry_dir(source.impronta)
     with lesson_lock(lesson_dir):
         fs.makedirs(folder, exist_ok=True)
     extracted = []
     # I PNG si liberano a ogni iterazione, senza accumulare l'intero PDF in RAM.
     with fs.materialize(path) as real:
-        for number, (text, images, has_figures) in enumerate(_extract(real), 1):
+        for number, (text, images, has_figures) in enumerate(_extract_text(real) if mode == 'testo' else _extract(real), 1):
             if ctx:
                 ctx.check_cancelled()
             filenames = []
             with lesson_lock(lesson_dir):
                 for index, data in enumerate(images, 1):
-                    relative = os.path.join('materials', source.impronta, f'page-{number}-{index}.png')
-                    with fs.open(os.path.join(lesson_dir, relative), 'wb') as stream:
+                    relative = f'page-{number}-{index}.png'
+                    with fs.open(os.path.join(folder, relative), 'wb') as stream:
                         stream.write(data)
                     filenames.append(relative)
             extracted.append((text, filenames, has_figures))
@@ -248,6 +276,10 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, c
             with fs.open(entry_path, encoding='utf-8') as stream:
                 saved = json.load(stream)
             if 'has_figures' in saved:
+                if upgrading:
+                    saved['immagini'] = filenames
+                    saved['has_figures'] = has_figures
+                    save(saved)
                 pages[number - 1] = saved
                 stats['cached_pages'] += 1
                 completed += 1
@@ -279,7 +311,7 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, c
                     raise RunCancelled('Lettura dei materiali interrotta')
                 if ctx:
                     ctx.check_cancelled()
-                with fs.open(os.path.join(lesson_dir, relative), 'rb') as stream:
+                with fs.open(os.path.join(folder, relative), 'rb') as stream:
                     data = stream.read()
                 before = time.monotonic()
                 texts.append(_describe(data, lesson_dir, mock))
@@ -332,7 +364,8 @@ def material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, c
         with fs.open(cache_path + '.tmp', 'w', encoding='utf-8') as stream:
             json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
         fs.replace(cache_path + '.tmp', cache_path)
-    return finish(pages)
+    save_meta(source.impronta, {'pagine_totali': len(pages), 'estrai': mode if upgrading or previous_mode != 'immagini' else previous_mode})
+    return finish(pages_for_use(source.impronta, getattr(source, 'pagine', None)))
 
 
 def material_context_parts(lesson_dir, *, mock=False, ctx=None, include_materials: bool = True):

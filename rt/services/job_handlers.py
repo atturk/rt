@@ -204,3 +204,12 @@ def documents_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 
 register_handler("documents", documents_job)
+
+
+def archive_backfill_job(job, ctx):
+    from rt.services.archive_backfill import archive_backfill
+    archive_backfill()
+    return JobOutcome(state=JobState.SUCCEEDED)
+
+
+register_handler('archive_backfill', archive_backfill_job)

@@ -1,3 +1,4 @@
+from rt.core.archive import page_image_path
 """
 rt.pipeline.material_mapping
 Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
@@ -589,7 +590,7 @@ def assign_material_pages(
 
                 if target_unit_id and enabled and page.get("immagini"):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()
@@ -626,7 +627,7 @@ def assign_material_pages(
 
                 if enabled and page.get("immagini") and (assigned_units or assigned_macros):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()

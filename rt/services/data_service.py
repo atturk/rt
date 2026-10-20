@@ -30,7 +30,7 @@ from typing import Callable, List, Optional
 
 from rt.core import paths
 
-SUBDIRS = ("config", "media", "logs", "backups")
+SUBDIRS = ("config", "media", "logs", "backups", "archivio")
 
 
 class DataDirError(RuntimeError):

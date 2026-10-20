@@ -108,7 +108,17 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     else:
         with fs.open(path, "wb") as stream:
             stream.write(content)
-    if tipo == "audio":
+    from rt.core.archive import find, original_path, register_file, file_type
+    upload_sha = compute_file_sha256(path)
+    archived = find(upload_sha) if tipo == 'audio' else None
+    if archived and fs.isfile(original_path(archived['impronta'])):
+        relative = os.path.join('sources', sid, os.path.splitext(name)[0] + archived['estensione'])
+        cached_path = os.path.join(lesson_dir, relative)
+        if cached_path != path:
+            fs.remove(path)
+        fs.copyfile(original_path(archived['impronta']), cached_path)
+        path = cached_path
+    if tipo == "audio" and not archived:
         from rt.pipeline.setup import transcode_audio_for_storage, EFFICIENT_AUDIO_EXTENSIONS
         base_ext = os.path.splitext(name)[1].lower()
         if base_ext not in EFFICIENT_AUDIO_EXTENSIONS:
@@ -128,6 +138,8 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                     impronta=compute_file_sha256(path),
                     aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
                     parti=parsed_parts)
+    if tipo != 'appunti':
+        register_file(path, nome=name, tipo=file_type(path, tipo), sha=source.impronta, alias=[upload_sha])
     sources.insert(position - 1, source)
     for index, item in enumerate(sources, 1):
         item.ordine = index

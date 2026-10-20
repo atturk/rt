@@ -67,6 +67,17 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
         ensure_fts_index()
     except Exception:
         pass
+    from contextlib import asynccontextmanager
+    @asynccontextmanager
+    async def lifespan(_app):
+        try:
+            from rt.services.archive_backfill import start_backfill
+            start_backfill()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Avvio popolamento archivio')
+        yield
+    app.router.lifespan_context = lifespan
     if serve_spa:
         from rt.api.spa import find_spa_dir, install_spa
         install_spa(app, spa_dir or find_spa_dir())

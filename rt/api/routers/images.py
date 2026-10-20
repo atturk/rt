@@ -1,3 +1,4 @@
+from rt.core.archive import page_image_path, import_material_cache
 """Immagini integrate da 'rt add-images' (RT4-F6): elenco con le descrizioni e file serviti
 per l'anteprima nel documento. Il caricamento (POST /lessons/{id}/images) è un job, in jobs.py."""
 import mimetypes
@@ -266,7 +267,12 @@ _IMPRONTA_RE = re.compile(r"^[a-fA-F0-9]{16,64}$")
 def get_material_image(lesson_id: int, impronta: str, name: str, lesson_dir: LessonDir, _actor: Actor):
     if not _IMPRONTA_RE.match(impronta) or not _MATERIAL_IMG_NAME.match(name):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
-    path = os.path.join(lesson_dir, "materials", impronta, name)
+    from rt.core.sources import load_sources
+    source = next((s for s in load_sources(lesson_dir) if s.impronta == impronta), None)
+    if source is None:
+        raise ApiError(404, 'image_not_found', 'Immagine inesistente.')
+    import_material_cache(lesson_dir, source)
+    path = page_image_path(impronta, name)
     if not fs.isfile(path):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}

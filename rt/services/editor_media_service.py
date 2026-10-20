@@ -1,3 +1,4 @@
+from rt.core.archive import page_image_path
 """Immagini inserite a mano: media della lezione, senza descrizione o collocazione LLM."""
 import io
 import os
@@ -110,9 +111,9 @@ def _copy_material_page(lesson_dir: str, source_id: str, page_number: int) -> tu
     page = next((p for p in cached_pages(lesson_dir, source) or [] if int(p.get('numero', 0)) == page_number), None)
     images = (page or {}).get('immagini') or []
     img_rel = images[0] if images else None
-    if not img_rel or not fs.isfile(os.path.join(lesson_dir, img_rel)):
+    if not img_rel or not fs.isfile(page_image_path(source.impronta, img_rel)):
         raise NotFound('page_not_found', f'Pagina {page_number} del materiale non trovata.')
-    with fs.open(os.path.join(lesson_dir, img_rel), 'rb') as f:
+    with fs.open(page_image_path(source.impronta, img_rel), 'rb') as f:
         content = f.read()
     image_hash = compute_image_hash(content)
     descriptions = load_image_descriptions(lesson_dir)
