@@ -60,6 +60,7 @@ function RedirectLesson() {
 const lessonsArea: Area = {
   routes: [
     { index: true, Component: page(lessons, (m) => m.DashboardPage), handle: bare },
+    { path: 'archivio', Component: page(() => import('@/components/archive/ArchivePage'), (m) => m.ArchivePage), handle: bare },
     { path: 'lezioni', element: <Navigate to="/" replace /> },
     { path: 'lezioni/nuova/:jobId', Component: page(lessons, (m) => m.NewLessonPage), handle: bare },
     { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage), handle: bare },

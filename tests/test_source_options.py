@@ -93,3 +93,13 @@ def test_source_options_api_and_lookup(api_client, rt_db, tmp_path, monkeypatch)
     assert looked_up.status_code == 200, looked_up.text
     assert looked_up.json()[alias]['impronta'] == source['impronta']
     assert looked_up.json()['f' * 64] is None
+
+
+def test_text_mode_hides_images_in_shared_full_cache(tmp_path):
+    directory = lesson(tmp_path, 'shared')
+    source = add_source(directory, 'materiale', 'document.pdf', pdf_bytes())
+    assert material_pages(directory, source)[0]['immagini']
+    source = source.model_copy(update={'estrai': 'testo'})
+    assert material_pages(directory, source)[0]['immagini'] == []
+    from rt.core.archive import pages_for_use
+    assert pages_for_use(source.impronta)[0]['immagini']

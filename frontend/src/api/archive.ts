@@ -31,3 +31,26 @@ export function compressPages(pages: number[]): string {
   return runs.join(', ')
 }
 export const defaultExtraction = (name: string): 'testo' | 'immagini' => /\.(docx|txt)$/i.test(name) ? 'testo' : 'immagini'
+
+export type ArchiveRow = {
+  impronta: string; nome: string; tipo: string; pagine_totali: number | null; durata_s: number | null
+  dimensione: number; materie: string[]; usi: number; da_continuare: string | null
+}
+export type ArchivePage = { numero: number; ignorata: boolean; lezione_id: number | null }
+export type ArchiveDetail = ArchiveRow & {
+  pagine: ArchivePage[]; lezioni: { id: number | null; titolo: string; data: string; pagine: number[] | null }[]
+  trascrizione_inizio: string
+}
+export const archiveFilesApi = {
+  list: (filters: { materia?: string; tipo?: string; q?: string }): Promise<ArchiveRow[]> =>
+    unwrap(api.GET('/api/v1/archive', { params: { query: filters } })),
+  detail: (sha: string): Promise<ArchiveDetail> => unwrap(api.GET('/api/v1/archive/{sha}', { params: { path: { sha } } })),
+  ignore: (sha: string, pagine: number[], ignorata: boolean) => unwrap(api.PUT('/api/v1/archive/{sha}/ignored', { params: { path: { sha } }, body: { pagine, ignorata } })),
+  deletePages: (sha: string, pagine: number[]) => unwrap(api.POST('/api/v1/archive/{sha}/pages/delete', { params: { path: { sha } }, body: { pagine } })),
+  crop: (sha: string, n: number, rect: [number, number, number, number], sostituisci: boolean) => unwrap(api.POST('/api/v1/archive/{sha}/pages/{n}/crop', { params: { path: { sha, n } }, body: { rect, sostituisci } })),
+  delete: (sha: string) => unwrap(api.DELETE('/api/v1/archive/{sha}', { params: { path: { sha } } })),
+  addToLesson: (sha: string, lesson_id: number, pagine: number[] | null, uso: NonNullable<SourceOptions['uso']>, estrai: 'testo' | 'immagini') =>
+    unwrap(api.POST('/api/v1/archive/{sha}/add-to-lesson', { params: { path: { sha } }, body: { lesson_id, pagine, uso, estrai } })),
+  addToMedia: (sha: string, lesson_id: number, pagine: number[]) =>
+    unwrap(api.POST('/api/v1/archive/{sha}/add-to-media', { params: { path: { sha } }, body: { lesson_id, pagine } })),
+}

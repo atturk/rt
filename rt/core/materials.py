@@ -230,7 +230,10 @@ def cached_pages(lesson_dir, source):
     from rt.core.archive import import_material_cache, entry_dir, read_json, pages_for_use
     import_material_cache(lesson_dir, source)
     data = read_json(os.path.join(entry_dir(source.impronta), 'pages.json'))
-    return pages_for_use(source.impronta, getattr(source, 'pagine', None)) if data else None
+    if not data:
+        return None
+    pages = pages_for_use(source.impronta, getattr(source, 'pagine', None))
+    return [dict(p, immagini=[]) for p in pages] if getattr(source, 'estrai', None) == 'testo' else pages
 
 
 def _elapsed(seconds):
@@ -277,7 +280,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         if ctx:
             ctx.progress('prepare', message=f"Lettura di {name}: finita in {_elapsed(stats['seconds'])} "
                          f"(Vision {calls} chiamate, media {mean:.1f} s)")
-        return pages
+        return [dict(p, immagini=[]) for p in pages] if mode == 'testo' else pages
 
     from rt.core.source_options import default_extraction
     mode = getattr(source, 'estrai', None) or default_extraction(source.file)

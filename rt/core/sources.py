@@ -101,7 +101,9 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
         from rt.core.materials import page_count
         if pagine is not None:
             if source_path is not None:
-                total = page_count(source_path)
+                from rt.core.archive import find
+                cached = find(compute_file_sha256(source_path))
+                total = (cached or {}).get('pagine_totali') or page_count(source_path)
             else:
                 import tempfile
                 with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1]) as tmp:

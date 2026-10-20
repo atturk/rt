@@ -79,7 +79,7 @@ def archive_backfill(directories=None):
 
 def start_backfill():
     """Accoda una sola migrazione; il worker usa gli stessi lock del comando diretto."""
-    from rt.api.jobs import queue
+    from rt.services.jobs import get_job_queue as queue
     if read_json(os.path.join(archive_dir(), 'indice.json'), {}).get('backfill_done'):
         return
     with archive_lock('enqueue'):
