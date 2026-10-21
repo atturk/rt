@@ -34,6 +34,48 @@ def list_lessons(
     return lesson_service.list_lessons(materia=materia, state=state, text=q)
 
 
+@router.post("/lessons/batch/pipeline", response_model=schemas.BatchPipelineResult, status_code=202,
+             summary="Accoda la pipeline per una selezione di lezioni")
+def batch_pipeline(body: schemas.BatchPipelineRequest, actor: Actor):
+    from rt.api.jobs import queue
+    from rt.api.routers.jobs import start_job
+    from rt.api.routers.lesson_sources import UpdateRequest, update_lesson
+    from rt.services.errors import ServiceError
+    from rt.services.jobs import ACTIVE_STATES, LessonHasActiveJob
+
+    queued, skipped = [], []
+    # Ripetere un id nella selezione non deve accodare due lavori.
+    for lesson_id in dict.fromkeys(body.lesson_ids):
+        reason = None
+        try:
+            lesson_dir = lesson_service.resolve_lesson_dir(lesson_id)
+            active = queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
+            if any(job.type != "documents" for job in active):
+                reason = "Lezione in lavorazione"
+            elif body.mode == "reingest":
+                accepted = update_lesson(lesson_id, UpdateRequest(mode="rebuild", reingest=True,
+                                                                  with_review=body.with_review), lesson_dir, actor)
+            else:
+                accepted = start_job(lesson_id, schemas.JobRequest(type="run_pipeline", force=body.mode == "force",
+                                                                   with_review=body.with_review), lesson_dir, actor)
+        except lesson_service.LessonNotFound:
+            reason = "Lezione non trovata"
+        except LessonHasActiveJob:
+            reason = "Lezione in lavorazione"
+        except (ApiError, ServiceError) as exc:
+            if exc.code in {"lesson_busy", "document_edit_busy"}:
+                reason = "Lezione in lavorazione"
+            elif exc.code in {"reingest_unavailable", "sources_empty"}:
+                reason = "Ripartenza da capo non disponibile"
+            else:
+                raise
+        if reason:
+            skipped.append({"lesson_id": lesson_id, "motivo": reason})
+        else:
+            queued.append({"lesson_id": lesson_id, "job_id": accepted["job_id"]})
+    return {"queued": queued, "skipped": skipped}
+
+
 @router.delete("/lessons/{lesson_id}", status_code=204, summary="Elimina una lezione e i suoi media")
 def delete_lesson(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.lesson_delete_service import delete_lesson as delete

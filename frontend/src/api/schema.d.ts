@@ -692,6 +692,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/batch/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accoda la pipeline per una selezione di lezioni */
+        post: operations["batch_pipeline_api_v1_lessons_batch_pipeline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/import-zip": {
         parameters: {
             query?: never;
@@ -3690,6 +3707,46 @@ export interface components {
             skipped_reasons?: {
                 [key: string]: string;
             };
+        };
+        /** BatchPipelineQueued */
+        BatchPipelineQueued: {
+            /** Job Id */
+            job_id: string;
+            /** Lesson Id */
+            lesson_id: number;
+        };
+        /** BatchPipelineRequest */
+        BatchPipelineRequest: {
+            /** Lesson Ids */
+            lesson_ids: number[];
+            /**
+             * Mode
+             * @default run
+             * @enum {string}
+             */
+            mode: "run" | "force" | "reingest";
+            /**
+             * With Review
+             * @default false
+             */
+            with_review: boolean;
+        };
+        /** BatchPipelineResult */
+        BatchPipelineResult: {
+            /** Queued */
+            queued: components["schemas"]["BatchPipelineQueued"][];
+            /** Skipped */
+            skipped: components["schemas"]["BatchPipelineSkipped"][];
+        };
+        /** BatchPipelineSkipped */
+        BatchPipelineSkipped: {
+            /** Lesson Id */
+            lesson_id: number;
+            /**
+             * Motivo
+             * @enum {string}
+             */
+            motivo: "Lezione in lavorazione" | "Ripartenza da capo non disponibile" | "Lezione non trovata";
         };
         /** Body_add_images_api_v1_lessons__lesson_id__images_post */
         Body_add_images_api_v1_lessons__lesson_id__images_post: {
@@ -11500,6 +11557,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    batch_pipeline_api_v1_lessons_batch_pipeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchPipelineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchPipelineResult"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

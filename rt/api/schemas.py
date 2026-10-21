@@ -886,3 +886,24 @@ from rt.services.calendar_models import (  # noqa: F401
     CalendarDayImportView,
 )
 
+
+
+class BatchPipelineRequest(BaseModel):
+    lesson_ids: List[int] = Field(min_length=1, max_length=200)
+    mode: Literal["run", "force", "reingest"] = "run"
+    with_review: bool = False
+
+
+class BatchPipelineQueued(BaseModel):
+    lesson_id: int
+    job_id: str
+
+
+class BatchPipelineSkipped(BaseModel):
+    lesson_id: int
+    motivo: Literal["Lezione in lavorazione", "Ripartenza da capo non disponibile", "Lezione non trovata"]
+
+
+class BatchPipelineResult(BaseModel):
+    queued: List[BatchPipelineQueued]
+    skipped: List[BatchPipelineSkipped]

@@ -741,6 +741,104 @@
         "title": "BatchOut",
         "type": "object"
       },
+      "BatchPipelineQueued": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "job_id"
+        ],
+        "title": "BatchPipelineQueued",
+        "type": "object"
+      },
+      "BatchPipelineRequest": {
+        "properties": {
+          "lesson_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Lesson Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "run",
+            "enum": [
+              "run",
+              "force",
+              "reingest"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "with_review": {
+            "default": false,
+            "title": "With Review",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lesson_ids"
+        ],
+        "title": "BatchPipelineRequest",
+        "type": "object"
+      },
+      "BatchPipelineResult": {
+        "properties": {
+          "queued": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPipelineQueued"
+            },
+            "title": "Queued",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPipelineSkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped"
+        ],
+        "title": "BatchPipelineResult",
+        "type": "object"
+      },
+      "BatchPipelineSkipped": {
+        "properties": {
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "motivo": {
+            "enum": [
+              "Lezione in lavorazione",
+              "Ripartenza da capo non disponibile",
+              "Lezione non trovata"
+            ],
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "motivo"
+        ],
+        "title": "BatchPipelineSkipped",
+        "type": "object"
+      },
       "Body_add_images_api_v1_lessons__lesson_id__images_post": {
         "properties": {
           "files": {
@@ -16375,6 +16473,92 @@
         "summary": "Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/batch/pipeline": {
+      "post": {
+        "operationId": "batch_pipeline_api_v1_lessons_batch_pipeline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchPipelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPipelineResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accoda la pipeline per una selezione di lezioni",
+        "tags": [
+          "lezioni"
         ]
       }
     },
