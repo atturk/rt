@@ -140,6 +140,8 @@ def test_decided_issues_of_gone_units_are_archived_without_changing_ledger(revie
     draft = load_draft(lesson)
     draft.units = [u for u in draft.units if u.unit_id != '2.1']
     save_draft(draft, lesson)
+    from tests.test_review_anchor_application import drop_unit_from_outline
+    drop_unit_from_outline(lesson, '2.1')
     calls.clear()
     review.run_review(lesson, force_mock=True)
     assert calls == []
