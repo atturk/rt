@@ -103,12 +103,17 @@ def find_capture_browser_executable(p) -> Optional[str]:
 
 
 def launch_capture_browser(p, **kwargs):
-    executable = find_capture_browser_executable(p)
-    if not executable:
+    # Senza executable_path Playwright usa chromium-headless-shell: niente icona nel Dock
+    # né notifiche di "Chrome for Testing" sul Mac.
+    override = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
+    if not override:
         try:
             return p.chromium.launch(headless=True, **kwargs)
-        except Exception as exc:
-            raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.") from exc
+        except Exception:
+            pass
+    executable = override or find_capture_browser_executable(p)
+    if not executable:
+        raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.")
     try:
         return p.chromium.launch(headless=True, executable_path=executable, **kwargs)
     except Exception as exc:

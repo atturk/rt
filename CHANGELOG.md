@@ -1,5 +1,26 @@
 # Novità di RT
 
+## 4.3.2 — 2026-10-21
+
+Raccoglie le beta 4.3.2b1, b2 e b3 (dettagli sotto).
+
+### Novità
+
+- **Archivio delle fonti**: PDF, audio e immagini già usati non si rielaborano più. Nuova pagina **Archivio** per ignorare, ritagliare o riusare le pagine in altre lezioni; **Aggiungi fonte** accetta anche Word e testo e sceglie cosa estrarre e come usarlo (Guida, Contesto, Integra).
+- **Esporta PDF**: la lezione in A4, con le immagini sotto il titolo due per riga e quelle nel testo dove le hai messe.
+- Calendario: vista annuale, **Vai alla settimana**, copia e incolla di settimane, esportazione e importazione dell'orario (`.rtcal`), docenti per materia.
+- Lezioni: vista fissabile con la puntina, elenco senza raggruppamenti e ordine **(Ri)create di recente**.
+- Studio e lettura: lettura veloce con scorciatoie, zoom dell'interfaccia e del testo, evidenziatore che si spegne dopo l'ultimo colore.
+- Domande: ogni risposta resta nello storico, con la pagina **Risposte**.
+- App: aggiornamenti in un popup con **Installa e riavvia**, notifiche a fine lavoro, apertura di audio e PDF dal Finder, registrazione vocale con permesso del microfono, firma ad-hoc e istruzioni nel DMG.
+- Copia con formattazione scelta in Impostazioni › Copia, job tutti con un nome leggibile, backup con avanzamento.
+
+### Correzioni
+
+- Verifiche: le issue di un'unità sparita dopo una rielaborazione si chiudono da sole.
+- Audio che si interrompeva al primo ascolto, formule nelle domande, risposte vocali senza parlato, import di archivi in anteprima e varie correzioni su Windows.
+- Il browser che prepara il PDF lavora nascosto: niente più "Chrome for Testing" nel Dock.
+
 ## 4.3.2b3 — 2026-10-21
 
 ### Novità
