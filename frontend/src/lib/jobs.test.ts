@@ -90,6 +90,8 @@ describe('avanzamento delle fasi a unità (RT4-FA1)', () => {
   })
   it('segnala le unità non riuscite e ricade sul messaggio senza unità', () => {
     expect(progressLabel({ phase: 'rewrite', current: 3, total: 9, unit_id: '1.3', failed: 2 }).detail).toBe('1.3 · 2 unità non riuscite')
+    expect(progressLabel({ phase: 'archive', current: 4, total: 50, message: 'Lezione 4' })).toEqual({ phase: 'Archivio delle fonti', count: '4/50', detail: 'Lezione 4' })
+    expect(jobTypeLabel({ type: 'archive_backfill', payload: {} })).toBe('Archivio delle fonti')
     expect(progressLabel({ phase: 'setup', message: 'Trascrizione' })).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione' })
     expect(progressTitle(null)).toBeNull()
   })

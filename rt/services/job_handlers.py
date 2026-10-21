@@ -208,7 +208,9 @@ register_handler("documents", documents_job)
 
 def archive_backfill_job(job, ctx):
     from rt.services.archive_backfill import archive_backfill
-    archive_backfill()
+    # Copia nell'archivio i file di ogni lezione (e converte i vecchi WAV): l'avanzamento è per lezione.
+    archive_backfill(progress=lambda current, total, name: ctx.progress(
+        'archive', current, total, name))
     return JobOutcome(state=JobState.SUCCEEDED)
 
 

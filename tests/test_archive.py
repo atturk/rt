@@ -87,7 +87,9 @@ def test_backfill_once(tmp_path, monkeypatch):
         images.mkdir(parents=True)
         (images / 'photo.png').write_bytes(png_bytes())
     monkeypatch.setattr('rt.core.materials._describe', Mock(side_effect=AssertionError('modello')))
-    archive_backfill(directories)
+    steps = []
+    archive_backfill(directories, progress=lambda current, total, name: steps.append((current, total)))
+    assert steps == [(0, 2), (1, 2)]
     assert archive.read_json(str(Path(archive.archive_dir()) / 'indice.json'))['backfill_done']
     assert len([p for p in Path(archive.archive_dir()).iterdir() if p.is_dir()]) == 3
     monkeypatch.setattr('rt.services.archive_backfill.load_sources', Mock(side_effect=AssertionError), raising=False)

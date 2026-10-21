@@ -5,6 +5,7 @@ export type Job = Schemas['Job']
 export type JobEvent = Schemas['JobEvent']
 
 export const JOB_TYPE_LABELS: Record<string, string> = {
+  archive_backfill: 'Archivio delle fonti',
   documents: 'Aggiornamento documento',
   review_part: 'Verifica di una selezione',
   run_pipeline: 'Pipeline completa',
@@ -182,7 +183,7 @@ export function collapseTranscription<T extends Pick<JobEvent, 'type' | 'payload
 export function progressLabel(progress: Job['progress']): { phase: string | null; count: string | null; detail: string | null } {
   if (!progress) return { phase: null, count: null, detail: null }
   const p = progress as Record<string, unknown>
-  const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? (p.phase === 'setup' ? 'Trascrizione e setup' : p.phase)) : null
+  const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? (p.phase === 'setup' ? 'Trascrizione e setup' : p.phase === 'archive' ? 'Archivio delle fonti' : p.phase)) : null
   const current = Number(p.current)
   const total = Number(p.total)
   // La trascrizione (fase setup) avanza in percentuale: il dettaglio la dice già, niente "42/100".
