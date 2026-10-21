@@ -37,8 +37,16 @@ it('la preferenza sul server controlla lo stato di studio nel link ZIP', async (
   await waitFor(() => expect(zip).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=all'))
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'export.study' } }, body: false })
   expect(screen.getByRole('menuitem', { name: 'Markdown' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=markdown')
-  expect(screen.getByRole('menuitem', { name: 'PDF' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=pdf')
   expect(screen.getByRole('menuitem', { name: 'Solo le fonti (zip)' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=sources')
+})
+
+it('PDF: se il browser per la stampa manca mostra il motivo invece di scaricare un file', async () => {
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: { code: 'pdf_browser_missing', message: 'Il browser per il PDF si sta ancora scaricando. Riprova tra poco.' } }), { status: 409 }))
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'PDF' }))
+  expect(await screen.findByText('Il browser per il PDF si sta ancora scaricando. Riprova tra poco.')).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=pdf', { credentials: 'same-origin' })
 })
 
 it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {

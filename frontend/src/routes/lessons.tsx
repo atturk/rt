@@ -388,8 +388,29 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
+  // Il PDF si scarica con fetch: se il browser per la stampa non c'è ancora, si mostra il motivo invece di salvare l'errore come file.
+  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
+  const exportPdf = async () => {
+    setPdf({ busy: true, error: null })
+    try {
+      const response = await fetch(`/api/v1/lessons/${l.id}/export?format=pdf`, { credentials: 'same-origin' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+        throw new Error(body?.error?.message ?? `PDF non riuscito (${response.status})`)
+      }
+      const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(await response.blob())
+      link.download = encoded ? decodeURIComponent(encoded) : `${l.folder_name}.pdf`
+      link.click()
+      URL.revokeObjectURL(link.href)
+      setPdf({ busy: false, error: null })
+    } catch (error) {
+      setPdf({ busy: false, error: errorMessage(error) })
+    }
+  }
   return (
-    <div className="flex items-center gap-0.5" data-testid="lesson-actions">
+    <div className="relative flex items-center gap-0.5" data-testid="lesson-actions">
       <IconButton label="Domande" icon={Brain} active={panel === 'domande'} aria-expanded={panel === 'domande'} aria-controls={PANEL_ID} onClick={() => onToggle('domande')} />
       <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
       <IconButton label="Arricchimento" icon={Image} active={panel === 'arricchimento'} aria-expanded={panel === 'arricchimento'} aria-controls={PANEL_ID} onClick={() => onToggle('arricchimento')} />
@@ -415,12 +436,13 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         icon={Download}
         items={[
           { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'PDF', href: `/api/v1/lessons/${l.id}/export?format=pdf`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => void exportPdf(), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
           { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
           { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
+      {pdf.error && <Alert tone="danger" className="absolute right-0 top-full z-20 mt-2 w-72 cursor-pointer" onClick={() => setPdf({ busy: false, error: null })}>{pdf.error}</Alert>}
     </div>
   )
 }
