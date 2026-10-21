@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import time
+from typing import Optional
 import uuid
 
 import requests
@@ -85,14 +86,40 @@ _MAC_BROWSERS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
                  "/Applications/Chromium.app/Contents/MacOS/Chromium")
 
 
+class BrowserMissingError(RuntimeError):
+    pass
+
+
+def find_capture_browser_executable(p) -> Optional[str]:
+    executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
+    if executable:
+        return executable
+    try:
+        if os.path.isfile(p.chromium.executable_path):
+            return p.chromium.executable_path
+    except Exception:
+        pass
+    return next((path for path in _MAC_BROWSERS if os.path.isfile(path)), None)
+
+
+def launch_capture_browser(p, **kwargs):
+    executable = find_capture_browser_executable(p)
+    if not executable:
+        try:
+            return p.chromium.launch(headless=True, **kwargs)
+        except Exception as exc:
+            raise BrowserMissingError("Browser per le catture non trovato o non ancora installato.") from exc
+    try:
+        return p.chromium.launch(headless=True, executable_path=executable, **kwargs)
+    except Exception as exc:
+        raise BrowserMissingError(str(exc)) from exc
+
+
 def snapshot(html: str) -> bytes:
     """Capture the same sandboxed frame used in-app, with all network blocked."""
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
-        executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
-        if not executable and not os.path.isfile(p.chromium.executable_path):
-            executable = next((path for path in _MAC_BROWSERS if os.path.isfile(path)), None)
-        browser = p.chromium.launch(headless=True, executable_path=executable)
+        browser = launch_capture_browser(p)
         try:
             context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
             context.route("**/*", lambda route: route.abort())

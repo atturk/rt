@@ -16748,6 +16748,22 @@
               "title": "Name",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "max",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max"
+            }
           }
         ],
         "responses": {
@@ -18899,16 +18915,17 @@
             }
           },
           {
-            "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope",
+            "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope; pdf: documento finale in PDF",
             "in": "query",
             "name": "format",
             "required": false,
             "schema": {
               "default": "markdown",
-              "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope",
+              "description": "markdown: solo il documento finale; zip: archivio con i file scelti da scope; pdf: documento finale in PDF",
               "enum": [
                 "markdown",
-                "zip"
+                "zip",
+                "pdf"
               ],
               "title": "Format",
               "type": "string"
@@ -18947,6 +18964,7 @@
         "responses": {
           "200": {
             "content": {
+              "application/pdf": {},
               "application/zip": {},
               "text/markdown": {}
             },
@@ -19008,7 +19026,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione",
+        "summary": "Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF",
         "tags": [
           "lezioni"
         ]
