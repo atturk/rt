@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.2.1 — 2026-10-21
+
+### Correzioni
+
+- **Nuova lezione con più audio da unire**: l'import non si ferma più con «Impossibile unire i file audio». Se qualcosa va storto non resta una lezione a metà, e il nuovo tentativo non risponde più «Esiste già una lezione con questi metadati».
+
 ## 4.3.2 — 2026-10-21
 
 Raccoglie le beta 4.3.2b1, b2 e b3 (dettagli sotto).
