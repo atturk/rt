@@ -54,6 +54,10 @@ def merge_audio_for_transcription(audios: List[str], output: str) -> None:
     command.extend(["-filter_complex", filters, "-map", "[out]", *AAC_OUTPUT_OPTIONS, output])
     result = subprocess.run(command, capture_output=True, text=True, timeout=3600)
     if result.returncode or not os.path.isfile(output) or os.path.getsize(output) == 0:
+        # Il motivo di ffmpeg va nel registro: senza, l'errore non si può diagnosticare.
+        import logging
+        logging.getLogger(__name__).warning("Unione audio non riuscita (codice %s): %s",
+                                            result.returncode, (result.stderr or "").strip()[-2000:])
         raise SetupError("Impossibile unire i file audio: controlla che siano leggibili e riprova.")
 
 
