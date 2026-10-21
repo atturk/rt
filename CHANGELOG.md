@@ -1,5 +1,18 @@
 # Novità di RT
 
+## 4.3.2b3 — 2026-10-21
+
+### Novità
+
+- **Esporta PDF**: la lezione in A4, leggibile anche ingrandendo. Le immagini sotto il titolo vanno due per riga a mezza pagina; quelle nel testo restano dove le hai messe, con la larghezza che hai scelto.
+- Lezioni: si possono spegnere tutti i raggruppamenti per avere un elenco unico, e c'è l'ordine **(Ri)create di recente**, per l'ultima volta in cui la lezione è passata da scaletta, rielaborazione o documento.
+- I job hanno tutti un nome leggibile (prima alcuni comparivano come `enrichment_generate` o `review_unit`). Il popolamento iniziale dell'archivio si chiama "Archivio delle fonti" e mostra l'avanzamento lezione per lezione.
+- Studio: dopo l'ultimo colore l'evidenziatore si spegne, e la volta dopo riparte dal giallo.
+
+### Correzioni
+
+- Verifiche: dopo una nuova rielaborazione le issue di un'unità che non c'è più si chiudono da sole, invece di restare "Da riconfermare" e rimbalzare l'una sull'altra.
+
 ## 4.3.2b2 — 2026-10-20
 
 ### Novità

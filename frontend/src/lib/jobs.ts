@@ -5,6 +5,19 @@ export type Job = Schemas['Job']
 export type JobEvent = Schemas['JobEvent']
 
 export const JOB_TYPE_LABELS: Record<string, string> = {
+  review_unit: "Verifica di un'unità",
+  ingest_sources: 'Aggiunta di fonti',
+  ingest_notes: 'Importazione degli appunti',
+  update_lesson: 'Aggiornamento della lezione',
+  enrichment_analyze: 'Idee per la lezione',
+  enrichment_generate: "Generazione di un'idea",
+  classifier: 'Classificatore',
+  compact_audio: "Compressione dell'audio",
+  study_note: 'Nota di studio',
+  recall_comment: 'Commento alla risposta',
+  restore_version: 'Ripristino di una versione',
+  recall_regenerate: 'Nuova domanda di recall',
+  archive_backfill: 'Archivio delle fonti',
   documents: 'Aggiornamento documento',
   review_part: 'Verifica di una selezione',
   run_pipeline: 'Pipeline completa',
@@ -22,6 +35,17 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   recall_evaluate: 'Valutazione risposta',
   transcribe_voice: 'Trascrizione vocale',
   credential_test: 'Prova credenziale',
+  import_lesson_zips: 'Importazione da ZIP',
+  export_lessons: 'Esportazione di lezioni',
+}
+
+export const PROGRESS_PHASE_LABELS: Record<string, string> = {
+  setup: 'Trascrizione e setup',
+  archive: 'Archivio delle fonti',
+  add_images: 'Immagini',
+  describe_images: 'Descrizione delle immagini',
+  enrichment: 'Idee per la lezione',
+  enrichment_generate: "Generazione di un'idea",
   import_lesson_zips: 'Importazione da ZIP',
   export_lessons: 'Esportazione di lezioni',
 }
@@ -64,7 +88,7 @@ export function jobStateTone(state: string | undefined): Tone {
 export function jobTypeLabel(job: Pick<Job, 'type' | 'payload'>): string {
   if (job.type === 'run_phase') {
     const phase = String(job.payload?.phase ?? '')
-    return `Fase: ${PHASE_LABELS[phase] ?? phase}`
+    return `Fase: ${PHASE_LABELS[phase] ?? PROGRESS_PHASE_LABELS[phase] ?? phase}`
   }
   return JOB_TYPE_LABELS[job.type] ?? job.type
 }
@@ -109,7 +133,7 @@ export function closedJob(job: Pick<Job, 'state' | 'result' | 'lesson_id'>): { m
 
 function phaseName(payload: Record<string, unknown>): string {
   const phase = String(payload.phase ?? '')
-  return PHASE_LABELS[phase] ?? (phase === 'setup' ? 'Trascrizione e setup' : phase)
+  return PHASE_LABELS[phase] ?? PROGRESS_PHASE_LABELS[phase] ?? (phase === 'setup' ? 'Trascrizione e setup' : phase)
 }
 
 /** Riga leggibile per un evento del job (stream SSE o elenco). */
@@ -182,7 +206,7 @@ export function collapseTranscription<T extends Pick<JobEvent, 'type' | 'payload
 export function progressLabel(progress: Job['progress']): { phase: string | null; count: string | null; detail: string | null } {
   if (!progress) return { phase: null, count: null, detail: null }
   const p = progress as Record<string, unknown>
-  const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? (p.phase === 'setup' ? 'Trascrizione e setup' : p.phase)) : null
+  const phase = typeof p.phase === 'string' ? (PHASE_LABELS[p.phase] ?? PROGRESS_PHASE_LABELS[p.phase] ?? p.phase) : null
   const current = Number(p.current)
   const total = Number(p.total)
   // La trascrizione (fase setup) avanza in percentuale: il dettaglio la dice già, niente "42/100".

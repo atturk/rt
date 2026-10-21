@@ -131,7 +131,7 @@ export function Layout() {
   const bare = matches.some((m) => (m.handle as { bare?: boolean } | undefined)?.bare)
   const path = location.pathname
 
-  if (path.startsWith('/app/')) {
+  if (path.startsWith('/app/') || path.endsWith('/stampa')) {
     return (
       <main className="min-h-dvh bg-background">
         <Suspense fallback={null}>

@@ -11,6 +11,7 @@ from rt.core.lesson_lock import lesson_locked
 
 import os
 import re
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from rt.core.models import (
     Outline, Draft, SegmentsData, Segment,
@@ -425,6 +426,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     source_fp = compute_source_fingerprint(current_dir, "build")
     acknowledged = upstream_acknowledgement(current_dir, "build")
     metadata = {"upstream_acknowledged": acknowledged} if acknowledged else {}
+    metadata["pipeline_at"] = datetime.now().isoformat()
     # rt build ripristina lo stesso registro storico anche dopo un job automatico.
     current_manifest = load_manifest(current_dir)
     if current_manifest and current_manifest.phase_records.get("build", {}).get("automatic_documents"):
@@ -439,7 +441,7 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
         artifact_fingerprints={
             "rielaborato.md": compute_file_sha256(lesson_path(current_dir, "rielaborato.md"))
         },
-        metadata=metadata or None,
+        metadata=metadata,
     )
 
     # 8. Aggiornamento stato e manifest

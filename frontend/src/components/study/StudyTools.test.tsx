@@ -58,17 +58,23 @@ afterEach(() => {
 })
 
 describe('evidenziatore dello Studio', () => {
-  it('un clic sull’evidenziatore attivo cambia colore a giro, e il colore resta', () => {
+  it('un clic sull’evidenziatore attivo cambia colore, dopo l’ultimo si spegne, e il colore resta', () => {
     renderStudy()
     const pen = screen.getByTestId('highlight-pen')
     expect(pen).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(pen)
     expect(pen).toHaveAttribute('aria-pressed', 'true')
     expect(pen).toHaveAttribute('data-color', '0')
-    for (const expected of ['1', '2', '3', '4', '0', '1']) {
+    for (const expected of ['1', '2', '3', '4']) {
       fireEvent.click(pen)
       expect(pen).toHaveAttribute('data-color', expected)
     }
+    fireEvent.click(pen)
+    expect(pen).toHaveAttribute('aria-pressed', 'false')
+    expect(pen).toHaveAttribute('data-color', '0')
+    fireEvent.click(pen)
+    fireEvent.click(pen)
+    expect(pen).toHaveAttribute('aria-pressed', 'true')
     expect(JSON.parse(localStorage.getItem('rt-pref:study.highlighter')!)).toMatchObject({ color: 1, arrows: true })
   })
 
@@ -273,7 +279,7 @@ describe('lettura veloce', () => {
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo · E/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo, dopo l’ultimo si spegne · E/ })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
   expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()

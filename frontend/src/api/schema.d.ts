@@ -1115,7 +1115,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione
+         * Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF
          * @description Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene "(anteprima)" e lo zip ha un LEGGIMI che lo spiega.
          */
         get: operations["export_lesson_api_v1_lessons__lesson_id__export_get"];
@@ -6007,6 +6007,11 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
+            /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)
              * @default 0
@@ -6361,6 +6366,11 @@ export interface components {
             phases: {
                 [key: string]: string;
             };
+            /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
             /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)
@@ -11811,7 +11821,9 @@ export interface operations {
     };
     get_image_api_v1_lessons__lesson_id__assets_images__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                max?: number | null;
+            };
             header?: never;
             path: {
                 /** @description Id della lezione (da GET /lessons) */
@@ -13372,8 +13384,8 @@ export interface operations {
     export_lesson_api_v1_lessons__lesson_id__export_get: {
         parameters: {
             query?: {
-                /** @description markdown: solo il documento finale; zip: archivio con i file scelti da scope */
-                format?: "markdown" | "zip";
+                /** @description markdown: solo il documento finale; zip: archivio con i file scelti da scope; pdf: documento finale in PDF */
+                format?: "markdown" | "zip" | "pdf";
                 /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file) */
                 scope?: "final" | "all" | "sources";
                 /** @description Include lo stato di studio nello ZIP completo */
@@ -13394,6 +13406,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/pdf": unknown;
                     "application/zip": unknown;
                     "text/markdown": unknown;
                 };

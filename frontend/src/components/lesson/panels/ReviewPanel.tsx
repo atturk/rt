@@ -94,7 +94,15 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
     if (!selected) return
     void action(async () => {
       try {
-        await decide.mutateAsync({ issueId: issueOf(selected).id, decision, text })
+        const recorded = await decide.mutateAsync({ issueId: issueOf(selected).id, decision, text })
+        const refreshed = await issues.refetch()
+        const current = refreshed?.data?.items.find(item => issueOf(item).id === issueOf(selected).id)
+        if (current?.needs_reconfirmation && recorded && current.decision?.timestamp === recorded.timestamp && current.decision?.decision === recorded.decision) {
+          setCardFailure({ id: issueOf(selected).id, message: "La decisione non si applica: l'unità non c'è più." })
+          setEditing(false)
+          select(issueOf(selected).id)
+          return
+        }
         setCardFailure(null)
         setMessage({ ids: [issueOf(selected).id], label: `Correzione ${decisionLabels[decision]}.`, at: Date.now() })
         setToast(true)

@@ -9,24 +9,25 @@ import { usePreference } from './preferences'
  * data, materia o docente. Sotto il titolo solo i campi che il gruppo non dice già; il resto
  * sta nel popup Info.
  */
-export type LessonsGrouping = 'data' | 'mese' | 'materia' | 'docente'
-export type LessonsSort = 'recenti' | 'meno-recenti' | 'titolo' | 'studio-recente' | 'piu-avanti' | 'piu-indietro'
+export type LessonsGrouping = 'data' | 'mese' | 'materia' | 'docente' | 'nessuno'
+export type LessonsSort = 'recenti' | 'meno-recenti' | 'ricreate' | 'titolo' | 'studio-recente' | 'piu-avanti' | 'piu-indietro'
 
-export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', mese: 'Per mese', materia: 'Per materia', docente: 'Per docente' }
-export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'mese', 'materia', 'docente']
-export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', mese: 'Mese', materia: 'Materia', docente: 'Docente' }
+export const GROUPING_LABELS: Record<LessonsGrouping, string> = { data: 'Per data', mese: 'Per mese', materia: 'Per materia', docente: 'Per docente', nessuno: 'Senza gruppi' }
+export const GROUP_CYCLE: LessonsGrouping[] = ['data', 'mese', 'materia', 'docente', 'nessuno']
+export const PHONE_GROUP_LABELS: Record<LessonsGrouping, string> = { data: 'Data', mese: 'Mese', materia: 'Materia', docente: 'Docente', nessuno: 'Nessuno' }
 
 export const SORT_OPTIONS: Record<LessonsSort, string> = {
   recenti: 'Dalla più recente',
   'meno-recenti': 'Dalla meno recente',
+  ricreate: '(Ri)create di recente',
   titolo: 'Per titolo',
   'studio-recente': 'Studiate di recente',
   'piu-avanti': 'Più avanti nello studio',
   'piu-indietro': 'Più indietro nello studio',
 }
-export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'titolo', 'studio-recente', 'piu-avanti', 'piu-indietro']
+export const SORT_CYCLE: LessonsSort[] = ['recenti', 'meno-recenti', 'ricreate', 'titolo', 'studio-recente', 'piu-avanti', 'piu-indietro']
 export const PHONE_SORT_LABELS: Record<LessonsSort, string> = {
-  recenti: 'Recenti', 'meno-recenti': 'Vecchie', titolo: 'A–Z',
+  recenti: 'Recenti', 'meno-recenti': 'Vecchie', ricreate: 'Create', titolo: 'A–Z',
   'studio-recente': 'Studio', 'piu-avanti': 'Avanti', 'piu-indietro': 'Indietro',
 }
 
@@ -133,6 +134,19 @@ export function lessonsGroups(lessons: Lesson[], prefs: LessonsPrefs, now = new 
   if (prefs.sort === 'titolo') sorted = sortLessons(lessons, 'titolo', 'asc')
   else if (prefs.sort === 'studio-recente') {
     sorted.sort((a, b) => (Date.parse(b.study_last_at ?? '') || 0) - (Date.parse(a.study_last_at ?? '') || 0))
+  } else if (prefs.sort === 'ricreate') {
+    sorted.sort((a, b) => {
+      const ta = a.pipeline_at ? Date.parse(a.pipeline_at) || 0 : 0
+      const tb = b.pipeline_at ? Date.parse(b.pipeline_at) || 0 : 0
+      if (ta && tb) {
+        if (tb !== ta) return tb - ta
+      } else if (ta && !tb) {
+        return -1
+      } else if (!ta && tb) {
+        return 1
+      }
+      return (b.data || '').localeCompare(a.data || '') || (b.ora || '').localeCompare(a.ora || '') || b.folder_name.localeCompare(a.folder_name)
+    })
   } else if (prefs.sort === 'piu-avanti' || prefs.sort === 'piu-indietro') {
     const direction = prefs.sort === 'piu-avanti' ? -1 : 1
     const ratio = (lesson: Lesson) => studyTotal(lesson) ? (lesson.study_learned ?? 0) / studyTotal(lesson) : 0
@@ -184,7 +198,9 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
         ? [date, subject, teacher]
         : group === 'materia'
           ? [date, teacher]
-          : [date, subject]
+          : group === 'docente'
+            ? [date, subject]
+            : [date, subject, teacher]
   return [...fields, unitsText(lesson), lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null].filter(Boolean).join(' · ')
 }
 

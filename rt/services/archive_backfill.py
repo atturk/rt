@@ -35,7 +35,7 @@ def lesson_directories():
     return sorted(found.values())
 
 
-def archive_backfill(directories=None):
+def archive_backfill(directories=None, progress=None):
     from rt.core.sources import load_sources
     from rt.pipeline.add_images import load_image_descriptions
     from rt.pipeline.source_update import _read_state
@@ -43,7 +43,10 @@ def archive_backfill(directories=None):
     with archive_lock('backfill'):
         if read_json(marker, {}).get('backfill_done'):
             return
-        for directory in lesson_directories() if directories is None else directories:
+        directories = lesson_directories() if directories is None else list(directories)
+        for index, directory in enumerate(directories):
+            if progress:
+                progress(index, len(directories), os.path.basename(directory))
             try:
                 state = _read_state(directory)
                 for source in load_sources(directory):

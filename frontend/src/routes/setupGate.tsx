@@ -10,7 +10,7 @@ export const SETUP_PATH = '/impostazioni/configurazione'
 export function SetupGate() {
   const settings = useSettings()
   const location = useLocation()
-  if (settings.data?.setup_required && !location.pathname.startsWith('/impostazioni')) {
+  if (settings.data?.setup_required && !location.pathname.startsWith('/impostazioni') && !location.pathname.endsWith('/stampa')) {
     return <Navigate to={SETUP_PATH} replace />
   }
   return <Outlet />
