@@ -12,21 +12,24 @@ export function extractPageCaption(alt: string): string | null {
 }
 
 /**
- * Raggruppa immagini consecutive (in paragrafi dedicati) in una griglia a 2 colonne:
+ * Raggruppa le immagini sotto il titolo di un'unità (paragrafi dedicati subito dopo
+ * h2/h3) in una griglia a 2 colonne:
  * - 1 immagine: centrata, larga mezza colonna (~85mm);
  * - 2 immagini: una riga a 2 colonne;
- * - 3 o dispari > 1: righe a 2 colonne con l'ultima centrata a mezza colonna;
- * - testo tra immagini: due griglie separate.
+ * - 3 o dispari > 1: righe a 2 colonne con l'ultima centrata a mezza colonna.
+ * Le immagini nel testo, o con una larghezza scelta dall'utente (#w=), restano dove
+ * sono e con la loro larghezza.
  */
 export function transformPrintDom(root: HTMLElement) {
   const children = Array.from(root.children)
   let currentGroup: HTMLElement[] = []
+  let afterHeading = false
 
   const isImageContainer = (el: Element): boolean => {
-    if (el.tagName === 'IMG') return true
+    if (el.tagName === 'IMG') return !el.hasAttribute('width')
     if (el.tagName === 'P') {
       const imgs = el.querySelectorAll('img')
-      if (imgs.length > 0 && el.textContent?.trim() === '') {
+      if (imgs.length > 0 && el.textContent?.trim() === '' && !el.querySelector('img[width]')) {
         return true
       }
     }
@@ -93,10 +96,11 @@ export function transformPrintDom(root: HTMLElement) {
   }
 
   for (const child of children) {
-    if (isImageContainer(child)) {
+    if (afterHeading && isImageContainer(child)) {
       currentGroup.push(child as HTMLElement)
     } else {
       flushGroup()
+      afterHeading = child.tagName === 'H2' || child.tagName === 'H3'
     }
   }
   flushGroup()

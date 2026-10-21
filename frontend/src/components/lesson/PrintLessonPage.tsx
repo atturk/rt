@@ -138,6 +138,11 @@ export function PrintLessonPage() {
           color: #6b7280;
           margin-left: 0.4em;
         }
+        .print-content img {
+          max-width: 100%;
+          height: auto;
+          break-inside: avoid;
+        }
         .pdf-image-grid {
           margin: 4mm 0;
           width: 100%;

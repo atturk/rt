@@ -174,6 +174,10 @@ def test_export_lesson_real_pdf_with_three_images(ws, monkeypatch):
     except ImportError:
         pytest.skip("pymupdf non disponibile")
 
+    from rt.core.paths import find_spa_dir
+    if not find_spa_dir():
+        pytest.skip("build della web app non disponibile (serve la rotta di stampa)")
+
     lesson = make_lesson(ws)
     run_mock_pipeline(lesson)
 

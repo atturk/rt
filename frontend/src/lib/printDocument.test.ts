@@ -15,7 +15,7 @@ describe('extractPageCaption', () => {
 describe('transformPrintDom', () => {
   it('1 immagine: centrata a mezza colonna (classe pdf-grid-single)', () => {
     const root = document.createElement('div')
-    root.innerHTML = '<p><img src="1.png" alt="figura" /></p>'
+    root.innerHTML = '<h3>Unità</h3><p><img src="1.png" alt="figura" /></p>'
     transformPrintDom(root)
 
     const grid = root.querySelector('.pdf-image-grid')
@@ -29,6 +29,7 @@ describe('transformPrintDom', () => {
   it('2 immagini: una riga (classe pdf-grid-multi, 2 card)', () => {
     const root = document.createElement('div')
     root.innerHTML = `
+      <h3>Unità</h3>
       <p><img src="1.png" alt="slide 1 pagina 10" /></p>
       <p><img src="2.png" alt="slide 2" /></p>
     `
@@ -48,6 +49,7 @@ describe('transformPrintDom', () => {
   it('3 immagini: due righe con l\'ultima al centro (pdf-grid-odd e pdf-card-last-odd)', () => {
     const root = document.createElement('div')
     root.innerHTML = `
+      <h3>Unità</h3>
       <p><img src="1.png" alt="slide 1" /></p>
       <p><img src="2.png" alt="slide 2" /></p>
       <p><img src="3.png" alt="slide 3 pagina 42" /></p>
@@ -64,9 +66,10 @@ describe('transformPrintDom', () => {
     expect(cards?.[2].querySelector('figcaption')?.textContent).toBe('pag. 42')
   })
 
-  it('testo tra due immagini: due griglie separate', () => {
+  it('immagine nel testo: resta dov\'è, fuori dalla griglia', () => {
     const root = document.createElement('div')
     root.innerHTML = `
+      <h3>Unità</h3>
       <p><img src="1.png" alt="slide 1" /></p>
       <p>Paragrafo di testo intermedio</p>
       <p><img src="2.png" alt="slide 2" /></p>
@@ -74,9 +77,21 @@ describe('transformPrintDom', () => {
     transformPrintDom(root)
 
     const grids = root.querySelectorAll('.pdf-image-grid')
-    expect(grids).toHaveLength(2)
-    expect(grids[0].classList.contains('pdf-grid-single')).toBe(true)
-    expect(grids[1].classList.contains('pdf-grid-single')).toBe(true)
+    expect(grids).toHaveLength(1)
+    expect(grids[0].querySelector('img')?.getAttribute('src')).toBe('1.png')
+    expect(root.querySelector('p:last-child img')?.getAttribute('src')).toBe('2.png')
+  })
+
+  it('larghezza scelta dall\'utente: resta fuori dalla griglia con la sua larghezza', () => {
+    const root = document.createElement('div')
+    root.innerHTML = `
+      <h3>Unità</h3>
+      <p><img src="1.png" alt="slide 1" width="320" /></p>
+    `
+    transformPrintDom(root)
+
+    expect(root.querySelector('.pdf-image-grid')).toBeNull()
+    expect(root.querySelector('p img')?.getAttribute('width')).toBe('320')
   })
 })
 
