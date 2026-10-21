@@ -10,6 +10,7 @@ from rt.core.lesson_lock import lesson_locked
 import os
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Callable, Literal
 
 from pydantic import ValidationError
@@ -54,6 +55,46 @@ LOG = logging.getLogger(__name__)
 
 def get_science_issues_path(lesson_dir: str) -> str:
     return lesson_path(lesson_dir, "science_issues.json")
+
+
+def load_obsolete_science_issues(lesson_dir: str) -> List[dict]:
+    path = lesson_path(lesson_dir, "science_issues_obsolete.json")
+    if not fs.isfile(path):
+        return []
+    with fs.open(path, encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+@lesson_locked
+def drop_vanished_unit_issues(lesson_dir: str) -> int:
+    """Archivia le issue delle unità sparite senza modificare il ledger."""
+    from rt.pipeline.rewrite import get_draft_path
+    draft_path = get_draft_path(lesson_dir)
+    issues_path = get_science_issues_path(lesson_dir)
+    if not fs.isfile(draft_path) or not fs.isfile(issues_path):
+        return 0
+    with fs.open(draft_path, encoding="utf-8") as stream:
+        unit_ids = {unit["unit_id"] for unit in json.load(stream)["units"]}
+    with fs.open(issues_path, encoding="utf-8") as stream:
+        issues = json.load(stream)
+    vanished = [item for item in issues if item.get("unit_id") and item["unit_id"] not in unit_ids]
+    if not vanished:
+        return 0
+    retained = [item for item in issues if not item.get("unit_id") or item["unit_id"] in unit_ids]
+    obsolete = load_obsolete_science_issues(lesson_dir)
+    # Prima l'archivio: un'interruzione fra le due scritture non perde issue.
+    archived_ids = {item["id"] for item in obsolete}
+    timestamp = datetime.now(timezone.utc).isoformat()
+    additions = [dict(item, obsoleta_il=timestamp) for item in vanished if item["id"] not in archived_ids]
+    if additions:
+        path = lesson_path(lesson_dir, "science_issues_obsolete.json")
+        with fs.open(path + ".tmp", "w", encoding="utf-8") as stream:
+            json.dump(obsolete + additions, stream, ensure_ascii=False, indent=2)
+        fs.replace(path + ".tmp", path)
+    with fs.open(issues_path + ".tmp", "w", encoding="utf-8") as stream:
+        json.dump(retained, stream, ensure_ascii=False, indent=2)
+    fs.replace(issues_path + ".tmp", issues_path)
+    return len(vanished)
 
 
 LEGACY_TYPE_MAP = {
@@ -446,10 +487,11 @@ def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: L
     decisions = {d.issue_id:d for d in ledger.decisions}
     checkpoint, _, _ = get_phase_checkpoint(lesson_dir, "review")
     sequence_path = lesson_path(lesson_dir, 'review_sequence.json')
-    sequence_floor = 0
+    sequence_floor = max([int(item["id"][4:]) for item in load_obsolete_science_issues(lesson_dir)
+                          if item["id"].startswith("sci_") and item["id"][4:].isdigit()] + [0])
     if fs.isfile(sequence_path):
         with fs.open(sequence_path, encoding='utf-8') as stream:
-            sequence_floor = int(json.load(stream)['last'])
+            sequence_floor = max(sequence_floor, int(json.load(stream)['last']))
     sequence = max([int(value[4:]) for value in
                     [i.id for i in prior] + [d.issue_id for d in ledger.decisions]
                     if value.startswith("sci_") and value[4:].isdigit()] +
@@ -783,6 +825,8 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         else None
     )
 
+    drop_vanished_unit_issues(lesson_dir)
+
     # Controllo idempotenza: se valido e non forzato, SKIP immediato
     draft = load_resolved_draft(lesson_dir)
     raw_draft = load_draft(lesson_dir)
@@ -793,7 +837,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     current_hashes = _unit_hashes(raw_draft.units)
     current_text = all((registry.get(uid, {}).get("text_hash") or prior_hashes.get(uid)) == digest
                        for uid, digest in current_hashes.items())
-    # Anche le unità sparite devono attraversare la conservazione delle decise.
+    # Una scaletta ridotta richiede di aggiornare anche il checkpoint della review.
     old_ids = set(prior_hashes)
     if (phase_status == PhaseStatus.VALID and not force and current_text and old_ids <= set(current_hashes)
             and not any(e.get("result") == "failed" for e in registry.values())):
@@ -862,15 +906,6 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
         }
 
     all_science_issues = load_science_issues(lesson_dir)
-    # Una scaletta nuova elimina soltanto le issue aperte delle unità sparite.
-    # Le decisioni e le relative issue restano leggibili e da riconfermare.
-    from rt.pipeline.ledger import load_ledger
-    decided_ids = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-    draft_ids = {u.unit_id for u in draft.units}
-    retained = [i for i in all_science_issues if not i.unit_id or i.unit_id in draft_ids or i.id in decided_ids]
-    if len(retained) != len(all_science_issues):
-        all_science_issues = retained
-        save_science_issues(all_science_issues, lesson_dir)
     _initialize_anchor_ledger(lesson_dir)
     if not fs.isfile(get_science_issues_path(lesson_dir)):
         save_science_issues(all_science_issues, lesson_dir)

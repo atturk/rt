@@ -170,6 +170,7 @@ def purge_decisions_by_prefix(lesson_dir: str, prefix: str) -> int:
 def apply_decisions_to_draft(
     draft: Draft, ledger: DecisionLedger, science_issues: List[ScienceIssue],
     edited_units: Optional[Dict[str, str]] = None, *, missing_decisions: Optional[Set[str]] = None,
+    obsolete_issue_ids: Optional[Set[str]] = None,
 ) -> Draft:
     """Applica le ultime decisioni nell'ordine del registro, solo nella loro unità.
 
@@ -188,6 +189,8 @@ def apply_decisions_to_draft(
         unit.content = fix_mojibake(unit.content)
         unit.title = fix_mojibake(unit.title)
     for decision in ordered:
+        if obsolete_issue_ids and decision.issue_id in obsolete_issue_ids:
+            continue
         issue = by_id.get(decision.issue_id)
         if issue is None:
             if missing_decisions is not None:
@@ -196,8 +199,7 @@ def apply_decisions_to_draft(
         unit = by_unit.get(issue.unit_id)
         if unit is None:
             # Un contesto vuoto registra la scelta umana fatta *dopo* la scomparsa.
-            # I rifiuti precedenti restano da riconfermare come le altre decisioni.
-            if decision.decision == 'rejected' and decision.original_context == '':
+            if decision.original_context == '':
                 continue
             if missing_decisions is not None:
                 missing_decisions.add(issue.id)
@@ -238,6 +240,7 @@ def _resolved_key(lesson_dir):
             return None
     return (tuple(stamp(path) for path in (
         get_draft_path(lesson_dir), get_science_issues_path(lesson_dir),
+        lesson_path(lesson_dir, "science_issues_obsolete.json"),
         lesson_path(lesson_dir, 'document_edits.json'), get_ledger_path(lesson_dir))),
         ledger_version(lesson_dir), database.url if database else None)
 
@@ -259,6 +262,8 @@ def load_resolved_draft(lesson_dir: str, *, missing_decisions: Optional[Set[str]
     from rt.pipeline.review_migration import migrate_review_anchors
     # La migrazione scrive e prende il lock della lezione: fuori dal lock della
     # cache, così una decisione che legge il testo non può creare un deadlock.
+    from rt.pipeline.review import drop_vanished_unit_issues, load_obsolete_science_issues
+    drop_vanished_unit_issues(lesson_dir)
     migrate_review_anchors(lesson_dir)
     path = os.path.realpath(lesson_dir)
     with _resolved_cache_lock:
@@ -274,7 +279,8 @@ def load_resolved_draft(lesson_dir: str, *, missing_decisions: Optional[Set[str]
             science_issues = load_science_issues(lesson_dir, _migrate=False)
             missing = set()
             result = apply_decisions_to_draft(draft, ledger, science_issues, edited_unit_dates(lesson_dir),
-                                              missing_decisions=missing)
+                                              missing_decisions=missing,
+                                              obsolete_issue_ids={item["id"] for item in load_obsolete_science_issues(lesson_dir)})
             # Se una scrittura è arrivata durante la lettura, ricalcola sul nuovo stato.
             if _resolved_key(lesson_dir) != key:
                 continue

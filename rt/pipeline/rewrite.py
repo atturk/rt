@@ -478,6 +478,9 @@ def _run_rewrite(
             metadata={"failed_units": failures.as_dicts()},
         )
 
+    from rt.pipeline.review import drop_vanished_unit_issues
+    drop_vanished_unit_issues(lesson_dir)
+
     if target_unit_id:
         source_fp = compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=target_unit_id)
         draft_hash = compute_file_sha256(draft_path)
