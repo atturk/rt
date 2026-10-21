@@ -1,5 +1,20 @@
 # Novità di RT
 
+## 4.3.3b1 — 2026-10-21
+
+### Novità
+
+- **Immagini della sottounità**: una graffetta con il numero accanto al timer apre le immagini in riga sotto il titolo. Trascinando un'immagine sulla graffetta finisce nella sezione, nel testo resta dove la lasci e si ridimensiona. Le miniature si spostano tra sezioni e testo. L'impostazione «Dove le lascio» non c'è più.
+- **Pannello arricchimento**: si allarga trascinando il bordo sinistro. Cliccando un'immagine nella lezione, il pannello la porta al centro.
+- **Archivio** più veloce ad aprirsi, con un'anteprima animata mentre carica. Le pagine dei PDF non compaiono più come immagini singole.
+- **Selezione multipla**: dai dettagli puoi rielaborare o rigenerare tutte le lezioni scelte insieme.
+- **Genera domande**: il popup si chiude e la generazione continua in background.
+- Verifiche: le formule nelle issue sono rese come nel testo.
+
+### Correzioni
+
+- Nuova lezione con più audio da unire: l'import non si ferma più con «Impossibile unire i file audio» (anche in 4.3.2.1).
+
 ## 4.3.2 — 2026-10-21
 
 Raccoglie le beta 4.3.2b1, b2 e b3 (dettagli sotto).
