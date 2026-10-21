@@ -8,6 +8,7 @@ import { useIsPhone } from '@/lib/phone'
 import { useStudyNoteWindow } from './studyNoteWindow'
 import { useStudyNoteSheet } from './studyNoteSheet'
 import { renderDelimitedMath } from '@/lib/math'
+import { MathText } from '@/components/MathText'
 import type { StudyNote } from '@/api/studyNotes'
 
 export interface StudyNotePopupProps {
@@ -175,7 +176,7 @@ export function StudyNotePopup({
         }`}
         data-testid="study-note-quote"
       >
-        <span className={`min-w-0 flex-1 ${quoteExpanded ? '' : 'line-clamp-2'}`}>{effectiveQuote}</span>
+        <span className={`min-w-0 flex-1 ${quoteExpanded ? '' : 'line-clamp-2'}`}><MathText text={effectiveQuote} /></span>
         <IconButton label={quoteExpanded ? 'Riduci la citazione' : 'Mostra tutto'} icon={ChevronsUpDown} onClick={() => setQuoteExpanded((value) => !value)} className="-my-1 -mr-1 shrink-0 not-italic" />
       </div>
 
@@ -204,7 +205,7 @@ export function StudyNotePopup({
         <div ref={resultRef} data-testid="study-note-result">
           {note.request && (
             <div className="mb-2.5 text-meta">
-              <span className="font-semibold">Richiesta:</span> {note.request}
+              <span className="font-semibold">Richiesta:</span> <MathText text={note.request} />
             </div>
           )}
 

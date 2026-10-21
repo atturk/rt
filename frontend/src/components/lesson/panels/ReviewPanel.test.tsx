@@ -630,3 +630,40 @@ it('resta sulla stessa issue se la decisione appena presa richiede ancora riconf
   expect(screen.getByRole('status')).toHaveTextContent('2 da decidere')
   expect(state.decide).toHaveBeenCalledExactlyOnceWith({ issueId: 'a', decision: 'accepted', text: undefined })
 })
+
+it('una issue con $x^2$ nella correzione e nella spiegazione rende MathML e il doppio clic apre Textarea col testo grezzo', async () => {
+  const mathIssue: Schemas['IssueItem'] = {
+    quote_status: 'found',
+    needs_reconfirmation: false,
+    issue: {
+      id: 'math-issue',
+      type: 'ERR_CONCETTUALE',
+      severity: 'high',
+      unit_id: '1.1',
+      claim: 'La funzione vale $x$.',
+      suggested_fix: 'La funzione vale $x^2$.',
+      reason: 'L’esponente corretto è $x^2$.',
+    },
+    context: { timecode: '00:00', start_s: 0, unit_content: 'La funzione vale $x$.' },
+  }
+  state.items = [mathIssue]
+  const { container } = mount()
+
+  // Aspetta che Temml generi gli elementi math
+  await waitFor(() => {
+    const mathElements = container.querySelectorAll('math')
+    expect(mathElements.length).toBeGreaterThanOrEqual(2)
+  })
+
+  // Nessun $ visibile nella correzione proposta
+  const correctionEl = screen.getByTestId('proposed-correction')
+  expect(correctionEl.querySelector('math')).not.toBeNull()
+  expect(correctionEl.textContent).not.toContain('$')
+
+  // Doppio clic apre il Textarea con il testo grezzo
+  fireEvent.doubleClick(correctionEl)
+  const textarea = screen.getByRole('textbox', { name: 'Correzione proposta' })
+  expect(textarea).toBeInTheDocument()
+  expect(textarea).toHaveValue('La funzione vale $x^2$.')
+})
+
