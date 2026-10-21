@@ -72,6 +72,7 @@ class LessonSummary(BaseModel):
     study_ignored: int = Field(0, description="Unità ignorate nella scaletta attuale")
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
+    pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
     error: Optional[str] = None
 
 

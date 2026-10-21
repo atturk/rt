@@ -6007,6 +6007,11 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
+            /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)
              * @default 0
@@ -6361,6 +6366,11 @@ export interface components {
             phases: {
                 [key: string]: string;
             };
+            /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
             /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)

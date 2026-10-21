@@ -6236,6 +6236,19 @@
             "title": "Phases",
             "type": "object"
           },
+          "pipeline_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline",
+            "title": "Pipeline At"
+          },
           "recall_pending": {
             "default": 0,
             "description": "Domande del pool non ancora poste (da fare)",
@@ -6844,6 +6857,19 @@
             "description": "fase -> VALID | PARTIAL | STALE | MISSING | INVALID",
             "title": "Phases",
             "type": "object"
+          },
+          "pipeline_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline",
+            "title": "Pipeline At"
           },
           "recall_pending": {
             "default": 0,
