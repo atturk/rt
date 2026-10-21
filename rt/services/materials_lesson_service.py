@@ -32,17 +32,13 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     # Verifica la principale prima di creare la lezione.
     if not audio and principale and principale not in {os.path.basename(path) for path in materiali} | ({'Appunti', 'appunti.txt'} if appunti.strip() else set()):
         raise ValueError('Fonte principale inesistente')
-    if fs.new_lessons_use_db():
-        lesson_dir = fs.create_db_lesson(lesson_dir)
-    else:
-        fs.makedirs(lesson_dir, exist_ok=False)
-    info = {'data': date, 'materia': materia, 'argomenti': argomenti, 'docente': docente,
-        'ora': ora, 'cartella': folder, 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
-        'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',
-        'allega_materiali': bool(materiali and allega_materiali)}
-    with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
-        yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
+    # L'unione si fa prima di creare la lezione: se fallisce non resta una lezione a metà che
+    # blocca il nuovo tentativo ("Esiste già una lezione"). Il file temporaneo sta in una
+    # cartella di sistema: con le lezioni nel database la cartella delle lezioni può non esistere.
+    merged_dir = None
     if audio and len(audio) > 1 and unisci:
+        import shutil
+        import tempfile
         from rt.pipeline.setup import merge_audio_for_transcription
         from rt.pipeline.source_update import _duration
         from rt.core.sources import format_source_duration
@@ -58,13 +54,28 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
                 "durata": format_source_duration(dur_s) if dur_s is not None else None,
                 "durata_s": dur_s,
             })
-        temp_merged = os.path.join(dest_dir, f"_temp_merged_{uuid.uuid4().hex}.m4a")
+        merged_dir = tempfile.mkdtemp(prefix='rt-merge-')
+        temp_merged = os.path.join(merged_dir, 'audio completo.m4a')
         try:
             merge_audio_for_transcription(audio, temp_merged)
+        except BaseException:
+            shutil.rmtree(merged_dir, ignore_errors=True)
+            raise
+    if fs.new_lessons_use_db():
+        lesson_dir = fs.create_db_lesson(lesson_dir)
+    else:
+        fs.makedirs(lesson_dir, exist_ok=False)
+    info = {'data': date, 'materia': materia, 'argomenti': argomenti, 'docente': docente,
+        'ora': ora, 'cartella': folder, 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
+        'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',
+        'allega_materiali': bool(materiali and allega_materiali)}
+    with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
+        yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
+    if merged_dir:
+        try:
             audio_sources = [add_source(lesson_dir, 'audio', 'audio completo.m4a', None, source_path=temp_merged, parti=parts)]
         finally:
-            if fs.isfile(temp_merged):
-                fs.remove(temp_merged)
+            shutil.rmtree(merged_dir, ignore_errors=True)
     else:
         audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
     notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None

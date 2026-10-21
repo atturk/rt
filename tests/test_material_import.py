@@ -213,3 +213,47 @@ def test_export_only_sources_single_and_group(api_client, rt_db, tmp_path, monke
     assert group.status_code == 200
     with zf_mod.ZipFile(io.BytesIO(group.content)) as archive:
         assert sorted(n.split('/', 1)[1] for n in archive.namelist()) == ['audio completo.m4a', 'slide.pdf']
+
+
+def test_merge_writes_outside_a_missing_lessons_folder(api_client, rt_db, tmp_path, monkeypatch):
+    # Con le lezioni nel database la cartella delle lezioni può non esistere: l'audio unito
+    # non deve finire lì (era la causa di «Impossibile unire i file audio»).
+    import shutil
+    root = isolated_workspace(tmp_path, monkeypatch)
+    shutil.rmtree(root)
+    outputs = []
+
+    def merge(audios, out):
+        outputs.append(out)
+        assert os.path.isdir(os.path.dirname(out))
+        open(out, 'wb').write(b'fake-merged')
+    monkeypatch.setattr('rt.pipeline.source_update._duration', lambda path: 60.0)
+    monkeypatch.setattr('rt.pipeline.setup.merge_audio_for_transcription', merge)
+    response = api_client.post('/api/v1/lessons', data={'date': '2026-10-12', 'materia': 'Biologia',
+        'mock': 'true', 'unisci': 'true'}, files=[('audio', ('part1.wav', wav_bytes(), 'audio/wav')),
+                                                   ('audio', ('part2.wav', wav_bytes(), 'audio/wav'))])
+    assert response.status_code == 202, response.text
+    work(rt_db)
+    assert not outputs[0].startswith(root)
+    assert not os.path.exists(os.path.dirname(outputs[0]))
+
+
+def test_failed_merge_leaves_no_lesson_behind(api_client, rt_db, tmp_path, monkeypatch):
+    # Un'unione fallita non crea la lezione: riprovare non dà «Esiste già una lezione».
+    from rt.pipeline.setup import SetupError
+    isolated_workspace(tmp_path, monkeypatch)
+
+    def merge(audios, out):
+        raise SetupError('Impossibile unire i file audio: controlla che siano leggibili e riprova.')
+    monkeypatch.setattr('rt.pipeline.source_update._duration', lambda path: 60.0)
+    monkeypatch.setattr('rt.pipeline.setup.merge_audio_for_transcription', merge)
+    data = {'date': '2026-10-12', 'materia': 'Biologia', 'mock': 'true', 'unisci': 'true'}
+    files = [('audio', ('part1.wav', wav_bytes(), 'audio/wav')), ('audio', ('part2.wav', wav_bytes(), 'audio/wav'))]
+    assert api_client.post('/api/v1/lessons', data=data, files=files).status_code == 202
+    job = Worker(DbJobQueue(rt_db), job_types=['ingest_sources'], mock=True, on_message=lambda *_: None).run_once()
+    assert job.state == 'failed' and 'unire' in job.error
+    assert api_client.get('/api/v1/lessons').json() == []
+    monkeypatch.setattr('rt.pipeline.setup.merge_audio_for_transcription',
+                        lambda audios, out: open(out, 'wb').write(b'fake-merged'))
+    assert api_client.post('/api/v1/lessons', data=data, files=files).status_code == 202
+    work(rt_db)
