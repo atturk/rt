@@ -133,3 +133,14 @@ def test_review_manual_edit_skip_still_archives(vanished, monkeypatch):
     assert result['action'] == 'SKIP'
     assert result['total_science_issues'] == 0
     assert {i['id'] for i in review.load_obsolete_science_issues(lesson)} == {i.id for i in issues}
+
+
+def test_unit_still_in_outline_is_not_vanished_during_rewrite(vanished):
+    import json
+    lesson, issues = vanished
+    path = Path(lesson_path(lesson, 'outline.json'))
+    outline = json.loads(path.read_text(encoding='utf-8'))
+    outline['macro_sections'][0]['units'].append(dict(outline['macro_sections'][0]['units'][0], id='7.2'))
+    path.write_text(json.dumps(outline), encoding='utf-8')
+    assert review.drop_vanished_unit_issues(lesson) == 0
+    assert {i.id for i in review.load_science_issues(lesson)} == {i.id for i in issues}

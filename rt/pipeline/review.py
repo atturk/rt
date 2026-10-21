@@ -75,6 +75,13 @@ def drop_vanished_unit_issues(lesson_dir: str) -> int:
         return 0
     with fs.open(draft_path, encoding="utf-8") as stream:
         unit_ids = {unit["unit_id"] for unit in json.load(stream)["units"]}
+    # Durante una rielaborazione la bozza si riempie un'unità alla volta: è sparita solo
+    # un'unità che non c'è più neanche nella scaletta.
+    outline_path = lesson_path(lesson_dir, "outline.json")
+    if fs.isfile(outline_path):
+        with fs.open(outline_path, encoding="utf-8") as stream:
+            outline = json.load(stream)
+        unit_ids |= {unit["id"] for macro in outline.get("macro_sections", []) for unit in macro.get("units", [])}
     with fs.open(issues_path, encoding="utf-8") as stream:
         issues = json.load(stream)
     vanished = [item for item in issues if item.get("unit_id") and item["unit_id"] not in unit_ids]
