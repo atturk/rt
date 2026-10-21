@@ -5,6 +5,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
+import { MathText } from '@/components/MathText'
 import { issueOf, type IssueItem } from '../reviewIssues'
 
 export type ReviewUnit = Schemas['ReviewUnit']
@@ -30,7 +31,7 @@ export function ReviewUnits({ units, busy, running, queued, missing, selectedUni
           <IconButton label={`${open ? 'Chiudi' : 'Apri'} le issue dell’unità ${unit.unit_id}`} icon={ChevronRight} className={cn('size-7 min-w-7 [&_svg]:size-4', open && '[&_svg]:rotate-90')} onClick={() => setExpansion(old => { const ids = new Set(old.ids); if (open) ids.delete(unit.unit_id); else ids.add(unit.unit_id); return { ...old, ids } })} />
           <Icon role="img" aria-label={verifying ? 'In corso' : waiting ? 'In coda' : labels[unit.state]} className={cn('size-4 shrink-0', verifying || waiting ? 'text-muted-foreground' : unit.state === 'ok' ? 'text-success' : unit.state === 'issues' ? 'text-warning' : unit.state === 'failed' ? 'text-danger' : 'text-muted-foreground', verifying && 'animate-spin', !verifying && !waiting && unit.state === 'changed' && 'review-unit-changed')} />
           <button type="button" className="min-w-0 flex-1 text-left" onClick={() => window.dispatchEvent(new CustomEvent(EDITOR_SCROLL_EVENT, { detail: { unitId: unit.unit_id } }))}>
-            <span className="block truncate text-body"><b className="mr-2 tabular-nums">{unit.unit_id}</b>{unit.title}</span>
+            <span className="block truncate text-body"><b className="mr-2 tabular-nums">{unit.unit_id}</b><MathText text={unit.title ?? ''} /></span>
             <span className="block text-meta text-muted-foreground">{verifying ? 'In corso' : waiting ? 'In coda' : labels[unit.state]}</span>
           </button>
           <span className="inline-flex gap-1" role="group" aria-label={`${pending.length} issue da decidere`}>{pending.map(item => <span key={issueOf(item).id} role="img" aria-label={`Gravità ${({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issueOf(item).severity] ?? issueOf(item).severity}`} className={cn('size-1.5 rounded-full', issueOf(item).severity === 'high' ? 'bg-danger' : issueOf(item).severity === 'medium' ? 'bg-warning' : 'bg-muted-foreground')} />)}</span>

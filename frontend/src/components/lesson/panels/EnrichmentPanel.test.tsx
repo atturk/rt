@@ -314,7 +314,7 @@ it('di base la vista dei media è a righe, il pulsante passa a griglia e salva i
   expect(screen.getByRole('button', { name: 'Vista a griglia' })).toBeInTheDocument()
 })
 
-it('la galleria seleziona e scrolla all’evento rt-media-select', async () => {
+it('la galleria seleziona e scrolla all’evento rt-media-select con animazione rt-media-flash', async () => {
   mockApi()
   renderPanel()
   expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
@@ -329,9 +329,41 @@ it('la galleria seleziona e scrolla all’evento rt-media-select', async () => {
     )
   })
 
-  expect(scrollMock).toHaveBeenCalled()
+  expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
   const btn = cell.querySelector('button')
   expect(btn).toHaveAttribute('aria-pressed', 'true')
+  expect(cell).toHaveClass('rt-media-flash')
+
+  act(() => {
+    fireEvent.animationEnd(cell)
+  })
+  expect(cell).not.toHaveClass('rt-media-flash')
+})
+
+it('rt-media-select su immagine in un gruppo chiuso apre il gruppo, scorre al centro e aggiunge rt-media-flash', async () => {
+  mockApi()
+  renderPanel()
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Chiudi il gruppo cliccando sull'header del gruppo
+  const groupHeader = screen.getByText('Altre immagini')
+  fireEvent.click(groupHeader)
+
+  // Ora la cella non è più nel DOM
+  expect(screen.queryByTestId('media-cell-img1.png')).toBeNull()
+
+  // Invia rt-media-select
+  await act(async () => {
+    window.dispatchEvent(
+      new CustomEvent('rt-media-select', { detail: { name: 'img1.png' } }),
+    )
+    await new Promise((r) => setTimeout(r, 10))
+  })
+
+  // Il gruppo si è riaperto e la cella è visibile
+  const cell = await screen.findByTestId('media-cell-img1.png')
+  expect(cell).toBeInTheDocument()
+  expect(cell).toHaveClass('rt-media-flash')
 })
 
 it('mostra il pulsante Archivio in cima con i conteggi e porta ad archivio con da', async () => {

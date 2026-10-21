@@ -35,10 +35,65 @@ def lesson_directories():
     return sorted(found.values())
 
 
+def prune_page_images(directories=None):
+    """Pulizia una tantum delle voci estratte da PDF/materiali finite erroneamente come 'immagine' nell'archivio."""
+    import shutil
+    from rt.core import archive
+    from rt.pipeline.add_images import is_standalone_image, load_image_descriptions
+
+    marker = os.path.join(archive.archive_dir(), 'indice.json')
+    marker_file = os.path.join(archive.archive_dir(), 'prune_page_images_done')
+    with archive.archive_lock('prune_page_images'):
+        if archive.read_json(marker, {}).get('prune_page_images_done') or fs.isfile(marker_file):
+            return
+        directories = lesson_directories() if directories is None else list(directories)
+        all_hashes = set()
+        standalone_hashes = set()
+        for directory in directories:
+            try:
+                descriptions = load_image_descriptions(directory)
+                for h, d in descriptions.items():
+                    all_hashes.add(h)
+                    if is_standalone_image(d):
+                        standalone_hashes.add(h)
+            except Exception:
+                pass
+
+        arch_dir = archive.archive_dir()
+        if fs.isdir(arch_dir):
+            for sha in os.listdir(arch_dir):
+                if len(sha) != 64:
+                    continue
+                meta = archive.load_meta(sha)
+                if not meta:
+                    continue
+                if meta.get('tipo') == 'immagine' and not meta.get('ritaglio_di'):
+                    if sha not in standalone_hashes and sha in all_hashes:
+                        with archive.archive_lock(sha + '-mutation'):
+                            with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
+                                entry_p = archive.entry_dir(sha)
+                                if os.path.exists(entry_p):
+                                    shutil.rmtree(entry_p)
+                            with archive.archive_lock():
+                                index_path = os.path.join(archive.archive_dir(), 'alias.json')
+                                aliases = archive.read_json(index_path, {})
+                                archive.write_json(index_path, {k: v for k, v in aliases.items() if v != sha})
+
+        data = archive.read_json(marker, {})
+        data['prune_page_images_done'] = True
+        archive.write_json(marker, data)
+        try:
+            with fs.open(marker_file, 'w') as f:
+                f.write('done\n')
+        except Exception:
+            pass
+
+
 def archive_backfill(directories=None, progress=None):
     from rt.core.sources import load_sources
-    from rt.pipeline.add_images import load_image_descriptions
+    from rt.pipeline.add_images import is_standalone_image, load_image_descriptions
     from rt.pipeline.source_update import _read_state
+    prune_page_images(directories=directories)
     marker = os.path.join(archive_dir(), 'indice.json')
     with archive_lock('backfill'):
         if read_json(marker, {}).get('backfill_done'):
@@ -95,20 +150,31 @@ def archive_backfill(directories=None, progress=None):
                                      'duration': max((s.end_seconds for s in segments), default=0)})
                 descriptions = load_image_descriptions(directory)
                 images = os.path.join(directory, 'assets', 'images')
-                by_name = {d.get('filename'): d for d in descriptions.values()}
+                by_name = {}
+                for d in descriptions.values():
+                    fn = d.get('filename')
+                    if fn:
+                        by_name[fn] = d
+                        by_name[os.path.basename(fn)] = d
                 if fs.isdir(images):
                     for name in fs.listdir(images):
                         if os.path.splitext(name)[1].lower() in ('.png', '.jpg', '.jpeg', '.gif', '.heic'):
-                            register_image(os.path.join(images, name), by_name.get(f'assets/images/{name}'))
+                            desc = by_name.get(name) or by_name.get(f'assets/images/{name}')
+                            if desc and is_standalone_image(desc):
+                                register_image(os.path.join(images, name), desc)
             except Exception:
                 logging.getLogger(__name__).exception('Popolamento archivio: %s', directory)
-        write_json(marker, {'backfill_done': True})
+        data = read_json(marker, {})
+        data['backfill_done'] = True
+        write_json(marker, data)
 
 
 def start_backfill():
     """Accoda una sola migrazione; il worker usa gli stessi lock del comando diretto."""
     from rt.services.jobs import get_job_queue as queue
-    if read_json(os.path.join(archive_dir(), 'indice.json'), {}).get('backfill_done'):
+    index_data = read_json(os.path.join(archive_dir(), 'indice.json'), {})
+    marker_file = os.path.join(archive_dir(), 'prune_page_images_done')
+    if index_data.get('backfill_done') and (index_data.get('prune_page_images_done') or fs.isfile(marker_file)):
         return
     with archive_lock('enqueue'):
         pending = queue().list(state=['queued', 'running'], job_type='archive_backfill')

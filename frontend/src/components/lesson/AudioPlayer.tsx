@@ -99,7 +99,7 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
           : [
               'fixed bottom-4 left-1/2 z-20 -translate-x-1/2 shadow-panel',
               'md:left-[calc(50%+var(--rail-width)/2)] md:max-w-[calc(100vw-88px)]',
-              panelOpen && 'md:left-[calc(50%+var(--rail-width)/2-12rem)] md:max-w-[calc(100vw-var(--rail-width)-24rem-32px)]',
+              panelOpen && 'md:left-[calc(50%+var(--rail-width)/2-var(--rt-panel-width)/2)] md:max-w-[calc(100vw-var(--rail-width)-var(--rt-panel-width)-32px)]',
               'max-md:bottom-[calc(76px+env(safe-area-inset-bottom))] max-md:w-[calc(100vw-24px)] max-md:gap-2 max-md:p-2',
             ],
         className,

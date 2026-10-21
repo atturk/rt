@@ -518,4 +518,42 @@ describe('MediaSelectionBar', () => {
     fireEvent.click(screen.getByLabelText(/^Elimina dalla lezione$/i))
     expect(onDelete).toHaveBeenCalled()
   })
+
+  it('rt-media-select su un gruppo chiuso apre il gruppo, scorre con block: center e aggiunge rt-media-flash', async () => {
+    render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    // Chiudi il gruppo Documento1.pdf
+    const toggleButton = screen.getByRole('button', { name: /Documento1\.pdf/ })
+    fireEvent.click(toggleButton)
+    expect(screen.queryByTestId('media-cell-source1-p1.png')).toBeNull()
+
+    // Prepara mock scroll
+    const scrollMock = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollMock
+
+    // Invia rt-media-select
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('rt-media-select', { detail: { name: 'source1-p1.png' } }),
+      )
+      await new Promise((r) => setTimeout(r, 10))
+    })
+
+    const cell = await screen.findByTestId('media-cell-source1-p1.png')
+    expect(cell).toBeInTheDocument()
+    expect(cell).toHaveClass('rt-media-flash')
+    expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+  })
 })
+

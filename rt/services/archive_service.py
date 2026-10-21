@@ -5,28 +5,70 @@ from rt.core import archive
 from rt.core.sources import load_sources
 
 
-def archive_usages(sha):
+def usage_index():
+    """Costruisce un indice {impronta: [usage, ...]} in un solo passaggio sulle lezioni."""
     from rt.services.archive_backfill import lesson_directories
     from rt.services.lesson_service import lesson_id_for_dir
     from rt.core.state import read_info_yaml
     from rt.core.lesson_paths import lesson_path
-    usages = []
+    from rt.pipeline.add_images import load_image_descriptions
+    from rt.storage import fs
+
+    alias_map = archive.read_json(os.path.join(archive.archive_dir(), 'alias.json'), {})
+    index = {}
+
     for directory in lesson_directories():
-        sources = [s for s in load_sources(directory) if s.impronta and (archive.find(s.impronta) or {}).get('impronta', s.impronta) == sha]
-        image_used = False
-        if not sources:
-            from rt.pipeline.add_images import load_image_descriptions
-            from rt.storage import fs
-            descriptions = load_image_descriptions(directory)
-            description = descriptions.get(sha)
-            image_used = bool(description and fs.isfile(os.path.join(directory, description.get('filename', ''))))
-        if not sources and not image_used:
-            continue
         info = read_info_yaml(lesson_path(directory, 'info.yaml'))
-        pages = None if image_used or any(s.pagine is None for s in sources) else sorted({n for s in sources for n in s.pagine})
-        usages.append({'lezione_id': lesson_id_for_dir(directory), 'titolo': info.get('titolo') or info.get('argomenti') or os.path.basename(directory),
-            'data': str(info.get('data') or ''), 'pagine': pages, 'materia': info.get('materia') or ''})
-    return sorted(usages, key=lambda u: (u['data'], u['lezione_id'] or 0))
+        titolo = info.get('titolo') or info.get('argomenti') or os.path.basename(directory)
+        data = str(info.get('data') or '')
+        materia = info.get('materia') or ''
+
+        sources_by_sha = {}
+        for s in load_sources(directory):
+            if s.impronta:
+                canonical = alias_map.get(s.impronta, s.impronta)
+                sources_by_sha.setdefault(canonical, []).append(s)
+
+        descriptions = load_image_descriptions(directory)
+        images_by_sha = set()
+        for h, desc in descriptions.items():
+            if h not in sources_by_sha:
+                fn = desc.get('filename', '')
+                if fn and fs.isfile(os.path.join(directory, fn)):
+                    images_by_sha.add(h)
+
+        all_shas = set(sources_by_sha.keys()) | images_by_sha
+        if not all_shas:
+            continue
+
+        try:
+            lid = lesson_id_for_dir(directory)
+        except Exception:
+            lid = None
+        for sha in all_shas:
+            if sha in sources_by_sha:
+                srcs = sources_by_sha[sha]
+                pages = None if any(s.pagine is None for s in srcs) else sorted({n for s in srcs for n in s.pagine})
+            else:
+                pages = None
+            index.setdefault(sha, []).append({
+                'lezione_id': lid,
+                'titolo': titolo,
+                'data': data,
+                'pagine': pages,
+                'materia': materia,
+            })
+
+    for sha, usages in index.items():
+        usages.sort(key=lambda u: (u['data'], u['lezione_id'] or 0))
+
+    return index
+
+
+def archive_usages(sha, index=None):
+    if index is not None:
+        return index.get(sha, [])
+    return usage_index().get(sha, [])
 
 
 def continuation(meta, usages):
@@ -37,14 +79,15 @@ def continuation(meta, usages):
     return f'{last + 1}–{total}' if 0 < last < total else None
 
 
-def lookup(hashes):
+def lookup(hashes, index=None):
+    index = usage_index() if index is None else index
     results = {}
     for sha in hashes:
         meta = archive.find(sha)
         if meta is None:
             results[sha] = None
             continue
-        usages = archive_usages(meta['impronta'])
+        usages = index.get(meta['impronta'], [])
         results[sha] = {'impronta': meta['impronta'], 'pagine_totali': meta.get('pagine_totali'),
             'usate': usages, 'da_continuare': continuation(meta, usages)}
     return results
@@ -61,33 +104,59 @@ def require_entry(sha):
     return meta
 
 
-def row(meta, usages=None):
-    usages = archive_usages(meta['impronta']) if usages is None else usages
+def row(meta, usages=None, index=None):
+    if usages is None:
+        usages = index.get(meta['impronta'], []) if index is not None else archive_usages(meta['impronta'])
     return {**{key: meta.get(key) for key in ('impronta', 'nome', 'tipo', 'pagine_totali', 'durata_s', 'dimensione')},
         'materie': sorted({u['materia'] for u in usages if u['materia']}),
         'usi': len(usages), 'da_continuare': continuation(meta, usages)}
 
 
-def list_entries(materia=None, tipo=None, q=None):
+def list_entries(materia=None, tipo=None, q=None, index=None):
+    index = usage_index() if index is None else index
     entries = []
-    for sha in os.listdir(archive.archive_dir()):
-        if len(sha) != 64:
-            continue
-        meta = archive.load_meta(sha)
-        if not meta or (tipo and meta['tipo'] != tipo) or (q and q.casefold() not in meta['nome'].casefold()):
-            continue
-        item = row(meta)
-        if materia and materia not in item['materie']:
-            continue
-        entries.append((meta['aggiunto_il'], item))
+    arch_dir = archive.archive_dir()
+    if os.path.isdir(arch_dir):
+        for sha in os.listdir(arch_dir):
+            if len(sha) != 64:
+                continue
+            meta = archive.load_meta(sha)
+            if not meta or (tipo and meta['tipo'] != tipo) or (q and q.casefold() not in meta['nome'].casefold()):
+                continue
+            item = row(meta, index=index)
+            if materia and materia not in item['materie']:
+                continue
+            entries.append((meta['aggiunto_il'], item))
     return [item for _, item in sorted(entries, key=lambda e: e[0], reverse=True)]
 
 
-def detail(sha):
+def summary(materia=None, index=None):
+    if materia:
+        entries = list_entries(materia=materia, index=index)
+        return {'file': len(entries), 'da_continuare': sum(bool(e['da_continuare']) for e in entries)}
+    index = usage_index() if index is None else index
+    arch_dir = archive.archive_dir()
+    count = 0
+    to_continue = 0
+    if os.path.isdir(arch_dir):
+        for sha in os.listdir(arch_dir):
+            if len(sha) != 64:
+                continue
+            meta = archive.load_meta(sha)
+            if not meta:
+                continue
+            count += 1
+            usages = index.get(meta['impronta'], [])
+            if continuation(meta, usages):
+                to_continue += 1
+    return {'file': count, 'da_continuare': to_continue}
+
+
+def detail(sha, index=None):
     from pathlib import Path
     meta = require_entry(sha)
     sha = meta['impronta']
-    usages = archive_usages(sha)
+    usages = index.get(sha, []) if index is not None else archive_usages(sha)
     pages = archive.read_json(os.path.join(archive.entry_dir(sha), 'pages.json'), {}).get('pages', [])
     by_page = []
     for page in pages:
@@ -104,7 +173,7 @@ def detail(sha):
             transcript = '\n'.join(s.get('text_raw', s.get('text', '')) for s in data.get('segments', [])[:5])
             if transcript:
                 break
-    return {**row(meta, usages), 'pagine': by_page,
+    return {**row(meta, usages=usages), 'pagine': by_page,
         'lezioni': [{'id': u['lezione_id'], 'titolo': u['titolo'], 'data': u['data'], 'pagine': u['pagine']} for u in usages],
         'trascrizione_inizio': transcript}
 
@@ -239,17 +308,19 @@ def crop(sha, n, rect, replace=False):
     return row(require_entry(result['impronta']))
 
 
-def delete_entry(sha):
+def delete_entry(sha, index=None):
     import shutil
     from rt.services.errors import Conflict
     meta = require_entry(sha)
     sha = meta['impronta']
     with archive.archive_lock(sha + '-mutation'):
-        usages = archive_usages(sha)
+        usages = index.get(sha, []) if index is not None else archive_usages(sha)
         if usages:
             raise Conflict('archive_in_use', 'File usato da una lezione.', {'lezioni': usages})
         with archive.archive_lock(sha + '-extract'), archive.archive_lock(sha):
-            shutil.rmtree(archive.entry_dir(sha))
+            entry_p = archive.entry_dir(sha)
+            if os.path.exists(entry_p):
+                shutil.rmtree(entry_p)
         with archive.archive_lock():
             index_path = os.path.join(archive.archive_dir(), 'alias.json')
             aliases = archive.read_json(index_path, {})

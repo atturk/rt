@@ -18,6 +18,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { formatDateTime } from '@/lib/format'
 import { renderDelimitedMath } from '@/lib/math'
+import { MathText } from '@/components/MathText'
 
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 
@@ -134,7 +135,7 @@ export function StudyNotesPanel({
         <div>
           <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Testo di partenza</span>
           <div className="mt-1 min-w-0 rounded-md border border-border/60 bg-muted/30 p-2.5 italic text-foreground [overflow-wrap:anywhere]" data-testid="detail-quote">
-            {quote}
+            <MathText text={quote} />
           </div>
         </div>
 
@@ -142,7 +143,7 @@ export function StudyNotesPanel({
           <div>
             <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">Richiesta</span>
             <div className="mt-1 text-meta text-foreground" data-testid="detail-request">
-              {activeNote.request}
+              <MathText text={activeNote.request} />
             </div>
           </div>
         )}
@@ -355,7 +356,7 @@ export function StudyNotesPanel({
                               <HelpCircle className="size-3.5 shrink-0 text-[#c7761a]" aria-hidden />
                             )}
                             <span className="truncate text-meta font-medium text-foreground">
-                              {quote}
+                              <MathText text={quote} />
                             </span>
                             {note.precedente && (
                               <Tooltip content="Precedente all'ultima aggiunta di fonti">
