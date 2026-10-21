@@ -378,3 +378,47 @@ def test_document_sections_includes_speech_segments(root):
         for seg in sections[0]["speech_segments"]:
             assert len(seg) == 2
             assert seg[1] >= seg[0]
+
+
+@pytest.mark.parametrize('width', ['', '#w=320'])
+def test_initial_unit_image_width_distinguishes_text_from_section(root, width):
+    from rt.pipeline.add_images import save_image_descriptions
+    from rt.pipeline.image_placement import load_image_placement
+    lesson = _synthetic_lesson(root)
+    save_image_descriptions(lesson, {'img': {'filename': 'assets/images/test.png', 'alt_text': 'Figura'}})
+    markdown = _preview(lesson).replace('00:00', f'00:00\n\n![Figura](assets/images/test.png{width})', 1)
+    save_document_edit(lesson, markdown)
+    placement = load_image_placement(lesson)
+    draft = load_draft(lesson)
+    first = next(unit for unit in draft.units if unit.unit_id == '1.1')
+    if width:
+        assert f'![Figura](assets/images/test.png{width})' in first.content
+        assert not (placement or {}).get('units', {}).get('1.1')
+    else:
+        assert 'test.png' not in first.content
+        assert placement['units']['1.1'] == ['img']
+    assert f'![Figura](assets/images/test.png{width})' in _preview(lesson)
+
+
+def test_document_and_study_report_section_images_from_placement(api_client, root):
+    from rt.pipeline.add_images import save_image_descriptions
+    from rt.pipeline.image_placement import save_image_placement
+    from rt.services.lesson_service import ensure_indexed, lesson_id_for_dir
+    lesson = _synthetic_lesson(root)
+    save_image_descriptions(lesson, {
+        'a': {'filename': 'assets/images/a.png', 'alt_text': 'Pagina 1', 'source': 'material:src:2'},
+        'b': {'filename': 'assets/images/b.png', 'alt_text': 'Pagina 2', 'source': 'material:src:1'},
+    })
+    save_image_placement(lesson, {}, False, units={'1.1': ['a', 'b']})
+    ensure_indexed([lesson])
+    lid = lesson_id_for_dir(lesson)
+    document = api_client.get(f'/api/v1/lessons/{lid}/document')
+    assert document.status_code == 200, document.text
+    sections = {section['unit_id']: section for section in document.json()['sections']}
+    assert sections['1.1']['immagini_sezione'] == ['a.png', 'b.png']
+    assert sections['1.2']['immagini_sezione'] == []
+    study = api_client.get(f'/api/v1/lessons/{lid}/study')
+    assert study.status_code == 200, study.text
+    first = study.json()['units'][0]
+    assert first['immagini_sezione'] == ['a.png', 'b.png']
+    assert first['html'].index('a.png') < first['html'].index('b.png') < first['html'].index("Testo")

@@ -1264,3 +1264,27 @@
 .rt-reading math.rt-math-raw { display: none; }
 .rt-reading math.rt-math-raw + .rt-math-src { display: inline; }
 .rt-sn-math { background: color-mix(in oklch, var(--primary) 14%, transparent); cursor: pointer; }
+
+/* Immagini della sottounità */
+.rt-unit-images-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 30px; min-width: 30px; margin-right: 6px; padding: 0 7px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--foreground); font-size: var(--size-meta);
+  vertical-align: middle; cursor: pointer;
+}
+.rt-unit-images-button svg { width: 16px; height: 16px; flex-shrink: 0; }
+.rt-unit-images-button.active { background: var(--accent); color: var(--accent-foreground); }
+.rt-unit-images-button.empty { display: none; }
+.rt-dragging-images .rt-unit-images-button.empty { display: inline-flex; border-style: dashed; }
+.rt-unit-images-button.rt-image-drop-hover, .rt-unit-images-section.rt-image-drop-hover {
+  outline: 2px solid var(--success); outline-offset: 2px;
+}
+.rt-unit-images-section { overflow: hidden; animation: rt-unit-images-open 160ms ease-out; }
+.rt-unit-images-section[hidden], .rt-unit-images-section.closed { display: none; height: 0; }
+.rt-unit-images-section .rt-strip { border: 0; margin: 6px 0 12px; padding: 0; background: transparent; }
+.rt-unit-images-section .thumbs { display: flex; gap: 10px; overflow-x: auto; }
+.rt-unit-images-section .thumb { height: 120px; flex: 0 0 auto; }
+.rt-unit-images-section .thumb img { height: 100%; width: auto; object-fit: contain; }
+@keyframes rt-unit-images-open { from { max-height: 0; opacity: 0; } to { max-height: 160px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .rt-unit-images-section { animation: none; } }

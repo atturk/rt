@@ -463,7 +463,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
       </div>
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
-      <SelectionDetails lessons={lessons} open={detailsOpen} onClose={() => setDetailsOpen(false)} />
+      {detailsOpen && <SelectionDetails lessons={lessons} open onClose={() => setDetailsOpen(false)} />}
       {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
       {exportJob?.state === 'succeeded' && (
         <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>

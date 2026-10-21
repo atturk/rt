@@ -1,6 +1,14 @@
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, ShieldCheck, Play, RotateCw, ListRestart } from 'lucide-react'
 import { useState } from 'react'
 
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api, unwrap, errorMessage } from '@/api/client'
+import { useJobs, invalidateAfterJob } from '@/api/jobs'
+import { isActiveJob } from '@/api/hooks'
+import { IconButton } from '@/components/ui/icon-button'
+import { Tooltip } from '@/components/ui/tooltip'
+import { Alert } from '@/components/ui/alert'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { formatCost, lessonTitle, type Lesson } from '@/lib/format'
@@ -14,6 +22,31 @@ const COLUMNS: { key: SelectionSort; label: string }[] = [
 
 export function SelectionDetails({ lessons, open, onClose }: { lessons: Lesson[]; open: boolean; onClose: () => void }) {
   const [sort, setSort] = useState<{ key: SelectionSort; direction: 'asc' | 'desc' }>({ key: 'costo', direction: 'desc' })
+  const [withReview, setWithReview] = useState(false)
+  const [confirm, setConfirm] = useState<'force' | 'reingest' | null>(null)
+  const running = useJobs({ state: 'running', limit: 500 })
+  const queued = useJobs({ state: 'queued', limit: 500 })
+  const waiting = useJobs({ state: 'waiting_for_decision', limit: 500 })
+  const activeJobs = [...running.data ?? [], ...queued.data ?? [], ...waiting.data ?? []]
+  const client = useQueryClient()
+  const batch = useMutation({
+    mutationFn: (mode: 'run' | 'force' | 'reingest') => unwrap(api.POST('/api/v1/lessons/batch/pipeline', {
+      body: { lesson_ids: lessons.map(lesson => lesson.id), mode, with_review: withReview },
+    })),
+    onSuccess: () => invalidateAfterJob(client),
+  })
+  const busy = lessons.length > 0 && lessons.every(lesson => activeJobs.some(job => job.lesson_id === lesson.id && job.type !== 'documents' && isActiveJob(job.state)))
+  const unavailable = busy || batch.isPending ? 'Lavorazione in corso' : null
+  const actions = <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+    <IconButton label="Includi la revisione scientifica" icon={ShieldCheck} active={withReview} aria-pressed={withReview}
+      unavailable={unavailable} onClick={() => setWithReview(!withReview)} />
+    <IconButton label="Esegui la pipeline" hint="Solo le fasi da fare" icon={Play}
+      unavailable={unavailable} onClick={() => batch.mutate('run')} />
+    <IconButton label="Riesegui tutte le fasi" hint="Anche quelle già fatte" icon={RotateCw}
+      unavailable={unavailable} onClick={() => setConfirm('force')} />
+    <IconButton label="Riesegui tutto da capo" hint="Anche trascrizione e lettura dei documenti" icon={ListRestart}
+      unavailable={unavailable} onClick={() => setConfirm('reingest')} />
+  </div>
   const totals = selectionDetails(lessons)
   const cards = [
     { label: 'Audio', value: formatDuration(totals.duration), note: totals.firstDate ? `dal ${shortDate(totals.firstDate)} al ${shortDate(totals.lastDate!)}` : '—' },
@@ -24,7 +57,21 @@ export function SelectionDetails({ lessons, open, onClose }: { lessons: Lesson[]
     { label: 'Stato', value: `${totals.ready} pronte`, note: [totals.toVerify > 0 && `${totals.toVerify} da verificare`, totals.errors > 0 && `${totals.errors} con errore`].filter(Boolean).join(' · ') || '—' },
   ]
   return <Modal open={open} onClose={onClose} title={lessons.length === 1 ? '1 lezione selezionata' : `${lessons.length} lezioni selezionate`}
-    className="w-[min(680px,calc(100vw-32px))]" testId="selection-details">
+    actions={actions} className="w-[min(680px,calc(100vw-32px))]" testId="selection-details">
+    {batch.data && <Tooltip content={batch.data.skipped.map(item => `${item.lesson_id}: ${item.motivo}`).join(' · ') || 'Pipeline avviate'}>
+      {trigger => <p {...trigger} role="status" tabIndex={0} className="mt-3 text-meta">
+        {batch.data.queued.length} avviate{batch.data.skipped.length > 0 ? ` · ${batch.data.skipped.length} ${batch.data.skipped.length === 1 ? 'saltata' : 'saltate'}` : ''}
+      </p>}
+    </Tooltip>}
+    {batch.isError && <Alert tone="danger">{errorMessage(batch.error)}</Alert>}
+    <ConfirmDialog open={confirm !== null}
+      title={confirm === 'reingest' ? `Rieseguire da capo ${lessons.length} lezioni?` : `Rifare tutte le fasi di ${lessons.length} lezioni?`}
+      confirmLabel="Riesegui" onCancel={() => setConfirm(null)} confirmDisabled={!!unavailable}
+      onConfirm={() => { if (confirm && !unavailable) batch.mutate(confirm); setConfirm(null) }}>
+      {confirm === 'reingest'
+        ? "Si rifanno anche la trascrizione degli audio e la lettura dei documenti: richiedono tempo. Scaletta e rielaborazione si rifanno con l'IA, con il loro costo. Le note di studio sui vecchi passaggi potrebbero risultare cambiate. Le versioni precedenti restano in Versioni."
+        : "Scaletta e rielaborazione si rifanno con l'IA, con il loro costo. Le versioni precedenti restano in Versioni."}
+    </ConfirmDialog>
     <div className="mt-5 grid grid-cols-3 gap-3 max-sm:grid-cols-2">
       {cards.map(card => <div key={card.label} className="min-w-0 rounded-lg border p-3">
         <div className="text-meta text-muted-foreground">{card.label}</div>

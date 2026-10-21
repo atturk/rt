@@ -110,8 +110,8 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    return mountDocumentImageStrips(root)
-  }, [doc.html])
+    return mountDocumentImageStrips(root, doc.sections)
+  }, [doc, hasAudio, lessonId, navigate])
 
   // Evidenzia l'unità in ascolto (intestazione e blocchi fino alla prossima intestazione).
   useEffect(() => {

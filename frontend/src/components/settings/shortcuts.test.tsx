@@ -80,14 +80,7 @@ it('la barra di formattazione è attiva per default e la scelta si salva sul ser
   expect(screen.getByTestId('editor-toolbar')).toHaveAttribute('data-value', 'no')
 })
 
-it('l’impostazione Immagini trascinate ha Sotto il titolo per default e salva la scelta', async () => {
-  expect(screen.getByRole('radio', { name: 'Sotto il titolo' })).toHaveAttribute('aria-checked', 'true')
-  const radio = screen.getByRole('radio', { name: 'Dove le lascio' })
-  await userEvent.click(radio)
-  await waitFor(() =>
-    expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
-      params: { path: { name: 'editor.image-drop' } },
-      body: 'free',
-    }),
-  )
+it('non mostra più la preferenza per le immagini trascinate', () => {
+  expect(screen.queryByText('Immagini trascinate')).not.toBeInTheDocument()
+  expect(screen.queryByRole('radio', { name: 'Dove le lascio' })).not.toBeInTheDocument()
 })

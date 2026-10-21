@@ -1,7 +1,10 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
-import { dropTarget, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument } from './lessonImages'
+import { history, undo } from '@codemirror/commands'
+import { RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
+import { lessonImageStrips } from './lessonImageStrips'
+import { dropTarget, sectionDropTarget, moveDocumentImage, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument } from './lessonImages'
 import { timecodeLock } from './timecodeLock'
 const markdown = '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto.'
 const image: Schemas['EditorImage'] = { path: 'assets/images/a.png', name: 'a.png', url: '/api/v1/lessons/1/assets/images/a.png', alt_text: 'Figura' }
@@ -9,7 +12,7 @@ function mount(upload: (file: File) => Promise<Schemas['EditorImage']>, readOnly
   const parent = document.createElement('div')
   document.body.append(parent)
   let task: Promise<void> | undefined
-  const view = new EditorView({ parent, state: EditorState.create({ doc: source, extensions: [lessonImageUploads({ upload, started: (t) => { task = t; void t.catch(() => undefined) } }), timecodeLock, EditorState.readOnly.of(readOnly)] }) })
+  const view = new EditorView({ parent, state: EditorState.create({ doc: source, extensions: [history(), lessonImageStrips(1), lessonImageUploads({ upload, started: (t) => { task = t; void t.catch(() => undefined) } }), timecodeLock, EditorState.readOnly.of(readOnly)] }) })
   view.dispatch({ selection: { anchor: source.length } })
   const send = (type: 'paste' | 'drop', files: File[]) => {
     const event = new Event(type, { bubbles: true, cancelable: true })
@@ -35,7 +38,7 @@ it('incolla nel corpo quando il cursore è sul titolo e il timecode è l’ultim
   const { view, send, parent } = mount(async () => image, false, source)
   view.dispatch({ selection: { anchor: source.indexOf('Unità') } })
   await send('paste', [new File(['img'], 'figura.png', { type: 'image/png' })])
-  expect(view.state.doc.toString()).toBe(`${source}\n\n![Figura](assets/images/a.png)\n\n`)
+  expect(view.state.doc.toString()).toBe(`${source}\n\n![Figura](assets/images/a.png#w=480)\n\n`)
   view.destroy(); parent.remove()
 })
 it('mantiene la posizione del trascinamento mentre il testo cambia', async () => {
@@ -45,7 +48,7 @@ it('mantiene la posizione del trascinamento mentre il testo cambia', async () =>
   view.dispatch({ changes: { from: markdown.indexOf('Testo'), insert: 'Nuovo ' } })
   resolve(image)
   await task
-  expect(view.state.doc.toString()).toContain('Nuovo \n\n![Figura](assets/images/a.png)\n\nTesto.')
+  expect(view.state.doc.toString()).toContain('Nuovo \n\n![Figura](assets/images/a.png#w=480)\n\nTesto.')
   view.destroy(); parent.remove()
 })
 it('rifiuta altri formati e il caricamento in sola lettura', () => {
@@ -101,7 +104,7 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
     window.removeEventListener('rt-editor-cursor-state', listener)
   })
 
-  it('inserisce al cursore più immagini come striscia (righe consecutive)', () => {
+  it('inserisce al cursore più immagini nel testo con larghezza', () => {
     const { view, parent } = mount(async () => image)
     const pos = markdown.indexOf('Testo.')
     view.dispatch({ selection: { anchor: pos } })
@@ -119,7 +122,7 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
 
     const doc = view.state.doc.toString()
     expect(doc).toContain(
-      '\n\n![Pagina 1](assets/images/pag1.png)\n![Pagina 2](assets/images/pag2.png)\n\nTesto.',
+      '\n\n![Pagina 1](assets/images/pag1.png#w=480)\n![Pagina 2](assets/images/pag2.png#w=480)\n\nTesto.',
     )
     view.destroy()
     parent.remove()
@@ -142,7 +145,7 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
     const doc = view.state.doc.toString()
     // Il titolo e timecode restano intatti prima dell'immagine
     expect(doc).toContain('### 1.1 Unità\n00:00')
-    expect(doc).toContain('![Pagina 1](assets/images/pag1.png)\n\nTesto.')
+    expect(doc).toMatch(/!\[Pagina 1\]\(assets\/images\/pag1.png#w=480\)\n+Testo\./)
     view.destroy()
     parent.remove()
   })
@@ -166,7 +169,7 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
     })
 
     view.contentDOM.dispatchEvent(event)
-    expect(view.state.doc.toString()).toContain('![Pagina trascinata](assets/images/dropped.png)')
+    expect(view.state.doc.toString()).toContain('![Pagina trascinata](assets/images/dropped.png#w=480)')
     view.destroy()
     parent.remove()
   })
@@ -214,7 +217,7 @@ describe('MS1c: Inserisci al cursore e collegamento editor', () => {
 })
 
 describe('dropTarget (Piano 9)', () => {
-  it('con "Sotto il titolo": puntatore a metà paragrafo di 2.2 va dopo titolo, timecode e immagini già lì', () => {
+  it('nel testo inserisce all’inizio del paragrafo dopo la sezione', () => {
     const text = [
       '## 1. Macro 1',
       '### 1.1 Sub 1',
@@ -231,14 +234,13 @@ describe('dropTarget (Piano 9)', () => {
 
     const state = EditorState.create({ doc: text })
     const pos = text.indexOf('Primo paragrafo') + 8
-    const target = dropTarget(state, pos, 'heading')
+    const target = dropTarget(state, pos)
 
     expect(target.insertAt).toBe(text.indexOf('Primo paragrafo'))
-    expect(target.label).toBe('Sotto «2.2 Metaboliti»')
-    expect(target.headingLine).toBe(7)
+    expect(target.label).toBeUndefined()
   })
 
-  it('con "Sotto il titolo": puntatore su una macro senza sottounità va sotto la macro', () => {
+  it('in una macro senza sottounità rispetta il punto del testo', () => {
     const text = [
       '## 1. Sezione con sub',
       '### 1.1 Unità 1',
@@ -251,14 +253,13 @@ describe('dropTarget (Piano 9)', () => {
 
     const state = EditorState.create({ doc: text })
     const pos = text.indexOf('Testo della macro')
-    const target = dropTarget(state, pos, 'heading')
+    const target = dropTarget(state, pos)
 
     expect(target.insertAt).toBe(text.indexOf('Testo della macro'))
-    expect(target.label).toBe('Sotto «2. Macro senza sottounità»')
-    expect(target.headingLine).toBe(6)
+    expect(target.label).toBeUndefined()
   })
 
-  it('con "Dove le lascio": inizio del blocco, mai dentro un titolo', () => {
+  it('inizio del blocco, mai dentro un titolo o una sezione', () => {
     const text = [
       '### 2.2 Metaboliti',
       '05:30',
@@ -273,14 +274,14 @@ describe('dropTarget (Piano 9)', () => {
 
     // Puntatore a metà della seconda riga del primo paragrafo
     const posInPara = text.indexOf('primo paragrafo riga 2') + 5
-    const targetPara = dropTarget(state, posInPara, 'free')
+    const targetPara = dropTarget(state, posInPara)
     expect(targetPara.insertAt).toBe(text.indexOf('Primo paragrafo riga 1'))
     expect(targetPara.label).toBeUndefined()
 
     // Puntatore sul titolo ### 2.2 Metaboliti: non va dentro il titolo, va dopo titolo e timecode
     const posInTitle = 5
-    const targetTitle = dropTarget(state, posInTitle, 'free')
-    expect(targetTitle.insertAt).toBe(state.doc.line(3).from)
+    const targetTitle = dropTarget(state, posInTitle)
+    expect(targetTitle.insertAt).toBe(state.doc.line(2).to)
     expect(targetTitle.label).toBeUndefined()
   })
 
@@ -310,3 +311,49 @@ describe('dropTarget (Piano 9)', () => {
   })
 })
 
+
+it('rilascio sul bottone aggiunge alla sezione corretta senza larghezza', async () => {
+  const source = markdown + '\n\n### 1.2 Altra\n00:30\nTesto secondo'
+  const { view, parent } = mount(async () => image, false, source)
+  const button = parent.querySelector('[data-unit-images="1.2"]')!
+  const event = new Event('drop', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { files: [], getData: (type: string) => type === 'application/x-rt-media-image' ? JSON.stringify({ path: 'assets/images/b.png', alt_text: 'B', in_assets: true }) : '' } })
+  button.dispatchEvent(event)
+  expect(view.state.doc.toString()).toContain('00:30\n\n![B](assets/images/b.png)')
+  expect(view.state.doc.toString()).not.toContain('#w=')
+  view.destroy(); parent.remove()
+})
+it.each(['section', 'text', 'reorder'] as const)('spostamento %s senza duplicati e con un solo annulla', destination => {
+  const source = '### 1.1 Prima\n00:00\n![A](assets/images/a.png)\n![B](assets/images/b.png)\nTesto primo\n\n### 1.2 Seconda\n00:30\nTesto secondo'
+  const { view, parent } = mount(async () => image, false, source)
+  const target = destination === 'section' ? sectionDropTarget(view.state, '1.2')! : destination === 'reorder' ? sectionDropTarget(view.state, '1.1', 'a.png')! : dropTarget(view.state, source.indexOf('Testo secondo'))
+  const moving = destination === 'reorder' ? 'b.png' : 'a.png'
+  expect(moveDocumentImage(view, { name: moving, fromUnit: '1.1' }, target, destination !== 'text')).toBe(true)
+  expect(view.state.doc.toString().match(new RegExp(moving.replace('.', '\\.'), 'g'))).toHaveLength(1)
+  if (destination === 'text') expect(view.state.doc.toString()).toContain('a.png#w=480')
+  if (destination === 'reorder') expect(view.state.doc.toString().indexOf('b.png')).toBeLessThan(view.state.doc.toString().indexOf('a.png'))
+  expect(undo(view)).toBe(true)
+  expect(view.state.doc.toString()).toBe(source)
+  view.destroy(); parent.remove()
+})
+it('immagine nel testo trascinata alla sezione perde la larghezza', () => {
+  const source = markdown + '\n\n![Testo](assets/images/a.png#w=220)'
+  const { view, parent } = mount(async () => image, false, source)
+  moveDocumentImage(view, { name: 'a.png', fromText: source.indexOf('![Testo]') }, sectionDropTarget(view.state, '1.1')!, true)
+  expect(view.state.doc.toString()).toContain('00:00\n\n![Testo](assets/images/a.png)')
+  expect(view.state.doc.toString()).not.toContain('#w=')
+  undo(view)
+  expect(view.state.doc.toString()).toBe(source)
+  view.destroy(); parent.remove()
+})
+it('durante il drag mostra i bersagli vuoti e li ripulisce alla fine', () => {
+  const { view, parent } = mount(async () => image)
+  const event = new Event('dragover', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { types: [RT_SECTION_IMAGE_DRAG_TYPE] } })
+  vi.spyOn(view, 'posAtCoords').mockReturnValue(markdown.length)
+  view.contentDOM.dispatchEvent(event)
+  expect(view.dom).toHaveClass('rt-dragging-images')
+  view.contentDOM.dispatchEvent(new Event('dragend', { bubbles: true }))
+  expect(view.dom).not.toHaveClass('rt-dragging-images')
+  view.destroy(); parent.remove()
+})
