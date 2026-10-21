@@ -282,6 +282,10 @@ class TranscriptionConfig(BaseModel):
     timeout_seconds: int = Field(default=600, ge=10)
 
 
+class PipelineConfig(BaseModel):
+    parallel_pages: int = Field(default=4, ge=1, le=16, description="Pagine dei materiali lette in parallelo dal modello visivo")
+
+
 class ReviewConfig(BaseModel):
     parallel_units: int = Field(default=4, ge=1, le=32, description="Unità verificate in parallelo")
     asr_statistical_k: float = Field(default=3.0, description="Fattore k per z-score robusto su mediana e MAD")
@@ -548,6 +552,7 @@ class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
+    pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del classificatore (es. Jev): pre-filtro della review scientifica e gate di rilevanza")
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")
     worker: WorkerConfig = Field(default_factory=WorkerConfig, description="Worker dei job della web ('rt web')")

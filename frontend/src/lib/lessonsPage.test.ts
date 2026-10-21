@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, selectionDetails, shortDate, sortSelection, subjectName,
+  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -67,6 +67,9 @@ describe('lessonSubtitle', () => {
   it('per docente: data, materia e unità', () => {
     expect(lessonSubtitle(l, 'docente', NOW)).toBe('2 ott · Fisiologia · 9 unità · 38 domande')
   })
+  it('con nessuno: data, materia, docente e unità', () => {
+    expect(lessonSubtitle(l, 'nessuno', NOW)).toBe('2 ott · Fisiologia · Rossi · 9 unità · 38 domande')
+  })
   it('i campi mancanti si saltano, senza separatori doppi', () => {
     expect(lessonSubtitle(lesson(2, { docente: '', unit_count: null }), 'data', NOW)).toBe('Fisiologia · 38 domande')
     expect(lessonSubtitle(lesson(3, { data: '', materia: '' }), 'docente', NOW)).toBe('9 unità · 38 domande')
@@ -127,6 +130,27 @@ describe('lessonsGroups', () => {
     expect(lessonsGroups(rows, { group: 'materia', sort: 'piu-indietro' }, NOW)[0].lessons.map(l => l.id)).toEqual([5, 4, 1, 2, 3])
     expect(rows.map(l => l.id)).toEqual([1, 2, 3, 4, 5])
   })
+  it('con nessuno e "Più avanti nello studio" l\'ordine è globale (lezioni di giorni diversi mescolate)', () => {
+    const rows = [
+      lesson(1, { data: '2026-10-02', unit_count: 10, study_learned: 2 }), // 20%
+      lesson(2, { data: '2026-10-01', unit_count: 10, study_learned: 8 }), // 80%
+      lesson(3, { data: '2026-10-03', unit_count: 10, study_learned: 5 }), // 50%
+    ]
+    const groups = lessonsGroups(rows, { group: 'nessuno', sort: 'piu-avanti' }, NOW)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].key).toBe('tutte')
+    expect(groups[0].lessons.map((l) => l.id)).toEqual([2, 3, 1])
+  })
+  it('"(Ri)create di recente" ordina per pipeline_at, quelle senza in fondo', () => {
+    const rows = [
+      lesson(1, { pipeline_at: '2026-10-01T10:00:00Z', data: '2026-10-05' }),
+      lesson(2, { pipeline_at: '2026-10-02T15:00:00Z', data: '2026-09-01' }),
+      lesson(3, { pipeline_at: null, data: '2026-10-10' }),
+      lesson(4, { pipeline_at: '2026-10-02T12:00:00Z', data: '2026-10-02' }),
+    ]
+    const groups = lessonsGroups(rows, { group: 'nessuno', sort: 'ricreate' }, NOW)
+    expect(groups[0].lessons.map((l) => l.id)).toEqual([2, 4, 1, 3])
+  })
 })
 
 describe('stato e Info', () => {
@@ -155,6 +179,7 @@ it('preferenze salvate e preferenze illeggibili', () => {
   expect(parseLessonsPrefs('{"group":"docente","sort":"titolo"}')).toEqual({ group: 'docente', sort: 'titolo' })
   expect(parseLessonsPrefs('{"group":"mese"}')).toEqual({ group: 'mese', sort: 'recenti' })
   expect(parseLessonsPrefs('{"group":"data"}')).toEqual({ group: 'data', sort: 'recenti' })
+  expect(parseLessonsPrefs('{"group":"nessuno","sort":"ricreate"}')).toEqual({ group: 'nessuno', sort: 'ricreate' })
   expect(parseLessonsPrefs('{"group":"sconosciuto"}')).toEqual({ group: 'data', sort: 'recenti' })
   expect(parseLessonsPrefs('non json')).toEqual({ group: 'data', sort: 'recenti' })
 })
@@ -184,3 +209,49 @@ it('esclude le ignorate dal denominatore, le mostra nella barra e non nel sottot
   expect(lessonSubtitle(rows[0], 'data', NOW)).not.toContain('ignorate')
   expect(selectionDetails([lesson(1, { unit_count: 2, study_ignored: 2 })]).studyUnits).toBe(0)
 })
+
+describe('vista fissata', () => {
+  it('parsePinnedView scarta valori non validi', () => {
+    expect(parsePinnedView(null)).toBeNull()
+    expect(parsePinnedView(undefined)).toBeNull()
+    expect(parsePinnedView('')).toBeNull()
+    expect(parsePinnedView('non json')).toBeNull()
+    expect(parsePinnedView({})).toBeNull()
+    expect(parsePinnedView({ group: 'invalid', sort: 'recenti' })).toBeNull()
+    expect(parsePinnedView({ group: 'data', sort: 'invalid' })).toBeNull()
+    expect(parsePinnedView({ group: 'nessuno', sort: 'ricreate' })).toEqual({
+      group: 'nessuno',
+      sort: 'ricreate',
+      q: '',
+      materia: '',
+      stato: '',
+    })
+    expect(parsePinnedView({ group: 'data', sort: 'recenti', q: 'bio', materia: 'PATOLOGIA', stato: '' })).toEqual({
+      group: 'data',
+      sort: 'recenti',
+      q: 'bio',
+      materia: 'PATOLOGIA',
+      stato: '',
+    })
+    expect(parsePinnedView(JSON.stringify({ group: 'materia', sort: 'titolo', q: 'test' }))).toEqual({
+      group: 'materia',
+      sort: 'titolo',
+      q: 'test',
+      materia: '',
+      stato: '',
+    })
+  })
+
+  it('sameView ignora spazi ai lati della ricerca', () => {
+    const a: LessonsView = { group: 'data', sort: 'recenti', q: '  bio ', materia: 'FISIOLOGIA', stato: '' }
+    const b: LessonsView = { group: 'data', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(a, b)).toBe(true)
+
+    const c: LessonsView = { group: 'data', sort: 'recenti', q: 'bio2', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(a, c)).toBe(false)
+
+    const d: LessonsView = { group: 'materia', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
+    expect(sameView(b, d)).toBe(false)
+  })
+})
+

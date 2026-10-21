@@ -85,12 +85,13 @@ def ingest_sources_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     from rt.pipeline.prepare import run_prepare
     options = job.payload.get("options") or {}
     lesson = job.lesson_path if job.lesson_path and fs.isdir(job.lesson_path) else create_source_lesson(
-        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali", "unisci")
+        **{name: job.payload.get(name) for name in ("audio", "materiali", "appunti", "principale", "allega_materiali", "unisci", "opzioni")
            if job.payload.get(name) is not None},
         **{name: options.get(name, "") for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir, ctx.force_mock = lesson, bool(options.get("mock"))
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
-    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"))
+    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"),
+                         job.payload.get("calendar_materia"), job.payload.get("calendar_start"))
     with ctx.activate():
         run_prepare(lesson, ctx=ctx)
         if job.payload.get("run"):
@@ -301,6 +302,7 @@ def _recall_message(head: str, generated: int, rows: list) -> str:
 
 
 MOCK_VOICE_TRANSCRIPT = "Risposta vocale di prova (trascrizione mock)."
+NO_SPEECH = "Nessun parlato rilevato nella registrazione."
 
 
 def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
@@ -317,6 +319,9 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             answer = transcribe_voice_answer(p["audio_path"], load_config().telegram.recall.stt_engine)
         is_voice = True
         _cleanup_upload(p)
+        if not answer.strip():
+            # Registrazione muta (microfono spento, solo rumore): niente valutazione né risposta salvata.
+            raise ValueError(NO_SPEECH)
     evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,
                                       force_mock=bool(p.get("mock")), mark_answered=False)
     if evaluation is None:

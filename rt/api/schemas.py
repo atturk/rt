@@ -72,6 +72,7 @@ class LessonSummary(BaseModel):
     study_ignored: int = Field(0, description="Unità ignorate nella scaletta attuale")
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
+    pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
     error: Optional[str] = None
 
 
@@ -497,6 +498,7 @@ class RecallQuestion(BaseModel):
     discard_reasons: List[str] = Field(default_factory=list)
     comment: Optional[str] = None
     status: str
+    asked_at: Optional[str] = None
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
 
@@ -588,6 +590,7 @@ class RecallUnitSelection(BaseModel):
 
 
 class RecallAnswerRecord(BaseModel):
+    attempt_id: Optional[str] = None
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
     question_id: str
     answer_text: str
@@ -862,6 +865,8 @@ class StudyNoteApplyResponse(BaseModel):
 # Calendario (4.2.5 CA1)
 # ---------------------------------------------------------------------------
 from rt.services.calendar_models import (  # noqa: F401
+    CalendarYearWeek, CalendarPasteRequest, CalendarPasteResult, CalendarSchedule,
+    CalendarImportRequest, CalendarImportResult,
     CalendarTemplateEntryCreate,
     CalendarTemplateEntryView,
     CalendarOverrideCreate,

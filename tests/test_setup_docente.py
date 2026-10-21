@@ -72,3 +72,13 @@ def test_ora_non_valida_non_crea_la_lezione(tmp_path):
     with pytest.raises(ValueError, match="Ora non valida"):
         run_setup(str(audio), date="2026-09-30", materia="PGSS", ora="25:00", dest_dir=str(tmp_path), mock_asr=True, interactive=False)
     assert list(tmp_path.iterdir()) == [audio]
+
+
+def test_transcription_forwards_engine_messages(tmp_path):
+    import sys
+    script = tmp_path / 'engine.py'
+    script.write_text("print('Caricamento modello')\nprint('Trascrizione 50%')\n")
+    messages = []
+    result = _run_transcribe_with_spinner([sys.executable, str(script)], 'Test', on_message=messages.append)
+    assert result.returncode == 0
+    assert messages == ['Caricamento modello', 'Trascrizione 50%']

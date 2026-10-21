@@ -13,7 +13,7 @@ from rt.storage import fs
 
 
 def create_source_lesson(*, audio, materiali, appunti='', principale=None, allega_materiali=True,
-                         unisci=True,
+                         unisci=True, opzioni=None,
                          date, materia, argomenti='', docente='', ora='', dest_dir):
     date = parse_flexible_date(date)
     materia = sanitize_filename_part((materia or '').strip().upper())
@@ -68,7 +68,7 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     else:
         audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
     notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
-    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path) for path in materiali]
+    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path, **(opzioni or {}).get(os.path.basename(path), {})) for path in materiali]
     if audio_sources:
         primary = audio_sources[0]
     elif principale in ('Appunti', 'appunti.txt') and notes:
@@ -79,25 +79,37 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
         primary = documents[0]
     else:
         primary = notes
-    set_primary(lesson_dir, primary.id)
+    guide = [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida']
+    set_primary(lesson_dir, guide[-1].id if guide else primary.id)
     from rt.db.sync import dual_write_lesson
     dual_write_lesson(lesson_dir)
     return lesson_dir
 
 
-def link_imported_lesson(lesson_dir, entry_id, calendar_date):
+def link_imported_lesson(lesson_dir, entry_id, calendar_date, calendar_materia=None, calendar_start=None):
     """calendar_entry_id è la key dell'ora restituita da GET /calendar/day."""
     if not entry_id:
         return
     from rt.services.calendar_service import get_day_view, link_lesson
     from rt.services.calendar_models import CalendarLinkLessonRequest
     from rt.services.lesson_service import lesson_id_for_dir
-    event = next((e for e in get_day_view(calendar_date).events if e.key == entry_id), None)
+    lesson_id = lesson_id_for_dir(lesson_dir)
+    events = get_day_view(calendar_date).events
+    if any(e.lesson and e.lesson.id == lesson_id for e in events):
+        return
+    event = next((e for e in events if e.key == entry_id), None)
     if event is None:
-        raise ValueError('Ora del calendario non trovata')
+        matches = [e for e in events if calendar_materia and e.materia.casefold() == calendar_materia.casefold()
+                   and e.start_time == calendar_start and e.status != 'annullata']
+        event = matches[0] if len(matches) == 1 else None
+    if event is None or event.status == 'annullata':
+        import logging
+        logging.getLogger(__name__).warning(
+            "Lezione importata, ma l'ora del calendario è cambiata: collegala dal calendario.")
+        return
     link_lesson(CalendarLinkLessonRequest(date=calendar_date, entry_key=event.key,
         template_entry_id=event.template_entry_id, override_id=event.override_id,
-        lesson_id=lesson_id_for_dir(lesson_dir)))
+        lesson_id=lesson_id))
 
 
 def record_import(lesson_dir):
@@ -117,5 +129,6 @@ def record_import(lesson_dir):
 def finish_import(outcome, payload):
     lesson = outcome.lesson_path
     if lesson:
-        link_imported_lesson(lesson, payload.get('calendar_entry_id'), payload.get('calendar_date'))
+        link_imported_lesson(lesson, payload.get('calendar_entry_id'), payload.get('calendar_date'),
+                             payload.get('calendar_materia'), payload.get('calendar_start'))
     return outcome

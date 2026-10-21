@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { PHASE_LABELS, type Tone } from '@/lib/format'
-import { progressLabel } from '@/lib/jobs'
+import { JOB_TYPE_LABELS, PROGRESS_PHASE_LABELS, progressLabel } from '@/lib/jobs'
 
 const JOB_STATES: Record<string, [string, Tone]> = {
   queued: ['in coda', 'neutral'],
@@ -20,20 +20,13 @@ const JOB_STATES: Record<string, [string, Tone]> = {
   cancelled: ['annullato', 'neutral'],
 }
 
-const JOB_TYPES: Record<string, string> = {
-  run_pipeline: 'Pipeline completa',
-  run_phase: 'Fase',
-  rewrite_unit: 'Rielaborazione unità',
-  ingest_audio: 'Importazione audio',
-  add_images: 'Immagini',
-  outline_revision: 'Revisione scaletta',
-}
-
 function jobLabel(type: string, payload: Record<string, unknown>): string {
-  const phase = typeof payload.phase === 'string' ? PHASE_LABELS[payload.phase] ?? payload.phase : null
+  const phase = typeof payload.phase === 'string'
+    ? PHASE_LABELS[payload.phase] ?? PROGRESS_PHASE_LABELS[payload.phase] ?? payload.phase
+    : null
   const unit = typeof payload.unit === 'string' ? ` ${payload.unit}` : ''
   if (type === 'run_phase' && phase) return `${phase}${unit}`
-  return (JOB_TYPES[type] ?? type) + unit
+  return (JOB_TYPE_LABELS[type] ?? type) + unit
 }
 
 /**

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StudyFlow } from './Study'
 import type { Lesson } from '@/lib/format'
+import { api as apiClient } from '@/api/client'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(async () => [] as unknown[]),
@@ -57,15 +58,23 @@ afterEach(() => {
 })
 
 describe('evidenziatore dello Studio', () => {
-  it('un clic sull’evidenziatore attivo cambia colore a giro, e il colore resta', () => {
+  it('un clic sull’evidenziatore attivo cambia colore, dopo l’ultimo si spegne, e il colore resta', () => {
     renderStudy()
     const pen = screen.getByTestId('highlight-pen')
+    expect(pen).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(pen)
     expect(pen).toHaveAttribute('aria-pressed', 'true')
     expect(pen).toHaveAttribute('data-color', '0')
-    for (const expected of ['1', '2', '3', '4', '0', '1']) {
+    for (const expected of ['1', '2', '3', '4']) {
       fireEvent.click(pen)
       expect(pen).toHaveAttribute('data-color', expected)
     }
+    fireEvent.click(pen)
+    expect(pen).toHaveAttribute('aria-pressed', 'false')
+    expect(pen).toHaveAttribute('data-color', '0')
+    fireEvent.click(pen)
+    fireEvent.click(pen)
+    expect(pen).toHaveAttribute('aria-pressed', 'true')
     expect(JSON.parse(localStorage.getItem('rt-pref:study.highlighter')!)).toMatchObject({ color: 1, arrows: true })
   })
 
@@ -195,12 +204,82 @@ describe('lettura veloce', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Virgola come pausa piena' }))
     expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-kind', 'fine')
   })
+
+  it('l nella lettura normale apre la lettura veloce; l nella lettura veloce torna allo Studio', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+
+    // Con Shift non fa nulla
+    fireEvent.keyDown(window, { key: 'L', shiftKey: true })
+    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+
+    // Con il focus in un campo non fa nulla
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'l' })
+    expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument()
+    document.body.removeChild(input)
+
+    // l apre la lettura veloce
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+
+    // Shift+L in lettura veloce non chiude
+    fireEvent.keyDown(window, { key: 'L', shiftKey: true })
+    expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
+
+    // l chiude la lettura veloce
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
+  })
+
+  it('durante la riproduzione speed-reader-panel ha opacity-25 e in pausa no', async () => {
+    await open()
+    const panel = screen.getByTestId('speed-reader-panel')
+    expect(panel).toHaveClass('opacity-100')
+    expect(panel).not.toHaveClass('opacity-25')
+
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(panel).toHaveClass('opacity-25')
+
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(panel).toHaveClass('opacity-100')
+  })
+
+  it('Alt+ArrowRight passa all’unità seguente, chiama preventDefault, mostra zen-notice e all’ultima unità il pulsante è disattivato', async () => {
+    await open()
+    const nextBtn = screen.getByRole('button', { name: /Unità successiva/ })
+    expect(nextBtn).not.toHaveAttribute('aria-disabled', 'true')
+
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true })
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    window.dispatchEvent(event)
+
+    expect(preventDefaultSpy).toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Altro'))
+    expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+
+    // All'ultima unità non cambia nulla e il pulsante è disattivato
+    expect(screen.getByRole('button', { name: /Unità successiva/ })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('s in lettura veloce cambia lo stato e mostra l’avviso', async () => {
+    const put = vi.spyOn(apiClient, 'PUT').mockResolvedValue({ data: {}, response: new Response() } as never)
+    await open()
+    fireEvent.keyDown(window, { key: 's' })
+    await waitFor(() => expect(put).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
+      expect.objectContaining({ body: { status: 'in-apprendimento' } }),
+    ))
+    expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+  })
 })
 
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo · E/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo, dopo l’ultimo si spegne · E/ })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
   expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
@@ -208,6 +287,9 @@ it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
 
 it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi', () => {
   renderStudy()
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.keyDown(window, { key: 'e' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
   fireEvent.keyDown(window, { key: 'e' })
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
   fireEvent.keyDown(window, { key: 'g' })
@@ -222,6 +304,26 @@ it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi',
   fireEvent.keyDown(window, { key: 'E', shiftKey: true })
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByTestId('highlight-pen')).toHaveAttribute('data-color', '1')
+})
+
+it('con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano, con altri dialoghi no', () => {
+  renderStudy()
+  const popup = document.createElement('div')
+  popup.setAttribute('role', 'dialog')
+  popup.dataset.testid = 'study-note-popup'
+  popup.append(document.createElement('button'))
+  document.body.append(popup)
+  fireEvent.keyDown(window, { key: 'g' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.keyDown(popup.firstChild!, { key: 'e' })
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'true')
+  popup.remove()
+  const other = document.createElement('div')
+  other.setAttribute('role', 'dialog')
+  document.body.append(other)
+  fireEvent.keyDown(window, { key: 'g' })
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'false')
+  other.remove()
 })
 
 it('Z entra in zen, resta al cambio di unità; Esc chiude prima le impostazioni', () => {
@@ -265,6 +367,7 @@ it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {
 it('il triplo clic non seleziona il paragrafo', async () => {
   renderStudy()
   await waitFor(() => expect(api.list).toHaveBeenCalled())
+  fireEvent.click(screen.getByTestId('highlight-pen'))
   expect(fireEvent.mouseDown(screen.getByTestId('study-text'), { detail: 3 })).toBe(false)
   expect(api.add).not.toHaveBeenCalled()
 })

@@ -7,6 +7,7 @@ Tutti i contratti tra codice deterministico, LLM e ledger umano sono definiti qu
 from typing import List, Optional, Dict, Any, Literal
 from enum import Enum
 from datetime import datetime
+from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator, model_validator
 from rt.core.timestamp import format_timestamp
 
@@ -20,6 +21,8 @@ class Segment(BaseModel):
     end_formatted: str = Field(..., description="Formato MM:SS o H:MM:SS")
     text_raw: str = Field(..., description="Trascrizione ASR grezza immutata")
     source_file: Optional[str] = None
+    integra: bool = Field(default=False, exclude_if=lambda value: not value)
+    fonte: Optional[str] = Field(default=None, exclude_if=lambda value: value is None)
     speaker: Optional[str] = None
     confidence: Optional[float] = None
     flags: List[str] = Field(default_factory=list)
@@ -262,6 +265,7 @@ class RecallQuestion(BaseModel):
     template_id: Optional[str] = None
     variant: Optional[int] = None
     status: RecallQuestionStatus = RecallQuestionStatus.PENDING
+    asked_at: Optional[str] = None
     discard_reasons: List[str] = Field(default_factory=list)
     comment: Optional[str] = None
     discarded_from: Optional[RecallQuestionStatus] = None
@@ -402,6 +406,7 @@ class RecallEvaluation(str):
 
 
 class RecallAnswer(BaseModel):
+    attempt_id: str = Field(default_factory=lambda: uuid4().hex[:12])
     question_id: str
     answer_text: str
     is_voice: bool = False

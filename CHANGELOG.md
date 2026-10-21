@@ -1,5 +1,91 @@
 # Novità di RT
 
+## 4.3.2 — 2026-10-21
+
+Raccoglie le beta 4.3.2b1, b2 e b3 (dettagli sotto).
+
+### Novità
+
+- **Archivio delle fonti**: PDF, audio e immagini già usati non si rielaborano più. Nuova pagina **Archivio** per ignorare, ritagliare o riusare le pagine in altre lezioni; **Aggiungi fonte** accetta anche Word e testo e sceglie cosa estrarre e come usarlo (Guida, Contesto, Integra).
+- **Esporta PDF**: la lezione in A4, con le immagini sotto il titolo due per riga e quelle nel testo dove le hai messe.
+- Calendario: vista annuale, **Vai alla settimana**, copia e incolla di settimane, esportazione e importazione dell'orario (`.rtcal`), docenti per materia.
+- Lezioni: vista fissabile con la puntina, elenco senza raggruppamenti e ordine **(Ri)create di recente**.
+- Studio e lettura: lettura veloce con scorciatoie, zoom dell'interfaccia e del testo, evidenziatore che si spegne dopo l'ultimo colore.
+- Domande: ogni risposta resta nello storico, con la pagina **Risposte**.
+- App: aggiornamenti in un popup con **Installa e riavvia**, notifiche a fine lavoro, apertura di audio e PDF dal Finder, registrazione vocale con permesso del microfono, firma ad-hoc e istruzioni nel DMG.
+- Copia con formattazione scelta in Impostazioni › Copia, job tutti con un nome leggibile, backup con avanzamento.
+
+### Correzioni
+
+- Verifiche: le issue di un'unità sparita dopo una rielaborazione si chiudono da sole.
+- Audio che si interrompeva al primo ascolto, formule nelle domande, risposte vocali senza parlato, import di archivi in anteprima e varie correzioni su Windows.
+- Il browser che prepara il PDF lavora nascosto: niente più "Chrome for Testing" nel Dock.
+
+## 4.3.2b3 — 2026-10-21
+
+### Novità
+
+- **Esporta PDF**: la lezione in A4, leggibile anche ingrandendo. Le immagini sotto il titolo vanno due per riga a mezza pagina; quelle nel testo restano dove le hai messe, con la larghezza che hai scelto.
+- Lezioni: si possono spegnere tutti i raggruppamenti per avere un elenco unico, e c'è l'ordine **(Ri)create di recente**, per l'ultima volta in cui la lezione è passata da scaletta, rielaborazione o documento.
+- I job hanno tutti un nome leggibile (prima alcuni comparivano come `enrichment_generate` o `review_unit`). Il popolamento iniziale dell'archivio si chiama "Archivio delle fonti" e mostra l'avanzamento lezione per lezione.
+- Studio: dopo l'ultimo colore l'evidenziatore si spegne, e la volta dopo riparte dal giallo.
+
+### Correzioni
+
+- Verifiche: dopo una nuova rielaborazione le issue di un'unità che non c'è più si chiudono da sole, invece di restare "Da riconfermare" e rimbalzare l'una sull'altra.
+
+## 4.3.2b2 — 2026-10-20
+
+### Novità
+
+- **Archivio delle fonti**: un PDF, un audio o un'immagine già usati in una lezione non si rielaborano più quando tornano in un'altra (niente nuove trascrizioni né descrizioni).
+- Nuova pagina **Archivio**, dal pannello Arricchimento: tutti i file mai aggiunti, con le pagine usate da ogni lezione. Le pagine si possono ignorare (l'AI non le legge più), ritagliare o eliminare, e un file o alcune sue pagine si aggiungono a un'altra lezione senza rielaborarli.
+- **Aggiungi fonte** riconosce i file già nell'archivio e propone le pagine da dove ci si era fermati; per ogni fonte si sceglie cosa estrarre (solo testo o anche immagini) e come usarla (Guida, Contesto, Integra). Si possono aggiungere documenti Word (.docx) e file di testo (.txt).
+- Uso **Integra**: una fonte da integrare entra davvero nella lezione. La scaletta la vede e può aggiungere unità per gli argomenti che la registrazione non tratta.
+- Pannello Arricchimento: pulsante Archivio in cima, filtro **Da descrivere** e una barra della selezione nuova con Descrivi, Posiziona, Inserisci, Ritaglia, Togli dal testo ed Elimina dalla lezione.
+- Un'immagine trascinata nel testo va sotto il titolo della sottounità su cui la lasci, evidenziata mentre trascini. In Impostazioni › Editor si può scegliere "Dove le lascio", e allora le immagini si ridimensionano dagli angoli. Con il pannello Arricchimento aperto, un clic su un'immagine del testo la seleziona fra i media.
+- Le domande riposte si possono rispondere davvero: la vecchia risposta e la correzione non compaiono più subito. Ogni risposta resta nello storico, e la pagina **Risposte** (dal pannello Domande) le mostra tutte per la lezione.
+- Copia: il testo copiato da RT (per esempio in Anki) tiene grassetto, corsivo ed evidenziazioni ma non il colore del testo; le formule arrivano come `\( \)` e `\[ \]`. In Impostazioni › Aspetto e lettura › **Copia** si sceglie cosa tenere.
+- Nell'app gli aggiornamenti arrivano in un popup: si scaricano mentre usi RT e si installano quando vuoi con **Installa e riavvia**. Il file scaricato resta anche se chiudi RT. Chi è sul canale beta riceve anche le beta dall'app.
+- Nell'app arriva una notifica quando un lavoro lungo finisce o aspetta una tua decisione, e l'icona nel Dock mostra quanti lavori sono in corso.
+- Puoi aprire audio e PDF con RT dal Finder ("Apri con") o trascinandoli sull'icona nel Dock: si apre Nuova lezione con quei file.
+- Il DMG spiega nello sfondo come installare RT e come aprirlo la prima volta con "Apri comunque". RT.app ha una firma ad-hoc: macOS non la dà più per danneggiata.
+
+### Correzioni
+
+- Un archivio completo di una lezione ancora in anteprima ("(anteprima).zip") si importa di nuovo: prima era rifiutato con "File non dichiarati nel manifesto".
+- Studio: entrando in lettura nessuno strumento è selezionato; con Chiedi o Verifica aperti le scorciatoie degli strumenti funzionano di nuovo.
+- Windows: aggiungere un materiale scegliendo le pagine e ritagliare una pagina dell'archivio non falliscono più; l'archivio non conta due volte la stessa lezione.
+- Calendario annuale: la settimana selezionata si vede anche quando ha la barretta del cambio d'orario.
+
+## 4.3.2b1 — 2026-10-19
+
+### Novità
+
+- Calendario: vista annuale, **Vai alla settimana** con la griglia delle settimane (mesi separati, settimane passate e future distinte, senza leggenda), copia e incolla di una settimana stampo dentro Modifica, anche su più settimane dalla vista annuale.
+- Impostazioni › Materie: esporta l'orario del calendario e importalo da un file `.rtcal`, tutto o solo in un periodo, con avviso se sostituisce un orario esistente.
+- Docenti per materia: si salvano da soli, si suggeriscono nel campo Docente e si gestiscono in Impostazioni › Materie. Nel popup del calendario Invio conferma.
+- Lezioni: la puntina accanto a Cerca fissa la vista (raggruppamento, ordine, ricerca e filtri) e la ritrova al rientro; una modifica la sblocca.
+- Lettura veloce: L entra ed esce dalla lettura veloce, S cambia lo stato di studio, Option/Alt+frecce e due pulsanti piccoli passano all'unità precedente o successiva; durante la lettura i controlli si attenuano.
+- Zoom dell'interfaccia (Aspetto, menu dell'app e Cmd/Ctrl +/−) e zoom del solo testo nello Studio con + e −.
+- Media della lezione: vista con una pagina per riga, anteprima grande tenendo premuto su una miniatura, file scelti visibili in **Aggiungi PDF o foto**, anche un'immagine sola nel testo si mostra in miniatura.
+- Media: nuovo pulsante **Elimina** nella selezione. **Togli dal testo** funziona anche sugli elementi dell'arricchimento, che restano nei media.
+- **Informazioni su RT** con logo, versione e build reali, anche in Impostazioni › Info.
+- Backup con avanzamento e **Salva una copia…** in un file zip.
+- Preparazione più veloce: pagine dei materiali lette in parallelo e insieme alla trascrizione, avanzamento più chiaro e tempi registrati.
+- Nell'app la registrazione vocale funziona: RT chiede il permesso del microfono al primo uso. Il menu ha **Controlla permessi**, che lo richiede o apre l'impostazione di sistema se era stato negato.
+- I pulsanti a icona disattivati mostrano comunque il suggerimento, con il motivo dove serve.
+
+### Correzioni
+
+- L'audio della lezione non si interrompe più dopo pochi secondi al primo ascolto: la copia riproducibile si prepara una volta sola e quelle rovinate dalle versioni precedenti vengono rifatte.
+- Le formule nelle domande (testo, alternative e commento della valutazione) si vedono rese.
+- Una risposta vocale senza parlato non viene più valutata: RT dice che non ha rilevato parlato e si può rispondere di nuovo. Una lezione con trascrizione vuota lo dice chiaramente.
+- Nell'editor non compaiono più i commenti tecnici dei blocchi dell'arricchimento.
+- Nelle visualizzazioni le frecce dei vettori non diventano più quadratini (vale per quelle generate da ora).
+- La scheda **Scaletta da approvare** resta visibile durante l'aggiornamento della lezione.
+- «Da capo» senza arricchimento, icone delle unità che non sfarfallano, collegamento all'ora del calendario conservato durante un import.
+
 ## 4.3.1.1 — 2026-10-19
 
 ### Correzioni

@@ -20,7 +20,7 @@ const issue: Schemas['IssueItem'] = { quote_status: 'found', needs_reconfirmatio
 function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, _markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
   return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, review_progress: { reviewed: 0, total: 0, completed_once: phases.review === 'VALID' }, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
 }
-beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false; state.refetch.mockImplementation(() => { state.items = state.items.map(item => ({ ...item, quote_status: 'changed' })); return Promise.resolve() }) })
+beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false; state.refetch.mockImplementation(() => Promise.resolve({ data: { items: state.items } })) })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
   let resolve!: () => void
   const save = vi.fn(() => new Promise<void>((r) => { resolve = r }))
@@ -141,7 +141,7 @@ it.each([false, true])('modifica col doppio clic o un tocco sul telefono=%s', ph
   const box = screen.getByTestId('proposed-correction')
   if (phone) fireEvent.click(box); else fireEvent.doubleClick(box)
   expect(screen.getByRole('textbox', { name: 'Correzione proposta' })).toHaveValue('Il pH è 7.')
-  expect(screen.getByRole('button', { name: 'Ripristina la correzione proposta' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Ripristina la correzione proposta' })).toHaveAttribute('aria-disabled', 'true')
 })
 it('clic fuori applica il testo cambiato, senza cambi non decide', async () => {
   mount()
@@ -183,7 +183,7 @@ it('il testo vuoto non si applica; Ctrl+Invio applica il testo scritto', async (
   fireEvent.change(screen.getByRole('textbox'), { target: { value: ' ' } })
   fireEvent.mouseDown(document.body)
   expect(state.decide).not.toHaveBeenCalled()
-  expect(screen.getByRole('button', { name: 'Applica la tua correzione' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Applica la tua correzione' })).toHaveAttribute('aria-disabled', 'true')
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Il pH è 7,4.' } })
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', ctrlKey: true })
   await waitFor(() => expect(state.decide).toHaveBeenCalledWith({ issueId: 'a', decision: 'edited', text: 'Il pH è 7,4.' }))
@@ -254,6 +254,7 @@ it('le issue si aprono e si chiudono nella propria unità', () => {
   expect(screen.getByRole('list', { name: 'Issue dell’unità 1.1' })).toBeInTheDocument()
 })
 it('claim_changed mostra l’errore nella card e passa a Testo cambiato', async () => {
+  state.refetch.mockImplementationOnce(() => { state.items = state.items.map(item => ({ ...item, quote_status: 'changed' })); return Promise.resolve({ data: { items: state.items } }) })
   state.decide.mockRejectedValueOnce(new ApiError(409, 'claim_changed', 'Il testo è già cambiato: modificalo a mano o chiudi l’issue'))
   mount()
   fireEvent.click(screen.getByRole('button', { name: 'Accetta la correzione' }))
@@ -436,8 +437,8 @@ it('durante la verifica decide e annulla su una unità finita, mentre le altre s
 it('una issue della unità ancora pendente non si decide', () => {
   state.jobs = [{ id: 'j', type: 'review_unit', state: 'running', payload: { unit: '1.1' }, attempts: 0, cancel_requested: false, progress: { pending_units: ['1.1'], running_units: ['1.1'] } } as Schemas['Job']]
   mount()
-  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Accetta la correzione' })).toHaveAttribute('aria-disabled', 'true')
+  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toHaveAttribute('aria-disabled', 'true')
 })
 it('il riepilogo sostituisce l’elenco quando tutta la lezione è decisa; Mostra decise lo riapre', () => {
   state.units = [unit('1.1', 'issues', 1)]
@@ -608,4 +609,24 @@ it('Accetta tutte è spenta senza correzioni da decidere', () => {
   state.items = [{ ...issue, decision: { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-10' } }]
   mount()
   expect(screen.getByRole('button', { name: 'Accetta tutte le correzioni da decidere (0)' })).toHaveAttribute('aria-disabled', 'true')
+})
+
+it('resta sulla stessa issue se la decisione appena presa richiede ancora riconferma', async () => {
+  const previous: Schemas['Decision'] = { issue_id: 'a', decision: 'accepted', resolved_by: 'user', timestamp: '2026-10-20' }
+  const recorded: Schemas['Decision'] = { ...previous, timestamp: '2026-10-21' }
+  state.items = [
+    { ...issue, needs_reconfirmation: true, decision: previous },
+    { ...issue, issue: { ...issue.issue, id: 'b', claim: 'Seconda issue', suggested_fix: 'Altra correzione.' }, needs_reconfirmation: true, decision: { ...previous, issue_id: 'b' } },
+  ]
+  state.decide.mockImplementationOnce(async () => {
+    state.items = state.items.map(item => item.issue.id === 'a' ? { ...item, decision: recorded } : item)
+    return recorded
+  })
+  state.refetch.mockImplementationOnce(async () => ({ data: { items: state.items } }))
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: 'Riconferma la correzione' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent("La decisione non si applica: l'unità non c'è più.")
+  expect(screen.getByTestId('issue-detail')).toHaveTextContent('Il pH è 7.')
+  expect(screen.getByRole('status')).toHaveTextContent('2 da decidere')
+  expect(state.decide).toHaveBeenCalledExactlyOnceWith({ issueId: 'a', decision: 'accepted', text: undefined })
 })

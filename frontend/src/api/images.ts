@@ -85,6 +85,22 @@ export function removeFromText(id: number, imageNames: string[], leaseToken?: st
   }))
 }
 
+/** Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano. */
+export function deleteMedia(id: number, imageNames: string[], updateDocument = true, leaseToken?: string) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/delete', {
+    params: path(id),
+    body: { names: imageNames, image_names: imageNames, update_document: updateDocument, lease_token: leaseToken },
+  }))
+}
+
+/** Descrive con vision le immagini indicate (se non ancora descritte). */
+export function describeMedia(id: number, names: string[], mock = false) {
+  return unwrap(api.POST('/api/v1/lessons/{lesson_id}/media/describe', {
+    params: path(id),
+    body: { names, mock },
+  }))
+}
+
 /** Ritaglia un'immagine (come nuova immagine o sostituzione). */
 export function cropMediaImage(
   id: number,

@@ -169,6 +169,7 @@ def create_lesson(
     appunti: str = Form("", description="Testo per creare una lezione senza audio"),
     materiali: List[UploadFile] = File([], json_schema_extra=lambda schema: schema.pop("default", None)),
     principale: Optional[str] = Form(None),
+    opzioni: str = Form("{}"),
     allega_materiali: Optional[bool] = Form(None),
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
@@ -188,10 +189,21 @@ def create_lesson(
             if calendar_day.fromisoformat(calendar_date).isoformat() != calendar_date:
                 raise ValueError()
             with read_scope(get_database()) as session:
-                require_linkable_event(calendar_date, calendar_entry_id, session)
+                event = require_linkable_event(calendar_date, calendar_entry_id, session)
         except ValueError:
             raise ApiError(422, "validation_error", "Ora del calendario non trovata per questa data.") from None
-        calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date}
+        calendar = {"calendar_entry_id": calendar_entry_id, "calendar_date": calendar_date,
+                    "calendar_materia": event.materia, "calendar_start": event.start_time}
+    import json
+    from rt.api.routers.lesson_sources import SourceOptions
+    try:
+        raw_options = json.loads(opzioni)
+        if not isinstance(raw_options, dict):
+            raise ValueError('Opzioni non valide')
+        source_options = {name: SourceOptions.model_validate(value).model_dump(exclude_unset=True)
+                          for name, value in raw_options.items()}
+    except (ValueError, TypeError):
+        raise ApiError(422, 'validation_error', 'Opzioni delle fonti non valide.') from None
     if materiali:
         from rt.core.materials import MATERIAL_EXTENSIONS, page_count
         if len(appunti.encode("utf-8")) > _max_upload_bytes():
@@ -208,7 +220,8 @@ def create_lesson(
                 if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
                     raise ApiError(415, "unsupported_media_type", "Tipo di materiale non ammesso.")
                 try:
-                    page_count(path)
+                    from rt.core.source_options import parse_pages
+                    parse_pages(source_options.get(os.path.basename(path), {}).get('pagine'), page_count(path))
                 except Exception:
                     raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
             if not audio and principale and principale not in {os.path.basename(p) for p in documents} | ({"Appunti", "appunti.txt"} if appunti.strip() else set()):
@@ -217,7 +230,7 @@ def create_lesson(
                 "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
                 "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
             return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
-                "appunti": appunti, "principale": principale,
+                "appunti": appunti, "principale": principale, "opzioni": source_options,
                 "allega_materiali": True if allega_materiali is None else allega_materiali,
                 "unisci": unisci,
                 "run": run, "options": options, "upload_dir": target, **calendar}, actor)

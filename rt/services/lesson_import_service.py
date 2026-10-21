@@ -17,6 +17,7 @@ from rt.db.repositories import LessonRepository
 from rt.db.session import session_scope
 from rt.services.lesson_service import lessons_root, work_dir
 from rt.storage import fs
+from rt.storage.export import PREVIEW_README, PREVIEW_SUFFIX
 
 MAX_FILES = 1000
 MAX_BYTES = 2 * 1024 ** 3
@@ -86,8 +87,10 @@ def import_archive(archive: Union[str, BinaryIO]) -> int:
         if not isinstance(rows, list) or len(rows) != len({row.get("path") for row in rows if isinstance(row, dict)}):
             raise Invalid("invalid_archive", "Manifesto non valido.")
         declared = {f"{folder}/{row['path']}": row for row in rows if isinstance(row, dict) and isinstance(row.get("path"), str)}
-        extras = set(names) - set(declared) - {manifest_name}
-        if extras - {f"{folder}/LEGGIMI - anteprima.txt"} and not all("(anteprima)" in n for n in extras):
+        # L'export di un'anteprima aggiunge il LEGGIMI e il Markdown "(anteprima)", fuori dal manifesto.
+        extras = {n for n in set(names) - set(declared) - {manifest_name}
+                  if n != f"{folder}/{PREVIEW_README}" and not n.endswith(PREVIEW_SUFFIX + ".md")}
+        if extras:
             raise Invalid("invalid_archive", "File non dichiarati nel manifesto.")
         if not declared or not f"{folder}/info.yaml" in declared or set(declared) - set(names):
             raise Invalid("invalid_archive", "Archivio incompleto: manca info.yaml o un file dichiarato.")

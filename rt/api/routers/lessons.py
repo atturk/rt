@@ -2,7 +2,7 @@
 import os
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 
@@ -200,36 +200,91 @@ def get_waveform(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return {"ready": peaks is not None, "peaks": peaks or []}
 
 
+def _render_pdf(lesson_id: int, port: int) -> bytes:
+    from playwright.sync_api import sync_playwright
+    from rt.api import auth
+    from rt.llm.enrichment_media import launch_capture_browser, BrowserMissingError
+
+    session_id = auth.create_session()
+    try:
+        try:
+            p_context = sync_playwright()
+            p = p_context.__enter__()
+        except Exception as exc:
+            raise ApiError(409, "pdf_browser_missing", "Il browser per il PDF si sta ancora scaricando. Riprova tra poco.") from exc
+
+        try:
+            try:
+                browser = launch_capture_browser(p)
+            except (BrowserMissingError, Exception) as exc:
+                raise ApiError(409, "pdf_browser_missing", "Il browser per il PDF si sta ancora scaricando. Riprova tra poco.") from exc
+
+            try:
+                context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
+                context.add_cookies([{
+                    "name": auth.SESSION_COOKIE,
+                    "value": session_id,
+                    "url": f"http://127.0.0.1:{port}",
+                }])
+                page = context.new_page()
+                page.goto(f"http://127.0.0.1:{port}/lezioni/{lesson_id}/stampa", wait_until="commit")
+                page.wait_for_selector('body[data-ready="1"]', timeout=60000)
+
+                footer_html = '<div style="font-size: 8px; color: #888888; width: 100%; text-align: center;"><span class="pageNumber"></span></div>'
+                return page.pdf(
+                    format="A4",
+                    prefer_css_page_size=True,
+                    print_background=True,
+                    display_header_footer=True,
+                    footer_template=footer_html,
+                    header_template="<span></span>",
+                )
+            finally:
+                browser.close()
+        finally:
+            p_context.__exit__(None, None, None)
+    finally:
+        auth.drop_session(session_id)
+
+
 @router.get("/lessons/{lesson_id}/export",
-            summary="Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione",
+            summary="Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF",
             description="Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, "
                         "l'anteprima che il build produrrebbe ora: il nome dei file contiene \"(anteprima)\" e "
                         "lo zip ha un LEGGIMI che lo spiega.",
             response_class=Response,
-            responses={200: {"content": {"text/markdown": {}, "application/zip": {}},
+            responses={200: {"content": {"text/markdown": {}, "application/zip": {}, "application/pdf": {}},
                              "description": "File da salvare (Content-Disposition: attachment)"}})
-def export_lesson(
+async def export_lesson(
+    request: Request,
     lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
-    format: Literal["markdown", "zip"] = Query("markdown", description="markdown: solo il documento finale; "
-                                               "zip: archivio con i file scelti da scope"),
+    format: Literal["markdown", "zip", "pdf"] = Query("markdown", description="markdown: solo il documento finale; "
+                                               "zip: archivio con i file scelti da scope; pdf: documento finale in PDF"),
     scope: Literal["final", "all", "sources"] = Query("final", description="final: Markdown finale, errori concettuali e "
                                            "immagini richiamate; all: tutti i file della lezione, audio compreso; "
                                            "sources: solo le fonti (audio della lezione in m4a, PDF e altri file)"),
     study: bool = Query(False, description="Include lo stato di studio nello ZIP completo"),
 ):
     from urllib.parse import quote
+    from starlette.concurrency import run_in_threadpool
     from rt.storage.export import ExportError, export_zip_to_tempfile, final_markdown, zip_name
     try:
         if format == "markdown":
             filename, content = final_markdown(lesson_dir)
             media_type = "text/markdown; charset=utf-8"
-        else:
+        elif format == "zip":
             path = export_zip_to_tempfile(lesson_dir, scope, study=study)
             filename = zip_name(lesson_dir, scope)
             disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
             return FileResponse(path, media_type="application/zip", filename=filename,
                                 headers={"Content-Disposition": disposition},
                                 background=BackgroundTask(os.unlink, path))
+        else:
+            md_filename, _ = final_markdown(lesson_dir)
+            filename = (md_filename[:-3] if md_filename.endswith(".md") else md_filename) + ".pdf"
+            port = request.url.port or 8000
+            content = await run_in_threadpool(_render_pdf, lesson_id, port)
+            media_type = "application/pdf"
     except ExportError as exc:
         raise ApiError(404, "export_not_available", str(exc))
     disposition = f"attachment; filename*=UTF-8''{quote(filename)}"

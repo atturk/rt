@@ -182,3 +182,46 @@ it('Novità resta utilizzabile quando il browser non permette localStorage', asy
     expect(checkbox).not.toBeChecked()
   } finally { get.mockRestore(); set.mockRestore(); remove.mockRestore() }
 })
+
+it('Info mostra la riga Build quando l’API la fornisce e non la mostra quando manca', async () => {
+  const baseInfo: Schemas['SystemInfo'] = {
+    version: '4.3.2b1',
+    prerelease: true,
+    update_channel: 'beta',
+    install_dir: '/app',
+    data_dir: '/data',
+    config_dir: '/config',
+    python_version: '3.12.3',
+    platform: 'Darwin 24.1.0 (arm64)',
+    build: 'build 812 · a1b2c3d · 19/10/2026',
+  }
+
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
+    path === '/api/v1/system/info' ? baseInfo :
+    path === '/api/v1/settings' ? { data_dir: '/data' } :
+    path === '/api/v1/system/cache' ? empty :
+    path === '/api/v1/system/update' ? { supported: false, current: '4.3.2b1', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
+    path === '/api/v1/system/changelog' ? [] : {},
+  ))) as never)
+
+  const client1 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { unmount } = render(<QueryClientProvider client={client1}><InfoSection /></QueryClientProvider>)
+  expect(await screen.findByText('build 812 · a1b2c3d · 19/10/2026')).toBeInTheDocument()
+  expect(screen.getByText('Build')).toBeInTheDocument()
+  unmount()
+
+  // Senza build
+  const noBuildInfo = { ...baseInfo, build: null }
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
+    path === '/api/v1/system/info' ? noBuildInfo :
+    path === '/api/v1/settings' ? { data_dir: '/data' } :
+    path === '/api/v1/system/cache' ? empty :
+    path === '/api/v1/system/update' ? { supported: false, current: '4.3.2b1', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
+    path === '/api/v1/system/changelog' ? [] : {},
+  ))) as never)
+
+  const client2 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client2}><InfoSection /></QueryClientProvider>)
+  expect(await screen.findByText('4.3.2b1')).toBeInTheDocument()
+  expect(screen.queryByText('Build')).not.toBeInTheDocument()
+})

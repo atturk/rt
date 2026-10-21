@@ -27,6 +27,7 @@ class Lesson(Base):
     folder_name: Mapped[str] = mapped_column(String(512))
     data: Mapped[str] = mapped_column(String(32), default="")
     materia: Mapped[str] = mapped_column(String(256), default="")
+    docente: Mapped[str] = mapped_column(String(256), default="", server_default="")
     titolo: Mapped[str] = mapped_column(Text, default="")
     argomenti: Mapped[str] = mapped_column(Text, default="")
     workflow_state: Mapped[str] = mapped_column(String(64), default="")
@@ -407,5 +408,13 @@ class Subject(Base):
     """Materia registrata, conservando la grafia scelta dall'utente."""
     __tablename__ = "subjects"
 
+    nome: Mapped[str] = mapped_column(String(256), primary_key=True)
+    creata_il: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class SubjectTeacher(Base):
+    __tablename__ = "subject_teachers"
+
+    materia: Mapped[str] = mapped_column(String(256), primary_key=True)
     nome: Mapped[str] = mapped_column(String(256), primary_key=True)
     creata_il: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

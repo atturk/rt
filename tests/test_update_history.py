@@ -195,3 +195,21 @@ def test_failed_units_restore_the_lesson(tmp_path, extended_twice, monkeypatch):
     with pytest.raises(RuntimeError, match="incompleto"):
         run_source_update(lesson, mock=True)
     assert _files(tmp_path) == before
+
+
+@pytest.mark.parametrize('exists', [False, True])
+def test_snapshot_restores_outline_approval(tmp_path, exists):
+    lesson = str(tmp_path)
+    path = lesson_path(lesson, 'outline_approval.json')
+    if exists:
+        with fs.open(path, 'w') as stream:
+            stream.write('old approval')
+    stamp = snapshot_update(lesson)
+    assert fs.isfile(str(tmp_path / 'history' / stamp / 'outline_approval.json')) == exists
+    with fs.open(path, 'w') as stream:
+        stream.write('new approval')
+    undo_update(lesson)
+    assert fs.isfile(path) == exists
+    if exists:
+        with fs.open(path) as stream:
+            assert stream.read() == 'old approval'

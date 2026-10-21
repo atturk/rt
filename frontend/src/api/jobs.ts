@@ -1,3 +1,4 @@
+import { subjectsKeys } from './subjects'
 /**
  * Hook di job, importazione e outline (RT4-F4). Lo stato dei job si rilegge sempre dall'API:
  * il canale live (liveUpdates.ts) dice quando rileggere; lo stream SSE del singolo job
@@ -24,6 +25,7 @@ export const jobKeys = {
 
 /** Dopo un job o una decisione cambiano lezioni, fasi, outline e job: si rilegge tutto. */
 export function invalidateAfterJob(client: QueryClient, lessonId?: number | null) {
+  void client.invalidateQueries({ queryKey: subjectsKeys.all })
   void client.invalidateQueries({ queryKey: ['enrichment'] })
   void client.invalidateQueries({ queryKey: jobKeys.all })
   void client.invalidateQueries({ queryKey: queryKeys.allLessons })
@@ -95,6 +97,7 @@ export function useRetryJob() {
 export type NewLesson = {
   files: File[]
   materiali?: File[]
+  opzioni?: Record<string, import('./archive').SourceOptions>
   principale?: string
   allega_materiali?: boolean
   calendar_entry_id?: string
@@ -120,6 +123,7 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   if (input.materiali) {
     for (const file of input.materiali) form.append('materiali', file, file.name)
   }
+  if (input.opzioni) form.append('opzioni', JSON.stringify(input.opzioni))
   if (input.principale) form.append('principale', input.principale)
   if (input.allega_materiali !== undefined) form.append('allega_materiali', String(input.allega_materiali))
   if (input.unisci !== undefined) form.append('unisci', String(input.unisci))

@@ -9,9 +9,9 @@ function open(onConfirm = vi.fn(), onClose = vi.fn()) {
   const week = (date: string) => result.container.querySelector<HTMLButtonElement>(`[data-week="${date}"]`)!
   return { ...result, week, onConfirm, onClose }
 }
-it('mostra occupazione e cambi di versione, con 53 settimane nel 2026', () => {
+it('mostra occupazione e cambi di versione, con 52 settimane nell’anno accademico 2026/27', () => {
   const { week, container } = open()
-  expect(container.querySelectorAll('[data-week]')).toHaveLength(53)
+  expect(container.querySelectorAll('[data-week]')).toHaveLength(52)
   expect(week('2026-10-12')).toHaveClass('occupata')
   expect(week('2026-10-05')).not.toHaveClass('occupata')
   expect(week('2026-10-12')).toHaveAttribute('data-changed', 'true')
@@ -23,17 +23,17 @@ it('si ferma al 2025 e al 2035', () => {
   open()
   fireEvent.click(screen.getByRole('button', { name: 'Anno precedente' }))
   expect(screen.getByTestId('calendar-range-year')).toHaveTextContent('2025')
-  expect(screen.getByRole('button', { name: 'Anno precedente' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Anno precedente' })).toHaveAttribute('aria-disabled', 'true')
   for (let i = 0; i < 10; i++) fireEvent.click(screen.getByRole('button', { name: 'Anno successivo' }))
   expect(screen.getByTestId('calendar-range-year')).toHaveTextContent('2035')
-  expect(screen.getByRole('button', { name: 'Anno successivo' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Anno successivo' })).toHaveAttribute('aria-disabled', 'true')
 })
 it.each([false, true])('seleziona le settimane anche in ordine inverso: %s', reverse => {
   const { week, onConfirm } = open()
   const confirm = screen.getByRole('button', { name: 'Modifica queste settimane' })
-  expect(confirm).toBeDisabled()
+  expect(confirm).toHaveAttribute('aria-disabled', 'true')
   fireEvent.click(week(reverse ? '2026-10-19' : '2026-10-12'))
-  expect(confirm).toBeDisabled()
+  expect(confirm).toHaveAttribute('aria-disabled', 'true')
   fireEvent.click(week(reverse ? '2026-10-12' : '2026-10-19'))
   expect(week('2026-10-12')).toHaveAttribute('aria-pressed', 'true')
   fireEvent.click(confirm)
@@ -41,11 +41,11 @@ it.each([false, true])('seleziona le settimane anche in ordine inverso: %s', rev
 })
 it('conserva il primo clic passando a un altro anno', () => {
   const { week, onConfirm } = open()
-  fireEvent.click(week('2026-12-28'))
+  fireEvent.click(week('2027-08-23'))
   fireEvent.click(screen.getByRole('button', { name: 'Anno successivo' }))
-  fireEvent.click(week('2027-01-04'))
+  fireEvent.click(week('2027-08-30'))
   fireEvent.click(screen.getByRole('button', { name: 'Modifica queste settimane' }))
-  expect(onConfirm).toHaveBeenCalledWith({ from: '2026-12-28', to: '2027-01-11' })
+  expect(onConfirm).toHaveBeenCalledWith({ from: '2027-08-23', to: '2027-09-06' })
 })
 it('Esc e clic fuori chiudono il popup', () => {
   const { onClose } = open()

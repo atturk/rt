@@ -1,5 +1,5 @@
 import { PHASE_LABELS } from './format'
-import { AUDIO_EXTENSIONS, type Job } from './jobs'
+import { AUDIO_EXTENSIONS, PROGRESS_PHASE_LABELS, type Job } from './jobs'
 
 /**
  * Avanzamento a due barre (design 4.2, schermata 03): davanti il totale, dietro la fase in
@@ -58,7 +58,8 @@ export function jobPhases(job: Pick<Job, 'type' | 'payload'>): string[] {
 }
 
 export function phaseLabel(phase: string): string {
-  return PHASE_LABELS[phase] ?? (phase === 'setup' ? 'Trascrizione' : phase)
+  if (phase === 'setup') return 'Trascrizione'
+  return PHASE_LABELS[phase] ?? PROGRESS_PHASE_LABELS[phase] ?? phase
 }
 
 const clamp = (n: number) => Math.min(1, Math.max(0, n))
@@ -79,7 +80,7 @@ export function phaseProgress(job: Pick<Job, 'type' | 'payload' | 'progress' | '
   let fraction = p.completed ? 1 : counted ? clamp(done / total) : 0
   let detail: string | null = null
   if (!p.completed && counted) {
-    if (current === 'setup') detail = typeof p.message === 'string' && p.message ? p.message : `${Math.round(fraction * 100)}%`
+    if (current === 'setup' || current === 'prepare') detail = typeof p.message === 'string' && p.message ? p.message : `${Math.round(fraction * 100)}%`
     else detail = UNIT_PHASES.has(current ?? '') ? `unità ${done} di ${total}` : `${done} di ${total}`
   } else if (!p.completed && typeof p.message === 'string' && p.message) detail = p.message
 

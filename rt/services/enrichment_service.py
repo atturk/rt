@@ -92,7 +92,7 @@ def save(lesson_dir: str, state: EnrichmentState):
 def _publish_manifest(lesson_dir, state):
     # Pending regeneration continues to publish the last successful version.
     assets = [{"id": e.id, "unit_id": e.unit_id, "image": e.asset_image, "html": e.asset_html}
-              for e in state.elements if e.asset_image and e.status != "deleted"]
+              for e in state.elements if e.asset_image and e.status not in ("deleted", "dismissed")]
     _write_json(os.path.join(lesson_dir, MANIFEST), assets)
     from rt.services.documents_service import request_documents
     request_documents(lesson_dir)
@@ -286,7 +286,8 @@ def mutate(lesson_dir, element_id, action, text=None):
         elif action == "delete":
             element.status = "deleted"
         save(lesson_dir, state)
-        if action == "delete":
+        # Un elemento già generato e ignorato esce dal testo e resta nei media; ripristinato ci torna.
+        if action == "delete" or (action in ("dismiss", "restore") and element.asset_image):
             _publish_manifest(lesson_dir, state)
 
 

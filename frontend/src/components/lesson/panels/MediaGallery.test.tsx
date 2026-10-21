@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import type { LessonImage } from '@/api/images'
@@ -17,6 +17,7 @@ const mockImages: LessonImage[] = [
     in_document: false,
     units: [],
     in_assets: false,
+    descritta: false,
   },
   {
     name: 'source1-p2.png',
@@ -29,6 +30,7 @@ const mockImages: LessonImage[] = [
     in_document: true,
     units: ['2.1'],
     in_assets: true,
+    descritta: true,
   },
   {
     name: 'source1-p3.png',
@@ -41,6 +43,7 @@ const mockImages: LessonImage[] = [
     in_document: false,
     units: [],
     in_assets: false,
+    descritta: true,
   },
   {
     name: 'web-img1.png',
@@ -53,6 +56,7 @@ const mockImages: LessonImage[] = [
     in_document: true,
     units: ['1.2'],
     in_assets: true,
+    descritta: true,
   },
 ]
 
@@ -79,10 +83,54 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     expect(screen.getByText('Dal web')).toBeInTheDocument()
 
     // Didascalie
-    expect(screen.getByText(/Pag\. 1 ·/)).toBeInTheDocument()
-    expect(screen.getByText(/Pag\. 2 ·/)).toBeInTheDocument()
+    expect(screen.getByText('Pag. 1')).toBeInTheDocument()
+    expect(screen.getByText('Pag. 2')).toBeInTheDocument()
     expect(screen.getByText('2.1')).toBeInTheDocument()
     expect(screen.getAllByText(/non usata/).length).toBe(2)
+  })
+
+  it('gestisce la vista rows (senza grid-cols-3, riquadro aspect-video) e grid (grid-cols-3)', () => {
+    const { rerender } = render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        view="rows"
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+        onCrop={vi.fn()}
+      />,
+    )
+
+    const group = screen.getByRole('group', { name: 'Documento1.pdf' })
+    expect(group).not.toHaveClass('grid-cols-3')
+    expect(group).toHaveClass('flex-col')
+    const button = screen.getByRole('button', { name: /Pagina 1/ })
+    expect(button).toHaveClass('aspect-video')
+    expect(button).not.toHaveClass('aspect-[4/3]')
+
+    rerender(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        view="grid"
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+        onCrop={vi.fn()}
+      />,
+    )
+
+    expect(group).toHaveClass('grid-cols-3')
+    expect(button).toHaveClass('aspect-[4/3]')
+    expect(button).not.toHaveClass('aspect-video')
+    expect(screen.getByText(/Pag\. 1 ·/)).toBeInTheDocument()
   })
 
   it('permette di comprimere ed espandere un gruppo', () => {
@@ -164,10 +212,9 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     expect(onClearSelection).toHaveBeenCalled()
   })
 
-  it('MS1b: doppio clic e tocco lungo aprono il visore, forbici apre ritaglio', () => {
+  it('MS1b: doppio clic e tocco lungo aprono il visore, nessun pulsante forbici sulle miniature', () => {
     vi.useFakeTimers()
     const onOpenViewer = vi.fn()
-    const onCrop = vi.fn()
 
     render(
       <MediaGallery
@@ -179,11 +226,13 @@ describe('MediaGallery (MS1a & MS1b)', () => {
         onSelectAll={vi.fn()}
         onClearSelection={vi.fn()}
         onOpenViewer={onOpenViewer}
-        onCrop={onCrop}
       />,
     )
 
     const cell1 = screen.getByLabelText(/Pagina 1, non usata/)
+
+    // Puntino arancione sulle non descritte
+    expect(screen.getByTestId('undescribed-dot')).toBeInTheDocument()
 
     // Doppio clic
     fireEvent.doubleClick(cell1)
@@ -194,33 +243,197 @@ describe('MediaGallery (MS1a & MS1b)', () => {
     vi.advanceTimersByTime(500)
     expect(onOpenViewer).toHaveBeenCalledWith(0)
 
-    // Icona forbici
-    const cropBtn = screen.getByLabelText('Ritaglia la pagina 1')
-    fireEvent.click(cropBtn)
-    expect(onCrop).toHaveBeenCalledWith(mockImages[0])
+    // Nessun pulsante forbici sulle miniature
+    expect(screen.queryByLabelText(/Ritaglia/i)).not.toBeInTheDocument()
 
     vi.useRealTimers()
+  })
+
+  describe('Anteprima tenendo premuto (peek in vista grid)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('pointerDown su cella in vista grid per 350 ms apre anteprima; pointerUp su window la chiude senza cambiare selezione', () => {
+      const onToggleSelect = vi.fn()
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={onToggleSelect}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      expect(cell).toHaveAttribute('aria-pressed', 'false')
+
+      // PointerDown con mouse (tasto sinistro = button 0)
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+
+      // Avanziamo di 350 ms
+      act(() => {
+        vi.advanceTimersByTime(350)
+      })
+
+      // Compare il dialog
+      expect(screen.getByRole('dialog', { name: 'Anteprima pagina 1' })).toBeInTheDocument()
+
+      // pointerUp su window chiude l'anteprima
+      fireEvent.pointerUp(window)
+      expect(screen.queryByRole('dialog', { name: 'Anteprima pagina 1' })).not.toBeInTheDocument()
+
+      // Il click che segue non cambia la selezione
+      fireEvent.click(cell)
+      expect(onToggleSelect).not.toHaveBeenCalled()
+      expect(cell).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('pointerDown e pointerUp prima di 350 ms: nessuna anteprima, il clic seleziona normalmente', () => {
+      const onToggleSelect = vi.fn()
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={onToggleSelect}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      fireEvent.pointerUp(cell)
+
+      act(() => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+
+      fireEvent.click(cell)
+      expect(onToggleSelect).toHaveBeenCalledWith(mockImages[0].name)
+    })
+
+    it('pointerDown poi pointerMove di 10 px annulla l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      fireEvent.pointerMove(cell, { clientX: 110, clientY: 100 })
+
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima pagina 1/ })).not.toBeInTheDocument()
+    })
+
+    it('Escape chiude l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="grid"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      act(() => {
+        vi.advanceTimersByTime(350)
+      })
+      expect(screen.getByRole('dialog', { name: 'Anteprima pagina 1' })).toBeInTheDocument()
+
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'Anteprima pagina 1' })).not.toBeInTheDocument()
+    })
+
+    it('in vista rows tenere premuto non apre l’anteprima', () => {
+      render(
+        <MediaGallery
+          images={mockImages}
+          selectedNames={new Set()}
+          view="rows"
+          onToggleSelect={vi.fn()}
+          onSelectRange={vi.fn()}
+          onSelectGroup={vi.fn()}
+          onSelectAll={vi.fn()}
+          onClearSelection={vi.fn()}
+          onOpenViewer={vi.fn()}
+          onCrop={vi.fn()}
+        />,
+      )
+
+      const cell = screen.getByRole('button', { name: /Pagina 1/ })
+      fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 100, clientY: 100 })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+      expect(screen.queryByRole('dialog', { name: /Anteprima/ })).not.toBeInTheDocument()
+    })
   })
 })
 
 describe('MediaSelectionBar', () => {
   it('mostra il conteggio e lo stato corretto dei pulsanti', () => {
-    const onSelectAll = vi.fn()
+    const onDescribe = vi.fn()
     const onInsertAtCursor = vi.fn()
     const onAutoPlace = vi.fn()
+    const onCrop = vi.fn()
     const onRemoveFromText = vi.fn()
-    const onClearSelection = vi.fn()
+    const onDelete = vi.fn()
 
     const { rerender } = render(
       <MediaSelectionBar
         selectedCount={0}
+        canDescribe={false}
         hasUsedSelected={false}
         canInsertAtCursor={false}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
-        onClearSelection={onClearSelection}
+        onDelete={onDelete}
+        canDelete={false}
       />,
     )
 
@@ -231,52 +444,78 @@ describe('MediaSelectionBar', () => {
     rerender(
       <MediaSelectionBar
         selectedCount={1}
+        canDescribe={false}
         hasUsedSelected={false}
         canInsertAtCursor={false}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
-        onClearSelection={onClearSelection}
+        onDelete={onDelete}
+        canDelete={false}
       />,
     )
-    expect(screen.getByText('1 selezionata')).toBeInTheDocument()
+    expect(screen.getByText('1 scelto')).toBeInTheDocument()
+
+    // Descrivi è disattivato se canDescribe è false
+    const descBtn = screen.getByLabelText(/Descrivi/i)
+    expect(descBtn).toHaveAttribute('aria-disabled', 'true')
 
     // Inserisci al cursore è disabilitato se canInsertAtCursor è false
-    const insBtn = screen.getByLabelText('Inserisci al cursore')
-    expect(insBtn).toBeDisabled()
+    const insBtn = screen.getByLabelText(/Inserisci al cursore/i)
+    expect(insBtn).toHaveAttribute('aria-disabled', 'true')
+
+    // Ritaglia è attivo con 1 sola immagine
+    const cropBtn = screen.getByLabelText(/^Ritaglia$/i)
+    expect(cropBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(cropBtn)
+    expect(onCrop).toHaveBeenCalled()
 
     // Togli dal testo è disabilitato se hasUsedSelected è false
-    const removeBtn = screen.getByLabelText('Togli dal testo (resta nei media)')
-    expect(removeBtn).toBeDisabled()
+    const removeBtn = screen.getByLabelText(/Togli dal testo/i)
+    expect(removeBtn).toHaveAttribute('aria-disabled', 'true')
 
-    // Con elementi usati e cursore abilitato
+    // Con 2 elementi selezionati, da descrivere, usati e cursore abilitato
     rerender(
       <MediaSelectionBar
         selectedCount={2}
+        canDescribe={true}
         hasUsedSelected={true}
         canInsertAtCursor={true}
-        onSelectAll={onSelectAll}
+        onDescribe={onDescribe}
         onInsertAtCursor={onInsertAtCursor}
         onAutoPlace={onAutoPlace}
+        onCrop={onCrop}
         onRemoveFromText={onRemoveFromText}
-        onClearSelection={onClearSelection}
+        onDelete={onDelete}
+        canDelete={true}
       />,
     )
-    expect(screen.getByText('2 selezionate')).toBeInTheDocument()
-    expect(screen.getByLabelText('Inserisci al cursore')).not.toBeDisabled()
-    expect(screen.getByLabelText('Togli dal testo (resta nei media)')).not.toBeDisabled()
+    expect(screen.getByText('2 scelti')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByLabelText('Inserisci al cursore'))
+    // Descrivi è attivo se canDescribe è true
+    const activeDescBtn = screen.getByLabelText(/^Descrivi$/i)
+    expect(activeDescBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(activeDescBtn)
+    expect(onDescribe).toHaveBeenCalled()
+
+    // Ritaglia è disattivato con 2 immagini
+    const disabledCropBtn = screen.getByTestId('crop-media-button')
+    expect(disabledCropBtn).toHaveAttribute('aria-disabled', 'true')
+
+    const activeInsBtn = screen.getByLabelText(/^Inserisci al cursore$/i)
+    expect(activeInsBtn).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(activeInsBtn)
     expect(onInsertAtCursor).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Colloca in automatico le selezionate'))
+    fireEvent.click(screen.getByLabelText(/^Posiziona$/i))
     expect(onAutoPlace).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Togli dal testo (resta nei media)'))
+    fireEvent.click(screen.getByLabelText(/^Togli dal testo$/i))
     expect(onRemoveFromText).toHaveBeenCalled()
 
-    fireEvent.click(screen.getByLabelText('Annulla la selezione'))
-    expect(onClearSelection).toHaveBeenCalled()
+    fireEvent.click(screen.getByLabelText(/^Elimina dalla lezione$/i))
+    expect(onDelete).toHaveBeenCalled()
   })
 })

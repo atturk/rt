@@ -4,6 +4,177 @@
  */
 
 export interface paths {
+    "/api/v1/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Archive */
+        get: operations["list_archive_api_v1_archive_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup */
+        post: operations["lookup_api_v1_archive_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_v1_archive_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_v1_archive__sha__get"];
+        put?: never;
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_api_v1_archive__sha__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/add-to-lesson": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add To Lesson */
+        post: operations["add_to_lesson_api_v1_archive__sha__add_to_lesson_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/add-to-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add To Media */
+        post: operations["add_to_media_api_v1_archive__sha__add_to_media_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/ignored": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Ignored */
+        put: operations["ignored_api_v1_archive__sha__ignored_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/pages/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Pages */
+        post: operations["delete_pages_api_v1_archive__sha__pages_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/pages/{n}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Page Image */
+        get: operations["page_image_api_v1_archive__sha__pages__n__png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/archive/{sha}/pages/{n}/crop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Crop */
+        post: operations["crop_api_v1_archive__sha__pages__n__crop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login-link": {
         parameters: {
             query?: never;
@@ -107,6 +278,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Schedule */
+        get: operations["export_schedule_api_v1_calendar_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Schedule */
+        post: operations["import_schedule_api_v1_calendar_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/link-lesson": {
         parameters: {
             query?: never;
@@ -158,6 +363,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/paste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Paste Week */
+        post: operations["paste_week_api_v1_calendar_paste_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/template": {
         parameters: {
             query?: never;
@@ -202,6 +424,23 @@ export interface paths {
         };
         /** Vista settimanale del calendario (lun–ven) con stati, lezioni e riassunto */
         get: operations["get_week_view_api_v1_calendar_week_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/year": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Year */
+        get: operations["get_year_api_v1_calendar_year_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -876,7 +1115,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Scarica il Markdown finale (o l'anteprima dalla bozza) o un archivio con i dati della lezione
+         * Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF
          * @description Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, l'anteprima che il build produrrebbe ora: il nome dei file contiene "(anteprima)" e lo zip ha un LEGGIMI che lo spiega.
          */
         get: operations["export_lesson_api_v1_lessons__lesson_id__export_get"];
@@ -1021,6 +1260,40 @@ export interface paths {
         put?: never;
         /** Ritaglia un'immagine o pagina (nuova immagine o sostituzione) */
         post: operations["crop_media_api_v1_lessons__lesson_id__media_crop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/media/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano */
+        post: operations["delete_media_api_v1_lessons__lesson_id__media_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/media/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Descrive le immagini indicate con vision (o usa la descrizione in archivio) */
+        post: operations["describe_media_api_v1_lessons__lesson_id__media_describe_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1726,7 +1999,8 @@ export interface paths {
         delete: operations["delete_source_api_v1_lessons__lesson_id__sources__sid__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch Source */
+        patch: operations["patch_source_api_v1_lessons__lesson_id__sources__sid__patch"];
         trace?: never;
     };
     "/api/v1/lessons/{lesson_id}/study": {
@@ -2826,6 +3100,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subjects/{nome}/teachers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Teacher */
+        post: operations["add_teacher_api_v1_subjects__nome__teachers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subjects/{nome}/teachers/{docente}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Teacher */
+        delete: operations["delete_teacher_api_v1_subjects__nome__teachers__docente__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/cache": {
         parameters: {
             query?: never;
@@ -2946,6 +3254,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/opened-files/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Scarica un file consegnato dall'app per l'apertura */
+        get: operations["get_opened_file_api_v1_system_opened_files__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/quit": {
         parameters: {
             query?: never;
@@ -2987,11 +3312,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Aggiornamento dell'app: ultima versione stabile e stato dell'installazione */
+        /** Aggiornamento dell'app: ultima versione e stato dell'installazione */
         get: operations["system_update_api_v1_system_update_get"];
         put?: never;
-        /** Scarica e installa l'ultima versione stabile (solo app installata) */
+        /** Avvia il download dell'aggiornamento (solo app installata) */
         post: operations["start_system_update_api_v1_system_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/update/channel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Imposta il canale di aggiornamento (stable o beta) */
+        put: operations["set_update_channel_endpoint_api_v1_system_update_channel_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/update/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Installa l'aggiornamento già pronto su disco */
+        post: operations["install_system_update_api_v1_system_update_install_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3108,6 +3467,32 @@ export interface components {
              */
             action: "dismiss" | "restore" | "delete";
         };
+        /** AddToLessonRequest */
+        AddToLessonRequest: {
+            /**
+             * Estrai
+             * @default immagini
+             * @enum {string}
+             */
+            estrai: "testo" | "immagini";
+            /** Lesson Id */
+            lesson_id: number;
+            /** Pagine */
+            pagine?: number[] | null;
+            /**
+             * Uso
+             * @default contesto
+             * @enum {string}
+             */
+            uso: "guida" | "contesto" | "integra";
+        };
+        /** AddToMediaRequest */
+        AddToMediaRequest: {
+            /** Lesson Id */
+            lesson_id: number;
+            /** Pagine */
+            pagine: number[];
+        };
         /** AnalyzeIn */
         AnalyzeIn: {
             /**
@@ -3146,9 +3531,15 @@ export interface components {
             asset_size?: number | null;
             /**
              * Available
-             * @description C'è una versione stabile più recente con l'installer per questo sistema
+             * @description C'è una versione più recente con l'installer per questo sistema
              */
             available: boolean;
+            /**
+             * Channel
+             * @description Canale di aggiornamento
+             * @default stable
+             */
+            channel: string;
             /** Current */
             current: string;
             /**
@@ -3158,15 +3549,27 @@ export interface components {
             error?: string | null;
             /**
              * Latest
-             * @description Ultima versione stabile pubblicata (le beta non contano)
+             * @description Ultima versione pubblicata
              */
             latest?: string | null;
             /** Notes Url */
             notes_url?: string | null;
+            /**
+             * Prerelease
+             * @description True se la versione disponibile è una beta
+             * @default false
+             */
+            prerelease: boolean;
             progress: components["schemas"]["UpdateProgress"];
             /**
+             * Ready
+             * @description True se l'installer è già scaricato e verificato su disco
+             * @default false
+             */
+            ready: boolean;
+            /**
              * Releases Url
-             * @description Pagina delle release: le beta si scaricano a mano da qui
+             * @description Pagina delle release
              */
             releases_url: string;
             /**
@@ -3174,6 +3577,94 @@ export interface components {
              * @description True per l'app installata (RT.app, setup per Windows): si aggiorna da qui. False per install.sh, git o Docker: 'rt -u'
              */
             supported: boolean;
+        };
+        /** ArchiveDetail */
+        ArchiveDetail: {
+            /** Da Continuare */
+            da_continuare: string | null;
+            /** Dimensione */
+            dimensione: number;
+            /** Durata S */
+            durata_s: number | null;
+            /** Impronta */
+            impronta: string;
+            /** Lezioni */
+            lezioni: components["schemas"]["ArchiveLesson"][];
+            /** Materie */
+            materie: string[];
+            /** Nome */
+            nome: string;
+            /** Pagine */
+            pagine: components["schemas"]["ArchivePage"][];
+            /** Pagine Totali */
+            pagine_totali: number | null;
+            /** Tipo */
+            tipo: string;
+            /** Trascrizione Inizio */
+            trascrizione_inizio: string;
+            /** Usi */
+            usi: number;
+        };
+        /** ArchiveLesson */
+        ArchiveLesson: {
+            /** Data */
+            data: string;
+            /** Id */
+            id: number | null;
+            /** Pagine */
+            pagine: number[] | null;
+            /** Titolo */
+            titolo: string;
+        };
+        /** ArchivePage */
+        ArchivePage: {
+            /** Ignorata */
+            ignorata: boolean;
+            /** Lezione Id */
+            lezione_id: number | null;
+            /** Numero */
+            numero: number;
+        };
+        /** ArchiveRow */
+        ArchiveRow: {
+            /** Da Continuare */
+            da_continuare: string | null;
+            /** Dimensione */
+            dimensione: number;
+            /** Durata S */
+            durata_s: number | null;
+            /** Impronta */
+            impronta: string;
+            /** Materie */
+            materie: string[];
+            /** Nome */
+            nome: string;
+            /** Pagine Totali */
+            pagine_totali: number | null;
+            /** Tipo */
+            tipo: string;
+            /** Usi */
+            usi: number;
+        };
+        /** ArchiveSummary */
+        ArchiveSummary: {
+            /** Da Continuare */
+            da_continuare: number;
+            /** File */
+            file: number;
+        };
+        /** ArchiveUsage */
+        ArchiveUsage: {
+            /** Data */
+            data: string;
+            /** Lezione Id */
+            lezione_id: number | null;
+            /** Materia */
+            materia: string;
+            /** Pagine */
+            pagine: number[] | null;
+            /** Titolo */
+            titolo: string;
         };
         /** BatchIn */
         BatchIn: {
@@ -3297,6 +3788,11 @@ export interface components {
              */
             mock: boolean;
             /**
+             * Opzioni
+             * @default {}
+             */
+            opzioni: string;
+            /**
              * Ora
              * @description Ora della lezione (HH:MM, facoltativa)
              * @default
@@ -3330,10 +3826,14 @@ export interface components {
         };
         /** Body_post_source_api_v1_lessons__lesson_id__sources_post */
         Body_post_source_api_v1_lessons__lesson_id__sources_post: {
+            /** Estrai */
+            estrai?: ("testo" | "immagini") | null;
             /** File */
             file?: string[] | null;
             /** Ordine */
             ordine?: number | null;
+            /** Pagine */
+            pagine?: string | null;
             /** Testo */
             testo?: string | null;
             /**
@@ -3346,6 +3846,8 @@ export interface components {
              * @default true
              */
             unisci: boolean;
+            /** Uso */
+            uso?: ("guida" | "contesto" | "integra") | null;
         };
         /** Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post */
         Body_upload_editor_image_api_v1_lessons__lesson_id__media_images_post: {
@@ -3513,6 +4015,31 @@ export interface components {
             /** Template Entry Id */
             template_entry_id?: number | null;
         };
+        /** CalendarImportRequest */
+        CalendarImportRequest: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** From */
+            from?: string | null;
+            /** To */
+            to?: string | null;
+        };
+        /** CalendarImportResult */
+        CalendarImportResult: {
+            /** Conflicts */
+            conflicts: number;
+            /** Entries */
+            entries: number;
+            /** Subjects */
+            subjects: number;
+        };
         /** CalendarLessonSummary */
         CalendarLessonSummary: {
             /** Data */
@@ -3604,6 +4131,88 @@ export interface components {
             start_time?: string | null;
             /** Template Entry Id */
             template_entry_id?: number | null;
+        };
+        /** CalendarPasteEntry */
+        CalendarPasteEntry: {
+            /** Day Of Week */
+            day_of_week: number;
+            /** Docente */
+            docente?: string | null;
+            /**
+             * End Time
+             * @description Orario HH:MM
+             */
+            end_time: string;
+            /** Materia */
+            materia: string;
+            /**
+             * Start Time
+             * @description Orario HH:MM
+             */
+            start_time: string;
+        };
+        /** CalendarPasteRequest */
+        CalendarPasteRequest: {
+            /** Entries */
+            entries: components["schemas"]["CalendarPasteEntry"][];
+            /** Weeks */
+            weeks: string[];
+        };
+        /** CalendarPasteResult */
+        CalendarPasteResult: {
+            /** Weeks */
+            weeks: string[];
+        };
+        /** CalendarSchedule */
+        CalendarSchedule: {
+            /** Exported At */
+            exported_at: string;
+            /**
+             * Format
+             * @constant
+             */
+            format: "rt-calendar";
+            /** Overrides */
+            overrides: components["schemas"]["CalendarScheduleOverride"][];
+            /** Subjects */
+            subjects: components["schemas"]["CalendarScheduleSubject"][];
+            /** Template */
+            template: components["schemas"]["CalendarTemplateEntryCreate"][];
+            /**
+             * Version
+             * @constant
+             */
+            version: 1;
+        };
+        /** CalendarScheduleOverride */
+        CalendarScheduleOverride: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "added" | "removed" | "modified";
+            /**
+             * Date
+             * @description Data YYYY-MM-DD
+             */
+            date: string;
+            /** Docente */
+            docente?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Materia */
+            materia?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** Template Index */
+            template_index?: number | null;
+        };
+        /** CalendarScheduleSubject */
+        CalendarScheduleSubject: {
+            /** Name */
+            name: string;
+            /** Teachers */
+            teachers?: string[];
         };
         /** CalendarTemplateEntryCreate */
         CalendarTemplateEntryCreate: {
@@ -3702,6 +4311,37 @@ export interface components {
             summary: components["schemas"]["CalendarWeekSummary"];
             /** Week Number */
             week_number: string;
+        };
+        /** CalendarYearDay */
+        CalendarYearDay: {
+            /** Date */
+            date: string;
+            /** Events */
+            events: components["schemas"]["CalendarYearEvent"][];
+            /** Status */
+            status: string;
+        };
+        /** CalendarYearEvent */
+        CalendarYearEvent: {
+            /** End Hour */
+            end_hour: number;
+            /** Is Recorded */
+            is_recorded: boolean;
+            /** Materia */
+            materia: string;
+            /** Start Hour */
+            start_hour: number;
+            /** Status */
+            status: string;
+        };
+        /** CalendarYearWeek */
+        CalendarYearWeek: {
+            /** Days */
+            days: components["schemas"]["CalendarYearDay"][];
+            /** Start Date */
+            start_date: string;
+            /** Week Number */
+            week_number: number;
         };
         /** Cap */
         Cap: {
@@ -4043,6 +4683,16 @@ export interface components {
              */
             update_document: boolean;
         };
+        /** CropRequest */
+        CropRequest: {
+            /** Rect */
+            rect: number[];
+            /**
+             * Sostituisci
+             * @default false
+             */
+            sostituisci: boolean;
+        };
         /** CustomQuestionType */
         CustomQuestionType: {
             /**
@@ -4366,6 +5016,41 @@ export interface components {
             unit_id?: string | null;
             /** Unit Title */
             unit_title: string;
+        };
+        /** DeleteImagesRequest */
+        DeleteImagesRequest: {
+            /**
+             * Image Names
+             * @description Alias per names
+             */
+            image_names?: string[] | null;
+            /** Lease Token */
+            lease_token?: string | null;
+            /**
+             * Names
+             * @description Nomi delle immagini da eliminare
+             */
+            names?: string[];
+            /**
+             * Update Document
+             * @description False se il testo lo cambia l'editor aperto
+             * @default true
+             */
+            update_document: boolean;
+        };
+        /** DescribeImagesRequest */
+        DescribeImagesRequest: {
+            /**
+             * Mock
+             * @description Usa mock LLM
+             * @default false
+             */
+            mock: boolean;
+            /**
+             * Names
+             * @description Nomi o identificativi delle immagini da descrivere
+             */
+            names: string[];
         };
         /** DocumentEditCheck */
         DocumentEditCheck: {
@@ -4825,6 +5510,13 @@ export interface components {
             };
             /** Unit Id */
             unit_id: string;
+        };
+        /** IgnoreRequest */
+        IgnoreRequest: {
+            /** Ignorata */
+            ignorata: boolean;
+            /** Pagine */
+            pagine: number[];
         };
         /** IssueContext */
         IssueContext: {
@@ -5315,6 +6007,11 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
+            /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)
              * @default 0
@@ -5440,6 +6137,12 @@ export interface components {
              * @description Hash o identificativo dell'immagine originale se ritaglio
              */
             crop_of?: string | null;
+            /**
+             * Descritta
+             * @description True se l'immagine ha una descrizione vision (summary_keywords, ocr_text o visual_elements)
+             * @default true
+             */
+            descritta: boolean;
             /**
              * In Assets
              * @description True se il file è già presente in assets/images
@@ -5664,6 +6367,11 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Pipeline At
+             * @description Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline
+             */
+            pipeline_at?: string | null;
+            /**
              * Recall Pending
              * @description Domande del pool non ancora poste (da fare)
              * @default 0
@@ -5769,6 +6477,22 @@ export interface components {
              * @description Link da aprire nel browser: apre la sessione una sola volta
              */
             url: string;
+        };
+        /** LookupEntry */
+        LookupEntry: {
+            /** Da Continuare */
+            da_continuare: string | null;
+            /** Impronta */
+            impronta: string;
+            /** Pagine Totali */
+            pagine_totali: number | null;
+            /** Usate */
+            usate: components["schemas"]["ArchiveUsage"][];
+        };
+        /** LookupRequest */
+        LookupRequest: {
+            /** Sha */
+            sha: string[];
         };
         /** ManualValidation */
         ManualValidation: {
@@ -5966,6 +6690,11 @@ export interface components {
             start_segment_id: string;
             /** Title */
             title: string;
+        };
+        /** PagesRequest */
+        PagesRequest: {
+            /** Pagine */
+            pagine: number[];
         };
         /** PhaseAssignment */
         PhaseAssignment: {
@@ -6246,6 +6975,8 @@ export interface components {
             answer_text: string;
             /** Answered At */
             answered_at: string;
+            /** Attempt Id */
+            attempt_id?: string | null;
             /**
              * Dont Know
              * @default false
@@ -6347,6 +7078,8 @@ export interface components {
         };
         /** RecallQuestion */
         RecallQuestion: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Comment */
             comment?: string | null;
             /** Correct Index */
@@ -6389,6 +7122,8 @@ export interface components {
         };
         /** RecallQuestionDetail */
         RecallQuestionDetail: {
+            /** Asked At */
+            asked_at?: string | null;
             /** Classifier Level */
             classifier_level?: number | null;
             /** Comment */
@@ -7023,6 +7758,8 @@ export interface components {
         Source: {
             /** Aggiunta Il */
             aggiunta_il: string;
+            /** Estrai */
+            estrai?: ("testo" | "immagini") | null;
             /** File */
             file: string;
             /** Id */
@@ -7031,6 +7768,8 @@ export interface components {
             impronta: string;
             /** Ordine */
             ordine: number;
+            /** Pagine */
+            pagine?: number[] | null;
             /** Parti */
             parti?: components["schemas"]["SourcePart"][] | null;
             /** Rimossa Il */
@@ -7040,6 +7779,17 @@ export interface components {
              * @enum {string}
              */
             tipo: "audio" | "appunti" | "materiale";
+            /** Uso */
+            uso?: ("contesto" | "integra") | null;
+        };
+        /** SourceOptions */
+        SourceOptions: {
+            /** Estrai */
+            estrai?: ("testo" | "immagini") | null;
+            /** Pagine */
+            pagine?: string | number[] | null;
+            /** Uso */
+            uso?: ("guida" | "contesto" | "integra") | null;
         };
         /** SourceOrder */
         SourceOrder: {
@@ -7066,6 +7816,8 @@ export interface components {
             aggiunta_il: string;
             /** Durata S */
             durata_s?: number | null;
+            /** Estrai */
+            estrai?: ("testo" | "immagini") | null;
             /** File */
             file: string;
             /** Id */
@@ -7077,7 +7829,9 @@ export interface components {
             /** Ordine */
             ordine: number;
             /** Pagine */
-            pagine?: number | null;
+            pagine?: number[] | null;
+            /** Pagine Totali */
+            pagine_totali?: number | null;
             /** Parole */
             parole?: number | null;
             /** Parti */
@@ -7091,6 +7845,8 @@ export interface components {
             tipo: "audio" | "appunti" | "materiale";
             /** Usata */
             usata: boolean;
+            /** Uso */
+            uso?: ("contesto" | "integra") | null;
         };
         /** SourcesView */
         SourcesView: {
@@ -7344,6 +8100,8 @@ export interface components {
         };
         /** SubjectView */
         SubjectView: {
+            /** Docenti */
+            docenti: string[];
             /** Lezioni */
             lezioni: number;
             /** Nome */
@@ -7351,6 +8109,11 @@ export interface components {
         };
         /** SystemInfo */
         SystemInfo: {
+            /**
+             * Build
+             * @description Informazioni di build per l'app (build N · commit · data)
+             */
+            build?: string | null;
             /**
              * Config Dir
              * @description Cartella config/ in uso
@@ -7712,6 +8475,14 @@ export interface components {
              */
             total: number;
         };
+        /** UpdateChannelRequest */
+        UpdateChannelRequest: {
+            /**
+             * Channel
+             * @description Canale di aggiornamento: 'stable' o 'beta'
+             */
+            channel: string;
+        };
         /** UpdateProgress */
         UpdateProgress: {
             /**
@@ -7724,7 +8495,7 @@ export interface components {
             error?: string | null;
             /**
              * Phase
-             * @description idle, downloading, installing o error
+             * @description idle, downloading, ready, installing o error
              */
             phase: string;
             /**
@@ -7901,6 +8672,769 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_archive_api_v1_archive_get: {
+        parameters: {
+            query?: {
+                materia?: string | null;
+                tipo?: string | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRow"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    lookup_api_v1_archive_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["LookupEntry"] | null;
+                    };
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    summary_api_v1_archive_summary_get: {
+        parameters: {
+            query?: {
+                materia?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveSummary"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    detail_api_v1_archive__sha__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveDetail"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_entry_api_v1_archive__sha__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_to_lesson_api_v1_archive__sha__add_to_lesson_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToLessonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_to_media_api_v1_archive__sha__add_to_media_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToMediaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditorImage"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ignored_api_v1_archive__sha__ignored_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IgnoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveDetail"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_pages_api_v1_archive__sha__pages_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveDetail"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    page_image_api_v1_archive__sha__pages__n__png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    crop_api_v1_archive__sha__pages__n__crop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRow"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     create_login_link_api_v1_auth_login_link_post: {
         parameters: {
             query?: never;
@@ -8216,6 +9750,140 @@ export interface operations {
             };
         };
     };
+    export_schedule_api_v1_calendar_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSchedule"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_schedule_api_v1_calendar_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarImportResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     link_lesson_api_v1_calendar_link_lesson_post: {
         parameters: {
             query?: never;
@@ -8371,6 +10039,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    paste_week_api_v1_calendar_paste_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarPasteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPasteResult"];
+                };
             };
             /** @description Autenticazione mancante o non valida */
             401: {
@@ -8642,6 +10379,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarWeekView"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_year_api_v1_calendar_year_get: {
+        parameters: {
+            query: {
+                start: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarYearWeek"][];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -10017,7 +11821,9 @@ export interface operations {
     };
     get_image_api_v1_lessons__lesson_id__assets_images__name__get: {
         parameters: {
-            query?: never;
+            query?: {
+                max?: number | null;
+            };
             header?: never;
             path: {
                 /** @description Id della lezione (da GET /lessons) */
@@ -11578,8 +13384,8 @@ export interface operations {
     export_lesson_api_v1_lessons__lesson_id__export_get: {
         parameters: {
             query?: {
-                /** @description markdown: solo il documento finale; zip: archivio con i file scelti da scope */
-                format?: "markdown" | "zip";
+                /** @description markdown: solo il documento finale; zip: archivio con i file scelti da scope; pdf: documento finale in PDF */
+                format?: "markdown" | "zip" | "pdf";
                 /** @description final: Markdown finale, errori concettuali e immagini richiamate; all: tutti i file della lezione, audio compreso; sources: solo le fonti (audio della lezione in m4a, PDF e altri file) */
                 scope?: "final" | "all" | "sources";
                 /** @description Include lo stato di studio nello ZIP completo */
@@ -11600,6 +13406,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/pdf": unknown;
                     "application/zip": unknown;
                     "text/markdown": unknown;
                 };
@@ -12379,6 +14186,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditorImage"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_media_api_v1_lessons__lesson_id__media_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteImagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    describe_media_api_v1_lessons__lesson_id__media_describe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeImagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAccepted"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -15428,6 +17379,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_source_api_v1_lessons__lesson_id__sources__sid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id della lezione (da GET /lessons) */
+                lesson_id: number;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceOptions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
             };
             /** @description Autenticazione mancante o non valida */
             401: {
@@ -20755,6 +22779,143 @@ export interface operations {
             };
         };
     };
+    add_teacher_api_v1_subjects__nome__teachers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nome: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectView"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_teacher_api_v1_subjects__nome__teachers__docente__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nome: string;
+                docente: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     system_cache_api_v1_system_cache_get: {
         parameters: {
             query?: never;
@@ -21011,6 +23172,46 @@ export interface operations {
             };
         };
     };
+    get_opened_file_api_v1_system_opened_files__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     quit_system_api_v1_system_quit_post: {
         parameters: {
             query?: never;
@@ -21108,6 +23309,68 @@ export interface operations {
         };
     };
     start_system_update_api_v1_system_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_update_channel_endpoint_api_v1_system_update_channel_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppUpdate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_system_update_api_v1_system_update_install_post: {
         parameters: {
             query?: never;
             header?: never;

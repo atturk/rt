@@ -161,15 +161,15 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     """Regole di validazione delle interfacce non interattive (web/API): stesso testo
     risolto che producono CLI e Telegram."""
     is_asr = _is_no_diff_issue_type(issue)
-    if issue.unanchored and decision != "rejected":
+    unit_content = _unit_content(lesson_dir, issue)
+    if unit_content is not None and issue.unanchored and decision != "rejected":
         raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
     if not is_asr and decision in {"accepted", "edited"}:
-        unit_content = _unit_content(lesson_dir, issue)
         from rt.pipeline.anchors import find_quote
         # Una scelta nuova non sovrascrive una correzione già applicata con un match fuzzy.
         quote = issue.anchor.quote if issue.anchor else issue.claim
         found = find_quote(unit_content, quote) if unit_content else None
-        if found is None:
+        if unit_content is not None and found is None:
             raise ReviewDecisionError("Il testo è già cambiato: modificalo a mano o chiudi l'issue", reason="claim_changed")
     if decision == "rejected" and is_asr and not reconfirming:
         raise ReviewDecisionError("Per una verifica ASR puoi accettare il testo o modificarlo.")
@@ -213,7 +213,8 @@ def record_review_decision(
         raise ReviewDecisionError("Decisione non riconosciuta.")
     with lesson_lock(lesson_dir):
         issue = find_science_issue_by_id(lesson_dir, issue_id)
-        if issue and issue.unanchored and decision != "rejected":
+        unit_missing = issue is not None and _unit_content(lesson_dir, issue) is None
+        if issue and not unit_missing and issue.unanchored and decision != "rejected":
             raise ReviewDecisionError("Citazione non ritrovata: puoi solo rifiutare l'issue", reason="claim_changed")
         anchor = None
         original_context = None
@@ -222,7 +223,7 @@ def record_review_decision(
                 raise ReviewDecisionError("La questione non esiste più: aggiorna l'elenco.")
             from rt.pipeline.ledger import reconfirmation_issue_ids
             previous = next((d for d in reversed(load_ledger(lesson_dir, strict=True).decisions) if d.issue_id == issue_id), None)
-            reconfirming = previous is not None and issue_id in reconfirmation_issue_ids(lesson_dir)
+            reconfirming = previous is not None and (unit_missing or issue_id in reconfirmation_issue_ids(lesson_dir))
             if previous is not None and not reconfirming:
                 raise ReviewDecisionError("Questa questione ha già una decisione. Aggiorna la pagina.")
             if reconfirming and decision == "accepted" and previous.resolved_text:
@@ -238,8 +239,8 @@ def record_review_decision(
                         anchor = make_anchor(content, 0, len(content))
                     elif found:
                         anchor = make_anchor(content, found.start, found.end)
-            elif decision == "rejected" and _unit_content(lesson_dir, issue) is None:
-                original_context = ""  # Mantieni esplicito su un passaggio ormai sparito.
+        if unit_missing:
+            original_context = ""  # Ogni scelta su un’unità sparita è definitiva.
         recorded = record_decision(
             lesson_dir, issue_id, decision, resolved_text=resolved_text,
             resolved_by=resolved_by or "user",

@@ -22,7 +22,8 @@ import { useSources } from '@/api/sources'
 import { LessonUpdateBar } from '@/components/lesson/LessonUpdateBar'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
-import { formatDuration, lessonsGroups, shortDate, subjectName, useLessonsPrefs } from '@/lib/lessonsPage'
+import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
+import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,8 @@ import { LinkMenuButton } from '@/components/ui/menu'
 import { lessonTitle } from '@/lib/format'
 import { usePreference } from '@/lib/preferences'
 
+export { PrintLessonPage } from '@/components/lesson/PrintLessonPage'
+
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
   // (GET /lessons ricalcola fasi, issue e costi di ogni lezione). Il testo cercato e la
@@ -38,8 +41,89 @@ export function DashboardPage() {
   const all = useLessons()
   const jobs = useJobs({ limit: 50 })
   const openNewLesson = useOpenNewLesson()
-  const { filters, setFilter, resetFilters, filtered } = useFilteredLessons(all.data)
+  const { filters, setFilter, resetFilters, applyFilters, filtered } = useFilteredLessons(all.data)
   const [prefs, setPrefs] = useLessonsPrefs()
+  const { pinned, pin, unpin } = usePinnedLessonsView()
+  const [searchParams] = useSearchParams()
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    if (mountedRef.current) return
+    mountedRef.current = true
+    const hasUrlFilters = Boolean(searchParams.get('q') || searchParams.get('materia') || searchParams.get('stato'))
+    if (pinned && !hasUrlFilters) {
+      setPrefs({ group: pinned.group, sort: pinned.sort })
+      applyFilters({ q: pinned.q, materia: pinned.materia, stato: pinned.stato })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const current: LessonsView = {
+    group: prefs.group,
+    sort: prefs.sort,
+    q: filters.q,
+    materia: filters.materia,
+    stato: filters.state,
+  }
+  const fixed = pinned !== null && sameView(pinned, current)
+
+  const handleToggleFixed = () => {
+    if (fixed) {
+      unpin()
+    } else {
+      pin({
+        group: prefs.group,
+        sort: prefs.sort,
+        q: filters.q.trim(),
+        materia: filters.materia,
+        stato: filters.state,
+      })
+    }
+  }
+
+  const handlePrefs = (patch: Partial<LessonsPrefs>) => {
+    if (pinned) {
+      const nextView: LessonsView = {
+        ...current,
+        group: patch.group ?? prefs.group,
+        sort: patch.sort ?? prefs.sort,
+      }
+      if (!sameView(pinned, nextView)) {
+        unpin()
+      }
+    }
+    setPrefs(patch)
+  }
+
+  const handleFilter = (key: keyof LessonListFilters, value: string) => {
+    if (pinned) {
+      const nextView: LessonsView = {
+        ...current,
+        q: key === 'q' ? value : filters.q,
+        materia: key === 'materia' ? value : filters.materia,
+        stato: key === 'state' ? value : filters.state,
+      }
+      if (!sameView(pinned, nextView)) {
+        unpin()
+      }
+    }
+    setFilter(key, value)
+  }
+
+  const handleResetFilters = () => {
+    if (pinned) {
+      const nextView: LessonsView = {
+        ...current,
+        q: '',
+        materia: '',
+        stato: '',
+      }
+      if (!sameView(pinned, nextView)) {
+        unpin()
+      }
+    }
+    resetFilters()
+  }
+
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const running = new Set((jobs.data ?? []).filter((j) => isActive(j.state) && j.lesson_id != null).map((j) => j.lesson_id!))
@@ -57,11 +141,13 @@ export function DashboardPage() {
         actions={
           <LessonsHeaderActions
             prefs={prefs}
-            onPrefs={setPrefs}
+            onPrefs={handlePrefs}
             query={filters.q}
-            onQuery={(q) => setFilter('q', q)}
+            onQuery={(q) => handleFilter('q', q)}
             selecting={selecting}
             onSelecting={(on) => (on ? setSelecting(true) : stopSelecting())}
+            fixed={fixed}
+            onToggleFixed={handleToggleFixed}
           />
         }
       />
@@ -82,13 +168,13 @@ export function DashboardPage() {
         {all.data && all.data.length > 0 && filtered.length === 0 && (
           <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
             Nessuna lezione corrisponde alla ricerca.
-            <Button variant="outline" size="sm" onClick={resetFilters}>Azzera</Button>
+            <Button variant="outline" size="sm" onClick={handleResetFilters}>Azzera</Button>
           </p>
         )}
         {filters.materia && filtered.length > 0 && (
           <p className="mb-4 text-meta text-muted-foreground">
             Solo {subjectName(filters.materia)}.{' '}
-            <button type="button" className="underline" onClick={resetFilters}>Mostra tutte</button>
+            <button type="button" className="underline" onClick={handleResetFilters}>Mostra tutte</button>
           </p>
         )}
         {filtered.length > 0 && (
@@ -302,8 +388,29 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
+  // Il PDF si scarica con fetch: se il browser per la stampa non c'è ancora, si mostra il motivo invece di salvare l'errore come file.
+  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
+  const exportPdf = async () => {
+    setPdf({ busy: true, error: null })
+    try {
+      const response = await fetch(`/api/v1/lessons/${l.id}/export?format=pdf`, { credentials: 'same-origin' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+        throw new Error(body?.error?.message ?? `PDF non riuscito (${response.status})`)
+      }
+      const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(await response.blob())
+      link.download = encoded ? decodeURIComponent(encoded) : `${l.folder_name}.pdf`
+      link.click()
+      URL.revokeObjectURL(link.href)
+      setPdf({ busy: false, error: null })
+    } catch (error) {
+      setPdf({ busy: false, error: errorMessage(error) })
+    }
+  }
   return (
-    <div className="flex items-center gap-0.5" data-testid="lesson-actions">
+    <div className="relative flex items-center gap-0.5" data-testid="lesson-actions">
       <IconButton label="Domande" icon={Brain} active={panel === 'domande'} aria-expanded={panel === 'domande'} aria-controls={PANEL_ID} onClick={() => onToggle('domande')} />
       <IconLink label="Studio" icon={BookOpen} to={`/studio/lezione/${l.id}`} unavailable={reason(a.recall)} />
       <IconButton label="Arricchimento" icon={Image} active={panel === 'arricchimento'} aria-expanded={panel === 'arricchimento'} aria-controls={PANEL_ID} onClick={() => onToggle('arricchimento')} />
@@ -329,11 +436,13 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         icon={Download}
         items={[
           { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => void exportPdf(), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
           { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
           { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
+      {pdf.error && <Alert tone="danger" className="absolute right-0 top-full z-20 mt-2 w-72 cursor-pointer" onClick={() => setPdf({ busy: false, error: null })}>{pdf.error}</Alert>}
     </div>
   )
 }

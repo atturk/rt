@@ -16,10 +16,11 @@ it('scambia i clic inversi, include tutta la settimana finale e distingue anni d
 })
 describe('occupazione', () => {
   const entries = [{ id: 2, valid_from: '2026-10-12', valid_to: '2026-10-26', day_of_week: 0, start_time: '09:00', end_time: '10:30', materia: 'Analisi' }, { id: 1, valid_from: '2026-10-12', day_of_week: 1, start_time: '09:00', end_time: '11:00', materia: 'Fisica' }]
-  it('somma le ore e ordina gli id, con la fine esclusa', () => {
+  it('somma le ore e confronta l’orario, con la fine esclusa', () => {
     expect(weekOccupancy(entries, '2026-10-05')).toEqual({ hours: 0, fingerprint: '' })
-    expect(weekOccupancy(entries, '2026-10-12')).toEqual({ hours: 3.5, fingerprint: '1,2' })
-    expect(weekOccupancy(entries.toReversed(), '2026-10-12')).toEqual({ hours: 3.5, fingerprint: '1,2' })
-    expect(weekOccupancy(entries, '2026-10-26')).toEqual({ hours: 2, fingerprint: '1' })
+    expect(weekOccupancy(entries, '2026-10-12')).toEqual({ hours: 3.5, fingerprint: '0:09:00:10:30:analisi:|1:09:00:11:00:fisica:' })
+    expect(weekOccupancy(entries.toReversed(), '2026-10-12')).toEqual({ hours: 3.5, fingerprint: '0:09:00:10:30:analisi:|1:09:00:11:00:fisica:' })
+    expect(weekOccupancy(entries.map(entry => ({ ...entry, id: entry.id + 10 })), '2026-10-12')).toEqual(weekOccupancy(entries, '2026-10-12'))
+    expect(weekOccupancy(entries, '2026-10-26')).toEqual({ hours: 2, fingerprint: '1:09:00:11:00:fisica:' })
   })
 })

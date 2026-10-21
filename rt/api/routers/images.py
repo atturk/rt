@@ -1,15 +1,17 @@
 """Immagini integrate da 'rt add-images' (RT4-F6): elenco con le descrizioni e file serviti
 per l'anteprima nel documento. Il caricamento (POST /lessons/{id}/images) è un job, in jobs.py."""
+from rt.core.archive import page_image_path, import_material_cache
 import mimetypes
 import os
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from rt.api import schemas
 from rt.api.deps import Actor, LessonDir
 from rt.api.errors import ApiError
 from rt.storage import fs
@@ -34,6 +36,7 @@ class LessonImage(BaseModel):
                                           "altrimenti l'anteprima dalla bozza)")
     crop_of: Optional[str] = Field(None, description="Hash o identificativo dell'immagine originale se ritaglio")
     crop_index: Optional[int] = Field(None, description="Indice progressivo del ritaglio per la pagina")
+    descritta: bool = Field(True, description="True se l'immagine ha una descrizione vision (summary_keywords, ocr_text o visual_elements)")
 
 
 class LessonImages(BaseModel):
@@ -82,6 +85,12 @@ def _asset_url(lesson_id: int, name: str) -> str:
     return f"/api/v1/lessons/{lesson_id}/assets/images/{name}"
 
 
+def _is_described(desc: Optional[dict]) -> bool:
+    if not desc:
+        return False
+    return bool(desc.get("summary_keywords") or desc.get("ocr_text") or desc.get("visual_elements"))
+
+
 @router.get("/lessons/{lesson_id}/images", response_model=LessonImages,
             summary="Immagini della lezione con descrizione e presenza nel documento")
 def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
@@ -100,6 +109,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             return []
         found_units = []
         current_unit = None
+        base_name = img_name.split("#")[0]
         for line in document.splitlines():
             sub = re.match(r"^###\s+([0-9]+(?:\.[0-9]+)*)", line)
             if sub:
@@ -108,9 +118,20 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                 macro = re.match(r"^##\s+([0-9]+)", line)
                 if macro:
                     current_unit = macro.group(1)
-            if img_name in line and current_unit and current_unit not in found_units:
+            if base_name in line and current_unit and current_unit not in found_units:
                 found_units.append(current_unit)
         return found_units
+
+    def _is_in_document(name: str, rel: str, units: list[str]) -> bool:
+        if bool(units):
+            return True
+        for target in (name, rel):
+            if not target:
+                continue
+            base = target.split("#")[0]
+            if base in document:
+                return True
+        return False
 
     images: list[LessonImage] = []
     processed_desc_hashes = set()
@@ -152,11 +173,12 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     page=num,
                     in_assets=True,
                     units=units,
-                    in_document=bool(units) or (bool(rel) and rel in document),
+                    in_document=_is_in_document(name, rel, units),
                     slide_title=str(found_desc.get("slide_title") or ""),
                     alt_text=str(found_desc.get("alt_text") or f"{src_name}, pagina {num}"),
                     crop_of=found_desc.get("crop_of"),
                     crop_index=found_desc.get("crop_index"),
+                    descritta=_is_described(found_desc),
                     macro_ids=[mid for mid, hashes in placement.get("macros", {}).items() if found_hash in hashes],
                 ))
             else:
@@ -175,6 +197,7 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     in_document=False,
                     slide_title="",
                     alt_text=f"{src_name}, pagina {num}",
+                    descritta=False,
                     macro_ids=[],
                 ))
 
@@ -219,11 +242,12 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
             page=page_num,
             in_assets=True,
             units=units,
-            in_document=bool(units) or (bool(rel) and rel in document),
+            in_document=_is_in_document(name, rel, units),
             slide_title=str(desc.get("slide_title") or ""),
             alt_text=str(desc.get("alt_text") or ""),
             crop_of=desc.get("crop_of"),
             crop_index=desc.get("crop_index"),
+            descritta=_is_described(desc),
             macro_ids=[mid for mid, hashes in placement.get("macros", {}).items() if h in hashes],
         ))
 
@@ -241,15 +265,84 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 @router.get("/lessons/{lesson_id}/assets/images/{name}", summary="File di un'immagine della lezione",
             response_class=Response, responses={200: {"content": {"image/*": {}}}})
-def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor):
+def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor, max_dim: Optional[int] = Query(None, alias="max")):
+    import hashlib
+    import io
+    from PIL import Image
     from rt.pipeline.add_images import get_images_dir
     if not _IMAGE_NAME.match(name):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
     path = os.path.join(get_images_dir(lesson_dir), name)
     if not fs.isfile(path):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
-    media_type: Optional[str] = mimetypes.guess_type(name)[0] or "application/octet-stream"
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
+
+    if max_dim is not None and max_dim > 0:
+        with fs.open(path, "rb") as f:
+            raw_bytes = f.read()
+        sha = hashlib.sha256(raw_bytes).hexdigest()
+        cache_dir = os.path.join(fs.data_dir(), "cache", "pdf-images")
+        prefix = f"{sha}-{max_dim}."
+        if os.path.isdir(cache_dir):
+            cached_file = next((f for f in os.listdir(cache_dir) if f.startswith(prefix)), None)
+            if cached_file:
+                cache_path = os.path.join(cache_dir, cached_file)
+                media_type = "image/jpeg" if cached_file.endswith((".jpg", ".jpeg")) else "image/png"
+                with open(cache_path, "rb") as cf:
+                    return Response(content=cf.read(), media_type=media_type, headers=headers)
+
+        im = Image.open(io.BytesIO(raw_bytes))
+        w, h = im.size
+        longest = max(w, h)
+        if longest > max_dim:
+            ratio = max_dim / longest
+            new_w = max(1, int(round(w * ratio)))
+            new_h = max(1, int(round(h * ratio)))
+            im = im.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        has_transparency = False
+        if im.mode in ("RGBA", "LA"):
+            alpha = im.getchannel("A")
+            min_a, _max_a = alpha.getextrema()
+            if min_a < 255:
+                has_transparency = True
+        elif im.mode == "P" and "transparency" in im.info:
+            has_transparency = True
+
+        if has_transparency:
+            png_buf = io.BytesIO()
+            im.save(png_buf, format="PNG", optimize=True)
+            final_bytes = png_buf.getvalue()
+            ext = "png"
+            media_type = "image/png"
+        else:
+            rgb_im = im.convert("RGB") if im.mode != "RGB" else im
+            jpeg_buf = io.BytesIO()
+            rgb_im.save(jpeg_buf, format="JPEG", quality=82, optimize=True)
+            jpeg_bytes = jpeg_buf.getvalue()
+
+            png_buf = io.BytesIO()
+            im.save(png_buf, format="PNG", optimize=True)
+            png_bytes = png_buf.getvalue()
+
+            if len(png_bytes) < len(jpeg_bytes):
+                final_bytes = png_bytes
+                ext = "png"
+                media_type = "image/png"
+            else:
+                final_bytes = jpeg_bytes
+                ext = "jpg"
+                media_type = "image/jpeg"
+
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, f"{sha}-{max_dim}.{ext}")
+        tmp_path = cache_path + f".tmp.{os.getpid()}"
+        with open(tmp_path, "wb") as cf:
+            cf.write(final_bytes)
+        os.replace(tmp_path, cache_path)
+        return Response(content=final_bytes, media_type=media_type, headers=headers)
+
+    media_type: Optional[str] = mimetypes.guess_type(name)[0] or "application/octet-stream"
     real = fs.real_path(path)
     if real:
         return FileResponse(real, media_type=media_type, headers=headers)
@@ -266,7 +359,12 @@ _IMPRONTA_RE = re.compile(r"^[a-fA-F0-9]{16,64}$")
 def get_material_image(lesson_id: int, impronta: str, name: str, lesson_dir: LessonDir, _actor: Actor):
     if not _IMPRONTA_RE.match(impronta) or not _MATERIAL_IMG_NAME.match(name):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
-    path = os.path.join(lesson_dir, "materials", impronta, name)
+    from rt.core.sources import load_sources
+    source = next((s for s in load_sources(lesson_dir) if s.impronta == impronta), None)
+    if source is None:
+        raise ApiError(404, 'image_not_found', 'Immagine inesistente.')
+    import_material_cache(lesson_dir, source)
+    path = page_image_path(impronta, name)
     if not fs.isfile(path):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
@@ -296,6 +394,36 @@ def remove_from_text(
         image_names=req.image_names,
         lease_token=req.lease_token,
     )
+
+
+class DescribeImagesRequest(BaseModel):
+    names: list[str] = Field(..., description="Nomi o identificativi delle immagini da descrivere")
+    mock: bool = Field(False, description="Usa mock LLM")
+
+
+@router.post("/lessons/{lesson_id}/media/describe", response_model=schemas.JobAccepted, status_code=202,
+             summary="Descrive le immagini indicate con vision (o usa la descrizione in archivio)")
+def describe_media(lesson_id: int, lesson_dir: LessonDir, actor: Actor, req: DescribeImagesRequest):
+    from rt.api.jobs import enqueue_job
+    return enqueue_job("describe_images", lesson_dir, {"names": req.names, "mock": req.mock}, actor)
+
+
+class DeleteImagesRequest(BaseModel):
+    names: list[str] = Field(default_factory=list, description="Nomi delle immagini da eliminare")
+    image_names: Optional[list[str]] = Field(None, description="Alias per names")
+    lease_token: Optional[str] = None
+    update_document: bool = Field(True, description="False se il testo lo cambia l'editor aperto")
+
+    def get_names(self) -> list[str]:
+        return self.names or self.image_names or []
+
+
+@router.post("/lessons/{lesson_id}/media/delete",
+             summary="Elimina immagini dalla lezione (testo, posizionamento e file); le pagine dei materiali restano")
+def delete_media(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, req: DeleteImagesRequest):
+    from rt.services.editor_media_service import delete_images
+    return delete_images(lesson_id=lesson_id, lesson_dir=lesson_dir, image_names=req.get_names(),
+                         lease_token=req.lease_token, update_document=req.update_document)
 
 
 class CropImageRequest(BaseModel):

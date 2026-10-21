@@ -78,6 +78,7 @@ _SHA256 = re.compile(r"\b[0-9a-f]{64}\b")
 # L'import a un file solo converte l'audio in m4a dove c'è ffmpeg e lo lascia com'è dove non
 # c'è (4.2.2b4, task B2): nel confronto il nome convertito torna quello del fixture.
 _CONVERTED_AUDIO = re.compile(r"demo_lecture\.m4a")
+_PIPELINE_AT = re.compile(r',\s*"pipeline_at":\s*"<TS>"')
 
 
 def normalize_text(text: str, root: str) -> str:
@@ -92,6 +93,7 @@ def normalize_text(text: str, root: str) -> str:
     text = _ISO_TS.sub("<TS>", text)
     text = _SHA256.sub("<SHA256>", text)
     text = _CONVERTED_AUDIO.sub("demo_lecture.wav", text)
+    text = _PIPELINE_AT.sub("", text)
     return text
 
 
@@ -114,8 +116,11 @@ def _run_cli(argv: List[str], cwd: str, stdin: str) -> Tuple[int, str, str]:
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     env.pop("COLUMNS", None)
+    # Ogni lato CLI ha un archivio proprio: i confronti CLI/API partono entrambi senza cache.
+    env['RT_TEST_DATA_HOME'] = os.path.join(cwd, '.test-data')
+    bootstrap = "import os; from rt.core import paths; paths.DEFAULT_DATA_DIR = os.environ['RT_TEST_DATA_HOME']; from rt.cli import main; main()"
     proc = subprocess.run(
-        [sys.executable, "-c", "from rt.cli import main; main()"] + argv,
+        [sys.executable, "-c", bootstrap] + argv,
         cwd=cwd,
         input=stdin,
         capture_output=True,

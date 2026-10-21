@@ -150,7 +150,7 @@ def _run_prepare(lesson_dir: str, force: bool = False, ctx=None) -> Dict[str, An
         segments = parse_segments_from_markdown(source_path)
         
     if not segments:
-        raise ValueError("Nessun segmento estratto dalla sorgente di trascrizione.")
+        raise ValueError("Nessun parlato rilevato: la trascrizione è vuota.")
         
     # 3. Salvataggio atomico di segments.json (Source of truth derivata dal JSON sorgente)
     if source_type == "sources":

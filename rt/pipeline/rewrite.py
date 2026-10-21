@@ -15,7 +15,7 @@ import os
 import json
 from typing import Dict, Any, List, Optional, Tuple
 from rt.core.models import Draft, DraftUnit, Segment
-from rt.core.segments import load_segments_json
+from rt.core.segments import load_segments_json, segment_content
 from rt.core.state import read_info_yaml, transition_to, WorkflowState
 from rt.core.manifest import load_manifest, init_or_update_manifest
 from rt.core.config import load_config
@@ -343,7 +343,7 @@ def _run_rewrite(
         # Segmenti principali: dal start_seg.index al end_seg.index (inclusi)
         main_segs = all_segments[start_seg.index - 1 : end_seg.index]
         main_seg_ids = [s.id for s in main_segs]
-        main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {s.text_raw}" for s in main_segs)
+        main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {segment_content(s)}" for s in main_segs)
         
         # Contesto temporale basato su ~90s (precedente e successivo, max 20 segmenti)
         prev_segs, next_segs = extract_context_window(
@@ -477,6 +477,9 @@ def _run_rewrite(
             completed_items=[ou.unit_id for ou in draft.units],
             metadata={"failed_units": failures.as_dicts()},
         )
+
+    from rt.pipeline.review import drop_vanished_unit_issues
+    drop_vanished_unit_issues(lesson_dir)
 
     if target_unit_id:
         source_fp = compute_source_fingerprint(lesson_dir, "rewrite", target_unit_id=target_unit_id)

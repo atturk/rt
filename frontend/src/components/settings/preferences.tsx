@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, unwrap } from '@/api/client'
@@ -6,10 +6,12 @@ import { type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
+import { useCopyFormat } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
+import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
@@ -31,9 +33,21 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [theme, setTheme] = usePreference<ThemePreference>('theme', 'sistema')
   const [highlighter, setHighlighter] = useHighlighterPrefs()
   const [rsvp, setRsvp] = useRsvpPrefs()
+  const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
+  const [zoom, setZoomState] = useState(getZoom)
   const save = useGeneralPreference()
   const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
+
+  useEffect(() => {
+    const onZoomChange = (e: Event) => {
+      const z = (e as CustomEvent<{ zoom: number }>).detail?.zoom
+      setZoomState(z ?? getZoom())
+    }
+    window.addEventListener('rt-zoom-change', onZoomChange)
+    return () => window.removeEventListener('rt-zoom-change', onZoomChange)
+  }, [])
+
   return <>
     <Section id="aspetto" title="Aspetto">
       <Field label="Tema" htmlFor="pref-theme"><SlideToggle label="Tema" value={theme} onChange={setTheme}
@@ -43,11 +57,29 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
           <option value="colori">Colori</option><option value="grigi">Grigi</option><option value="niente">Niente</option>
         </Select>
       </Field>
+      <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
+        <div className="flex items-center gap-2">
+          <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
+            {ZOOM_LEVELS.map(level => (
+              <option key={level} value={level}>{Math.round(level * 100)}%</option>
+            ))}
+          </Select>
+          <Button type="button" variant="outline" size="sm" onClick={resetZoom} disabled={zoom === 1}>
+            100%
+          </Button>
+        </div>
+      </Field>
       <SaveFeedback mutation={save} />
     </Section>
     <Section id="studio" title="Studio">
       <div className="flex flex-wrap justify-between gap-2 text-body"><span>Colori dell’evidenziatore</span><span className="text-muted-foreground">Giallo, verde, azzurro, rosa, arancio</span></div>
       <Checkbox id="pref-arrows" label="Frecce per cambiare unità" checked={highlighter.arrows} onChange={arrows => setHighlighter({ ...highlighter, arrows })} />
+    </Section>
+    <Section id="copia" title="Copia">
+      <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
+      <Checkbox id="copy-italic" label="Corsivo" checked={copy.italic} onChange={italic => setCopy({ ...copy, italic })} />
+      <Checkbox id="copy-highlights" label="Evidenziazioni" checked={copy.highlights} onChange={highlights => setCopy({ ...copy, highlights })} />
+      <Checkbox id="copy-color" label="Colore del testo" checked={copy.color} onChange={color => setCopy({ ...copy, color })} />
     </Section>
     <Section id="lettura-veloce" title="Lettura veloce">
       <Field label="Velocità (parole/min)" htmlFor="rsvp-wpm"><Input id="rsvp-wpm" type="number" min={100} max={900} step={25} value={rsvp.wpm}

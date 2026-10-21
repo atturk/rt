@@ -1,5 +1,5 @@
 import { Pause, Play } from 'lucide-react'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { Tooltip } from '@/components/ui/tooltip'
 import { pageArrowAllowed } from '@/lib/lessonNavigationKeys'
@@ -33,6 +33,9 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
   const [savedSpeed, setSpeed] = usePreference('audio.rate', 1)
   const speed = clampRate(Number(savedSpeed))
   const [error, setError] = useState(false)
+  const retry = useRef<{ lessonId: number; time: number; play: boolean } | null>(null)
+  const [source, setSource] = useState({ lessonId, suffix: '' })
+  const recovery = useRef(false)
   const known = Number.isFinite(duration) && duration > 0
   const [hover, setHover] = useState(false)
 
@@ -104,18 +107,33 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
     >
       <audio
         ref={audioRef}
-        src={`/api/v1/lessons/${lessonId}/audio`}
+        src={`/api/v1/lessons/${lessonId}/audio${source.lessonId === lessonId ? source.suffix : ''}`}
         preload="metadata"
         onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
         onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => {
           setDuration(e.currentTarget.duration)
           e.currentTarget.playbackRate = speed
+          if (recovery.current && retry.current?.lessonId === lessonId) {
+            recovery.current = false
+            e.currentTarget.currentTime = retry.current.time
+            if (retry.current.play) e.currentTarget.play().catch(() => setError(true))
+          }
         }}
         onDurationChange={(e) => setDuration(e.currentTarget.duration)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
-        onError={() => setError(true)}
+        onError={(e) => {
+          if (retry.current?.lessonId === lessonId) {
+            setError(true)
+            return
+          }
+          const audio = e.currentTarget
+          retry.current = { lessonId, time: audio.currentTime, play: playing || !audio.paused }
+          recovery.current = true
+          setError(false)
+          setSource({ lessonId, suffix: `?r=${Date.now()}` })
+        }}
       />
       <Tooltip content={playing ? 'Pausa' : 'Riproduci'} side="top" describe={false}>
         {(trigger) => (

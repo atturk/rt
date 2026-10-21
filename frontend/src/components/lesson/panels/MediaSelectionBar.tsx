@@ -1,132 +1,91 @@
-import { ArrowDownToLine, ListChecks, Sparkles, Unlink, X } from 'lucide-react'
+import { ArrowDownToLine, Crop, ImageMinus, ScanEye, Trash2, WandSparkles } from 'lucide-react'
 
-import { Tooltip } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { IconButton } from '@/components/ui/icon-button'
+import { SelectionBar } from '@/components/ui/selection-bar'
 
-interface MediaSelectionBarProps {
+export interface MediaSelectionBarProps {
   selectedCount: number
-  hasUsedSelected: boolean
+  canDescribe: boolean
   canInsertAtCursor: boolean
-  onSelectAll: () => void
-  onInsertAtCursor: () => void
+  hasUsedSelected: boolean
+  canDelete: boolean
+  onDescribe: () => void
   onAutoPlace: () => void
+  onInsertAtCursor: () => void
+  onCrop: () => void
   onRemoveFromText: () => void
-  onClearSelection: () => void
+  onDelete: () => void
+  onSelectAll?: () => void
+  onClearSelection?: () => void
 }
 
 export function MediaSelectionBar({
   selectedCount,
-  hasUsedSelected,
+  canDescribe,
   canInsertAtCursor,
-  onSelectAll,
-  onInsertAtCursor,
+  hasUsedSelected,
+  canDelete,
+  onDescribe,
   onAutoPlace,
+  onInsertAtCursor,
+  onCrop,
   onRemoveFromText,
-  onClearSelection,
+  onDelete,
 }: MediaSelectionBarProps) {
   if (selectedCount === 0) return null
 
-  const insertTooltip = canInsertAtCursor
-    ? 'Inserisci al cursore'
-    : 'Clicca nel testo dove vuoi le pagine'
+  const countLabel = `${selectedCount} ${selectedCount === 1 ? 'scelto' : 'scelti'}`
+  const canCrop = selectedCount === 1
 
   return (
     <div
-      className="sticky bottom-3 z-20 flex items-center gap-1.5 rounded-xl bg-foreground px-3.5 py-1.5 text-background shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150"
+      className="sticky bottom-3 z-20 flex justify-center animate-in fade-in slide-in-from-bottom-2 duration-150"
       data-testid="media-selection-bar"
-      role="toolbar"
-      aria-label="Azioni media selezionati"
     >
-      <span className="flex-1 text-meta font-medium tabular-nums text-background select-none">
-        {selectedCount} {selectedCount === 1 ? 'selezionata' : 'selezionate'}
-      </span>
-
-      {/* Seleziona tutte */}
-      <Tooltip content="Seleziona tutte (⌘A)" side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label="Seleziona tutte (⌘A)"
-            className="flex size-8 items-center justify-center rounded-lg text-background hover:bg-background/20 cursor-pointer transition-colors"
-            {...trigger}
-            onClick={onSelectAll}
-          >
-            <ListChecks className="size-4.5" aria-hidden />
-          </button>
-        )}
-      </Tooltip>
-
-      {/* Inserisci al cursore */}
-      <Tooltip content={insertTooltip} side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label="Inserisci al cursore"
-            disabled={!canInsertAtCursor}
-            className={cn(
-              'flex size-8 items-center justify-center rounded-lg cursor-pointer transition-colors',
-              canInsertAtCursor
-                ? 'bg-accent text-accent-foreground hover:bg-accent/90'
-                : 'text-background opacity-35 cursor-default',
-            )}
-            {...trigger}
-            onClick={canInsertAtCursor ? onInsertAtCursor : undefined}
-          >
-            <ArrowDownToLine className="size-4.5" aria-hidden />
-          </button>
-        )}
-      </Tooltip>
-
-      {/* Colloca in automatico */}
-      <Tooltip content="Colloca in automatico le selezionate" side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label="Colloca in automatico le selezionate"
-            className="flex size-8 items-center justify-center rounded-lg text-background hover:bg-background/20 cursor-pointer transition-colors"
-            {...trigger}
-            onClick={onAutoPlace}
-          >
-            <Sparkles className="size-4.5" aria-hidden />
-          </button>
-        )}
-      </Tooltip>
-
-      {/* Togli dal testo */}
-      <Tooltip content="Togli dal testo (resta nei media)" side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label="Togli dal testo (resta nei media)"
-            disabled={!hasUsedSelected}
-            className={cn(
-              'flex size-8 items-center justify-center rounded-lg transition-colors',
-              hasUsedSelected
-                ? 'text-background hover:bg-background/20 cursor-pointer'
-                : 'text-background opacity-35 cursor-default',
-            )}
-            {...trigger}
-            onClick={hasUsedSelected ? onRemoveFromText : undefined}
-          >
-            <Unlink className="size-4.5" aria-hidden />
-          </button>
-        )}
-      </Tooltip>
-
-      {/* Annulla la selezione */}
-      <Tooltip content="Annulla la selezione" side="top">
-        {(trigger) => (
-          <button
-            type="button"
-            aria-label="Annulla la selezione"
-            className="flex size-8 items-center justify-center rounded-lg text-background hover:bg-background/20 cursor-pointer transition-colors"
-            {...trigger}
-            onClick={onClearSelection}
-          >
-            <X className="size-4.5" aria-hidden />
-          </button>
-        )}
-      </Tooltip>
+      <SelectionBar count={countLabel}>
+        <IconButton
+          icon={ScanEye}
+          label="Descrivi"
+          unavailable={canDescribe ? undefined : 'Tutte le immagini selezionate sono già descritte'}
+          onClick={canDescribe ? onDescribe : undefined}
+          data-testid="describe-media-button"
+        />
+        <IconButton
+          icon={WandSparkles}
+          label="Posiziona"
+          onClick={onAutoPlace}
+          data-testid="autoplace-media-button"
+        />
+        <IconButton
+          icon={ArrowDownToLine}
+          label="Inserisci al cursore"
+          unavailable={canInsertAtCursor ? undefined : 'Clicca nel testo dove vuoi le pagine'}
+          onClick={canInsertAtCursor ? onInsertAtCursor : undefined}
+          data-testid="insert-at-cursor-button"
+        />
+        <IconButton
+          icon={Crop}
+          label="Ritaglia"
+          unavailable={canCrop ? undefined : 'Solo con una immagine'}
+          onClick={canCrop ? onCrop : undefined}
+          data-testid="crop-media-button"
+        />
+        <IconButton
+          icon={ImageMinus}
+          label="Togli dal testo"
+          unavailable={hasUsedSelected ? undefined : 'Nessuna immagine selezionata è nel testo'}
+          onClick={hasUsedSelected ? onRemoveFromText : undefined}
+          data-testid="remove-from-text-button"
+        />
+        <IconButton
+          icon={Trash2}
+          label="Elimina dalla lezione"
+          className="text-danger hover:text-danger"
+          unavailable={canDelete ? undefined : 'Le pagine dei materiali si tolgono con la fonte'}
+          onClick={canDelete ? onDelete : undefined}
+          data-testid="delete-media-button"
+        />
+      </SelectionBar>
     </div>
   )
 }

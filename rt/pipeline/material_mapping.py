@@ -6,6 +6,7 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1b: Valutazione sì/no tramite Jev Decision API con aggregazione a macro-unità (>= 3).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
+from rt.core.archive import page_image_path
 
 import json
 import math
@@ -566,8 +567,8 @@ def assign_material_pages(
         is_primary = (source.id == primary_id)
         pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
 
-        if is_primary:
-            # MF1e: Le pagine del materiale principale diventano segmenti;
+        if is_primary or source.uso == "integra":
+            # Le pagine della principale e delle fonti Integra diventano segmenti;
             # le loro immagini vanno alla sottounità i cui segmenti le contengono, senza classificatore.
             seg_by_id = {s.id: s for s in segments_data.segments}
             seg_to_unit: Dict[str, str] = {}
@@ -579,17 +580,16 @@ def assign_material_pages(
                         for s in segments_data.segments[start_seg.index - 1 : end_seg.index]:
                             seg_to_unit[s.id] = u.id
 
-            source_segs = [s for s in segments_data.segments if getattr(s, "source_file", None) == source.id or "materiale" in getattr(s, "flags", [])]
-            for page in pages:
-                page_idx = page["numero"] - 1
-                target_unit_id = None
-                if page_idx < len(source_segs):
-                    seg_id = source_segs[page_idx].id
-                    target_unit_id = seg_to_unit.get(seg_id)
+            source_segs = [s for s in segments_data.segments if s.source_file == source.id
+                           or (is_primary and s.source_file is None and "materiale" in s.flags)]
+            # pages è già filtrato da pages_for_use: i numeri originali possono
+            # avere buchi, ma l'ordine coincide con quello dei segmenti della fonte.
+            for page, segment in zip(pages, source_segs):
+                target_unit_id = seg_to_unit.get(segment.id)
 
                 if target_unit_id and enabled and page.get("immagini"):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()
@@ -626,7 +626,7 @@ def assign_material_pages(
 
                 if enabled and page.get("immagini") and (assigned_units or assigned_macros):
                     for img_rel in page["immagini"]:
-                        img_path = os.path.join(lesson_dir, img_rel)
+                        img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
                             with fs.open(img_path, "rb") as stream:
                                 data = stream.read()

@@ -69,3 +69,11 @@ describe('phaseProgress', () => {
     expect(phaseProgress(pipeline({ phase: 'rewrite', current: 15, total: 12 })).phaseFraction).toBe(1)
   })
 })
+
+it('la preparazione mostra il nome del materiale insieme al conteggio', () => {
+  const progress = phaseProgress({ type: 'ingest_sources', payload: {}, state: 'running', progress: {
+    phase: 'prepare', current: 3, total: 6, message: 'Lettura di slide.pdf: pagina 3 di 6',
+  } } as Parameters<typeof phaseProgress>[0])
+  expect(progress.detail).toBe('Lettura di slide.pdf: pagina 3 di 6')
+  expect(progress.phaseFraction).toBe(.5)
+})

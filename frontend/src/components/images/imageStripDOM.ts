@@ -1,4 +1,5 @@
 import { mountDomTooltip } from '@/components/ui/dom-tooltip'
+import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
 import {
   formatStripLabel,
   getStripClosedPreference,
@@ -11,6 +12,8 @@ const PAPERCLIP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 const CHEV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="chev"><path d="m6 9 6 6 6-6"/></svg>`
 const PREV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`
 const NEXT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`
+
+export const MIN_STRIP_IMAGES = 1
 
 export type StripOptions = {
   onImageClick?: (index: number) => void
@@ -99,11 +102,21 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
       e.preventDefault()
       e.stopPropagation()
       options?.onImageClick?.(idx)
-      window.dispatchEvent(
-        new CustomEvent('rt-image-viewer-open', {
-          detail: { images, index: idx },
-        })
-      )
+      if (isEnrichmentPanelOpen()) {
+        const rawName = img.src.split('/').pop()?.split('#')[0]
+        const name = rawName ? decodeURIComponent(rawName) : ''
+        window.dispatchEvent(
+          new CustomEvent('rt-media-select', {
+            detail: { name },
+          }),
+        )
+      } else {
+        window.dispatchEvent(
+          new CustomEvent('rt-image-viewer-open', {
+            detail: { images, index: idx },
+          }),
+        )
+      }
     }
     thumbs.append(thumb)
   })
@@ -114,7 +127,11 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
   nextBtn.setAttribute('aria-label', 'Scorri a destra')
   nextBtn.innerHTML = NEXT_ICON
 
-  rail.append(prevBtn, thumbs, nextBtn)
+  if (images.length > 1) {
+    rail.append(prevBtn, thumbs, nextBtn)
+  } else {
+    rail.append(thumbs)
+  }
   container.append(rail)
 
   const checkEdges = () => {
@@ -182,8 +199,7 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
 }
 
 /**
- * Trasforma gruppi di 2 o più immagini consecutive nel DOM reso (DocumentView o Study) in una striscia.
- * Le immagini singole rimangono invariate.
+ * Trasforma immagini (singole o in serie) nel DOM reso (DocumentView o Study) in una striscia di miniature.
  */
 export function mountDocumentImageStrips(root: HTMLElement, options?: StripOptions): () => void {
   // Trova tutti i paragrafi che contengono solo immagini
@@ -199,7 +215,7 @@ export function mountDocumentImageStrips(root: HTMLElement, options?: StripOptio
   let currentImages: ImageItem[] = []
 
   const flushGroup = () => {
-    if (currentImages.length >= 2) {
+    if (currentImages.length >= MIN_STRIP_IMAGES) {
       groups.push({
         elements: [...currentElements],
         images: [...currentImages],

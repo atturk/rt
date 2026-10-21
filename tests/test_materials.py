@@ -104,7 +104,7 @@ def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, 
     assert len(response.json()) == 2
     view = api_client.get(url).json()
     materials = [s for s in view['sources'] if s['tipo'] == 'materiale']
-    assert [(s['nome'], s['pagine'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
+    assert [(s['nome'], s['pagine_totali'], s['usata']) for s in materials] == [('a.pdf', 1, False), ('b.png', 1, False)]
 
 
 def test_single_material_response_and_invalid_order_are_compatible_and_atomic(api_client, rt_db, tmp_path, monkeypatch):
@@ -122,3 +122,142 @@ def test_single_material_response_and_invalid_order_are_compatible_and_atomic(ap
         ('file', ('b.pdf', pdf_bytes(), 'application/pdf'))])
     assert response.status_code == 422 and response.json()['error']['code'] == 'validation_error'
     assert api_client.get(url).json()['sources'] == before
+
+
+def _parallel_source(tmp_path, monkeypatch, count=6):
+    import rt.core.materials as materials
+    from rt.core.config import load_config
+    source = add_source(str(tmp_path), 'materiale', 'parallel.pdf', pdf_bytes())
+    monkeypatch.setattr(materials, '_extract', lambda _: (('', [png_bytes()], True) for _ in range(count)))
+    cfg = load_config()
+    cfg.pipeline.parallel_pages = 3
+    monkeypatch.setattr('rt.core.config.load_config', lambda: cfg)
+    return source
+
+
+def test_material_pages_parallel_order_cache_and_context(tmp_path, monkeypatch):
+    import time
+    from contextvars import ContextVar
+    from rt.services.context import RunContext
+    from rt.services.events import ListReporter
+    marker = ContextVar('test_material_context', default='missing')
+    marker.set('copied')
+    source = _parallel_source(tmp_path, monkeypatch)
+    calls = []
+    import threading
+    running, peak, guard = [0], [0], threading.Lock()
+
+    def describe(*args):
+        assert marker.get() == 'copied'
+        calls.append(1)
+        with guard:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(.2)
+        with guard:
+            running[0] -= 1
+        return 'Testo visivo'
+
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    reporter = ListReporter()
+    ctx = RunContext(reporter=reporter)
+    pages = material_pages(str(tmp_path), source, ctx=ctx)
+    assert peak[0] >= 2  # pagine lette in parallelo (il tempo reale varia troppo sui runner)
+    assert [p['numero'] for p in pages] == list(range(1, 7))
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
+    assert all((folder / f'page-{n}.json').exists() for n in range(1, 7))
+    (folder / 'pages.json').unlink()
+    for n in range(4, 7):
+        (folder / f'page-{n}.json').unlink()
+    calls.clear()
+    assert material_pages(str(tmp_path), source, ctx=ctx) == pages
+    assert len(calls) == 3
+    messages = [getattr(e, 'message', '') for e in reporter.events]
+    assert any('pagina 6 di 6' in m for m in messages)
+    assert any('Vision 3 chiamate' in m for m in messages)
+
+
+def test_material_pages_cancel_keeps_finished_pages(tmp_path, monkeypatch):
+    import threading
+    import time
+    from rt.services.context import RunContext, RunCancelled
+    source = _parallel_source(tmp_path, monkeypatch)
+    ctx = RunContext()
+    barrier = threading.Barrier(3)
+    calls = []
+
+    def describe(*args):
+        calls.append(1)
+        barrier.wait(timeout=3)
+        ctx.cancel_token.cancel()
+        time.sleep(.02)
+        return 'finita'
+
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    with pytest.raises(RunCancelled):
+        material_pages(str(tmp_path), source, ctx=ctx)
+    assert len(calls) == 3
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
+    assert len(list(folder.glob('page-*.json'))) == 3
+    assert not (folder / 'pages.json').exists()
+
+
+def test_material_pages_error_saves_other_running_pages(tmp_path, monkeypatch):
+    import threading
+    from rt.services.context import RunContext
+    source = _parallel_source(tmp_path, monkeypatch)
+    barrier = threading.Barrier(3)
+    lock = threading.Lock()
+    calls = []
+
+    def describe(*args):
+        with lock:
+            calls.append(1)
+            number = len(calls)
+        barrier.wait(timeout=3)
+        if number == 1:
+            raise ValueError('Vision fallita')
+        return 'finita'
+
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    with pytest.raises(ValueError, match='Vision fallita'):
+        material_pages(str(tmp_path), source, ctx=RunContext())
+    assert len(calls) == 3
+    from pathlib import Path
+    from rt.core.archive import entry_dir
+    folder = Path(entry_dir(source.impronta))
+    assert len(list(folder.glob('page-*.json'))) == 2
+
+
+def test_material_pages_reports_original_failure_even_if_another_worker_is_cancelled(tmp_path, monkeypatch):
+    import threading
+    import time
+    from concurrent.futures import wait
+    from rt.services.context import RunCancelled
+    source = _parallel_source(tmp_path, monkeypatch, count=2)
+    barrier = threading.Barrier(2)
+    counter = []
+    lock = threading.Lock()
+
+    def describe(*args):
+        with lock:
+            counter.append(1)
+            number = len(counter)
+        barrier.wait(timeout=3)
+        if number == 1:
+            time.sleep(.02)
+            raise ValueError('errore originale')
+        raise RunCancelled('worker fermato')
+
+    def cancelled_first(futures, **kwargs):
+        done, pending = wait(futures)
+        return sorted(done, key=lambda future: not isinstance(future.exception(), RunCancelled)), pending
+
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    monkeypatch.setattr('rt.core.materials.wait', cancelled_first)
+    with pytest.raises(ValueError, match='errore originale'):
+        material_pages(str(tmp_path), source)

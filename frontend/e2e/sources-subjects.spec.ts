@@ -20,7 +20,7 @@ test('materie: si aggiunge una materia senza lezioni, compare nell\'elenco e si 
   await expect(page).toHaveURL(/\/impostazioni\/materie$/)
   const name = 'Farmacologia E2E'
   await page.getByRole('textbox', { name: 'Nuova materia' }).fill(name)
-  await page.getByRole('button', { name: 'Aggiungi' }).click()
+  await page.getByRole('button', { name: 'Aggiungi', exact: true }).click()
   const row = page.locator('#subs > div', { hasText: name })
   await expect(row).toContainText('nessuna lezione')
   const listed = await apiGet<{ nome: string }[]>(page.request, '/subjects')

@@ -3,6 +3,7 @@ import json
 import os
 
 from rt.core.lesson_paths import lesson_path
+from rt.core.archive import page_image_path
 from rt.core.sources import load_sources
 from rt.core.materials import material_pages
 from rt.core.state import read_info_yaml
@@ -89,7 +90,7 @@ def attach_material_pages(lesson_dir, outline, *, mock=False, ctx=None):
                 if label == 'none':
                     continue
                 for image in page['immagini']:
-                    with fs.open(os.path.join(lesson_dir, image), 'rb') as stream:
+                    with fs.open(page_image_path(source.impronta, image), 'rb') as stream:
                         data = stream.read()
                     image_hash = compute_image_hash(data)
                     filename = save_raw_image(lesson_dir, data, image_hash)

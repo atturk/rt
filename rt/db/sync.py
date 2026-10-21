@@ -55,6 +55,7 @@ def lesson_fields_from_files(lesson_dir: str) -> Optional[Dict[str, Any]]:
         "folder_name": os.path.basename(normalize_lesson_path(lesson_dir)),
         "data": str(info.get("data", "")),
         "materia": str(info.get("materia", "")).strip().upper(),
+        "docente": str(info.get("docente") or "").strip(),
         "titolo": str(info.get("titolo", "")),
         "argomenti": str(info.get("argomenti", "")),
         "workflow_state": str(info.get("fase_corrente", "") or info.get("stato", "")),

@@ -51,7 +51,47 @@ describe('imageStripDOM', () => {
     window.removeEventListener('rt-image-viewer-open', listener)
   })
 
-  it('mountDocumentImageStrips raggruppa paragrafi di immagini consecutive in una striscia', () => {
+  it('con il pannello aperto emette rt-media-select e non apre il visualizzatore; con il pannello chiuso apre il visualizzatore', () => {
+    const images = [
+      { src: '/api/v1/lessons/1/assets/images/foto.png', alt: 'Doc.pdf, pagina 1', docName: 'Doc.pdf', pageNumber: 1 },
+    ]
+    const strip = buildImageStripDOM(images)
+    const thumb = strip.querySelector('.thumb') as HTMLButtonElement
+
+    // 1. Con il pannello aperto
+    const panelDiv = document.createElement('div')
+    panelDiv.setAttribute('data-testid', 'enrichment-panel')
+    document.body.appendChild(panelDiv)
+
+    const mediaSelectListener = vi.fn()
+    const viewerOpenListener = vi.fn()
+    window.addEventListener('rt-media-select', mediaSelectListener)
+    window.addEventListener('rt-image-viewer-open', viewerOpenListener)
+
+    thumb.click()
+
+    expect(mediaSelectListener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { name: 'foto.png' } }),
+    )
+    expect(viewerOpenListener).not.toHaveBeenCalled()
+
+    // 2. Con il pannello chiuso
+    panelDiv.remove()
+    mediaSelectListener.mockClear()
+    viewerOpenListener.mockClear()
+
+    thumb.click()
+
+    expect(mediaSelectListener).not.toHaveBeenCalled()
+    expect(viewerOpenListener).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { images, index: 0 } }),
+    )
+
+    window.removeEventListener('rt-media-select', mediaSelectListener)
+    window.removeEventListener('rt-image-viewer-open', viewerOpenListener)
+  })
+
+  it('mountDocumentImageStrips trasforma sia immagini consecutive che immagini singole in strisce', () => {
     const container = document.createElement('div')
     container.innerHTML = `
       <p>Primo testo</p>
@@ -65,20 +105,27 @@ describe('imageStripDOM', () => {
 
     const cleanup = mountDocumentImageStrips(container)
 
-    // Le due immagini consecutive sono state trasformate in uno slot con striscia
+    // Ci sono 2 slot: uno per la serie di 2 immagini e uno per l'immagine singola
     const slots = container.querySelectorAll('.rt-image-strip-slot')
-    expect(slots).toHaveLength(1)
+    expect(slots).toHaveLength(2)
 
-    const strip = slots[0].querySelector('.rt-strip')
-    expect(strip).not.toBeNull()
-    expect((strip as HTMLElement)?.dataset.n).toBe('2')
+    const strip1 = slots[0].querySelector('.rt-strip')
+    expect(strip1).not.toBeNull()
+    expect((strip1 as HTMLElement)?.dataset.n).toBe('2')
 
-    // L'immagine singola resta un normale paragrafo img
-    const remainingPs = container.querySelectorAll('p')
-    const hasSingleImg = Array.from(remainingPs).some((p) => p.querySelector('img[src="/single.png"]'))
-    expect(hasSingleImg).toBe(true)
+    const strip2 = slots[1].querySelector('.rt-strip')
+    expect(strip2).not.toBeNull()
+    expect((strip2 as HTMLElement)?.dataset.n).toBe('1')
 
+    // Nessun paragrafo di immagine rimasto
+    const remainingImgs = container.querySelectorAll('p img')
+    expect(remainingImgs).toHaveLength(0)
+
+    // Lo smontaggio rimette i paragrafi originali
     cleanup()
+    const restoredImgs = container.querySelectorAll('p img')
+    expect(restoredImgs).toHaveLength(3)
+
     container.remove()
   })
 })

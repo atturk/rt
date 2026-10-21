@@ -41,22 +41,47 @@ type Common = {
   badge?: ReactNode
 }
 
-export function IconButton({ label, icon: Icon, side = 'bottom', variant, active, unavailable, hint, badge, className, onClick, ...props }: Common & Omit<ComponentProps<'button'>, 'children' | 'title'> & {
+export function IconButton({
+  label,
+  icon: Icon,
+  side = 'bottom',
+  variant,
+  active,
+  unavailable,
+  hint,
+  badge,
+  className,
+  onClick,
+  disabled,
+  onKeyDown,
+  ...props
+}: Common & Omit<ComponentProps<'button'>, 'children' | 'title'> & {
   /** Nota in più nel suggerimento quando il pulsante è disponibile (come in IconAnchor). */
   hint?: string | null
 }) {
-  const note = unavailable ?? hint
+  const isUnavailable = Boolean(unavailable || disabled)
+  const note = unavailable ? unavailable : (disabled ? null : hint)
   return (
     <Tooltip content={note ? `${label}: ${note}` : label} side={side} describe={!!note}>
       {(trigger) => (
         <button
           type="button"
           aria-label={label}
-          aria-disabled={unavailable ? true : undefined}
           className={iconButtonClass({ variant, active, className })}
           {...trigger}
           {...props}
-          onClick={unavailable ? (event) => event.preventDefault() : onClick}
+          aria-disabled={isUnavailable ? true : undefined}
+          onClick={isUnavailable ? (event) => { event.preventDefault() } : onClick}
+          onKeyDown={(event) => {
+            trigger.onKeyDown(event) // Esc chiude il suggerimento
+            if (isUnavailable) {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+              }
+              return
+            }
+            onKeyDown?.(event)
+          }}
         >
           <Icon aria-hidden />
           {badge}

@@ -176,10 +176,10 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
   await actions.getByRole('button', { name: 'Esporta' }).click()
   const menu = page.getByRole('menu', { name: 'Esporta' })
-  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^Tutti i dati \(zip\)/, /^Solo le fonti \(zip\)/])
+  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^PDF/, /^Tutti i dati \(zip\)/, /^Solo le fonti \(zip\)/])
   // Le fonti si scaricano anche prima della rielaborazione
   await expect(menu.getByRole('menuitem', { name: /^Solo le fonti/ })).not.toHaveAttribute('aria-disabled', 'true')
-  for (const item of (await menu.getByRole('menuitem').all()).slice(0, 2)) {
+  for (const item of (await menu.getByRole('menuitem').all()).slice(0, 3)) {
     await expect(item).toHaveAttribute('aria-disabled', 'true')
     await expect(item).not.toHaveAttribute('title')
     await item.hover()

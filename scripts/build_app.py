@@ -125,11 +125,39 @@ def build_payload(target: str, payload: str, archive: str, spa_dist: str) -> str
         f.write(version + "\n")
     with open(os.path.join(payload, "BUNDLE"), "w", encoding="utf-8") as f:
         f.write(target + "\n")
+    write_build_info(payload, target)
     _trim(payload, target)
     # prova: il Python dell'app importa RT e risponde alla versione
     subprocess.run([python, os.path.join(payload, "bin", "rt"), "desktop", "--help"], check=True,
                    stdout=subprocess.DEVNULL, env={**os.environ, "RT_UPDATE_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1"})
     return python
+
+
+def write_build_info(payload: str, target: str, env: dict | None = None) -> dict:
+    """Scrive BUILD.json nel payload dell'app con i soli dati reali di build disponibili."""
+    from datetime import datetime, timezone
+    environ = os.environ if env is None else env
+    info: dict[str, str] = {"version": read_version(), "target": target}
+    commit = (environ.get("GITHUB_SHA") or "")[:7]
+    if not commit:
+        try:
+            res = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True, cwd=ROOT)
+            if res.returncode == 0 and res.stdout.strip():
+                commit = res.stdout.strip()
+        except Exception:
+            pass
+    if commit:
+        info["commit"] = commit
+    info["built_at"] = datetime.now(timezone.utc).isoformat()
+    run = environ.get("GITHUB_RUN_NUMBER")
+    if run:
+        info["run"] = str(run)
+    path = os.path.join(payload, "BUILD.json")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(info, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    return info
 
 
 def _prepare_macos_dependencies(payload: str) -> None:
@@ -174,8 +202,50 @@ LAUNCHER = """#!/bin/sh
 # Doppio clic su RT: prepara dati e servizi, poi apre la finestra RT (rt/desktop.py)
 APP="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
 cd "$HOME" || exit 1
+export PYTHONDONTWRITEBYTECODE=1
 exec "$APP/python/bin/python3" "$APP/bin/rt" desktop "$@"
 """
+
+MACHO_MAGICS = {
+    b"\xfe\xed\xfa\xce",
+    b"\xce\xfa\xed\xfe",
+    b"\xfe\xed\xfa\xcf",
+    b"\xcf\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
+    b"\xbe\xba\xfe\xca",
+    b"\xca\xfe\xba\xbf",
+    b"\xbf\xba\xfe\xca",
+}
+
+
+def _is_macho(path: str) -> bool:
+    if os.path.islink(path) or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) in MACHO_MAGICS
+    except OSError:
+        return False
+
+
+def sign_macos_app(app: str) -> None:
+    say("✍️  Firma ad-hoc dei binari Mach-O interni...")
+    payload = os.path.join(app, "Contents", "Resources", "app")
+    macho_files = []
+    for root, _dirs, files in os.walk(payload):
+        for name in files:
+            path = os.path.join(root, name)
+            if _is_macho(path):
+                macho_files.append(path)
+
+    for path in sorted(macho_files):
+        subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", path], check=True)
+
+    say("✍️  Firma ad-hoc del bundle RT.app...")
+    subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", app], check=True)
+
+    say("🔍 Verifica firma di RT.app...")
+    subprocess.run(["codesign", "--verify", "--strict", "--verbose=2", app], check=True)
 
 
 def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
@@ -201,15 +271,35 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
             "LSApplicationCategoryType": "public.app-category.education",
             "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
             "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+            "CFBundleDocumentTypes": [{
+                "CFBundleTypeName": "File supportati da RT",
+                "CFBundleTypeRole": "Viewer",
+                "LSHandlerRank": "Alternate",
+                "LSItemContentTypes": [
+                    "public.audio",
+                    "com.adobe.pdf",
+                    "public.image",
+                    "public.plain-text",
+                    "org.openxmlformats.wordprocessingml.document",
+                    "org.openxmlformats.presentationml.presentation",
+                    "public.zip-archive",
+                ],
+            }],
         }, f)
-    os.symlink("/Applications", os.path.join(work, "dmg", "Applications"))
+    sign_macos_app(app)
     os.makedirs(out, exist_ok=True)
     dmg = os.path.join(out, ASSET_NAMES["macos"].format(version=version))
     if os.path.exists(dmg):
         os.remove(dmg)
-    say("💿 Creo il .dmg...")
-    subprocess.run(["hdiutil", "create", "-volname", "RT", "-srcfolder", os.path.join(work, "dmg"),
-                    "-ov", "-format", "UDZO", dmg], check=True)
+    settings_path = os.path.join(ROOT, "packaging", "dmg", "settings.py")
+    say("💿 Creo il .dmg con dmgbuild...")
+    subprocess.run([
+        sys.executable, "-m", "dmgbuild",
+        "-s", settings_path,
+        "-D", f"app={app}",
+        "-D", f"dir={os.path.dirname(settings_path)}",
+        "RT", dmg,
+    ], check=True)
     return dmg
 
 

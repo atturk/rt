@@ -61,6 +61,13 @@ describe('mergeEvents', () => {
 })
 
 describe('etichette dei job', () => {
+  it('mostra il nome leggibile per i tipi nuovi di job', () => {
+    expect(jobTypeLabel({ type: 'classifier', payload: {} })).toBe('Classificatore')
+    expect(jobTypeLabel({ type: 'enrichment_analyze', payload: {} })).toBe('Idee per la lezione')
+    expect(jobTypeLabel({ type: 'compact_audio', payload: {} })).toBe("Compressione dell'audio")
+    expect(jobTypeLabel({ type: 'review_unit', payload: {} })).toBe("Verifica di un'unità")
+  })
+
   it('nomina la fase dei job run_phase e porta alla decisione giusta', () => {
     expect(jobTypeLabel({ type: 'run_phase', payload: { phase: 'review' } })).toBe('Fase: Revisione')
     expect(jobTypeLabel({ type: 'run_pipeline', payload: {} })).toBe('Pipeline completa')
@@ -90,6 +97,8 @@ describe('avanzamento delle fasi a unità (RT4-FA1)', () => {
   })
   it('segnala le unità non riuscite e ricade sul messaggio senza unità', () => {
     expect(progressLabel({ phase: 'rewrite', current: 3, total: 9, unit_id: '1.3', failed: 2 }).detail).toBe('1.3 · 2 unità non riuscite')
+    expect(progressLabel({ phase: 'archive', current: 4, total: 50, message: 'Lezione 4' })).toEqual({ phase: 'Archivio delle fonti', count: '4/50', detail: 'Lezione 4' })
+    expect(jobTypeLabel({ type: 'archive_backfill', payload: {} })).toBe('Archivio delle fonti')
     expect(progressLabel({ phase: 'setup', message: 'Trascrizione' })).toEqual({ phase: 'Trascrizione e setup', count: null, detail: 'Trascrizione' })
     expect(progressTitle(null)).toBeNull()
   })

@@ -129,21 +129,30 @@ def test_legacy_decision_not_applied_has_a_build_warning(reviewed):
     assert any(w['code'] == 'decision_not_applied' and w['count'] == 1 for w in warnings)
 
 
-def test_decided_issues_of_gone_units_remain_for_reconfirmation(reviewed):
-    """Scaletta rifatta: le decise restano, senza decisioni annullate automaticamente."""
+def test_decided_issues_of_gone_units_are_archived_without_changing_ledger(reviewed):
+    """Scaletta rifatta: si archiviano le issue, conservando tutte le decisioni."""
     from rt.pipeline.rewrite import load_draft, save_draft
     lesson, calls = reviewed
     ids = decide_all(lesson)
+    from pathlib import Path
+    from rt.pipeline.ledger import get_ledger_path
+    snapshot = Path(get_ledger_path(lesson)).read_bytes()
     draft = load_draft(lesson)
     draft.units = [u for u in draft.units if u.unit_id != '2.1']
     save_draft(draft, lesson)
+    from tests.test_review_anchor_application import drop_unit_from_outline
+    drop_unit_from_outline(lesson, '2.1')
     calls.clear()
     review.run_review(lesson, force_mock=True)
     assert calls == []
-    assert {i.unit_id for i in review.load_science_issues(lesson)} == {'1.1', '1.2', '2.1'}
+    assert {i.unit_id for i in review.load_science_issues(lesson)} == {'1.1', '1.2'}
     assert {d.issue_id for d in load_ledger(lesson).decisions} == set(ids.values())
     from rt.pipeline.ledger import reconfirmation_issue_ids
-    assert reconfirmation_issue_ids(lesson) == {ids['2.1']}
+    assert reconfirmation_issue_ids(lesson) == set()
+    archived = review.load_obsolete_science_issues(lesson)
+    assert [item['id'] for item in archived] == [ids['2.1']]
+    assert archived[0]['obsoleta_il']
+    assert Path(get_ledger_path(lesson)).read_bytes() == snapshot
     # La scaletta della fixture conserva l'unità rimossa: rewrite resta PARTIAL,
     # ma la review non deve richiamare il critic per le unità già verificate.
     review.run_review(lesson, force_mock=True)

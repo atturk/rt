@@ -1,3 +1,6 @@
+import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
+import { ArchiveFileBadge } from '@/components/sources/ArchiveFileBadge'
+import { defaultExtraction, type SourceOptions } from '@/api/archive'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
@@ -22,7 +25,7 @@ import { Link, useNavigate } from 'react-router'
 
 import { ApiError, errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
-import { useSubjects } from '@/api/subjects'
+import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
 import {
   invalidateAfterJob,
@@ -48,7 +51,7 @@ const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
 const DROP_TEXT = "Trascina qui l'audio della lezione, slide, PDF o foto, oppure un pacchetto .zip. Clic per scegliere."
 
 // Stesso insieme di rt/core/materials.py (MATERIAL_EXTENSIONS): il server rifiuta il resto.
-const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx']
+const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt']
 
 function isAudioFile(file: File): boolean {
   const dot = file.name.lastIndexOf('.')
@@ -155,6 +158,8 @@ export function NewLessonDialog({
   const listId = useId()
 
   const [audioFiles, setAudioFiles] = useState<File[]>([])
+  const [materialOptions, setMaterialOptions] = useState<Record<string, SourceOptions>>({})
+  const [editingMaterial, setEditingMaterial] = useState<File | null>(null)
   const [materialFiles, setMaterialFiles] = useState<File[]>([])
   const [zipFiles, setZipFiles] = useState<File[]>([])
   const [selectedPrimaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
@@ -196,9 +201,7 @@ export function NewLessonDialog({
   const subjects = Array.isArray(subjectsQuery.data)
     ? subjectsQuery.data.map((s) => s.nome)
     : [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
-  const teachers = [
-    ...new Set((lessons.data ?? []).map((l) => l.docente?.trim()).filter(Boolean)),
-  ].sort()
+  const teachers = useTeacherSuggestions(materia)
 
   const calendarDayQuery = useQuery({
     queryKey: calendarKeys.day(date),
@@ -314,6 +317,7 @@ export function NewLessonDialog({
     setMaterialFiles([])
     setZipFiles([])
     setPrimaryMaterialName(null)
+    setMaterialOptions({})
     setUnisciAudio(true)
     setProblem(null)
     setZipJob(null)
@@ -394,6 +398,7 @@ export function NewLessonDialog({
     const input: NewLesson = {
       files: audioFiles,
       materiali: materialFiles.length > 0 ? materialFiles : undefined,
+      opzioni: Object.fromEntries(materialFiles.map((file) => [file.name, materialOptions[file.name] ?? { estrai: defaultExtraction(file.name), uso: audioFiles.length === 0 && primaryMaterialName === file.name ? 'guida' : 'contesto' }])),
       // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
       principale:
         audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
@@ -638,6 +643,8 @@ export function NewLessonDialog({
                         data-testid={`material-thumb-${i}`}
                       >
                         <div className="relative flex h-12 w-16 items-center justify-center rounded-lg border border-border bg-card p-1 shadow-xs overflow-hidden">
+                          <button type="button" aria-label={`Impostazioni ${m.name}`} className="absolute inset-0" onClick={() => setEditingMaterial(m)} />
+                          <ArchiveFileBadge file={m} />
                           {m.type.startsWith('image/') ? (
                             <Image className="size-6 text-muted-foreground" aria-hidden />
                           ) : (
@@ -661,6 +668,7 @@ export function NewLessonDialog({
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setPrimaryMaterialName(m.name)
+                                setMaterialOptions((previous) => Object.fromEntries(materialFiles.map((file) => [file.name, { ...previous[file.name], estrai: previous[file.name]?.estrai ?? defaultExtraction(file.name), uso: file.name === m.name ? 'guida' : previous[file.name]?.uso === 'integra' ? 'integra' : 'contesto' }])))
                               }}
                               data-testid={`material-star-${i}`}
                             >
@@ -972,7 +980,7 @@ export function NewLessonDialog({
                 icon={FileText}
                 aria-pressed={solo}
                 active={solo}
-                disabled={busy}
+                unavailable={busy ? 'importazione in corso' : null}
                 onClick={() => setSolo(!solo)}
               />
               <IconButton
@@ -980,7 +988,7 @@ export function NewLessonDialog({
                 icon={ShieldCheck}
                 aria-pressed={review}
                 active={review && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setReview(!review)}
               />
               <IconButton
@@ -988,7 +996,7 @@ export function NewLessonDialog({
                 icon={Image}
                 aria-pressed={enrichment}
                 active={enrichment && !solo}
-                disabled={busy || solo}
+                unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setEnrichment(!enrichment)}
               />
               <IconButton
@@ -996,7 +1004,15 @@ export function NewLessonDialog({
                 icon={Paperclip}
                 aria-pressed={attachMaterials}
                 active={attachMaterials && materialFiles.length > 0 && !solo}
-                disabled={busy || solo || materialFiles.length === 0}
+                unavailable={
+                  busy
+                    ? 'importazione in corso'
+                    : solo
+                      ? 'non con Solo trascrizione'
+                      : materialFiles.length === 0
+                        ? 'aggiungi almeno un documento'
+                        : null
+                }
                 onClick={() => setAttachMaterials(!attachMaterials)}
                 data-testid="attach-materials-btn"
               />
@@ -1004,6 +1020,15 @@ export function NewLessonDialog({
           )}
         </div>
       </form>
+      {editingMaterial && <AddSourceDialog key={editingMaterial.name} file={editingMaterial}
+        initial={materialOptions[editingMaterial.name] ?? { uso: audioFiles.length === 0 && primaryMaterialName === editingMaterial.name ? 'guida' : 'contesto' }}
+        hasSources={audioFiles.length + materialFiles.length > 1}
+        submitLabel="Fatto" onClose={() => setEditingMaterial(null)}
+        onSubmit={(options) => {
+          setMaterialOptions((previous) => Object.fromEntries(Object.entries({ ...previous, [editingMaterial.name]: options }).map(([name, value]) => [name, name !== editingMaterial.name && options.uso === 'guida' && value.uso === 'guida' ? { ...value, uso: 'contesto' } : value])))
+          if (options.uso === 'guida') setPrimaryMaterialName(editingMaterial.name)
+          setEditingMaterial(null)
+        }} />}
     </Modal>
   )
 }

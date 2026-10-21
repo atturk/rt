@@ -143,7 +143,9 @@ def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] 
     if name == "api":
         args += ["--port", str(port or api_port())]
     log = os.path.join(data, "logs", f"{name}.log")
-    env = {"RT_DATA_DIR": data, "PATH": DEFAULT_PATH, "PYTHONUNBUFFERED": "1", "LANG": "it_IT.UTF-8"}
+    # Niente __pycache__ dentro RT.app: cambierebbe il bundle e ne romperebbe la firma.
+    env = {"RT_DATA_DIR": data, "PATH": DEFAULT_PATH, "PYTHONUNBUFFERED": "1", "LANG": "it_IT.UTF-8",
+           "PYTHONDONTWRITEBYTECODE": "1"}
     spec = {
         "Label": label(name),
         "ProgramArguments": args,

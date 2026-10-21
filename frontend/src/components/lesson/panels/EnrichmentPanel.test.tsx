@@ -7,11 +7,20 @@ import { api } from '@/api/client'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { EnrichmentPanel } from './EnrichmentPanel'
 
+const mockNavigate = vi.fn()
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
+
 const ok = (data: unknown) => ({ data, error: undefined, response: new Response('{}', { status: 200 }) })
 
 const sampleImages = [
-  { name: 'img1.png', url: '/api/v1/lessons/5/img1.png', in_document: true, macro_ids: ['1'] },
-  { name: 'img2.png', url: '/api/v1/lessons/5/img2.png', in_document: false, source: 'pdf' },
+  { name: 'img1.png', url: '/api/v1/lessons/5/img1.png', in_document: true, macro_ids: ['1'], descritta: true, in_assets: true },
+  { name: 'img2.png', url: '/api/v1/lessons/5/img2.png', in_document: false, source: 'pdf', descritta: false, in_assets: true },
 ]
 
 const sampleElements = [
@@ -29,6 +38,9 @@ const sampleElements = [
 
 function mockApi() {
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+    if (path === '/api/v1/lessons/{lesson_id}') return Promise.resolve(ok({ id: 5, materia: 'FISIOLOGIA' }))
+    if (path === '/api/v1/archive/summary') return Promise.resolve(ok({ file: 124, da_continuare: 2 }))
+    if (path === '/api/v1/lessons/{lesson_id}/sources') return Promise.resolve(ok({ sources: [] }))
     if (path === '/api/v1/lessons/{lesson_id}/images') return Promise.resolve(ok({ images: sampleImages }))
     if (path === '/api/v1/lessons/{lesson_id}/enrichment')
       return Promise.resolve(ok({ elements: sampleElements, units: [{ id: '1.3', title: 'Gap' }] }))
@@ -104,7 +116,7 @@ describe('EnrichmentPanel', () => {
     // Formula del gap è proposta: mostra Genera
     expect(screen.getByRole('button', { name: /Genera/i })).toBeInTheDocument()
     // L'elemento completato Infografica 1.1 non è presente nella lista idee come proposta da generare
-    expect(screen.queryByText('Infografica 1.1')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Elenco idee' })).queryByText('Infografica 1.1')).not.toBeInTheDocument()
   })
 
   it('apre la scheda di caricamento e di ricerca web', async () => {
@@ -230,3 +242,207 @@ it('AR5: illumina il pannello al trascinamento di media e apre il riquadro di ca
   expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeInTheDocument()
 })
+
+it('mostra i file scelti nella lista, permette di rimuoverli e Annulla li scarta', () => {
+  mockApi()
+  renderPanel()
+  fireEvent.click(screen.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }))
+
+  const input = screen.getByLabelText('PDF o foto')
+  const file1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
+  const file2 = new File(['img2'], 'foto.jpg', { type: 'image/jpeg' })
+
+  // Scegliendo un file, compare nella lista "File scelti" e il pulsante dice "Carica (1)"
+  fireEvent.change(input, { target: { files: [file1] } })
+  const list = screen.getByRole('list', { name: 'File scelti' })
+  expect(within(list).getByText('appunti.pdf')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Scegliendo un secondo file
+  fireEvent.change(input, { target: { files: [file2] } })
+  expect(within(list).getByText('foto.jpg')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (2)' })).toBeEnabled()
+
+  // Rimuovi toglie il file
+  fireEvent.click(screen.getByRole('button', { name: 'Rimuovi appunti.pdf' }))
+  expect(within(list).queryByText('appunti.pdf')).not.toBeInTheDocument()
+  expect(within(list).getByText('foto.jpg')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Rimuovendo anche il secondo, il pulsante torna a "Carica" disabilitato
+  fireEvent.click(screen.getByRole('button', { name: 'Rimuovi foto.jpg' }))
+  expect(screen.queryByRole('list', { name: 'File scelti' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica' })).toBeDisabled()
+
+  // File trascinato sulla scheda compare nella lista
+  const card = screen.getByTestId('enrichment-upload')
+  const dropFile = new File(['drop'], 'slide.pdf', { type: 'application/pdf' })
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [dropFile] } })
+  const updatedList = screen.getByRole('list', { name: 'File scelti' })
+  expect(within(updatedList).getByText('slide.pdf')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica (1)' })).toBeEnabled()
+
+  // Premere Annulla e riaprire la scheda: lista vuota, Carica disabilitato
+  fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
+  expect(screen.queryByTestId('enrichment-upload')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Aggiungi immagini (PDF o foto)' }))
+  expect(screen.getByTestId('enrichment-upload')).toBeInTheDocument()
+  expect(screen.queryByRole('list', { name: 'File scelti' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Carica' })).toBeDisabled()
+})
+
+it('di base la vista dei media è a righe, il pulsante passa a griglia e salva in localStorage', async () => {
+  localStorage.removeItem('rt.media.view')
+  mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Di base la vista è a righe: c'è il pulsante per passare a griglia
+  const toggleBtn = screen.getByRole('button', { name: 'Vista a griglia' })
+  expect(toggleBtn).toBeInTheDocument()
+
+  // Clic passa a griglia
+  fireEvent.click(toggleBtn)
+  expect(localStorage.getItem('rt.media.view')).toBe('grid')
+  expect(screen.getByRole('button', { name: 'Una pagina per riga' })).toBeInTheDocument()
+
+  // Clic torna a righe
+  fireEvent.click(screen.getByRole('button', { name: 'Una pagina per riga' }))
+  expect(localStorage.getItem('rt.media.view')).toBe('rows')
+  expect(screen.getByRole('button', { name: 'Vista a griglia' })).toBeInTheDocument()
+})
+
+it('la galleria seleziona e scrolla all’evento rt-media-select', async () => {
+  mockApi()
+  renderPanel()
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  const cell = await screen.findByTestId('media-cell-img1.png')
+  const scrollMock = vi.fn()
+  cell.scrollIntoView = scrollMock
+
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent('rt-media-select', { detail: { name: 'img1.png' } }),
+    )
+  })
+
+  expect(scrollMock).toHaveBeenCalled()
+  const btn = cell.querySelector('button')
+  expect(btn).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('mostra il pulsante Archivio in cima con i conteggi e porta ad archivio con da', async () => {
+  mockApi()
+  renderPanel()
+
+  const archiveBtn = await screen.findByTestId('open-archive-button')
+  expect(archiveBtn).toBeInTheDocument()
+  expect(within(archiveBtn).getByText('Archivio')).toBeInTheDocument()
+  expect(await within(archiveBtn).findByText('124 file · 2 PDF da continuare')).toBeInTheDocument()
+
+  fireEvent.click(archiveBtn)
+  expect(mockNavigate).toHaveBeenCalledWith('/archivio?da=5')
+})
+
+it('filtro Da descrivere mostra il numero e il puntino arancione sulle non descritte', async () => {
+  mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Bottone Da descrivere con badge conteggio (1 non descritta)
+  const undescribedFilter = screen.getByTestId('filter-undescribed')
+  expect(undescribedFilter).toBeInTheDocument()
+  expect(within(undescribedFilter).getByText('1')).toBeInTheDocument()
+
+  // Puntino arancione su img2.png
+  const dot = screen.getByTestId('undescribed-dot')
+  expect(dot).toBeInTheDocument()
+  expect(dot).toHaveClass('bg-warning')
+
+  // Clic su Da descrivere filtra la galleria
+  fireEvent.click(undescribedFilter)
+  expect(screen.queryByTestId('media-cell-img1.png')).not.toBeInTheDocument()
+  expect(screen.getByTestId('media-cell-img2.png')).toBeInTheDocument()
+
+  // Clic su Tutti mostra di nuovo tutte le immagini
+  fireEvent.click(screen.getByTestId('filter-all'))
+  expect(screen.getByTestId('media-cell-img1.png')).toBeInTheDocument()
+  expect(screen.getByTestId('media-cell-img2.png')).toBeInTheDocument()
+})
+
+it('barra di selezione: Descrivi, Ritaglia e Elimina con conferma', async () => {
+  const post = mockApi()
+  renderPanel()
+
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // 1. Seleziona img1.png (già descritta)
+  fireEvent.click(screen.getByTestId('media-cell-img1.png').querySelector('button')!)
+  expect(await screen.findByTestId('media-selection-bar')).toBeInTheDocument()
+  expect(screen.getByText('1 scelto')).toBeInTheDocument()
+
+  // Descrivi disattivato perché è già descritta
+  const descBtn = screen.getByTestId('describe-media-button')
+  expect(descBtn).toHaveAttribute('aria-disabled', 'true')
+
+  // Ritaglia attivo con 1 immagine selezionata
+  const cropBtn = screen.getByTestId('crop-media-button')
+  expect(cropBtn).not.toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(cropBtn)
+  expect(mockNavigate).toHaveBeenCalledWith('/archivio?da=5&file=img1&pagina=1&ritaglia=1')
+
+  // 2. Seleziona anche img2.png (non descritta)
+  fireEvent.click(screen.getByTestId('media-cell-img2.png').querySelector('button')!)
+  expect(screen.getByText('2 scelti')).toBeInTheDocument()
+
+  // Descrivi ora attivo (c'è img2 non descritta)
+  expect(descBtn).not.toHaveAttribute('aria-disabled', 'true')
+  fireEvent.click(descBtn)
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/media/describe',
+      expect.objectContaining({
+        params: { path: { lesson_id: 5 } },
+        body: expect.objectContaining({ names: ['img2.png'] }),
+      }),
+    ),
+  )
+
+  // Dopo la descrizione la selezione viene azzerata
+  await vi.waitFor(() => expect(screen.queryByTestId('media-selection-bar')).not.toBeInTheDocument())
+
+  // 3. Elimina con conferma
+  // Seleziona img1 per testare elimina
+  fireEvent.click(screen.getByTestId('media-cell-img1.png').querySelector('button')!)
+  const deleteBtn = await screen.findByTestId('delete-media-button')
+  fireEvent.click(deleteBtn)
+
+  const confirmDialog = await screen.findByRole('dialog')
+  expect(within(confirmDialog).getByText('Eliminare dalla lezione?')).toBeInTheDocument()
+  fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Elimina' }))
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/media/delete',
+      expect.objectContaining({
+        params: { path: { lesson_id: 5 } },
+      }),
+    ),
+  )
+})
+
+it('nessun pulsante forbici Scissors sulle miniature della galleria', async () => {
+  mockApi()
+  renderPanel()
+  expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+  // Nessun pulsante ritaglia o forbici nelle miniature
+  const gallery = screen.getByTestId('media-gallery')
+  expect(within(gallery).queryByLabelText(/Ritaglia/i)).not.toBeInTheDocument()
+})
+
+

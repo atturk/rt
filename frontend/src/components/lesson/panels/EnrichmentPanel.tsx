@@ -1,14 +1,16 @@
-import { Layers, Search, Sparkles, Upload, X } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router'
+import { Archive, CircleDot, FileText, Image, Layers, LayoutGrid, Rows3, ScanEye, Search, Sparkles, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useNavigate, useParams } from 'react-router'
 
+import { useArchiveSummary } from '@/api/archive'
 import { errorMessage, type Schemas } from '@/api/client'
 import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
-import { useLessonDocument } from '@/api/hooks'
+import { useLesson, useLessonDocument } from '@/api/hooks'
 import {
   copyMaterialPage,
+  describeMedia,
   materialSourceId,
-  cropMediaImage,
+  deleteMedia,
   removeFromText,
   useAddImages,
   useLessonImages,
@@ -16,12 +18,15 @@ import {
   type LessonImage,
 } from '@/api/images'
 import { useOutline } from '@/api/jobs'
+import { useSources } from '@/api/sources'
+import { formatBytes } from '@/lib/jobs'
 import { JobProgress } from '@/components/JobProgress'
 import {
   ENRICHMENT_MEDIA_DRAG_EVENT,
   ENRICHMENT_MEDIA_DROP_EVENT,
 } from '@/components/shell/globalFileDropUtils'
 import { Alert } from '@/components/ui/alert'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { IconButton } from '@/components/ui/icon-button'
@@ -31,7 +36,6 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
-import { MediaCropView } from './MediaCropView'
 import { MediaGallery } from './MediaGallery'
 import { MediaSelectionBar } from './MediaSelectionBar'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
@@ -40,7 +44,8 @@ const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
 
 function findUnitForImage(imageName: string, markdown?: string): string | null {
   if (!markdown || !imageName) return null
-  const idx = markdown.indexOf(imageName)
+  const clean = imageName.split('#')[0]
+  const idx = markdown.indexOf(clean)
   if (idx === -1) return null
   const before = markdown.slice(0, idx)
   const matches = [...before.matchAll(/^###\s+(\S+)/gm)]
@@ -61,6 +66,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const images = useLessonImages(id)
   const refreshImages = useRefreshImages(id)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const addImages = useAddImages(id)
   const outline = useOutline(id)
   const docQuery = useLessonDocument(id)
@@ -81,7 +87,32 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [mediaDragActive, setMediaDragActive] = useState(false)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
-  const [activeCropImage, setActiveCropImage] = useState<LessonImage | null>(null)
+  const navigate = useNavigate()
+  const lessonQuery = useLesson(id)
+  const sourcesQuery = useSources(id)
+  const archiveSummary = useArchiveSummary(lessonQuery.data?.materia)
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'undescribed'>('all')
+
+  const [mediaView, setMediaView] = useState<'rows' | 'grid'>(() => {
+    try {
+      const saved = localStorage.getItem('rt.media.view')
+      return saved === 'grid' ? 'grid' : 'rows'
+    } catch {
+      return 'rows'
+    }
+  })
+
+  const toggleMediaView = () => {
+    setMediaView((prev) => {
+      const next = prev === 'rows' ? 'grid' : 'rows'
+      try {
+        localStorage.setItem('rt.media.view', next)
+      } catch {
+        // Ignora errori di localStorage
+      }
+      return next
+    })
+  }
 
   const [autoPlaceMode, setAutoPlaceMode] = useState<boolean>(() => {
     try {
@@ -102,6 +133,18 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       }
       return next
     })
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const closeUpload = () => {
+    setOpenUpload(false)
+    setUploadFiles([])
+    setUploadError(null)
+  }
+
+  const removeUploadFile = (index: number) => {
+    setUploadFiles((previous) => previous.filter((_, i) => i !== index))
   }
 
   const chooseUploadFiles = (files: File[]) => {
@@ -131,14 +174,25 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         setCanInsertAtCursor(Boolean(custom.detail.hasCursor))
       }
     }
+    const onMediaSelect = (e: Event) => {
+      const custom = e as CustomEvent<{ name: string }>
+      const name = custom.detail?.name
+      if (!name) return
+      const clean = name.split('#')[0]
+      setSelectedNames(new Set([clean]))
+      const el = document.querySelector(`[data-image-name="${CSS.escape(clean)}"]`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
     window.addEventListener('rt-editor-cursor-state', onCursorState)
+    window.addEventListener('rt-media-select', onMediaSelect)
     window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
     return () => {
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
       window.removeEventListener('rt-editor-cursor-state', onCursorState)
+      window.removeEventListener('rt-media-select', onMediaSelect)
     }
   }, [])
 
@@ -163,13 +217,18 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         alt_text: el.title || `${kindText} ${el.unit_id}`,
         slide_title: el.title || '',
         units: [el.unit_id],
-        in_document: true,
+        in_document: el.status !== 'dismissed',
         in_assets: true,
         page: null,
+        descritta: true,
       }
     })
 
+  // Media dell'arricchimento: si tolgono dal testo e si eliminano con le azioni dell'elemento.
+  const enrichmentByName = new Map(completedElements.map((el) => [el.asset_image ? el.asset_image.split('/').pop()! : el.id, el]))
+
   const imageList: LessonImage[] = [...rawImageList, ...enrichmentImages].map((img) => {
+    if (img.source === 'enrichment') return img
     const detected = findUnitForImage(img.name, docQuery.data?.markdown)
     const units = img.units && img.units.length > 0
       ? img.units
@@ -185,7 +244,57 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   })
 
   const totalMedia = imageList.length
+  const undescribedCount = imageList.filter((img) => !img.descritta).length
+  const displayedImages = mediaFilter === 'undescribed' ? imageList.filter((img) => !img.descritta) : imageList
+  const undescribedSelected = imageList.filter((img) => selectedNames.has(img.name) && !img.descritta)
+  const canDescribe = undescribedSelected.length > 0
   const hasUsedSelected = imageList.some((img) => selectedNames.has(img.name) && img.in_document)
+
+  let summaryText = '\u00a0'
+  if (archiveSummary.data) {
+    const { file, da_continuare } = archiveSummary.data
+    const filePart = `${file} file`
+    const continuePart = da_continuare > 0 ? `${da_continuare} PDF da continuare` : ''
+    summaryText = continuePart ? `${filePart} · ${continuePart}` : filePart
+  }
+
+  const handleDescribe = async () => {
+    const names = undescribedSelected.map((img) => img.name)
+    if (!names.length) return
+    try {
+      const res = await describeMedia(id, names)
+      setSelectedNames(new Set())
+      if (res?.job_id) {
+        setActiveJobId(res.job_id)
+      } else {
+        void refreshImages()
+      }
+    } catch {
+      // Lezione occupata
+    }
+  }
+
+  const handleCropNavigation = () => {
+    const selected = imageList.find((i) => selectedNames.has(i.name))
+    if (!selected) return
+    let fileSha = ''
+    let pageNumber = 1
+    if (selected.source?.startsWith('material:')) {
+      const parts = selected.source.split(':')
+      const sourceId = parts[1]
+      const src = sourcesQuery.data?.sources.find((s) => s.id === sourceId)
+      fileSha = src?.impronta || ''
+      pageNumber = selected.page ?? (parts[2] ? Number(parts[2]) : 1)
+    } else if (selected.source?.startsWith('archive:')) {
+      const parts = selected.source.split(':')
+      fileSha = parts[1] || ''
+      pageNumber = Number(parts[2]) || selected.page || 1
+    } else {
+      fileSha = selected.crop_of || selected.name.replace(/\.[^.]+$/, '')
+      pageNumber = 1
+    }
+    navigate(`/archivio?da=${id}&file=${fileSha}&pagina=${pageNumber}&ritaglia=1`)
+  }
 
   const handleOpenViewer = (flatIndex: number) => {
     const viewerImages = imageList.map((img) => ({
@@ -201,9 +310,21 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  const selectedEnrichment = Array.from(selectedNames).map((n) => enrichmentByName.get(n)).filter((el) => el !== undefined)
+  // Un elemento dell'arricchimento torna nel testo al suo posto (in fondo all'unità).
+  const restoreEnrichment = async () => {
+    for (const el of selectedEnrichment) {
+      if (el.status === 'dismissed') await action.mutateAsync({ element: el.id, action: 'restore' }).catch(() => undefined)
+    }
+  }
+
   const handleInsertAtCursor = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
-    if (!selected.length) return
+    await restoreEnrichment()
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
+    if (!selected.length) {
+      setSelectedNames(new Set())
+      return
+    }
     const items: Array<{ path: string; alt_text: string }> = []
     for (const img of selected) {
       if (!img.in_assets) {
@@ -233,7 +354,12 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
 
   const handleAutoPlace = () => {
     if (selectedNames.size === 0) return
-    const names = Array.from(selectedNames)
+    void restoreEnrichment()
+    const names = Array.from(selectedNames).filter((n) => !enrichmentByName.has(n))
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     addImages.mutate(
       { selected_images: names },
       {
@@ -245,10 +371,19 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     )
   }
 
+  // Le pagine dei materiali (non copiate o copiate) si tolgono togliendo la fonte.
+  const canDelete = imageList.some((img) => selectedNames.has(img.name) && img.in_assets && !img.source?.startsWith('material:'))
+
   const handleRemoveFromText = async () => {
-    const selected = imageList.filter((i) => selectedNames.has(i.name))
+    for (const el of selectedEnrichment) {
+      if (el.status !== 'dismissed') await action.mutateAsync({ element: el.id, action: 'dismiss' }).catch(() => undefined)
+    }
+    const selected = imageList.filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name))
     const names = selected.map((s) => s.name)
-    if (!names.length) return
+    if (!names.length) {
+      setSelectedNames(new Set())
+      return
+    }
     if (canInsertAtCursor) {
       // Editor aperto: il testo lo cambia l'editor e il salvataggio aggiorna il posizionamento.
       window.dispatchEvent(
@@ -259,6 +394,31 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         await removeFromText(id, names)
       } catch {
         // Lezione occupata o in modifica altrove: il testo resta com'era.
+      }
+    }
+    setSelectedNames(new Set())
+    void refreshImages()
+  }
+
+  const handleDelete = async () => {
+    setConfirmDelete(false)
+    for (const el of selectedEnrichment) {
+      await action.mutateAsync({ element: el.id, action: 'delete' }).catch(() => undefined)
+    }
+    const names = imageList
+      .filter((i) => selectedNames.has(i.name) && !enrichmentByName.has(i.name) && i.in_assets && !i.source?.startsWith('material:'))
+      .map((i) => i.name)
+    if (names.length) {
+      try {
+        if (canInsertAtCursor) {
+          // Editor aperto: il testo lo cambia l'editor, il server toglie posizionamento e file.
+          window.dispatchEvent(new CustomEvent('rt-editor-remove-images', { detail: { imageNames: names } }))
+          await deleteMedia(id, names, false)
+        } else {
+          await deleteMedia(id, names)
+        }
+      } catch {
+        // Lezione occupata: i media restano.
       }
     }
     setSelectedNames(new Set())
@@ -324,21 +484,78 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           <p>Rilascia per aggiungere ai media della lezione</p>
         </div>
       )}
+
+      {/* Pulsante Archivio in cima al pannello */}
+      <Button
+        variant="outline"
+        className="h-auto w-full min-w-0 justify-start gap-3 overflow-hidden py-3"
+        onClick={() => navigate(`/archivio?da=${id}`)}
+        data-testid="open-archive-button"
+      >
+        <Archive size={18} className="shrink-0" aria-hidden />
+        <span className="flex min-w-0 flex-1 flex-col items-start">
+          <span className="max-w-full truncate text-body font-medium">Archivio</span>
+          <span className="max-w-full text-meta text-muted-foreground truncate">
+            {summaryText}
+          </span>
+        </span>
+      </Button>
+
       {/* Sezione Media della lezione */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
-            Media della lezione · {totalMedia}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+              Media della lezione · {totalMedia}
+            </h3>
+            <div className="flex items-center gap-0.5">
+              <IconButton
+                label="Tutti"
+                icon={LayoutGrid}
+                active={mediaFilter === 'all'}
+                className="size-7"
+                data-testid="filter-all"
+                onClick={() => setMediaFilter('all')}
+              />
+              <IconButton
+                label={undescribedCount > 0 ? `Da descrivere (${undescribedCount})` : 'Da descrivere'}
+                icon={CircleDot}
+                active={mediaFilter === 'undescribed'}
+                className="size-7 relative"
+                data-testid="filter-undescribed"
+                badge={
+                  undescribedCount > 0 ? (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-warning px-1 text-[9px] font-bold text-foreground"
+                      data-testid="undescribed-count"
+                    >
+                      {undescribedCount}
+                    </span>
+                  ) : null
+                }
+                onClick={() => setMediaFilter('undescribed')}
+              />
+            </div>
+          </div>
           <div className="flex items-center gap-1">
+            <IconButton
+              label={mediaView === 'rows' ? 'Vista a griglia' : 'Una pagina per riga'}
+              icon={mediaView === 'rows' ? LayoutGrid : Rows3}
+              className="size-7"
+              onClick={toggleMediaView}
+            />
             <IconButton
               label="Aggiungi immagini (PDF o foto)"
               icon={Upload}
               className="size-7"
               active={openUpload}
               onClick={() => {
-                setOpenUpload(!openUpload)
-                setOpenSearch(false)
+                if (openUpload) {
+                  closeUpload()
+                } else {
+                  setOpenUpload(true)
+                  setOpenSearch(false)
+                }
               }}
             />
             <IconButton
@@ -348,7 +565,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               active={openSearch}
               onClick={() => {
                 setOpenSearch(!openSearch)
-                setOpenUpload(false)
+                closeUpload()
               }}
             />
           </div>
@@ -359,7 +576,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           <Card
             data-file-drop-target
             data-testid="enrichment-upload"
-            className={cn('flex flex-col gap-2.5 p-3', draggingUpload && 'border-foreground bg-muted')}
+            className={cn('relative flex flex-col gap-2.5 p-3 overflow-hidden', draggingUpload && 'border-foreground bg-muted')}
             onDragOver={(event) => {
               if (!Array.from(event.dataTransfer.types).includes('Files')) return
               event.preventDefault()
@@ -374,22 +591,79 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
               chooseUploadFiles(Array.from(event.dataTransfer.files))
             }}
           >
+            {draggingUpload && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-primary/10 p-6 text-center font-medium text-foreground pointer-events-none"
+                data-testid="enrichment-upload-drop-zone"
+              >
+                <ScanEye className="size-8 text-primary" aria-hidden />
+                <span>Analizza e aggiungi</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-body font-semibold">Aggiungi PDF o foto</span>
-              <IconButton label="Chiudi" icon={X} className="size-6" onClick={() => setOpenUpload(false)} />
+              <IconButton label="Chiudi" icon={X} className="size-6" onClick={closeUpload} />
             </div>
             <form onSubmit={handleUploadSubmit} className="flex flex-col gap-2.5">
-              <Input
+              <input
+                ref={fileInputRef}
                 type="file"
-                aria-label="PDF o foto"
+                hidden
                 multiple
                 accept={ACCEPT}
-                className="h-auto py-1 text-meta"
+                aria-label="PDF o foto"
                 onChange={(e) => {
                   chooseUploadFiles(Array.from(e.target.files ?? []))
                   e.target.value = ''
                 }}
               />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="size-4" aria-hidden />
+                  {uploadFiles.length === 0 ? 'Scegli file' : 'Aggiungi altri'}
+                </Button>
+                {uploadFiles.length === 0 && (
+                  <span className="text-meta text-muted-foreground">oppure trascinali qui</span>
+                )}
+              </div>
+              {uploadFiles.length > 0 && (
+                <ul aria-label="File scelti" className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {uploadFiles.map((file, index) => {
+                    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+                    return (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-meta"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          {isPdf ? (
+                            <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          ) : (
+                            <Image className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          )}
+                          <span className="truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {formatBytes(file.size)}
+                          </span>
+                        </div>
+                        <IconButton
+                          label={`Rimuovi ${file.name}`}
+                          icon={X}
+                          className="size-6 shrink-0"
+                          onClick={() => removeUploadFile(index)}
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
               {uploadError && <Alert tone="danger">{uploadError}</Alert>}
               <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-muted/30 p-2">
                 <Tooltip
@@ -429,7 +703,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 </p>
               </div>
               <div className="flex justify-end gap-2 pt-1">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setOpenUpload(false)}>
+                <Button size="sm" variant="ghost" type="button" onClick={closeUpload}>
                   Annulla
                 </Button>
                 <Button size="sm" variant="default" type="submit" disabled={!uploadFiles.length || addImages.isPending}>
@@ -529,42 +803,13 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           />
         )}
 
-        {/* Vista Ritaglio */}
-        {activeCropImage && (
-          <MediaCropView
-            image={activeCropImage}
-            onClose={() => setActiveCropImage(null)}
-            onSave={async (cropRect, replace) => {
-              try {
-                const res = await cropMediaImage(
-                  id, activeCropImage.name, cropRect, replace, undefined, !canInsertAtCursor,
-                )
-                if (replace && canInsertAtCursor) {
-                  window.dispatchEvent(
-                    new CustomEvent('rt-editor-replace-image', {
-                      detail: {
-                        originalName: activeCropImage.name,
-                        newName: res.name,
-                        newAltText: res.alt_text,
-                      },
-                    }),
-                  )
-                }
-                setActiveCropImage(null)
-                await refreshImages()
-              } catch {
-                // ignore
-              }
-            }}
-          />
-        )}
-
         {/* Griglia della Galleria */}
-        {totalMedia > 0 && (
+        {displayedImages.length > 0 && (
           <MediaGallery
             lessonId={id}
-            images={imageList}
+            images={displayedImages}
             selectedNames={selectedNames}
+            view={mediaView}
             onToggleSelect={(name) =>
               setSelectedNames((prev) => {
                 const next = new Set(prev)
@@ -589,28 +834,43 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
                 return next
               })
             }}
-            onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
+            onSelectAll={() => setSelectedNames(new Set(displayedImages.map((i) => i.name)))}
             onClearSelection={() => setSelectedNames(new Set())}
             onOpenViewer={handleOpenViewer}
-            onCrop={(img) => setActiveCropImage(img)}
             onScrollToMedia={scrollToMedia}
           />
         )}
 
-        {totalMedia === 0 && (
-          <p className="py-2 text-center text-meta text-muted-foreground">Nessun media presente nella lezione.</p>
+        {displayedImages.length === 0 && (
+          <p className="py-2 text-center text-meta text-muted-foreground">
+            {totalMedia === 0 ? 'Nessun media presente nella lezione.' : 'Tutte le immagini sono descritte.'}
+          </p>
         )}
 
         <MediaSelectionBar
           selectedCount={selectedNames.size}
-          hasUsedSelected={hasUsedSelected}
+          canDescribe={canDescribe}
           canInsertAtCursor={canInsertAtCursor}
-          onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
-          onInsertAtCursor={handleInsertAtCursor}
+          hasUsedSelected={hasUsedSelected}
+          canDelete={canDelete}
+          onDescribe={handleDescribe}
           onAutoPlace={handleAutoPlace}
+          onInsertAtCursor={handleInsertAtCursor}
+          onCrop={handleCropNavigation}
           onRemoveFromText={handleRemoveFromText}
+          onDelete={() => setConfirmDelete(true)}
+          onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
           onClearSelection={() => setSelectedNames(new Set())}
         />
+        <ConfirmDialog
+          open={confirmDelete}
+          title="Eliminare dalla lezione?"
+          confirmLabel="Elimina"
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setConfirmDelete(false)}
+        >
+          Spariscono dal testo e dalla lezione.
+        </ConfirmDialog>
       </div>
 
       <hr className="border-border" />

@@ -68,7 +68,7 @@ def _isolate_data_dir(tmp_path_factory, monkeypatch):
     cartella dati impostano RT_DATA_DIR da sé."""
     monkeypatch.delenv("RT_DATA_DIR", raising=False)
     monkeypatch.setenv("RT_API_PORT", "65432")
-    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(tmp_path_factory.getbasetemp() / "no-data-dir"))
+    monkeypatch.setattr("rt.core.paths.DEFAULT_DATA_DIR", str(tmp_path_factory.mktemp("no-data-dir")))
 
 
 @pytest.fixture(autouse=True)

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { RouterProvider, createBrowserRouter } from 'react-router'
 
 import { createQueryClient } from '@/api/queryClient'
+import { useCopyFormatter } from '@/lib/copyFormat'
 import { routes } from '@/routes'
 
 export function App() {
@@ -14,7 +15,13 @@ export function App() {
   )
   return (
     <QueryClientProvider client={client}>
+      <CopyFormatter />
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
+}
+
+function CopyFormatter() {
+  useCopyFormatter()
+  return null
 }

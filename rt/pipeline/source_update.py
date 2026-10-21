@@ -1,8 +1,13 @@
 """Preparazione incrementale richiesta dall'utente; gli originali restano intatti."""
 import json
+import logging
 import os
 import re
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+from dataclasses import replace
 from contextlib import ExitStack
 from uuid import uuid4
 
@@ -37,11 +42,17 @@ def _duration(path):
         return audio_duration(real)
 
 
-def _transcribe(path, mock=False):
+def _transcribe(path, mock=False, ctx=None):
     """Riusa motore e comando dell'import, soltanto per il nuovo file."""
     from rt.core.config import load_config, load_env_file
     from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
                                    generate_deterministic_mock_asr, _run_transcribe_with_spinner)
+    from rt.core.archive import cached_transcript, store_transcript, transcript_engine
+    from rt.core.idempotency import compute_file_sha256
+    sha, engine = compute_file_sha256(path), transcript_engine(mock)
+    cached = cached_transcript(sha, engine)
+    if cached:
+        return [Segment.model_validate(item) for item in cached['segments']]
     stt = load_config().transcription
     with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
         if mock:
@@ -61,12 +72,17 @@ def _transcribe(path, mock=False):
                 raise ValueError("macparakeet-cli non disponibile")
             result = _run_transcribe_with_spinner(
                 [binary, "transcribe", "--format", "json", "--no-diarize", "--output-dir", temp,
-                 "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte")
+                 "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte",
+                **({'on_message': lambda message: ctx.progress('prepare', message=message),
+                    'cancel_token': ctx.cancel_token} if ctx else {}))
             candidates = [os.path.join(temp, f) for f in os.listdir(temp) if f.endswith(".json")]
             if result.returncode or not candidates:
                 raise ValueError("Trascrizione della nuova fonte fallita")
             raw_path = candidates[0]
-        return parse_segments_from_json(raw_path)
+        segments = parse_segments_from_json(raw_path)
+        store_transcript(sha, engine, {'segments': [s.model_dump() for s in segments],
+                                     'duration': max((s.end_seconds for s in segments), default=0)})
+        return segments
 
 
 def sources_pending(lesson_dir):
@@ -79,14 +95,15 @@ def sources_pending(lesson_dir):
 
 
 def segment_source_ids(sources, state, primary):
-    """Fonti che diventano segmenti della scaletta. Come nella b1 audio e appunti si
-    concatenano; i materiali restano contesto. Solo una principale non audio scelta
-    (appunti) o un materiale principale costruisce da sola la scaletta."""
+    """La principale guida la scaletta; le fonti Integra vi partecipano sempre."""
+    sources = [s for s in sources if not s.rimossa_il]
     primary_source = next((s for s in sources if s.id == primary), None)
     if primary_source is not None and (primary_source.tipo == "materiale" or (
             primary_source.tipo != "audio" and state.get("primary_explicit"))):
-        return {primary}
-    return {s.id for s in sources if s.tipo != "materiale"} or {primary}
+        selected = {primary}
+    else:
+        selected = {s.id for s in sources if s.tipo != "materiale"} or {primary}
+    return selected | {s.id for s in sources if s.uso == "integra"}
 
 
 def reingest_availability(lesson_dir, sources=None):
@@ -103,6 +120,12 @@ def reingest_availability(lesson_dir, sources=None):
 
 
 def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
+    from rt.core.materials import material_pages, _elapsed
+    from rt.core.idempotency import compute_file_sha256
+    from rt.services.context import RunContext, CancelToken
+    started = time.monotonic()
+    timing = {'transcription_seconds': 0.0, 'materials_seconds': 0.0, 'merge_seconds': 0.0,
+              'audio': [], 'materials': [], 'parallel': False}
     sources = load_sources(lesson_dir)
     if not sources:
         raise ValueError("La lezione deve avere almeno una fonte")
@@ -124,52 +147,106 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
     in_segments = segment_source_ids(sources, state, primary)
     offset = 0.0
     ordered = []
+    source_offsets = {}
+    # Un solo hash per fonte, condiviso con material_pages tramite checked=True.
     for source in sources:
         if ctx:
             ctx.check_cancelled()
         path = os.path.join(lesson_dir, source.file)
-        from rt.core.idempotency import compute_file_sha256
         missing_but_prepared = source.id in cache and not fs.isfile(path)
         if source.impronta and not missing_but_prepared and compute_file_sha256(path) != source.impronta:
             raise ValueError("Una fonte originale è cambiata: aggiungila come nuova fonte")
-        if source.id not in cache:
-            if source.tipo == "audio":
-                incoming = _transcribe(path, mock)
-                duration = _duration(path)
-            elif source.tipo == "materiale":
-                from rt.core.materials import material_pages
-                pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx, **({"refresh": True} if reingest else {}))
-                incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
-                    start_formatted="00:00", end_formatted="00:00",
-                    text_raw=page["testo"] or f"Pagina {page['numero']} senza testo leggibile",
-                    flags=["materiale"]) for page in pages]
-                duration = 0.0
-            else:
-                with fs.open(path, encoding="utf-8") as stream:
-                    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stream.read()) if p.strip()]
-                if not paragraphs:
-                    raise ValueError("Gli appunti sono vuoti")
-                incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
-                                    start_formatted="00:00", end_formatted="00:00", text_raw=p,
-                                    flags=["appunti"]) for p in paragraphs]
-                duration = 0.0
-            assigned = []
-            for segment in incoming:
-                assigned.append(segment.model_copy(update={"id": f"seg_{state['next_segment']:06d}", "source_file": source.id}))
-                state["next_segment"] += 1
-            cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
-            # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
-            _write_state(lesson_dir, state)
-        if source.id not in in_segments:
-            offset += cache[source.id]["duration"]
-            continue
+    material_ctx = replace(ctx, cancel_token=CancelToken()) if ctx else RunContext(lesson_dir=lesson_dir, force_mock=mock)
+    unsubscribe = ctx.cancel_token.on_cancel(material_ctx.cancel_token.cancel) if ctx else lambda: None
+    audio_pending = [s for s in sources if s.tipo == 'audio' and s.id not in cache]
+    materials_pending = [s for s in sources if s.tipo == 'materiale' and s.id not in cache]
+    timing['parallel'] = bool(audio_pending and materials_pending)
+
+    def read_material(source):
+        material_ctx.check_cancelled()
+        stats = {'file': os.path.basename(source.file)}
+        with material_ctx.activate():
+            pages = material_pages(lesson_dir, source, mock=mock, ctx=material_ctx,
+                                   refresh=reingest, checked=True, timing=stats)
+        timing['materials'].append(stats)
+        timing['materials_seconds'] += stats['seconds']
+        return pages
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='rt-materials') as pool:
+        futures = {s.id: pool.submit(copy_context().run, read_material, s) for s in materials_pending}
+        try:
+            for source in sources:
+                if ctx:
+                    ctx.check_cancelled()
+                path = os.path.join(lesson_dir, source.file)
+                if source.id not in cache:
+                    # Un errore nella lettura dei materiali si mostra subito, non a trascrizione finita.
+                    for future in futures.values():
+                        if future.done() and not future.cancelled() and future.exception() is not None:
+                            future.result()
+                    if source.tipo == "audio":
+                        number = next(i for i, item in enumerate(audio_pending, 1) if item.id == source.id)
+                        name = os.path.basename(source.file)
+                        duration = _duration(path)
+                        if ctx:
+                            ctx.progress('prepare', message=f'Trascrizione di {name} ({number} di {len(audio_pending)})')
+                            ctx.progress('prepare', message=f'Trascrizione di {name} (durata audio {_elapsed(duration)}): avvio del motore')
+                        before = time.monotonic()
+                        incoming = _transcribe(path, mock, **({'ctx': ctx} if ctx else {}))
+                        seconds = time.monotonic() - before
+                        timing['transcription_seconds'] += seconds
+                        timing['audio'].append({'file': name, 'audio_seconds': duration, 'seconds': seconds})
+                        if ctx:
+                            ctx.progress('prepare', message=f'Trascrizione di {name}: finita in {_elapsed(seconds)}')
+                    elif source.tipo == "materiale":
+                        pages = futures[source.id].result()
+                        incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
+                            start_formatted="00:00", end_formatted="00:00",
+                            text_raw=page["testo"] or f"Pagina {page['numero']} senza testo leggibile",
+                            flags=["materiale"]) for page in pages]
+                        duration = 0.0
+                    else:
+                        with fs.open(path, encoding="utf-8") as stream:
+                            paragraphs = [p.strip() for p in re.split(r"\n\s*\n", stream.read()) if p.strip()]
+                        if not paragraphs:
+                            raise ValueError("Gli appunti sono vuoti")
+                        incoming = [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=.001,
+                                            start_formatted="00:00", end_formatted="00:00", text_raw=p,
+                                            flags=["appunti"]) for p in paragraphs]
+                        duration = 0.0
+                    assigned = []
+                    for segment in incoming:
+                        assigned.append(segment.model_copy(update={"id": f"seg_{state['next_segment']:06d}", "source_file": source.id}))
+                        state["next_segment"] += 1
+                    cache[source.id] = {"segments": [s.model_dump() for s in assigned], "duration": duration}
+                    if source.tipo == 'audio':
+                        from rt.core.archive import transcript_engine
+                        cache[source.id]['motore'] = transcript_engine(mock)
+                    # Cache privata: una ripresa non trascrive nuovamente le parti già completate.
+                    _write_state(lesson_dir, state)
+                source_offsets[source.id] = offset
+                offset += cache[source.id]["duration"]
+        except BaseException:
+            material_ctx.cancel_token.cancel()
+            for future in futures.values():
+                future.cancel()
+            raise
+        finally:
+            unsubscribe()
+    # Le fonti Integra aggiuntive seguono i segmenti ordinari. Gli offset restano
+    # quelli dell'audio originale: pagine e appunti non consumano tempo.
+    segment_sources = sorted((s for s in sources if s.id in in_segments),
+                             key=lambda s: s.uso == "integra" and s.id != primary)
+    for source in segment_sources:
         for item in cache[source.id]["segments"]:
             segment = Segment.model_validate(item)
-            start, end = segment.start_seconds + offset, segment.end_seconds + offset
+            start = segment.start_seconds + source_offsets[source.id]
+            end = segment.end_seconds + source_offsets[source.id]
             ordered.append(segment.model_copy(update={"index": len(ordered) + 1,
                            "start_seconds": start, "end_seconds": end,
-                           "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end)}))
-        offset += cache[source.id]["duration"]
+                           "start_formatted": format_timestamp(start), "end_formatted": format_timestamp(end),
+                           "integra": source.uso == "integra",
+                           "fonte": os.path.basename(source.file) if source.uso == "integra" else None}))
     info_path = lesson_path(lesson_dir, "info.yaml")
     old_audio = ""
     if fs.isfile(info_path):
@@ -184,10 +261,17 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
             audio_file = audio_sources[0].file
         else:
             audio_file = "audio-" + uuid4().hex + ".m4a"
+            if ctx:
+                ctx.check_cancelled()
+                ctx.progress('prepare', message='Unione degli audio')
+            before = time.monotonic()
             with ExitStack() as stack:
                 paths = [stack.enter_context(fs.materialize(os.path.join(lesson_dir, s.file))) for s in audio_sources]
                 target = stack.enter_context(fs.external_output(os.path.join(lesson_dir, audio_file)))
                 merge_audio_for_transcription(paths, target)
+            timing['merge_seconds'] = time.monotonic() - before
+            if ctx:
+                ctx.progress('prepare', message=f"Unione degli audio: finita in {_elapsed(timing['merge_seconds'])}")
     save_segments_json(ordered, segment_path, lesson_id=os.path.basename(lesson_dir), audio_duration_seconds=offset)
     export_normalized_transcript_md(ordered, lesson_path(lesson_dir, "transcript_normalized.md"))
     update_info_yaml(info_path, {"file_audio": audio_file})
@@ -201,9 +285,29 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                 fs.remove(os.path.join(lesson_dir, candidate))
     state["used"] = [s.id for s in sources]
     _write_state(lesson_dir, state)
-    if any(s.tipo == "materiale" for s in sources):
-        from rt.core.source_selection import record_used_selection
-        record_used_selection(lesson_dir)
+    from rt.core.source_selection import record_used_selection
+    record_used_selection(lesson_dir)
+    timing['total_seconds'] = time.monotonic() - started
+    summary = (f"Preparazione finita in {_elapsed(timing['total_seconds'])}: "
+               f"trascrizione {_elapsed(timing['transcription_seconds'])}, "
+               f"lettura materiali {_elapsed(timing['materials_seconds'])}"
+               f"{' (in parallelo)' if timing['parallel'] else ''}, "
+               f"unione audio {_elapsed(timing['merge_seconds'])}")
+    if ctx:
+        ctx.progress('prepare', message=summary)
+    # I tempi sono solo diagnostica: un errore di scrittura non fa fallire una preparazione finita.
+    try:
+        timing_path = lesson_path(lesson_dir, 'prepare_timing.json')
+        with fs.open(timing_path + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump(timing, stream, ensure_ascii=False, indent=2)
+        fs.replace(timing_path + '.tmp', timing_path)
+        from rt.services.logs_service import log_path
+        worker_log = log_path('worker')
+        os.makedirs(os.path.dirname(worker_log), exist_ok=True)
+        with open(worker_log, 'a', encoding='utf-8') as stream:
+            stream.write(json.dumps({'lesson': lesson_dir, 'message': summary, **timing}, ensure_ascii=False) + '\n')
+    except OSError as exc:
+        logging.getLogger(__name__).warning("Tempi della preparazione non salvati: %s", exc)
     return {"previous_segments": previous, "segments": ordered}
 
 
@@ -254,7 +358,7 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None, reinge
             raise ValueError(available["reingest_reason"])
     from rt.core.source_selection import selection
     if mode == "extend" and selection(lesson_dir)["solo_ricostruzione"]:
-        raise ValueError("Ordine o principale cambiati: usa Ricostruisci")
+        raise ValueError("Ordine, principale o uso Integra cambiati: usa Ricostruisci")
     old_outline = load_outline(lesson_dir) if fs.isfile(lesson_path(lesson_dir, "outline.json")) else None
     load_sources(lesson_dir)
     if mode == "extend" and old_outline:
@@ -319,6 +423,11 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
         transition_to(lesson_path(lesson_dir, "info.yaml"), WorkflowState.OUTLINE_VALIDATED, allow_force=True)
     else:
         run_outline(lesson_dir, force=True, force_mock=mock, ctx=ctx)
+    # L'aggiornamento passa direttamente alla riscrittura, senza chiedere conferma:
+    # l'approvazione evita che la scheda disattivata nasconda il documento.
+    # Non risvegliare eventuali altri job in attesa sulla stessa lezione.
+    from rt.services.outline_service import approve_outline
+    approve_outline(lesson_dir, actor="source_update", channel="server", resume=False)
     outline = load_outline(lesson_dir)
     selected = changed_units(old_outline, prepared["previous_segments"], outline, prepared["segments"])
     result = run_rewrite(lesson_dir, force_mock=mock, ctx=ctx,
@@ -334,7 +443,7 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
             review = run_review(lesson_dir, force=True, force_mock=mock, ctx=ctx)
             raise_if_incomplete("review", review)
             result["review"] = review
-            pending = get_pending_issues(lesson_dir)
+            _, pending = get_pending_issues(lesson_dir)
         else:
             pending = []
         if ctx:
@@ -343,6 +452,11 @@ def _run_source_update(lesson_dir, old_outline, *, mode, mock, ctx, reingest=Fal
         result["build"] = (write_automatic_documents(lesson_dir) if pending
                            else run_build(lesson_dir, force=True, ctx=ctx))
         result["pending_review"] = len(pending)
+        if reingest and not pending:
+            from rt.services.context import RunContext
+            from rt.services.pipeline_service import automatic_enrichment
+            result["enrichment"] = automatic_enrichment(
+                lesson_dir, mock, ctx or RunContext(lesson_dir=lesson_dir, force_mock=mock))
     from rt.services.sources_view import record_update_summary
     record_update_summary(lesson_dir, mode, old_outline, outline, selected)
     from rt.core.source_selection import record_used_selection

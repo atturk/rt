@@ -40,6 +40,7 @@ import {
   type RecallType,
 } from '@/api/recall'
 import { JobProgress } from '@/components/JobProgress'
+import { MathText } from '@/components/MathText'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
@@ -116,6 +117,8 @@ export function LightweightSession({
   const activeLessonId = questionLessonId ?? lessonId ?? 0
   // Valutazione delle risposte aperte: job in corso, poi esito letto dallo storico
   const [evaluationJob, setEvaluationJob] = useState<string | null>(null)
+  // Valutazione fallita (es. registrazione senza parlato): resta visibile l'errore e si può rispondere di nuovo
+  const [failedEvaluationJob, setFailedEvaluationJob] = useState<string | null>(null)
   // Rigenerazione della domanda: job in corso
   const [regenerationJob, setRegenerationJob] = useState<string | null>(null)
   const history = useRecallHistory(activeLessonId, false)
@@ -205,6 +208,7 @@ export function LightweightSession({
       setShowVoiceRecorder(false)
       setEvaluatedResult(null)
       setEvaluationJob(null)
+      setFailedEvaluationJob(null)
       setRegenerationJob(null)
       setCurrentVote(null)
       setDiscardModalOpen(false)
@@ -306,6 +310,7 @@ export function LightweightSession({
         questionId: currentQuestion.id,
         answer: writtenAnswer.trim(),
       })
+      setFailedEvaluationJob(null)
       if (result.job) setEvaluationJob(result.job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
@@ -320,6 +325,7 @@ export function LightweightSession({
         questionId: currentQuestion.id,
         audio,
       })
+      setFailedEvaluationJob(null)
       setEvaluationJob(job.job_id)
     } catch (err) {
       setGeneralError(errorMessage(err))
@@ -327,7 +333,12 @@ export function LightweightSession({
   }
 
   // Fine della valutazione: esito e commento del modello dalla risposta salvata
-  const evaluationFinished = async () => {
+  const evaluationFinished = async (state: string) => {
+    if (state !== 'succeeded') {
+      setFailedEvaluationJob(evaluationJob)
+      setEvaluationJob(null)
+      return
+    }
     const questionId = currentQuestion?.id
     const { data } = await history.refetch()
     const saved = data?.answers.filter((a) => a.question_id === questionId).pop()
@@ -638,7 +649,7 @@ export function LightweightSession({
                   {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')} · domanda {questionCount}
                 </p>
                 <h2 className="text-heading font-semibold leading-relaxed flex items-center gap-2">
-                  <span>{currentQuestion.question_text}</span>
+                  <MathText text={currentQuestion.question_text} />
                   {currentQuestion.precedente && (
                     <Tooltip content="Precedente all'ultima aggiunta di fonti">
                       {(trigger) => (
@@ -678,7 +689,7 @@ export function LightweightSession({
                           )}
                         >
                           <span className="mr-2 font-semibold opacity-75">{letter}.</span>
-                          <span className="flex-1">{option}</span>
+                          <MathText text={option} className="flex-1" />
                         </Button>
                       )
                     })}
@@ -767,7 +778,10 @@ export function LightweightSession({
               )}
 
               {evaluationJob && (
-                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={() => void evaluationFinished()} />
+                <JobProgress jobId={evaluationJob} label="Valutazione della risposta" onFinished={(state) => void evaluationFinished(state)} />
+              )}
+              {failedEvaluationJob && !evaluationJob && (
+                <JobProgress jobId={failedEvaluationJob} label="Valutazione della risposta" />
               )}
               {regenerationJob && (
                 <JobProgress jobId={regenerationJob} label="Rigenerazione della domanda" onFinished={regenerationFinished} />
@@ -810,7 +824,7 @@ export function LightweightSession({
                   </p>
                   {evaluatedResult.explanation && (
                     <p className="mt-1 text-meta leading-relaxed">
-                      {evaluatedResult.explanation}
+                      <MathText text={evaluatedResult.explanation} />
                     </p>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
@@ -963,7 +977,7 @@ export function LightweightSession({
                 {typeLabel(questionTypeId(currentQuestion), types).toUpperCase()} · unità {currentQuestion.unit_ids.join(', ')}
               </p>
               <p className="mt-0.5 font-medium text-foreground flex items-center gap-1.5">
-                <span>{currentQuestion.question_text}</span>
+                <MathText text={currentQuestion.question_text} />
                 {currentQuestion.precedente && (
                   <Tooltip content="Precedente all'ultima aggiunta di fonti">
                     {(trigger) => (

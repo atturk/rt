@@ -1,7 +1,7 @@
 import { UnitStrip } from './UnitStrip'
-import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, Clock, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
+import { Brain, ChevronDown, CircleCheck, CircleDashed, CircleX, Clock, History, MoreHorizontal, Pencil, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useJobs } from '@/api/jobs'
@@ -32,6 +32,7 @@ import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { LinkMenuButton } from '@/components/ui/menu'
+import { MathText } from '@/components/MathText'
 import { Modal } from '@/components/ui/modal'
 import { Tooltip } from '@/components/ui/tooltip'
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
@@ -119,6 +120,7 @@ export function QuestionsPanel({
   onClearSelection?: () => void
 }) {
   const id = lessonId ?? 0
+  const navigate = useNavigate()
   const registry = useRecallTypes(id).data ?? BASE_RECALL_TYPES
   const types = registry.map(t => ({ id: t.id, label: t.nome, plural: ({ quiz: "quiz", mirata: "mirate", vasta: "vaste" } as Record<string, string>)[t.id] ?? t.nome }))
   const selectionTypes = registry.filter(t => t.id !== "vasta")
@@ -251,6 +253,7 @@ export function QuestionsPanel({
 
   const askedCount = restorable.data?.asked ?? 0
   const wrongCount = restorable.data?.wrong ?? 0
+  const answersCount = history.data?.answers?.length ?? 0
 
   const summary = relevance.data?.summary
   const unitsData = recallUnits.data
@@ -508,7 +511,7 @@ export function QuestionsPanel({
                     {meta}
                   </p>
                   <p className="mt-0.5 text-body flex items-start gap-1.5">
-                    <span>{q.question_text}</span>
+                    <MathText text={q.question_text} />
                     {q.precedente && (
                       <Tooltip content="Precedente all'ultima aggiunta di fonti">
                         {(trigger) => (
@@ -537,7 +540,7 @@ export function QuestionsPanel({
       )}
 
       {/* Riproponi le domande già poste (4.2.2b3, icone 4.2.2b4 F4) */}
-      {!isSelectionMode && (askedCount > 0 || wrongCount > 0) && (
+      {!isSelectionMode && (askedCount > 0 || wrongCount > 0 || answersCount > 0) && (
         <div className="flex items-center gap-3" data-testid="questions-restore">
           <div className="flex items-center gap-1.5">
             <IconButton
@@ -557,6 +560,13 @@ export function QuestionsPanel({
             />
             <span className="text-meta text-muted-foreground">{wrongCount}</span>
           </div>
+          {answersCount > 0 && (
+            <IconButton
+              label="Risposte"
+              icon={History}
+              onClick={() => navigate(`/lezioni/${id}/risposte`)}
+            />
+          )}
         </div>
       )}
       {restore.isError && <Alert tone="danger">{errorMessage(restore.error)}</Alert>}

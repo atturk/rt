@@ -45,3 +45,33 @@ def test_extend_rejects_changes_to_fixed_structure(change):
         candidate.macro_sections[0].units = units[:-1]
     with pytest.raises(ValidationError):
         validate_extension(candidate, outline(), old, current)
+
+
+def test_extend_sends_integra_marker_and_rule_with_fixed_outline(tmp_path, monkeypatch):
+    from rt.core.segments import save_segments_json
+    from rt.pipeline.outline import save_outline, load_outline
+    from rt.pipeline.outline_extension import extend_outline
+    from rt.llm.prompts import INTEGRA_OUTLINE_RULE
+    previous = outline()
+    old = [segment(i, 'old') for i in range(1, 4)]
+    new = segment(4, 'Argomento assente nella fonte principale').model_copy(
+        update={'integra': True, 'fonte': 'aggiunta.pdf'})
+    current = SegmentsData(segments=[*old, new])
+    save_segments_json(current.segments, str(tmp_path / 'segments.json'))
+    save_outline(previous, str(tmp_path))
+    calls = []
+
+    def generate(client, system, history, prompt, segments, directory, additional_validation):
+        calls.append(prompt)
+        assert INTEGRA_OUTLINE_RULE in prompt and INTEGRA_OUTLINE_RULE in system
+        assert '[seg_000004] [integra: aggiunta.pdf] Argomento assente' in prompt
+        assert '[seg_000001] (esistente, fisso)' in prompt
+        candidate = _mock_extension(previous, old, segments)
+        return candidate, additional_validation(candidate)
+
+    monkeypatch.setattr('rt.pipeline.outline_extension._generate_validated_outline', generate)
+    extend_outline(str(tmp_path), old)
+    assert len(calls) == 1
+    units = load_outline(str(tmp_path)).macro_sections[0].units
+    assert units[:2] == previous.macro_sections[0].units
+    assert units[-1].start_segment_id == new.id

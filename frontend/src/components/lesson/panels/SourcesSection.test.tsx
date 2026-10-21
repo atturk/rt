@@ -60,7 +60,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
         aggiunta_il: '2026-10-12',
         ordine: 4,
         nome: 'Slide_anemie.pdf',
-        pagine: 34,
+        pagine_totali: 34,
         usata: false,
       },
     ],

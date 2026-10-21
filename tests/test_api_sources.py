@@ -139,7 +139,7 @@ def test_undo_is_blocked_by_documents_job_but_sources_are_not(api_client, source
     assert worker.run_once().state == "succeeded"
     with monkeypatch.context() as patch:
         fake = SimpleNamespace(list=lambda **kwargs: [SimpleNamespace(type="documents")])
-        patch.setattr("rt.api.routers.lesson_sources.queue", lambda: fake)
+        patch.setattr("rt.services.source_mutation.get_job_queue", lambda: fake)
         assert api_client.post(url + "/sources", data={"tipo": "appunti", "testo": "more"}).status_code == 201
         response = api_client.post(url + "/update/undo")
         assert response.status_code == 409 and response.json()["error"]["code"] == "lesson_busy"

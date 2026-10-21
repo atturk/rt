@@ -80,7 +80,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
             {lessonTitle(lesson)}
           </Link>
         ) : (
-          j.lesson_id == null && 'Lezione non ancora creata'
+          j.lesson_id == null && j.type !== 'archive_backfill' && 'Lezione non ancora creata'
         )}
         {j.created_at && ` · creato alle ${formatTime(j.created_at)}`}
         {j.cancel_requested && !isTerminal(j.state) && ' · annullamento richiesto'}

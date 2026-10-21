@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 
+import { api } from '@/api/client'
 import { DashboardPage } from './lessons'
+
+const ok = (data: unknown) => ({ data, response: new Response(null, { status: 200 }) }) as never
 
 const LESSONS = [
   {
@@ -33,10 +36,11 @@ vi.mock('@/api/jobs', () => ({
 vi.mock('@/components/lesson/DocumentView', () => ({ DocumentView: () => null }))
 vi.mock('@/components/lesson/AudioPlayer', () => ({ AudioPlayer: () => null }))
 
-function renderDashboard() {
+function renderDashboard(initialEntries: string[] = ['/']) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter>
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={initialEntries}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
         </Routes>
@@ -48,7 +52,11 @@ function renderDashboard() {
 const row = (id: number) => document.querySelector<HTMLElement>(`[data-testid=lesson-row][data-lesson-id="${id}"]`)!
 const groups = () => screen.getAllByTestId('lesson-group').map((g) => within(g).getByRole('heading').textContent)
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 describe('pagina Lezioni', () => {
   it('per data: gruppi per giorno, sotto il titolo materia, docente e unità; clic sulla riga apre la lezione', () => {
@@ -180,8 +188,13 @@ describe('pagina Lezioni', () => {
     // Nel raggruppamento per mese il sottotitolo mostra anche la data
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Patologia · Maria Rossi · 7 unità')
 
-    // Terzo clic -> torna a Per data
+    // Terzo clic -> passa a Senza gruppi (nessuno)
     fireEvent.click(monthBtn)
+    expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'false')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'nessuno' })
+
+    // Quarto clic -> torna a Per data
+    fireEvent.click(screen.getByRole('button', { name: 'Per data' }))
     expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'true')
     expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'data' })
 
@@ -222,6 +235,8 @@ describe('pagina Lezioni', () => {
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Docente/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Docente/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Nessuno/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Nessuno/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
 
     const sortBtn = screen.getByRole('button', { name: /Ordina: Recenti/ })
@@ -229,6 +244,8 @@ describe('pagina Lezioni', () => {
     fireEvent.click(sortBtn)
     expect(screen.getByRole('button', { name: /Ordina: Vecchie/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ordina: Vecchie/ }))
+    expect(screen.getByRole('button', { name: /Ordina: Create/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: Create/ }))
     expect(screen.getByRole('button', { name: /Ordina: A–Z/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ordina: A–Z/ }))
     expect(screen.getByRole('button', { name: /Ordina: Studio/ })).toBeInTheDocument()
@@ -238,5 +255,94 @@ describe('pagina Lezioni', () => {
     expect(screen.getByRole('button', { name: /Ordina: Indietro/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ordina: Indietro/ }))
     expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
+  })
+
+  it('con una vista fissata salvata e URL vuoto, la pagina si apre con quel raggruppamento, ordine e testo nel campo, e il pulsante ha aria-pressed="true"', () => {
+    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
+      group: 'materia',
+      sort: 'titolo',
+      q: 'Lipidi',
+      materia: '',
+      stato: '',
+    }))
+    renderDashboard()
+    expect(screen.getByLabelText('Cerca')).toHaveValue('Lipidi')
+    expect(screen.getByRole('button', { name: 'Per materia' })).toHaveAttribute('aria-pressed', 'true')
+    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
+    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('scrivere un carattere nel campo cancella la preferenza e il pulsante torna non premuto', async () => {
+    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
+      group: 'data',
+      sort: 'recenti',
+      q: 'Lipidi',
+      materia: '',
+      stato: '',
+    }))
+    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
+    renderDashboard()
+    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
+    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'Lipidix' } })
+    expect(screen.getByLabelText('Cerca')).toHaveValue('Lipidix')
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'lessons.pinned' } } }))
+    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('cambiare raggruppamento o ordine cancella la preferenza', async () => {
+    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
+      group: 'data',
+      sort: 'recenti',
+      q: '',
+      materia: '',
+      stato: '',
+    }))
+    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
+    renderDashboard()
+    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
+    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'lessons.pinned' } } }))
+    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('con una vista fissata e ?materia=X nell\'URL vince l\'URL e la preferenza resta', () => {
+    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
+      group: 'data',
+      sort: 'recenti',
+      q: '',
+      materia: '',
+      stato: '',
+    }))
+    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
+    renderDashboard(['/?materia=PATOLOGIA'])
+    expect(screen.getByText(/Solo Patologia\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
+    expect(del).not.toHaveBeenCalled()
+    expect(localStorage.getItem('rt-pref:lessons.pinned')).not.toBeNull()
+  })
+
+  it('clic sul pulsante non premuto salva la vista corrente', async () => {
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(undefined))
+    renderDashboard()
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '  infiammazione  ' } })
+    const pinBtn = screen.getByRole('button', { name: 'Fissa questa vista' })
+    expect(pinBtn).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(pinBtn)
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pinned' } },
+      body: {
+        group: 'data',
+        sort: 'recenti',
+        q: 'infiammazione',
+        materia: '',
+        stato: '',
+      },
+    }))
+    expect(screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

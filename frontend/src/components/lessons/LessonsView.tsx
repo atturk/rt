@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, ListFilter, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -28,18 +28,20 @@ import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
 import { SelectionDetails } from './SelectionDetails'
 
-const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User } as const
+const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User, nessuno: List } as const
 
 // ---------------------------------------------------------------- intestazione
 
 /** Azioni dell'intestazione: raggruppa (icone), ordina, cerca, seleziona; sul telefono Raggruppa e Ordina a un tocco. */
-export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting }: {
+export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting, onSelecting, fixed = false, onToggleFixed }: {
   prefs: LessonsPrefs
   onPrefs: (patch: Partial<LessonsPrefs>) => void
   query: string
   onQuery: (q: string) => void
   selecting: boolean
   onSelecting: (on: boolean) => void
+  fixed?: boolean
+  onToggleFixed?: () => void
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [savedDateChoice, setSavedDateChoice] = useState<'data' | 'mese'>(() => (prefs.group === 'mese' ? 'mese' : 'data'))
@@ -54,9 +56,12 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
       onPrefs({ group: 'mese' })
     } else if (prefs.group === 'mese') {
       setSavedDateChoice('data')
+      onPrefs({ group: 'nessuno' })
+    } else if (prefs.group === 'nessuno') {
+      setSavedDateChoice('data')
       onPrefs({ group: 'data' })
     } else {
-      onPrefs({ group: savedDateChoice })
+      onPrefs({ group: savedDateChoice === 'mese' ? 'mese' : 'data' })
     }
   }
 
@@ -64,7 +69,11 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
     if (prefs.group === 'data' || prefs.group === 'mese') {
       setSavedDateChoice(prefs.group)
     }
-    onPrefs({ group })
+    if (prefs.group === group) {
+      onPrefs({ group: 'nessuno' })
+    } else {
+      onPrefs({ group })
+    }
   }
 
   const phone = useIsPhone()
@@ -151,6 +160,14 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           />
         </>
       )}
+      <IconButton
+        label={fixed ? 'Vista fissata: tocca per non fissarla più' : 'Fissa questa vista'}
+        icon={Pin}
+        active={fixed}
+        aria-pressed={fixed}
+        className={cn(fixed && '[&_svg]:fill-current')}
+        onClick={onToggleFixed}
+      />
       {/* Un solo campo "Cerca": il landmark non ha un nome suo, che lo ripeterebbe. */}
       <form
         role="search"
@@ -326,19 +343,21 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
       {groups.map((group, index) => (
         <section
           key={group.key || '-'}
-          aria-label={groupLabel(group, grouping)}
-          className={cn('rounded-xl px-1.5 pt-2.5 pb-1.5', background === 'niente' && 'px-0')}
-          style={{ background: groupBackground(index, background) }}
+          aria-label={grouping !== 'nessuno' ? groupLabel(group, grouping) : undefined}
+          className={cn('rounded-xl px-1.5 pt-2.5 pb-1.5', (background === 'niente' || grouping === 'nessuno') && 'px-0 pt-0 pb-0')}
+          style={{ background: grouping !== 'nessuno' ? groupBackground(index, background) : undefined }}
           data-testid="lesson-group"
           data-group={group.key}
         >
-          <GroupHeader
-            group={group}
-            grouping={grouping}
-            selecting={selecting}
-            selectedCount={group.lessons.filter((l) => selected.has(l.id)).length}
-            onSelectGroup={(on) => toggle(group.lessons.map((l) => l.id), on)}
-          />
+          {grouping !== 'nessuno' && (
+            <GroupHeader
+              group={group}
+              grouping={grouping}
+              selecting={selecting}
+              selectedCount={group.lessons.filter((l) => selected.has(l.id)).length}
+              onSelectGroup={(on) => toggle(group.lessons.map((l) => l.id), on)}
+            />
+          )}
           <ul className="flex flex-col">
             {group.lessons.map((lesson) => (
               <LessonRow

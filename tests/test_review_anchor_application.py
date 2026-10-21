@@ -95,11 +95,23 @@ def test_api_exposes_reconfirmation_without_deleting_decisions(tmp_path, monkeyp
     write_ledger_file(DecisionLedger(schema_version='2.0', decisions=[decision(iss, 'Correzione')]), lesson)
     if gone_unit:
         draft.units = draft.units[1:]
+        drop_unit_from_outline(lesson, original.unit_id)
     else:
         original.content = 'Una riscrittura completamente diversa.'
     save_draft(draft, lesson)
     lesson_id = api_client.get('/api/v1/lessons').json()[0]['id']
     payload = api_client.get(f'/api/v1/lessons/{lesson_id}/issues').json()
+    if gone_unit:
+        assert payload['pending'] == 0 and payload['review_complete'] is True
+        assert payload['items'] == []
+        assert [d.issue_id for d in load_ledger(lesson).decisions] == [iss.id]
+        from rt.pipeline.review import load_obsolete_science_issues
+        assert [i['id'] for i in load_obsolete_science_issues(lesson)] == [iss.id]
+        # Il ritorno dell'unità non riattiva una issue archiviata.
+        draft.units.insert(0, unit(iss.unit_id, iss.anchor.quote))
+        save_draft(draft, lesson)
+        assert api_client.get(f'/api/v1/lessons/{lesson_id}/issues?status=all').json()['items'] == []
+        return
     assert payload['pending'] == 1 and payload['review_complete'] is False
     assert payload['items'][0]['needs_reconfirmation'] is True
     assert payload['items'][0]['decision']['decision'] == 'accepted'
@@ -158,6 +170,7 @@ def test_reconfirmation_reject_and_undo_keep_previous_decision(tmp_path, monkeyp
     write_ledger_file(DecisionLedger(schema_version='2.0', decisions=[prior]), lesson)
     if gone_unit:
         draft.units = draft.units[1:]
+        drop_unit_from_outline(lesson, original.unit_id)
     else:
         original.content = 'Una riscrittura completamente diversa.'
     save_draft(draft, lesson)
@@ -171,7 +184,7 @@ def test_reconfirmation_reject_and_undo_keep_previous_decision(tmp_path, monkeyp
     assert api_client.get(f'{base}/issues').json()['pending'] == 0
     assert api_client.post(f'{base}/decisions/undo', json={'issue_id': iss.id}).status_code == 200
     assert load_ledger(lesson).decisions == [prior]
-    assert api_client.get(f'{base}/issues').json()['pending'] == 1
+    assert api_client.get(f'{base}/issues').json()['pending'] == (0 if gone_unit else 1)
 
 
 @pytest.mark.parametrize('suggested_fix', ['corretto', None])
@@ -203,3 +216,15 @@ def test_reconfirmation_accept_uses_new_anchor_and_previous_custom_text(tmp_path
     assert api_client.post(f'{base}/decisions/undo', json={'issue_id': current.id}).status_code == 200
     assert load_ledger(lesson).decisions == [prior]
     assert load_resolved_draft(lesson).units[0].content == 'Valore sbagliato.'
+
+
+def drop_unit_from_outline(lesson, unit_id):
+    """Un'unità sparisce davvero quando la scaletta nuova non l'ha più."""
+    import json
+    from pathlib import Path
+    from rt.core.lesson_paths import lesson_path
+    path = Path(lesson_path(lesson, 'outline.json'))
+    outline = json.loads(path.read_text(encoding='utf-8'))
+    for macro in outline['macro_sections']:
+        macro['units'] = [u for u in macro['units'] if u['id'] != unit_id]
+    path.write_text(json.dumps(outline, ensure_ascii=False), encoding='utf-8')
