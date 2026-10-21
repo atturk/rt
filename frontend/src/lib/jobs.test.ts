@@ -61,6 +61,13 @@ describe('mergeEvents', () => {
 })
 
 describe('etichette dei job', () => {
+  it('mostra il nome leggibile per i tipi nuovi di job', () => {
+    expect(jobTypeLabel({ type: 'classifier', payload: {} })).toBe('Classificatore')
+    expect(jobTypeLabel({ type: 'enrichment_analyze', payload: {} })).toBe('Idee per la lezione')
+    expect(jobTypeLabel({ type: 'compact_audio', payload: {} })).toBe("Compressione dell'audio")
+    expect(jobTypeLabel({ type: 'review_unit', payload: {} })).toBe("Verifica di un'unità")
+  })
+
   it('nomina la fase dei job run_phase e porta alla decisione giusta', () => {
     expect(jobTypeLabel({ type: 'run_phase', payload: { phase: 'review' } })).toBe('Fase: Revisione')
     expect(jobTypeLabel({ type: 'run_pipeline', payload: {} })).toBe('Pipeline completa')

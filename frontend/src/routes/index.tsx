@@ -64,6 +64,7 @@ const lessonsArea: Area = {
     { path: 'lezioni', element: <Navigate to="/" replace /> },
     { path: 'lezioni/nuova/:jobId', Component: page(lessons, (m) => m.NewLessonPage), handle: bare },
     { path: 'lezioni/:lessonId', Component: page(lessons, (m) => m.LessonPage), handle: bare },
+    { path: 'lezioni/:lessonId/stampa', Component: page(lessons, (m) => m.PrintLessonPage), handle: bare },
     { path: 'lezioni/:lessonId/rilevanza', element: <RedirectLessonPanel panel="classificatore" /> },
     { path: 'lezioni/:lessonId/relevance', element: <RedirectLessonPanel panel="classificatore" /> },
   ],

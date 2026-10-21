@@ -6,6 +6,7 @@ calcola dai file della lezione (fonte di verità per artefatti e freschezza dell
 DB dà l'id stabile della lezione (Lesson.id) e l'elenco delle cartelle note.
 """
 import copy
+from datetime import datetime
 import os
 import re
 import threading
@@ -122,6 +123,33 @@ def _pending_count(lesson_dir: str) -> int:
     return sum(1 for i in load_science_issues(lesson_dir) if i.id not in decided)
 
 
+def _parse_iso(val: Any) -> Optional[datetime]:
+    if not val or not isinstance(val, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(val)
+        return dt if dt.tzinfo else dt.astimezone()
+    except Exception:
+        return None
+
+
+def _pipeline_at(manifest: Any) -> Optional[datetime]:
+    if not manifest:
+        return None
+    records = getattr(manifest, "phase_records", None) or {}
+    candidates: List[datetime] = []
+    for ph in ("outline", "rewrite"):
+        rec = records.get(ph) or {}
+        dt = _parse_iso(rec.get("updated_at"))
+        if dt:
+            candidates.append(dt)
+    build_rec = records.get("build") or {}
+    build_dt = _parse_iso(build_rec.get("pipeline_at"))
+    if build_dt:
+        candidates.append(build_dt)
+    return max(candidates) if candidates else None
+
+
 def _info_counts(lesson_dir: str) -> Dict[str, Any]:
     """Numeri del popup Info della pagina Lezioni: unità della scaletta, durata dell'audio,
     domande nel pool e da fare. Ognuno manca (None o 0) se il suo file non c'è ancora."""
@@ -142,6 +170,7 @@ def _info_counts(lesson_dir: str) -> Dict[str, Any]:
         "duration_seconds": (manifest.audio_duration_seconds if manifest else None) or None,
         "recall_questions": sum(q.status != RecallQuestionStatus.DISCARDED for q in questions),
         "recall_pending": sum(q.status == RecallQuestionStatus.PENDING for q in questions),
+        "pipeline_at": _pipeline_at(manifest),
     }
 
 
@@ -160,6 +189,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
+        "pipeline_at": None,
     }
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))

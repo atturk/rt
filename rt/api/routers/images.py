@@ -6,7 +6,7 @@ import os
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -265,15 +265,84 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 
 @router.get("/lessons/{lesson_id}/assets/images/{name}", summary="File di un'immagine della lezione",
             response_class=Response, responses={200: {"content": {"image/*": {}}}})
-def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor):
+def get_image(lesson_id: int, name: str, lesson_dir: LessonDir, _actor: Actor, max_dim: Optional[int] = Query(None, alias="max")):
+    import hashlib
+    import io
+    from PIL import Image
     from rt.pipeline.add_images import get_images_dir
     if not _IMAGE_NAME.match(name):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
     path = os.path.join(get_images_dir(lesson_dir), name)
     if not fs.isfile(path):
         raise ApiError(404, "image_not_found", "Immagine inesistente.")
-    media_type: Optional[str] = mimetypes.guess_type(name)[0] or "application/octet-stream"
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
+
+    if max_dim is not None and max_dim > 0:
+        with fs.open(path, "rb") as f:
+            raw_bytes = f.read()
+        sha = hashlib.sha256(raw_bytes).hexdigest()
+        cache_dir = os.path.join(fs.data_dir(), "cache", "pdf-images")
+        prefix = f"{sha}-{max_dim}."
+        if os.path.isdir(cache_dir):
+            cached_file = next((f for f in os.listdir(cache_dir) if f.startswith(prefix)), None)
+            if cached_file:
+                cache_path = os.path.join(cache_dir, cached_file)
+                media_type = "image/jpeg" if cached_file.endswith((".jpg", ".jpeg")) else "image/png"
+                with open(cache_path, "rb") as cf:
+                    return Response(content=cf.read(), media_type=media_type, headers=headers)
+
+        im = Image.open(io.BytesIO(raw_bytes))
+        w, h = im.size
+        longest = max(w, h)
+        if longest > max_dim:
+            ratio = max_dim / longest
+            new_w = max(1, int(round(w * ratio)))
+            new_h = max(1, int(round(h * ratio)))
+            im = im.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        has_transparency = False
+        if im.mode in ("RGBA", "LA"):
+            alpha = im.getchannel("A")
+            min_a, _max_a = alpha.getextrema()
+            if min_a < 255:
+                has_transparency = True
+        elif im.mode == "P" and "transparency" in im.info:
+            has_transparency = True
+
+        if has_transparency:
+            png_buf = io.BytesIO()
+            im.save(png_buf, format="PNG", optimize=True)
+            final_bytes = png_buf.getvalue()
+            ext = "png"
+            media_type = "image/png"
+        else:
+            rgb_im = im.convert("RGB") if im.mode != "RGB" else im
+            jpeg_buf = io.BytesIO()
+            rgb_im.save(jpeg_buf, format="JPEG", quality=82, optimize=True)
+            jpeg_bytes = jpeg_buf.getvalue()
+
+            png_buf = io.BytesIO()
+            im.save(png_buf, format="PNG", optimize=True)
+            png_bytes = png_buf.getvalue()
+
+            if len(png_bytes) < len(jpeg_bytes):
+                final_bytes = png_bytes
+                ext = "png"
+                media_type = "image/png"
+            else:
+                final_bytes = jpeg_bytes
+                ext = "jpg"
+                media_type = "image/jpeg"
+
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, f"{sha}-{max_dim}.{ext}")
+        tmp_path = cache_path + f".tmp.{os.getpid()}"
+        with open(tmp_path, "wb") as cf:
+            cf.write(final_bytes)
+        os.replace(tmp_path, cache_path)
+        return Response(content=final_bytes, media_type=media_type, headers=headers)
+
+    media_type: Optional[str] = mimetypes.guess_type(name)[0] or "application/octet-stream"
     real = fs.real_path(path)
     if real:
         return FileResponse(real, media_type=media_type, headers=headers)

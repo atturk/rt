@@ -32,6 +32,8 @@ import { LinkMenuButton } from '@/components/ui/menu'
 import { lessonTitle } from '@/lib/format'
 import { usePreference } from '@/lib/preferences'
 
+export { PrintLessonPage } from '@/components/lesson/PrintLessonPage'
+
 export function DashboardPage() {
   // Elenco completo una volta sola; il testo si filtra qui, senza una richiesta per tasto
   // (GET /lessons ricalcola fasi, issue e costi di ogni lezione). Il testo cercato e la
@@ -413,6 +415,7 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         icon={Download}
         items={[
           { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', href: `/api/v1/lessons/${l.id}/export?format=pdf`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
           { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
           { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },

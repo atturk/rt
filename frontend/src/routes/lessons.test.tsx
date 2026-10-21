@@ -188,8 +188,13 @@ describe('pagina Lezioni', () => {
     // Nel raggruppamento per mese il sottotitolo mostra anche la data
     expect(within(row(1)).getByTestId('lesson-subtitle')).toHaveTextContent('28 set · Patologia · Maria Rossi · 7 unità')
 
-    // Terzo clic -> torna a Per data
+    // Terzo clic -> passa a Senza gruppi (nessuno)
     fireEvent.click(monthBtn)
+    expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'false')
+    expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'nessuno' })
+
+    // Quarto clic -> torna a Per data
+    fireEvent.click(screen.getByRole('button', { name: 'Per data' }))
     expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'true')
     expect(JSON.parse(localStorage.getItem('rt-lessons-page')!)).toMatchObject({ group: 'data' })
 
@@ -230,6 +235,8 @@ describe('pagina Lezioni', () => {
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Materia/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Docente/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Docente/ }))
+    expect(screen.getByRole('button', { name: /Raggruppa: Nessuno/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Raggruppa: Nessuno/ }))
     expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
 
     const sortBtn = screen.getByRole('button', { name: /Ordina: Recenti/ })
@@ -237,6 +244,8 @@ describe('pagina Lezioni', () => {
     fireEvent.click(sortBtn)
     expect(screen.getByRole('button', { name: /Ordina: Vecchie/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ordina: Vecchie/ }))
+    expect(screen.getByRole('button', { name: /Ordina: Create/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Ordina: Create/ }))
     expect(screen.getByRole('button', { name: /Ordina: A–Z/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Ordina: A–Z/ }))
     expect(screen.getByRole('button', { name: /Ordina: Studio/ })).toBeInTheDocument()
