@@ -87,6 +87,19 @@ describe('JobsPanel', () => {
     expect(state.streams).toEqual([])
   })
 
+  it('mostra il nome leggibile per review_unit con l\'unità', () => {
+    renderPanel([
+      job({
+        id: 'ru1',
+        type: 'review_unit',
+        state: 'running',
+        payload: { unit: '3.2' },
+      }),
+    ])
+    const row = item('ru1')
+    expect(within(row).getByText("Verifica di un'unità 3.2")).toBeInTheDocument()
+  })
+
   it('un annullamento già chiesto disabilita il pulsante', () => {
     renderPanel([job({ id: 'j1', state: 'queued', cancel_requested: true })])
     expect(within(item('j1')).getByRole('button', { name: 'Annullamento…' })).toBeDisabled()
