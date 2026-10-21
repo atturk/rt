@@ -5,8 +5,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { archiveFilesApi, compressPages, type ArchiveDetail } from '@/api/archive'
 import { ArchivePage } from './ArchivePage'
 
+const mockLessonsData = vi.fn()
 vi.mock('@/api/hooks', () => ({
-  useLessons: () => ({ data: [{ id: 7, titolo: 'La lezione', materia: 'Anatomia', data: '2026-10-12' }] }),
+  useLessons: () => ({ data: mockLessonsData() }),
 }))
 vi.mock('@/api/archive', async (original) => ({
   ...(await original<typeof import('@/api/archive')>()),
@@ -61,6 +62,7 @@ function setup(params = '?da=7') {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  mockLessonsData.mockReturnValue([{ id: 7, titolo: 'La lezione', materia: 'Anatomia', data: '2026-10-12' }])
   vi.mocked(archiveFilesApi.list).mockResolvedValue([detail])
   vi.mocked(archiveFilesApi.detail).mockResolvedValue(detail)
 })
@@ -129,4 +131,57 @@ it('opens the requested page, handles arrows outside fields and resizes by keybo
 })
 it('compresses inclusive page runs', () => {
   expect(compressPages([10, 1, 3, 2, 10, 12])).toBe('1–3, 10, 12')
+})
+it('shows skeleton while loading files and disappears after', async () => {
+  let resolveList: (value: ArchiveDetail[]) => void
+  const listPromise = new Promise<ArchiveDetail[]>((resolve) => {
+    resolveList = resolve
+  })
+  vi.mocked(archiveFilesApi.list).mockReturnValue(listPromise)
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/archivio']}>
+        <ArchivePage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  const skeleton = screen.getByRole('status', { name: "Carico l'archivio" })
+  expect(skeleton).toBeInTheDocument()
+  expect(skeleton).toHaveAttribute('aria-busy', 'true')
+
+  resolveList!([detail])
+  await waitFor(() => {
+    expect(screen.queryByRole('status', { name: "Carico l'archivio" })).not.toBeInTheDocument()
+  })
+  expect(screen.getAllByText('Libro.pdf').length).toBeGreaterThan(0)
+})
+it('does not fetch files list with da until lessons have arrived', async () => {
+  mockLessonsData.mockReturnValue(undefined)
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/archivio?da=7']}>
+        <ArchivePage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(archiveFilesApi.list).not.toHaveBeenCalled()
+
+  mockLessonsData.mockReturnValue([{ id: 7, titolo: 'La lezione', materia: 'Anatomia' }])
+  rerender(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/archivio?da=7']}>
+        <ArchivePage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  await waitFor(() => {
+    expect(archiveFilesApi.list).toHaveBeenCalledWith({ materia: 'Anatomia', tipo: undefined, q: undefined })
+  })
 })

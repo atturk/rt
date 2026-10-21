@@ -710,7 +710,8 @@
 
 /* Righe vuote del testo che si sta scrivendo: un riflesso le attraversa, come nelle altre IA. */
 .rt-unit-pending > div,
-.rt-skeleton {
+.rt-skeleton,
+.rt-shimmer {
   background-color: var(--muted);
   background-image: linear-gradient(90deg, transparent 0%, var(--skeleton-shine) 50%, transparent 100%);
   background-repeat: no-repeat;
@@ -723,7 +724,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .rt-unit-pending > div,
-  .rt-skeleton { background-image: none; animation: none; }
+  .rt-skeleton,
+  .rt-shimmer { background-image: none; animation: none; }
 }
 
 /* Sezioni richiudibili (folding) come in Obsidian (K2) */

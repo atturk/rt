@@ -299,3 +299,60 @@ def test_prune_page_images(tmp_path):
     prune_page_images([directory])
     # Grazie al marcatore, la seconda esecuzione non ha fatto niente
     assert archive.find(sha1) is not None
+
+
+def test_usage_index_and_single_directories_call(tmp_path, monkeypatch):
+    """usage_index dà gli stessi usi di archive_usages (fonti, alias, immagini);
+    con 30 file in archivio e 20 lezioni, lesson_directories viene chiamata una volta sola."""
+    from rt.pipeline.add_images import compute_image_hash, save_raw_image, save_image_descriptions
+    from rt.services.archive_service import usage_index, archive_usages, list_entries, summary
+
+    # Crea 20 lezioni finte
+    directories = [lesson(tmp_path, f"les_{i}") for i in range(20)]
+    registered_shas = []
+
+    # 10 materiali PDF con pagine
+    for i in range(10):
+        src = add_source(directories[i], 'materiale', f'doc_{i}.pdf', pdf_bytes(f'Testo {i}'), pagine=[1])
+        registered_shas.append(src.impronta)
+
+    # 10 file audio
+    for i in range(10):
+        src = add_source(directories[10 + i], 'audio', f'audio_{i}.m4a', f'audio content {i}'.encode('utf-8'))
+        registered_shas.append(src.impronta)
+
+    # 10 immagini registrate
+    for i in range(10):
+        content = png_bytes() + f"img_{i}".encode('utf-8')
+        h = compute_image_hash(content)
+        rel = save_raw_image(directories[i], content, h)
+        save_image_descriptions(directories[i], {
+            h: {'filename': rel, 'source': f'folder:pic_{i}.png', 'ocr_text': f'Immagine {i}'}
+        })
+        registered_shas.append(h)
+
+    assert len(registered_shas) == 30
+
+    # 1. Verifica che usage_index dia gli stessi usi di prima
+    idx = usage_index()
+    for sha in registered_shas:
+        assert idx.get(sha, []) == archive_usages(sha)
+
+    # 2. Contatore monkeypatch: lesson_directories viene chiamata una sola volta per list_entries
+    call_count = 0
+    def counted_lesson_dirs():
+        nonlocal call_count
+        call_count += 1
+        return directories
+
+    monkeypatch.setattr('rt.services.archive_backfill.lesson_directories', counted_lesson_dirs)
+
+    call_count = 0
+    entries = list_entries()
+    assert len(entries) == 30
+    assert call_count == 1
+
+    call_count = 0
+    summ = summary()
+    assert summ['file'] == 30
+    assert call_count == 1
