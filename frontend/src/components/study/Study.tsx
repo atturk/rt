@@ -16,7 +16,7 @@ import {
   recallKeys, useGenerateForUnits, useStudyLesson,
   type RecallType, type StudyUnit,
 } from '@/api/recall'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useStudyNotes, useApplyStudyNote, useUndoStudyNote, studyNotesApi, studyNotesKeys, type StudyNote } from '@/api/studyNotes'
 import { StudyNotePopup } from './StudyNotePopup'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -111,8 +111,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [indexOpen, setIndexOpen] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const closeGenerate = useCallback(() => setGenerateOpen(false), [])
+  const [pendingJobs, setPendingJobs] = useState<{ jobId: string; lessonId: number; unitId: string }[]>([])
+  const generationJobs = useQueries({ queries: pendingJobs.map(({ jobId }) => ({
+    queryKey: ['job', jobId],
+    queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } })),
+  })) })
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
+  const generateQuestions = useGenerateForUnits(lesson?.id ?? 0)
   const study = useStudyLesson(lesson?.id ?? null)
   // Le unità della lezione nell'ordine: con onlyUnits quelle della parte.
   const [units, setUnits] = useState<StudyUnit[] | null>(null)
@@ -352,6 +358,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const timer = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(timer)
   }, [toast])
+
+  // Resta attivo anche quando il popup è chiuso o si cambia unità/lezione.
+  useEffect(() => {
+    const completed = pendingJobs.filter((_, index) => jobFinished(generationJobs[index].data))
+    if (!completed.length) return
+    for (const pending of completed) {
+      const result = generationJobs[pendingJobs.indexOf(pending)].data!
+      if (result.state === 'succeeded') {
+        void queryClient.invalidateQueries({ queryKey: recallKeys.all(pending.lessonId) })
+      } else {
+        // Il risultato del job esterno viene annunciato anche a popup chiuso.
+        // oxlint-disable-next-line react/set-state-in-effect
+        setToast({ message: result.error ?? 'Generazione non riuscita.' })
+      }
+    }
+    setPendingJobs(current => current.filter(pending => !completed.includes(pending)))
+  }, [generationJobs, pendingJobs, queryClient])
 
   const [popupState, setPopupState] = useState<{
     open: boolean
@@ -731,9 +754,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
               {generateOpen && <GenerateUnitQuestions
                 open={generateOpen}
                 onClose={closeGenerate}
-                lessonId={lesson!.id}
                 unit={live}
                 suggestions={loaded.suggestions}
+                key={`${lesson!.id}-${live.id}`}
+                jobId={pendingJobs.find(pending => pending.lessonId === lesson!.id && pending.unitId === live.id)?.jobId ?? null}
+                generate={generateQuestions}
+                onGenerate={options => generateQuestions.mutate(options, { onSuccess: accepted => {
+                  setPendingJobs(current => [...current, { jobId: accepted.job_id, lessonId: lesson!.id, unitId: live.id }])
+                } })}
               />}
               {lesson && (
               <LessonDetailsPopup
@@ -760,23 +788,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                   onSend={handleSendNote}
                   onApply={handleApplyNote}
                 />
-              )}
-              {toast && (
-                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2">
-                  <span>{toast.message}</span>
-                  {toast.actionLabel && toast.onAction && (
-                    <button
-                      type="button"
-                      className="font-semibold underline underline-offset-2 hover:opacity-80"
-                      onClick={() => {
-                        toast.onAction?.()
-                        setToast(null)
-                      }}
-                    >
-                      {toast.actionLabel}
-                    </button>
-                  )}
-                </div>
               )}
               {scaleNotice && (
                 <div
@@ -855,6 +866,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           />
         </StudyShell>
       </div>
+              {toast && (
+                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2">
+                  <span>{toast.message}</span>
+                  {toast.actionLabel && toast.onAction && (
+                    <button
+                      type="button"
+                      className="font-semibold underline underline-offset-2 hover:opacity-80"
+                      onClick={() => {
+                        toast.onAction?.()
+                        setToast(null)
+                      }}
+                    >
+                      {toast.actionLabel}
+                    </button>
+                  )}
+                </div>
+              )}
       {phase === 'domande' && (
         <div hidden={rereading}>
           {/* Ripasso dell'unità appena letta: la sessione di ripasso vera e propria, con
@@ -1355,16 +1383,17 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
 }
 
 /** Popup "genera ora": tipo, quante e istruzioni, poi il job di recall sull'unità (4.2.2b3). */
-function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
+function GenerateUnitQuestions({ open, onClose, unit, suggestions, jobId: startedJobId, generate, onGenerate }: {
   open: boolean
   onClose: () => void
-  lessonId: number
   unit: StudyUnit
   suggestions: boolean
+  jobId: string | null
+  generate: ReturnType<typeof useGenerateForUnits>
+  onGenerate: (options: Parameters<ReturnType<typeof useGenerateForUnits>['mutate']>[0]) => void
 }) {
-  const generate = useGenerateForUnits(lessonId)
-  const client = useQueryClient()
-  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobId, setJobId] = useState(startedJobId)
+  if (startedJobId && startedJobId !== jobId) setJobId(startedJobId)
   const job = useJobStatus(jobId)
   const [qtype, setQtype] = useState<RecallType>(suggestions ? unit.suggested_qtype ?? 'quiz' : 'quiz')
   const [count, setCount] = useState('3')
@@ -1377,15 +1406,15 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
   // col ripasso (il pulsante "Mettimi alla prova" aspetta un clic).
   useEffect(() => {
     if (!done || failed) return
-    void client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }).then(onClose)
-  }, [done, failed, client, lessonId, onClose])
+    if (job.data?.state === 'succeeded') onClose()
+  }, [done, failed, job.data?.state, onClose])
 
   return (
-    <Modal open={open} onClose={running ? () => undefined : onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
+    <Modal open={open} onClose={onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
       <div className="mt-3 flex flex-col gap-3">
         <div>
           <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
-          <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running} />
+          <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running || generate.isPending} />
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Fino a</label>
@@ -1394,7 +1423,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
             type="number"
             min="1"
             max="20"
-            disabled={running}
+            disabled={running || generate.isPending}
             value={count}
             onChange={(e) => setCount(e.target.value)}
             className="h-8 w-16 px-2 py-0 text-center"
@@ -1407,7 +1436,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
           <textarea
             id="study-gen-instructions"
             rows={2}
-            disabled={running}
+            disabled={running || generate.isPending}
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="Per esempio: concentrati sui valori soglia"
@@ -1427,10 +1456,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
             disabled={running || generate.isPending}
             data-testid="study-generate-start"
             onClick={() =>
-              generate.mutate(
-                { unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions },
-                { onSuccess: (accepted) => setJobId(accepted.job_id) },
-              )
+              onGenerate({ unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions })
             }
           >
             <Sparkles aria-hidden />

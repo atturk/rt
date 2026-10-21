@@ -40,7 +40,7 @@ vi.mock('@/api/studyProgress', () => ({
   useStudyRead: () => ({ mutate: progress.read }),
 }))
 beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false })
-afterEach(() => vi.useRealTimers())
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 vi.mock('@/api/recall', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/recall')>()
@@ -71,6 +71,7 @@ function renderStudy(entry: string | { pathname: string; search: string; state: 
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return client
 }
 
 describe('StudyFlow unit navigation', () => {
@@ -451,3 +452,77 @@ it('zoom testo: + porta --study-text-scale a 1.1, - torna a 1, in textarea o con
   expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
 })
 
+
+async function startGeneration() {
+  mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'generation-1' }))
+  const client = renderStudy()
+  // Lo stato arriva dalla stessa cache aggiornata dal canale live.
+  client.setQueryDefaults(['job'], { staleTime: Infinity })
+  client.setQueryData(['job', 'generation-1'], { state: 'running' })
+  fireEvent.click(screen.getByTestId('study-generate'))
+  fireEvent.click(screen.getByTestId('study-generate-start'))
+  await waitFor(() => expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument())
+  return client
+}
+
+it.each(['x', 'esc', 'outside'])('Genera: chiusura %s durante il job e riapertura senza duplicati', async method => {
+  const client = await startGeneration()
+  const popup = screen.getByTestId('study-generate-modal')
+  if (method === 'x') fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+  else if (method === 'esc') fireEvent(popup, new Event('cancel', { bubbles: false, cancelable: true }))
+  else fireEvent.click(popup)
+  expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('study-generate'))
+  expect(screen.getByLabelText('Fino a')).toBeDisabled()
+  expect(screen.getByTestId('study-generate-start')).toBeDisabled()
+  expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument()
+  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
+  await waitFor(() => expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument())
+})
+
+it('ricarica le domande quando il job finisce a popup chiuso', async () => {
+  const client = await startGeneration()
+  const invalidate = vi.spyOn(client, 'invalidateQueries')
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+  // Anche passando alle domande il monitoraggio resta nello Studio.
+  fireEvent.click(screen.getByTestId('study-quiz'))
+  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
+})
+
+it('mostra l’errore del job a popup chiuso', async () => {
+  const client = await startGeneration()
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
+  expect(await screen.findByText('Generatore non disponibile')).toBeInTheDocument()
+})
+
+it('mantiene il popup aperto con l’errore se il job fallisce', async () => {
+  const client = await startGeneration()
+  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
+  await waitFor(() => expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Generatore non disponibile'))
+  expect(screen.getByTestId('study-generate-start')).toBeEnabled()
+})
+
+it('segue il job anche chiudendo il popup prima della risposta di avvio', async () => {
+  let accepted!: (result: { job_id: string }) => void
+  mockGenerate.mockImplementation((_input, options) => { accepted = options.onSuccess })
+  const client = renderStudy()
+  client.setQueryDefaults(['job'], { staleTime: Infinity })
+  client.setQueryData(['job', 'delayed'], { state: 'running' })
+  fireEvent.click(screen.getByTestId('study-generate'))
+  fireEvent.click(screen.getByTestId('study-generate-start'))
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+  act(() => accepted({ job_id: 'delayed' }))
+  const invalidate = vi.spyOn(client, 'invalidateQueries')
+  act(() => client.setQueryData(['job', 'delayed'], { state: 'succeeded' }))
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
+})
+
+it('l’errore della generazione resta visibile passando alle domande', async () => {
+  const client = await startGeneration()
+  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
+  fireEvent.click(screen.getByTestId('study-quiz'))
+  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generazione interrotta' }))
+  expect(await screen.findByText('Generazione interrotta')).toBeVisible()
+})
