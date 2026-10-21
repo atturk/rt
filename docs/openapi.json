@@ -4476,6 +4476,13 @@
             "title": "End Segment Id",
             "type": "string"
           },
+          "immagini_sezione": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini Sezione",
+            "type": "array"
+          },
           "relevance": {
             "anyOf": [
               {
@@ -11115,6 +11122,13 @@
             "title": "Id",
             "type": "string"
           },
+          "immagini_sezione": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini Sezione",
+            "type": "array"
+          },
           "last_read_at": {
             "anyOf": [
               {
@@ -11151,6 +11165,17 @@
             ],
             "description": "Inizio dell'unità nell'audio della lezione (secondi)",
             "title": "Start"
+          },
+          "start_formatted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Formatted"
           },
           "status": {
             "default": "da-imparare",

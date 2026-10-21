@@ -5226,6 +5226,8 @@ export interface components {
             end_seconds?: number | null;
             /** End Segment Id */
             end_segment_id: string;
+            /** Immagini Sezione */
+            immagini_sezione?: string[];
             /** Relevance */
             relevance?: ("organizational" | "no_content") | null;
             /**
@@ -8078,6 +8080,8 @@ export interface components {
             html: string;
             /** Id */
             id: string;
+            /** Immagini Sezione */
+            immagini_sezione?: string[];
             /** Last Read At */
             last_read_at?: string | null;
             /**
@@ -8097,6 +8101,8 @@ export interface components {
              * @description Inizio dell'unità nell'audio della lezione (secondi)
              */
             start?: number | null;
+            /** Start Formatted */
+            start_formatted?: string | null;
             /**
              * Status
              * @default da-imparare

@@ -1135,8 +1135,8 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    return mountDocumentImageStrips(root)
-  }, [unit.html])
+    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }])
+  }, [unit.html, unit.id, unit.immagini_sezione, unit.start_formatted])
   useEffect(() => {
     const root = ref.current
     if (!root) return

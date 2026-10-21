@@ -153,6 +153,7 @@ class PhaseReport(BaseModel):
 
 
 class DocumentSection(BaseModel):
+    immagini_sezione: List[str] = Field(default_factory=list)
     unit_id: str
     title: str
     start_segment_id: str
@@ -564,6 +565,8 @@ SuggestedQuestionType = str
 
 
 class StudyUnit(BaseModel):
+    immagini_sezione: List[str] = Field(default_factory=list)
+    start_formatted: Optional[str] = None
     suggested_qtype: Optional[SuggestedQuestionType] = None
     id: str
     title: str

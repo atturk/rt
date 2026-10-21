@@ -497,6 +497,17 @@ def load_markdown_preview(lesson_dir: str) -> str:
         return NO_PREVIEW_MARKDOWN
 
 
+def unit_section_images(lesson_dir: str):
+    """Immagini posizionate nelle sottounità, nello stesso ordine del documento/PDF."""
+    from rt.pipeline.image_placement import images_for_document
+    from rt.pipeline.outline import load_outline
+    try:
+        outline = load_outline(lesson_dir)
+    except FileNotFoundError:
+        return {}
+    return images_for_document(lesson_dir, outline).by_unit
+
+
 def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     """Timecode strutturati: per ogni unità del draft (un blocco del documento) i secondi di
     inizio e fine presi da segments.json, non ricavati dal testo."""
@@ -514,6 +525,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     seg_list = segments.segments if segments else []
     positions = {s.id: idx for idx, s in enumerate(seg_list)}
     by_id = {s.id: s for s in seg_list}
+    section_images = unit_section_images(lesson_dir)
     out = []
     for unit in draft.units:
         # un timecode spostato nell'anteprima vale anche per il player (RT4-FA3)
@@ -529,6 +541,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
             ]
         out.append({
             "unit_id": unit.unit_id,
+            "immagini_sezione": [os.path.basename(img["filename"]) for img in section_images.get(unit.unit_id, [])],
             "title": unit_title(edits, unit.unit_id, unit.title),
             "start_segment_id": start_id,
             "end_segment_id": unit.end_segment_id,

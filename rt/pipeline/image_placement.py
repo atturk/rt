@@ -140,6 +140,7 @@ def images_for_document(lesson_dir: str, outline: Any) -> DocumentImages:
             continue
         images = [descriptions[h] for h in hashes if h in descriptions]
         if images:
-            by_unit[unit_id] = sort_images_document_order(lesson_dir, images)
+            # La sezione conserva anche il riordino manuale delle miniature.
+            by_unit[unit_id] = images
 
     return DocumentImages(by_macro, placement["carousel"], by_unit)

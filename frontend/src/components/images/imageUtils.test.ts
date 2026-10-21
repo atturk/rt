@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatStripLabel,
-  getStripClosedPreference,
   parseImageAlt,
-  setStripClosedPreference,
 } from './imageUtils'
 
 describe('imageUtils', () => {
@@ -74,21 +72,7 @@ describe('imageUtils', () => {
     })
   })
 
-  describe('preference', () => {
-    it('salva e legge la preferenza strip_closed e invia l’evento', () => {
-      let dispatched = false
-      const listener = (e: Event) => {
-        const custom = e as CustomEvent<{ closed: boolean }>
-        if (custom.detail.closed === true) dispatched = true
-      }
-      window.addEventListener('rt-strip-toggle', listener)
-      setStripClosedPreference(true)
-      expect(getStripClosedPreference()).toBe(true)
-      expect(dispatched).toBe(true)
-
-      setStripClosedPreference(false)
-      expect(getStripClosedPreference()).toBe(false)
-      window.removeEventListener('rt-strip-toggle', listener)
-    })
+  it('interpreta i badge delle pagine senza una preferenza globale di apertura', () => {
+    expect(parseImageAlt('Slide.pdf, p. 3').pageNumber).toBe(3)
   })
 })

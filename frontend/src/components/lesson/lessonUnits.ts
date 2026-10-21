@@ -4,7 +4,7 @@ import type { UnitTask } from './lessonWorkflow'
 import { findMarkdownImageStrips } from './lessonImageStrips'
 import { parseImageAlt, type ImageItem } from '@/components/images/imageUtils'
 import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
-import { readPreference } from '@/lib/preferences'
+import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
 
 /**
  * Le unità nel Markdown dell'editor della lezione: dal titolo `### 1.1 Titolo` fino al titolo
@@ -157,18 +157,23 @@ function handleImageClick(view: EditorView, lessonId: number, img: HTMLImageElem
 }
 
 function attachResizeHandles(view: EditorView, img: HTMLImageElement, name: string) {
-  const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+  img.draggable = true
+  img.ondragstart = event => {
+    const sections = imageSections(view.state)
+    const source = Array.from({ length: view.state.doc.lines }, (_, i) => view.state.doc.line(i + 1)).find(line =>
+      new RegExp(`^!\\[.*\\]\\((?:\\.\\/)?assets/images/${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:#w=\\d+)?\\)\\s*$`).test(line.text) &&
+      !sections.some(section => section.images.some(image => image.from === line.from)))
+    if (!source || view.state.readOnly) { event.preventDefault(); return }
+    event.stopPropagation()
+    event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromText: source.from, width: img.naturalWidth || 480 }))
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+    view.dom.classList.add('rt-dragging-images')
+  }
   const wrap = img.parentElement
   if (!wrap) return
 
   const existingLeft = wrap.querySelector('.rt-image-resize-handle-left')
   const existingRight = wrap.querySelector('.rt-image-resize-handle-right')
-
-  if (mode !== 'free') {
-    existingLeft?.remove()
-    existingRight?.remove()
-    return
-  }
 
   if (existingLeft && existingRight) return
 

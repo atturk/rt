@@ -116,3 +116,11 @@ describe('waitForImagesLoaded', () => {
     expect(loaded).toBe(true)
   })
 })
+
+it('PDF: il timecode non interrompe la griglia e la larghezza nel testo resta intatta', () => {
+  const root = document.createElement('div')
+  root.innerHTML = '<h3 data-unit-id="1.1">Unità</h3><p data-unit-timecode="1.1">00:00</p><p><img src="a.png"></p><p><img src="b.png"></p><p><img src="inline.png" width="320"></p><p>Testo</p>'
+  transformPrintDom(root)
+  expect(root.querySelectorAll('.pdf-image-grid .pdf-image-card')).toHaveLength(2)
+  expect(root.querySelector('p img[width]')).toHaveAttribute('width', '320')
+})

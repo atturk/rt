@@ -1,13 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildImageStripDOM, mountDocumentImageStrips } from './imageStripDOM'
-import { setStripClosedPreference } from './imageUtils'
 
 describe('imageStripDOM', () => {
-  beforeEach(() => {
-    setStripClosedPreference(false)
-  })
-
-  it('costruisce la striscia con intestazione, miniature e pulsanti', () => {
+  it('costruisce solo miniature, badge e pulsanti di scorrimento', () => {
     const images = [
       { src: '/img1.png', alt: 'Doc.pdf, pagina 1', docName: 'Doc.pdf', pageNumber: 1 },
       { src: '/img2.png', alt: 'Doc.pdf, pagina 2', docName: 'Doc.pdf', pageNumber: 2 },
@@ -16,9 +11,7 @@ describe('imageStripDOM', () => {
     expect(strip.classList.contains('rt-strip')).toBe(true)
     expect(strip.dataset.n).toBe('2')
 
-    const name = strip.querySelector('.name')
-    expect(name?.textContent).toContain('2 pagine')
-    expect(name?.textContent).toContain('Doc.pdf, p. 1–2')
+    expect(strip.querySelector('.rt-strip-head')).toBeNull()
 
     const thumbs = strip.querySelectorAll('.thumb')
     expect(thumbs).toHaveLength(2)
@@ -91,41 +84,48 @@ describe('imageStripDOM', () => {
     window.removeEventListener('rt-image-viewer-open', viewerOpenListener)
   })
 
-  it('mountDocumentImageStrips trasforma sia immagini consecutive che immagini singole in strisce', () => {
+  it('monta solo le immagini della sezione, con bottone prima del timer e chiusa per default', () => {
     const container = document.createElement('div')
-    container.innerHTML = `
-      <p>Primo testo</p>
+    container.innerHTML = `<h3 data-unit-id="1.1">Titolo<span class="rt-unit-meta"><button class="rt-timecode">00:00</button></span></h3>
+      <p data-unit-timecode="1.1">00:00</p>
       <p><img src="/img1.png" alt="Doc.pdf, pagina 1" /></p>
       <p><img src="/img2.png" alt="Doc.pdf, pagina 2" /></p>
-      <p>Secondo testo</p>
-      <p><img src="/single.png" alt="Singola" /></p>
-      <p>Terzo testo</p>
-    `
+      <p>Testo</p><p><img src="/single.png" alt="Singola" /></p>`
     document.body.append(container)
-
-    const cleanup = mountDocumentImageStrips(container)
-
-    // Ci sono 2 slot: uno per la serie di 2 immagini e uno per l'immagine singola
-    const slots = container.querySelectorAll('.rt-image-strip-slot')
-    expect(slots).toHaveLength(2)
-
-    const strip1 = slots[0].querySelector('.rt-strip')
-    expect(strip1).not.toBeNull()
-    expect((strip1 as HTMLElement)?.dataset.n).toBe('2')
-
-    const strip2 = slots[1].querySelector('.rt-strip')
-    expect(strip2).not.toBeNull()
-    expect((strip2 as HTMLElement)?.dataset.n).toBe('1')
-
-    // Nessun paragrafo di immagine rimasto
-    const remainingImgs = container.querySelectorAll('p img')
-    expect(remainingImgs).toHaveLength(0)
-
-    // Lo smontaggio rimette i paragrafi originali
+    const original = container.innerHTML
+    const cleanup = mountDocumentImageStrips(container, [{ unit_id: '1.1', immagini_sezione: ['img1.png', 'img2.png'] }])
+    expect(container.querySelectorAll('.rt-image-strip-slot')).toHaveLength(1)
+    const slot = container.querySelector<HTMLElement>('.rt-image-strip-slot')!
+    expect(slot.hidden).toBe(true)
+    const button = container.querySelector<HTMLButtonElement>('.rt-unit-images-button')!
+    expect(button.textContent).toBe('2')
+    expect(button.nextElementSibling).toHaveClass('rt-timecode')
+    button.click()
+    expect(slot.hidden).toBe(false)
+    expect(button.getAttribute('aria-label')).toBe('Nascondi le immagini')
+    expect(container.querySelectorAll('p img')).toHaveLength(1)
+    button.click()
+    expect(slot.hidden).toBe(true)
     cleanup()
-    const restoredImgs = container.querySelectorAll('p img')
-    expect(restoredImgs).toHaveLength(3)
-
+    expect(container.innerHTML.replace(/>\s+</g, '><')).toBe(original.replace(/>\s+</g, '><'))
     container.remove()
   })
+  it('non interpreta come sezione una immagine nel testo o senza metadati API', () => {
+    const container = document.createElement('div')
+    container.innerHTML = '<h3 data-unit-id="1.1">Titolo</h3><p><img src="/a.png#w=320"></p>'
+    const cleanup = mountDocumentImageStrips(container, [{ unit_id: '1.1', immagini_sezione: ['a.png'] }])
+    expect(container.querySelector('.rt-strip')).toBeNull()
+    cleanup()
+  })
+})
+
+it('trascinando una miniatura conserva la larghezza naturale per l’inserimento nel testo', () => {
+  const strip = buildImageStripDOM([{ src: '/small.png', alt: 'Piccola', docName: 'Piccola' }], { fromUnit: '1.1' })
+  const thumb = strip.querySelector<HTMLButtonElement>('.thumb')!
+  Object.defineProperty(thumb.querySelector('img'), 'naturalWidth', { value: 160 })
+  const setData = vi.fn()
+  const event = new Event('dragstart', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { setData } })
+  thumb.dispatchEvent(event)
+  expect(setData).toHaveBeenCalledWith('application/x-rt-section-image', JSON.stringify({ name: 'small.png', fromUnit: '1.1', width: 160 }))
 })

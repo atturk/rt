@@ -1,8 +1,9 @@
+import { isolateHistory } from '@codemirror/commands'
 import { Prec, StateEffect, StateField, type EditorState, type Range } from '@codemirror/state'
 import { Decoration, type DecorationSet, dropCursor, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { copyMaterialPage, materialSourceId } from '@/api/images'
-import { readPreference } from '@/lib/preferences'
+import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE, type SectionImageDrag } from './imageSections'
 
 export const EDITOR_INSERT_IMAGES_EVENT = 'rt-editor-insert-images'
 export const EDITOR_REMOVE_IMAGES_EVENT = 'rt-editor-remove-images'
@@ -29,6 +30,22 @@ const supported = (file: File) =>
   ['image/png', 'image/jpeg', 'image/gif'].includes(file.type) ||
   (!file.type && /\.(png|jpe?g|gif)$/i.test(file.name))
 
+async function uploadedImageWidth(file: File): Promise<number> {
+  if (typeof createImageBitmap !== 'function') return 480
+  try {
+    const bitmap = await createImageBitmap(file)
+    const width = bitmap.width
+    bitmap.close()
+    return Math.min(width, 480)
+  } catch { return 480 }
+}
+
+function knownImageWidth(path: string): number {
+  const name = path.split('/').pop()?.split('#')[0]
+  const image = Array.from(document.images).find(img => img.src.split('/').pop()?.split('#')[0] === name && img.naturalWidth)
+  return Math.min(image?.naturalWidth || 480, 480)
+}
+
 type Options = {
   upload: (file: File) => Promise<Schemas['EditorImage']>
   started: (task: Promise<void>) => void
@@ -42,222 +59,65 @@ export type DropTargetResult = {
 }
 
 const TIMECODE_RE = /^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*$/
-const IMAGE_LINE_RE = /^!\[.*?\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#[^)]*)?\)$/
 
-/**
- * Calcola dove inserire un'immagine trascinata o incollata.
- * - 'heading': la sottounità (###, o la macro ## se non ci sono sottounità) sotto il puntatore;
- *   l'immagine va dopo titolo, timecode e immagini già sotto il titolo.
- * - 'free': inizio del blocco sotto il puntatore, mai dentro un titolo.
- */
-export function dropTarget(
-  state: EditorState,
-  pos: number,
-  mode: 'heading' | 'free',
-): DropTargetResult {
-  const clampedPos = Math.max(0, Math.min(pos, state.doc.length))
-  const line = state.doc.lineAt(clampedPos)
-
-  if (mode === 'free') {
-    // Mai dentro un titolo: se cade su un titolo, va sotto il titolo (+ eventuale timecode)
-    if (line.text.trim().startsWith('#')) {
-      let insertLine = line.number + 1
-      if (insertLine <= state.doc.lines) {
-        const nextLine = state.doc.line(insertLine)
-        if (TIMECODE_RE.test(nextLine.text)) {
-          insertLine++
-        }
-      }
-      const insertAt = insertLine <= state.doc.lines ? state.doc.line(insertLine).from : state.doc.length
-      return { insertAt }
-    }
-
-    // Inizio del blocco sotto il puntatore
-    if (line.text.trim() === '') {
-      return { insertAt: line.from }
-    }
-
-    let n = line.number
-    while (n > 1) {
-      const prev = state.doc.line(n - 1)
-      if (prev.text.trim() === '' || prev.text.trim().startsWith('#')) break
-      n--
-    }
-    return { insertAt: state.doc.line(n).from }
+/** Il testo resta libero, ma mai prima del timecode o dentro la sezione atomica. */
+export function dropTarget(state: EditorState, pos: number): DropTargetResult {
+  const at = Math.max(0, Math.min(pos, state.doc.length))
+  const section = imageSections(state).find(unit => at >= unit.from && at <= unit.to)
+  const line = state.doc.lineAt(at)
+  if (section && at <= section.insertAt) return { insertAt: section.insertAt }
+  if (line.text.trim().startsWith('#')) return { insertAt: line.to }
+  if (!line.text.trim()) return { insertAt: line.from }
+  let n = line.number
+  while (n > 1) {
+    const previous = state.doc.line(n - 1)
+    if (!previous.text.trim() || previous.text.startsWith('#') || TIMECODE_RE.test(previous.text) ||
+        (section && previous.from <= section.insertAt)) break
+    n--
   }
+  return { insertAt: state.doc.line(n).from }
+}
 
-  // mode === 'heading'
-  const docLines = state.doc.lines
-
-  type UnitInfo = {
-    headingLine: number
-    title: string
-    from: number
-    to: number
-  }
-
-  type MacroSection = {
-    headingLine: number
-    title: string
-    from: number
-    to: number
-    subunits: UnitInfo[]
-  }
-
-  const macros: MacroSection[] = []
-  let currentMacro: MacroSection | null = null
-  let currentSub: UnitInfo | null = null
-
-  for (let n = 1; n <= docLines; n++) {
-    const l = state.doc.line(n)
-    const text = l.text
-
-    if (/^##\s+/.test(text)) {
-      if (currentSub) {
-        currentSub.to = state.doc.line(n - 1).to
-        currentSub = null
-      }
-      if (currentMacro) {
-        currentMacro.to = state.doc.line(n - 1).to
-      }
-      const m = /^##\s+(.*)$/.exec(text)
-      currentMacro = {
-        headingLine: n,
-        title: m ? m[1].trim() : text.trim(),
-        from: l.from,
-        to: state.doc.length,
-        subunits: [],
-      }
-      macros.push(currentMacro)
-    } else if (/^###\s+/.test(text)) {
-      if (currentSub) {
-        currentSub.to = state.doc.line(n - 1).to
-      }
-      const m = /^###\s+(.*)$/.exec(text)
-      currentSub = {
-        headingLine: n,
-        title: m ? m[1].trim() : text.trim(),
-        from: l.from,
-        to: state.doc.length,
-      }
-      if (currentMacro) {
-        currentMacro.subunits.push(currentSub)
-      }
-    }
-  }
-  if (currentSub) currentSub.to = state.doc.length
-  if (currentMacro) currentMacro.to = state.doc.length
-
-  let chosenTarget: UnitInfo | null = null
-
-  for (const macro of macros) {
-    if (clampedPos >= macro.from && clampedPos <= macro.to) {
-      if (macro.subunits.length > 0) {
-        for (const sub of macro.subunits) {
-          if (clampedPos >= sub.from && clampedPos <= sub.to) {
-            chosenTarget = sub
-            break
-          }
-        }
-        if (!chosenTarget && macro.subunits.length > 0) {
-          chosenTarget = macro.subunits[0]
-        }
-      } else {
-        // Macro senza sottounità
-        chosenTarget = {
-          headingLine: macro.headingLine,
-          title: macro.title,
-          from: macro.from,
-          to: macro.to,
-        }
-      }
-      break
-    }
-  }
-
-  // Se il documento ha solo ### senza sezioni ##
-  if (!chosenTarget) {
-    const allSubs: UnitInfo[] = []
-    for (let n = 1; n <= docLines; n++) {
-      const l = state.doc.line(n)
-      if (/^###\s+/.test(l.text)) {
-        if (allSubs.length > 0) allSubs[allSubs.length - 1].to = state.doc.line(n - 1).to
-        const m = /^###\s+(.*)$/.exec(l.text)
-        allSubs.push({
-          headingLine: n,
-          title: m ? m[1].trim() : l.text.trim(),
-          from: l.from,
-          to: state.doc.length,
-        })
-      }
-    }
-    for (const sub of allSubs) {
-      if (clampedPos >= sub.from && clampedPos <= sub.to) {
-        chosenTarget = sub
-        break
-      }
-    }
-    if (!chosenTarget && allSubs.length > 0) {
-      chosenTarget = allSubs[0]
-    }
-  }
-
-  if (!chosenTarget) {
-    return { insertAt: clampedPos }
-  }
-
-  // Avanza dopo la riga del titolo, eventuale timecode e immagini già sotto il titolo
-  let curLineNum = chosenTarget.headingLine + 1
-  let timecodeChecked = false
-
-  while (curLineNum <= docLines) {
-    const curLine = state.doc.line(curLineNum)
-    const trimmed = curLine.text.trim()
-
-    if (trimmed === '') {
-      curLineNum++
-      continue
-    }
-
-    if (!timecodeChecked && TIMECODE_RE.test(trimmed)) {
-      timecodeChecked = true
-      curLineNum++
-      continue
-    }
-    timecodeChecked = true
-
-    if (IMAGE_LINE_RE.test(trimmed)) {
-      curLineNum++
-      continue
-    }
-
-    break
-  }
-
-  const insertAt = curLineNum <= docLines ? state.doc.line(curLineNum).from : state.doc.length
-  const displayTitle = chosenTarget.title.length > 28 ? chosenTarget.title.slice(0, 27) + '…' : chosenTarget.title
-  const label = `Sotto «${displayTitle}»`
-
-  return {
-    insertAt,
-    headingLine: chosenTarget.headingLine,
-    label,
-    subunitRange: { from: chosenTarget.from, to: chosenTarget.to },
-  }
+export function sectionDropTarget(state: EditorState, unitId: string, beforeName?: string): DropTargetResult | null {
+  const section = imageSections(state).find(unit => unit.id === unitId)
+  if (!section) return null
+  return { insertAt: section.images.find(image => image.name === beforeName)?.from ?? section.insertAt }
 }
 
 export function findInsertPosition(state: EditorState, position: number): number {
-  const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
-  return dropTarget(state, position, mode).insertAt
+  return dropTarget(state, position).insertAt
 }
 
-export function formatImagesMarkdown(items: Array<{ path: string; alt_text: string }>): string {
+/** Togli e inserisci in un'unica transazione (e un unico annulla). */
+export function moveDocumentImage(view: EditorView, item: SectionImageDrag, target: DropTargetResult, section: boolean): boolean {
+  if (view.state.readOnly) return false
+  const source = item.fromUnit
+    ? imageSections(view.state).find(unit => unit.id === item.fromUnit)?.images.find(image => image.name === item.name)
+    : item.fromText != null ? view.state.doc.lineAt(item.fromText) : null
+  if (!source) return false
+  const line = view.state.doc.lineAt(source.from)
+  const match = /^!\[(.*)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#w=(\d+))?\)\s*$/.exec(line.text)
+  if (!match || match[2] !== item.name) return false
+  const to = Math.min(view.state.doc.length, line.to + 1)
+  const at = target.insertAt
+  const insert = formatImagesMarkdown([{ path: `assets/images/${item.name}`, alt_text: match[1], width: item.width ?? (match[3] ? Number(match[3]) : undefined) }], section)
+  if (at >= line.from && at <= to) {
+    if (!section) view.dispatch({ changes: { from: line.from, to: line.to, insert: insert.trim() }, annotations: isolateHistory.of('full') })
+    return true
+  }
+  view.dispatch({ changes: [{ from: line.from, to, insert: '' }, { from: at, insert }].sort((a, b) => a.from - b.from), annotations: isolateHistory.of('full') })
+  return true
+}
+
+export function formatImagesMarkdown(items: Array<{ path: string; alt_text: string; width?: number }>, section = false): string {
   const lines = items.map((it) => {
     const alt = it.alt_text.replace(/[\\[\]\r\n]/g, ' ')
     const cleanPath = it.path.startsWith('assets/images/')
       ? it.path
       : `assets/images/${it.path.split('/').pop()}`
-    return `![${alt}](${cleanPath})`
+    const path = cleanPath.split('#')[0]
+    const width = Math.max(1, Math.min(480, it.width || Number(/#w=(\d+)/.exec(cleanPath)?.[1]) || 480))
+    return `![${alt}](${path}${section ? '' : `#w=${width}`})`
   })
   return `\n\n${lines.join('\n')}\n\n`
 }
@@ -377,7 +237,7 @@ export const dropHighlightField = StateField.define<DecorationSet>({
 
 /** Incolla e trascina file: nel documento entra soltanto il riferimento relativo restituito dall'API. */
 export function lessonImageUploads(options: Options) {
-  const insert = (view: EditorView, files: File[], position: number) => {
+  const insert = (view: EditorView, files: File[], position: number, section = false) => {
     if (!files.length || view.state.readOnly) return false
     const id = Symbol('immagini')
     view.dispatch({ effects: addAnchor.of({ id, position }) })
@@ -385,11 +245,11 @@ export function lessonImageUploads(options: Options) {
       try {
         for (const file of files) {
           const image = await options.upload(file)
+          const width = section ? undefined : await uploadedImageWidth(file)
           if (!view.plugin(alive)?.active || view.state.readOnly) return
           const at = view.state.field(anchors).get(id)
           if (at === undefined) return
-          const alt = image.alt_text.replace(/[\\[\]\r\n]/g, ' ')
-          view.dispatch({ changes: { from: at, insert: `\n\n![${alt}](${image.path})\n\n` } })
+          view.dispatch({ changes: { from: at, insert: formatImagesMarkdown([{ ...image, width }], section) } })
         }
       } finally {
         if (view.plugin(alive)?.active) view.dispatch({ effects: removeAnchor.of(id) })
@@ -403,6 +263,7 @@ export function lessonImageUploads(options: Options) {
     view: EditorView,
     item: { path?: string; alt_text?: string; in_assets?: boolean; source_name?: string; source?: string; page?: number; lessonId?: number },
     position: number,
+    section = false,
   ) => {
     if (view.state.readOnly) return false
     const id = Symbol('media-insert')
@@ -424,7 +285,7 @@ export function lessonImageUploads(options: Options) {
         if (!view.plugin(alive)?.active || view.state.readOnly) return
         const at = view.state.field(anchors).get(id)
         if (at === undefined) return
-        const textToInsert = formatImagesMarkdown([{ path: finalPath, alt_text: finalAlt }])
+        const textToInsert = formatImagesMarkdown([{ path: finalPath, alt_text: finalAlt, width: knownImageWidth(finalPath) }], section)
         view.dispatch({ changes: { from: at, insert: textToInsert } })
       } finally {
         if (view.plugin(alive)?.active) view.dispatch({ effects: removeAnchor.of(id) })
@@ -448,10 +309,9 @@ export function lessonImageUploads(options: Options) {
           const custom = e as CustomEvent<{ items: Array<{ path: string; alt_text: string }> }>
           const items = custom.detail?.items
           if (!items || items.length === 0 || this.view.state.readOnly) return
-          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
-          const target = dropTarget(this.view.state, this.view.state.selection.main.from, mode)
+          const target = dropTarget(this.view.state, this.view.state.selection.main.from)
           const pos = target.insertAt
-          const textToInsert = formatImagesMarkdown(items)
+          const textToInsert = formatImagesMarkdown(items.map(item => ({ ...item, width: knownImageWidth(item.path) })))
           this.view.dispatch({
             changes: { from: pos, insert: textToInsert },
             selection: { anchor: pos + textToInsert.length },
@@ -508,6 +368,19 @@ export function lessonImageUploads(options: Options) {
     },
   )
 
+  function eventTarget(event: DragEvent, view: EditorView) {
+    const element = (event.target as Element).closest<HTMLElement>('[data-unit-images]')
+    const beforeName = (event.target as Element).closest<HTMLElement>('[data-image-name]')?.dataset.imageName
+    const section = element?.dataset.unitImages
+    const position = section ? sectionDropTarget(view.state, section, beforeName) : null
+    return { section: !!position, position: position ?? dropTarget(view.state,
+      view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head) }
+  }
+  function clearDrag(view: EditorView) {
+    view.dom.classList.remove('rt-dragging-images')
+    view.dom.querySelectorAll('.rt-image-drop-hover').forEach(element => element.classList.remove('rt-image-drop-hover'))
+    view.dispatch({ effects: setDropHighlight.of(null) })
+  }
   return [
     anchors,
     alive,
@@ -518,62 +391,57 @@ export function lessonImageUploads(options: Options) {
       EditorView.domEventHandlers({
         paste(event, view) {
           const files = Array.from(event.clipboardData?.files ?? []).filter(supported)
-          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
-          const target = dropTarget(view.state, view.state.selection.main.from, mode)
+          const target = dropTarget(view.state, view.state.selection.main.from)
           if (!insert(view, files, target.insertAt)) return false
           event.preventDefault()
           return true
         },
+        dragstart(event, view) {
+          if (event.dataTransfer?.types.includes(RT_SECTION_IMAGE_DRAG_TYPE)) view.dom.classList.add('rt-dragging-images')
+          return false
+        },
+        dragenter(event, view) {
+          if (event.dataTransfer?.types.some(type => ['Files', RT_MEDIA_DRAG_TYPE, RT_SECTION_IMAGE_DRAG_TYPE].includes(type))) view.dom.classList.add('rt-dragging-images')
+          return false
+        },
         drop(event, view) {
-          view.dispatch({ effects: setDropHighlight.of(null) })
-          const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
-          const at =
-            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-            view.state.selection.main.head
-          const target = dropTarget(view.state, at, mode)
-
+          clearDrag(view)
+          if (view.state.readOnly) return false
+          const target = eventTarget(event, view)
+          const moving = event.dataTransfer?.getData(RT_SECTION_IMAGE_DRAG_TYPE)
+          if (moving) {
+            event.preventDefault()
+            try { return moveDocumentImage(view, JSON.parse(moving), target.position, target.section) }
+            catch { return false }
+          }
           const mediaData = event.dataTransfer?.getData(RT_MEDIA_DRAG_TYPE)
           if (mediaData) {
             event.preventDefault()
-            try {
-              const item = JSON.parse(mediaData)
-              insertMediaItem(view, item, target.insertAt)
-              return true
-            } catch {
-              return false
-            }
+            try { return insertMediaItem(view, JSON.parse(mediaData), target.position.insertAt, target.section) }
+            catch { return false }
           }
-
           const files = Array.from(event.dataTransfer?.files ?? []).filter(supported)
-          if (!insert(view, files, target.insertAt)) return false
+          if (!insert(view, files, target.position.insertAt, target.section)) return false
           event.preventDefault()
           return true
         },
         dragover(event, view) {
-          if (
-            !view.state.readOnly &&
-            (Array.from(event.dataTransfer?.files ?? []).some(supported) ||
-              event.dataTransfer?.types.includes(RT_MEDIA_DRAG_TYPE) ||
-              event.dataTransfer?.types.includes('Files'))
-          ) {
-            event.preventDefault()
-            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
-            const at =
-              view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-              view.state.selection.main.head
-            const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
-            const target = dropTarget(view.state, at, mode)
-            view.dispatch({ effects: setDropHighlight.of(target) })
-            return true
-          }
-          return false
+          if (view.state.readOnly || !event.dataTransfer?.types.some(type => ['Files', RT_MEDIA_DRAG_TYPE, RT_SECTION_IMAGE_DRAG_TYPE].includes(type))) return false
+          event.preventDefault()
+          view.dom.classList.add('rt-dragging-images')
+          view.dom.querySelectorAll('.rt-image-drop-hover').forEach(element => element.classList.remove('rt-image-drop-hover'))
+          const element = (event.target as Element).closest<HTMLElement>('[data-unit-images]')
+          element?.classList.add('rt-image-drop-hover')
+          const target = eventTarget(event, view)
+          event.dataTransfer.dropEffect = event.dataTransfer.types.includes(RT_SECTION_IMAGE_DRAG_TYPE) ? 'move' : 'copy'
+          view.dispatch({ effects: setDropHighlight.of(target.section ? null : target.position) })
+          return true
         },
         dragleave(event, view) {
-          if (!event.relatedTarget || !view.dom.contains(event.relatedTarget as Node)) {
-            view.dispatch({ effects: setDropHighlight.of(null) })
-          }
+          if (!event.relatedTarget || !view.dom.contains(event.relatedTarget as Node)) clearDrag(view)
           return false
         },
+        dragend(_event, view) { clearDrag(view); return false },
       }),
     ),
   ]

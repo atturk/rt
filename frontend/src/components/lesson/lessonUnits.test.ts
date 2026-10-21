@@ -57,7 +57,7 @@ it('le immagini con didascalia con parentesi [ ] e #w= applicano la larghezza; i
     }),
   })
 
-  const img = parent.querySelector('img') as HTMLImageElement
+  const img = parent.querySelector('.rt-editor-image img') as HTMLImageElement
   expect(img).toBeInTheDocument()
   expect(img.style.width).toBe('320px')
 
