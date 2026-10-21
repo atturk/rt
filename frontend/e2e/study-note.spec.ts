@@ -165,7 +165,9 @@ test('formule nello Studio: selezione in LaTeX, copia, evidenziatore e citazione
     await page.getByTestId('highlight-chiedi').click()
     await selectFormula()
     await root.dispatchEvent('mouseup', { button: 0 })
-    await expect(page.getByTestId('study-note-quote')).toHaveText('Formula $z$')
+    const quote = page.getByTestId('study-note-quote')
+    await expect(quote).toContainText('Formula')
+    await expect(quote.locator('math')).toHaveAttribute('data-rt-source', '$z$')
   } finally {
     const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)
     for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) {
