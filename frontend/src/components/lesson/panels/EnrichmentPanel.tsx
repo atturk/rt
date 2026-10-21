@@ -180,8 +180,6 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       if (!name) return
       const clean = name.split('#')[0]
       setSelectedNames(new Set([clean]))
-      const el = document.querySelector(`[data-image-name="${CSS.escape(clean)}"]`)
-      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)

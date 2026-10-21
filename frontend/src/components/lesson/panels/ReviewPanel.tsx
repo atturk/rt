@@ -298,7 +298,7 @@ function DecisionToast({ label, busy, onUndo, onClose }: { label: string; busy: 
   return createPortal(<div role="log" aria-live="polite" data-testid="review-decision-message"
     onMouseEnter={pause} onMouseLeave={event => { if (!event.currentTarget.contains(document.activeElement)) resume() }} onFocus={pause} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) resume() }}
     style={{ '--rt-toast-duration': `${TOAST_MS}ms` } as CSSProperties}
-    className="rt-toast fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-1/2 z-50 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-lg bg-foreground text-meta text-background shadow-panel md:bottom-6 md:left-auto md:right-[calc(12rem+4px)] md:max-w-[calc(24rem-40px)] md:translate-x-1/2">
+    className="rt-toast fixed bottom-[calc(88px+env(safe-area-inset-bottom))] left-1/2 z-50 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-lg bg-foreground text-meta text-background shadow-panel md:bottom-6 md:left-auto md:right-[calc(var(--rt-panel-width)/2+4px)] md:max-w-[calc(var(--rt-panel-width)-40px)] md:translate-x-1/2">
     <div className="flex items-center gap-3 py-1.5 pl-4 pr-1.5">
       <span>{label}</span>
       <Button variant="ghost" size="sm" className="text-background hover:bg-background/15 hover:text-background" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button>

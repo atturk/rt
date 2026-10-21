@@ -340,7 +340,7 @@ export function LessonPage() {
         back={back}
         actions={<LessonHeaderActions lesson={l} panel={panel} onToggle={toggle} />}
       />
-      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'md:pr-[calc(24rem+28px)] max-xl:md:[@media(hover:hover)]:px-7 max-xl:md:[@media(hover:hover)]:pr-[calc(24rem+28px)] xl:[@media(hover:hover)]:pr-[calc(24rem+76px)]')}>
+      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'md:pr-[calc(var(--rt-panel-width)+28px)] max-xl:md:[@media(hover:hover)]:px-7 max-xl:md:[@media(hover:hover)]:pr-[calc(var(--rt-panel-width)+28px)] xl:[@media(hover:hover)]:pr-[calc(var(--rt-panel-width)+76px)]')}>
         <LessonPageNavigation id={id} panel={panel} title={<>
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
