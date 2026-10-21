@@ -13,9 +13,12 @@ git show origin/claude/project-thread-h86yf9:codex-piani-4.3.3b1/<nome-file>
 
 Non aggiungere la cartella `codex-piani-4.3.3b1/` al tuo ramo.
 
-## Piano da implementare
+## Piani da implementare, in quest'ordine
 
-1. `piano-immagini-sottounita-codex.md` (piano 1): bottone con la graffetta e sezione delle immagini
+1. `piano-genera-domande-chiudi-codex.md` (piano 5): il popup Genera domande si chiude e la
+   generazione continua.
+2. `piano-selezione-rielabora-codex.md` (piano 6): pipeline dalla selezione multipla.
+3. `piano-immagini-sottounita-codex.md` (piano 1): bottone con la graffetta e sezione delle immagini
    della sottounità al posto del blocco espandibile; via l'impostazione "Immagini trascinate".
 
 ## Regole
@@ -35,7 +38,7 @@ Non aggiungere la cartella `codex-piani-4.3.3b1/` al tuo ramo.
 
 ## La PR
 
-Titolo `4.3.3b1 · Codex: immagini della sottounità`. Nella descrizione: cosa è fatto, scelte sui
+Titolo `4.3.3b1 · Codex: immagini della sottounità, genera domande, pipeline dalla selezione`. Nella descrizione: cosa è fatto, scelte sui
 punti ambigui, righe per il changelog.
 
 ## File di agy (non toccarli)
@@ -43,5 +46,6 @@ punti ambigui, righe per il changelog.
 `frontend/src/components/lesson/LessonPanel.tsx`, `panels/EnrichmentPanel.tsx`,
 `panels/MediaGallery.tsx`, `frontend/src/components/archive/*`, `frontend/src/components/lesson/AudioPlayer.tsx`,
 `rt/services/archive_service.py`, `rt/services/archive_backfill.py`, `rt/api/routers/archive.py`,
-`rt/core/archive.py`, `rt/pipeline/add_images.py`. In `frontend/src/index.css` aggiungi solo un blocco
+`rt/core/archive.py`, `rt/pipeline/add_images.py`, `panels/ReviewPanel.tsx`, `panels/StudyNotesPanel.tsx`,
+`study/StudyNotePopup.tsx`, `panels/ReviewUnits.tsx`. In `frontend/src/index.css` aggiungi solo un blocco
 nuovo in fondo; non toccare `.rt-panel-container`.

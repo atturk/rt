@@ -18,6 +18,7 @@ Non aggiungere la cartella `codex-piani-4.3.3b1/` al tuo ramo.
 1. `piano-archivio-pagine-pdf-agy.md` (piano 4): le pagine dei PDF non diventano immagini nell'archivio.
 2. `piano-archivio-veloce-agy.md` (piano 3): archivio veloce e caricamento animato.
 3. `piano-pannello-arricchimento-agy.md` (piano 2): pannello allargabile e immagine scelta al centro.
+4. `piano-formule-issue-agy.md` (piano 7): formule rese nelle issue della revisione.
 
 ## Regole
 
@@ -37,7 +38,7 @@ Non aggiungere la cartella `codex-piani-4.3.3b1/` al tuo ramo.
 
 ## La PR
 
-Titolo `4.3.3b1 · agy: archivio e pannello Arricchimento`. Nella descrizione: per ogni piano fatto o
+Titolo `4.3.3b1 · agy: archivio, pannello Arricchimento, formule nelle issue`. Nella descrizione: per ogni piano fatto o
 non fatto, scelte sui punti ambigui, righe per il changelog.
 
 ## File di Codex (non toccarli)
@@ -45,6 +46,7 @@ non fatto, scelte sui punti ambigui, righe per il changelog.
 `frontend/src/components/lesson/lessonImages.ts`, `lessonImageStrips.ts`, `lessonUnits.ts`,
 `lessonShortcuts.ts`, `LessonEditor.tsx`, `DocumentView.tsx`, `frontend/src/components/images/*`,
 `frontend/src/components/study/Study.tsx`, `frontend/src/components/settings/shortcuts.tsx`,
+`frontend/src/components/lessons/SelectionDetails.tsx`, `panels/QuestionsPanel.tsx`,
 `rt/services/document_edit_service.py`, `rt/pipeline/image_placement.py`, il modello `DocumentSection`
 e le rotte del documento. In `frontend/src/index.css` tocca solo `.rt-panel-container`, la variabile
 `--rt-panel-width` e le classi nuove `rt-media-flash` / `rt-shimmer`.
