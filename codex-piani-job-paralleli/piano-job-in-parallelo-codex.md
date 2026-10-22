@@ -9,6 +9,26 @@ per CPU e memoria. Le chiamate al modello restano tutte in parallelo.
 
 Non cambia: un solo job per lezione alla volta (vincolo `active_lesson` della coda). Il default resta 2.
 
+## 0. Bug: sul Mac l'impostazione viene ignorata (da fare per primo)
+
+Sull'app per Mac il worker gira come servizio launchd (`rt/services/service_manager.py`,
+`SERVICES["worker"] = ["worker"]`), senza `--concurrency`. In `rt/cli_jobs.py` il default di
+`--concurrency` è 1, quindi il worker esegue sempre un job alla volta qualunque valore sia salvato.
+Solo `rt web` in primo piano (`rt/api/launcher.py`) passa il valore. Lo conferma la diagnostica di
+Attilio: impostazione 2, "Worker: 1 attivi", "Ora ne esegue fino a 1 insieme".
+
+Correzione:
+- `rt/cli_jobs.py`: `--concurrency` con `default=None`; se non è indicato, usa
+  `worker_concurrency()` di `rt/api/launcher.py` (legge `worker.concurrency` dalla configurazione,
+  default 2). Aggiorna l'help: "default: Impostazioni > Generali".
+- Così il servizio launchd già installato lo prende senza riscrivere il plist. Vale quando il
+  worker riparte (chiudere RT dal menu e riaprirlo, che ferma e riavvia i servizi).
+- `docs/WEB.md`: togli "`rt worker` lanciato a mano resta a 1 thread se non si indica
+  `--concurrency`", scrivi che senza `--concurrency` usa il valore delle impostazioni.
+- Test in `tests/test_parallel_jobs.py`: `rt worker` senza `--concurrency` chiama `run_workers`
+  con il valore salvato (monkeypatch di `run_workers`, configurazione a 3); con `--concurrency 1`
+  usa 1.
+
 ## 1. Un'unica costante per il tetto
 
 - `rt/core/config.py`, `WorkerConfig.concurrency`: `le=4` -> `le=16`.
