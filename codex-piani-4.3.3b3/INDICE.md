@@ -13,5 +13,6 @@ In attesa del via di Attilio; altre richieste si aggiungono qui.
 | 6 | `piano-formule-lettura-veloce.md`: formule lunghe adattate alla loro misura reale e centrate | da assegnare |
 | 7 | `piano-rumore-timer-lettura.md`: dissolvenza di 1 s sul rumore e conto alla rovescia (0–10 s) prima della lettura veloce | da assegnare |
 | 8 | `piano-anello-scudo-lezioni.md`: spunta nell'anello a unità tutte con uno stato, scudo solo se verificata | da assegnare |
+| 9 | `piano-lezioni-mancanti.md`: inizio del periodo accademico e avviso delle lezioni mancanti per materia | da assegnare |
 
 Già nella b1 (PR #116): l'unione di più audio in una nuova lezione non fallisce più e non lascia lezioni a metà.
