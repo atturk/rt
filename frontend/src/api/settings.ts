@@ -30,10 +30,6 @@ function useSettingsMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) 
   })
 }
 
-export function useSaveWorker() {
-  return useMutation({ mutationFn: async (_c: number) => {} })
-}
-
 export function useSavePreferences() {
   return useSettingsMutation((body: Schemas['PreferencesSettings']) =>
     unwrap(api.PUT('/api/v1/settings/preferences', { body })),

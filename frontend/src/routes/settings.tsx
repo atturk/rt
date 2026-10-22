@@ -7,7 +7,7 @@ import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
-import { TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
@@ -99,7 +99,7 @@ export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
-  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /><WorkerSection settings={s} /></>)
+  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
 }
 export function ModelsSettingsPage() {
   return page(s => <><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
