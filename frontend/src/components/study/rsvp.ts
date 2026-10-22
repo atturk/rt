@@ -78,6 +78,48 @@ export function formulaMetrics(tex: string): { atoms: number; structures: number
   return { atoms, structures: count, complex: count > 0 || atoms > 6 }
 }
 
+export type FormulaDimensions = { width: number; height: number }
+export type FitFormulaResult = {
+  scale: number
+  boxWidth: number
+  boxHeight: number
+  scrollable: boolean
+}
+
+/**
+ * Adatta la scala e il box di una formula alla dimensione disponibile del lettore.
+ * Se eccede lo spazio disponibile scala fino al minimo leggibile (predefinito 0.35);
+ * sotto il minimo mantiene minScale e attiva lo scorrimento orizzontale.
+ */
+export function fitFormula(
+  natural: FormulaDimensions,
+  available: FormulaDimensions,
+  minScale = 0.35,
+): FitFormulaResult {
+  if (natural.width <= 0 || natural.height <= 0 || available.width <= 0 || available.height <= 0) {
+    return { scale: 1, boxWidth: natural.width, boxHeight: natural.height, scrollable: false }
+  }
+  const scaleW = available.width / natural.width
+  const scaleH = available.height / natural.height
+  const idealScale = Math.min(1, scaleW, scaleH)
+
+  if (idealScale < minScale) {
+    return {
+      scale: minScale,
+      boxWidth: natural.width * minScale,
+      boxHeight: natural.height * minScale,
+      scrollable: true,
+    }
+  }
+
+  return {
+    scale: idealScale,
+    boxWidth: natural.width * idealScale,
+    boxHeight: natural.height * idealScale,
+    scrollable: false,
+  }
+}
+
 /** Clic grave per fine frase o formule complesse con pausa dedicata. */
 export function graveWord(word: Word, prefs: Pick<RsvpPreference, 'comma' | 'formulaPause'>): boolean {
   return word.lastPiece !== false && (isFullStop(word.text, prefs.comma) || !!(word.math?.complex && prefs.formulaPause !== 'standard'))

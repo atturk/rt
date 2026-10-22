@@ -13,3 +13,10 @@ it('Legno è il predefinito anche per preferenze salvate senza clickSound', () =
   preference.value = { sound: true, clickSound: 'classico' }; rerender()
   expect(result.current[0].clickSound).toBe('classico')
 })
+
+it('countdown predefinito a 3 s anche per preferenze salvate senza countdown', () => {
+  expect(RSVP_DEFAULT.countdown).toBe(3)
+  preference.value = { sound: false }
+  const { result } = renderHook(useRsvpPrefs)
+  expect(result.current[0].countdown).toBe(3)
+})

@@ -489,3 +489,97 @@ it('nasconde i pulsanti di voto quando i voti sono spenti', async () => {
     expect(screen.getByRole('button', { name: 'Commenta' })).toBeInTheDocument()
   } finally { mockVotesEnabled = true }
 })
+
+describe('scorciatoia di invio tastiera (⌘/Ctrl + Invio)', () => {
+  it('risposta scritta: ⌘+Invio e Ctrl+Invio inviano la risposta, Invio da solo no, vuoto non invia', async () => {
+    vi.clearAllMocks()
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q200', type: 'mirata', options: null, correct_index: null })
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'j1' } })
+    renderSession()
+
+    const textarea = await screen.findByLabelText('Risposta scritta')
+    // Con testo vuoto, ⌘+Invio non invia
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+    expect(mockAnswerMutateAsync).not.toHaveBeenCalled()
+
+    // Invio da solo non invia
+    fireEvent.change(textarea, { target: { value: 'Risposta di prova' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(mockAnswerMutateAsync).not.toHaveBeenCalled()
+
+    // ⌘+Invio invia
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+    expect(mockAnswerMutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('risposta scritta: Ctrl+Invio invia la risposta', async () => {
+    vi.clearAllMocks()
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q201', type: 'mirata', options: null, correct_index: null })
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'j1' } })
+    renderSession()
+
+    const textarea = await screen.findByLabelText('Risposta scritta')
+    fireEvent.change(textarea, { target: { value: 'Risposta con Ctrl' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    expect(mockAnswerMutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('commento domanda: ⌘+Invio e Ctrl+Invio inviano e rigenerano, Invio da solo no, vuoto non invia', async () => {
+    vi.clearAllMocks()
+    mockNextMutateAsync.mockResolvedValue(sampleQuestion)
+    mockRegenerateMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q101' })
+    renderSession()
+
+    await screen.findByText(sampleQuestion.question_text)
+    fireEvent.click(screen.getByRole('button', { name: 'Commenta' }))
+
+    const commentTextarea = await screen.findByPlaceholderText(/troppo facile/i)
+    // Vuoto: non invia
+    fireEvent.keyDown(commentTextarea, { key: 'Enter', metaKey: true })
+    expect(mockRegenerateMutateAsync).not.toHaveBeenCalled()
+
+    // Invio da solo non invia
+    fireEvent.change(commentTextarea, { target: { value: 'Troppo facile' } })
+    fireEvent.keyDown(commentTextarea, { key: 'Enter' })
+    expect(mockRegenerateMutateAsync).not.toHaveBeenCalled()
+
+    // ⌘+Invio invia
+    fireEvent.keyDown(commentTextarea, { key: 'Enter', metaKey: true })
+    expect(mockRegenerateMutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('commento domanda: Ctrl+Invio invia e rigenera', async () => {
+    vi.clearAllMocks()
+    mockNextMutateAsync.mockResolvedValue(sampleQuestion)
+    mockRegenerateMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q101' })
+    renderSession()
+
+    await screen.findByText(sampleQuestion.question_text)
+    fireEvent.click(screen.getByRole('button', { name: 'Commenta' }))
+
+    const commentTextarea = await screen.findByPlaceholderText(/troppo facile/i)
+    fireEvent.change(commentTextarea, { target: { value: 'Troppo difficile' } })
+    fireEvent.keyDown(commentTextarea, { key: 'Enter', ctrlKey: true })
+    expect(mockRegenerateMutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('il suggerimento del pulsante Rispondi adatta la scorciatoia alla piattaforma', async () => {
+    vi.clearAllMocks()
+    mockNextMutateAsync.mockResolvedValue({ ...sampleQuestion, id: 'q202', type: 'mirata', options: null, correct_index: null })
+    const platformSpy = vi.spyOn(navigator, 'platform', 'get')
+    try {
+      platformSpy.mockReturnValue('MacIntel')
+      const { unmount } = renderSession()
+      await screen.findByLabelText('Risposta scritta')
+      expect(screen.getAllByRole('tooltip', { hidden: true }).some(el => el.textContent === '⌘ Invio')).toBe(true)
+      unmount()
+
+      platformSpy.mockReturnValue('Win32')
+      renderSession()
+      await screen.findByLabelText('Risposta scritta')
+      expect(screen.getAllByRole('tooltip', { hidden: true }).some(el => el.textContent === 'Ctrl Invio')).toBe(true)
+    } finally {
+      platformSpy.mockRestore()
+    }
+  })
+})

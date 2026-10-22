@@ -11,7 +11,7 @@ import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import { createSound } from './rsvpSound'
 import {
-  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
+  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, fitFormula, type FitFormulaResult, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
   remainingSeconds, surroundingEntries, wordDelay,
 } from './rsvp'
 
@@ -47,6 +47,28 @@ export function SpeedReader({
   const [index, setIndex] = useState(0)
   const [pieceIndex, setPieceIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [formulaScale, setFormulaScale] = useState(1)
+  const [countdownValue, setCountdownValue] = useState<number | null>(null)
+  const pausedAt = useRef<number | null>(null)
+  const unitStarted = useRef(false)
+  const countdownTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  useEffect(() => {
+    unitStarted.current = false
+    pausedAt.current = null
+    clearTimeout(countdownTimer.current)
+    countdownTimer.current = undefined
+    // oxlint-disable-next-line react/set-state-in-effect
+    setCountdownValue(null)
+    setPlaying(false)
+  }, [source])
+
+  const cancelCountdown = useCallback(() => {
+    clearTimeout(countdownTimer.current)
+    countdownTimer.current = undefined
+    setCountdownValue(null)
+  }, [])
+  useEffect(() => () => cancelCountdown(), [cancelCountdown])
   useEffect(() => onTintChange(prefs.irlen), [prefs.irlen, onTintChange])
   const phone = useIsPhone()
   const [sound] = useState(createSound)
@@ -114,7 +136,7 @@ export function SpeedReader({
   const full = entry?.lastPiece !== false && isFullStop(word, prefs.comma)
 
   useEffect(() => {
-    if (!active || !playing || !entry) return
+    if (!active || !playing || !entry || countdownValue !== null) return
     const current = prefsRef.current
     const end = graveWord(entry, current)
     if (current.sound) sound.click(end, current.pitch, current.clickSound)
@@ -126,9 +148,9 @@ export function SpeedReader({
       else setPlaying(false)
     }, delay)
     return () => clearTimeout(timer)
-  }, [active, playing, index, currentPieceIndex, words, pieces, sound]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [active, playing, index, currentPieceIndex, words, pieces, sound, countdownValue]) // oxlint-disable-line react-hooks/exhaustive-deps
 
-  // Il rumore suona durante la lettura; in pausa solo l'anteprima di 2 s delle impostazioni.
+  // Il rumore suona durante la lettura e il conto alla rovescia; in pausa solo l'anteprima di 2 s delle impostazioni.
   useEffect(() => {
     if (!active || !playing || !prefs.noise) return
     sound.noise(prefs.noise, prefsRef.current.noiseVolume)
@@ -137,13 +159,46 @@ export function SpeedReader({
   useEffect(() => sound.volume(prefs.noiseVolume), [prefs.noiseVolume, sound])
   useEffect(() => () => sound.dispose(), [sound])
 
+  const startCountdown = useCallback((from: number) => {
+    cancelCountdown()
+    setCountdownValue(from)
+    const tick = (val: number) => {
+      if (val <= 1) {
+        countdownTimer.current = setTimeout(() => {
+          countdownTimer.current = undefined
+          setCountdownValue(null)
+          unitStarted.current = true
+        }, 1000)
+      } else {
+        countdownTimer.current = setTimeout(() => {
+          setCountdownValue(val - 1)
+          tick(val - 1)
+        }, 1000)
+      }
+    }
+    tick(from)
+  }, [cancelCountdown])
+
+  const shouldCountdown = useCallback(() => {
+    const cd = prefs.countdown ?? 3
+    if (cd <= 0) return false
+    if (!unitStarted.current) return true
+    if (pausedAt.current === null) return true
+    return Date.now() - pausedAt.current > 5000
+  }, [prefs.countdown])
+
   const play = useCallback(() => {
     if (!words.length) return
     sound.unlock()
     ramp.current = 5
     if (index >= words.length - 1 && atLastPiece) { setIndex(0); setPieceIndex(0) }
     setPlaying(true)
-  }, [words.length, index, atLastPiece, sound])
+    if (shouldCountdown()) {
+      startCountdown(prefs.countdown ?? 3)
+    } else {
+      unitStarted.current = true
+    }
+  }, [words.length, index, atLastPiece, sound, shouldCountdown, startCountdown, prefs.countdown])
 
   useEffect(() => {
     if (autoStart && !autoStarted.current && words.length > 0) {
@@ -152,12 +207,19 @@ export function SpeedReader({
     }
   }, [autoStart, words.length, play])
 
-  const toggle = useCallback(() => (playing ? setPlaying(false) : play()), [playing, play])
+  const pause = useCallback(() => {
+    cancelCountdown()
+    pausedAt.current = Date.now()
+    setPlaying(false)
+  }, [cancelCountdown])
+
+  const toggle = useCallback(() => (playing ? pause() : play()), [playing, pause, play])
   const jump = useCallback((to: number) => {
+    cancelCountdown()
     setIndex(Math.max(0, Math.min(words.length - 1, to)))
     setPieceIndex(0)
     if (playing) ramp.current = 5
-  }, [words.length, playing])
+  }, [words.length, playing, cancelCountdown])
 
   useEffect(() => {
     if (!active || blocked) return
@@ -169,8 +231,8 @@ export function SpeedReader({
           e.stopPropagation()
           const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
           if (field) return
-          if (e.key === 'ArrowLeft') onUnit(-1, playing)
-          else onUnit(1, playing)
+          if (e.key === 'ArrowLeft') { cancelCountdown(); onUnit(-1, playing) }
+          else { cancelCountdown(); onUnit(1, playing) }
         }
         return
       }
@@ -180,6 +242,7 @@ export function SpeedReader({
       if (key === 'l' && !e.shiftKey) {
         e.preventDefault()
         e.stopPropagation()
+        cancelCountdown()
         onClose()
         return
       }
@@ -195,10 +258,10 @@ export function SpeedReader({
         ArrowRight: () => jump(nextSentence(words, index)),
         ArrowUp: () => update({ wpm: Math.min(MAX_WPM, prefsRef.current.wpm + 25) }),
         ArrowDown: () => update({ wpm: Math.max(MIN_WPM, prefsRef.current.wpm - 25) }),
-        Home: () => { setPlaying(false); setIndex(0); setPieceIndex(0) },
+        Home: () => { cancelCountdown(); setPlaying(false); setIndex(0); setPieceIndex(0) },
         Escape: () => {
           if (settings) { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
-          else onClose()
+          else { cancelCountdown(); onClose() }
         },
       }
       const action = keys[e.key]
@@ -210,7 +273,7 @@ export function SpeedReader({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose, onUnit, playing, onStatus])
+  }, [active, blocked, toggle, jump, update, words, index, settings, settingsButton, onSettingsChange, onClose, onUnit, playing, onStatus, cancelCountdown])
 
   const closeSettings = () => { onSettingsChange(false); settingsButton.current?.querySelector('button')?.focus() }
 
@@ -235,38 +298,60 @@ export function SpeedReader({
       data-settings={settings && !phone || undefined}
       className="rt-rsvp absolute inset-0 flex flex-col gap-3 overflow-hidden bg-background px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-5 text-foreground max-md:px-3.5"
     >
-      <div ref={readingArea} className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
+      <div ref={readingArea} className="rt-rsvp-reading-area relative flex min-h-0 flex-1 flex-col items-center justify-center gap-[18px]">
         <span ref={probe} aria-hidden className={cn('rt-rsvp-word rt-rsvp-measure', prefs.dyslexic && 'dyslexic')} style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * .6) : prefs.size}px` } as CSSProperties}>M</span>
         {context && (
           <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
               <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
                 piece.index === index && 'font-semibold text-(--rsvp-focus)', piece.hl && prefs.highlights && 'rt-rsvp-hl')} data-current={piece.index === index || undefined}>
-                {piece.math ? <span dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
+                {piece.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
               </span>
             ))}
           </div>
         )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
-          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
-        <div
-          key={animate ? `out-${index}` : 'still'}
-          className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
-          style={{ '--rsvp-scale': entry?.scale ?? 1, '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
-          data-testid="speed-reader-word"
-          data-source-index={index}
-          data-piece={currentPieceIndex}
-          data-scale={entry?.scale ?? 1}
-          data-hl={words[index]?.hl && prefs.highlights || undefined}
-          data-math={words[index]?.math ? true : undefined}
-          data-kind={full ? 'fine' : 'normale'}
-          aria-live="off"
-        >
-          {words[index]?.math ? <FormulaWord html={words[index].math!.html} /> : <><span className="pre"><span>{word.slice(0, k)}</span></span><span className="orp">{word.charAt(k)}</span><span className="post"><span>{word.slice(k + 1)}</span></span></>}
-        </div>
+        {countdownValue !== null ? (
+          <div
+            data-testid="speed-reader-countdown"
+            className="rt-rsvp-countdown"
+            style={{ '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px` } as CSSProperties}
+          >
+            <svg className="rt-rsvp-countdown-ring" viewBox="0 0 100 100" aria-hidden>
+              <circle className="rt-rsvp-countdown-track" cx="50" cy="50" r="44" />
+              <circle
+                key={countdownValue}
+                className="rt-rsvp-countdown-progress"
+                cx="50"
+                cy="50"
+                r="44"
+              />
+            </svg>
+            <span key={countdownValue} className="rt-rsvp-countdown-num">
+              {countdownValue}
+            </span>
+          </div>
+        ) : (
+          <div
+            key={animate ? `out-${index}` : 'still'}
+            className={cn('rt-rsvp-word', prefs.dyslexic && 'dyslexic', animate && 'out')}
+            style={{ '--rsvp-scale': entry?.scale ?? 1, '--rsvp-size': `${phone ? Math.round(prefs.size * 0.6) : prefs.size}px`, '--rsvp-out': `${Math.max(250, prefs.pauseMs + 60000 / prefs.wpm)}ms` } as CSSProperties}
+            data-testid="speed-reader-word"
+            data-source-index={index}
+            data-piece={currentPieceIndex}
+            data-scale={words[index]?.math ? formulaScale : (entry?.scale ?? 1)}
+            data-hl={words[index]?.hl && prefs.highlights || undefined}
+            data-math={words[index]?.math ? true : undefined}
+            data-kind={full ? 'fine' : 'normale'}
+            aria-live="off"
+          >
+            {words[index]?.math ? <FormulaWord html={words[index].math!.html} readingArea={readingArea} phone={phone} onScale={setFormulaScale} /> : <><span className="pre"><span>{word.slice(0, k)}</span></span><span className="orp">{word.charAt(k)}</span><span className="post"><span>{word.slice(k + 1)}</span></span></>}
+          </div>
+        )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
-          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
@@ -283,7 +368,7 @@ export function SpeedReader({
             <RoundButton
               label={prevLabel}
               icon={SkipBack}
-              onClick={() => onUnit(-1, playing)}
+              onClick={() => { cancelCountdown(); onUnit(-1, playing) }}
               unavailable={canPrevUnit ? null : 'prima unità'}
               small
             />
@@ -297,7 +382,7 @@ export function SpeedReader({
             <RoundButton
               label={nextLabel}
               icon={SkipForward}
-              onClick={() => onUnit(1, playing)}
+              onClick={() => { cancelCountdown(); onUnit(1, playing) }}
               unavailable={canNextUnit ? null : 'ultima unità'}
               small
             />
@@ -309,7 +394,7 @@ export function SpeedReader({
             <RoundButton
               label={prevLabel}
               icon={SkipBack}
-              onClick={() => onUnit(-1, playing)}
+              onClick={() => { cancelCountdown(); onUnit(-1, playing) }}
               unavailable={canPrevUnit ? null : 'prima unità'}
               small
             />
@@ -322,15 +407,15 @@ export function SpeedReader({
                 strokeDasharray={RING} strokeDashoffset={RING * (1 - progress)} />
             </svg>
           } />
-          <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
+          <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { cancelCountdown(); setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
           <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
             icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
-            onClick={() => { setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
+            onClick={() => { cancelCountdown(); setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
           {!phone && (
             <RoundButton
               label={nextLabel}
               icon={SkipForward}
-              onClick={() => onUnit(1, playing)}
+              onClick={() => { cancelCountdown(); onUnit(1, playing) }}
               unavailable={canNextUnit ? null : 'ultima unità'}
               small
             />
@@ -348,26 +433,90 @@ export function SpeedReader({
   )
 }
 
-/** Riduce solo le formule che eccedono lo spazio del lettore, anche con la barra aperta. */
-function FormulaWord({ html }: { html: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ scale: 1, height: 0 })
+/** Riduce e centra le formule in base allo spazio reale del lettore (4.3.3b3 piano 6). */
+function FormulaWord({
+  html,
+  readingArea,
+  phone,
+  onScale,
+}: {
+  html: string
+  readingArea?: RefObject<HTMLDivElement | null>
+  phone?: boolean
+  onScale?: (scale: number) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mathRef = useRef<HTMLSpanElement>(null)
+  const [result, setResult] = useState<FitFormulaResult>({ scale: 1, boxWidth: 0, boxHeight: 0, scrollable: false })
+
   useLayoutEffect(() => {
-    const container = ref.current
-    const rendered = container?.firstElementChild as HTMLElement | null
-    if (!container || !rendered) return
+    const container = containerRef.current
+    const mathEl = mathRef.current
+    if (!container || !mathEl) return
+
+    let alive = true
     const fit = () => {
-      const scale = Math.min(1, container.clientWidth / (rendered.scrollWidth || 1))
-      setSize({ scale, height: rendered.offsetHeight * scale })
+      if (!alive) return
+      const area = readingArea?.current ?? container.closest<HTMLDivElement>('.rt-rsvp-reading-area') ?? container.parentElement
+      if (!area || area.clientWidth <= 0) return
+
+      const marginX = phone ? 32 : 64
+      const availW = Math.max(0, area.clientWidth - marginX)
+      const availH = Math.max(0, area.clientHeight * 0.5)
+
+      // Misura la formula naturale senza trasformazioni
+      const prevTransform = mathEl.style.transform
+      mathEl.style.transform = 'none'
+      const rect = mathEl.getBoundingClientRect()
+      const naturalW = rect.width || mathEl.offsetWidth || mathEl.scrollWidth || 1
+      const naturalH = rect.height || mathEl.offsetHeight || mathEl.scrollHeight || 1
+      mathEl.style.transform = prevTransform
+
+      const res = fitFormula({ width: naturalW, height: naturalH }, { width: availW, height: availH }, 0.35)
+      setResult(res)
+      onScale?.(res.scale)
     }
+
     fit()
+
+    const area = readingArea?.current ?? container.closest<HTMLDivElement>('.rt-rsvp-reading-area') ?? container.parentElement
     const observer = new ResizeObserver(fit)
-    observer.observe(container); observer.observe(rendered)
-    return () => observer.disconnect()
-  }, [html])
-  return <div ref={ref} className="rt-rsvp-formula" style={{ height: size.height || undefined }}>
-    <span className="rt-rsvp-math" style={{ transform: `scale(${size.scale})` }} dangerouslySetInnerHTML={{ __html: html }} />
-  </div>
+    if (area) observer.observe(area)
+    observer.observe(mathEl)
+
+    void document.fonts?.ready.then(fit)
+    document.fonts?.addEventListener('loadingdone', fit)
+
+    return () => {
+      alive = false
+      observer.disconnect()
+      document.fonts?.removeEventListener('loadingdone', fit)
+    }
+  }, [html, phone, readingArea, onScale])
+
+  return (
+    <div
+      ref={containerRef}
+      className="rt-rsvp-formula"
+      data-scale={result.scale}
+      data-scrollable={result.scrollable || undefined}
+      style={{
+        width: result.boxWidth > 0 ? `${result.boxWidth}px` : undefined,
+        height: result.boxHeight > 0 ? `${result.boxHeight}px` : undefined,
+      }}
+    >
+      <span
+        ref={mathRef}
+        className="rt-rsvp-math"
+        data-scale={result.scale}
+        style={{
+          transform: result.scale < 1 ? `scale(${result.scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  )
 }
 
 function Pill(props: React.ComponentProps<typeof Button>) { return <Button variant="outline" size="sm" {...props} /> }
@@ -472,6 +621,11 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
           <input type="range" min={0} max={0.6} step={0.02} value={prefs.noiseVolume} aria-label="Volume del rumore"
             onChange={(e) => update({ noiseVolume: Number(e.target.value) })} />
         </>}
+      </Row>
+      <Row>
+        <span>Conto alla rovescia <b className="font-normal">{prefs.countdown === 0 ? 'Spento' : `${prefs.countdown} s`}</b></span>
+        <input type="range" min={0} max={10} step={1} value={prefs.countdown ?? 3} aria-label="Conto alla rovescia"
+          onChange={(e) => update({ countdown: Number(e.target.value) })} />
       </Row>
     </section>
   )

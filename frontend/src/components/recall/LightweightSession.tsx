@@ -1,4 +1,5 @@
 import { useRecallRules } from '@/api/recallRules'
+import { isMacKeyboard } from '@/components/lesson/markdownShortcuts'
 import { questionTypeId, typeLabel } from '@/lib/recall'
 import { EmptyGeneration } from './EmptyGeneration'
 import {
@@ -97,6 +98,8 @@ export function LightweightSession({
 
   const lessonId = propLessonId ?? (params.lessonId ? Number(params.lessonId) : undefined)
   const isSelection = Boolean(propSelectionIds?.length || params.ids)
+  const mac = typeof navigator !== 'undefined' && isMacKeyboard()
+  const submitShortcut = mac ? '⌘ Invio' : 'Ctrl Invio'
   const selectionIds = useMemo(() => {
     if (propSelectionIds?.length) return propSelectionIds
     if (params.ids) return params.ids.split(',').map(Number).filter(Boolean)
@@ -722,6 +725,15 @@ export function LightweightSession({
                           <textarea
                             value={writtenAnswer}
                             onChange={(e) => setWrittenAnswer(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (writtenAnswer.trim() && !busy) {
+                                  handleWrittenAnswer()
+                                }
+                              }
+                            }}
                             placeholder="Scrivi qui la tua risposta…"
                             rows={4}
                             aria-label="Risposta scritta"
@@ -753,6 +765,7 @@ export function LightweightSession({
                                 variant="default"
                                 disabled={!writtenAnswer.trim() || busy}
                                 onClick={handleWrittenAnswer}
+                                title={submitShortcut}
                               >
                                 Rispondi
                               </Button>
@@ -1005,6 +1018,15 @@ export function LightweightSession({
                 id="comment-textarea"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (commentText.trim() && !regenerateMutation.isPending) {
+                      handleCommentRegenerate()
+                    }
+                  }
+                }}
                 placeholder="Per esempio: troppo facile, chiedimi di ragionare su un esempio concreto."
                 rows={4}
                 className="block w-full resize-none rounded-md border bg-card p-2.5 text-meta placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
@@ -1016,6 +1038,7 @@ export function LightweightSession({
               size="sm"
               disabled={!commentText.trim() || regenerateMutation.isPending}
               onClick={handleCommentRegenerate}
+              title={submitShortcut}
               className="mt-1 self-start"
             >
               <Sparkles className="mr-1.5 size-3.5" aria-hidden />
