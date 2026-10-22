@@ -368,6 +368,14 @@ export function lessonImageUploads(options: Options) {
     },
   )
 
+  let currentHighlight: DropTargetResult | null = null
+
+  function sameDropHighlight(a: DropTargetResult | null, b: DropTargetResult | null): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    return a.insertAt === b.insertAt && a.label === b.label && a.headingLine === b.headingLine
+  }
+
   function eventTarget(event: DragEvent, view: EditorView) {
     const element = (event.target as Element).closest<HTMLElement>('[data-unit-images]')
     const beforeName = (event.target as Element).closest<HTMLElement>('[data-image-name]')?.dataset.imageName
@@ -379,7 +387,10 @@ export function lessonImageUploads(options: Options) {
   function clearDrag(view: EditorView) {
     view.dom.classList.remove('rt-dragging-images')
     view.dom.querySelectorAll('.rt-image-drop-hover').forEach(element => element.classList.remove('rt-image-drop-hover'))
-    view.dispatch({ effects: setDropHighlight.of(null) })
+    if (currentHighlight !== null) {
+      currentHighlight = null
+      view.dispatch({ effects: setDropHighlight.of(null) })
+    }
   }
   return [
     anchors,
@@ -434,11 +445,24 @@ export function lessonImageUploads(options: Options) {
           element?.classList.add('rt-image-drop-hover')
           const target = eventTarget(event, view)
           event.dataTransfer.dropEffect = event.dataTransfer.types.includes(RT_SECTION_IMAGE_DRAG_TYPE) ? 'move' : 'copy'
-          view.dispatch({ effects: setDropHighlight.of(target.section ? null : target.position) })
+          const nextHighlight = target.section ? null : target.position
+          if (!sameDropHighlight(currentHighlight, nextHighlight)) {
+            currentHighlight = nextHighlight
+            view.dispatch({ effects: setDropHighlight.of(nextHighlight) })
+          }
           return true
         },
         dragleave(event, view) {
-          if (!event.relatedTarget || !view.dom.contains(event.relatedTarget as Node)) clearDrag(view)
+          if (event.relatedTarget) {
+            if (!view.dom.contains(event.relatedTarget as Node)) clearDrag(view)
+            return false
+          }
+          const rect = view.dom.getBoundingClientRect()
+          const x = event.clientX
+          const y = event.clientY
+          if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+            clearDrag(view)
+          }
           return false
         },
         dragend(_event, view) { clearDrag(view); return false },
