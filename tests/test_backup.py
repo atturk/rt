@@ -255,3 +255,133 @@ def test_archive_roundtrip_and_incremental_store(data, tmp_path):
     shutil.rmtree(data_dir / 'archivio')
     bs.restore_backup(snap, say=lambda _: None, check_services=False)
     assert open(original_path(meta['impronta'])).read() == 'contenuto condiviso'
+
+
+def test_export_without_secrets_and_import_preserves_local_keys(data, tmp_path, monkeypatch):
+    import zipfile
+    import yaml
+    data_dir, db = data
+    rel = _add_media(db, data_dir, 1, 'audio.m4a', b'audio')
+    (data_dir / 'archivio').mkdir(exist_ok=True)
+    (data_dir / 'archivio' / 'fonte.pdf').write_bytes(b'archivio')
+    (data_dir / '.env').write_text('APP_KEY=old\nGOOGLE_API_KEY_1=old-google\nRT_MASTER_KEY=old-master\nACCESS_TOKEN="line1\nline2"\nNORMAL=imported\n')
+    general = data_dir / 'config' / 'general.yaml'
+    general.write_text(yaml.safe_dump({'telegram': {'lessons_root': '/old-pc/lessons', 'state_dir': '/old-pc/bot'}, 'database_url': 'sqlite:////old-pc/rt.db'}))
+    # Keep using the database from the fixture when the foreign config is written.
+    monkeypatch.setenv('RT_DATABASE_URL', db.url)
+    snapshot = bs.create_backup(str(tmp_path / 'snapshots'), say=lambda _: None).path
+    zipped = bs.export_backup(snapshot, str(tmp_path / 'collection.zip'))
+    with zipfile.ZipFile(zipped) as archive:
+        prefix = os.path.basename(snapshot)
+        assert prefix + '/config/secrets.enc' not in archive.namelist()
+        manifest = json.loads(archive.read(prefix + '/manifest.json'))
+        assert manifest['segreti'] is False
+        env = archive.read(prefix + '/env').decode()
+        assert env == 'NORMAL=imported\n'
+        assert not any(secret in env for secret in ('old-google', 'old-master', 'line2'))
+        assert prefix + '/rt.db' in archive.namelist()
+    (data_dir / 'config' / 'secrets.enc').write_text('local-encrypted')
+    (data_dir / '.env').write_text('APP_KEY=local\nNEW_PASSWORD=local-password\nNORMAL=old\n')
+    with session_scope(db) as session:
+        session.add(Lesson(id=2, path='/other', folder_name='other', storage='db'))
+    os.remove(data_dir / 'media' / rel)
+    os.remove(data_dir / 'archivio' / 'fonte.pdf')
+    lines = []
+    aside = bs.restore_backup(zipped, check_services=False, say=lines.append)
+    assert (data_dir / 'config' / 'secrets.enc').read_text() == 'local-encrypted'
+    assert (data_dir / '.env').read_text() == 'NORMAL=imported\nAPP_KEY=local\nNEW_PASSWORD=local-password\n'
+    assert (data_dir / 'media' / rel).read_bytes() == b'audio'
+    assert (data_dir / 'archivio' / 'fonte.pdf').read_bytes() == b'archivio'
+    assert not os.path.exists(os.path.join(aside, 'config', 'secrets.enc'))
+    with session_scope(get_database()) as session:
+        assert session.get(Lesson, 1) is not None
+        assert session.get(Lesson, 2) is None
+    config = yaml.safe_load(general.read_text())
+    assert config['telegram']['lessons_root'] is None
+    assert config['telegram']['state_dir'] == '.rt_telegram'
+    assert config['database_url'] == 'sqlite:///' + str(data_dir / 'rt.db')
+    assert any('telegram.lessons_root' in line for line in lines)
+
+
+def test_collection_export_requires_confirmation_and_migrates_folders(data, tmp_path):
+    data_dir, db = data
+    from rt.db.sync import dual_write_lesson
+    folder = tmp_path / '[2026-10-21] TEST'
+    folder.mkdir()
+    (folder / 'info.yaml').write_text('data: 2026-10-21\nmateria: TEST\n')
+    dual_write_lesson(str(folder))
+    target = tmp_path / 'collection.zip'
+    assert bs.export_collection(str(target), confirm=lambda _: False, say=lambda _: None) is None
+    assert folder.exists() and not target.exists()
+    exported = bs.export_collection(str(target), confirm=lambda count: count == 1, say=lambda _: None)
+    assert exported == str(target)
+    assert not folder.exists()
+    assert list((data_dir / 'backups').glob('migrazione-*/lezioni/*/info.yaml'))
+    assert bs.inspect_backup_zip(exported)['segreti'] is False
+
+
+@pytest.mark.parametrize('kind', ['invalid', 'future'])
+def test_invalid_collection_does_not_change_data(data, tmp_path, kind):
+    import zipfile
+    data_dir, db = data
+    original = (data_dir / 'config' / 'secrets.enc').read_bytes()
+    target = tmp_path / 'bad.zip'
+    if kind == 'invalid':
+        target.write_bytes(b'not a zip')
+    else:
+        with zipfile.ZipFile(target, 'w') as archive:
+            archive.writestr('rt-backup-test/manifest.json', json.dumps({'format': bs.FORMAT + 1, 'database': 'rt.db'}))
+    with pytest.raises(bs.BackupError):
+        bs.restore_backup(str(target), check_services=False, say=lambda _: None)
+    assert (data_dir / 'config' / 'secrets.enc').read_bytes() == original
+    assert not list((data_dir / 'backups').glob('prima-del-ripristino-*'))
+
+
+def test_cli_collection_export_import_json(data, tmp_path, capsys, monkeypatch):
+    from rt.cli import main
+    data_dir, db = data
+    monkeypatch.setattr(data_service, 'running_services', lambda: [])
+    target = tmp_path / 'collection.zip'
+    main(['export', str(target), '--yes', '--json'])
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[-1]['fine'] and events[-1]['percorso'] == str(target)
+    main(['import', str(target), '--yes', '--json'])
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert events[-1]['fine'] and 'prima-del-ripristino-' in events[-1]['percorso']
+
+
+def test_restore_closes_database_before_moving_files(data, tmp_path, monkeypatch):
+    import rt.db.engine as engine
+    data_dir, db = data
+    snapshot = bs.create_backup(str(tmp_path / 'backup'), say=lambda _: None).path
+    real_reset, real_move = engine.reset_database_cache, bs.shutil.move
+    closed = []
+    def reset():
+        real_reset()
+        closed.append(True)
+    def move(source, destination, *args, **kwargs):
+        if str(source).endswith(('rt.db', 'rt.db-wal', 'rt.db-shm')):
+            assert closed, 'SQLite va chiuso prima dello spostamento, anche su Windows'
+        return real_move(source, destination, *args, **kwargs)
+    monkeypatch.setattr(engine, 'reset_database_cache', reset)
+    monkeypatch.setattr(bs.shutil, 'move', move)
+    bs.restore_backup(snapshot, check_services=False, say=lambda _: None)
+
+
+def test_portable_import_rebases_windows_lesson_paths(data, tmp_path):
+    from rt.db.models import Job, RecallSession
+    from rt.storage import fs
+    data_dir, db = data
+    _add_media(db, data_dir, 1, 'audio.m4a', b'audio')
+    old_path = r'C:\Users\Old\lessons\L1'
+    with session_scope(db) as session:
+        session.get(Lesson, 1).path = old_path
+        session.add(Job(id='old-job', type='run_phase', state='succeeded', lesson_path=old_path, payload={}))
+    snapshot = bs.create_backup(str(tmp_path / 'backups'), say=lambda _: None).path
+    archive = bs.export_backup(snapshot, str(tmp_path / 'collection.zip'))
+    bs.restore_backup(archive, check_services=False, say=lambda _: None)
+    with session_scope(get_database()) as session:
+        lesson = session.get(Lesson, 1)
+        assert lesson.path == str(data_dir / 'lessons' / 'L1')
+        assert session.get(Job, 'old-job').lesson_path == lesson.path
+        assert fs.isfile(os.path.join(lesson.path, 'audio.m4a'))

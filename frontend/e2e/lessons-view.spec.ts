@@ -7,7 +7,7 @@ import { test, apiGet, authHeaders, loginViaLink } from './support'
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
 
-type Lesson = { id: number; materia: string; data: string; docente: string; titolo: string; folder_name: string; phases: Record<string, string> }
+type Lesson = { id: number; materia: string; data: string; docente: string; titolo: string; folder_name: string; phases: Record<string, string>; pending_issues: number }
 
 const ids = (rows: import('@playwright/test').Locator) => rows.evaluateAll((r) => r.map((el) => Number(el.getAttribute('data-lesson-id'))))
 
@@ -293,7 +293,9 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
       const ring = row.getByTestId('lesson-study-ring')
       const shield = row.getByTestId('lesson-review-shield')
       const ringBox = (await ring.boundingBox())!
-      const shieldBox = (await shield.boundingBox())!
+      const shieldBox = (await row.getByTestId('lesson-indicators').locator(':scope > div').last().boundingBox())!
+      const verified = l.phases.review === 'VALID' && l.pending_issues === 0
+      await expect(shield).toHaveCount(verified ? 1 : 0)
       const title = row.locator('a').filter({ hasText: l.titolo }).first()
       const titleBox = (await title.boundingBox())!
       expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(ringBox.x)
@@ -304,9 +306,11 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
       await ring.click()
       await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
       await page.goto('/')
-      await shield.click()
-      await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}\\?panel=verifica$`))
-      await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
+      if (verified) {
+        await shield.click()
+        await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}\\?panel=verifica$`))
+        await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
+      }
       await page.goto('/')
       await title.click()
       await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}$`))

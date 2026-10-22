@@ -177,6 +177,14 @@ def create_lesson(
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
+    from rt.services.lesson_conflicts import require_no_lesson_conflict
+    try:
+        require_no_lesson_conflict(date, materia, argomenti, lessons_root())
+    except ValueError as exc:
+        from rt.services.lesson_conflicts import LessonConflict
+        if isinstance(exc, LessonConflict):
+            raise
+        raise ApiError(422, 'validation_error', str(exc)) from None
     calendar = {}
     if calendar_entry_id or calendar_date:
         from datetime import date as calendar_day
@@ -532,3 +540,41 @@ async def stream_app_events(_actor: Actor,
 @router.get("/workers", response_model=List[schemas.WorkerInfo], summary="Worker attivi ('rt worker')")
 def list_workers(_actor: Actor):
     return queue().live_workers()
+
+
+from pydantic import BaseModel, Field
+
+
+class RecreateLessonRequest(BaseModel):
+    date: str
+    materia: str = Field(min_length=1)
+    argomenti: str = ''
+    docente: str = ''
+    ora: str = Field(default='', pattern=r'^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$')
+
+
+@router.post('/jobs/{job_id}/recreate-lesson', response_model=schemas.JobAccepted, status_code=202,
+             summary='Corregge i metadati di una lezione in conflitto riusando le fonti caricate')
+def recreate_lesson(job_id: str, body: RecreateLessonRequest, actor: Actor):
+    import copy
+    from rt.services.lesson_conflicts import require_no_lesson_conflict
+    from rt.services.lesson_service import lessons_root
+    info = _get(job_id)
+    if info.state != 'failed' or (info.result or {}).get('code') != 'lesson_exists':
+        raise ApiError(409, 'job_not_retryable', 'Il job non ha metadati da correggere.')
+    try:
+        require_no_lesson_conflict(body.date, body.materia, body.argomenti, lessons_root())
+    except ValueError as exc:
+        from rt.services.lesson_conflicts import LessonConflict
+        if isinstance(exc, LessonConflict):
+            raise
+        raise ApiError(422, 'validation_error', str(exc)) from None
+    payload = copy.deepcopy(info.payload)
+    paths = [p for key in ('inputs', 'audio', 'materiali') for p in payload.get(key, [])]
+    if not all(os.path.isfile(p) for p in paths):
+        raise ApiError(409, 'retry_unavailable', 'I file caricati non ci sono più: importa di nuovo la lezione.')
+    payload.setdefault('options', {}).update(body.model_dump())
+    payload['options']['dest_dir'] = lessons_root()
+    for name in ('calendar_entry_id', 'calendar_date', 'calendar_materia', 'calendar_start'):
+        payload.pop(name, None)
+    return enqueue_job(info.type, None, payload, actor)

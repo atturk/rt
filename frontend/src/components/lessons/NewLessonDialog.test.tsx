@@ -549,3 +549,37 @@ it('accepts DOCX and TXT and sends extraction options for each file', async () =
     opzioni: { 'notes.docx': { estrai: 'testo', uso: 'guida' }, 'notes.txt': { estrai: 'testo', uso: 'contesto' } },
   }), {}))
 })
+
+it('conflitto: mantiene fonti e dati, evidenzia i metadati e li lascia correggere', async () => {
+  const { ApiError } = await import('@/api/client')
+  mutateCreate.mockImplementation(() => { throw new ApiError(409, 'lesson_exists', 'Già presente', { lesson_id: 7, titolo: 'Lezione esistente' }) })
+  const close = vi.fn()
+  renderDialog(true, close, '2026-10-21', undefined, [new File(['audio'], 'lezione.mp3')])
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'PATOLOGIA' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+  expect(await screen.findByText('Lezione esistente')).toHaveAttribute('href', '/lezioni/7')
+  expect(screen.getByLabelText('Materia')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByLabelText('Argomenti')).toHaveAttribute('aria-invalid', 'true')
+  expect(close).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'ANATOMIA' } })
+  expect(screen.queryByText('Lezione esistente')).toBeNull()
+  expect(screen.getByLabelText('Materia')).toHaveAttribute('aria-invalid', 'false')
+})
+
+it('precompila un conflitto del worker con metadati e fonti già caricate', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const job = {
+    id: 'failed-import', type: 'ingest_sources', state: 'failed',
+    payload: { audio: ['/uploads/audio.wav'], materiali: ['/uploads/slide.pdf'], run: true,
+      options: { date: '2026-10-21', materia: 'PATOLOGIA', argomenti: 'Cellule', docente: 'Rossi', ora: '09:00', with_review: true } },
+    result: { code: 'lesson_exists', details: { lesson_id: 7, titolo: 'Lezione esistente' } },
+  } as unknown as import('@/api/client').Schemas['Job']
+  render(<QueryClientProvider client={client}><MemoryRouter><NewLessonDialog open onClose={vi.fn()} initialJob={job} /></MemoryRouter></QueryClientProvider>)
+  expect(screen.getByLabelText('Materia')).toHaveValue('PATOLOGIA')
+  expect(screen.getByLabelText('Argomenti')).toHaveValue('Cellule')
+  expect(screen.getByLabelText(/^Data/)).toHaveValue('2026-10-21')
+  expect(screen.getByLabelText('Docente')).toHaveValue('Rossi')
+  expect(screen.getByLabelText('Ora')).toHaveValue('09:00')
+  expect(screen.getByRole('list', { name: 'Fonti già caricate' })).toHaveTextContent('audio.wavslide.pdf')
+  expect(screen.getByRole('link', { name: 'Lezione esistente' })).toHaveAttribute('href', '/lezioni/7')
+})

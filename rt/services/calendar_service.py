@@ -776,6 +776,7 @@ def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
             label = f"{monday.day} {MESI[monday.month - 1]} – {friday.day} {MESI[friday.month - 1]}"
 
         summary = schemas.CalendarWeekSummary(
+            is_period_start=_period_start(session) == monday.isoformat(),
             hours_total=round(hours_total, 1),
             recorded_count=recorded_count,
             skip_count=skip_count,
@@ -847,3 +848,43 @@ def get_year_view(start: str, db=None) -> List[schemas.CalendarYearWeek]:
             weeks.append(schemas.CalendarYearWeek(start_date=dates[offset].isoformat(),
                          week_number=dates[offset].isocalendar()[1], days=days))
         return weeks
+
+
+ACADEMIC_START_KEY = 'calendar:academic_start'
+
+
+def _period_start(session):
+    from rt.db.repositories import SettingRepository
+    return SettingRepository(session).get(ACADEMIC_START_KEY)
+
+
+def set_period_start(body: schemas.CalendarPeriodStart, db=None):
+    from rt.db.repositories import SettingRepository
+    day = parse_date(body.date) if body.date else None
+    monday = (day - datetime.timedelta(days=day.weekday())).isoformat() if day else None
+    with session_scope(db or get_database()) as session:
+        SettingRepository(session).set(ACADEMIC_START_KEY, monday)
+    return schemas.CalendarPeriodStart(date=monday)
+
+
+def get_missing_lessons(db=None, *, now=None):
+    now = now or datetime.datetime.now()
+    with read_scope(db or get_database()) as session:
+        start = _period_start(session)
+        if not start:
+            return schemas.CalendarMissingLessons()
+        first = parse_date(start)
+        dates = [first + datetime.timedelta(days=i) for i in range((now.date() - first).days + 1)]
+        subjects = {}
+        for day, (events, _) in _resolve_dates(session, dates, now).items():
+            for ev in events:
+                if ev.lesson is not None or ev.status in {'annullata', 'saltare'} or _event_end(ev) >= now:
+                    continue
+                subject = normalize_subject(ev.materia)
+                d = parse_date(day)
+                subjects.setdefault(subject, []).append(schemas.CalendarToRecoverItem(
+                    key=ev.key, date=day, day_of_week=ev.day_of_week, day_name=DAYS[ev.day_of_week],
+                    day_number=d.day, month_number=d.month, materia=subject,
+                    start_time=ev.start_time, end_time=ev.end_time))
+        return schemas.CalendarMissingLessons(start=start, subjects=[
+            schemas.CalendarMissingSubject(materia=subject, missing=items) for subject, items in sorted(subjects.items())])

@@ -52,7 +52,7 @@ export function WorkerWarning() {
  * payload, che riparte dalla fase fallita (fasi valide saltate, unità già fatte non rifatte).
  * Se la lezione è occupata l'API risponde 409 e lo si dice qui.
  */
-export function RetryButton({ jobId, onRetried, size = 'sm' }: { jobId: string; onRetried?: (newJobId: string) => void; size?: 'sm' | 'default' }) {
+export function RetryButton({ jobId, onRetried, size = 'sm', title }: { title?: string; jobId: string; onRetried?: (newJobId: string) => void; size?: 'sm' | 'default' }) {
   const retry = useRetryJob()
   const busy = retry.error instanceof ApiError && retry.error.code === 'lesson_busy'
   return (
@@ -62,6 +62,7 @@ export function RetryButton({ jobId, onRetried, size = 'sm' }: { jobId: string; 
         size={size}
         disabled={retry.isPending}
         onClick={() => retry.mutate(jobId, { onSuccess: (accepted) => onRetried?.(accepted.job_id) })}
+        title={title}
         data-testid="retry-job"
       >
         <RotateCcw aria-hidden />

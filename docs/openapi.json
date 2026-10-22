@@ -1877,6 +1877,51 @@
         "title": "CalendarLinkLessonRequest",
         "type": "object"
       },
+      "CalendarMissingLessons": {
+        "properties": {
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarMissingSubject"
+            },
+            "title": "Subjects",
+            "type": "array"
+          }
+        },
+        "title": "CalendarMissingLessons",
+        "type": "object"
+      },
+      "CalendarMissingSubject": {
+        "properties": {
+          "materia": {
+            "title": "Materia",
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarToRecoverItem"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "materia",
+          "missing"
+        ],
+        "title": "CalendarMissingSubject",
+        "type": "object"
+      },
       "CalendarOverrideCreate": {
         "properties": {
           "action": {
@@ -2149,6 +2194,26 @@
           "weeks"
         ],
         "title": "CalendarPasteResult",
+        "type": "object"
+      },
+      "CalendarPeriodStart": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "description": "Data YYYY-MM-DD",
+                "maxLength": 10,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          }
+        },
+        "title": "CalendarPeriodStart",
         "type": "object"
       },
       "CalendarSchedule": {
@@ -2525,6 +2590,11 @@
           "hours_total": {
             "title": "Hours Total",
             "type": "number"
+          },
+          "is_period_start": {
+            "default": false,
+            "title": "Is Period Start",
+            "type": "boolean"
           },
           "modified_hours_count": {
             "title": "Modified Hours Count",
@@ -9719,6 +9789,41 @@
         "title": "RecallVoteSettings",
         "type": "object"
       },
+      "RecreateLessonRequest": {
+        "properties": {
+          "argomenti": {
+            "default": "",
+            "title": "Argomenti",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "docente": {
+            "default": "",
+            "title": "Docente",
+            "type": "string"
+          },
+          "materia": {
+            "minLength": 1,
+            "title": "Materia",
+            "type": "string"
+          },
+          "ora": {
+            "default": "",
+            "pattern": "^(?:(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
+            "title": "Ora",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "materia"
+        ],
+        "title": "RecreateLessonRequest",
+        "type": "object"
+      },
       "RemoveFromTextRequest": {
         "properties": {
           "image_names": {
@@ -14281,6 +14386,82 @@
         ]
       }
     },
+    "/api/v1/calendar/missing": {
+      "get": {
+        "operationId": "get_missing_lessons_api_v1_calendar_missing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarMissingLessons"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Missing Lessons",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
     "/api/v1/calendar/override": {
       "post": {
         "operationId": "create_override_api_v1_calendar_override_post",
@@ -14528,6 +14709,92 @@
           }
         ],
         "summary": "Paste Week",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/period-start": {
+      "put": {
+        "operationId": "set_period_start_api_v1_calendar_period_start_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarPeriodStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPeriodStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Period Start",
         "tags": [
           "calendar"
         ]
@@ -15889,6 +16156,103 @@
           }
         ],
         "summary": "Eventi di un job (senza streaming)",
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/recreate-lesson": {
+      "post": {
+        "operationId": "recreate_lesson_api_v1_jobs__job_id__recreate_lesson_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecreateLessonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Corregge i metadati di una lezione in conflitto riusando le fonti caricate",
         "tags": [
           "job"
         ]

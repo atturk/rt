@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 
+import { PhaseProgress } from './PhaseProgress'
 import { JobLive } from './JobLive'
 
 const state = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ vi.mock('@/api/jobs', () => ({
   useCloseJob: () => ({ mutate: state.close, reset: vi.fn(), isPending: false, isError: false }),
   useRetryJob: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }))
+vi.mock('@/components/lessons/NewLessonDialog', () => ({ NewLessonDialog: ({ initialJob }: { initialJob: { payload: unknown } }) => <div data-testid="correct-lesson">{JSON.stringify(initialJob.payload)}</div> }))
 vi.mock('@/api/hooks', () => ({
   useLessons: () => ({ data: [{ id: 3, titolo: 'Il rene', materia: 'FISIOLOGIA', data: '2026-09-20' }] }),
 }))
@@ -120,4 +122,22 @@ describe('JobLive', () => {
     expect(screen.getByRole('link', { name: 'Apri la revisione' })).toHaveAttribute('href', '/lezioni/3/revisione')
     expect(screen.queryByText(/Job completato/)).toBeNull()
   })
+})
+
+it('un conflitto offre la correzione con le fonti e le opzioni del job', async () => {
+  renderJob({ state: 'failed', result: { code: 'lesson_exists' }, payload: { audio: ['/uploads/audio.wav'], options: { materia: 'PATOLOGIA', date: '2026-10-21' } } })
+  fireEvent.mouseEnter(screen.getByRole('button', { name: 'Riprova' }))
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Esiste già una lezione con questi dati')
+  fireEvent.click(screen.getByRole('button', { name: 'Cambia i dati' }))
+  expect(await screen.findByTestId('correct-lesson')).toHaveTextContent('/uploads/audio.wav')
+  expect(screen.getByTestId('correct-lesson')).toHaveTextContent('PATOLOGIA')
+})
+
+
+it('la scheda della nuova lezione offre la stessa correzione del dettaglio job', async () => {
+  state.job = { isPending: false, isError: false, data: { id: 'new-job', type: 'ingest_sources', state: 'failed', result: { code: 'lesson_exists' }, payload: { audio: ['/uploads/audio.wav'], options: { materia: 'PATOLOGIA', date: '2026-10-21' } } } }
+  render(<MemoryRouter><PhaseProgress jobId="new-job" /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: 'Cambia i dati' }))
+  expect(await screen.findByTestId('correct-lesson')).toHaveTextContent('/uploads/audio.wav')
+  expect(screen.getByTestId('correct-lesson')).toHaveTextContent('PATOLOGIA')
 })

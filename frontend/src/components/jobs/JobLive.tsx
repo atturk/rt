@@ -1,6 +1,8 @@
 import { ArrowDown } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
+import { LessonConflictAction } from './LessonConflictAction'
+import { hasLessonConflict } from '@/lib/jobs'
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { useState } from 'react'
@@ -49,6 +51,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   if (job.isPending) return <p className="text-sm text-muted-foreground">Carico il job…</p>
   if (job.isError) return <Alert tone="danger">{errorMessage(job.error)}</Alert>
   const j = job.data
+  const conflict = hasLessonConflict(j)
   const lesson = lessons.data?.find((l) => l.id === j.lesson_id)
   const progress = progressLabel(j.progress)
   const link = j.state === 'waiting_for_decision' ? decisionLink(j) : null
@@ -61,8 +64,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
         <h2 className={cn('mr-auto font-bold tracking-tight', compact ? 'text-base' : 'text-lg')}>{jobTypeLabel(j)}</h2>
         <JobStateBadge state={j.state} />
         {j.state === 'failed' && !j.retried_by && (
-          <RetryButton jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
+          <RetryButton title={conflict ? 'Esiste già una lezione con questi dati' : undefined} jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
         )}
+        <LessonConflictAction job={j} />
         {canCloseJob(j) && (
           <Button size="sm" disabled={close.isPending} onClick={() => { close.reset(); setConfirmClose(true) }}>
             Chiudi e decidi dopo

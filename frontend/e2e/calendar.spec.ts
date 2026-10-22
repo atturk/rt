@@ -362,3 +362,30 @@ test('calendario: aggiunge un’ora solo nelle settimane scelte', async ({ page 
     if (createdId) await page.request.delete(`/api/v1/calendar/template/${createdId}`, { headers: authHeaders() })
   }
 })
+
+test('inizio periodo, avviso lezioni mancanti e collegamento al calendario', async ({ page }) => {
+  await loginViaLink(page)
+  const date = new Date()
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7) - 14)
+  const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const response = await page.request.post('/api/v1/calendar/template', { headers: authHeaders(), data: { day_of_week: 0, start_time: '09:00', end_time: '10:00', materia: 'STUDIO', valid_from: iso } })
+  expect(response.ok()).toBeTruthy()
+  const template = await response.json() as { id: number }
+  try {
+    await page.goto(`/calendario?data=${iso}`)
+    await page.getByRole('button', { name: 'Riepilogo della settimana' }).click()
+    await page.getByRole('button', { name: 'Inizio del periodo', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Inizio del periodo ✓' })).toBeVisible()
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Per materia', exact: true }).click()
+    const header = page.getByRole('heading', { name: /^Studio(?:\s|$)/ })
+    await header.getByRole('button', { name: /lezioni mancanti/ }).click()
+    const link = page.getByRole('dialog', { name: 'Studio' }).locator(`a[href="/calendario?data=${iso}&evento=tpl_${template.id}"]`)
+    await link.click()
+    await expect(page).toHaveURL(new RegExp(`data=${iso}&evento=tpl_${template.id}`))
+    await expect(page.getByTestId(`calendar-event-tpl_${template.id}`).first()).toHaveClass(/rt-media-flash/)
+  } finally {
+    await page.request.put('/api/v1/calendar/period-start', { headers: authHeaders(), data: { date: null } })
+    await page.request.delete(`/api/v1/calendar/template/${template.id}`, { headers: authHeaders() })
+  }
+})

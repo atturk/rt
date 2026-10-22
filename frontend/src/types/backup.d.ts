@@ -1,8 +1,8 @@
 export type BackupEvent =
-  | { inizio: true; tipo?: 'backup' | 'copia' }
-  | { fase: 'database' | 'media' | 'config' | 'copia'; fatto: number; totale: number; tipo?: 'backup' | 'copia' }
-  | { fine: true; percorso: string; riepilogo?: string[]; avviso_chiave?: string; tipo?: 'backup' | 'copia' }
-  | { errore: string; tipo?: 'backup' | 'copia' }
+  | { inizio: true; tipo?: 'backup' | 'copia' | 'esporta' | 'importa' }
+  | { fase: 'database' | 'media' | 'config' | 'copia'; fatto: number; totale: number; tipo?: 'backup' | 'copia' | 'esporta' | 'importa' }
+  | { fine: true; percorso: string; riepilogo?: string[]; avviso_chiave?: string; tipo?: 'backup' | 'copia' | 'esporta' | 'importa' }
+  | { errore: string; tipo?: 'backup' | 'copia' | 'esporta' | 'importa' }
 
 export type OpenedFileItem = { token: string; name: string; size: number }
 
@@ -17,6 +17,8 @@ declare global {
           annullato?: boolean
           errore?: string
         }>
+        mostra_esportazione?: () => Promise<void> | void
+        riavvia_dopo_importazione?: () => Promise<void> | void
         apri_aggiornamento?: () => Promise<void> | void
         badge?: (count: number) => Promise<void> | void
         notifica?: (titolo: string, testo: string, percorso?: string | null) => Promise<void> | void

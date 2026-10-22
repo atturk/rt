@@ -6,7 +6,7 @@ import { type CalendarWeekView, type CalendarYearWeek } from '@/api/calendar'
 
 const mocks = vi.hoisted(() => ({ currentDate: '', paste: vi.fn() }))
 const event = { key: 'tpl_1', date: '2026-10-19', day_of_week: 0, start_time: '09:00', end_time: '11:00', start_hour: 9, end_hour: 11, materia: 'Biologia', docente: 'Rossi', status: 'seguire', is_recorded: false, is_modified: false }
-const week = { start_date: '2026-10-19', week_number: '43', label: '19–23 ottobre', end_date: '2026-10-23', days: [{ date: '2026-10-19', day_of_week: 0, day_name: 'Lun', day_number: 19, month_name: 'ottobre', is_today: false, status: '', events: [event] }], summary: { hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0 } } satisfies CalendarWeekView
+const week = { start_date: '2026-10-19', week_number: '43', label: '19–23 ottobre', end_date: '2026-10-23', days: [{ date: '2026-10-19', day_of_week: 0, day_name: 'Lun', day_number: 19, month_name: 'ottobre', is_today: false, status: '', events: [event] }], summary: { is_period_start: false, hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0 } } satisfies CalendarWeekView
 const year = ['2026-10-19', '2026-10-26', '2026-11-02'].map((start_date, i) => ({ start_date, week_number: 43 + i,
   days: [{ date: start_date, status: '', events: [{ start_hour: 9, end_hour: 11, materia: 'Biologia', status: 'seguire', is_recorded: false, is_modified: false }] }],
 })) satisfies CalendarYearWeek[]

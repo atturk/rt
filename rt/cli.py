@@ -550,6 +550,10 @@ def _resolve_lesson_arg(value: str) -> str:
 
 def cmd_export(args: argparse.Namespace) -> None:
     """Esporta il Markdown finale (con immagini) o tutti i dati della lezione."""
+    if str(args.lesson).lower().endswith('.zip') and not (args.output or args.all or args.zip):
+        from rt import cli_system
+        args.target = args.lesson
+        return cli_system.cmd_export(args)
     from rt.storage.export import ExportError, export_to_dir, export_zip, is_preview, zip_name
     lesson_dir = _resolve_lesson_arg(args.lesson)
     if not fs.isdir(lesson_dir):
@@ -668,7 +672,19 @@ def cmd_relevance(args: argparse.Namespace) -> None:
 
 
 def cmd_import(args: argparse.Namespace) -> None:
-    """Importa archivi .zip completi di RT come nuove lezioni (come POST /lessons/import-zip)."""
+    if len(args.archives) == 1:
+        import zipfile
+        try:
+            with zipfile.ZipFile(args.archives[0]) as archive:
+                collection = any(name.startswith('rt-backup-') and name.endswith('/manifest.json') for name in archive.namelist())
+        except (OSError, zipfile.BadZipFile):
+            collection = bool(getattr(args, 'yes', False) or getattr(args, 'json', False))
+        if collection:
+            from rt import cli_system
+            args.source = args.archives[0]
+            return cli_system.cmd_import(args)
+    from rt.db.bootstrap import ensure_database
+    ensure_database()
     import zipfile
     from rt.services.lesson_import_service import import_archive
     from rt.services.lesson_service import resolve_lesson_dir
@@ -893,7 +909,7 @@ def _cmd_db_check(args: argparse.Namespace, url: str, shown: str) -> None:
 _COMMANDS_WITHOUT_DATABASE = {"db", "config", "secrets",
                               # fase G: la cartella dati va migrata prima di aprire il DB, e diagnosi,
                               # servizi, ripristino e disinstallazione devono funzionare con un DB rotto
-                              "data", "app", "service", "doctor", "restore", "uninstall",
+                              "data", "app", "service", "doctor", "restore", "import", "uninstall",
                               # l'app prepara da sé cartella dati e database (rt.desktop)
                               "desktop"}
 
@@ -1219,6 +1235,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_uni.set_defaults(func=cli_system.cmd_uninstall)
 
     p_exp = subparsers.add_parser("export", help="Esporta il Markdown finale (con immagini) o tutti i dati di una lezione")
+    p_exp.add_argument("--yes", action="store_true", help="Conferma la migrazione delle lezioni in cartella")
+    p_exp.add_argument("--json", action="store_true", help="Avanzamento JSON per la collezione")
     p_exp.add_argument("lesson", help="Lezione: percorso, id o nome della lezione")
     p_exp.add_argument("-o", "--output", help="Cartella di destinazione (default: cartella corrente)")
     p_exp.add_argument("--all", action="store_true", help="Esporta tutti i file della lezione (testi, stato, audio, immagini)")
@@ -1226,6 +1244,8 @@ def build_parser() -> Tuple[argparse.ArgumentParser, Dict[str, argparse.Argument
     p_exp.set_defaults(func=cmd_export)
 
     p_imp = subparsers.add_parser("import", help="Importa archivi .zip completi di RT ('rt export --all --zip') come nuove lezioni")
+    p_imp.add_argument("--yes", action="store_true", help="Conferma l’importazione della collezione")
+    p_imp.add_argument("--json", action="store_true", help="Avanzamento JSON per la collezione")
     p_imp.add_argument("archives", nargs="+", metavar="archivio.zip", help="Uno o più archivi .zip")
     p_imp.set_defaults(func=cmd_import)
 

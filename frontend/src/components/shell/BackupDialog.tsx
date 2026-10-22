@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
+import { FolderOpen, RotateCcw } from 'lucide-react'
+import { IconButton } from '@/components/ui/icon-button'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -19,7 +21,7 @@ function formatBytes(bytes: number): string {
 type DialogState =
   | {
       kind: 'in_corso'
-      tipo: 'backup' | 'copia'
+      tipo: 'backup' | 'copia' | 'esporta' | 'importa'
       fase?: 'database' | 'media' | 'config' | 'copia'
       fatto?: number
       totale?: number
@@ -34,6 +36,7 @@ type DialogState =
       kind: 'finito_copia'
       percorso: string
     }
+  | { kind: 'finito_trasferimento'; tipo: 'esporta' | 'importa'; percorso: string; riepilogo: string[] }
   | {
       kind: 'errore'
       messaggio: string
@@ -62,7 +65,9 @@ export function BackupDialog() {
         })
       } else if ('fine' in evento && evento.fine) {
         setOpen(true)
-        if (evento.tipo === 'copia') {
+        if (evento.tipo === 'esporta' || evento.tipo === 'importa') {
+          setState({ kind: 'finito_trasferimento', tipo: evento.tipo, percorso: evento.percorso, riepilogo: evento.riepilogo ?? [] })
+        } else if (evento.tipo === 'copia') {
           setState({ kind: 'finito_copia', percorso: evento.percorso })
         } else {
           setState({
@@ -105,7 +110,7 @@ export function BackupDialog() {
   let percent = 0
   let phaseText = ''
   if (state.kind === 'in_corso') {
-    if (state.tipo === 'copia') {
+    if (state.tipo === 'copia' || (state.tipo === 'esporta' && state.fase === 'copia')) {
       const fatto = state.fatto ?? 0
       const totale = state.totale ?? 0
       percent = totale > 0 ? Math.min(100, Math.round((fatto / totale) * 100)) : 0
@@ -124,7 +129,7 @@ export function BackupDialog() {
         phaseText = 'Configurazione'
       } else {
         percent = 0
-        phaseText = 'Avvio del backup…'
+        phaseText = state.tipo === 'importa' ? 'Avvio dell’importazione…' : state.tipo === 'esporta' ? 'Avvio dell’esportazione…' : 'Avvio del backup…'
       }
     }
   }
@@ -156,10 +161,10 @@ export function BackupDialog() {
       data-testid="backup-dialog"
       onCancel={(e) => {
         e.preventDefault()
-        if (!isInProgress) setOpen(false)
+        if (!isInProgress && state.kind !== 'finito_trasferimento') setOpen(false)
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isInProgress) setOpen(false)
+        if (e.target === e.currentTarget && !isInProgress && state.kind !== 'finito_trasferimento') setOpen(false)
       }}
       className={cn(
         'm-auto max-h-[calc(100dvh-48px)] w-[min(480px,calc(100vw-32px))] overflow-auto rounded-lg border bg-card p-0 text-foreground shadow-panel',
@@ -170,7 +175,7 @@ export function BackupDialog() {
         {state.kind === 'in_corso' && (
           <>
             <h2 id={titleId} className="text-[15px] font-semibold">
-              {state.tipo === 'copia' ? 'Salvo una copia…' : 'Backup in corso…'}
+              {state.tipo === 'copia' ? 'Salvo una copia…' : state.tipo === 'esporta' ? 'Esportazione in corso…' : state.tipo === 'importa' ? 'Importazione in corso…' : 'Backup in corso…'}
             </h2>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between text-sm">
@@ -245,6 +250,17 @@ export function BackupDialog() {
             </div>
           </>
         )}
+
+        {state.kind === 'finito_trasferimento' && <>
+          <h2 id={titleId} className="text-[15px] font-semibold">{state.tipo === 'esporta' ? 'Collezione esportata' : 'Collezione importata'}</h2>
+          <div className="space-y-1.5 text-sm">{state.riepilogo.map((line, i) => <p key={i} className="break-words">{line}</p>)}</div>
+          <div className="flex justify-end gap-2">
+            {state.tipo === 'esporta' ? <>
+              <IconButton icon={FolderOpen} label={navigator.platform.includes('Mac') ? 'Mostra nel Finder' : 'Mostra in Esplora file'} onClick={() => void window.pywebview?.api.mostra_esportazione?.()} />
+              <Button onClick={() => setOpen(false)}>Chiudi</Button>
+            </> : <IconButton icon={RotateCcw} label="Riavvia RT" onClick={() => void window.pywebview?.api.riavvia_dopo_importazione?.()} />}
+          </div>
+        </>}
 
         {state.kind === 'errore' && (
           <>

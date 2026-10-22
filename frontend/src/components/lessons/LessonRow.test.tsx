@@ -15,9 +15,10 @@ it('l’anello usa i colori dello studio con stacchi fra gli archi', () => {
 
 it.each([
   ['VALID', 'VALID', 0, 'text-study-learned'],
-  ['VALID', 'MISSING', 0, 'text-study-learning'],
-  ['VALID', 'VALID', 3, 'text-study-learning'],
+  ['VALID', 'MISSING', 0, null],
+  ['VALID', 'VALID', 3, null],
   ['MISSING', 'MISSING', 0, null],
+  ['MISSING', 'VALID', 0, 'text-study-learned'],
 ])('scudo per rewrite=%s, review=%s e issue=%s', (rewrite, review, pending, color) => {
   render(<MemoryRouter><ul><LessonRow lesson={{ ...lesson, phases: { rewrite: rewrite as string, review: review as string }, pending_issues: pending as number }} grouping="materia" running={false} selecting={false} selected={false} onSelect={() => {}} /></ul></MemoryRouter>)
   expect(document.querySelector('a a')).toBeNull()
@@ -29,4 +30,9 @@ it.each([
     expect(screen.getByTestId('lesson-review-shield')).toHaveAttribute('href', '/lezioni/15?panel=verifica')
     expect(screen.getByTestId('lesson-review-shield').querySelector('svg')).toHaveClass(color as string)
   } else expect(screen.queryByTestId('lesson-review-shield')).not.toBeInTheDocument()
+})
+
+it.each([[3, 4, 3, 10, true], [10, 0, 0, 10, true], [3, 3, 3, 10, false], [0, 0, 0, 0, false]])('spunta con %s apprese, %s in apprendimento, %s ignorate su %s', (learned, learning, ignored, total, complete) => {
+  render(<MemoryRouter><StudyRing lesson={{ ...lesson, study_learned: learned as number, study_learning: learning as number, study_ignored: ignored as number, unit_count: total as number }} /></MemoryRouter>)
+  expect(!!screen.queryByTestId('lesson-study-complete')).toBe(complete)
 })
