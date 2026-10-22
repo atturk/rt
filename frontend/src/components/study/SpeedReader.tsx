@@ -239,6 +239,11 @@ export function SpeedReader({
       const field = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable=true], header, [data-testid=speed-reader-settings]')
       if (field && e.key !== 'Escape') return
       const key = e.key.toLowerCase()
+      if (key === 'z') {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
       if (key === 'l' && !e.shiftKey) {
         e.preventDefault()
         e.stopPropagation()

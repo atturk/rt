@@ -1028,3 +1028,49 @@ test('Studio: graffetta e timecode sotto il titolo, tasto M e scomparsa in zen',
     })
   }
 })
+
+test('Studio: da zen alla lettura veloce, sospensione e ripristino con Esc', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toBeVisible()
+
+  // 1. Entra in zen (Z)
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByRole('navigation')).toBeHidden()
+
+  // 2. Apri la lettura veloce (L)
+  await page.keyboard.press('l')
+  const reader = page.getByTestId('speed-reader')
+  await expect(reader).toBeVisible()
+  await expect(page.getByTestId('speed-reader-word')).toBeVisible()
+
+  // Layout normale della lettura veloce, nessun elemento zen visibile
+  await expect(page.getByTestId('study')).toHaveAttribute('data-rsvp', 'true')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(page.getByTestId('zen-bar')).toHaveCount(0)
+  await expect(page.locator('.rt-zen-bar')).toHaveCount(0)
+  await expect(page.locator('.rt-zen-hot')).toHaveCount(0)
+  await expect(page.locator('[data-zen]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Torna allo Studio', exact: true })).toBeVisible()
+  await expect(page.getByTestId('highlight-tools')).toHaveCount(0)
+  await expect(page.getByTestId('study-dots')).toBeHidden()
+
+  // Z durante la lettura veloce non riattiva zen sotto il lettore
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(reader).toBeVisible()
+
+  // 3. Esc torna alla lettura in zen
+  await page.keyboard.press('Escape')
+  await expect(reader).toHaveCount(0)
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await expect(page.getByRole('navigation')).toBeHidden()
+
+  // Esc esce da zen
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(page.getByRole('navigation')).toBeVisible()
+})
