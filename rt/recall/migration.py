@@ -8,6 +8,55 @@ import yaml
 LEGACY_TYPES = {'caso': 'caso-clinico', 'esercizio': 'esercizio'}
 POSITIVE = {'caso': {'esplicito', 'adattabile'}, 'esercizio': {'svolto', 'continua'}}
 
+LEGACY_ESERCIZIO_CHIEDI = (
+    "Sei un docente universitario che prepara esercizi per verificare che lo studente sappia applicare un procedimento, non solo ricordare nozioni.\n"
+    "Ricevi il testo di un'intera unità di una lezione (o di due unità consecutive) in cui viene svolto un esercizio o spiegato come si risolve una tipologia di esercizi. Il tuo compito è restituire l'esercizio da porre allo studente (di norma uno; più di uno solo se il testo svolge esercizi davvero distinti):\n"
+    "1. La traccia riporta tutti i dati necessari e chiede il risultato e/o i passaggi chiave.\n"
+    "2. Se il testo copre solo una parte dell'esercizio, chiedi quella parte.\n"
+    "3. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, ricavati dal testo; controlla i calcoli.\n"
+    "4. Il tipo descrive l'esercizio in forma astratta: quali dati possono cambiare e in che intervalli, e il procedimento risolutivo valido per ogni variante.\n"
+    "5. Non ripetere esercizi già presenti (te li elenco, se esistono).\n\n"
+    "OUTPUT JSON RICHIESTO (conforme a RecallSpecialGenerationResult):\n"
+    "{\"items\": [{\"question_text\": \"...\", \"pregenerated_material\": \"...\", \"unit_ids\": [\"5.1\", \"5.2\"],\n"
+    "  \"tipo\": {\"scenario\": \"...\", \"variabili\": [{\"nome\": \"...\", \"valore\": \"...\", \"intervallo\": \"...\"}],\n"
+    "           \"obiettivo\": \"...\", \"procedimento\": \"...\", \"esplicito\": true}}]}\n"
+    "- question_text: la domanda completa da porre allo studente, con tutti i dati necessari.\n"
+    "- pregenerated_material: la soluzione o il ragionamento atteso, passo per passo, basato ESCLUSIVAMENTE sul testo fornito; servirà per correggere la risposta.\n"
+    "- unit_ids: le subunità (tra quelle fornite) da cui proviene il contenuto.\n"
+    "- tipo: la versione astratta e riutilizzabile, da cui si genereranno varianti con valori diversi. variabili elenca i dati che possono cambiare, con il valore usato qui e un intervallo plausibile; procedimento descrive il ragionamento o i passaggi validi per ogni variante.\n"
+    "Se non trovi materiale adatto restituisci {\"items\": []}. Non assegnare ID, stato o timestamp. Scrivi in italiano accademico."
+)
+
+
+def current_esercizio_chiedi():
+    templates = json.loads((Path(__file__).parent / 'question_type_templates.json').read_text())
+    return next(t['chiedi'] for t in templates if t['id'] == 'esercizio')
+
+
+def migrate_exercise_prompt(path, data):
+    """Aggiorna il prompt del tipo 'esercizio' se identico a quello precedente (la traccia dà i dati, non il metodo)."""
+    if not isinstance(data, dict):
+        return data
+    recall = data.get('recall')
+    if not isinstance(recall, dict):
+        return data
+    custom_types = recall.get('custom_types')
+    if not isinstance(custom_types, list):
+        return data
+
+    updated = False
+    new_chiedi = current_esercizio_chiedi()
+    for item in custom_types:
+        if isinstance(item, dict) and item.get('id') == 'esercizio':
+            if item.get('chiedi') == LEGACY_ESERCIZIO_CHIEDI:
+                item['chiedi'] = new_chiedi
+                updated = True
+
+    if updated and path:
+        from rt.services.config_service import write_yaml_atomic
+        write_yaml_atomic(path, data)
+    return data
+
 
 def migrate_bank(data):
     """Come l'eliminazione dal pool: toglie domande, risposte e strutture obsolete."""

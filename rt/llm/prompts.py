@@ -713,14 +713,14 @@ RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una vari
 REGOLE:
 1. Mantieni l'obiettivo e il procedimento del tipo; cambia valori negli intervalli plausibili e contesto (età, sesso, situazione clinica; miscele di profumi, integratori o farmaci), partendo dallo scenario dell'unità.
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
-3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.
+3. La traccia riporta solo la situazione, i dati necessari e che cosa determinare; non indica il metodo, le formule o i passaggi da usare e non suggerisce come impostare il problema. È completa e autonoma. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, con i calcoli controllati.
 4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.
 OUTPUT JSON (conforme a VariantBatch): {"items": [{"question_text": "...", "pregenerated_material": "..."}]}""" + "\n" + LATEX_WRITING_RULE
 
 
 RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
 Mantieni l'obiettivo e il procedimento generale del tipo; varia dati e contesto (età, sesso, situazione) entro intervalli plausibili a partire dallo scenario dell'unità.
-La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
+La traccia deve essere autonoma, coerente e diversa dalle precedenti. La traccia riporta solo la situazione, i dati necessari e che cosa determinare; non indica il metodo, le formule o i passaggi da usare e non suggerisce come impostare il problema.
 Non generare pregenerated_material né una soluzione della domanda.
 OUTPUT JSON (conforme a TextVariantBatch): {"items": [{"question_text": "..."}]}""" + "\n" + LATEX_WRITING_RULE
 
