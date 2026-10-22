@@ -1195,9 +1195,10 @@
 /* minmax(0, 1fr): la colonna resta larga quanto lo spazio disponibile e le miniature scorrono
    dentro la striscia invece di allargare editor e pagina. */
 .rt-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 10px 0; min-width: 0; max-width: 100%; }
-/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine cade subito dopo la striscia:
-   le pagine si vedono già come miniature. */
-.cm-content > .rt-strip + .cm-atomic-image { display: none; }
+/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine della sezione cade subito
+   dopo la sezione (aperta o chiusa): le immagini si vedono già dentro la sezione. */
+.rt-unit-images-section + .cm-atomic-image,
+.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 .rt-strip-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
 .rt-strip-head .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-strip-head .count-pill { font-variant-numeric: tabular-nums; }
@@ -1227,9 +1228,6 @@
 .rt-strip .rail:hover .nav.show { display: grid; }
 @media (hover: none) { .rt-strip .rail .nav { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { .rt-strip-head .chev { transition: none; } }
-
-/* Linee markdown di una striscia mentre il cursore è dentro l'editor */
-.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 
 /* Visore a schermo pieno (IM1d) */
 .rt-viewer-overlay {
