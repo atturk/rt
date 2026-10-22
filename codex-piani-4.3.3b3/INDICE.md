@@ -11,6 +11,7 @@ In attesa del via di Attilio; altre richieste si aggiungono qui.
 | 4 | `piano-campi-senza-bordo.md`: niente bordo nero di focus nei campi di testo | da assegnare |
 | 5 | `piano-formule-domande.md`: formule in LaTeX nelle domande generate | da assegnare |
 | 6 | `piano-formule-lettura-veloce.md`: formule lunghe adattate alla loro misura reale e centrate | da assegnare |
-| 7 | `piano-rumore-timer-lettura.md`: dissolvenza di 1 s sul rumore e timer della lettura veloce | da assegnare |
+| 7 | `piano-rumore-timer-lettura.md`: dissolvenza di 1 s sul rumore e conto alla rovescia (0–10 s) prima della lettura veloce | da assegnare |
+| 8 | `piano-anello-scudo-lezioni.md`: spunta nell'anello a unità tutte con uno stato, scudo solo se verificata | da assegnare |
 
 Già nella b1 (PR #116): l'unione di più audio in una nuova lezione non fallisce più e non lascia lezioni a metà.

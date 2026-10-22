@@ -1,9 +1,10 @@
-# Piano 7 · Lettura veloce: rumore con dissolvenza e timer
+# Piano 7 · Lettura veloce: rumore con dissolvenza e conto alla rovescia
 
 Agente: da assegnare all'avvio della b3. Richieste di Attilio (22/10/2026):
 1. Il rumore di fondo entra ed esce con una dissolvenza di **1 secondo**.
-2. Nelle impostazioni della lettura veloce, **sotto il rumore di fondo**, un timer attivabile con una
-   durata scelta. Parte quando si avvia la lettura veloce; numeri con un'animazione semplice e carina.
+2. Nelle impostazioni della lettura veloce, **sotto il rumore di fondo**, un **conto alla rovescia** di
+   pochi secondi prima che le parole partano (non un timer di sessione tipo pomodoro), con numeri
+   animati in modo semplice e carino.
 
 ## Dove
 
@@ -26,33 +27,38 @@ Agente: da assegnare all'avvio della b3. Richieste di Attilio (22/10/2026):
 - Cambio del volume con lo slider: rampa breve (0,1 s) invece di un salto, così non scatta.
 - Rispettare `prefers-reduced-motion`? No: è audio, la dissolvenza resta.
 
-## 2 · Timer
+## 2 · Conto alla rovescia prima della lettura
 
-Preferenze nuove in `RsvpPreference`: `timer: boolean` (predefinito `false`) e `timerMinutes: number`
-(predefinito 25; 1–120).
+Preferenza nuova in `RsvpPreference`: `countdown: number`, secondi interi da **0 a 10**; **0 = spento**
+(predefinito 3).
 
-Impostazioni (sotto il blocco del rumore, stesso stile): `Toggle "Timer"`; se acceso, la durata con
-lo stesso tipo di controllo già usato per i valori numerici del pannello (es. slider con il valore
-accanto, o − / +), in minuti. Niente testo descrittivo.
+Impostazioni: sotto il blocco del rumore, una riga "Conto alla rovescia" con uno slider 0–10 e il
+valore accanto (`Spento` a 0, altrimenti `3 s`). Niente testo descrittivo.
 
-Comportamento (scelte da confermare con Attilio, ma da implementare così se non cambia idea):
-- Parte con la prima riproduzione dopo l'apertura della lettura veloce; conta **solo mentre la
-  lettura scorre** (in pausa si ferma) e si azzera chiudendo la lettura veloce.
-- Mostrato in piccolo in un angolo alto dell'area di lettura (`mm:ss`, cifre tabulari), discreto, che
-  non sposta la parola al centro; si nasconde in modalità zen solo se si nascondono gli altri
-  controlli.
-- Animazione: a ogni cambio la cifra che cambia scorre verso l'alto con dissolvenza (~250 ms,
-  solo la cifra che cambia); disattivata con `prefers-reduced-motion`.
-- A zero: la lettura va in pausa, il rumore si spegne con la dissolvenza, suona un rintocco breve con
-  i suoni già presenti in `rsvpSound` (se i suoni sono attivi) e il timer pulsa due volte. Riprendendo
-  la lettura il timer riparte dalla durata scelta.
-- Cambiare la durata nelle impostazioni a timer in corso lo riporta alla nuova durata.
+Comportamento (deciso da Attilio):
+1. **Nuova unità → Play**: se `countdown > 0` parte il conto alla rovescia e **intanto parte il
+   rumore di fondo** (con la sua dissolvenza); a fine conto inizia la lettura.
+2. **Pausa e ripresa**:
+   - ripresa entro **5 secondi** dalla pausa → nessun conto alla rovescia, si riparte subito;
+   - ripresa dopo **più di 5 secondi** → il conto alla rovescia c'è di nuovo.
+3. Durante il conto alla rovescia Play/Spazio lo mette in pausa come la lettura (e conta come pausa
+   per la regola dei 5 secondi); frecce e cambio d'unità lo annullano. Chiudere la lettura veloce
+   lo annulla.
+
+Grafica: al posto della parola centrale, grande come la parola, il numero corrente (3, 2, 1). Ogni
+numero entra scalando leggermente da 0,8 a 1 con dissolvenza ed esce svanendo (~300 ms), con un
+anello sottile intorno che si svuota in quel secondo. Con `prefers-reduced-motion` solo il numero,
+senza animazione. Nessun suono in più (il click della prima parola resta com'è).
+
+Stato da tenere nel componente: `pausedAt` (ora della pausa) e "unità già avviata"; un cambio
+d'unità azzera tutto, così la regola 1 vale per ogni unità nuova.
 
 ## Test
 
 - Vitest su `rsvpSound` con un `AudioContext` finto: `noise()` programma una rampa di 1 s;
   `stopNoise()` programma la rampa di discesa e `stop(t + 1)`; senza dissolvenza `stop()` immediato.
-- Vitest su `SpeedReader` con timer finti (`vi.useFakeTimers`): con `timer` spento nessun
-  conto alla rovescia; acceso con 1 minuto conta solo in riproduzione, a zero mette in pausa;
-  le preferenze nuove si salvano e si rileggono.
-- E2e: attivare il timer nelle impostazioni, avviare la lettura, vedere il conto alla rovescia.
+- Vitest su `SpeedReader` con timer finti (`vi.useFakeTimers`): con `countdown` 0 la prima parola
+  parte subito; con 3 compaiono 3, 2, 1 e poi la prima parola, e il rumore parte al Play (non dopo);
+  pausa e ripresa dopo 4 s → niente conto; dopo 6 s → conto di nuovo; nuova unità → conto di nuovo;
+  la preferenza si salva e si rilegge (0–10).
+- E2e: impostare 2 s, Play, vedere il conto e poi la lettura.
