@@ -41,3 +41,45 @@ export function groupMediaImages(images: LessonImage[]): MediaGroup[] {
   }
   return groups
 }
+
+export function flashAndScroll(el: HTMLElement | Element) {
+  const htmlEl = el as HTMLElement
+  let container: HTMLElement | null = htmlEl.closest<HTMLElement>('.rt-panel-container')
+  if (!container) {
+    let parent = htmlEl.parentElement
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      const style = window.getComputedStyle(parent)
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        container = parent
+        break
+      }
+      parent = parent.parentElement
+    }
+  }
+
+  if (container) {
+    const containerRect = container.getBoundingClientRect()
+    const elRect = htmlEl.getBoundingClientRect()
+    const offset = (elRect.top + elRect.height / 2) - (containerRect.top + containerRect.height / 2)
+    const target = Math.max(0, container.scrollTop + offset)
+    if (typeof container.scrollTo === 'function') {
+      container.scrollTo({ top: target, behavior: 'smooth' })
+    } else {
+      container.scrollTop = target
+    }
+  } else if (typeof htmlEl.scrollIntoView === 'function') {
+    htmlEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  htmlEl.classList.add('rt-media-flash')
+  const btn = htmlEl.querySelector('button')
+  btn?.classList.add('rt-media-flash')
+  const onEnd = () => {
+    htmlEl.classList.remove('rt-media-flash')
+    btn?.classList.remove('rt-media-flash')
+    htmlEl.removeEventListener('animationend', onEnd)
+    btn?.removeEventListener('animationend', onEnd)
+  }
+  htmlEl.addEventListener('animationend', onEnd)
+  btn?.addEventListener('animationend', onEnd)
+}

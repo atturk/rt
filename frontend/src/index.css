@@ -441,19 +441,24 @@
 }
 
 @keyframes rt-media-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 var(--success);
-  }
-  25%, 75% {
-    box-shadow: 0 0 0 3px var(--success);
+  0% {
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 1px var(--success);
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
 .rt-media-flash {
-  animation: rt-media-pulse 700ms ease-in-out;
+  animation: rt-media-pulse 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 5;
+}
+
+.rt-media-flash .rt-media-flash {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
