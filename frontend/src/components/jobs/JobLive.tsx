@@ -1,6 +1,8 @@
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, PencilLine } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
+import { NewLessonDialog } from '@/components/lessons/NewLessonDialog'
+import { IconButton } from '@/components/ui/icon-button'
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { useState } from 'react'
@@ -41,6 +43,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   const { events, status } = useJobEvents(jobId, job.data, job.dataUpdatedAt)
   const cancel = useCancelJob()
   const close = useCloseJob()
+  const [correcting, setCorrecting] = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
   const lessons = useLessons()
   const navigate = useNavigate()
@@ -49,6 +52,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
   if (job.isPending) return <p className="text-sm text-muted-foreground">Carico il job…</p>
   if (job.isError) return <Alert tone="danger">{errorMessage(job.error)}</Alert>
   const j = job.data
+  const conflict = (j.result as { code?: string })?.code === 'lesson_exists'
   const lesson = lessons.data?.find((l) => l.id === j.lesson_id)
   const progress = progressLabel(j.progress)
   const link = j.state === 'waiting_for_decision' ? decisionLink(j) : null
@@ -61,8 +65,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
         <h2 className={cn('mr-auto font-bold tracking-tight', compact ? 'text-base' : 'text-lg')}>{jobTypeLabel(j)}</h2>
         <JobStateBadge state={j.state} />
         {j.state === 'failed' && !j.retried_by && (
-          <RetryButton jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
+          <RetryButton title={conflict ? 'Esiste già una lezione con questi dati' : undefined} jobId={j.id} onRetried={compact ? undefined : (id) => navigate(`/job/${id}`)} />
         )}
+        {j.state === 'failed' && conflict && <IconButton label="Cambia i dati" icon={PencilLine} onClick={() => setCorrecting(true)} />}
         {canCloseJob(j) && (
           <Button size="sm" disabled={close.isPending} onClick={() => { close.reset(); setConfirmClose(true) }}>
             Chiudi e decidi dopo
@@ -145,6 +150,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
       )}
       {cancel.isError && <Alert tone="danger">{errorMessage(cancel.error)}</Alert>}
       {close.isError && !confirmClose && <Alert tone="danger">{errorMessage(close.error)}</Alert>}
+      {correcting && <NewLessonDialog open onClose={() => setCorrecting(false)} initialJob={j} />}
       <ConfirmDialog
         open={confirmClose}
         title="Chiudere il job e decidere dopo?"

@@ -23,7 +23,7 @@ import {
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { ApiError, errorMessage } from '@/api/client'
+import { api, unwrap, type Schemas, ApiError, errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { calendarApi, calendarKeys, type CalendarEventView } from '@/api/calendar'
@@ -130,6 +130,7 @@ export type NewLessonDialogProps = {
   initialDate?: string
   initialSlotKey?: string
   initialFiles?: File[]
+  initialJob?: Schemas['Job']
 }
 
 export function NewLessonDialog({
@@ -138,7 +139,10 @@ export function NewLessonDialog({
   initialDate,
   initialSlotKey,
   initialFiles,
+  initialJob,
 }: NewLessonDialogProps) {
+  const original = initialJob?.payload as { options?: Record<string, string | boolean>; audio?: string[]; inputs?: string[]; materiali?: string[] } | undefined
+  const options = original?.options
   const navigate = useNavigate()
   const client = useQueryClient()
   const lessons = useLessons()
@@ -167,14 +171,17 @@ export function NewLessonDialog({
     ? selectedPrimaryMaterialName
     : materialFiles[0]?.name ?? null
   const [attachMaterials, setAttachMaterials] = useState(true)
-  const [manualMode, setManualMode] = useState(false)
+  const [manualMode, setManualMode] = useState(!!initialJob)
   const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
 
   const [dragging, setDragging] = useState(false)
-  const [materia, setMateria] = useState('')
-  const [docente, setDocente] = useState('')
-  const [date, setDate] = useState(() => initialDate ?? today())
-  const [time, setTime] = useState('')
+  const [materia, setMateria] = useState(String(options?.materia ?? ''))
+  const [argomenti, setArgomenti] = useState(String(options?.argomenti ?? ''))
+  const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
+  const clearConflict = () => { setConflict(null); setUploadError(null) }
+  const [docente, setDocente] = useState(String(options?.docente ?? ''))
+  const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
+  const [time, setTime] = useState(String(options?.ora ?? ''))
   const [solo, setSolo] = useState(false)
   const [review, setReview] = useState(false)
   const [enrichment, setEnrichment] = useState(false)
@@ -379,6 +386,15 @@ export function NewLessonDialog({
       return
     }
 
+    if (initialJob) {
+      setUploadError(null)
+      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, argomenti, docente, ora: time } })).then(accepted => {
+        invalidateAfterJob(client)
+        onClose()
+        navigate(`/lezioni/nuova/${accepted.job_id}`)
+      }).catch(showError)
+      return
+    }
     if (problem) return
 
     if (audioFiles.length === 0 && materialFiles.length === 0) {
@@ -408,7 +424,7 @@ export function NewLessonDialog({
       calendar_date: chosenSlot ? date : undefined,
       date,
       materia: materia.trim(),
-      argomenti: '',
+      argomenti,
       docente: docente.trim(),
       ora: time,
       run: !solo,
@@ -426,6 +442,14 @@ export function NewLessonDialog({
         navigate(`/lezioni/nuova/${accepted.job_id}`)
       },
     )
+  }
+
+  function showError(reason: unknown) {
+    setUploadError(reason)
+    if (reason instanceof ApiError && reason.code === 'lesson_exists') {
+      setConflict(reason.details as { lesson_id?: number; titolo: string })
+      setManualMode(true)
+    }
   }
 
   /** Accoda l'invio. A finestra ancora aperta si prosegue come prima (pagina del job, esito
@@ -452,7 +476,7 @@ export function NewLessonDialog({
         if (reason instanceof DOMException && reason.name === 'AbortError') return
         // L'errore si legge qui: la riga fallita non serve anche in Job.
         cancelUpload(id)
-        setUploadError(reason)
+        showError(reason)
       },
     )
   }
@@ -489,7 +513,7 @@ export function NewLessonDialog({
     sentence += ` · collegata a ${selectedSlot.materia} delle ${selectedSlot.start_time}`
   }
 
-  const anyFiles = audioFiles.length > 0 || materialFiles.length > 0 || zipFiles.length > 0
+  const anyFiles = !!initialJob || audioFiles.length > 0 || materialFiles.length > 0 || zipFiles.length > 0
   const showSlots = hours.length > 0 && !manualMode && kind !== 'zip'
 
   return (
@@ -562,6 +586,8 @@ export function NewLessonDialog({
             <Upload className="size-[18px]" aria-hidden />
             <span className="text-meta">{DROP_TEXT}</span>
           </div>
+        ) : initialJob ? (
+          <ul className="my-3 text-meta" aria-label="Fonti già caricate">{[...(original?.audio ?? original?.inputs ?? []), ...(original?.materiali ?? [])].map(path => <li key={path}>{path.split(/[\\/]/).pop()}</li>)}</ul>
         ) : kind === 'zip' ? (
           /* 2. Pacchetto zip selezionato */
           <div
@@ -827,12 +853,13 @@ export function NewLessonDialog({
               <label className={labelText}>
                 Materia
                 <input
-                  className={field}
+                  className={cn(field, conflict && 'border-danger')}
                   list={`${listId}-materie`}
                   value={materia}
                   required
                   disabled={busy}
-                  onChange={(e) => setMateria(e.target.value)}
+                  aria-invalid={!!conflict}
+                  onChange={(e) => { setMateria(e.target.value); clearConflict() }}
                 />
               </label>
               <label className={labelText}>
@@ -848,12 +875,13 @@ export function NewLessonDialog({
               <label className={labelText}>
                 Data{date === today() && ' · oggi'}
                 <input
-                  className={field}
+                  className={cn(field, conflict && 'border-danger')}
                   type="date"
                   value={date}
                   required
                   disabled={busy}
-                  onChange={(e) => setDate(e.target.value)}
+                  aria-invalid={!!conflict}
+                  onChange={(e) => { setDate(e.target.value); clearConflict() }}
                 />
               </label>
               <label className={labelText}>
@@ -865,6 +893,9 @@ export function NewLessonDialog({
                   disabled={busy}
                   onChange={(e) => setTime(e.target.value)}
                 />
+              </label>
+              <label className={labelText}>Argomenti
+                <input className={cn(field, conflict && 'border-danger')} value={argomenti} disabled={busy} aria-invalid={!!conflict} onChange={e => { setArgomenti(e.target.value); clearConflict() }} />
               </label>
               <datalist id={`${listId}-materie`}>
                 {subjects.map((s) => (
@@ -885,7 +916,8 @@ export function NewLessonDialog({
         )}
 
         {problem && <Alert tone="danger">{problem}</Alert>}
-        {errorText && <Alert tone="danger">{errorText}</Alert>}
+        {conflict && <Alert tone="danger">Esiste già: <Link to={`/lezioni/${conflict.lesson_id}`} target="_blank" rel="noopener" className="underline">{conflict.titolo}</Link></Alert>}
+        {errorText && !conflict && <Alert tone="danger">{errorText}</Alert>}
         {upload && isUploadActive(upload) && (
           <div className="my-3 flex flex-col gap-1.5" data-testid="upload-status">
             {upload.state === 'queued' ? (
@@ -969,7 +1001,7 @@ export function NewLessonDialog({
             </Button>
           )}
 
-          {kind !== 'zip' && (
+          {kind !== 'zip' && !initialJob && (
             <div
               className="flex items-center gap-1.5"
               role="group"

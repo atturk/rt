@@ -549,3 +549,19 @@ it('accepts DOCX and TXT and sends extraction options for each file', async () =
     opzioni: { 'notes.docx': { estrai: 'testo', uso: 'guida' }, 'notes.txt': { estrai: 'testo', uso: 'contesto' } },
   }), {}))
 })
+
+it('conflitto: mantiene fonti e dati, evidenzia i metadati e li lascia correggere', async () => {
+  const { ApiError } = await import('@/api/client')
+  mutateCreate.mockImplementation(() => { throw new ApiError(409, 'lesson_exists', 'Già presente', { lesson_id: 7, titolo: 'Lezione esistente' }) })
+  const close = vi.fn()
+  renderDialog(true, close, '2026-10-21', undefined, [new File(['audio'], 'lezione.mp3')])
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'PATOLOGIA' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+  expect(await screen.findByText('Lezione esistente')).toHaveAttribute('href', '/lezioni/7')
+  expect(screen.getByLabelText('Materia')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByLabelText('Argomenti')).toHaveAttribute('aria-invalid', 'true')
+  expect(close).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'ANATOMIA' } })
+  expect(screen.queryByText('Lezione esistente')).toBeNull()
+  expect(screen.getByLabelText('Materia')).toHaveAttribute('aria-invalid', 'false')
+})
