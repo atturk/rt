@@ -565,3 +565,21 @@ it('conflitto: mantiene fonti e dati, evidenzia i metadati e li lascia corregger
   expect(screen.queryByText('Lezione esistente')).toBeNull()
   expect(screen.getByLabelText('Materia')).toHaveAttribute('aria-invalid', 'false')
 })
+
+it('precompila un conflitto del worker con metadati e fonti già caricate', () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const job = {
+    id: 'failed-import', type: 'ingest_sources', state: 'failed',
+    payload: { audio: ['/uploads/audio.wav'], materiali: ['/uploads/slide.pdf'], run: true,
+      options: { date: '2026-10-21', materia: 'PATOLOGIA', argomenti: 'Cellule', docente: 'Rossi', ora: '09:00', with_review: true } },
+    result: { code: 'lesson_exists', details: { lesson_id: 7, titolo: 'Lezione esistente' } },
+  } as unknown as import('@/api/client').Schemas['Job']
+  render(<QueryClientProvider client={client}><MemoryRouter><NewLessonDialog open onClose={vi.fn()} initialJob={job} /></MemoryRouter></QueryClientProvider>)
+  expect(screen.getByLabelText('Materia')).toHaveValue('PATOLOGIA')
+  expect(screen.getByLabelText('Argomenti')).toHaveValue('Cellule')
+  expect(screen.getByLabelText(/^Data/)).toHaveValue('2026-10-21')
+  expect(screen.getByLabelText('Docente')).toHaveValue('Rossi')
+  expect(screen.getByLabelText('Ora')).toHaveValue('09:00')
+  expect(screen.getByRole('list', { name: 'Fonti già caricate' })).toHaveTextContent('audio.wavslide.pdf')
+  expect(screen.getByRole('link', { name: 'Lezione esistente' })).toHaveAttribute('href', '/lezioni/7')
+})

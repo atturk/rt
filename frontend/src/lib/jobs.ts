@@ -267,3 +267,8 @@ export function mergeEvents(current: JobEvent[], incoming: JobEvent[]): JobEvent
   if (fresh.length === 0) return current
   return [...current, ...fresh].sort((a, b) => a.id - b.id)
 }
+
+
+export function hasLessonConflict(job: Job) {
+  return (job.result as { code?: string } | null)?.code === 'lesson_exists'
+}
