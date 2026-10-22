@@ -187,6 +187,16 @@ class DesktopApi:
         from rt import window_signals
         window_signals.notifica(titolo, testo, percorso=percorso, window=self._window, base_url=self._base_url)
 
+    def riavvia_dopo_importazione(self) -> None:
+        global _import_ready
+        if _import_ready:
+            _import_ready = False
+            _restart_after_import(self._window)
+
+    def mostra_esportazione(self) -> None:
+        if _last_export_path and os.path.isfile(_last_export_path):
+            _open_path(os.path.dirname(_last_export_path))
+
     def salva_copia_backup(self, percorso_snapshot: str) -> dict:
         from rt.services import backup_service
         import webview
@@ -233,7 +243,7 @@ _backup_lock = threading.Lock()
 _backup_running = False
 
 
-def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
+def _stream_backup(window, args: list[str], tipo: str = "backup", *, before_start=None, on_success=None) -> bool:
     global _backup_running
     with _backup_lock:
         if _backup_running:
@@ -268,6 +278,8 @@ def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
         try:
             send_event({"inizio": True, "tipo": tipo}, immediate=True)
 
+            if before_start:
+                before_start()
             cmd = [sys.executable, os.path.join(paths.project_root(), "bin", "rt"), *args]
             kwargs = {}
             if sys.platform == "win32":
@@ -285,6 +297,7 @@ def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
             )
 
             final_event_sent = False
+            succeeded = False
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
                 if not line:
@@ -296,6 +309,10 @@ def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
                     continue
 
                 if "fine" in event or "errore" in event:
+                    succeeded = bool(event.get("fine"))
+                    if succeeded and tipo == "esporta":
+                        global _last_export_path
+                        _last_export_path = event.get("percorso")
                     if pending_event:
                         send_event(pending_event, immediate=True)
                     send_event(event, immediate=True)
@@ -309,6 +326,8 @@ def _stream_backup(window, args: list[str], tipo: str = "backup") -> bool:
                     send_event(event, immediate=False)
 
             proc.wait()
+            if proc.returncode == 0 and succeeded and on_success:
+                on_success()
             if pending_event and not final_event_sent:
                 send_event(pending_event, immediate=True)
 
@@ -399,6 +418,8 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
         MenuAction("Mostra registri", lambda: _open_path(paths.sub_dir("logs", create=True))),
         MenuAction("Backup…", lambda: _maintenance(window, "backup")),
+        MenuAction("Esporta tutto…", lambda: _export_collection(window)),
+        MenuAction("Importa…", lambda: _import_collection(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
         *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
           if sys.platform in ("darwin", "win32") else []),
@@ -748,3 +769,94 @@ def open_window(base_url: str, path: str = "/") -> int:
                 pass
         if lock is not None:
             lock.close()
+
+
+_last_export_path = None
+_import_ready = False
+
+
+def _chosen_file(window, *, save=False):
+    import webview
+    chosen = window.create_file_dialog(webview.FileDialog.SAVE if save else webview.FileDialog.OPEN,
+        **({'save_filename': f'RT-{time.strftime("%Y-%m-%d")}.zip'} if save else {}),
+        file_types=('Archivio zip (*.zip)',))
+    if isinstance(chosen, (list, tuple)):
+        chosen = chosen[0] if chosen else None
+    if chosen and save and not chosen.lower().endswith('.zip'):
+        chosen += '.zip'
+    return chosen
+
+
+def _export_collection(window):
+    if _backup_running:
+        _notice(window, "Un trasferimento è già in corso.")
+        return
+    from rt.db.engine import require_database
+    from rt.services.lesson_service import configured_lessons_root
+    from rt.storage.migrate import folder_lessons
+    try:
+        chosen = _chosen_file(window, save=True)
+        if not chosen:
+            return
+        folders = folder_lessons(require_database(), configured_lessons_root())
+        if folders and not window.create_confirmation_dialog('Esporta tutto',
+                f'{len(folders)} lezioni sono ancora in una cartella: le sposto nel database e continuo?'):
+            return
+        _stream_backup(window, ['export', chosen, '--yes', '--json'], tipo='esporta')
+    except Exception as exc:
+        _notice(window, str(exc))
+
+
+def _restart_after_import(window):
+    """Il nuovo launcher aspetta la chiusura di questa finestra prima di avviare i servizi."""
+    app = bundle.app_path() if sys.platform == 'darwin' else None
+    if app:
+        command = ['open', '-n', app]
+    elif sys.platform == 'win32' and bundle.kind():
+        command = [sys.executable, os.path.join(paths.project_root(), 'bin', 'rt'), 'desktop']
+    else:
+        _notice(window, 'Riapri RT')
+        window.destroy()
+        return
+    script = (
+        'import sys, time, subprocess; '
+        'sys.path.insert(0, sys.argv[1]); '
+        'from rt.window import _pid_alive; '
+        'pid=int(sys.argv[2]); '
+        '\nwhile _pid_alive(pid): time.sleep(0.2)\n'
+        'subprocess.Popen(sys.argv[3:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)'
+    )
+    kwargs = {'creationflags': 0x08000000 | 0x00000008} if sys.platform == 'win32' else {'start_new_session': True}
+    subprocess.Popen([sys.executable, '-c', script, paths.project_root(), str(os.getpid()), *command],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+    window.destroy()
+
+
+def _import_collection(window, base_url):
+    if _backup_running:
+        _notice(window, "Un trasferimento è già in corso.")
+        return
+    from rt.services import backup_service as bs
+    try:
+        chosen = _chosen_file(window)
+        if not chosen:
+            return
+        manifest = bs.inspect_backup_zip(chosen)
+        if manifest.get('segreti') is not False:
+            raise bs.BackupError('Per importare una collezione usa uno ZIP creato con «Esporta tutto».')
+        created = manifest.get('created', '').split('T')[0]
+        if not window.create_confirmation_dialog('Importa',
+                f'Importare la collezione del {created} (RT {manifest.get("rt_version", "")})? Quella attuale viene messa da parte.'):
+            return
+        def stop():
+            from rt.desktop import stop_background
+            from rt.db.engine import reset_database_cache
+            stop_background(base_url)
+            reset_database_cache()
+        def ready():
+            global _import_ready
+            _import_ready = True
+        _stream_backup(window, ['restore', chosen, '--yes', '--json'], tipo='importa',
+                       before_start=stop, on_success=ready)
+    except Exception as exc:
+        _notice(window, str(exc))

@@ -156,7 +156,7 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         assert kwargs["storage_path"] == str(data / "webview")
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
-            "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…",
+            "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
             "Diagnostica", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
         items[0].function()
@@ -766,3 +766,53 @@ def test_install_macos_open_files(data, webview, monkeypatch):
 
 
 
+
+
+def test_import_stops_before_restore_and_restart_after_success(data, webview, monkeypatch):
+    from rt.services import backup_service as bs
+    fake = Mock()
+    fake.create_file_dialog.return_value = ['/collection.zip']
+    fake.create_confirmation_dialog.return_value = True
+    monkeypatch.setattr(bs, 'inspect_backup_zip', lambda _: {'format': 1, 'segreti': False, 'created': '2026-10-22T12:00:00', 'rt_version': '4.3.3b3'})
+    events = []
+    monkeypatch.setattr(desktop, 'stop_background', lambda _: events.append('stop'))
+    monkeypatch.setattr('rt.db.engine.reset_database_cache', lambda: events.append('close-db'))
+    def stream(win, args, tipo, *, before_start, on_success):
+        assert tipo == 'importa'
+        assert args == ['restore', '/collection.zip', '--yes', '--json']
+        before_start()
+        events.append('restore')
+        on_success()
+        return True
+    monkeypatch.setattr(window, '_stream_backup', stream)
+    monkeypatch.setattr(window, '_restart_after_import', lambda _: events.append('restart'))
+    monkeypatch.setattr(window, '_import_ready', False)
+    window._import_collection(fake, 'http://127.0.0.1:8765')
+    assert events == ['stop', 'close-db', 'restore']
+    window.DesktopApi(fake).riavvia_dopo_importazione()
+    assert events == ['stop', 'close-db', 'restore', 'restart']
+
+
+def test_export_cancelled_migration_does_not_start(data, webview, monkeypatch):
+    fake = Mock()
+    fake.create_file_dialog.return_value = ['/collection.zip']
+    fake.create_confirmation_dialog.return_value = False
+    monkeypatch.setattr('rt.db.engine.require_database', lambda: object())
+    monkeypatch.setattr('rt.storage.migrate.folder_lessons', lambda *_: ['/old-lesson'])
+    monkeypatch.setattr('rt.services.lesson_service.configured_lessons_root', lambda: None)
+    stream = Mock()
+    monkeypatch.setattr(window, '_stream_backup', stream)
+    window._export_collection(fake)
+    stream.assert_not_called()
+
+
+def test_invalid_import_never_stops_services(data, webview, monkeypatch):
+    from rt.services import backup_service as bs
+    fake = Mock()
+    fake.create_file_dialog.return_value = ['/bad.zip']
+    monkeypatch.setattr(bs, 'inspect_backup_zip', Mock(side_effect=bs.BackupError('ZIP non valido')))
+    stop = Mock()
+    monkeypatch.setattr(desktop, 'stop_background', stop)
+    window._import_collection(fake, 'http://127.0.0.1:8765')
+    stop.assert_not_called()
+    assert 'ZIP non valido' in fake.evaluate_js.call_args.args[0]
