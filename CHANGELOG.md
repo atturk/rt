@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.2.2 — 2026-10-22
+
+### Correzioni
+
+- **Aggiornamenti dall'app**: il popup controllava gli aggiornamenti senza fermarsi, finché GitHub smetteva di rispondere (HTTP 429) e il download falliva. Ora controlla una volta sola, «Controlla ora» va su GitHub al massimo una volta al minuto e, se GitHub non risponde, resta valido l'ultimo controllo riuscito.
+
 ## 4.3.2.1 — 2026-10-21
 
 ### Correzioni

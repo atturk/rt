@@ -24,6 +24,7 @@ def _reset_update_state():
     app_update.STATE.total = None
     app_update.STATE.target = None
     app_update.STATE.last_check = None
+    app_update.STATE.checked_at = 0.0
 
 
 def release(tag="v4.3.0", prerelease=False, names=(DMG, EXE, "SHA256SUMS")):
@@ -287,3 +288,29 @@ def test_copy_dmg_preserves_existing_target(tmp_path):
     with pytest.raises(app_update.AppUpdateError, match="esiste già"):
         app_update.copy_app_from_dmg(str(tmp_path / "RT.dmg"), str(target))
     assert personal.read_text() == "da conservare"
+
+
+def test_refresh_reaches_github_at_most_once_a_minute(monkeypatch):
+    calls = []
+    found = app_update.UpdateCheck(supported=True, current="4.3.0", latest="4.3.1", available=True)
+    monkeypatch.setattr(app_update, "effective_channel", lambda current: "stable")
+    monkeypatch.setattr(app_update, "check", lambda: calls.append(1) or found)
+    for _ in range(20):
+        assert app_update.cached_check(refresh=True) is found
+    assert len(calls) == 1
+    app_update.STATE.checked_at -= app_update.REFRESH_MIN_SECONDS
+    app_update.cached_check(refresh=True)
+    assert len(calls) == 2
+
+
+def test_rate_limited_github_keeps_the_last_good_check(monkeypatch):
+    found = app_update.UpdateCheck(supported=True, current="4.3.0", latest="4.3.1", available=True)
+    limited = app_update.UpdateCheck(supported=True, current="4.3.0", error="GitHub non risponde (HTTP 429).")
+    results = iter([found, limited])
+    monkeypatch.setattr(app_update, "effective_channel", lambda current: "stable")
+    monkeypatch.setattr(app_update, "check", lambda: next(results))
+    assert app_update.cached_check(refresh=True) is found
+    app_update.STATE.checked_at -= app_update.REFRESH_MIN_SECONDS
+    assert app_update.cached_check(refresh=True) is found
+    # il download usa ancora il controllo riuscito
+    assert app_update.cached_check().available
