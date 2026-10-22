@@ -140,7 +140,7 @@ cartella `media/`) e resta dopo la ricarica della pagina.
   immagini entrano nel documento come link Markdown, una sotto l'altra. La ricerca web richiede
   SearXNG: se manca, la pagina rimanda alle Impostazioni. Si aggiungono alla bozza e compaiono
   subito nell'anteprima.
-- **Impostazioni:** cartella dati (solo lettura), job in parallelo, provider e chiavi (cifrate), modelli per fase, prezzi,
+- **Impostazioni:** cartella dati (solo lettura), provider e chiavi (cifrate), modelli per fase, prezzi,
   ricerca web, Telegram e trascrizione. La configurazione guidata (aperta dall'installer) chiede quello
   che manca; si riapre dal link **Configurazione guidata →** in cima alle impostazioni.
   - **Modelli:** nel passo Modelli della configurazione guidata si usa di norma lo stesso modello
@@ -165,13 +165,10 @@ cartella `media/`) e resta dopo la ricarica della pagina.
 
 ## Job in parallelo
 
-Il worker avviato da `rt web` esegue fino a **2** job insieme (Impostazioni > Generali, "Job in
-parallelo", da 1 a 4; si salva in `config/general.yaml`, `worker.concurrency`). Due job sulla
-stessa lezione non girano mai insieme: il secondo aspetta (vincolo `active_lesson` della coda),
-quindi il parallelismo vale tra lezioni diverse, per esempio la trascrizione di una lezione nuova
-mentre un'altra è in revisione. Il valore si applica al riavvio: `rt web` lo legge all'avvio e lo
-passa al worker (`rt worker --concurrency N`). `rt worker` lanciato a mano resta a 1 thread se
-non si indica `--concurrency`.
+Il worker esegue fino a **8** lezioni insieme, una sola fase alla volta per lezione: due job sulla
+stessa lezione non girano mai insieme (vincolo `active_lesson` della coda), quindi il parallelismo
+vale tra lezioni diverse. Le trascrizioni locali vanno comunque una alla volta.
+`rt worker --concurrency N` resta per l'uso a mano (predefinito: 8).
 
 ## Barra laterale
 
