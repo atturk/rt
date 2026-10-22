@@ -485,6 +485,17 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           openReader()
         }
       }
+      else if (key === 'm') {
+        if (!unit) return
+        e.preventDefault()
+        const currentButton = document.querySelector<HTMLButtonElement>(`.rt-unit-images-button[data-unit-images="${CSS.escape(unit.id)}"]`)
+        const currentSlot = document.querySelector<HTMLElement>(`.rt-image-strip-slot[data-unit-images="${CSS.escape(unit.id)}"]`)
+        if (currentButton) {
+          currentButton.click()
+        } else if (currentSlot) {
+          currentSlot.hidden = !currentSlot.hidden
+        }
+      }
       else if (key === 'd') { e.preventDefault(); review() }
       else if (key === 'e' || key === 'g') {
         e.preventDefault()
@@ -1135,7 +1146,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }])
+    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }], { metaBelow: true })
   }, [unit.html, unit.id, unit.immagini_sezione, unit.start_formatted])
   useEffect(() => {
     const root = ref.current

@@ -951,3 +951,80 @@ test('Irlen in tema scuro: contrasto in zen e lettura veloce con ogni tinta', as
     expect(response.ok()).toBeTruthy()
   }
 })
+
+test('Studio: graffetta e timecode sotto il titolo, tasto M e scomparsa in zen', async ({ page }) => {
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=CHIRURGIA')
+  const before = await apiGet<{ markdown: string; sections: { unit_id: string }[] }>(page.request, `/lessons/${lesson.id}/document`)
+  const response = await page.request.post(`/api/v1/lessons/${lesson.id}/media/images`, {
+    headers: authHeaders(), multipart: { file: { name: 'figura_m.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') } },
+  })
+  expect(response.ok()).toBeTruthy()
+  const image = await response.json() as { name: string; path: string; alt_text: string }
+  try {
+    await loginViaLink(page)
+    await page.goto(`/lezioni/${lesson.id}`)
+    const editor = page.getByTestId('lesson-document')
+    await editor.locator('.cm-content').click()
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'ControlOrMeta+End')
+    await page.evaluate(item => window.dispatchEvent(new CustomEvent('rt-editor-insert-images', { detail: { items: [item] } })), image)
+    await expect.poll(async () => (await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)).markdown).toContain(`${image.name}#w=`)
+    const target = editor.locator(`.rt-unit-images-button[data-unit-images="${before.sections[0].unit_id}"]`)
+    await editor.locator('.cm-content').dispatchEvent('dragover', { dataTransfer: await page.evaluateHandle(() => {
+      const transfer = new DataTransfer(); transfer.setData('application/x-rt-section-image', ''); return transfer
+    }) })
+    await expect(target).toBeVisible()
+    const inline = editor.locator(`img[data-image-name="${image.name}"]`)
+    const transfer = await page.evaluateHandle(() => new DataTransfer())
+    await inline.dispatchEvent('dragstart', { dataTransfer: transfer })
+    await target.dispatchEvent('drop', { dataTransfer: transfer })
+    await target.dispatchEvent('dragend')
+    await expect.poll(async () => (await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)).markdown).not.toContain(`${image.name}#w=`)
+    await expect(target).toHaveText('1')
+    await expect.poll(async () => (await apiGet<{ sections: { immagini_sezione?: string[] }[] }>(page.request, `/lessons/${lesson.id}/document`)).sections[0].immagini_sezione?.length).toBe(1)
+
+    await page.goto(`/studio/lezione/${lesson.id}?unita=${before.sections[0].unit_id}`)
+    const meta = page.locator('.rt-unit-meta-below')
+    await expect(meta).toBeVisible()
+    const clip = meta.getByRole('button', { name: 'Mostra le immagini · M' })
+    await expect(clip).toBeVisible()
+    const timecode = meta.locator('.rt-timecode')
+    await expect(timecode).toBeVisible()
+    const section = page.locator('.rt-unit-images-section')
+    await expect(section).toBeHidden()
+
+    // M apre la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeVisible()
+
+    // M richiude la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeHidden()
+
+    // Entra in zen (Z)
+    await page.keyboard.press('z')
+    await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+
+    // In zen pulsante e timecode non sono visibili
+    await expect(meta).toBeHidden()
+    await expect(clip).toBeHidden()
+    await expect(timecode).toBeHidden()
+
+    // In zen M apre comunque la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeVisible()
+
+    // In zen M richiude la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeHidden()
+
+    // Esci da zen (Z)
+    await page.keyboard.press('z')
+    await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+    await expect(meta).toBeVisible()
+  } finally {
+    await page.goto('about:blank')
+    await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, {
+      headers: authHeaders(), data: { markdown: before.markdown },
+    })
+  }
+})

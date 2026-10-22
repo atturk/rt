@@ -131,7 +131,13 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
 }
 
 /** Bottone condiviso da editor, lettura e Studio. */
-export function buildUnitImagesButton(unitId: string, count: number, open: boolean, toggle: () => void): HTMLButtonElement {
+export function buildUnitImagesButton(
+  unitId: string,
+  count: number,
+  open: boolean,
+  toggle: () => void,
+  options?: { shortcut?: boolean },
+): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'rt-unit-images-button'
@@ -139,7 +145,8 @@ export function buildUnitImagesButton(unitId: string, count: number, open: boole
   button.classList.toggle('active', open)
   button.dataset.unitImages = unitId
   button.setAttribute('aria-expanded', String(open))
-  const label = open ? 'Nascondi le immagini' : 'Mostra le immagini'
+  const suffix = options?.shortcut ? ' · M' : ''
+  const label = (open ? 'Nascondi le immagini' : 'Mostra le immagini') + suffix
   button.setAttribute('aria-label', label)
   mountDomTooltip(button, label)
   button.innerHTML = PAPERCLIP_ICON
@@ -155,15 +162,44 @@ export function buildUnitImagesButton(unitId: string, count: number, open: boole
 type DocumentImageSection = { unit_id: string; immagini_sezione?: string[]; start_formatted?: string | null }
 
 /** Solo i paragrafi iniziali dichiarati dall'API appartengono alla sezione. */
-export function mountDocumentImageStrips(root: HTMLElement, sections: DocumentImageSection[]): () => void {
+export function mountDocumentImageStrips(
+  root: HTMLElement,
+  sections: DocumentImageSection[],
+  options?: { metaBelow?: boolean },
+): () => void {
   const cleanups: (() => void)[] = []
   for (const section of sections) {
     const names = section.immagini_sezione ?? []
-    if (!names.length) continue
     const unitRoot = root.dataset.unitId === section.unit_id ? root : null
-    const heading = unitRoot ? root.previousElementSibling as HTMLElement | null
+    const heading = unitRoot
+      ? (root.previousElementSibling?.matches('.rt-unit-meta')
+          ? (root.previousElementSibling.previousElementSibling as HTMLElement | null)
+          : (root.previousElementSibling as HTMLElement | null))
       : root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
     if (!heading) continue
+
+    if (!names.length) {
+      if (options?.metaBelow && section.start_formatted) {
+        let meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+          ? (heading.nextElementSibling as HTMLElement)
+          : null
+        const createdMeta = !meta
+        if (!meta) {
+          meta = document.createElement('span')
+          meta.className = 'rt-unit-meta rt-unit-meta-below'
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+          heading.after(meta)
+        }
+        cleanups.push(() => {
+          if (createdMeta) meta.remove()
+        })
+      }
+      continue
+    }
+
     const originals: HTMLElement[] = []
     const images: ImageItem[] = []
     let next = unitRoot ? root.firstElementChild : heading.nextElementSibling
@@ -183,20 +219,62 @@ export function mountDocumentImageStrips(root: HTMLElement, sections: DocumentIm
       }
       next = next.nextElementSibling
     }
-    if (!images.length) continue
-    let meta = heading.querySelector<HTMLElement>('.rt-unit-meta')
-    const createdMeta = !meta
-    if (!meta) {
-      meta = document.createElement('span')
-      meta.className = 'rt-unit-meta'
-      if (section.start_formatted) {
-        const time = document.createElement('span')
-        time.className = 'rt-timecode'
-        time.textContent = section.start_formatted
-        meta.append(time)
+    if (!images.length) {
+      if (options?.metaBelow && section.start_formatted) {
+        let meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+          ? (heading.nextElementSibling as HTMLElement)
+          : null
+        const createdMeta = !meta
+        if (!meta) {
+          meta = document.createElement('span')
+          meta.className = 'rt-unit-meta rt-unit-meta-below'
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+          heading.after(meta)
+        }
+        cleanups.push(() => {
+          if (createdMeta) meta.remove()
+        })
       }
-      heading.append(meta)
+      continue
     }
+
+    let meta: HTMLElement | null = null
+    let createdMeta = false
+    if (options?.metaBelow) {
+      meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+        ? (heading.nextElementSibling as HTMLElement)
+        : null
+      if (!meta) {
+        createdMeta = true
+        meta = document.createElement('span')
+        meta.className = 'rt-unit-meta rt-unit-meta-below'
+        if (section.start_formatted) {
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+        }
+        heading.after(meta)
+      }
+    } else {
+      meta = heading.querySelector<HTMLElement>('.rt-unit-meta')
+      if (!meta) {
+        createdMeta = true
+        meta = document.createElement('span')
+        meta.className = 'rt-unit-meta'
+        if (section.start_formatted) {
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+        }
+        heading.append(meta)
+      }
+    }
+
     const slot = document.createElement('div')
     slot.className = 'rt-image-strip-slot rt-unit-images-section'
     slot.dataset.unitImages = section.unit_id
@@ -204,15 +282,17 @@ export function mountDocumentImageStrips(root: HTMLElement, sections: DocumentIm
     slot.append(buildImageStripDOM(images))
     originals[0].before(slot)
     originals.forEach(element => element.remove())
+
+    const hasShortcut = Boolean(options?.metaBelow)
     const button = buildUnitImagesButton(section.unit_id, images.length, false, () => {
       slot.hidden = !slot.hidden
       button.classList.toggle('active', !slot.hidden)
       button.setAttribute('aria-expanded', String(!slot.hidden))
-      const label = slot.hidden ? 'Mostra le immagini' : 'Nascondi le immagini'
+      const label = (slot.hidden ? 'Mostra le immagini' : 'Nascondi le immagini') + (hasShortcut ? ' · M' : '')
       button.setAttribute('aria-label', label)
       unmountDomTooltip(button)
       mountDomTooltip(button, label)
-    })
+    }, { shortcut: hasShortcut })
     meta.prepend(button)
     cleanups.push(() => {
       unmountDomTooltip(button)

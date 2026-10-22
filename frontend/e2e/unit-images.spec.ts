@@ -38,7 +38,7 @@ test('graffetta: immagine dal testo alla sezione, persistenza e Studio', async (
     await clip.click()
     await expect(editor.locator('.rt-unit-images-section .thumb')).toBeVisible()
     await page.goto(`/studio/lezione/${lesson.id}?unita=${before.sections[0].unit_id}`)
-    const studyClip = page.getByRole('button', { name: 'Mostra le immagini', exact: true })
+    const studyClip = page.getByRole('button', { name: 'Mostra le immagini · M' })
     await expect(studyClip).toHaveText('1')
     await studyClip.click()
     await expect(page.locator('.rt-unit-images-section .thumb')).toBeVisible()
