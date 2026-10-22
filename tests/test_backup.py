@@ -366,3 +366,22 @@ def test_restore_closes_database_before_moving_files(data, tmp_path, monkeypatch
     monkeypatch.setattr(engine, 'reset_database_cache', reset)
     monkeypatch.setattr(bs.shutil, 'move', move)
     bs.restore_backup(snapshot, check_services=False, say=lambda _: None)
+
+
+def test_portable_import_rebases_windows_lesson_paths(data, tmp_path):
+    from rt.db.models import Job, RecallSession
+    from rt.storage import fs
+    data_dir, db = data
+    _add_media(db, data_dir, 1, 'audio.m4a', b'audio')
+    old_path = r'C:\Users\Old\lessons\L1'
+    with session_scope(db) as session:
+        session.get(Lesson, 1).path = old_path
+        session.add(Job(id='old-job', type='run_phase', state='succeeded', lesson_path=old_path, payload={}))
+    snapshot = bs.create_backup(str(tmp_path / 'backups'), say=lambda _: None).path
+    archive = bs.export_backup(snapshot, str(tmp_path / 'collection.zip'))
+    bs.restore_backup(archive, check_services=False, say=lambda _: None)
+    with session_scope(get_database()) as session:
+        lesson = session.get(Lesson, 1)
+        assert lesson.path == str(data_dir / 'lessons' / 'L1')
+        assert session.get(Job, 'old-job').lesson_path == lesson.path
+        assert fs.isfile(os.path.join(lesson.path, 'audio.m4a'))

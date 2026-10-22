@@ -529,6 +529,8 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         from rt.db.engine import require_database
         from rt.storage import fs
         db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
+        if portable:
+            _relocate_imported_lessons(db)
         media_dir = fs.media_dir(db)
         copied = 0
         media_entries = manifest.get('media') or []
@@ -693,3 +695,27 @@ def _reset_imported_paths(home, data, sqlite):
         with open(env, 'w', encoding='utf-8') as stream:
             stream.write(''.join(lines))
     return changed
+
+
+
+def _relocate_imported_lessons(db):
+    """I percorsi virtuali del DB devono avere anche la sintassi del nuovo sistema operativo."""
+    from sqlalchemy import select
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    from rt.db.sync import relocate_path_keyed_rows
+    from rt.services.lesson_service import lessons_root
+    from rt.storage import fs
+    root = lessons_root()
+    with session_scope(db) as session:
+        for lesson in session.scalars(select(Lesson).where(Lesson.storage == 'db')):
+            # folder_name è il nome, anche quando path arriva da Windows su un Mac.
+            name = lesson.folder_name
+            if not name or '/' in name or '\\' in name or name in {'.', '..'}:
+                raise BackupError('Nome di lezione non valido nel backup.')
+            old = lesson.path
+            new = os.path.realpath(os.path.join(root, name))
+            if old != new:
+                lesson.path = new
+                relocate_path_keyed_rows(session, old, new)
+    fs.reset_cache()
