@@ -7,9 +7,10 @@ export type RsvpPreference = {
   formulaPause: 'adattiva' | 'standard' | 'personalizzata'; formulaMs: number
   step: number; size: number; sound: boolean; clickSound: 'legno' | 'tick' | 'classico'; pitch: number; dyslexic: boolean
   irlen: null | 'pesca' | 'menta' | 'pergamena'; noise: null | 'bianco' | 'rosa' | 'marrone'; noiseVolume: number
+  countdown: number
 }
 export const RSVP_DEFAULT: RsvpPreference = { wpm: 300, orp: 'bilanciata', pauseMs: 400, comma: false,
-  highlights: true, slowHighlights: false, formulaPause: 'adattiva', formulaMs: 2000, step: 5, size: 60, sound: true, clickSound: 'legno', pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25 }
+  highlights: true, slowHighlights: false, formulaPause: 'adattiva', formulaMs: 2000, step: 5, size: 60, sound: true, clickSound: 'legno', pitch: 1, dyslexic: false, irlen: null, noise: null, noiseVolume: 0.25, countdown: 3 }
 
 /** Evidenziatore dello Studio (pref `study.highlighter`): ultimo colore usato e frecce ← →. */
 export type HighlighterPreference = { color: number; arrows: boolean }

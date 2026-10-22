@@ -2,6 +2,8 @@ import type { RsvpPreference } from '@/lib/studyPrefs'
 
 type NoiseKind = NonNullable<RsvpPreference['noise']>
 
+export const FADE_S = 1
+
 /** Suoni generati con Web Audio: nessun file. L'AudioContext nasce al primo gesto. */
 export function createSound() {
   let ac: AudioContext | null = null
@@ -19,14 +21,38 @@ export function createSound() {
     if (ac.state === 'suspended') void ac.resume()
     return ac
   }
-  const stopNoise = () => {
+  const stopNoise = ({ fade = true }: { fade?: boolean } = {}) => {
     clearTimeout(previewTimer)
-    try { source?.stop() } catch { /* già fermo */ }
+    previewTimer = undefined
+    const currentSource = source
+    const currentGain = gain
     source = null
     gain = null
+    if (!currentSource || !currentGain) return
+
+    if (!fade || !ac) {
+      try { currentSource.stop() } catch { /* già fermo */ }
+      try { currentSource.disconnect() } catch { /* ignore */ }
+      try { currentGain.disconnect() } catch { /* ignore */ }
+      return
+    }
+
+    const t = ac.currentTime
+    try {
+      currentGain.gain.cancelScheduledValues(t)
+      currentGain.gain.setValueAtTime(Math.max(0.0001, currentGain.gain.value), t)
+      currentGain.gain.exponentialRampToValueAtTime(0.0001, t + FADE_S)
+      currentSource.stop(t + FADE_S)
+      setTimeout(() => {
+        try { currentSource.disconnect() } catch { /* ignore */ }
+        try { currentGain.disconnect() } catch { /* ignore */ }
+      }, (FADE_S + 0.1) * 1000)
+    } catch {
+      try { currentSource.stop() } catch { /* ignore */ }
+    }
   }
   const noise = (kind: NoiseKind, volume: number) => {
-    stopNoise()
+    stopNoise({ fade: true })
     const audio = context()
     if (!audio) return
     let buffer = buffers.get(kind)
@@ -34,15 +60,21 @@ export function createSound() {
       buffer = noiseBuffer(audio, kind)
       buffers.set(kind, buffer)
     }
-    source = audio.createBufferSource()
-    source.buffer = buffer
-    source.loop = true
-    gain = audio.createGain()
+    const newSource = audio.createBufferSource()
+    newSource.buffer = buffer
+    newSource.loop = true
+    const newGain = audio.createGain()
     const t = audio.currentTime
-    gain.gain.setValueAtTime(0.0001, t)
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, volume), t + 0.3)
-    source.connect(gain).connect(audio.destination)
-    source.start()
+    newGain.gain.setValueAtTime(0.0001, t)
+    if (volume <= 0) {
+      newGain.gain.linearRampToValueAtTime(0, t + FADE_S)
+    } else {
+      newGain.gain.exponentialRampToValueAtTime(Math.max(0.001, volume), t + FADE_S)
+    }
+    newSource.connect(newGain).connect(audio.destination)
+    newSource.start()
+    source = newSource
+    gain = newGain
   }
   return {
     unlock: () => void context(),
@@ -100,14 +132,19 @@ export function createSound() {
     noise,
     preview(kind: NoiseKind, volume: number) {
       noise(kind, volume)
-      previewTimer = setTimeout(stopNoise, 2000)
+      previewTimer = setTimeout(() => stopNoise({ fade: true }), 2000)
     },
-    volume(volume: number) {
-      if (gain && ac) gain.gain.setTargetAtTime(Math.max(0.001, volume), ac.currentTime, 0.05)
+    volume(vol: number) {
+      if (gain && ac) {
+        const t = ac.currentTime
+        gain.gain.cancelScheduledValues(t)
+        gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t)
+        gain.gain.linearRampToValueAtTime(Math.max(0.0001, vol), t + 0.1)
+      }
     },
     stopNoise,
     dispose() {
-      stopNoise()
+      stopNoise({ fade: false })
       void ac?.close().catch(() => {})
       ac = null
       clickBuffer = null

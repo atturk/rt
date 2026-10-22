@@ -2,8 +2,20 @@ import { vi } from 'vitest'
 import { createSound } from './rsvpSound'
 
 function audioContext() {
-  const param = () => ({ setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn(), setTargetAtTime: vi.fn() })
-  const node = () => ({ connect: vi.fn(function (this: unknown, target: unknown) { return target }), start: vi.fn(), stop: vi.fn() })
+  const param = () => ({
+    value: 0.25,
+    setValueAtTime: vi.fn(),
+    exponentialRampToValueAtTime: vi.fn(),
+    linearRampToValueAtTime: vi.fn(),
+    cancelScheduledValues: vi.fn(),
+    setTargetAtTime: vi.fn(),
+  })
+  const node = () => ({
+    connect: vi.fn(function (this: unknown, target: unknown) { return target }),
+    disconnect: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+  })
   const audio = {
     currentTime: 10, sampleRate: 48000, state: 'running', destination: {}, close: vi.fn(async () => undefined),
     createGain: vi.fn(() => ({ ...node(), gain: param() })),
@@ -59,5 +71,47 @@ it('Legno predefinito: il buffer bianco di 0,2 s si riusa', () => {
   expect(audio.createBuffer).toHaveBeenCalledWith(1, 9600, 48000)
   const nodes = audio.createBufferSource.mock.results.map(r => r.value)
   expect(nodes[0].buffer).toBe(nodes[1].buffer)
+  sound.dispose()
+})
+
+it('noise() programma una rampa di salita di 1 secondo (FADE_S)', () => {
+  const audio = audioContext()
+  const sound = createSound()
+  sound.noise('rosa', 0.4)
+  const gain = audio.createGain.mock.results.at(-1)!.value
+  expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(0.0001, 10)
+  expect(gain.gain.exponentialRampToValueAtTime).toHaveBeenCalledWith(0.4, 10 + 1)
+  const src = audio.createBufferSource.mock.results.at(-1)!.value
+  expect(src.start).toHaveBeenCalled()
+  sound.dispose()
+})
+
+it('stopNoise() programma la rampa di discesa in 1 secondo e lo stop a t + 1', () => {
+  const audio = audioContext()
+  const sound = createSound()
+  sound.noise('rosa', 0.4)
+  const src = audio.createBufferSource.mock.results.at(-1)!.value
+  const gain = audio.createGain.mock.results.at(-1)!.value
+
+  sound.stopNoise()
+  expect(gain.gain.cancelScheduledValues).toHaveBeenCalledWith(10)
+  expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(expect.any(Number), 10)
+  expect(gain.gain.exponentialRampToValueAtTime).toHaveBeenCalledWith(0.0001, 10 + 1)
+  expect(src.stop).toHaveBeenCalledWith(10 + 1)
+  sound.dispose()
+})
+
+it('stopNoise({ fade: false }) ferma subito la sorgente senza ritardo né rampa', () => {
+  const audio = audioContext()
+  const sound = createSound()
+  sound.noise('rosa', 0.4)
+  const src = audio.createBufferSource.mock.results.at(-1)!.value
+  const gain = audio.createGain.mock.results.at(-1)!.value
+  gain.gain.cancelScheduledValues.mockClear()
+  gain.gain.exponentialRampToValueAtTime.mockClear()
+
+  sound.stopNoise({ fade: false })
+  expect(src.stop).toHaveBeenCalledWith()
+  expect(gain.gain.exponentialRampToValueAtTime).not.toHaveBeenCalled()
   sound.dispose()
 })

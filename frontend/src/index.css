@@ -1034,6 +1034,61 @@
 .rt-rsvp-math .katex-display { margin: 0; }
 .rt-rsvp-math-context { display: inline-block; max-width: 100%; overflow-x: auto; vertical-align: middle; }
 
+/* Conto alla rovescia nella lettura veloce (4.3.3b3 piano 7) */
+.rt-rsvp-countdown {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: calc(var(--rsvp-size, 60px) * 2.2);
+  height: calc(var(--rsvp-size, 60px) * 2.2);
+  font-family: var(--font-sans);
+  color: var(--rsvp-focus, var(--link));
+  user-select: none;
+}
+.rt-rsvp-countdown-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.rt-rsvp-countdown-track {
+  fill: none;
+  stroke: color-mix(in oklch, var(--foreground) 10%, transparent);
+  stroke-width: 2.5;
+}
+.rt-rsvp-countdown-progress {
+  fill: none;
+  stroke: var(--rsvp-focus, var(--link));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 276.46;
+  stroke-dashoffset: 0;
+  animation: rt-rsvp-countdown-drain 1000ms linear forwards;
+}
+.rt-rsvp-countdown-num {
+  font-size: var(--rsvp-size, 60px);
+  font-weight: 600;
+  line-height: 1;
+  animation: rt-rsvp-countdown-pop 1000ms ease-out forwards;
+}
+@keyframes rt-rsvp-countdown-drain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: 276.46; }
+}
+@keyframes rt-rsvp-countdown-pop {
+  0% { transform: scale(0.8); opacity: 0; }
+  25% { transform: scale(1); opacity: 1; }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rt-rsvp-countdown-progress,
+  .rt-rsvp-countdown-num {
+    animation: none;
+  }
+}
+
 /* Una fascia continua sul testo effettivo: le colonne vuote della lettera di fuoco restano libere. */
 .rt-rsvp-hl,
 .rt-rsvp-word[data-hl] > .pre > span,
