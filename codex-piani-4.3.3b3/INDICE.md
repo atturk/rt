@@ -10,5 +10,6 @@ In attesa del via di Attilio; altre richieste si aggiungono qui.
 | 3 | `piano-invio-tastiera.md`: ⌘/Ctrl + Invio invia la risposta scritta, Invio va a capo | da assegnare |
 | 4 | `piano-campi-senza-bordo.md`: niente bordo nero di focus nei campi di testo | da assegnare |
 | 5 | `piano-formule-domande.md`: formule in LaTeX nelle domande generate | da assegnare |
+| 6 | `piano-formule-lettura-veloce.md`: formule lunghe adattate alla loro misura reale e centrate | da assegnare |
 
 Già nella b1 (PR #116): l'unione di più audio in una nuova lezione non fallisce più e non lascia lezioni a metà.
