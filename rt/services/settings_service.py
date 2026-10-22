@@ -261,19 +261,7 @@ def save_transcription(project_root: Path, engine: str, base_url: str,
     return "Motore di trascrizione salvato."
 
 
-WORKER_CONCURRENCY_RANGE = (1, 4)
-
-
-def save_worker_concurrency(project_root: Path, concurrency: int) -> str:
-    """Job in parallelo del worker di 'rt web' (worker.concurrency): vale dal prossimo avvio."""
-    low, high = WORKER_CONCURRENCY_RANGE
-    if not isinstance(concurrency, int) or not low <= concurrency <= high:
-        raise ValueError(f"Scegli un numero di job in parallelo tra {low} e {high}.")
-    path = general_config_path(project_root)
-    data = _read_yaml(path)
-    data["worker"] = {**(data.get("worker") or {}), "concurrency": concurrency}
-    _atomic_yaml(path, data)
-    return "Job in parallelo salvati."
+WORKER_CONCURRENCY = 8
 
 
 # Avvisi della web che si possono nascondere con "Non mostrare più" (salvati in ui.dismissed_notices).
@@ -363,7 +351,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "chat_id_set": bool(telegram_value("chat_id")),
             "chat_id_preview": mask_value(telegram_value("chat_id")),
         },
-        "worker": {"concurrency": cfg.worker.concurrency, "running": _running_workers()},
+        "worker": {"running": _running_workers()},
         "notices": {"dismissed": [n for n in cfg.ui.dismissed_notices if n in NOTICES]},
         "phases": phases,
         "connections": connections,

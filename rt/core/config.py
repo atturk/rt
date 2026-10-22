@@ -293,8 +293,8 @@ class ReviewConfig(BaseModel):
 
 
 class WorkerConfig(BaseModel):
-    concurrency: int = Field(default=2, ge=1, le=4,
-                             description="Job eseguiti in parallelo dal worker avviato da 'rt web' (su lezioni diverse)")
+    model_config = {"extra": "ignore"}
+    concurrency: Optional[int] = Field(default=None, description="Deprecato (8 fissi)")
 
 
 class UiConfig(BaseModel):

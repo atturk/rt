@@ -17,7 +17,7 @@ const WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]
 /** "Job in parallelo": quanti job il worker avviato con la web esegue insieme (vale dal prossimo avvio). */
 export function WorkerSection({ settings }: { settings: Settings }) {
   const save = useSaveWorker()
-  const saved = settings.worker.concurrency
+  const saved = (settings.worker as { concurrency?: number; running: number }).concurrency ?? 8
   const running = settings.worker.running
   return (
     <Section id="job-paralleli" title="Job">

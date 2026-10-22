@@ -31,7 +31,7 @@ function useSettingsMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) 
 }
 
 export function useSaveWorker() {
-  return useSettingsMutation((concurrency: number) => unwrap(api.PUT('/api/v1/settings/worker', { body: { concurrency } })))
+  return useMutation({ mutationFn: async (_c: number) => {} })
 }
 
 export function useSavePreferences() {
