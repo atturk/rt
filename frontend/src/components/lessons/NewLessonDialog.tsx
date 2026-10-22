@@ -141,7 +141,7 @@ export function NewLessonDialog({
   initialFiles,
   initialJob,
 }: NewLessonDialogProps) {
-  const original = initialJob?.payload as { options?: Record<string, string | boolean>; audio?: string[]; inputs?: string[]; materiali?: string[] } | undefined
+  const original = initialJob?.payload as { options?: Record<string, string | boolean>; audio?: string[]; inputs?: string[]; materiali?: string[]; text?: string; appunti?: string; run?: boolean } | undefined
   const options = original?.options
   const navigate = useNavigate()
   const client = useQueryClient()
@@ -149,6 +149,7 @@ export function NewLessonDialog({
   // Il caricamento sta nella coda (lib/uploadQueue): chiudendo la finestra continua.
   const [uploadId, setUploadId] = useState<string | null>(null)
   const upload = useUpload(uploadId)
+  const [recreating, setRecreating] = useState(false)
   const [uploadError, setUploadError] = useState<unknown>(null)
   const mounted = useRef(true)
   useEffect(() => {
@@ -182,9 +183,9 @@ export function NewLessonDialog({
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
-  const [solo, setSolo] = useState(false)
-  const [review, setReview] = useState(false)
-  const [enrichment, setEnrichment] = useState(false)
+  const [solo, setSolo] = useState(!!initialJob && (initialJob.type === 'ingest_audio' || original?.run === false))
+  const [review, setReview] = useState(!!options?.with_review)
+  const [enrichment, setEnrichment] = useState(!!options?.with_enrichment)
   const [unisciAudio, setUnisciAudio] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
@@ -202,7 +203,7 @@ export function NewLessonDialog({
 
   const zipFinished = !!zipJob && jobFinished(job.data)
   const busy =
-    (!!upload && isUploadActive(upload)) || (!!zipJob && !job.isError && !jobFinished(job.data))
+    recreating || (!!upload && isUploadActive(upload)) || (!!zipJob && !job.isError && !jobFinished(job.data))
 
   const subjectsQuery = useSubjects()
   const subjects = Array.isArray(subjectsQuery.data)
@@ -335,6 +336,7 @@ export function NewLessonDialog({
     const d = new Date(parts[0], parts[1] - 1, parts[2] + delta)
     const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     setDate(newDate)
+    clearConflict()
     setSelectedKey(null)
   }
 
@@ -388,11 +390,12 @@ export function NewLessonDialog({
 
     if (initialJob) {
       setUploadError(null)
+      setRecreating(true)
       void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, argomenti, docente, ora: time } })).then(accepted => {
         invalidateAfterJob(client)
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
-      }).catch(showError)
+      }).catch(showError).finally(() => setRecreating(false))
       return
     }
     if (problem) return
@@ -587,7 +590,7 @@ export function NewLessonDialog({
             <span className="text-meta">{DROP_TEXT}</span>
           </div>
         ) : initialJob ? (
-          <ul className="my-3 text-meta" aria-label="Fonti già caricate">{[...(original?.audio ?? original?.inputs ?? []), ...(original?.materiali ?? [])].map(path => <li key={path}>{path.split(/[\\/]/).pop()}</li>)}</ul>
+          <ul className="my-3 text-meta" aria-label="Fonti già caricate">{[...(original?.audio ?? original?.inputs ?? []), ...(original?.materiali ?? [])].map(path => <li key={path}>{path.split(/[\\/]/).pop()}</li>)}{(original?.text || original?.appunti) && <li>Appunti</li>}</ul>
         ) : kind === 'zip' ? (
           /* 2. Pacchetto zip selezionato */
           <div

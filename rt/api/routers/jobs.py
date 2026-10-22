@@ -178,7 +178,13 @@ def create_lesson(
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
     from rt.services.lesson_conflicts import require_no_lesson_conflict
-    require_no_lesson_conflict(date, materia, argomenti, lessons_root())
+    try:
+        require_no_lesson_conflict(date, materia, argomenti, lessons_root())
+    except ValueError as exc:
+        from rt.services.lesson_conflicts import LessonConflict
+        if isinstance(exc, LessonConflict):
+            raise
+        raise ApiError(422, 'validation_error', str(exc)) from None
     calendar = {}
     if calendar_entry_id or calendar_date:
         from datetime import date as calendar_day
@@ -556,7 +562,13 @@ def recreate_lesson(job_id: str, body: RecreateLessonRequest, actor: Actor):
     info = _get(job_id)
     if info.state != 'failed' or (info.result or {}).get('code') != 'lesson_exists':
         raise ApiError(409, 'job_not_retryable', 'Il job non ha metadati da correggere.')
-    require_no_lesson_conflict(body.date, body.materia, body.argomenti, lessons_root())
+    try:
+        require_no_lesson_conflict(body.date, body.materia, body.argomenti, lessons_root())
+    except ValueError as exc:
+        from rt.services.lesson_conflicts import LessonConflict
+        if isinstance(exc, LessonConflict):
+            raise
+        raise ApiError(422, 'validation_error', str(exc)) from None
     payload = copy.deepcopy(info.payload)
     paths = [p for key in ('inputs', 'audio', 'materiali') for p in payload.get(key, [])]
     if not all(os.path.isfile(p) for p in paths):

@@ -43,3 +43,19 @@ def require_no_lesson_conflict(date, materia, argomenti, dest_dir):
     conflict = find_lesson_conflict(date, materia, argomenti, dest_dir)
     if conflict:
         raise LessonConflict(conflict)
+
+
+def create_lesson_directory(date, materia, argomenti, dest_dir):
+    """Riserva il nome sotto un lock breve, anche con due worker contemporanei."""
+    import hashlib
+    from rt.core.filelock import file_lock
+    from rt.core.paths import data_dir
+    folder = lesson_folder(date, materia, argomenti)
+    path = os.path.join(dest_dir, folder)
+    digest = hashlib.sha256(os.path.realpath(path).encode('utf-8')).hexdigest()
+    with file_lock(os.path.join(data_dir(), 'locks', f'new-lesson-{digest}.lock')):
+        require_no_lesson_conflict(date, materia, argomenti, dest_dir)
+        if fs.new_lessons_use_db():
+            return fs.create_db_lesson(path)
+        fs.makedirs(path, exist_ok=False)
+        return path

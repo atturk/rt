@@ -37,3 +37,20 @@ def test_worker_conflict_and_corrected_metadata(api_client, rt_db, tmp_path, mon
     assert api_client.post(url, json={'date': data['date'], 'materia': data['materia']}).status_code == 409
     assert api_client.post(url, json={'date': data['date'], 'materia': data['materia'], 'argomenti': 'Nuovi'}).status_code == 202
     assert worker.run_once().state == 'succeeded'
+
+
+def test_two_workers_reserve_the_same_name_once(rt_db, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from rt.services.lesson_conflicts import create_lesson_directory, LessonConflict
+    root = isolated_workspace(tmp_path, monkeypatch)
+    barrier = Barrier(2)
+    def reserve():
+        barrier.wait(timeout=5)
+        try:
+            return create_lesson_directory('2026-10-21', 'TEST', '', root)
+        except LessonConflict as exc:
+            return exc
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: reserve(), range(2)))
+    assert sum(isinstance(item, LessonConflict) for item in results) == 1

@@ -17,14 +17,11 @@ def create_notes_lesson(text, *, date, materia, argomenti="", docente="", ora=""
     materia = sanitize_filename_part(materia.strip().upper())
     if not materia:
         raise ValueError("Indica la materia")
-    from rt.services.lesson_conflicts import lesson_folder, require_no_lesson_conflict
+    from rt.services.lesson_conflicts import lesson_folder, require_no_lesson_conflict, create_lesson_directory
     require_no_lesson_conflict(date, materia, argomenti, dest_dir)
     folder = lesson_folder(date, materia, argomenti)
     lesson_dir = os.path.join(dest_dir, folder)
-    if fs.new_lessons_use_db():
-        lesson_dir = fs.create_db_lesson(lesson_dir)
-    else:
-        fs.makedirs(lesson_dir, exist_ok=False)
+    lesson_dir = create_lesson_directory(date, materia, argomenti, dest_dir)
     info = {"data": date, "materia": materia, "argomenti": argomenti, "docente": docente,
             "ora": ora, "cartella": folder, "file_audio": "",
             "creato_il": datetime.now(timezone.utc).isoformat(),
