@@ -1,42 +1,39 @@
-# Piano: più job in parallelo (limite da 4 a 16) con trascrizione locale una alla volta
+# Piano: 8 job in parallelo fissi, trascrizione locale una alla volta
 
 ## Obiettivo
 
-Oggi "Job in parallelo" (Impostazioni > Generali) va da 1 a 4. Con OpenRouter a consumo il collo di
-bottiglia non è il provider: è il tetto fisso. Alziamo il tetto a 16 e, perché sia sicuro, mettiamo
-in fila **solo** la trascrizione locale (Parakeet ONNX / macparakeet), che è l'unica parte pesante
-per CPU e memoria. Le chiamate al modello restano tutte in parallelo.
+Decisione di Attilio (22/10/2026): niente impostazione "Job in parallelo". Il worker esegue sempre
+fino a **8 job insieme** (8 lezioni diverse). Con OpenRouter a consumo il collo di bottiglia non è
+il provider. Perché sia sicuro, la trascrizione locale (Parakeet ONNX / macparakeet), l'unica parte
+pesante per CPU e memoria, va in fila una alla volta. Le chiamate al modello restano in parallelo.
 
-Non cambia: un solo job per lezione alla volta (vincolo `active_lesson` della coda). Il default resta 2.
+Non cambia: un solo job per lezione alla volta (vincolo `active_lesson` della coda).
 
-## 0. Bug: sul Mac l'impostazione viene ignorata (da fare per primo)
+## 0. Bug di oggi: sul Mac il worker esegue un job alla volta
 
 Sull'app per Mac il worker gira come servizio launchd (`rt/services/service_manager.py`,
-`SERVICES["worker"] = ["worker"]`), senza `--concurrency`. In `rt/cli_jobs.py` il default di
-`--concurrency` è 1, quindi il worker esegue sempre un job alla volta qualunque valore sia salvato.
-Solo `rt web` in primo piano (`rt/api/launcher.py`) passa il valore. Lo conferma la diagnostica di
-Attilio: impostazione 2, "Worker: 1 attivi", "Ora ne esegue fino a 1 insieme".
+`SERVICES["worker"] = ["worker"]`), senza `--concurrency`; in `rt/cli_jobs.py` il default è 1.
+Solo `rt web` in primo piano (`rt/api/launcher.py`) passava il valore. Diagnostica di Attilio:
+impostazione 2, "Worker: 1 attivi". Il punto 1 lo risolve.
 
-Correzione:
-- `rt/cli_jobs.py`: `--concurrency` con `default=None`; se non è indicato, usa
-  `worker_concurrency()` di `rt/api/launcher.py` (legge `worker.concurrency` dalla configurazione,
-  default 2). Aggiorna l'help: "default: Impostazioni > Generali".
-- Così il servizio launchd già installato lo prende senza riscrivere il plist. Vale quando il
-  worker riparte (chiudere RT dal menu e riaprirlo, che ferma e riavvia i servizi).
-- `docs/WEB.md`: togli "`rt worker` lanciato a mano resta a 1 thread se non si indica
-  `--concurrency`", scrivi che senza `--concurrency` usa il valore delle impostazioni.
-- Test in `tests/test_parallel_jobs.py`: `rt worker` senza `--concurrency` chiama `run_workers`
-  con il valore salvato (monkeypatch di `run_workers`, configurazione a 3); con `--concurrency 1`
-  usa 1.
+## 1. Una costante, nessuna impostazione
 
-## 1. Un'unica costante per il tetto
-
-- `rt/core/config.py`, `WorkerConfig.concurrency`: `le=4` -> `le=16`.
-- `rt/services/settings_service.py`: `WORKER_CONCURRENCY_RANGE = (1, 16)`.
-- `rt/api/routers/settings.py`: `WorkerIn.concurrency` `le=4` -> `le=16`; nella description di
-  `WorkerSettings.concurrency` "1-4" -> "1-16".
-- `rt/api/launcher.py`, `worker_concurrency()`: `min(4, ...)` -> `min(WORKER_CONCURRENCY_RANGE[1], ...)`
-  importando la costante da `settings_service` (niente numeri duplicati).
+- `rt/services/jobs.py`, accanto a `DEFAULT_LEASE_SECONDS`: `WORKER_CONCURRENCY = 8`.
+- `rt/cli_jobs.py`: `--concurrency` con `default=None`; se non indicato usa `WORKER_CONCURRENCY`.
+  Help: "Job eseguiti in parallelo (default 8)". `--concurrency N` resta per test e uso a mano.
+- `rt/api/launcher.py`: togli `worker_concurrency()` e il passaggio di `--concurrency` al worker
+  (il default del comando basta). Aggiorna i test che lo monkeypatchano
+  (`tests/test_parallel_jobs.py`, `tests/test_desktop_window.py`, `tests/test_app_switch.py`).
+- `rt/core/config.py`, `WorkerConfig.concurrency`: **resta** nel modello (i `general.yaml` esistenti
+  hanno `worker.concurrency: 2` e non devono fallire al caricamento) ma non lo legge più nessuno.
+  Description: "Non usato: il worker esegue sempre fino a 8 job (dalla 4.3.3)". Togli il `le=4`
+  (`ge=1` basta).
+- `rt/services/settings_service.py`: togli `WORKER_CONCURRENCY_RANGE` e `save_worker_concurrency`.
+  In `snapshot()` togli la chiave `worker` se non serve più al frontend (vedi punto 3); altrimenti
+  lascia solo `running`.
+- `rt/api/routers/settings.py`: togli `PUT /api/v1/settings/worker`, `WorkerIn` e il campo
+  `concurrency` di `WorkerSettings` (o tutto `WorkerSettings` se sparisce dallo snapshot).
+- `rt/services/doctor_service.py` / diagnostica: se mostra "Worker: N attivi" va bene così.
 - Rigenera `docs/openapi.json` e `frontend/src/api/schema.d.ts` con lo script del repo.
 
 ## 2. Trascrizione locale: uno slot per processo
@@ -79,26 +76,33 @@ legge "In attesa che finisca un'altra trascrizione" invece di un job fermo senza
 
 ## 3. Interfaccia
 
-`frontend/src/components/settings/general.tsx`: `WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]` ->
-`[1, 2, 3, 4, 6, 8, 12, 16]`. Nessun altro testo.
+- `frontend/src/components/settings/general.tsx`: togli `WorkerSection`, `WorkerFields` e
+  `WORKER_CONCURRENCY_OPTIONS`; in `frontend/src/routes/settings.tsx` togli `<WorkerSection />`
+  dalla pagina; in `frontend/src/api/settings.ts` togli `useSaveWorker`.
+- Nessun testo nuovo, a parte "In attesa che finisca un'altra trascrizione" del punto 2.
 
 ## 4. Documentazione
 
-`docs/WEB.md`, sezione "Job in parallelo": "da 1 a 4" -> "da 1 a 16"; aggiungi una frase: le
-trascrizioni locali vanno comunque una alla volta, gli altri job (revisione, rielaborazione,
-immagini, domande) girano insieme.
+`docs/WEB.md`, sezione "Job in parallelo": il worker esegue fino a 8 job insieme su lezioni diverse,
+non è un'impostazione; le trascrizioni locali vanno comunque una alla volta. Togli il riferimento a
+Impostazioni > Generali e alla frase su `rt worker` a 1 thread. Aggiorna `docs/API.md` se cita
+`/settings/worker`.
 
 ## 5. Test
 
-- `tests/test_parallel_jobs.py::test_worker_concurrency_setting`: valori non validi `(0, 5)` ->
-  `(0, 17)`; aggiungi che `16` è accettato e `worker_concurrency()` restituisce 16.
-- Nuovo test in `tests/test_parallel_jobs.py`: due thread entrano in `local_transcription_slot`;
-  il secondo non entra finché il primo non esce e riceve `on_wait` una volta. Un terzo con
-  `cancel_token` annullato mentre aspetta esce con l'eccezione di annullamento.
-- `frontend/e2e/settings.spec.ts`: se seleziona un valore, verifica che 8 sia selezionabile.
+- `tests/test_parallel_jobs.py`: togli `test_worker_concurrency_setting`; aggiungi che `rt worker`
+  senza `--concurrency` chiama `run_workers` con 8 e con `--concurrency 1` usa 1 (monkeypatch di
+  `run_workers`). Aggiorna `test_launcher_passes_concurrency_to_worker`: il launcher non passa più
+  `--concurrency`.
+- Test che un `general.yaml` con `worker: {concurrency: 2}` si carica ancora.
+- Nuovo test dello slot: due thread entrano in `local_transcription_slot`; il secondo non entra
+  finché il primo non esce e riceve `on_wait` una volta. Un terzo con `cancel_token` annullato
+  mentre aspetta esce con `RunCancelled`.
+- `frontend/e2e/settings.spec.ts`: togli la parte su "Job in parallelo" (`worker-concurrency`).
 - Esegui `pytest tests/test_parallel_jobs.py tests/test_desktop_window.py tests/test_app_switch.py`
   e l'e2e delle impostazioni.
 
-## Fuori da questo piano
+## Note
 
-Applicare il valore senza riavviare RT (oggi vale dal prossimo avvio). Si può fare dopo.
+Dopo l'aggiornamento il servizio worker del Mac viene riavviato ("Servizi aggiornati e riavviati"),
+quindi gli 8 job valgono subito senza altro da fare.
