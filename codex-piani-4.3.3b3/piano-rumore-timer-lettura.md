@@ -1,6 +1,6 @@
 # Piano 7 · Lettura veloce: rumore con dissolvenza e conto alla rovescia
 
-Agente: da assegnare all'avvio della b3. Richieste di Attilio (22/10/2026):
+Agente: **agy**. Richieste di Attilio (22/10/2026):
 1. Il rumore di fondo entra ed esce con una dissolvenza di **1 secondo**.
 2. Nelle impostazioni della lettura veloce, **sotto il rumore di fondo**, un **conto alla rovescia** di
    pochi secondi prima che le parole partano (non un timer di sessione tipo pomodoro), con numeri

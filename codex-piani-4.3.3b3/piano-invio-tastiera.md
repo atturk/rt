@@ -1,6 +1,6 @@
 # Piano 3 · Invio della risposta scritta con ⌘/Ctrl + Invio
 
-Agente: da assegnare all'avvio della b3. Richiesta di Attilio (22/10/2026): nelle domande con il campo
+Agente: **agy**. Richiesta di Attilio (22/10/2026): nelle domande con il campo
 di testo, **⌘ + Invio** (Mac) o **Ctrl + Invio** (Windows) invia la risposta; **Invio** da solo continua
 ad andare a capo.
 

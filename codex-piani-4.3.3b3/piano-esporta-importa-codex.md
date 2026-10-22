@@ -1,6 +1,6 @@
 # Piano 1 · Esporta tutto e Importa: portare la collezione su un altro PC
 
-Agente: **Codex** (da confermare all'avvio della b3). Richiesta di Attilio (21/10/2026): esportare
+Agente: **Codex**. Richiesta di Attilio (21/10/2026): esportare
 tutto (lezioni, calendario, studio, archivio, impostazioni) per riprendere da un altro PC o salvare
 lo stato dell'intera collezione. Decisione di Attilio: **le chiavi API non escono mai dal PC**; sul
 PC nuovo si reinseriscono in Impostazioni.

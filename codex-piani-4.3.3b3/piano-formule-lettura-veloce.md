@@ -1,6 +1,6 @@
 # Piano 6 · Formule lunghe nella lettura veloce: adattate e centrate
 
-Agente: da assegnare all'avvio della b3. Segnalazione di Attilio (22/10/2026): nella lettura veloce una
+Agente: **agy**. Segnalazione di Attilio (22/10/2026): nella lettura veloce una
 formula lunga (es. $Q = 10^{-6}\int_{-3}^{3}\int_{-3}^{3} 4y^2\,dx\,dy = \dots$) esce dallo schermo a
 sinistra. Va ridotta e centrata **in base alla sua dimensione reale**, non con una riduzione fissa per
 tutte le formule.

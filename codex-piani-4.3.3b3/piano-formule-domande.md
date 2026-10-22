@@ -1,6 +1,6 @@
 # Piano 5 · Formule in LaTeX nelle domande
 
-Agente: da assegnare all'avvio della b3. Segnalazione di Attilio (22/10/2026): nella domanda «Come si
+Agente: **agy**. Segnalazione di Attilio (22/10/2026): nella domanda «Come si
 definisce la densità superficiale di carica ρ_s…» la formula appare come testo «ρ_s».
 
 ## Causa

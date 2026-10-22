@@ -1,6 +1,6 @@
 # Piano 8 · Elenco lezioni: spunta nell'anello, scudo solo se verificata
 
-Agente: da assegnare all'avvio della b3. Richiesta di Attilio (22/10/2026) sugli indicatori a destra di
+Agente: **Codex**. Richiesta di Attilio (22/10/2026) sugli indicatori a destra di
 ogni lezione (`frontend/src/components/lessons/LessonsView.tsx`, `StudyRing` e `ReviewShield`).
 
 ## Anello dello studio

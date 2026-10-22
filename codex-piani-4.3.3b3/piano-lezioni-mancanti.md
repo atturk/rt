@@ -1,6 +1,6 @@
 # Piano 9 · Inizio del periodo accademico e lezioni mancanti per materia
 
-Agente: da assegnare all'avvio della b3. Richiesta di Attilio (22/10/2026).
+Agente: **Codex**. Richiesta di Attilio (22/10/2026).
 
 ## Cosa vuole
 
@@ -26,8 +26,7 @@ Agente: da assegnare all'avvio della b3. Richiesta di Attilio (22/10/2026).
 - Gli eventi si risolvono con `_resolve_dates` (`rt/services/calendar_service.py`), che applica già
   settimana tipo, modifiche degli orari (override, ore spostate o aggiunte) e stati dei giorni: così
   le variazioni d'orario sono considerate.
-- Non contano: blocchi `annullata` e giorni senza lezione. Neppure `saltare`, perché l'utente ha
-  già deciso di non farla (da confermare con Attilio: se li vuole contare, è una riga).
+- Non contano: blocchi `annullata` e giorni senza lezione. Neppure `saltare` (deciso da Attilio).
 - Una lezione è **mancante** se il blocco non ha una lezione collegata (`ev.lesson is None`, la stessa
   associazione di `_find_lesson_for_event`).
 - Materia con `normalize_subject`, come nel resto del calendario; le materie del calendario che non
@@ -56,6 +55,11 @@ Agente: da assegnare all'avvio della b3. Richiesta di Attilio (22/10/2026).
   fa lampeggiare brevemente il blocco con quel `key` (stessa animazione d'evidenza usata altrove, es.
   `rt-media-flash`). Serve anche per i clic dalla lista "Da recuperare" se è comodo, ma non è
   richiesto.
+
+## Anche qui (dal piano 4)
+
+In `CalendarPopups.tsx` togliere `focus:ring-1 focus:ring-primary` dai campi di testo: il piano 4
+(agy) non tocca questo file.
 
 ## Test
 
