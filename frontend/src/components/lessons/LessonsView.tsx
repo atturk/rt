@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Check, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -276,22 +276,22 @@ export function StudyRing({ lesson }: { lesson: Lesson }) {
   const learnedArc = total ? learned / total * 100 : 0
   const learningArc = total ? learning / total * 100 : 0
   const label = `${learned} ${learned === 1 ? 'appresa' : 'apprese'} · ${Math.max(0, total - learned - ignored)} da apprendere · ${ignored} ${ignored === 1 ? 'ignorata' : 'ignorate'}`
-  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="relative flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
     <svg width="19" height="19" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[2.6]">
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-track" />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learned" strokeDasharray={`${Math.max(0, learnedArc - 3)} ${100 - Math.max(0, learnedArc - 3)}`} />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learning" strokeDasharray={`${Math.max(0, learningArc - 3)} ${100 - Math.max(0, learningArc - 3)}`} strokeDashoffset={-learnedArc} />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
     </svg>
+    {total > 0 && learned + learning + ignored >= total && <Check data-testid="lesson-study-complete" aria-hidden className="absolute size-2.5 text-study-learned" strokeWidth={1.5} />}
   </Link>}</Tooltip>
 }
 
 function ReviewShield({ lesson }: { lesson: Lesson }) {
-  if (lesson.phases.rewrite !== 'VALID') return null
-  const done = lesson.phases.review === 'VALID' && lesson.pending_issues === 0
-  const label = done ? 'Verifica fatta' : `Verifica da fare${lesson.pending_issues > 0 ? ` · ${lesson.pending_issues} issue da decidere` : ''}`
+  if (lesson.phases.review !== 'VALID' || lesson.pending_issues !== 0) return null
+  const label = 'Verifica fatta'
   return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/lezioni/${lesson.id}?panel=verifica`} aria-label={label} data-testid="lesson-review-shield" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
-    <ShieldCheck aria-hidden className={cn('size-[19px]', done ? 'text-study-learned' : 'text-study-learning')} />
+    <ShieldCheck aria-hidden className="size-[19px] text-study-learned" />
   </Link>}</Tooltip>
 }
 
