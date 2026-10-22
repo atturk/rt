@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  adaptWord, endsSentence, focusIndex, formulaMetrics, graveWord, isFullStop, nextSentence, previousSentence, readUnitWords, remainingSeconds,
+  adaptWord, endsSentence, fitFormula, focusIndex, formulaMetrics, graveWord, isFullStop, nextSentence, previousSentence, readUnitWords, remainingSeconds,
   surrounding, wordDelay, type Word,
 } from './rsvp'
 
@@ -162,5 +162,48 @@ describe('adattamento delle parole allo spazio disponibile', () => {
     expect(adaptWord(formula('z'), 3, 40, measure, 'prima')).toMatchObject([
       { sourceIndex: 3, scale: 1, lastPiece: true, math: { tex: 'z' } },
     ])
+  })
+})
+
+describe('fitFormula · adattamento formule nella lettura veloce (4.3.3b3 piano 6)', () => {
+  it('una formula stretta resta a 1', () => {
+    const res = fitFormula({ width: 250, height: 40 }, { width: 800, height: 300 })
+    expect(res.scale).toBe(1)
+    expect(res.boxWidth).toBe(250)
+    expect(res.boxHeight).toBe(40)
+    expect(res.scrollable).toBe(false)
+  })
+
+  it('una larga scala fino a entrare', () => {
+    const res = fitFormula({ width: 1000, height: 50 }, { width: 500, height: 300 })
+    expect(res.scale).toBeCloseTo(0.5)
+    expect(res.boxWidth).toBeCloseTo(500)
+    expect(res.boxHeight).toBeCloseTo(25)
+    expect(res.scrollable).toBe(false)
+  })
+
+  it('una alta scala in altezza', () => {
+    const res = fitFormula({ width: 300, height: 400 }, { width: 800, height: 200 })
+    expect(res.scale).toBeCloseTo(0.5)
+    expect(res.boxHeight).toBeCloseTo(200)
+    expect(res.boxWidth).toBeCloseTo(150)
+    expect(res.scrollable).toBe(false)
+  })
+
+  it('sotto il minimo restituisce il minimo e chiede lo scorrimento', () => {
+    const res = fitFormula({ width: 4000, height: 40 }, { width: 600, height: 300 }, 0.35)
+    expect(res.scale).toBe(0.35)
+    expect(res.boxWidth).toBeCloseTo(1400)
+    expect(res.boxHeight).toBeCloseTo(14)
+    expect(res.scrollable).toBe(true)
+  })
+
+  it('gestisce dimensioni nulle o negative restituendo scala 1 non scorrevole', () => {
+    expect(fitFormula({ width: 0, height: 0 }, { width: 500, height: 300 })).toEqual({
+      scale: 1,
+      boxWidth: 0,
+      boxHeight: 0,
+      scrollable: false,
+    })
   })
 })
