@@ -14,7 +14,7 @@ from rt.db.engine import DatabaseUnavailable
 
 def configure_worker_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("--once", action="store_true", help="Esegue al massimo un job e termina")
-    p.add_argument("--concurrency", type=int, default=1, help="Job eseguiti in parallelo (thread, default 1)")
+    p.add_argument("--concurrency", type=int, default=None, help="Job eseguiti in parallelo (thread, default: 8)")
     p.add_argument("--types", default=None, help="Tipi di job da eseguire, separati da virgola (default: tutti)")
     p.add_argument("--lease", type=int, default=None, help="Durata del lease in secondi (default 60)")
     p.add_argument("--poll", type=float, default=1.0, help="Attesa tra due controlli della coda vuota (secondi)")
@@ -95,8 +95,10 @@ def cmd_worker(args: argparse.Namespace) -> None:
     print(f"👷 Worker RT avviato{mode} (pid {os.getpid()}, job: {', '.join(types)}). Ctrl+C per fermarlo.", flush=True)
     print(f"   Trascrizione: {stt}" if stt else
           "   Trascrizione: nessuna (i job che devono trascrivere audio aspettano un worker con un motore di trascrizione)", flush=True)
+    from rt.api.launcher import worker_concurrency
+    concurrency = args.concurrency if args.concurrency is not None else worker_concurrency()
     try:
-        run_workers(_queue, concurrency=max(1, args.concurrency), **kwargs)
+        run_workers(_queue, concurrency=max(1, concurrency), **kwargs)
     except KeyboardInterrupt:
         print("\n⏹ Worker fermato: i job in corso tornano in coda.", file=sys.stderr)
 
