@@ -6,15 +6,16 @@ Ultima beta della 4.3.3. Lavori sul ramo **`codex/4.3.3b4`**, già creato da
 ## I piani, nell'ordine
 
 ```
-git fetch origin claude/project-thread-krk5ox claude/project-thread-h86yf9
-git show origin/claude/project-thread-krk5ox:codex-piani-job-paralleli/piano-job-in-parallelo-codex.md
+git fetch origin claude/project-thread-h86yf9
+git show origin/claude/project-thread-h86yf9:codex-piani-4.3.3b4/piano-job-in-parallelo-codex.md
 git show origin/claude/project-thread-h86yf9:codex-piani-4.3.3b4/piano-esercizi-traccia-codex.md
 git show origin/claude/project-thread-h86yf9:codex-piani-4.3.3b4/piano-immagini-editor-codex.md
 git show origin/claude/project-thread-h86yf9:codex-piani-4.3.3b4/piano-lettura-media-zen-codex.md
 ```
 
-1. **Job in parallelo**: tutti i punti, nell'ordine. 0 il worker del Mac ignora l'impostazione,
-   1 tetto a 16, 2 trascrizione locale una alla volta, 3 menu, 4 documentazione, 5 test.
+1. **Job in parallelo**: tutti i punti, nell'ordine. 0 il worker del Mac ignora il valore,
+   1 fisso a 8, 2 trascrizione locale una alla volta, 3 menu senza selettore, 4 documentazione,
+   5 test. Usa questa versione del piano, non quella in `codex-piani-job-paralleli/`.
 2. **Esercizi**: la traccia dà i dati, non il metodo.
 3. **Immagini nell'editor**: 1.1 tremolio, 1.2 graffetta vuota, 1.3 immagine doppia, 1.4 clic,
    doppio clic e trascinamento, 1.5 animazione nel pannello.
@@ -45,7 +46,7 @@ Non aggiungere al ramo le cartelle `codex-piani-*`.
 
 ## La PR
 
-Titolo: `4.3.3b4 · Codex: job in parallelo, esercizi, immagini nell'editor, lettura`.
+Titolo: `4.3.3b4 · Codex: 8 job in parallelo, esercizi, immagini nell'editor, lettura`.
 
 Nella descrizione metti:
 - ogni punto, fatto o non fatto;
