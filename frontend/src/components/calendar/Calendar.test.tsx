@@ -42,6 +42,7 @@ vi.mock('@/api/calendar', async (importOriginal) => {
     useDeleteOverride: () => mutation(calendarMocks.deleteOverride),
     useCreateTemplateEntry: () => mutation(calendarMocks.createTemplate),
     useDeleteTemplateEntry: () => mutation(calendarMocks.deleteTemplate),
+    useSetPeriodStart: () => mutation(vi.fn()),
     useSetDayState: () => mutation(vi.fn()),
     useSetEntryState: () => mutation(vi.fn()),
     useLinkLesson: () => mutation(vi.fn()),
@@ -190,7 +191,7 @@ describe('Calendar components (CA1c)', () => {
   it('WeekInfoPopup renders summary information', () => {
     const onClose = vi.fn()
     const summary: CalendarWeekSummary = {
-      hours_total: 10.0,
+      is_period_start: false, hours_total: 10.0,
       recorded_count: 3,
       skip_count: 1,
       modified_hours_count: 2,
@@ -296,7 +297,7 @@ describe('CalendarPage: modifica di un\'ora', () => {
     label: '12–16 ottobre',
     days: [{ ...dummyDay, events: [tplEvent] }],
     summary: {
-      hours_total: 2,
+      is_period_start: false, hours_total: 2,
       recorded_count: 0,
       skip_count: 0,
       modified_hours_count: 0,
@@ -454,7 +455,7 @@ describe('CalendarPage: intervallo di settimane', () => {
   const event = { ...dummyEvent, lesson: null, template_entry_id: 7, key: 'tpl_7' }
   const week = {
     start_date: '2026-10-12', end_date: '2026-10-16', week_number: '42', label: '12–16 ottobre',
-    days: [{ ...dummyDay, events: [event] }], summary: { hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] },
+    days: [{ ...dummyDay, events: [event] }], summary: { is_period_start: false, hours_total: 2, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] },
   }
   beforeEach(() => {
   sessionStorage.removeItem('rt:calendar-view')
@@ -539,7 +540,7 @@ describe('CalendarPage: intervallo di settimane', () => {
 
 it('nel riepilogo a cavallo di Capodanno usa l’anno del lunedì', () => {
   render(<WeekInfoPopup weekLabel="29 dicembre–2 gennaio" weekStart="2025-12-29" weekNumber="1"
-    summary={{ hours_total: 0, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] }}
+    summary={{ is_period_start: false, hours_total: 0, recorded_count: 0, skip_count: 0, modified_hours_count: 0, to_recover: [] }}
     anchor={{ x: 100, y: 100, width: 20, height: 20 }} onClose={vi.fn()} />)
   expect(screen.getByTestId('calendar-week-popup')).toHaveTextContent('Settimana 1 · 29 dicembre–2 gennaio 2025')
 })
@@ -552,4 +553,16 @@ it('la vista giorno fuori intervallo conserva le informazioni e impedisce il cli
   expect(block).toHaveTextContent('DATA MINING')
   fireEvent.click(block)
   expect(onOpenEvent).not.toHaveBeenCalled()
+})
+
+it('il riepilogo imposta e toglie l’inizio del periodo', () => {
+  const set = vi.fn()
+  const props = { weekLabel: '12–16 ottobre', weekStart: '2026-10-12', weekNumber: '42', anchor: { x: 0, y: 0, width: 20, height: 20 }, onClose: vi.fn(), onPeriodStart: set }
+  const summary = { is_period_start: false, hours_total: 0, recorded_count: 0, skip_count: 0, modified_hours_count: 0 }
+  const { rerender } = render(<WeekInfoPopup {...props} summary={summary} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Inizio del periodo' }))
+  expect(set).toHaveBeenLastCalledWith('2026-10-12')
+  rerender(<WeekInfoPopup {...props} summary={{ ...summary, is_period_start: true }} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Inizio del periodo ✓' }))
+  expect(set).toHaveBeenLastCalledWith(null)
 })

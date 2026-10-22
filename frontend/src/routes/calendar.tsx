@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router'
+import { errorMessage } from '@/api/client'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Calendar as CalendarIcon,
@@ -18,6 +20,7 @@ import {
 
 import {
   useCalendarWeek,
+  useSetPeriodStart,
   useCalendarYear,
   useCalendarTemplate,
   useCreateOverride,
@@ -85,10 +88,15 @@ const subscribeHover = (change: () => void) => {
 }
 
 export function CalendarPage() {
+  const [search] = useSearchParams()
+  const requestedDate = search.get('data')
+  const requestedEvent = search.get('evento')
+  const periodStart = useSetPeriodStart()
   const isPhone = useIsPhone()
   const hover = useSyncExternalStore(subscribeHover, hoverSnapshot, () => true)
-  const [currentDate, setCurrentDate] = useState(getTodayIso)
+  const [currentDate, setCurrentDate] = useState(() => requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : getTodayIso())
   const [desktopView, setDesktopView] = useState<'week' | 'day' | 'year'>(() => {
+    if (requestedEvent) return 'week'
     try { const saved = sessionStorage.getItem('rt:calendar-view'); return saved === 'day' || saved === 'year' ? saved : 'week' } catch { return 'week' }
   })
   const setView = (view: 'week' | 'day' | 'year') => {
@@ -138,6 +146,20 @@ export function CalendarPage() {
 
   // API queries & mutations
   const weekQuery = useCalendarWeek(currentDate)
+  useEffect(() => {
+    if (!requestedDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return
+    // oxlint-disable-next-line react/set-state-in-effect
+    setCurrentDate(requestedDate)
+  }, [requestedDate])
+  useEffect(() => {
+    if (!requestedEvent || !weekQuery.data) return
+    const prefix = isPhone ? 'calendar-mobile-event-' : 'calendar-event-'
+    const element = document.querySelector(`[data-testid="${prefix}${CSS.escape(requestedEvent)}"]`)
+    element?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    element?.classList.add('rt-media-flash')
+    const timer = setTimeout(() => element?.classList.remove('rt-media-flash'), 2400)
+    return () => { clearTimeout(timer); element?.classList.remove('rt-media-flash') }
+  }, [requestedEvent, requestedDate, weekQuery.data, isPhone])
   const templateQuery = useCalendarTemplate()
   const createTpl = useCreateTemplateEntry()
   const deleteTpl = useDeleteTemplateEntry()
@@ -501,6 +523,8 @@ export function CalendarPage() {
 
       {infoAnchor && week && (
         <WeekInfoPopup
+          onPeriodStart={date => periodStart.mutate(date)}
+          periodError={periodStart.isError ? errorMessage(periodStart.error) : undefined}
           weekLabel={week.label}
           weekStart={week.start_date}
           weekNumber={week.week_number}

@@ -77,6 +77,7 @@ export function rowsToPricing(rows: PricingRow[]): Record<string, Record<string,
 export const SETTINGS_SECTIONS = [
   { path: 'aspetto', label: 'Aspetto e lettura', description: 'Tema, lettura veloce, evidenziatore' },
   { path: 'domande', label: 'Domande', description: 'Tipi personalizzati per materia, modelli e prove' },
+  { path: 'calendario', label: 'Calendario', description: 'Orario e lezioni mancanti' },
   { path: 'materie', label: 'Materie', description: 'Elenco usato da import, calendario e domande' },
   { path: 'editor', label: 'Editor e scorciatoie', description: 'Comandi e tasti dell’editor' },
   { path: 'lavorazione', label: 'Lavorazione delle lezioni', description: 'Trascrizione, scaletta, arricchimento, job' },

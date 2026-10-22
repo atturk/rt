@@ -46,7 +46,7 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
   if (lesson != null && event.type === 'phase_progress' && DOCUMENT_JOBS.has(event.job_type)) keys.push(lessonKeys.document(lesson))
   if (PROGRESS_EVENTS.has(event.type)) return keys
 
-  keys.push(queryKeys.allLessons, ['enrichment'])
+  keys.push(queryKeys.allLessons, ['enrichment'], ['calendar'])
   if (lesson != null) {
     keys.push(LESSON_EVENTS.has(event.type) ? lessonKeys.all(lesson) : queryKeys.lesson(lesson), lessonKeys.phases(lesson))
     keys.push(['outline', lesson])
@@ -64,6 +64,7 @@ export function keysForEvent(event: LiveJobEvent): QueryKey[] {
 
 /** Quello che gli eventi aggiornerebbero: si rilegge all'apertura dello stream e, se è giù, ogni tanto. */
 function invalidateJobQueries(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: ['calendar'] })
   void client.invalidateQueries({ queryKey: ['jobs'] })
   void client.invalidateQueries({ queryKey: ['job'] })
   void client.invalidateQueries({ predicate: (query) => isLessonJobs(query.queryKey) })

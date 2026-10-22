@@ -166,6 +166,7 @@ class CalendarToRecoverItem(BaseModel):
 
 
 class CalendarWeekSummary(BaseModel):
+    is_period_start: bool = False
     hours_total: float
     recorded_count: int
     skip_count: int
@@ -271,3 +272,17 @@ class CalendarImportResult(BaseModel):
     subjects: int
     entries: int
     conflicts: int
+
+
+class CalendarPeriodStart(BaseModel):
+    date: Optional[IsoDate] = None
+
+
+class CalendarMissingSubject(BaseModel):
+    materia: str
+    missing: List[CalendarToRecoverItem]
+
+
+class CalendarMissingLessons(BaseModel):
+    start: Optional[str] = None
+    subjects: List[CalendarMissingSubject] = Field(default_factory=list)

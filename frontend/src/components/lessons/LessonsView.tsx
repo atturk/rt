@@ -26,6 +26,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
+import { MissingLessonsButton } from './MissingLessonsButton'
 import { SelectionDetails } from './SelectionDetails'
 
 const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User, nessuno: List } as const
@@ -314,7 +315,7 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
           onChange={onSelectGroup}
         />
       )}
-      <h2 className="min-w-0 flex-1 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}</h2>
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping === 'materia' && <MissingLessonsButton materia={label} />}</h2>
     </div>
   )
 }

@@ -156,7 +156,7 @@ export function EventPopup({
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Aggiungi una nota per quest'ora…"
             rows={2}
-            className="w-full resize-none rounded border bg-background p-1.5 text-xs outline-none focus:ring-1 focus:ring-primary"
+            className="w-full resize-none rounded border bg-background p-1.5 text-xs outline-none"
           />
           <div className="flex justify-end gap-0.5">
             <IconButton
@@ -386,6 +386,8 @@ export function WeekInfoPopup({
   summary,
   anchor,
   onClose,
+  onPeriodStart,
+  periodError,
 }: {
   weekLabel: string
   weekStart: string
@@ -393,6 +395,8 @@ export function WeekInfoPopup({
   summary: CalendarWeekSummary
   anchor: PopupAnchor
   onClose: () => void
+  onPeriodStart?: (date: string | null) => void
+  periodError?: string
 }) {
   const popupRef = useRef<HTMLDivElement>(null)
 
@@ -446,6 +450,8 @@ export function WeekInfoPopup({
         </b>
       </div>
 
+      <button type="button" className="self-start text-xs hover:underline" onClick={() => onPeriodStart?.(summary.is_period_start ? null : weekStart)}>Inizio del periodo{summary.is_period_start ? ' ✓' : ''}</button>
+      {periodError && <p role="alert" className="text-danger">{periodError}</p>}
       {(summary.to_recover ?? []).length > 0 && (
         <div className="flex flex-col gap-1.5 border-t pt-2">
           <div className="font-semibold uppercase tracking-wider text-muted-foreground">
@@ -576,7 +582,7 @@ export function AddEventPopup({
             onChange={(e) => setMateria(e.target.value)}
             placeholder="Nome materia"
             list="calendar-known-subjects"
-            className="rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary"
+            className="rounded border bg-background px-2 py-1 outline-none"
             autoFocus
           />
           <datalist id="calendar-known-subjects">
@@ -593,7 +599,7 @@ export function AddEventPopup({
               type="text"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="rounded border bg-background px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-primary"
+              className="rounded border bg-background px-2 py-1 font-mono outline-none"
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -602,7 +608,7 @@ export function AddEventPopup({
               type="text"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="rounded border bg-background px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-primary"
+              className="rounded border bg-background px-2 py-1 font-mono outline-none"
             />
           </label>
         </div>
@@ -615,7 +621,7 @@ export function AddEventPopup({
             value={docente}
             onChange={(e) => setDocente(e.target.value)}
             placeholder="Facoltativo"
-            className="rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary"
+            className="rounded border bg-background px-2 py-1 outline-none"
           />
           <datalist id="calendar-known-teachers">{teachers.map(name => <option key={name} value={name} />)}</datalist>
         </label>

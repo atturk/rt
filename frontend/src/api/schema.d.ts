@@ -329,6 +329,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calendar/missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Missing Lessons */
+        get: operations["get_missing_lessons_api_v1_calendar_missing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/override": {
         parameters: {
             query?: never;
@@ -374,6 +391,23 @@ export interface paths {
         put?: never;
         /** Paste Week */
         post: operations["paste_week_api_v1_calendar_paste_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calendar/period-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Period Start */
+        put: operations["set_period_start_api_v1_calendar_period_start_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4162,6 +4196,20 @@ export interface components {
             /** Template Entry Id */
             template_entry_id?: number | null;
         };
+        /** CalendarMissingLessons */
+        CalendarMissingLessons: {
+            /** Start */
+            start?: string | null;
+            /** Subjects */
+            subjects?: components["schemas"]["CalendarMissingSubject"][];
+        };
+        /** CalendarMissingSubject */
+        CalendarMissingSubject: {
+            /** Materia */
+            materia: string;
+            /** Missing */
+            missing: components["schemas"]["CalendarToRecoverItem"][];
+        };
         /** CalendarOverrideCreate */
         CalendarOverrideCreate: {
             /**
@@ -4236,6 +4284,11 @@ export interface components {
         CalendarPasteResult: {
             /** Weeks */
             weeks: string[];
+        };
+        /** CalendarPeriodStart */
+        CalendarPeriodStart: {
+            /** Date */
+            date?: string | null;
         };
         /** CalendarSchedule */
         CalendarSchedule: {
@@ -4363,6 +4416,11 @@ export interface components {
         CalendarWeekSummary: {
             /** Hours Total */
             hours_total: number;
+            /**
+             * Is Period Start
+             * @default false
+             */
+            is_period_start: boolean;
             /** Modified Hours Count */
             modified_hours_count: number;
             /** Recorded Count */
@@ -10055,6 +10113,71 @@ export interface operations {
             };
         };
     };
+    get_missing_lessons_api_v1_calendar_missing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarMissingLessons"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     create_override_api_v1_calendar_override_post: {
         parameters: {
             query?: never;
@@ -10209,6 +10332,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalendarPasteResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_period_start_api_v1_calendar_period_start_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarPeriodStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPeriodStart"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

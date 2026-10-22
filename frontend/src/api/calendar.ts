@@ -207,3 +207,14 @@ export function usePasteCalendar() {
     onSuccess: () => { void client.invalidateQueries({ queryKey: calendarKeys.all }); void client.invalidateQueries({ queryKey: subjectsKeys.all }) },
   })
 }
+
+export function useMissingLessons(enabled = true) {
+  return useQuery({ queryKey: [...calendarKeys.all, 'missing'], queryFn: () => unwrap(api.GET('/api/v1/calendar/missing')), enabled })
+}
+
+export function useSetPeriodStart() {
+  const client = useQueryClient()
+  return useMutation({ mutationFn: (date: string | null) => unwrap(api.PUT('/api/v1/calendar/period-start', { body: { date } })),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: calendarKeys.all }) },
+  })
+}

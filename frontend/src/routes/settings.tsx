@@ -16,6 +16,7 @@ import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { QuestionsSettingsSection } from '@/components/settings/questions'
+import { CalendarSettingsSection } from '@/components/settings/calendar'
 import { SubjectsSettingsSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
@@ -94,6 +95,7 @@ export function SettingsIndexPage() {
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
+export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
