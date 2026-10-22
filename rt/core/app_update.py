@@ -37,6 +37,8 @@ ASSET_NAMES = {
     bundle.WINDOWS: "RT-{version}-windows-x64-setup.exe",
 }
 CHECK_TTL_SECONDS = 6 * 3600
+# GitHub concede 60 richieste all'ora senza login: "Controlla ora" ripetuto non va oltre una ogni minuto.
+REFRESH_MIN_SECONDS = 60
 
 
 class AppUpdateError(RuntimeError):
@@ -416,6 +418,7 @@ class _State:
         self.error: Optional[str] = None
         self.target: Optional[str] = None
         self.last_check: Optional[UpdateCheck] = None
+        self.checked_at = 0.0
 
     def snapshot(self) -> Dict:
         with self.lock:
@@ -428,9 +431,19 @@ STATE = _State()
 
 def cached_check(refresh: bool = False) -> UpdateCheck:
     last = STATE.last_check
-    if not refresh and last is not None and last.error is None and time.time() - last.checked_at < CHECK_TTL_SECONDS:
-        return last
+    now = time.time()
+    if last is not None and last.channel == effective_channel(last.current):
+        if not refresh and last.error is None and now - last.checked_at < CHECK_TTL_SECONDS:
+            return last
+        if now - STATE.checked_at < REFRESH_MIN_SECONDS:
+            return last
     result = check()
+    STATE.checked_at = now
+    if (result.error and last is not None and last.error is None
+            and (last.current, last.channel) == (result.current, result.channel)):
+        # GitHub non risponde (limite di richieste, rete): vale ancora l'ultimo controllo riuscito,
+        # così un download già trovato si può scaricare e installare.
+        return last
     STATE.last_check = result
     return result
 

@@ -50,6 +50,14 @@ afterEach(() => {
 })
 
 describe('UpdatePopup', () => {
+  it('controlla gli aggiornamenti una volta sola all\'apertura', async () => {
+    renderPopup(basePopupData)
+    expect(await screen.findByText('RT 4.3.0')).toBeVisible()
+    await new Promise(resolve => setTimeout(resolve, 200))
+    const refreshes = vi.mocked(api.GET).mock.calls.filter(call => JSON.stringify(call).includes('refresh'))
+    expect(refreshes).toHaveLength(1)
+  })
+
   it('stato disponibile: mostra versione, link novità e pulsante Scarica', async () => {
     const { post } = renderPopup(basePopupData)
     expect(await screen.findByText('RT 4.3.0')).toBeVisible()

@@ -8,10 +8,13 @@ import { useAppUpdate, useReloadWhenUpdated } from './useAppUpdate'
 
 export function UpdatePopup() {
   const { data, phase, percent, refresh, download, install } = useAppUpdate()
+  // mutate è stabile, l'oggetto della mutation no: con [refresh] il controllo ripartiva a ogni
+  // render e GitHub rispondeva 429.
+  const { mutate: checkNow } = refresh
 
   useEffect(() => {
-    refresh.mutate()
-  }, [refresh])
+    checkNow()
+  }, [checkNow])
 
   useReloadWhenUpdated(phase === 'installing' ? data?.progress?.target ?? null : null)
 
