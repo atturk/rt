@@ -1,5 +1,21 @@
 # Novità di RT
 
+## 4.3.3b3 — 2026-10-22
+
+### Novità
+
+- **Lezioni mancanti**: dalle info di una settimana la imposti come inizio del periodo accademico. Se una materia ha meno lezioni elaborate di quelle svolte (contando cambi d'orario, annullate e da saltare), accanto al nome compare un piccolo avviso; il popup elenca le lezioni mancanti e la data porta al blocco nel calendario. Si nasconde dalle impostazioni.
+- **Esporta e importa**: dal menu dell'app esporti tutto in un file e lo importi su un altro PC. Le chiavi API non escono mai dal computer: all'importazione restano quelle locali.
+- **Lezione già esistente**: se i metadati sono già usati da un'altra lezione, RT dice quale e permette di cambiarli.
+- **Anello e scudo**: quando ogni unità ha uno stato diverso da «da apprendere» l'anello mostra una spunta; lo scudo compare solo sulle lezioni verificate.
+- **Lettura veloce**: conto alla rovescia prima di partire (0–10 s, predefinito 3), saltato se riprendi entro 5 s dalla pausa. Il rumore di fondo entra ed esce in 1 s. Le formule lunghe si adattano allo spazio reale e restano centrate.
+- **⌘/Ctrl + Invio** invia la risposta scritta; Invio va a capo.
+
+### Correzioni
+
+- Le formule nelle domande generate sono scritte in LaTeX e quindi rese correttamente.
+- Niente più bordo nero attorno ai campi di testo attivi.
+
 ## 4.3.3b2 — 2026-10-22
 
 ### Correzioni
