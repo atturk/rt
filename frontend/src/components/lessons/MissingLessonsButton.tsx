@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/modal'
 import { usePreference } from '@/lib/preferences'
 
 export function MissingLessonsButton({ materia }: { materia: string }) {
-  const [enabled] = usePreference('calendar.missingWarning', true)
+  const [enabled] = usePreference('calendar.missing-warning', true)
   const missing = useMissingLessons(enabled)
   const [open, setOpen] = useState(false)
   const items = missing.data?.subjects?.find(s => s.materia.trim().toUpperCase() === materia.trim().toUpperCase())?.missing ?? []
