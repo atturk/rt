@@ -1,6 +1,6 @@
 # Piano 2 · Lezione con metadati già usati: dire quali e permettere di cambiarli
 
-Agente: da assegnare all'avvio della b2. Oggi creare una lezione con data, materia e argomenti di una
+Agente: da assegnare all'avvio della b3. Oggi creare una lezione con data, materia e argomenti di una
 lezione esistente fallisce **nel worker** con `ValueError: Esiste già una lezione con questi metadati`:
 non dice quali, e "Riprova" rimanda lo stesso job che fallirà di nuovo.
 
