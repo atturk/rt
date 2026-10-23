@@ -163,7 +163,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate
   const changeStatus = () => {
-    if (unit && !status.isPending) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+    if (unit) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
   }
 
   useEffect(() => {
@@ -325,7 +325,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
 
   const handleStatusFromReader = () => {
-    if (status.isPending) return
     changeStatus()
     const next = nextStudyStatus(live?.status)
     setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
@@ -543,7 +542,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -669,7 +668,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
         className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
         onClick={changeStatus}
-        unavailable={status.isPending ? 'salvataggio in corso' : null}
         data-testid="study-status"
       />
       <IconButton
