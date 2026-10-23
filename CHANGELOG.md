@@ -8,6 +8,7 @@
 - **Esercizi**: la traccia dà solo i dati, non il metodo. Il template generale si aggiorna da solo se non l'hai modificato.
 - **Immagini nel testo**: un clic apre il visore, o la porta al centro del pannello se è aperto; doppio clic mostra il markdown; tenendo premuto la sposti. Nel pannello l'immagine scelta si evidenzia con un piccolo rimbalzo.
 - **Studio**: graffetta e timecode piccoli sotto il titolo dell'unità, nascosti in zen. **M** apre e chiude le immagini.
+- **Calendario**: nel riepilogo della settimana ogni ora da recuperare porta al suo blocco.
 
 ### Correzioni
 

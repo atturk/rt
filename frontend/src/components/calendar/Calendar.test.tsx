@@ -211,14 +211,16 @@ describe('Calendar components (CA1c)', () => {
     }
 
     render(
-      <WeekInfoPopup
-        weekLabel="12–16 ottobre"
-        weekStart="2026-10-12"
-        weekNumber="41"
-        summary={summary}
-        anchor={{ x: 100, y: 100, width: 50, height: 20 }}
-        onClose={onClose}
-      />,
+      <MemoryRouter>
+        <WeekInfoPopup
+          weekLabel="12–16 ottobre"
+          weekStart="2026-10-12"
+          weekNumber="41"
+          summary={summary}
+          anchor={{ x: 100, y: 100, width: 50, height: 20 }}
+          onClose={onClose}
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.getByText('10')).toBeTruthy()
@@ -226,6 +228,11 @@ describe('Calendar components (CA1c)', () => {
     expect(screen.getByText('2 ore diverse')).toBeTruthy()
     expect(screen.getByText('Generale')).toBeTruthy()
     expect(screen.getByText('Lun 5/10')).toBeTruthy()
+    // Ogni ora da recuperare porta al suo blocco nel calendario.
+    const link = screen.getByRole('link', { name: /Generale/ })
+    expect(link.getAttribute('href')).toBe('/calendario?data=2026-10-05&evento=past_1')
+    fireEvent.click(link)
+    expect(onClose).toHaveBeenCalled()
   })
 
   it('CalendarWeekGrid mostra il docente sotto l\'orario solo se il blocco è abbastanza alto', () => {
