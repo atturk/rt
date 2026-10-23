@@ -117,6 +117,46 @@ describe('imageStripDOM', () => {
     expect(container.querySelector('.rt-strip')).toBeNull()
     cleanup()
   })
+
+  it('con metaBelow: true monta il meta fuori dal titolo e dopo di esso, con scorciatoia M nel tooltip', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `<h3 data-unit-id="1.1">Titolo</h3>
+      <p><img src="/img1.png" alt="Doc.pdf, pagina 1" /></p>
+      <p>Testo</p>`
+    document.body.append(container)
+    const cleanup = mountDocumentImageStrips(container, [{ unit_id: '1.1', immagini_sezione: ['img1.png'], start_formatted: '01:23' }], { metaBelow: true })
+    const heading = container.querySelector('h3')!
+    expect(heading.querySelector('.rt-unit-meta')).toBeNull()
+    const meta = heading.nextElementSibling as HTMLElement
+    expect(meta).toHaveClass('rt-unit-meta')
+    expect(meta).toHaveClass('rt-unit-meta-below')
+    const button = meta.querySelector<HTMLButtonElement>('.rt-unit-images-button')!
+    expect(button).toBeInTheDocument()
+    expect(button.getAttribute('aria-label')).toBe('Mostra le immagini · M')
+    const time = meta.querySelector('.rt-timecode')
+    expect(time?.textContent).toBe('01:23')
+    button.click()
+    expect(button.getAttribute('aria-label')).toBe('Nascondi le immagini · M')
+    button.click()
+    cleanup()
+    expect(heading.nextElementSibling?.classList.contains('rt-unit-meta')).toBe(false)
+    container.remove()
+  })
+
+  it('con metaBelow: true senza immagini nella sezione mostra solo il timecode', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `<h3 data-unit-id="1.1">Titolo</h3><p>Testo</p>`
+    document.body.append(container)
+    const cleanup = mountDocumentImageStrips(container, [{ unit_id: '1.1', start_formatted: '05:40' }], { metaBelow: true })
+    const heading = container.querySelector('h3')!
+    const meta = heading.nextElementSibling as HTMLElement
+    expect(meta).toHaveClass('rt-unit-meta-below')
+    expect(meta.querySelector('.rt-unit-images-button')).toBeNull()
+    expect(meta.querySelector('.rt-timecode')?.textContent).toBe('05:40')
+    cleanup()
+    expect(container.querySelector('.rt-unit-meta')).toBeNull()
+    container.remove()
+  })
 })
 
 it('trascinando una miniatura conserva la larghezza naturale per l’inserimento nel testo', () => {

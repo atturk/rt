@@ -81,7 +81,7 @@ it('lascia la copia al browser quando la selezione non tocca formule e converte 
 it('Studio: graffetta, immagini della sezione e immagini nel testo separate', () => {
   const imagesUnit = { ...unit, start_formatted: '00:00', immagini_sezione: ['slide.png'], html: '<p><img src="assets/images/slide.png" alt="Slide.pdf, p. 2"></p><p>Testo</p><p><img src="assets/images/inline.png#w=240" width="240"></p>' }
   const view = render(<UnitText lessonId={1} unit={imagesUnit} highlightMode={null} onReady={vi.fn()} />)
-  const button = screen.getByRole('button', { name: 'Mostra le immagini' })
+  const button = screen.getByRole('button', { name: 'Mostra le immagini · M' })
   expect(button).toHaveTextContent('1')
   expect(button.nextElementSibling).toHaveTextContent('00:00')
   fireEvent.click(button)

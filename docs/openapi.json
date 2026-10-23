@@ -12548,21 +12548,6 @@
         "title": "WebSearchTestOut",
         "type": "object"
       },
-      "WorkerIn": {
-        "properties": {
-          "concurrency": {
-            "maximum": 4.0,
-            "minimum": 1.0,
-            "title": "Concurrency",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "concurrency"
-        ],
-        "title": "WorkerIn",
-        "type": "object"
-      },
       "WorkerInfo": {
         "properties": {
           "current_job_id": {
@@ -12630,11 +12615,6 @@
       },
       "WorkerSettings": {
         "properties": {
-          "concurrency": {
-            "description": "Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio",
-            "title": "Concurrency",
-            "type": "integer"
-          },
           "running": {
             "default": 0,
             "description": "Worker attivi ora (uno per job eseguibile insieme)",
@@ -12642,9 +12622,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "concurrency"
-        ],
         "title": "WorkerSettings",
         "type": "object"
       }
@@ -31888,92 +31865,6 @@
           }
         ],
         "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/worker": {
-      "put": {
-        "operationId": "put_worker_api_v1_settings_worker_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkerIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
         ]

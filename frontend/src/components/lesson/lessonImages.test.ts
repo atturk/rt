@@ -2,7 +2,7 @@ import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { history, undo } from '@codemirror/commands'
-import { RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
+import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
 import { lessonImageStrips } from './lessonImageStrips'
 import { dropTarget, sectionDropTarget, moveDocumentImage, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument } from './lessonImages'
 import { timecodeLock } from './timecodeLock'
@@ -321,6 +321,7 @@ it('rilascio sul bottone aggiunge alla sezione corretta senza larghezza', async 
   button.dispatchEvent(event)
   expect(view.state.doc.toString()).toContain('00:30\n\n![B](assets/images/b.png)')
   expect(view.state.doc.toString()).not.toContain('#w=')
+  expect(imageSections(view.state).find(u => u.id === '1.2')?.images).toHaveLength(1)
   view.destroy(); parent.remove()
 })
 it.each(['section', 'text', 'reorder'] as const)('spostamento %s senza duplicati e con un solo annulla', destination => {

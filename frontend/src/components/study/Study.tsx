@@ -237,6 +237,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const setRsvpLayout = useRsvpLayout()
   const setZenLayout = useZenLayout()
   const [zenMode, setZenMode] = useStudyZen(entry?.zen ?? false)
+  const zenActive = zenMode && !speedReading
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
   const [textScale, setTextScale] = useState(getSavedStudyTextScale)
@@ -257,6 +258,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     anchor.current = node ? { node, top: node.getBoundingClientRect().top } : null
   }
   const toggleZen = () => {
+    if (speedReading) return
     savePosition()
     if (!zenMode) setZenMinHeight(document.documentElement.scrollHeight)
     textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
@@ -281,7 +283,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     restore()
     const frame = requestAnimationFrame(restore)
     return () => cancelAnimationFrame(frame)
-  }, [zenMode, phase, rereading])
+  }, [zenActive, phase, rereading])
   const [notice, setNotice] = useState<{
     kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi' | 'unit'
     label: string
@@ -339,9 +341,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     return () => clearTimeout(timer)
   }, [speedReading, readerMounted])
   useEffect(() => {
-    setZenLayout({ active: zenMode && (phase === 'lettura' || rereading), tint: rsvpPrefs.irlen })
+    setZenLayout({ active: zenActive && (phase === 'lettura' || rereading), tint: rsvpPrefs.irlen })
     return () => setZenLayout({ active: false, tint: null })
-  }, [zenMode, phase, rereading, rsvpPrefs.irlen, setZenLayout])
+  }, [zenActive, phase, rereading, rsvpPrefs.irlen, setZenLayout])
   const highlights = useStudyHighlighter({
     root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
     mode: hlMode, color: highlighterPrefs.color,
@@ -478,11 +480,26 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       }
 
       if (e.shiftKey && key !== 'e') return
-      if (key === 'z') { e.preventDefault(); toggleZen() }
+      if (key === 'z') {
+        if (speedReading) return
+        e.preventDefault()
+        toggleZen()
+      }
       else if (key === 'l') {
         if (textRoot) {
           e.preventDefault()
           openReader()
+        }
+      }
+      else if (key === 'm') {
+        if (!unit) return
+        e.preventDefault()
+        const currentButton = document.querySelector<HTMLButtonElement>(`.rt-unit-images-button[data-unit-images="${CSS.escape(unit.id)}"]`)
+        const currentSlot = document.querySelector<HTMLElement>(`.rt-image-strip-slot[data-unit-images="${CSS.escape(unit.id)}"]`)
+        if (currentButton) {
+          currentButton.click()
+        } else if (currentSlot) {
+          currentSlot.hidden = !currentSlot.hidden
         }
       }
       else if (key === 'd') { e.preventDefault(); review() }
@@ -493,19 +510,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         const color = e.shiftKey ? (highlighterPrefs.color + 1) % HIGHLIGHT_COLORS.length : highlighterPrefs.color
         setHlMode(next)
         if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
-        if (zenMode) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
+        if (zenActive) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
           label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
       } else if (key === 'v' || key === 'c') {
         e.preventDefault()
         const mode = key === 'v' ? 'verifica' : 'chiedi'
         const next = hlMode === mode ? null : mode
         setHlMode(next)
-        if (zenMode) setNotice({ kind: mode, off: next === null,
+        if (zenActive) setNotice({ kind: mode, off: next === null,
           label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
         changeStatus()
-        if (zenMode) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
+        if (zenActive) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
       } else if (e.key === 'Escape') {
         if (popupState?.open) {
           e.preventDefault()
@@ -514,8 +531,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           e.preventDefault()
           const currentMode = hlMode
           setHlMode(null)
-          if (zenMode) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
-        } else if (zenMode) {
+          if (zenActive) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
+        } else if (zenActive) {
           e.preventDefault()
           toggleZen()
         }
@@ -526,7 +543,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -685,7 +702,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   return (
     <>
-      {reading && !zenMode && !speedReading && lessonJump.jump && <LessonJumpTab neighbors={lessonNeighbors((allLessons.data ?? lessons) as Lesson[], lesson!.id, { readyOnly: true })}
+      {reading && !zenActive && !speedReading && lessonJump.jump && <LessonJumpTab neighbors={lessonNeighbors((allLessons.data ?? lessons) as Lesson[], lesson!.id, { readyOnly: true })}
         side={lessonJump.jump.side} sequence={lessonJump.jump.sequence} paused={lessonJump.paused} onPause={lessonJump.pause} onResume={lessonJump.resume}
         onJump={(target, side) => navigate(`/studio/lezione/${target.id}`, { state: { enter: side === 'left' ? 'last' : 'first', zen: zenMode } })} />}
       <div hidden={!reading}>
@@ -694,11 +711,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={speedReading ? undefined : studyBack}
           actions={speedReading ? rsvpActions : headerActions}
           rsvp={speedReading}
-          zen={zenMode}
+          zen={zenActive}
           zenMinHeight={zenMinHeight}
-          zenBar={zenMode ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
+          zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
-          notice={(zenMode || speedReading) && notice ? (
+          notice={(zenActive || speedReading) && notice ? (
             <div
               className={cn(
                 'fixed left-1/2 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel',
@@ -829,8 +846,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         >
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
-          <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
-          <span className="sr-only" aria-live="polite">{(zenMode || speedReading) ? notice?.label : null}</span>
+          <div hidden={zenActive}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
+          <span className="sr-only" aria-live="polite">{(zenActive || speedReading) ? notice?.label : null}</span>
           <UnitText
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
@@ -1135,7 +1152,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }])
+    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }], { metaBelow: true })
   }, [unit.html, unit.id, unit.immagini_sezione, unit.start_formatted])
   useEffect(() => {
     const root = ref.current

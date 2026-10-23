@@ -441,19 +441,24 @@
 }
 
 @keyframes rt-media-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 var(--success);
-  }
-  25%, 75% {
-    box-shadow: 0 0 0 3px var(--success);
+  0% {
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 1px var(--success);
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
 .rt-media-flash {
-  animation: rt-media-pulse 700ms ease-in-out;
+  animation: rt-media-pulse 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 5;
+}
+
+.rt-media-flash .rt-media-flash {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -660,10 +665,18 @@
 }
 .cm-drop-line-widget {
   position: relative;
+  height: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.cm-drop-line-widget::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
   height: 2px;
   background-color: #3b82f6;
-  margin: 4px 0;
-  pointer-events: none;
 }
 .cm-drop-line-label {
   position: absolute;
@@ -952,6 +965,8 @@
 /* Zen dello Studio: la barra si sovrappone al testo senza cambiarne la posizione. */
 [data-testid="study"][data-zen] .rt-study-classic-header { visibility: hidden; pointer-events: none; }
 [data-testid="study"][data-zen] .rt-study-footer { display: none; }
+[data-testid="study"][data-zen] .rt-unit-meta,
+[data-testid="study"][data-zen] .rt-unit-meta-below { display: none !important; }
 .rt-zen-bar { position: fixed; inset: 0 0 auto; height: 52px; z-index: 40; transform: translateY(-100%); transition: transform 200ms; }
 .rt-zen-bar[data-open], .rt-zen-bar:focus-within { transform: translateY(0); }
 .rt-zen-hot { position: fixed; inset: 0 0 auto; height: 40px; z-index: 39; }
@@ -1187,9 +1202,10 @@
 /* minmax(0, 1fr): la colonna resta larga quanto lo spazio disponibile e le miniature scorrono
    dentro la striscia invece di allargare editor e pagina. */
 .rt-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 10px 0; min-width: 0; max-width: 100%; }
-/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine cade subito dopo la striscia:
-   le pagine si vedono già come miniature. */
-.cm-content > .rt-strip + .cm-atomic-image { display: none; }
+/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine della sezione cade subito
+   dopo la sezione (aperta o chiusa): le immagini si vedono già dentro la sezione. */
+.rt-unit-images-section + .cm-atomic-image,
+.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 .rt-strip-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
 .rt-strip-head .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-strip-head .count-pill { font-variant-numeric: tabular-nums; }
@@ -1219,9 +1235,6 @@
 .rt-strip .rail:hover .nav.show { display: grid; }
 @media (hover: none) { .rt-strip .rail .nav { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { .rt-strip-head .chev { transition: none; } }
-
-/* Linee markdown di una striscia mentre il cursore è dentro l'editor */
-.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 
 /* Visore a schermo pieno (IM1d) */
 .rt-viewer-overlay {
@@ -1370,3 +1383,44 @@
 .rt-unit-images-section .thumb img { height: 100%; width: auto; object-fit: contain; }
 @keyframes rt-unit-images-open { from { max-height: 0; opacity: 0; } to { max-height: 160px; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .rt-unit-images-section { animation: none; } }
+
+/* Metadati sotto il titolo dell'unità nello Studio */
+.rt-unit-meta-below {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 12px 0;
+  font-size: var(--size-meta);
+  color: var(--mute);
+}
+
+.rt-unit-meta-below .rt-unit-images-button {
+  height: 24px;
+  min-width: 24px;
+  margin-right: 0;
+  padding: 0 6px;
+  font-size: var(--size-meta);
+  border-radius: 6px;
+  color: var(--mute);
+}
+
+.rt-unit-meta-below .rt-unit-images-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rt-unit-meta-below .rt-unit-images-button.active {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.rt-unit-meta-below .rt-timecode {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mute);
+  padding: 0 6px;
+  font: 500 var(--size-meta) / 1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

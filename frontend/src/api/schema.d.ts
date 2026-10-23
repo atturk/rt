@@ -3116,23 +3116,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/settings/worker": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Job in parallelo del worker avviato con la web (vale dal prossimo avvio) */
-        put: operations["put_worker_api_v1_settings_worker_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/subjects": {
         parameters: {
             query?: never;
@@ -8786,11 +8769,6 @@ export interface components {
              */
             results: number;
         };
-        /** WorkerIn */
-        WorkerIn: {
-            /** Concurrency */
-            concurrency: number;
-        };
         /** WorkerInfo */
         WorkerInfo: {
             /** Current Job Id */
@@ -8811,11 +8789,6 @@ export interface components {
         };
         /** WorkerSettings */
         WorkerSettings: {
-            /**
-             * Concurrency
-             * @description Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio
-             */
-            concurrency: number;
             /**
              * Running
              * @description Worker attivi ora (uno per job eseguibile insieme)
@@ -22896,75 +22869,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebSearchTestOut"];
-                };
-            };
-            /** @description Autenticazione mancante o non valida */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description CSRF non valido */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Risorsa non trovata */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflitto (es. job in corso sulla lezione) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Richiesta non valida */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    put_worker_api_v1_settings_worker_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

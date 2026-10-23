@@ -293,8 +293,8 @@ class ReviewConfig(BaseModel):
 
 
 class WorkerConfig(BaseModel):
-    concurrency: int = Field(default=2, ge=1, le=4,
-                             description="Job eseguiti in parallelo dal worker avviato da 'rt web' (su lezioni diverse)")
+    model_config = {"extra": "ignore"}
+    concurrency: Optional[int] = Field(default=None, description="Deprecato (8 fissi)")
 
 
 class UiConfig(BaseModel):
@@ -813,12 +813,13 @@ def _cached_config(key):
 
 @lru_cache(maxsize=64)
 def _migrate_general(path, stamp, size):
-    from rt.recall.migration import migrate_registry
+    from rt.recall.migration import migrate_registry, migrate_exercise_prompt
     with open(path, encoding="utf-8") as stream:
         data = yaml.safe_load(stream)
     if isinstance(data, dict):
         try:
             data = migrate_registry(path, data)
+            data = migrate_exercise_prompt(path, data)
             _migrate_image_threshold(path, data)
         except Exception as exc:  # una migrazione non riuscita non deve fermare l'app: si riprova al prossimo avvio
             import logging

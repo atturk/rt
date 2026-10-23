@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import type { LessonImage } from '@/api/images'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { groupMediaImages } from './mediaGalleryUtils'
+import { flashAndScroll, groupMediaImages } from './mediaGalleryUtils'
 
 interface MediaGalleryProps {
   lessonId?: number
@@ -281,23 +281,6 @@ export function MediaGallery({
   const flatImages = groups.flatMap((g) => g.images)
   const pendingFlashRef = useRef<string | null>(null)
 
-  const flashAndScroll = useCallback((el: Element) => {
-    if (typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-    el.classList.add('rt-media-flash')
-    const btn = el.querySelector('button')
-    btn?.classList.add('rt-media-flash')
-    const onEnd = () => {
-      el.classList.remove('rt-media-flash')
-      btn?.classList.remove('rt-media-flash')
-      el.removeEventListener('animationend', onEnd)
-      btn?.removeEventListener('animationend', onEnd)
-    }
-    el.addEventListener('animationend', onEnd)
-    btn?.addEventListener('animationend', onEnd)
-  }, [])
-
   useEffect(() => {
     if (pendingFlashRef.current) {
       const clean = pendingFlashRef.current
@@ -309,7 +292,7 @@ export function MediaGallery({
         flashAndScroll(el)
       }
     }
-  }, [collapsedGroups, flashAndScroll])
+  }, [collapsedGroups])
 
   useEffect(() => {
     const handleMediaSelect = (e: Event) => {
@@ -341,7 +324,7 @@ export function MediaGallery({
 
     window.addEventListener('rt-media-select', handleMediaSelect)
     return () => window.removeEventListener('rt-media-select', handleMediaSelect)
-  }, [groups, collapsedGroups, flashAndScroll])
+  }, [groups, collapsedGroups])
 
   const toggleGroup = useCallback((groupName: string) => {
     setCollapsedGroups((prev) => {

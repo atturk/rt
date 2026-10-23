@@ -365,6 +365,44 @@ it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {
   scroll.mockRestore(); by.mockRestore()
 })
 
+it('M apre e chiude la sezione immagini, anche in zen', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const button = document.createElement('button')
+  button.className = 'rt-unit-images-button'
+  button.dataset.unitImages = '1.1'
+  let opened = false
+  const slot = document.createElement('div')
+  slot.className = 'rt-image-strip-slot'
+  slot.dataset.unitImages = '1.1'
+  slot.hidden = true
+  button.onclick = () => {
+    opened = !opened
+    slot.hidden = !opened
+  }
+  text.before(button)
+  text.before(slot)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(false)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(true)
+
+  fireEvent.keyDown(window, { key: 'z' })
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(false)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(true)
+
+  button.remove()
+  slot.remove()
+})
+
 it('il triplo clic non seleziona il paragrafo', async () => {
   renderStudy()
   await waitFor(() => expect(api.list).toHaveBeenCalled())

@@ -61,8 +61,15 @@ def _transcribe(path, mock=False, ctx=None):
             from rt.core.custom_stt import transcribe_custom
             from rt.core.onnx_stt import transcribe_onnx
             load_env_file()
-            data = (transcribe_onnx(real) if stt.engine == "parakeet"
-                    else transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds))
+            if stt.engine == "parakeet":
+                from rt.core.stt_slot import local_transcription_slot
+                with local_transcription_slot(
+                    on_wait=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
+                    cancel_token=ctx.cancel_token if ctx else None,
+                ):
+                    data = transcribe_onnx(real)
+            else:
+                data = transcribe_custom(real, stt.base_url, stt.model, stt.timeout_seconds)
             raw_path = os.path.join(temp, "raw.json")
             with open(raw_path, "w", encoding="utf-8") as stream:
                 json.dump(data, stream)
@@ -70,11 +77,16 @@ def _transcribe(path, mock=False, ctx=None):
             binary = find_macparakeet_binary()
             if not binary:
                 raise ValueError("macparakeet-cli non disponibile")
-            result = _run_transcribe_with_spinner(
-                [binary, "transcribe", "--format", "json", "--no-diarize", "--output-dir", temp,
-                 "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte",
-                **({'on_message': lambda message: ctx.progress('prepare', message=message),
-                    'cancel_token': ctx.cancel_token} if ctx else {}))
+            from rt.core.stt_slot import local_transcription_slot
+            with local_transcription_slot(
+                on_wait=(lambda msg: ctx.progress('prepare', message=msg)) if ctx else None,
+                cancel_token=ctx.cancel_token if ctx else None,
+            ):
+                result = _run_transcribe_with_spinner(
+                    [binary, "transcribe", "--format", "json", "--no-diarize", "--output-dir", temp,
+                     "--parakeet-model", DEFAULT_MODEL.removeprefix("parakeet-"), real], "Trascrizione della nuova fonte",
+                    **({'on_message': lambda message: ctx.progress('prepare', message=message),
+                        'cancel_token': ctx.cancel_token} if ctx else {}))
             candidates = [os.path.join(temp, f) for f in os.listdir(temp) if f.endswith(".json")]
             if result.returncode or not candidates:
                 raise ValueError("Trascrizione della nuova fonte fallita")

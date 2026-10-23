@@ -1,10 +1,19 @@
-import { EditorState } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
-import { describe, expect, it } from 'vitest'
+import { EditorState, StateField } from '@codemirror/state'
+import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { findMarkdownImageStrips, lessonImageStrips, toggleUnitImages } from './lessonImageStrips'
+
+const nodeFs = (globalThis as unknown as { process?: { getBuiltinModule?: (id: string) => { readFileSync: (path: string, encoding: string) => string } } }).process?.getBuiltinModule?.('node:fs')
+const cssContent = nodeFs ? nodeFs.readFileSync('src/index.css', 'utf-8') : ''
+const ruleMatch = cssContent.match(/(\.rt-unit-images-section\s*\+\s*\.cm-atomic-image[^{]*\{[^}]*\})/)
 
 const text = '### 1.1 Unità\n00:00\n\n![Doc.pdf, pagina 1](assets/images/img1.png)\n\n![Doc.pdf, pagina 2](assets/images/img2.png)\n\nTesto normale.\n\n![Singola](assets/images/single.png)'
 describe('lessonImageStrips', () => {
+  beforeEach(() => {
+    const style = document.createElement('style')
+    style.textContent = ruleMatch ? ruleMatch[1] : '.rt-unit-images-section + .cm-atomic-image { display: none !important; }'
+    document.head.append(style)
+  })
   it('raggruppa solo le immagini iniziali della sezione', () => {
     const strips = findMarkdownImageStrips(EditorState.create({ doc: text }), 1)
     expect(strips).toHaveLength(1)
@@ -45,5 +54,87 @@ describe('lessonImageStrips', () => {
     expect(button.textContent).toBe('')
     expect(button.dataset.unitImages).toBe('1.1')
     view.destroy()
+  })
+  it('sezione con due immagini: nessuna cm-atomic-image visibile per quei file sia con sezione chiusa che aperta', () => {
+    class MockAtomicImageWidget extends WidgetType {
+      readonly src: string
+      constructor(src: string) {
+        super()
+        this.src = src
+      }
+      toDOM() {
+        const wrap = document.createElement('div')
+        wrap.className = 'cm-atomic-image'
+        wrap.dataset.src = this.src
+        const img = document.createElement('img')
+        img.src = this.src
+        wrap.append(img)
+        return wrap
+      }
+    }
+
+    const mockImageBlocks = StateField.define<DecorationSet>({
+      create(state) {
+        const ranges: any[] = []
+        for (let i = 1; i <= state.doc.lines; i++) {
+          const line = state.doc.line(i)
+          const match = line.text.match(/!\[([^\]]*)\]\(([^)\s]+)\)/)
+          if (match) {
+            ranges.push(Decoration.widget({ widget: new MockAtomicImageWidget(match[2]), block: true, side: 1 }).range(line.to))
+          }
+        }
+        return Decoration.set(ranges, true)
+      },
+      update(deco) { return deco },
+      provide: f => EditorView.decorations.from(f),
+    })
+
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: text,
+        extensions: [mockImageBlocks, lessonImageStrips(1)],
+      }),
+    })
+
+    // Sezione chiusa di default:
+    let section = parent.querySelector('.rt-unit-images-section')!
+    expect(section).not.toBeNull()
+    expect(section).toHaveClass('closed')
+
+    if (cssContent) {
+      expect(cssContent).toMatch(/\.rt-unit-images-section\s*\+\s*\.cm-atomic-image/)
+      expect(cssContent).not.toContain('.cm-content > .rt-strip + .cm-atomic-image')
+    }
+
+    let atomicImages = Array.from(parent.querySelectorAll<HTMLElement>('.cm-atomic-image'))
+    for (const el of atomicImages) {
+      if (el.dataset.src === 'assets/images/img1.png' || el.dataset.src === 'assets/images/img2.png') {
+        expect(window.getComputedStyle(el).display).toBe('none')
+      }
+    }
+
+    // Apriamo la sezione
+    const button = parent.querySelector<HTMLButtonElement>('.rt-unit-images-button')!
+    button.click()
+    section = parent.querySelector('.rt-unit-images-section')!
+    expect(section).not.toHaveClass('closed')
+
+    atomicImages = Array.from(parent.querySelectorAll<HTMLElement>('.cm-atomic-image'))
+    for (const el of atomicImages) {
+      if (el.dataset.src === 'assets/images/img1.png' || el.dataset.src === 'assets/images/img2.png') {
+        expect(window.getComputedStyle(el).display).toBe('none')
+      }
+    }
+
+    // L'immagine successiva nel testo normale non è nascosta
+    const singleEl = atomicImages.find(el => el.dataset.src === 'assets/images/single.png')
+    expect(singleEl).toBeDefined()
+    expect(window.getComputedStyle(singleEl!).display).not.toBe('none')
+
+    view.destroy()
+    parent.remove()
   })
 })

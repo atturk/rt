@@ -1,5 +1,21 @@
 # Novità di RT
 
+## 4.3.3b4 — 2026-10-23
+
+### Novità
+
+- **Job in parallelo**: sempre 8, l'impostazione non c'è più. La trascrizione locale resta una alla volta.
+- **Esercizi**: la traccia dà solo i dati, non il metodo. Il template generale si aggiorna da solo se non l'hai modificato.
+- **Immagini nel testo**: un clic apre il visore, o la porta al centro del pannello se è aperto; doppio clic mostra il markdown; tenendo premuto la sposti. Nel pannello l'immagine scelta si evidenzia con un piccolo rimbalzo.
+- **Studio**: graffetta e timecode piccoli sotto il titolo dell'unità, nascosti in zen. **M** apre e chiude le immagini.
+
+### Correzioni
+
+- Sul Mac il worker ignorava il numero di job in parallelo.
+- Niente più sfarfallio trascinando un'immagine nel testo; si può lasciare anche sulla graffetta vuota.
+- Dopo la classificazione l'immagine non compare più anche grande sotto la sezione.
+- Passando da zen alla lettura veloce lo zen si sospende e torna all'uscita.
+
 ## 4.3.3b3 — 2026-10-22
 
 ### Novità

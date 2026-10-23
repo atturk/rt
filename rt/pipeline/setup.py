@@ -489,6 +489,7 @@ def run_setup(
     ora: Optional[str] = None,
     on_transcription_progress: Optional[Callable[[int], None]] = None,
     on_lesson_created: Optional[Callable[[str], None]] = None,
+    cancel_token: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Esegue l'ingest audio e il setup strutturato della lezione.
@@ -711,8 +712,10 @@ def run_setup(
                         raise SetupError(str(exc)) from None
                 elif use_onnx:
                     from rt.core.onnx_stt import transcribe_onnx
+                    from rt.core.stt_slot import local_transcription_slot
                     try:
-                        raw_data = transcribe_onnx(aud_abs, on_percent=on_transcription_progress, on_progress=on_progress)
+                        with local_transcription_slot(on_wait=on_progress, cancel_token=cancel_token):
+                            raw_data = transcribe_onnx(aud_abs, on_percent=on_transcription_progress, on_progress=on_progress)
                     except RuntimeError as exc:
                         raise SetupError(str(exc)) from None
                 else:
@@ -725,7 +728,11 @@ def run_setup(
                         cmd_json.extend(["--parakeet-model", model_param])
                     cmd_json.append(aud_abs)
                     progress_kw = {"on_percent": on_transcription_progress} if on_transcription_progress else {}
-                    res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)", **progress_kw)
+                    if cancel_token is not None:
+                        progress_kw["cancel_token"] = cancel_token
+                    from rt.core.stt_slot import local_transcription_slot
+                    with local_transcription_slot(on_wait=on_progress, cancel_token=cancel_token):
+                        res_json = _run_transcribe_with_spinner(cmd_json, "Trascrizione macparakeet-cli (JSON)", **progress_kw)
                     json_files = [f for f in fs.listdir(temp_audio_dir) if f.endswith(".json")]
                     raw_data = None
                     if json_files:
