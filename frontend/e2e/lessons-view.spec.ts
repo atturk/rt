@@ -342,12 +342,7 @@ test('Avviso lezioni mancanti compare e si apre al passaggio del mouse', async (
   })
   await page.goto('/')
   // Imposta raggruppamento per materia
-  const groupBtn = page.getByRole('button', { name: /Per data|Per mese|Per materia|Per docente|Senza gruppi/i })
-  if (await groupBtn.isVisible()) {
-    while (!(await page.getByRole('button', { name: 'Per materia' }).isVisible())) {
-      await groupBtn.click()
-    }
-  }
+  await page.getByRole('button', { name: 'Per materia' }).click()
   const warnBtn = page.getByTestId('missing-lessons-button').first()
   await expect(warnBtn).toBeVisible()
 
@@ -362,4 +357,31 @@ test('Avviso lezioni mancanti compare e si apre al passaggio del mouse', async (
   await page.mouse.click(10, 10)
   await expect(popup).not.toBeVisible()
 })
+
+test('ritorno a Lezioni da una lezione: la riga è visibile e evidenziata per 2 s', async ({ page }) => {
+  await loginViaLink(page)
+  await page.goto('/')
+  const rows = page.getByTestId('lesson-row')
+  await expect(rows.first()).toBeVisible()
+  const targetRow = rows.last()
+  const targetId = await targetRow.getAttribute('data-lesson-id')
+  expect(targetId).toBeTruthy()
+
+  // Apri la lezione in fondo alla lista
+  await targetRow.getByRole('link').click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${targetId}`))
+
+  // Torna con l'icona della barra laterale
+  await page.getByRole('link', { name: 'Lezioni' }).first().click()
+  await expect(page).toHaveURL(/\/$/)
+
+  // La riga è visibile e ha l'attributo dell'evidenziazione
+  const rowAfterReturn = page.locator(`[data-testid="lesson-row"][data-lesson-id="${targetId}"]`)
+  await expect(rowAfterReturn).toBeVisible()
+  await expect(rowAfterReturn).toHaveAttribute('data-highlighted', 'true')
+
+  // L'evidenziazione sparisce dopo 2 s
+  await expect(rowAfterReturn).not.toHaveAttribute('data-highlighted', { timeout: 3500 })
+})
+
 

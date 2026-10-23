@@ -221,13 +221,14 @@ function StatusDot({ status }: { status: LessonStatus }) {
   )
 }
 
-export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
+export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, highlighted }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
   selecting: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
+  highlighted?: boolean
 }) {
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
@@ -246,14 +247,14 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
   )
   // In selezione la riga è un'etichetta della casella (niente controlli dentro un link).
   return (
-    <li data-testid="lesson-row" data-lesson-id={lesson.id}>
+    <li data-testid="lesson-row" data-lesson-id={lesson.id} data-highlighted={highlighted ? 'true' : undefined}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Checkbox className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
-        <div className={row}>
+        <div className={cn(row, highlighted ? 'bg-accent' : 'transition-colors duration-500 motion-reduce:transition-none')}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
           <div className="relative z-1 flex shrink-0 self-center items-center" data-testid="lesson-indicators">
@@ -313,13 +314,14 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
 
 // ---------------------------------------------------------------- elenco e selezione
 
-export function LessonsList({ groups, grouping, running, selecting, selected, onSelected }: {
+export function LessonsList({ groups, grouping, running, selecting, selected, onSelected, highlightedLessonId }: {
   groups: LessonGroup[]
   grouping: LessonsGrouping
   running: Set<number>
   selecting: boolean
   selected: Set<number>
   onSelected: (next: Set<number>) => void
+  highlightedLessonId?: number | null
 }) {
   const background = useSettings().data?.preferences?.sfondo_gruppi
   const toggle = (ids: number[], on: boolean) => {
@@ -360,6 +362,7 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
                 selecting={selecting}
                 selected={selected.has(lesson.id)}
                 onSelect={(on) => toggle([lesson.id], on)}
+                highlighted={lesson.id === highlightedLessonId}
               />
             ))}
           </ul>
