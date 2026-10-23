@@ -291,26 +291,16 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
       await page.goto('/')
       const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
       const ring = row.getByTestId('lesson-study-ring')
-      const shield = row.getByTestId('lesson-review-shield')
       const ringBox = (await ring.boundingBox())!
-      const shieldBox = (await row.getByTestId('lesson-indicators').locator(':scope > div').last().boundingBox())!
       const verified = l.phases.review === 'VALID' && l.pending_issues === 0
-      await expect(shield).toHaveCount(verified ? 1 : 0)
+      if (verified) {
+        await expect(row.getByTestId('lesson-subtitle')).toContainText('Verificato')
+      }
       const title = row.locator('a').filter({ hasText: l.titolo }).first()
       const titleBox = (await title.boundingBox())!
       expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(ringBox.x)
-      if (width === 390) {
-        expect(Math.abs(ringBox.x - shieldBox.x)).toBeLessThan(1)
-        expect(shieldBox.y).toBeGreaterThan(ringBox.y)
-      } else expect(Math.abs(ringBox.y - shieldBox.y)).toBeLessThan(1)
       await ring.click()
       await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
-      await page.goto('/')
-      if (verified) {
-        await shield.click()
-        await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}\\?panel=verifica$`))
-        await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
-      }
       await page.goto('/')
       await title.click()
       await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}$`))

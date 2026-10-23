@@ -30,6 +30,7 @@ const sampleLesson = (id: number, titolo = `Lezione ${id}`): Lesson => ({
   study_ignored: 0,
   study_learned: 0,
   study_learning: 0,
+  media_count: 0,
   path: '',
   state: 'completato',
 })

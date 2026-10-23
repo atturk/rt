@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Check, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -256,9 +256,8 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
         <div className={row}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
-          <div className="relative z-1 flex shrink-0 self-center items-center max-md:flex-col" data-testid="lesson-indicators">
+          <div className="relative z-1 flex shrink-0 self-center items-center" data-testid="lesson-indicators">
             <div className="flex size-[34px] items-center justify-center max-md:size-10"><StudyRing lesson={lesson} /></div>
-            <div className="flex size-[34px] items-center justify-center max-md:size-10"><ReviewShield lesson={lesson} /></div>
           </div>
         </div>
       )}
@@ -285,14 +284,6 @@ export function StudyRing({ lesson }: { lesson: Lesson }) {
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
     </svg>
     {total > 0 && learned + learning + ignored >= total && <Check data-testid="lesson-study-complete" aria-hidden className="absolute size-2.5 text-study-learned" strokeWidth={1.5} />}
-  </Link>}</Tooltip>
-}
-
-function ReviewShield({ lesson }: { lesson: Lesson }) {
-  if (lesson.phases.review !== 'VALID' || lesson.pending_issues !== 0) return null
-  const label = 'Verifica fatta'
-  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/lezioni/${lesson.id}?panel=verifica`} aria-label={label} data-testid="lesson-review-shield" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
-    <ShieldCheck aria-hidden className="size-[19px] text-study-learned" />
   </Link>}</Tooltip>
 }
 

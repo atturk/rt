@@ -77,6 +77,34 @@ describe('lessonSubtitle', () => {
   it('aggiunge le domande e non le unità apprese', () => {
     expect(lessonSubtitle(lesson(1, { study_learned: 7, recall_questions: 4 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 4 domande')
   })
+  it('gestisce Verificato: presente solo se review è VALID e pending_issues è 0', () => {
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'VALID' }, pending_issues: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · Verificato')
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'VALID' }, pending_issues: 2 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'PARTIAL' }, pending_issues: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+  })
+  it('gestisce i media: presenti solo se media_count > 0', () => {
+    expect(lessonSubtitle(lesson(1, { media_count: 14 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · 14 media')
+    expect(lessonSubtitle(lesson(1, { media_count: 1 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · 1 media')
+    expect(lessonSubtitle(lesson(1, { media_count: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+  })
+  it('combina unità, Verificato e media in fondo al sottotitolo', () => {
+    const l = lesson(1, {
+      data: '2026-10-12',
+      docente: 'Fassetti',
+      unit_count: 16,
+      recall_questions: 0,
+      phases: { review: 'VALID' },
+      pending_issues: 0,
+      media_count: 14,
+    })
+    expect(lessonSubtitle(l, 'nessuno', NOW)).toBe('12 ott · Fisiologia · Fassetti · 16 unità · Verificato · 14 media')
+  })
 })
 
 it('senza domande non aggiunge il conteggio', () => { expect(lessonSubtitle(lesson(1, { recall_questions: 0, study_learned: 7 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità') })

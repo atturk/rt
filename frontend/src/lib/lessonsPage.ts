@@ -201,7 +201,17 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
           : group === 'docente'
             ? [date, subject]
             : [date, subject, teacher]
-  return [...fields, unitsText(lesson), lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null].filter(Boolean).join(' · ')
+  const verified = lesson.phases?.review === 'VALID' && lesson.pending_issues === 0 ? 'Verificato' : null
+  const media = (lesson.media_count ?? 0) > 0 ? `${lesson.media_count} media` : null
+  return [
+    ...fields,
+    unitsText(lesson),
+    lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null,
+    verified,
+    media,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 /** Etichetta del gruppo: le materie come nel resto della pagina ("Fisiologia"). */

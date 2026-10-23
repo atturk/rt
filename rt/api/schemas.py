@@ -73,6 +73,7 @@ class LessonSummary(BaseModel):
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
+    media_count: int = Field(0, description="Numero di media/immagini della lezione")
     error: Optional[str] = None
 
 

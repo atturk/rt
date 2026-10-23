@@ -6377,6 +6377,12 @@
             "title": "Materia",
             "type": "string"
           },
+          "media_count": {
+            "default": 0,
+            "description": "Numero di media/immagini della lezione",
+            "title": "Media Count",
+            "type": "integer"
+          },
           "ora": {
             "default": "",
             "title": "Ora",
@@ -7010,6 +7016,12 @@
             "default": "",
             "title": "Materia",
             "type": "string"
+          },
+          "media_count": {
+            "default": 0,
+            "description": "Numero di media/immagini della lezione",
+            "title": "Media Count",
+            "type": "integer"
           },
           "ora": {
             "default": "",
