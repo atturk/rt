@@ -161,6 +161,7 @@ class CalendarToRecoverItem(BaseModel):
     day_number: int
     month_number: int
     materia: str
+    docente: str = ""
     start_time: str
     end_time: str
 

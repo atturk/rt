@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
+  filterMissingLessons, formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -280,6 +280,94 @@ describe('vista fissata', () => {
 
     const d: LessonsView = { group: 'materia', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
     expect(sameView(b, d)).toBe(false)
+  })
+})
+
+describe('filterMissingLessons', () => {
+  const missingData = {
+    start: '2026-10-01',
+    subjects: [
+      {
+        materia: 'FISIOLOGIA',
+        missing: [
+          {
+            key: 'e1',
+            date: '2026-10-12',
+            day_of_week: 0,
+            day_name: 'Lun',
+            day_number: 12,
+            month_number: 10,
+            materia: 'FISIOLOGIA',
+            docente: 'Rossi',
+            start_time: '09:00',
+            end_time: '11:00',
+          },
+          {
+            key: 'e2',
+            date: '2026-10-15',
+            day_of_week: 3,
+            day_name: 'Gio',
+            day_number: 15,
+            month_number: 10,
+            materia: 'FISIOLOGIA',
+            docente: 'Bianchi',
+            start_time: '11:00',
+            end_time: '12:00',
+          },
+        ],
+      },
+      {
+        materia: 'PATOLOGIA',
+        missing: [
+          {
+            key: 'e3',
+            date: '2026-11-03',
+            day_of_week: 1,
+            day_name: 'Mar',
+            day_number: 3,
+            month_number: 11,
+            materia: 'PATOLOGIA',
+            docente: 'Rossi',
+            start_time: '14:00',
+            end_time: '16:00',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('filtra per materia (case insensitive e trimmed)', () => {
+    const res = filterMissingLessons(missingData, 'materia', 'fisiologia')
+    expect(res.map((x) => x.key)).toEqual(['e1', 'e2'])
+    expect(filterMissingLessons(missingData, 'materia', 'PATOLOGIA').map((x) => x.key)).toEqual(['e3'])
+    expect(filterMissingLessons(missingData, 'materia', 'CHIMICA')).toEqual([])
+  })
+
+  it('filtra per data (giorno YYYY-MM-DD)', () => {
+    expect(filterMissingLessons(missingData, 'data', '2026-10-12').map((x) => x.key)).toEqual(['e1'])
+    expect(filterMissingLessons(missingData, 'data', '2026-10-15').map((x) => x.key)).toEqual(['e2'])
+    expect(filterMissingLessons(missingData, 'data', '2026-10-16')).toEqual([])
+  })
+
+  it('filtra per mese (YYYY-MM)', () => {
+    expect(filterMissingLessons(missingData, 'mese', '2026-10').map((x) => x.key)).toEqual(['e1', 'e2'])
+    expect(filterMissingLessons(missingData, 'mese', '2026-11').map((x) => x.key)).toEqual(['e3'])
+    expect(filterMissingLessons(missingData, 'mese', '2026-12')).toEqual([])
+  })
+
+  it('filtra per docente (case insensitive e trimmed)', () => {
+    expect(filterMissingLessons(missingData, 'docente', 'rossi').map((x) => x.key)).toEqual(['e1', 'e3'])
+    expect(filterMissingLessons(missingData, 'docente', 'Bianchi').map((x) => x.key)).toEqual(['e2'])
+    expect(filterMissingLessons(missingData, 'docente', 'Verdi')).toEqual([])
+  })
+
+  it('per nessuno non restituisce alcun elemento', () => {
+    expect(filterMissingLessons(missingData, 'nessuno', 'tutte')).toEqual([])
+  })
+
+  it('gestisce dati null o vuoti', () => {
+    expect(filterMissingLessons(null, 'materia', 'FISIOLOGIA')).toEqual([])
+    expect(filterMissingLessons(undefined, 'data', '2026-10-12')).toEqual([])
   })
 })
 

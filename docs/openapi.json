@@ -2550,6 +2550,11 @@
             "title": "Day Of Week",
             "type": "integer"
           },
+          "docente": {
+            "default": "",
+            "title": "Docente",
+            "type": "string"
+          },
           "end_time": {
             "title": "End Time",
             "type": "string"

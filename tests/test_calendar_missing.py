@@ -10,7 +10,7 @@ def test_missing_resolves_states_overrides_and_links(rt_db, tmp_path, monkeypatc
     c.set_period_start(m.CalendarPeriodStart(date='2026-10-14'), rt_db)
     assert c.get_week_view('2026-10-12', rt_db).summary.is_period_start
     for day in range(5):
-        c.create_template_entry(m.CalendarTemplateEntryCreate(day_of_week=day, start_time='09:00', end_time='10:00', materia=' Data Mining ', valid_from='2026-10-12'), rt_db)
+        c.create_template_entry(m.CalendarTemplateEntryCreate(day_of_week=day, start_time='09:00', end_time='10:00', materia=' Data Mining ', docente='Prof. Rossi', valid_from='2026-10-12'), rt_db)
     create_notes_lesson('notes', date='2026-10-12', materia='DATA MINING', ora='09:00', dest_dir=root)
     c.set_day_state(m.CalendarDayStateSet(date='2026-10-13', status='annullata'), rt_db)
     c.set_day_state(m.CalendarDayStateSet(date='2026-10-14', status='saltare'), rt_db)
@@ -26,6 +26,7 @@ def test_missing_resolves_states_overrides_and_links(rt_db, tmp_path, monkeypatc
     assert len(subject.missing) == 1
     assert subject.missing[0].date == '2026-10-15'
     assert subject.missing[0].start_time == '11:00'
+    assert subject.missing[0].docente == 'Prof. Rossi'
     c.set_entry_state(m.CalendarEntryStateSet(date='2026-10-15', entry_key=thursday.key, status='saltare', template_entry_id=thursday.template_entry_id), rt_db)
     assert c.get_missing_lessons(rt_db, now=datetime(2026, 10, 15, 12, 1)).subjects == []
 

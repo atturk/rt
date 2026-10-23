@@ -309,3 +309,57 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
     await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: unit.status } })
   }
 })
+
+test('Avviso lezioni mancanti compare e si apre al passaggio del mouse', async ({ page }) => {
+  await loginViaLink(page)
+  await page.route('**/api/v1/calendar/missing', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        start: '2026-10-01',
+        subjects: [
+          {
+            materia: 'STUDIO',
+            missing: [
+              {
+                key: 'missing_1',
+                date: '2026-10-12',
+                day_of_week: 0,
+                day_name: 'Lun',
+                day_number: 12,
+                month_number: 10,
+                materia: 'STUDIO',
+                docente: '',
+                start_time: '09:00',
+                end_time: '11:00',
+              },
+            ],
+          },
+        ],
+      }),
+    })
+  })
+  await page.goto('/')
+  // Imposta raggruppamento per materia
+  const groupBtn = page.getByRole('button', { name: /Per data|Per mese|Per materia|Per docente|Senza gruppi/i })
+  if (await groupBtn.isVisible()) {
+    while (!(await page.getByRole('button', { name: 'Per materia' }).isVisible())) {
+      await groupBtn.click()
+    }
+  }
+  const warnBtn = page.getByTestId('missing-lessons-button').first()
+  await expect(warnBtn).toBeVisible()
+
+  // Al passaggio del mouse si apre il popup
+  await warnBtn.hover()
+  const popup = page.getByTestId('missing-lessons-popup')
+  await expect(popup).toBeVisible()
+  await expect(popup).toContainText('Lun 12/10')
+  await expect(popup).toContainText('09:00–11:00')
+
+  // Cliccando fuori si chiude subito
+  await page.mouse.click(10, 10)
+  await expect(popup).not.toBeVisible()
+})
+

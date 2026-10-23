@@ -4384,6 +4384,11 @@ export interface components {
             day_number: number;
             /** Day Of Week */
             day_of_week: number;
+            /**
+             * Docente
+             * @default
+             */
+            docente: string;
             /** End Time */
             end_time: string;
             /** Key */

@@ -16,6 +16,7 @@ export type CalendarEntryStateSet = Schemas['CalendarEntryStateSet']
 export type CalendarLinkLessonRequest = Schemas['CalendarLinkLessonRequest']
 export type CalendarLessonSummary = Schemas['CalendarLessonSummary']
 export type CalendarToRecoverItem = Schemas['CalendarToRecoverItem']
+export type CalendarMissingLessons = Schemas['CalendarMissingLessons']
 export type CalendarWeekSummary = Schemas['CalendarWeekSummary']
 
 export const calendarKeys = {

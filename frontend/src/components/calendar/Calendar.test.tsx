@@ -204,6 +204,7 @@ describe('Calendar components (CA1c)', () => {
           day_number: 5,
           month_number: 10,
           materia: 'Generale',
+          docente: 'Rossi',
           start_time: '14:00',
           end_time: '16:00',
         },

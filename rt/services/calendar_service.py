@@ -764,6 +764,7 @@ def get_week_view(target_date_str: str, db=None) -> schemas.CalendarWeekView:
                             day_number=d.day,
                             month_number=d.month,
                             materia=ev.materia,
+                            docente=ev.docente or "",
                             start_time=ev.start_time,
                             end_time=ev.end_time,
                         )
@@ -884,7 +885,7 @@ def get_missing_lessons(db=None, *, now=None):
                 d = parse_date(day)
                 subjects.setdefault(subject, []).append(schemas.CalendarToRecoverItem(
                     key=ev.key, date=day, day_of_week=ev.day_of_week, day_name=DAYS[ev.day_of_week],
-                    day_number=d.day, month_number=d.month, materia=subject,
+                    day_number=d.day, month_number=d.month, materia=subject, docente=ev.docente or "",
                     start_time=ev.start_time, end_time=ev.end_time))
         return schemas.CalendarMissingLessons(start=start, subjects=[
             schemas.CalendarMissingSubject(materia=subject, missing=items) for subject, items in sorted(subjects.items())])

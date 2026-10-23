@@ -306,7 +306,7 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
           onChange={onSelectGroup}
         />
       )}
-      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping === 'materia' && <MissingLessonsButton materia={label} />}</h2>
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping !== 'nessuno' && <MissingLessonsButton grouping={grouping} groupKey={group.key} />}</h2>
     </div>
   )
 }
