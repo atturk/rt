@@ -29,6 +29,7 @@ const LESSON = {
   id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', ora: '', data: '2026-10-02', folder_name: 'a',
   phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', path: '', duration_seconds: 0,
   unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, recall_questions: 0,
+  media_count: 0,
 } as Lesson
 const UNITS = [
   { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {} },
@@ -454,3 +455,43 @@ it('la zen condivisa resta accesa quando la route rimonta il flusso', async () =
   view.rerender(renderFlow('seconda-lezione'))
   expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
 })
+
+it('il gruppo degli strumenti dello Studio si apre al passaggio del mouse e si chiude dopo 3 s', () => {
+  vi.useFakeTimers()
+  renderStudy()
+  const toggle = screen.getByTestId('study-tools-toggle')
+  expect(toggle).toBeVisible()
+  expect(toggle).toHaveAttribute('aria-label', 'Strumenti')
+  const toolsGroup = screen.getByTestId('highlight-tools')
+  expect(toolsGroup).toHaveClass('hidden')
+
+  // Hovering opens the group
+  fireEvent.pointerEnter(toggle.parentElement!)
+  expect(screen.queryByTestId('study-tools-toggle')).not.toBeInTheDocument()
+  expect(toolsGroup).not.toHaveClass('hidden')
+  expect(screen.getByTestId('highlight-clear')).toBeInTheDocument()
+
+  // Leaving starts 3s delay
+  fireEvent.pointerLeave(toolsGroup.parentElement!)
+  act(() => { vi.advanceTimersByTime(2900) })
+  expect(toolsGroup).not.toHaveClass('hidden')
+
+  act(() => { vi.advanceTimersByTime(200) })
+  expect(toolsGroup).toHaveClass('hidden')
+  expect(screen.getByTestId('study-tools-toggle')).toBeVisible()
+
+  // Keyboard shortcut works even when closed and updates closed icon/state
+  fireEvent.keyDown(window, { key: 'e' })
+  const toggleActive = screen.getByTestId('study-tools-toggle')
+  expect(toggleActive).toBeVisible()
+  expect(toggleActive.querySelector('.rt-hl-0')).toBeInTheDocument()
+
+  // Clicking toggle opens it
+  fireEvent.click(toggleActive)
+  expect(toolsGroup).not.toHaveClass('hidden')
+
+  // Esc closes it immediately
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(toolsGroup).toHaveClass('hidden')
+})
+

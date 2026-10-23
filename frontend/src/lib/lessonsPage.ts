@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 
+import type { CalendarMissingLessons, CalendarToRecoverItem } from '@/api/calendar'
 import { STATE_LABELS, formatCost, lessonTitle, type Lesson } from './format'
 import { groupLessons, sortLessons, type LessonGroup } from './lessonView'
 import { usePreference } from './preferences'
@@ -201,7 +202,17 @@ export function lessonSubtitle(lesson: Lesson, group: LessonsGrouping, now = new
           : group === 'docente'
             ? [date, subject]
             : [date, subject, teacher]
-  return [...fields, unitsText(lesson), lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null].filter(Boolean).join(' · ')
+  const verified = lesson.phases?.review === 'VALID' && lesson.pending_issues === 0 ? 'Verificato' : null
+  const media = (lesson.media_count ?? 0) > 0 ? `${lesson.media_count} media` : null
+  return [
+    ...fields,
+    unitsText(lesson),
+    lesson.recall_questions > 0 ? `${lesson.recall_questions} domande` : null,
+    verified,
+    media,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 /** Etichetta del gruppo: le materie come nel resto della pagina ("Fisiologia"). */
@@ -330,4 +341,43 @@ export function markdownExportNote(lessons: Lesson[]): { unavailable: string | n
     return { unavailable: lessons.length === 1 ? `${why}; dalla pagina della lezione si scarica l'anteprima` : `nessuna lezione selezionata ha il documento finale: ${why}`, hint: null }
   }
   return { unavailable: null, hint: `${lessons.length - missing.length} di ${lessons.length}: ${missing.map(lessonTitle).join(', ')} senza documento finale` }
+}
+
+/**
+ * Filtra le ore mancanti del calendario per la chiave del gruppo:
+ * - 'materia': le ore mancanti di quella materia
+ * - 'data': le ore mancanti di quel giorno (YYYY-MM-DD)
+ * - 'mese': le ore mancanti di quel mese (YYYY-MM)
+ * - 'docente': le ore mancanti con quel docente
+ * - 'nessuno': nessuna (vuoto)
+ */
+export function filterMissingLessons(
+  missingData: CalendarMissingLessons | undefined | null,
+  grouping: LessonsGrouping,
+  groupKey: string,
+): CalendarToRecoverItem[] {
+  if (grouping === 'nessuno' || !missingData?.subjects) return []
+  const normKey = groupKey.trim()
+
+  if (grouping === 'materia') {
+    const match = missingData.subjects.find(
+      (s) => (s.materia ?? '').trim().toUpperCase() === normKey.toUpperCase(),
+    )
+    return match?.missing ?? []
+  }
+
+  const allItems = missingData.subjects.flatMap((s) => s.missing ?? [])
+
+  switch (grouping) {
+    case 'data':
+      return allItems.filter((item) => item?.date === normKey)
+    case 'mese':
+      return allItems.filter((item) => (item?.date ?? '').slice(0, 7) === normKey)
+    case 'docente':
+      return allItems.filter(
+        (item) => (item?.docente ?? '').trim().toLowerCase() === normKey.toLowerCase(),
+      )
+    default:
+      return []
+  }
 }

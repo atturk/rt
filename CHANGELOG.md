@@ -10,6 +10,10 @@
 - **Studio**: graffetta e timecode piccoli sotto il titolo dell'unità, nascosti in zen. **M** apre e chiude le immagini.
 - **Calendario**: nel riepilogo della settimana ogni ora da recuperare porta al suo blocco.
 - **Stato di studio** istantaneo: con S o il pulsante si cicla fra gli stati senza attese; si salva l'ultimo appena ti fermi.
+- **Lezioni**: l'anello di studio sta sul bordo destro; sotto il titolo compaiono «Verificato» e il numero di media, se ci sono. Tornando da una lezione, la sua riga è al centro ed evidenziata per 2 s.
+- **Lezioni mancanti**: l'avviso compare in ogni raggruppamento (materia, giorno, mese, docente) e l'elenco si apre al passaggio del mouse. Serve l'«Inizio del periodo» nel riepilogo della settimana.
+- **Strumenti dello Studio** (evidenziatore, gomma, Verifica, Chiedi, cestino) in un solo gruppo che si apre al passaggio del mouse; chiuso mostra lo strumento attivo.
+- **Gruppi che si aprono al passaggio del mouse** (Aggiorna, matita del calendario, strumenti dello Studio, lezioni mancanti) restano aperti 3 s dopo l'uscita; un clic altrove o Esc li chiude subito.
 
 ### Correzioni
 

@@ -24,6 +24,7 @@ const LESSON: Lesson = {
   study_learned: 0,
   study_learning: 0, study_ignored: 0,
   recall_questions: 3,
+  media_count: 0,
 }
 
 const UNITS = [

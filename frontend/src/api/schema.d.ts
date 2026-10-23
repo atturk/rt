@@ -4384,6 +4384,11 @@ export interface components {
             day_number: number;
             /** Day Of Week */
             day_of_week: number;
+            /**
+             * Docente
+             * @default
+             */
+            docente: string;
             /** End Time */
             end_time: string;
             /** Key */
@@ -6098,6 +6103,12 @@ export interface components {
              */
             materia: string;
             /**
+             * Media Count
+             * @description Numero di media/immagini della lezione
+             * @default 0
+             */
+            media_count: number;
+            /**
              * Ora
              * @default
              */
@@ -6464,6 +6475,12 @@ export interface components {
              * @default
              */
             materia: string;
+            /**
+             * Media Count
+             * @description Numero di media/immagini della lezione
+             * @default 0
+             */
+            media_count: number;
             /**
              * Ora
              * @default

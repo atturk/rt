@@ -150,9 +150,59 @@ def _pipeline_at(manifest: Any) -> Optional[datetime]:
     return max(candidates) if candidates else None
 
 
+def count_lesson_images(lesson_dir: str) -> int:
+    """Conta le immagini visibili nella Galleria senza caricare file pesanti.
+    Stessa logica di list_images (immagini dei materiali + descriptions.json)."""
+    try:
+        from rt.pipeline.add_images import load_image_descriptions
+        import re
+
+        descriptions = load_image_descriptions(lesson_dir)
+        processed_desc_hashes = set()
+        count = 0
+
+        sources_path = lesson_path(lesson_dir, "sources.json")
+        if fs.isfile(sources_path):
+            from rt.core.sources import load_sources
+            from rt.core.materials import cached_pages
+            sources = load_sources(lesson_dir)
+            for src in sources:
+                if src.rimossa_il:
+                    continue
+                pages = cached_pages(lesson_dir, src)
+                if not pages:
+                    continue
+                src_name = os.path.basename(src.file)
+                for page in pages:
+                    count += 1
+                    num = int(page.get("numero", 1))
+                    for h, d in descriptions.items():
+                        if d.get("crop_of"):
+                            continue
+                        s_tag = str(d.get("source") or "")
+                        if s_tag in (f"material:{src.id}:{num}", f"material:{src.impronta}:{num}",
+                                     f"pdf:{src_name}#{num}", f"pdf:{src.file}#{num}"):
+                            processed_desc_hashes.add(h)
+                            break
+
+        image_name_re = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(png|jpe?g|webp|gif|heic)$", re.IGNORECASE)
+        for h, desc in descriptions.items():
+            if h in processed_desc_hashes:
+                continue
+            rel = str(desc.get("filename") or "")
+            name = os.path.basename(rel)
+            if not image_name_re.match(name):
+                continue
+            count += 1
+
+        return count
+    except Exception:
+        return 0
+
+
 def _info_counts(lesson_dir: str) -> Dict[str, Any]:
     """Numeri del popup Info della pagina Lezioni: unità della scaletta, durata dell'audio,
-    domande nel pool e da fare. Ognuno manca (None o 0) se il suo file non c'è ancora."""
+    domande nel pool e da fare, media. Ognuno manca (None o 0) se il suo file non c'è ancora."""
     from rt.core.manifest import load_manifest
     from rt.core.models import RecallQuestionStatus
     from rt.pipeline.outline import get_outline_path, load_outline
@@ -171,6 +221,7 @@ def _info_counts(lesson_dir: str) -> Dict[str, Any]:
         "recall_questions": sum(q.status != RecallQuestionStatus.DISCARDED for q in questions),
         "recall_pending": sum(q.status == RecallQuestionStatus.PENDING for q in questions),
         "pipeline_at": _pipeline_at(manifest),
+        "media_count": count_lesson_images(lesson_dir),
     }
 
 
@@ -189,7 +240,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
-        "pipeline_at": None,
+        "pipeline_at": None, "media_count": 0,
     }
     try:
         info = read_info_yaml(lesson_path(lesson_dir, "info.yaml"))

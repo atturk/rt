@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Check, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -221,13 +221,14 @@ function StatusDot({ status }: { status: LessonStatus }) {
   )
 }
 
-export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
+export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, highlighted }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
   selecting: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
+  highlighted?: boolean
 }) {
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
@@ -246,19 +247,18 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
   )
   // In selezione la riga è un'etichetta della casella (niente controlli dentro un link).
   return (
-    <li data-testid="lesson-row" data-lesson-id={lesson.id}>
+    <li data-testid="lesson-row" data-lesson-id={lesson.id} data-highlighted={highlighted ? 'true' : undefined}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Checkbox className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
-        <div className={row}>
+        <div className={cn(row, highlighted ? 'bg-accent' : 'transition-colors duration-500 motion-reduce:transition-none')}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
-          <div className="relative z-1 flex shrink-0 self-center items-center max-md:flex-col" data-testid="lesson-indicators">
+          <div className="relative z-1 flex shrink-0 self-center items-center" data-testid="lesson-indicators">
             <div className="flex size-[34px] items-center justify-center max-md:size-10"><StudyRing lesson={lesson} /></div>
-            <div className="flex size-[34px] items-center justify-center max-md:size-10"><ReviewShield lesson={lesson} /></div>
           </div>
         </div>
       )}
@@ -288,14 +288,6 @@ export function StudyRing({ lesson }: { lesson: Lesson }) {
   </Link>}</Tooltip>
 }
 
-function ReviewShield({ lesson }: { lesson: Lesson }) {
-  if (lesson.phases.review !== 'VALID' || lesson.pending_issues !== 0) return null
-  const label = 'Verifica fatta'
-  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/lezioni/${lesson.id}?panel=verifica`} aria-label={label} data-testid="lesson-review-shield" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
-    <ShieldCheck aria-hidden className="size-[19px] text-study-learned" />
-  </Link>}</Tooltip>
-}
-
 function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup }: {
   group: LessonGroup
   grouping: LessonsGrouping
@@ -315,20 +307,21 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
           onChange={onSelectGroup}
         />
       )}
-      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping === 'materia' && <MissingLessonsButton materia={label} />}</h2>
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping !== 'nessuno' && <MissingLessonsButton grouping={grouping} groupKey={group.key} />}</h2>
     </div>
   )
 }
 
 // ---------------------------------------------------------------- elenco e selezione
 
-export function LessonsList({ groups, grouping, running, selecting, selected, onSelected }: {
+export function LessonsList({ groups, grouping, running, selecting, selected, onSelected, highlightedLessonId }: {
   groups: LessonGroup[]
   grouping: LessonsGrouping
   running: Set<number>
   selecting: boolean
   selected: Set<number>
   onSelected: (next: Set<number>) => void
+  highlightedLessonId?: number | null
 }) {
   const background = useSettings().data?.preferences?.sfondo_gruppi
   const toggle = (ids: number[], on: boolean) => {
@@ -369,6 +362,7 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
                 selecting={selecting}
                 selected={selected.has(lesson.id)}
                 onSelect={(on) => toggle([lesson.id], on)}
+                highlighted={lesson.id === highlightedLessonId}
               />
             ))}
           </ul>

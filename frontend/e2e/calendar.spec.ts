@@ -380,7 +380,7 @@ test('inizio periodo, avviso lezioni mancanti e collegamento al calendario', asy
     await page.getByRole('button', { name: 'Per materia', exact: true }).click()
     const header = page.getByRole('heading', { name: /^Studio(?:\s|$)/ })
     await header.getByRole('button', { name: /lezioni mancanti/ }).click()
-    const link = page.getByRole('dialog', { name: 'Studio' }).locator(`a[href="/calendario?data=${iso}&evento=tpl_${template.id}"]`)
+    const link = page.getByTestId('missing-lessons-popup').locator(`a[href="/calendario?data=${iso}&evento=tpl_${template.id}"]`)
     await link.click()
     await expect(page).toHaveURL(new RegExp(`data=${iso}&evento=tpl_${template.id}`))
     await expect(page.getByTestId(`calendar-event-tpl_${template.id}`).first()).toHaveClass(/rt-media-flash/)
