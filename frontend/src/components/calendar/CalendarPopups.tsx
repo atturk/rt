@@ -459,7 +459,12 @@ export function WeekInfoPopup({
           </div>
           <div className="flex max-h-36 flex-col gap-1 overflow-auto">
             {(summary.to_recover ?? []).map((item) => (
-              <div key={item.key} className="flex items-center gap-2">
+              <Link
+                key={`${item.date}:${item.key}`}
+                to={`/calendario?data=${item.date}&evento=${encodeURIComponent(item.key)}`}
+                onClick={onClose}
+                className="-mx-1 flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted"
+              >
                 <span
                   className="size-2 shrink-0 rounded-xs"
                   style={{ backgroundColor: getSubjectColor(item.materia) }}
@@ -470,7 +475,7 @@ export function WeekInfoPopup({
                 <span className="ml-auto font-mono text-muted-foreground">
                   {item.day_name} {item.day_number}/{item.month_number}
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
