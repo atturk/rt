@@ -131,10 +131,15 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await page.reload()
   await expect(build).toHaveAttribute('data-status', 'VALID')
   expect((await apiGet<{ final: boolean }>(page.request, `/lessons/${lessonId}/document`)).final).toBe(true)
-  // L'immagine si vede nella striscia di miniature; quella dell'editor sotto resta nascosta.
-  const placedImage = page.getByTestId('lesson-document').locator(`img[src="${placed[0].url}"]`).filter({ visible: true })
-  await scrollDocumentTo(page, placedImage)
-  await expect(placedImage).toBeVisible()
+  // L'immagine si vede nella sezione della graffetta, aperta dal pulsante; sotto non c'è un doppione.
+  const doc = page.getByTestId('lesson-document')
+  const clip = doc.locator('.rt-unit-images-button:not(.empty)')
+  await scrollDocumentTo(page, clip)
+  await clip.first().click()
+  const shown = doc.locator('.rt-unit-images-section img').filter({ visible: true })
+  await expect(shown.first()).toBeVisible()
+  const shownName = decodeURIComponent((await shown.first().getAttribute('src'))?.split('/').pop() ?? '')
+  expect(placed.map((i) => decodeURIComponent(i.url.split('/').pop() ?? ''))).toContain(shownName)
 
   // 9. Impostazioni: il motore di trascrizione cambiato resta dopo la ricarica (poi si ripristina).
   await page.goto('/impostazioni/lavorazione')
