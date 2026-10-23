@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons } from '@/api/hooks'
@@ -33,6 +33,7 @@ import { withImageUrls } from '@/lib/images'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { DELIMITED, renderDelimitedMath } from '@/lib/math'
 import { sourceOffsets, sourceParts, sourceTextOf } from '@/lib/sourceText'
+import { useHoverExpand } from '@/lib/useHoverExpand'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { useRsvpLayout, useZenLayout, useStudyZen } from '@/lib/zen'
@@ -1633,7 +1634,8 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
 }) {
   const [confirm, setConfirm] = useState(false)
   const [failed, setFailed] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const { open, setOpen, ref } = useHoverExpand<HTMLDivElement>()
+
   useEffect(() => {
     if (!confirm) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setConfirm(false) }
@@ -1644,11 +1646,42 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onClick)
     }
-  }, [confirm])
+  }, [confirm, ref])
+
   const segment = 'relative inline-flex size-8 max-md:size-7 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
   return (
     <div className="relative flex items-center gap-1 max-md:gap-0.5" ref={ref}>
-      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5 max-md:p-0" data-testid="highlight-tools">
+      {!open && (
+        <IconButton
+          label="Strumenti"
+          icon={
+            mode === 'evidenzia'
+              ? HighlighterIcon
+              : mode === 'gomma'
+                ? Eraser
+                : mode === 'verifica'
+                  ? CheckCircle2
+                  : mode === 'chiedi'
+                    ? HelpCircle
+                    : PencilRuler
+          }
+          active={mode !== null}
+          badge={
+            mode === 'evidenzia' ? (
+              <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
+            ) : undefined
+          }
+          onClick={() => setOpen(true)}
+          data-testid="study-tools-toggle"
+          className="max-md:size-7"
+        />
+      )}
+      <div
+        role="group"
+        aria-label="Strumenti"
+        className={open ? 'inline-flex rounded-lg bg-muted p-0.5 max-md:p-0' : 'hidden'}
+        data-testid="highlight-tools"
+      >
         <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo, dopo l’ultimo si spegne · E`}>{(trigger) => <button
           {...trigger}
           type="button"
@@ -1694,8 +1727,19 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
         >
           <HelpCircle className="size-4" aria-hidden />
         </button>}</Tooltip>
+        <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
+        <Tooltip content="Togli tutte le evidenziazioni">{(trigger) => <button
+          {...trigger}
+          type="button"
+          aria-expanded={confirm}
+          aria-label="Togli tutte le evidenziazioni"
+          data-testid="highlight-clear"
+          className={segment}
+          onClick={() => setConfirm(!confirm)}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </button>}</Tooltip>
       </div>
-      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" className="max-md:size-7 max-md:min-w-7" />
       {confirm && (
         <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
           <p>Togli tutte le evidenziazioni di questa unità?</p>

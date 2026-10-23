@@ -272,6 +272,15 @@ test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomm
   await page.goto(`/studio/lezione/${l.id}`)
   const text = page.getByTestId('study-text')
   await expect(text).toHaveText(/\S.{40,}/)
+  const openTools = async () => {
+    const tools = page.getByTestId('highlight-tools')
+    if (await tools.isVisible().catch(() => false)) return
+    const toggle = page.getByTestId('study-tools-toggle')
+    await toggle.waitFor({ state: 'visible' })
+    await toggle.hover()
+    await expect(tools).toBeVisible()
+  }
+  await openTools()
   await page.getByTestId('highlight-pen').click()
   // Selezione delle prime parole del primo paragrafo, come col mouse.
   const selected = await text.evaluate((root) => {
@@ -292,6 +301,7 @@ test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomm
 
   await page.reload()
   await expect(text.locator('.rt-hl')).toHaveText(selected)
+  await openTools()
   await page.getByTestId('highlight-eraser').click()
   await text.locator('.rt-hl').first().click()
   await expect(text.locator('.rt-hl')).toHaveCount(0)
@@ -572,6 +582,11 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
     await page.goto(`/studio/lezione/${l.id}`)
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    const toggle = page.getByTestId('study-tools-toggle')
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.hover()
+      await expect(page.getByTestId('highlight-tools')).toBeVisible()
+    }
     await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
@@ -773,6 +788,11 @@ test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricame
     await page.getByTestId('study-dots').locator('button').first().click()
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    const toggle = page.getByTestId('study-tools-toggle')
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.hover()
+      await expect(page.getByTestId('highlight-tools')).toBeVisible()
+    }
     await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
@@ -817,6 +837,11 @@ test('4.2.3.1: in cima alla finestra i suggerimenti scendono sotto; le info dell
     expect(box!.y + box!.height).toBeLessThanOrEqual(360)
   }
   const tools = page.getByTestId('study-header-tools')
+  const toggle = page.getByTestId('study-tools-toggle')
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.hover()
+    await expect(page.getByTestId('highlight-tools')).toBeVisible()
+  }
   for (const control of [tools.getByRole('button', { name: /^Evidenziatore/ }), tools.getByRole('button', { name: 'Gomma' }), page.getByTestId('study-title-button')]) {
     await page.mouse.move(0, 0)
     await control.hover()
@@ -1074,3 +1099,29 @@ test('Studio: da zen alla lettura veloce, sospensione e ripristino con Esc', asy
   await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
   await expect(page.getByRole('navigation')).toBeVisible()
 })
+
+test('gruppo strumenti dello Studio: chiuso mostra icona/tooltip, si apre al passaggio del mouse', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  const toggle = page.getByTestId('study-tools-toggle')
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-label', 'Strumenti')
+
+  // Passaggio del mouse apre il gruppo
+  await toggle.hover()
+  const tools = page.getByTestId('highlight-tools')
+  await expect(tools).toBeVisible()
+  await expect(page.getByTestId('highlight-pen')).toBeVisible()
+  await expect(page.getByTestId('highlight-clear')).toBeVisible()
+
+  // Spostando il mouse fuori, resta visibile prima dei 3 s
+  await page.getByTestId('study-text').hover()
+  await expect(tools).toBeVisible()
+
+  // Con Esc si chiude subito
+  await page.keyboard.press('Escape')
+  await expect(tools).toBeHidden()
+  await expect(toggle).toBeVisible()
+})
+
