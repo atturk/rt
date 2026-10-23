@@ -22,7 +22,7 @@ poi 1, 2, 3, 5. Non aggiungere al ramo le cartelle `codex-piani-*`.
   - `pytest -q`;
   - `cd frontend && npm run typecheck && npm run lint && npm test`;
   - `npm run build`, poi gli e2e dei file che hai toccato o aggiunto con `npx playwright test <file>`,
-    sempre anche `lessons.spec.ts`, `study.spec.ts` e `calendar.spec.ts`.
+    sempre anche `lessons-view.spec.ts`, `study.spec.ts` e `calendar.spec.ts`.
 - Se cambi l'API, rigenera lo schema: `python scripts/export_openapi.py && (cd frontend && npm run gen:api)`.
 - Se cambi un comportamento coperto da un e2e esistente, aggiorna quel test.
 - Non toccare `CalendarPopups.tsx`, `studyProgress.ts`, `VERSION` né `CHANGELOG.md`.
