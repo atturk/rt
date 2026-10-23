@@ -23,6 +23,13 @@ describe('useHoverExpand', () => {
     vi.useRealTimers()
   })
 
+  it('il tocco non apre il gruppo: lo apre il clic', () => {
+    render(<TestComponent />)
+    const group = screen.getByTestId('group')
+    fireEvent.pointerEnter(group, { pointerType: 'touch' })
+    expect(group.dataset.open).toBe('false')
+  })
+
   it('resta aperto a 2,9 s e si chiude a 3 s dopo l uscita del puntatore', () => {
     render(<TestComponent />)
     const group = screen.getByTestId('group')

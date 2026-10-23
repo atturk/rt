@@ -68,13 +68,16 @@ export function useHoverExpand<T extends HTMLElement = HTMLElement>(
     const el = ref.current
     if (!el) return
 
-    const handlePointerEnter = () => {
+    // Il tocco non è un passaggio del mouse: lì apre e chiude il clic, senza aperture doppie.
+    const handlePointerEnter = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return
       isPointerInside.current = true
       clearTimer()
       setOpen(true)
     }
 
-    const handlePointerLeave = () => {
+    const handlePointerLeave = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return
       isPointerInside.current = false
       if (timerRef.current) return
       timerRef.current = setTimeout(() => {
@@ -100,20 +103,18 @@ export function useHoverExpand<T extends HTMLElement = HTMLElement>(
 
     el.addEventListener('pointerenter', handlePointerEnter)
     el.addEventListener('pointerleave', handlePointerLeave)
-    el.addEventListener('mouseenter', handlePointerEnter)
-    el.addEventListener('mouseleave', handlePointerLeave)
     el.addEventListener('focusin', handleFocusIn)
     el.addEventListener('focusout', handleFocusOut)
 
     return () => {
       el.removeEventListener('pointerenter', handlePointerEnter)
       el.removeEventListener('pointerleave', handlePointerLeave)
-      el.removeEventListener('mouseenter', handlePointerEnter)
-      el.removeEventListener('mouseleave', handlePointerLeave)
       el.removeEventListener('focusin', handleFocusIn)
       el.removeEventListener('focusout', handleFocusOut)
     }
-  }, [clearTimer, closeImmediately, delayMs, ref, setOpen])
+    // Senza dipendenze: il gruppo può comparire dopo il primo render (avviso, barra di aggiornamento)
+    // e i listener vanno sull'elemento che c'è adesso.
+  })
 
   useEffect(() => {
     if (!open) return
