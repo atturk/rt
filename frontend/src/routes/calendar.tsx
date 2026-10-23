@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/client'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import {
   Calendar as CalendarIcon,
   CalendarSearch,
@@ -51,6 +51,7 @@ import { CalendarYearView } from '@/components/calendar/CalendarYearView'
 import { CalendarClipboardActions } from '@/components/calendar/CalendarClipboardActions'
 import { WeekRangePopup } from '@/components/calendar/WeekRangePopup'
 import { academicYear, academicWeeks, weekRangeLabel, type WeekRange } from '@/components/calendar/weekRange'
+import { useHoverExpand } from '@/lib/useHoverExpand'
 
 // Date in ora locale: toISOString() passa per UTC e sbaglia giorno vicino a mezzanotte e al cambio d'ora.
 function toLocalIso(d: Date): string {
@@ -110,13 +111,7 @@ export function CalendarPage() {
   const [jumpAnchor, setJumpAnchor] = useState<PopupAnchor | null>(null)
   const [selectedWeeks, setSelectedWeeks] = useState<string[]>([])
   const [multiple, setMultiple] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const pencil = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const outside = (event: PointerEvent) => { if (!pencil.current?.contains(event.target as Node)) setMenuOpen(false) }
-    window.addEventListener('pointerdown', outside)
-    return () => window.removeEventListener('pointerdown', outside)
-  }, [])
+  const { open: menuOpen, setOpen: setMenuOpen, ref: pencil } = useHoverExpand<HTMLDivElement>()
   const annual = !isPhone && desktopView === 'year'
   const year = Math.max(2025, Math.min(2035, academicYear(currentDate)))
   const yearQuery = useCalendarYear(academicWeeks(year)[0], annual)
@@ -357,10 +352,10 @@ export function CalendarPage() {
           }}
         />
 
-        <div ref={pencil} className={`group flex items-center rounded-lg focus-within:bg-muted ${editing || menuOpen || multiple ? 'bg-muted' : 'hover:bg-muted'}`}>
+        <div ref={pencil} className={`flex items-center rounded-lg focus-within:bg-muted ${editing || menuOpen || multiple ? 'bg-muted' : 'hover:bg-muted'}`}>
           <IconButton label="Modifica orario" icon={Pencil} aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}
-            className={hover && (editing || multiple || menuOpen) ? 'hidden' : hover ? 'group-hover:hidden' : undefined} />
-          <div className={`${menuOpen || hover && (editing || multiple) ? 'flex' : 'hidden [@media(hover:hover)]:group-hover:flex [@media(hover:hover)]:group-focus-within:flex'} items-center gap-0.5 ${hover ? '' : 'absolute right-3 top-full z-50 mt-1 rounded-lg border bg-card p-1 shadow-panel'}`}>
+            className={hover && (editing || multiple) ? 'hidden' : undefined} />
+          <div className={`${menuOpen || hover && (editing || multiple) ? 'flex' : 'hidden'} items-center gap-0.5 ${hover ? '' : 'absolute right-3 top-full z-50 mt-1 rounded-lg border bg-card p-1 shadow-panel'}`}>
             <CalendarClipboardActions week={week} yearWeeks={yearQuery.data ?? []} selected={selectedWeeks} annual={annual} />
             {annual ? <IconButton icon={ListChecks} label="Seleziona più settimane" active={multiple} onClick={() => { setMultiple(value => !value); setMenuOpen(true) }} /> : <>
               <IconButton label="Modifica solo questa settimana" icon={CalendarRange} active={editing === 'week'} onClick={() => beginEditing('week')} />
