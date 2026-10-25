@@ -274,7 +274,7 @@
 }
 .rt-document math[display='block'] {
   display: block;
-  margin: 0.6rem 0;
+  margin: 1.1rem 0;
   overflow-x: auto;
   font-size: 1.05em;
 }
@@ -1015,7 +1015,8 @@
 .rt-editor-math math { font-size: 1.02em; }
 .rt-editor-math-block {
   display: block;
-  margin: 0.4rem 0;
+  /* Le formule a blocco respirano: staccate dal testo sopra e sotto si leggono meglio. */
+  margin: 1rem 0;
   overflow-x: auto;
   text-align: center;
 }

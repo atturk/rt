@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { renderDelimitedMath } from './math'
+import { renderDelimitedMath, repairLatexEscapes } from './math'
 
 describe('renderDelimitedMath', async () => {
   it('renders only explicitly delimited math and preserves ordinary text', async () => {
@@ -46,5 +46,16 @@ describe('renderDelimitedMath', async () => {
     expect(root.querySelector('math[display=block] mtable')).not.toBeNull()
     expect(root.querySelectorAll('math')).toHaveLength(1)
     expect(root.textContent).toContain(String.raw`\(\frac{1}{\)`)
+  })
+})
+
+describe('repairLatexEscapes', () => {
+  it('rimette la barra a \\frac, \\beta e \\theta mangiati dagli escape JSON', async () => {
+    const broken = JSON.parse(String.raw`"\\sum_v\frac{|S_v|}{|S|} + \beta + \theta"`) as string
+    expect(repairLatexEscapes(broken)).toBe(String.raw`\sum_v\frac{|S_v|}{|S|} + \beta + \theta`)
+    const root = document.createElement('p')
+    root.textContent = `$$${broken}$$`
+    await renderDelimitedMath(root)
+    expect(root.querySelector('mfrac')).not.toBeNull()
   })
 })
