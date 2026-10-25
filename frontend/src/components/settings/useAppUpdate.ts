@@ -6,13 +6,15 @@ import { isAppWindow } from '@/lib/zoom'
 
 export type AppUpdate = Schemas['AppUpdate']
 export const updateKey = ['system', 'update'] as const
+// L'installazione (montare il .dmg, copiare RT.app) dura minuti: la pagina la segue come il download.
+const BUSY_PHASES = new Set(['downloading', 'installing'])
 
 export function useAppUpdate() {
   const client = useQueryClient()
   const update = useQuery({
     queryKey: updateKey,
     queryFn: () => unwrap(api.GET('/api/v1/system/update')),
-    refetchInterval: (query) => (query.state.data?.progress?.phase === 'downloading' ? 1000 : false),
+    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 1000 : false),
   })
   const refresh = useMutation({
     mutationFn: () => unwrap(api.GET('/api/v1/system/update', { params: { query: { refresh: true } } })),
@@ -53,7 +55,7 @@ export function useUpdatePopup() {
     queryKey: updateKey,
     queryFn: () => unwrap(api.GET('/api/v1/system/update')),
     enabled: isApp,
-    refetchInterval: (query) => (query.state.data?.progress?.phase === 'downloading' ? 1000 : false),
+    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 1000 : false),
   })
 
   const prevPhaseRef = useRef<string | undefined>(undefined)

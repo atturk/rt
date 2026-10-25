@@ -96,6 +96,12 @@ def final_markdown_name(names: Dict[str, str]) -> Optional[str]:
     return "rielaborato.md" if "rielaborato.md" in names else None
 
 
+COMPRESSED_EXTENSIONS = frozenset({
+    ".m4a", ".mp3", ".aac", ".ogg", ".opus", ".flac", ".mp4", ".m4v", ".mov", ".webm",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".pdf", ".zip", ".docx", ".pptx", ".xlsx", ".gz",
+})
+
+
 def _read(path: str) -> bytes:
     with fs.open(path, "rb") as f:
         return f.read()
@@ -270,14 +276,28 @@ def _export_zip_into(lesson_dir: str, scope: str, buf, study: bool = False) -> N
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         entries = []
         for rel, src in collect(lesson_dir, scope):
+            name = f"{folder}/{rel}"
+            # Audio, immagini e PDF sono già compressi: ricomprimerli costa minuti e non riduce nulla.
+            method = zipfile.ZIP_STORED if os.path.splitext(rel)[1].lower() in COMPRESSED_EXTENSIONS else zipfile.ZIP_DEFLATED
             real = None if isinstance(src, bytes) else fs.real_path(src)
+            digest = hashlib.sha256()
             if real is not None:
-                zf.write(real, f"{folder}/{rel}")
+                # Una sola lettura del file, a pezzi: copia nello zip e impronta insieme.
+                info = zipfile.ZipInfo.from_file(real, name)
+                info.compress_type = method
+                size = 0
+                with open(real, "rb") as f, zf.open(info, "w", force_zip64=True) as out:
+                    while chunk := f.read(1 << 20):
+                        out.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
             else:
-                zf.writestr(f"{folder}/{rel}", src if isinstance(src, bytes) else _read(src))
-            if scope == "all" and rel not in (PREVIEW_README,) and not rel.endswith(PREVIEW_SUFFIX + ".md"):
                 payload = src if isinstance(src, bytes) else _read(src)
-                entries.append({"path": rel, "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+                zf.writestr(name, payload, compress_type=method)
+                digest.update(payload)
+                size = len(payload)
+            if scope == "all" and rel not in (PREVIEW_README,) and not rel.endswith(PREVIEW_SUFFIX + ".md"):
+                entries.append({"path": rel, "size": size, "sha256": digest.hexdigest()})
         if scope == "all":
             manifest = {"format": "rt-lesson", "version": 1, "scope": "all", "files": entries}
             if study:

@@ -157,7 +157,10 @@ def render_plist(name: str, data_dir: Optional[str] = None, port: Optional[int] 
         # riparte se esce con errore; un'uscita pulita ('rt service stop') no
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 10,
-        "ProcessType": "Background" if name == "worker" else "Standard",
+        # Background faceva rallentare a macOS CPU e disco del worker (export, trascrizioni):
+        # Standard con priorità un po' più bassa lascia comunque la precedenza alla finestra.
+        "ProcessType": "Standard",
+        **({"Nice": 5} if name == "worker" else {}),
     }
     return plistlib.dumps(spec)
 

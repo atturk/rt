@@ -314,3 +314,71 @@ def test_rate_limited_github_keeps_the_last_good_check(monkeypatch):
     assert app_update.cached_check(refresh=True) is found
     # il download usa ancora il controllo riuscito
     assert app_update.cached_check().available
+
+
+ATOM = """<feed><entry><link rel="alternate" type="text/html" href="https://github.com/atturk/rt/releases/tag/v4.4.0b1"/></entry>
+<entry><link rel="alternate" type="text/html" href="https://github.com/atturk/rt/releases/tag/v4.3.3.1"/></entry>
+<entry><link rel="alternate" type="text/html" href="https://github.com/atturk/rt/releases/tag/v4.3.3"/></entry></feed>"""
+
+
+def _feed(monkeypatch, sums_for=None):
+    def get_text(url, timeout):
+        if url.endswith(".atom"):
+            return ATOM
+        if sums_for and url.endswith(f"/{sums_for}/SHA256SUMS"):
+            return f"{'a' * 64}  RT-{sums_for[1:]}-macos-arm64.dmg\n"
+        raise app_update.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+    monkeypatch.setattr(app_update, "_get_text", get_text)
+
+
+def test_api_limit_falls_back_to_the_release_feed(monkeypatch):
+    def limited(url, timeout):
+        raise app_update.urllib.error.HTTPError(url, 403, "rate limit exceeded", {}, None)
+    monkeypatch.setattr(app_update, "_get_json", limited)
+    monkeypatch.setattr(app_update, "get_current_version", lambda root: "4.3.3")
+    monkeypatch.setattr(app_update.bundle, "kind", lambda root=None: bundle.MACOS)
+    monkeypatch.setattr(app_update, "effective_channel", lambda current: "stable")
+    monkeypatch.setattr(app_update, "cleanup", lambda keep=None: None)
+    _feed(monkeypatch, sums_for="v4.3.3.1")
+    info = app_update.check(project_root="/x")
+    assert info.error is None and info.available and info.latest == "4.3.3.1"
+    assert info.asset_url == "https://github.com/atturk/rt/releases/download/v4.3.3.1/RT-4.3.3.1-macos-arm64.dmg"
+    assert info.sums_url.endswith("/download/v4.3.3.1/SHA256SUMS")
+
+
+def test_feed_beta_channel_and_missing_installer(monkeypatch):
+    _feed(monkeypatch)
+    info = app_update.check_from_feed(bundle.MACOS, "4.3.3", "beta", 5)
+    # La beta più recente non ha ancora l'installer allegato: nessun download offerto.
+    assert info.latest == "4.4.0b1" and info.prerelease and not info.available
+    assert app_update.check_from_feed(bundle.MACOS, "4.3.3.1", "stable", 5).available is False
+
+
+def test_install_runs_in_background_and_reports_errors(tmp_path, monkeypatch):
+    import threading
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"valid-setup" * 100
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+    info = _info()
+    app_update.download(info, opener=_opener({EXE: payload, "SHA256SUMS": sums}))
+    gate, done = threading.Event(), threading.Event()
+
+    def slow_install(path, project_root=None):
+        gate.wait(5)
+        done.set()
+        raise app_update.AppUpdateError("Il .dmg non contiene RT.app.")
+    monkeypatch.setattr(app_update, "install", slow_install)
+    app_update.start_install(info)
+    # La richiesta è già tornata mentre l'installazione è ancora in corso.
+    assert app_update.STATE.snapshot()["phase"] == "installing"
+    with pytest.raises(app_update.AppUpdateError, match="già in corso"):
+        app_update.start_install(info)
+    gate.set()
+    done.wait(5)
+    for _ in range(50):
+        if app_update.STATE.snapshot()["phase"] == "error":
+            break
+        threading.Event().wait(0.05)
+    assert app_update.STATE.snapshot()["error"] == "Il .dmg non contiene RT.app."
+    log = (tmp_path / "updates" / "install.log").read_text()
+    assert "installo RT 4.3.0" in log and "errore: Il .dmg non contiene RT.app." in log
