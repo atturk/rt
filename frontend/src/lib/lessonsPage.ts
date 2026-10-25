@@ -366,7 +366,10 @@ export function filterMissingLessons(
     return match?.missing ?? []
   }
 
-  const allItems = missingData.subjects.flatMap((s) => s.missing ?? [])
+  // Le materie arrivano una dopo l'altra: fuori dal raggruppamento per materia si torna all'ordine del calendario.
+  const allItems = missingData.subjects
+    .flatMap((s) => s.missing ?? [])
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
 
   switch (grouping) {
     case 'data':

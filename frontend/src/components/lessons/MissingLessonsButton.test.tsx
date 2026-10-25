@@ -52,7 +52,8 @@ it('mostra date e link al blocco della settimana cliccando sul triangolo', () =>
   )
 })
 
-it('apre il popup al passaggio del mouse (hover)', () => {
+it('al passaggio del mouse non apre il popup; aperto col clic, si chiude 3 s dopo l’uscita', () => {
+  vi.useFakeTimers()
   state.subjects = [
     {
       materia: 'DATA MINING',
@@ -70,13 +71,25 @@ it('apre il popup al passaggio del mouse (hover)', () => {
     },
   ]
   draw()
-  expect(screen.queryByTestId('missing-lessons-popup')).toBeNull()
-
   const container = screen.getByTestId('missing-lessons-button').parentElement!
   act(() => {
     fireEvent.pointerEnter(container)
   })
+  expect(screen.queryByTestId('missing-lessons-popup')).toBeNull()
+  act(() => {
+    fireEvent.click(screen.getByTestId('missing-lessons-button'))
+  })
   expect(screen.getByTestId('missing-lessons-popup')).toBeInTheDocument()
+  act(() => {
+    fireEvent.pointerLeave(container)
+    vi.advanceTimersByTime(2900)
+  })
+  expect(screen.getByTestId('missing-lessons-popup')).toBeInTheDocument()
+  act(() => {
+    vi.advanceTimersByTime(100)
+  })
+  expect(screen.queryByTestId('missing-lessons-popup')).toBeNull()
+  vi.useRealTimers()
 })
 
 it('supporta altri raggruppamenti (es. data)', () => {

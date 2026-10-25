@@ -336,6 +336,11 @@ describe('filterMissingLessons', () => {
     ],
   }
 
+  it('fuori dalla materia mette le ore in ordine di calendario', () => {
+    const october = { ...missingData, subjects: [missingData.subjects[0], { ...missingData.subjects[1], missing: [{ ...missingData.subjects[1].missing[0], key: 'e4', date: '2026-10-13' }] }] }
+    expect(filterMissingLessons(october, 'mese', '2026-10').map((x) => x.key)).toEqual(['e1', 'e4', 'e2'])
+  })
+
   it('filtra per materia (case insensitive e trimmed)', () => {
     const res = filterMissingLessons(missingData, 'materia', 'fisiologia')
     expect(res.map((x) => x.key)).toEqual(['e1', 'e2'])

@@ -310,7 +310,7 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
   }
 })
 
-test('Avviso lezioni mancanti compare e si apre al passaggio del mouse', async ({ page }) => {
+test('Avviso lezioni mancanti: suggerimento al passaggio del mouse, elenco al clic', async ({ page }) => {
   await loginViaLink(page)
   await page.route('**/api/v1/calendar/missing', async (route) => {
     await route.fulfill({
@@ -346,9 +346,12 @@ test('Avviso lezioni mancanti compare e si apre al passaggio del mouse', async (
   const warnBtn = page.getByTestId('missing-lessons-button').first()
   await expect(warnBtn).toBeVisible()
 
-  // Al passaggio del mouse si apre il popup
+  // Al passaggio del mouse solo il suggerimento; il popup si apre col clic
   await warnBtn.hover()
   const popup = page.getByTestId('missing-lessons-popup')
+  await expect(page.getByRole('tooltip')).toContainText('1 lezioni mancanti')
+  await expect(popup).toHaveCount(0)
+  await warnBtn.click()
   await expect(popup).toBeVisible()
   await expect(popup).toContainText('Lun 12/10')
   await expect(popup).toContainText('09:00–11:00')

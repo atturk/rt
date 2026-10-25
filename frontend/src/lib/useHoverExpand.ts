@@ -7,6 +7,8 @@ export interface UseHoverExpandOptions<T extends HTMLElement = HTMLElement> {
   initialOpen?: boolean
   /** Callback chiamata quando lo stato di apertura cambia. */
   onOpenChange?: (open: boolean) => void
+  /** false: si apre solo col clic; il passaggio del mouse tiene aperto e l'uscita fa partire il timer. */
+  openOnHover?: boolean
   /** Ref esterno opzionale; se non passato, l'hook crea e restituisce il proprio. */
   ref?: React.RefObject<T | null>
 }
@@ -29,7 +31,7 @@ export interface UseHoverExpandResult<T extends HTMLElement = HTMLElement> {
 export function useHoverExpand<T extends HTMLElement = HTMLElement>(
   options: UseHoverExpandOptions<T> = {},
 ): UseHoverExpandResult<T> {
-  const { delayMs = 3000, initialOpen = false, onOpenChange } = options
+  const { delayMs = 3000, initialOpen = false, onOpenChange, openOnHover = true } = options
   const [open, setOpenState] = useState(initialOpen)
   const localRef = useRef<T | null>(null)
   const ref = options.ref ?? localRef
@@ -73,7 +75,7 @@ export function useHoverExpand<T extends HTMLElement = HTMLElement>(
       if (e.pointerType === 'touch') return
       isPointerInside.current = true
       clearTimer()
-      setOpen(true)
+      if (openOnHover) setOpen(true)
     }
 
     const handlePointerLeave = (e: PointerEvent) => {
@@ -90,7 +92,7 @@ export function useHoverExpand<T extends HTMLElement = HTMLElement>(
 
     const handleFocusIn = () => {
       clearTimer()
-      setOpen(true)
+      if (openOnHover) setOpen(true)
     }
 
     const handleFocusOut = (e: FocusEvent) => {

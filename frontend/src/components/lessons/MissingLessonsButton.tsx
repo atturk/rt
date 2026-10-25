@@ -19,7 +19,7 @@ export function MissingLessonsButton({
 }: MissingLessonsButtonProps) {
   const [enabled] = usePreference('calendar.missing-warning', true)
   const missing = useMissingLessons(enabled)
-  const { open, setOpen, ref } = useHoverExpand<HTMLDivElement>()
+  const { open, setOpen, ref } = useHoverExpand<HTMLDivElement>({ openOnHover: false })
 
   if (!enabled) return null
 
@@ -35,7 +35,7 @@ export function MissingLessonsButton({
         label={`${items.length} lezioni mancanti`}
         aria-expanded={open}
         className="size-5 min-h-5 min-w-5 text-warning [&_svg]:size-3.5"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((value) => !value)}
         data-testid="missing-lessons-button"
       />
       {open && (
