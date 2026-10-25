@@ -110,6 +110,17 @@ describe('imageStripDOM', () => {
     expect(container.innerHTML.replace(/>\s+</g, '><')).toBe(original.replace(/>\s+</g, '><'))
     container.remove()
   })
+  it('nelle sezioni senza timecode il bottone sta sotto il titolo', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `<h2 data-unit-id="7">7. Entropia</h2><p><img src="/img1.png" alt="Doc.pdf, pagina 1" /></p><p>Testo</p>`
+    const cleanup = mountDocumentImageStrips(container, [{ unit_id: '7', immagini_sezione: ['img1.png'] }])
+    const heading = container.querySelector('h2')!
+    expect(heading.querySelector('.rt-unit-images-button')).toBeNull()
+    expect(heading.nextElementSibling).toHaveClass('rt-unit-meta-below')
+    expect(heading.nextElementSibling!.querySelector('.rt-unit-images-button')!.textContent).toBe('1')
+    cleanup()
+    expect(container.querySelector('.rt-unit-meta-below')).toBeNull()
+  })
   it('non interpreta come sezione una immagine nel testo o senza metadati API', () => {
     const container = document.createElement('div')
     container.innerHTML = '<h3 data-unit-id="1.1">Titolo</h3><p><img src="/a.png#w=320"></p>'

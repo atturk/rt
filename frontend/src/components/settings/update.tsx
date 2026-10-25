@@ -38,7 +38,12 @@ export function UpdateSection() {
         </div>
 
         {phase === 'downloading' && <p role="status">Scarico RT {data.progress.target}{percent !== null ? ` (${percent}%)` : ''}…</p>}
-        {phase === 'installing' && <p role="status">Installo RT {data.progress.target}: RT si riavvia e questa pagina si ricarica da sola.</p>}
+        {phase === 'installing' && (
+          <div className="space-y-2">
+            <p role="status">Installo RT {data.progress.target}: RT si riavvia e questa pagina si ricarica da sola.</p>
+            <progress className="h-2 w-full max-w-sm accent-primary" aria-label="Installazione" />
+          </div>
+        )}
         {phase === 'error' && <Alert tone="danger">{data.progress.error}</Alert>}
         {!BUSY.has(phase ?? '') && <UpdateStatus data={data} isReady={isReady} />}
         {download.isError && <Alert tone="danger">{errorMessage(download.error)}</Alert>}

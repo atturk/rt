@@ -48,6 +48,9 @@ def test_render_plist(tmp_path, monkeypatch):
     assert spec["EnvironmentVariables"]["RT_DATA_DIR"] == str(tmp_path / "data")
     assert spec["StandardOutPath"] == str(tmp_path / "data" / "logs" / "api.log")
     assert spec["KeepAlive"] == {"SuccessfulExit": False} and spec["RunAtLoad"] is True
+    # Background faceva rallentare a macOS export e trascrizioni: il worker cede solo un po' di CPU.
+    worker = plistlib.loads(sm.render_plist("worker"))
+    assert worker["ProcessType"] == spec["ProcessType"] == "Standard" and worker["Nice"] == 5 and "Nice" not in spec
     with pytest.raises(sm.ServiceError):
         sm.render_plist("bot")  # il bot sempre acceso non c'è più
 

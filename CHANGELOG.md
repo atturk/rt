@@ -1,5 +1,14 @@
 # Novità di RT
 
+## 4.3.3.1 — 2026-10-25
+
+### Correzioni
+
+- **Installa e riavvia**: l'installazione prosegue in background con una barra di avanzamento, invece di lasciare il pulsante grigio per minuti. Il .dmg si monta senza la seconda verifica (lo SHA256 è già controllato), RT si riapre solo a finestra vecchia chiusa e i passaggi finiscono in `updates/install.log`.
+- **GitHub non risponde (403/429)**: quando il limite dell'API è esaurito, il controllo degli aggiornamenti usa il feed delle release e SHA256SUMS, che non hanno quel limite.
+- **Esportazione** molto più veloce: audio, immagini e PDF non vengono ricompressi e ogni file si legge una volta sola. Sul Mac il worker non gira più come processo «Background», che macOS rallentava.
+- La graffetta delle sezioni principali sta sotto il titolo, non di fianco.
+
 ## 4.3.3 — 2026-10-25
 
 Raccoglie le beta 4.3.3b1–b4 (dettagli sotto).

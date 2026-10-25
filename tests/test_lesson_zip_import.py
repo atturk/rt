@@ -214,3 +214,21 @@ def test_group_import_can_be_cancelled_between_lessons(workspace, monkeypatch):
     with pytest.raises(RunCancelled):
         import_lesson_zips_job(job, RunContext(cancel_token=token))
     assert imported == ["prima.zip"]
+
+
+def test_export_stores_compressed_media_and_keeps_manifest_hashes(workspace):
+    import hashlib
+    import json
+    lesson = make_lesson(workspace)
+    images = os.path.join(lesson, "assets", "images")
+    os.makedirs(images, exist_ok=True)
+    png = b"\x89PNG\r\n\x1a\n" + os.urandom(4096)
+    with open(os.path.join(images, "pagina.png"), "wb") as f:
+        f.write(png)
+    with zipfile.ZipFile(io.BytesIO(export_zip(lesson, scope="all"))) as zipped:
+        infos = {info.filename.split("/", 1)[1]: info for info in zipped.infolist()}
+        manifest = json.loads(zipped.read(next(n for n in zipped.namelist() if n.endswith("rt-export.json"))))
+        assert infos["assets/images/pagina.png"].compress_type == zipfile.ZIP_STORED
+        assert any(info.compress_type == zipfile.ZIP_DEFLATED for name, info in infos.items() if name.endswith(".md"))
+        entry = next(e for e in manifest["files"] if e["path"] == "assets/images/pagina.png")
+        assert entry == {"path": "assets/images/pagina.png", "size": len(png), "sha256": hashlib.sha256(png).hexdigest()}

@@ -150,12 +150,63 @@ def check(timeout: float = 8.0, project_root: Optional[str] = None) -> UpdateChe
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return UpdateCheck(supported=kind is not None, current=current, channel=channel)
+        if exc.code in (403, 429):
+            # Limite dell'API (60 richieste l'ora per indirizzo, condiviso da tutti i PC della rete):
+            # il feed e i download delle release non ne fanno parte.
+            try:
+                info = check_from_feed(kind, current, channel, timeout)
+            except (urllib.error.URLError, OSError, ValueError):
+                info = None
+            if info is not None:
+                cleanup(info.asset_name if info.available else None)
+                return info
         return UpdateCheck(supported=kind is not None, current=current, channel=channel,
                            error=f"GitHub non risponde (HTTP {exc.code}).")
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return UpdateCheck(supported=kind is not None, current=current, channel=channel,
                            error=f"Impossibile controllare gli aggiornamenti: {getattr(exc, 'reason', exc)}.")
     cleanup(info.asset_name if info.available else None)
+    return info
+
+
+def _get_text(url: str, timeout: float) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "RT-Updater"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", "replace")
+
+
+def feed_tags(atom: str) -> list:
+    """I tag delle release nel feed Atom di GitHub (le più recenti)."""
+    import re
+    return list(dict.fromkeys(re.findall(r'/releases/tag/([^"<>\s]+)"', atom)))
+
+
+def check_from_feed(kind: Optional[str], current: str, channel: str, timeout: float) -> UpdateCheck:
+    """Il controllo senza API: il feed delle release dà i tag, SHA256SUMS conferma che
+    l'installer è allegato. Gli URL di download di GitHub hanno una forma fissa."""
+    tags = [t for t in feed_tags(_get_text(f"{RELEASES_PAGE}.atom", timeout)) if parse_version(format_version(t))]
+    if channel != "beta":
+        tags = [t for t in tags if not is_prerelease(format_version(t))]
+    if not tags:
+        raise ValueError("Feed delle release vuoto")
+    tag = max(tags, key=lambda t: parse_version(format_version(t)))
+    release = {"tag_name": tag, "prerelease": is_prerelease(format_version(tag)),
+               "html_url": f"{RELEASES_PAGE}/tag/{tag}", "assets": []}
+    newer = (parse_version(format_version(tag)) or ()) > (parse_version(current) or ())
+    if kind is not None and newer:
+        name = asset_name(kind, format_version(tag))
+        sums_url = f"{RELEASES_PAGE}/download/{tag}/SHA256SUMS"
+        try:
+            listed = expected_sha256(_get_text(sums_url, timeout), name)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+            listed = None
+        if listed:
+            release["assets"] = [{"name": name, "browser_download_url": f"{RELEASES_PAGE}/download/{tag}/{name}"},
+                                 {"name": "SHA256SUMS", "browser_download_url": sums_url}]
+    info = evaluate(release, kind, current, allow_prerelease=channel == "beta")
+    info.channel = channel
     return info
 
 
@@ -314,12 +365,17 @@ def copy_app_from_dmg(dmg: str, target: str) -> None:
         raise AppUpdateError(f"{target} esiste già: non la sostituisco.")
     mount = tempfile.mkdtemp(prefix="rt-update-")
     try:
-        _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount, dmg])
+        # Lo SHA256 del .dmg è già verificato: la verifica di hdiutil rileggerebbe tutto il file.
+        install_log("monto il .dmg")
+        _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-noautofsck",
+              "-mountpoint", mount, dmg])
         try:
             source = os.path.join(mount, "RT.app")
             if not os.path.isdir(source):
                 raise AppUpdateError("Il .dmg non contiene RT.app.")
+            install_log("copio RT.app")
             _run(["ditto", source, target])
+            install_log("RT.app copiata")
         finally:
             subprocess.run(["hdiutil", "detach", mount, "-force"], capture_output=True, check=False)
     finally:
@@ -340,18 +396,28 @@ def install_macos(dmg: str, project_root: Optional[str] = None) -> None:
     shutil.rmtree(staging, ignore_errors=True)
     copy_app_from_dmg(dmg, staging)
     old = app + ".old"
+    # La finestra va chiusa davvero prima di riaprire: con la vecchia ancora viva "open"
+    # riporterebbe davanti quella invece di avviare la nuova RT.app.
     script = ('sleep 1; '
               'if [ -f "$WINDOW_PID" ]; then '
               'PID=$(cat "$WINDOW_PID"); '
-              'case "$PID" in ""|*[!0-9]*) ;; *) kill "$PID" 2>/dev/null || true ;; esac; '
+              'case "$PID" in ""|*[!0-9]*) ;; *) kill "$PID" 2>/dev/null || true; '
+              'i=0; while kill -0 "$PID" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i+1)); done ;; esac; '
               'rm -f "$WINDOW_PID"; fi; '
+              'echo "$(date "+%Y-%m-%d %H:%M:%S") scambio le app"; '
               'rm -rf "$OLD"; mv "$APP" "$OLD" && mv "$NEW" "$APP" && rm -rf "$OLD" && '
+              'echo "$(date "+%Y-%m-%d %H:%M:%S") riapro RT" && '
               'open "$APP" --args --after-update')
-    subprocess.Popen(["/bin/sh", "-c", script],
-                     env={**os.environ, "APP": app, "NEW": staging, "OLD": old,
-                          "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid")},
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     **_detached())
+    install_log("chiudo RT e scambio le app")
+    log = open(os.path.join(_updates_dir(), "install.log"), "a", encoding="utf-8")
+    try:
+        subprocess.Popen(["/bin/sh", "-c", script],
+                         env={**os.environ, "APP": app, "NEW": staging, "OLD": old,
+                              "WINDOW_PID": os.path.join(paths.data_dir(), "run", "window.pid")},
+                         stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                         **_detached())
+    finally:
+        log.close()
 
 
 def _run(command) -> None:
@@ -402,9 +468,33 @@ def start_install(info: UpdateCheck) -> None:
         raise AppUpdateError("Hash dell'installer non corrispondente.")
 
     with STATE.lock:
-        STATE.phase = "installing"
+        if STATE.phase == "installing":
+            raise AppUpdateError("Un aggiornamento è già in corso.")
+        STATE.phase, STATE.error = "installing", None
         STATE.target = info.latest
-    install(path)
+
+    # Montare il .dmg e copiare RT.app richiede minuti: la richiesta torna subito e la pagina
+    # segue la fase "installing" (o l'errore) con GET /system/update.
+    def work() -> None:
+        try:
+            install_log(f"installo RT {info.latest} da {os.path.basename(path)}")
+            install(path)
+        except Exception as exc:  # noqa: BLE001
+            install_log(f"errore: {exc}")
+            with STATE.lock:
+                STATE.phase = "error"
+                STATE.error = str(exc) if isinstance(exc, AppUpdateError) else f"Installazione non riuscita: {exc}"
+
+    threading.Thread(target=work, name="rt-app-install", daemon=True).start()
+
+
+def install_log(message: str) -> None:
+    """updates/install.log: i passaggi dell'installazione con l'ora, per capire dove si ferma."""
+    try:
+        with open(os.path.join(_updates_dir(), "install.log"), "a", encoding="utf-8", newline="\n") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------------ stato per l'API
