@@ -56,9 +56,12 @@ export function UpdatePopup() {
       {/* Stato */}
       <div className="my-auto py-2">
         {isInstalling ? (
-          <p role="status" className="text-sm">
-            Installo RT {data.progress.target || version}…
-          </p>
+          <div className="space-y-2">
+            <p role="status" className="text-xs text-muted-foreground">
+              Installo RT {data.progress.target || version}…
+            </p>
+            <progress className="h-2 w-full accent-primary" aria-label="Installazione" />
+          </div>
         ) : isDownloading ? (
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-muted-foreground">

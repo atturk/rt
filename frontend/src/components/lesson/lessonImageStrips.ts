@@ -25,12 +25,23 @@ class UnitImagesButton extends WidgetType {
   readonly unitId: string
   readonly count: number
   readonly open: boolean
-  constructor(unitId: string, count: number, open: boolean) { super(); this.unitId = unitId; this.count = count; this.open = open }
-  eq(other: UnitImagesButton) { return this.unitId === other.unitId && this.count === other.count && this.open === other.open }
-  toDOM(view: EditorView) {
-    return buildUnitImagesButton(this.unitId, this.count, this.open, () => view.dispatch({ effects: toggleUnitImages.of(this.unitId) }))
+  readonly below: boolean
+  constructor(unitId: string, count: number, open: boolean, below = false) {
+    super(); this.unitId = unitId; this.count = count; this.open = open; this.below = below
   }
-  destroy(dom: HTMLElement) { unmountDomTooltip(dom) }
+  eq(other: UnitImagesButton) {
+    return this.unitId === other.unitId && this.count === other.count && this.open === other.open && this.below === other.below
+  }
+  toDOM(view: EditorView) {
+    const button = buildUnitImagesButton(this.unitId, this.count, this.open, () => view.dispatch({ effects: toggleUnitImages.of(this.unitId) }))
+    if (!this.below) return button
+    const row = document.createElement('div')
+    row.className = 'rt-unit-images-row'
+    row.classList.toggle('empty', this.count === 0)
+    row.append(button)
+    return row
+  }
+  destroy(dom: HTMLElement) { unmountDomTooltip(dom.matches('button') ? dom : dom.querySelector('button') ?? dom) }
   ignoreEvent(event: Event) { return !['drop', 'dragover', 'dragenter', 'dragleave', 'dragend'].includes(event.type) }
 }
 
@@ -74,7 +85,10 @@ export function lessonImageStrips(lessonId: number): Extension {
     const ranges: Range<Decoration>[] = []
     const open = state.field(openUnitImages)
     for (const section of imageSections(state)) {
-      ranges.push(Decoration.widget({ widget: new UnitImagesButton(section.id, section.images.length, open.has(section.id)), side: -1 }).range(section.timecode))
+      // Senza timecode (le sezioni, ## N.) il bottone sta in una riga sotto il titolo.
+      const below = section.timecode === state.doc.lineAt(section.from).to
+      const widget = new UnitImagesButton(section.id, section.images.length, open.has(section.id), below)
+      ranges.push((below ? Decoration.widget({ widget, block: true, side: 1 }) : Decoration.widget({ widget, side: -1 })).range(section.timecode))
     }
     for (const strip of findMarkdownImageStrips(state, lessonId)) {
       ranges.push(Decoration.replace({ widget: new ImageStripWidget(strip.unitId, strip.images, open.has(strip.unitId)), block: true }).range(strip.from, strip.to))

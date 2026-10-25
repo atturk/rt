@@ -259,6 +259,12 @@ export function mountDocumentImageStrips(
         }
         heading.after(meta)
       }
+    } else if (!section.start_formatted && !heading.querySelector('.rt-unit-meta')) {
+      // Le sezioni (macro unità) non hanno timecode: il bottone va sotto il titolo, non di fianco.
+      createdMeta = true
+      meta = document.createElement('div')
+      meta.className = 'rt-unit-meta rt-unit-meta-below'
+      heading.after(meta)
     } else {
       meta = heading.querySelector<HTMLElement>('.rt-unit-meta')
       if (!meta) {

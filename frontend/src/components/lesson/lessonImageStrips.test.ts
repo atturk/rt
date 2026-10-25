@@ -46,6 +46,15 @@ describe('lessonImageStrips', () => {
     expect(view.state.doc.toString()).toBe(text)
     view.destroy(); parent.remove()
   })
+  it('nelle sezioni (## N.) il bottone sta in una riga sotto il titolo', () => {
+    const parent = document.createElement('div')
+    const doc = '## 7. Entropia\n![Doc.pdf, pagina 1](assets/images/img1.png)\n\nTesto'
+    const view = new EditorView({ parent, state: EditorState.create({ doc, extensions: [lessonImageStrips(1)] }) })
+    const row = parent.querySelector<HTMLElement>('.rt-unit-images-row')!
+    expect(row.querySelector('.rt-unit-images-button')!.textContent).toBe('1')
+    expect(row.closest('.cm-line')).toBeNull()
+    view.destroy()
+  })
   it('sezione vuota: bottone disponibile solo per il trascinamento', () => {
     const parent = document.createElement('div')
     const view = new EditorView({ parent, state: EditorState.create({ doc: '### 1.1 Unità\n00:00\nTesto', extensions: [lessonImageStrips(1)] }) })
