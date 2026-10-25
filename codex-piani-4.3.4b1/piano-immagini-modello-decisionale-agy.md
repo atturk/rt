@@ -37,12 +37,25 @@ leggibile dall'utente e cercabile nell'archivio.
   ~2000 token di testo: non adatti). Il modello resta configurabile nel job `images` del
   classificatore, quindi il codice deve funzionare con ogni modello che usa lo stesso formato.
 
-## 0. Prova reale (prima di scrivere codice)
+## 0. Prova reale e scelta del modello (prima di scrivere codice)
 
-Con la chiave OpenRouter di Attilio: script usa e getta in `scratch/`, non committato. Manda una
-pagina di slide e una foto a `typesafe/jev-1.14` con le due domande della sezione 3 e stampa le
-risposte. Ripeti con `openai/gpt-6-luna-decisions` se disponibile. Annota in PR: forma accettata,
-token di input, latenza, risposte. Se `state` come array viene rifiutato, fermati e scrivilo in PR.
+I benchmark pubblici sulle immagini non sono concordi e sono solo in inglese:
+- etsabary/jev-1.14-comparison-benchmark (200 domande su immagini): Jev 1.14 70,5%, Luna Decisions 60,5%;
+- Image JevBench v0.3.0: Jev 1.13 con immagini 72,4, Luna Decisions 62,9, Jev 1.14 60,2 (calibrazione 85,0 / 80,7 / 70,5);
+- costo per 1000 decisioni con immagine: Jev circa $0,16, Luna Decisions circa $0,18.
+
+Quindi si sceglie con le lezioni vere di Attilio. Script usa e getta in `scratch/`, non committato, con la
+sua chiave OpenRouter:
+1. Attilio indica una lezione con slide; prendi 30 immagini: almeno 5 copertine o titoli, 5 irrilevanti
+   (foto senza informazioni, loghi, ringraziamenti), 20 di contenuto. Attilio scrive in un CSV
+   `immagine, ruolo, unità giusta`.
+2. Per `typesafe/jev-1.13`, `typesafe/jev-1.14` e `openai/gpt-6-luna-decisions` manda le stesse richieste
+   della sezione 3 (stato con immagine e schema della lezione, domande `role` e `place`).
+3. Tabella in PR: ruolo giusto, posto giusto, probabilità media sulle risposte sbagliate, token di input,
+   costo e latenza per modello, più le risposte rifiutate. Se `state` come array viene rifiutato, fermati e
+   scrivilo in PR.
+4. Il modello con più posti giusti diventa il default del job `images` (a parità entro 2 risposte, il più
+   economico). Il nome va in `ClassifierConfig` come modello del job `images` per chi non ne ha uno proprio.
 
 ## 1. Impostazione
 
