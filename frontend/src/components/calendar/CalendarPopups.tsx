@@ -452,34 +452,6 @@ export function WeekInfoPopup({
 
       <button type="button" className="self-start text-xs hover:underline" onClick={() => onPeriodStart?.(summary.is_period_start ? null : weekStart)}>Inizio del periodo{summary.is_period_start ? ' ✓' : ''}</button>
       {periodError && <p role="alert" className="text-danger">{periodError}</p>}
-      {(summary.to_recover ?? []).length > 0 && (
-        <div className="flex flex-col gap-1.5 border-t pt-2">
-          <div className="font-semibold uppercase tracking-wider text-muted-foreground">
-            Da recuperare
-          </div>
-          <div className="flex max-h-36 flex-col gap-1 overflow-auto">
-            {(summary.to_recover ?? []).map((item) => (
-              <Link
-                key={`${item.date}:${item.key}`}
-                to={`/calendario?data=${item.date}&evento=${encodeURIComponent(item.key)}`}
-                onClick={onClose}
-                className="-mx-1 flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted"
-              >
-                <span
-                  className="size-2 shrink-0 rounded-xs"
-                  style={{ backgroundColor: getSubjectColor(item.materia) }}
-                  aria-hidden
-                />
-                <span className="truncate">{item.materia}</span>
-
-                <span className="ml-auto font-mono text-muted-foreground">
-                  {item.day_name} {item.day_number}/{item.month_number}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

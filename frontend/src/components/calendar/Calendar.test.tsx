@@ -227,13 +227,8 @@ describe('Calendar components (CA1c)', () => {
     expect(screen.getByText('10')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('2 ore diverse')).toBeTruthy()
-    expect(screen.getByText('Generale')).toBeTruthy()
-    expect(screen.getByText('Lun 5/10')).toBeTruthy()
-    // Ogni ora da recuperare porta al suo blocco nel calendario.
-    const link = screen.getByRole('link', { name: /Generale/ })
-    expect(link.getAttribute('href')).toBe('/calendario?data=2026-10-05&evento=past_1')
-    fireEvent.click(link)
-    expect(onClose).toHaveBeenCalled()
+    // Le ore da recuperare non stanno nel riepilogo: le mostra l'avviso delle lezioni mancanti.
+    expect(screen.queryByText('Generale')).toBeNull()
   })
 
   it('CalendarWeekGrid mostra il docente sotto l\'orario solo se il blocco è abbastanza alto', () => {
