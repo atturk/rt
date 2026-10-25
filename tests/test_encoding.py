@@ -101,3 +101,15 @@ class TestEncoding(unittest.TestCase):
             self.assertNotIn("Ã¨", read_back)
             self.assertIn("più", read_back)
             self.assertIn("è", read_back)
+
+
+def test_latex_commands_eaten_by_json_escapes_are_repaired():
+    import json
+    from rt.core.encoding import repair_latex_escapes, sanitize_object_encoding
+    raw = r'{"c": "$$\\sum_v\frac{|S_v|}{|S|}$$, $\beta$, $\theta$, $x\neq y$\nPoi\ttab\nne"}'
+    content = json.loads(raw)["c"]
+    assert "\x0c" in content and "\x08" in content
+    fixed = sanitize_object_encoding({"c": content})["c"]
+    assert fixed == "$$\\sum_v\\frac{|S_v|}{|S|}$$, $\\beta$, $\\theta$, $x\\neq y$\nPoi\ttab\nne"
+    # a capo e tab veri restano: "\nne" è una riga che comincia con "ne", non \ne.
+    assert repair_latex_escapes("riga\nuna\tvolta") == "riga\nuna\tvolta"
