@@ -226,7 +226,11 @@ function attachResizeHandles(view: EditorView, img: HTMLImageElement, name: stri
     if (!source || view.state.readOnly) { event.preventDefault(); return }
     event.stopPropagation()
     event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromText: source.from, width: img.naturalWidth || 480 }))
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      // Solo l'immagine come anteprima: WebKit, a fine unità, fotografava anche il testo sotto.
+      event.dataTransfer.setDragImage?.(img, event.offsetX, event.offsetY)
+    }
     view.dom.classList.add('rt-dragging-images')
   }
   img.ondragend = () => {
