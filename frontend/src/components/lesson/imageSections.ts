@@ -7,7 +7,7 @@ export type SectionImageDrag = { name: string; fromUnit?: string; fromText?: num
 export type SectionImage = { from: number; to: number; line: number; name: string; alt: string }
 export type ImageSection = { id: string; from: number; to: number; timecode: number; insertAt: number; images: SectionImage[] }
 
-/** Stessa distinzione del parser Python: solo immagini prima del testo e senza #w=. */
+/** Stessa distinzione del parser Python: solo immagini prima del testo e senza #w=; nelle unità dopo il timecode. */
 export function imageSections(state: EditorState): ImageSection[] {
   const sections: ImageSection[] = []
   let current: ImageSection | null = null
@@ -18,10 +18,13 @@ export function imageSections(state: EditorState): ImageSection[] {
     if (/^(#\s|##\s+\d+\.\s|###\s+\d+(\.\d+)+\.?\s)/.test(line.text)) {
       if (current) current.to = line.from
       const heading = /^###\s+(\d+(?:\.\d+)+)\.?\s/.exec(line.text)
-      current = heading ? { id: heading[1], from: line.from, to: state.doc.length, timecode: line.to, insertAt: line.to, images: [] } : null
+      // Anche le sezioni (## N.) hanno le loro immagini, subito sotto il titolo e senza timecode.
+      const macro = /^##\s+(\d+)\.\s/.exec(line.text)
+      const id = heading?.[1] ?? macro?.[1]
+      current = id ? { id, from: line.from, to: state.doc.length, timecode: line.to, insertAt: line.to, images: [] } : null
       if (current) sections.push(current)
       leading = true
-      timed = false
+      timed = Boolean(macro)
       continue
     }
     if (!current || !leading || !line.text.trim()) continue
