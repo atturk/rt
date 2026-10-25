@@ -1,5 +1,27 @@
 # Novità di RT
 
+## 4.3.3 — 2026-10-25
+
+Raccoglie le beta 4.3.3b1–b4 (dettagli sotto).
+
+### Novità
+
+- **Immagini delle unità**: una graffetta con il numero accanto al timer apre le immagini sotto il titolo, anche nelle sezioni principali. Nel testo un clic apre il visore, il doppio clic mostra il markdown, tenendo premuto la sposti. Nello Studio graffetta e timecode stanno sotto il titolo; **M** apre le immagini.
+- **Esporta e importa** tutto su un altro PC, senza far uscire le chiavi API.
+- **Lezioni mancanti**: con l'«Inizio del periodo» impostato, un piccolo avviso accanto a ogni gruppo (materia, giorno, mese, docente). Al passaggio del mouse dice quante sono, con un clic le elenca in ordine di calendario e porta al blocco.
+- **Lezioni**: l'anello di studio è sul bordo destro e sotto il titolo compaiono «Verificato» e il numero di media. Tornando da una lezione, la sua riga è al centro ed evidenziata.
+- **Studio**: stato che cambia subito con S, strumenti in un gruppo unico, lettura veloce con conto alla rovescia e zen sospeso durante la lettura.
+- **Pannello arricchimento** allargabile dal bordo sinistro a qualsiasi altezza dello scorrimento.
+- Job sempre 8 in parallelo, con la trascrizione locale una alla volta. Esercizi che danno i dati e non il metodo. Gruppi che si aprono al passaggio del mouse e restano aperti 3 s.
+
+### Correzioni
+
+- Sul Mac il worker ignorava il numero di job in parallelo.
+- Le immagini delle sezioni principali non stanno più tutte aperte nel testo: vanno nella loro graffetta.
+- Trascinando un'immagine si vede solo l'immagine, non il testo sotto; niente più sfarfallio né immagini doppie dopo la classificazione.
+- Formule nelle domande in LaTeX, aggiornamenti dall'app senza loop verso GitHub, lezione già esistente segnalata con i suoi dati.
+- Il riepilogo della settimana nel calendario non elenca più le ore da recuperare: le mostra l'avviso delle lezioni mancanti.
+
 ## 4.3.3b4 — 2026-10-23
 
 ### Novità
