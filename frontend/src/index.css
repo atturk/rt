@@ -424,6 +424,15 @@
   }
 }
 
+/* Il bordo per allargare il pannello sta fuori dallo scorrimento: resta afferrabile a ogni altezza. */
+.rt-panel-resize {
+  position: fixed;
+  z-index: 11;
+  top: calc(var(--header-height) + 8px);
+  bottom: 8px;
+  right: calc(8px + min(calc(var(--rt-panel-width) - 8px), calc(100vw - 16px)) - 3px);
+  width: 6px;
+}
 .rt-panel-container {
   top: calc(var(--header-height) + 8px);
   right: 8px;
