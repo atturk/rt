@@ -1,5 +1,3 @@
-import { readPreference } from '@/lib/preferences'
-
 export type ImageItem = {
   src: string
   alt: string
@@ -62,20 +60,4 @@ export function formatStripLabel(images: ImageItem[]): { countPill: string; docL
     countPill,
     docLabel: uniqueDocs.join(', '),
   }
-}
-
-const STRIP_CLOSED_KEY = 'strip_closed'
-const PREF_PREFIX = 'rt-pref:'
-
-export function getStripClosedPreference(): boolean {
-  return readPreference<boolean>(STRIP_CLOSED_KEY, false)
-}
-
-export function setStripClosedPreference(closed: boolean) {
-  try {
-    localStorage.setItem(PREF_PREFIX + STRIP_CLOSED_KEY, JSON.stringify(closed))
-  } catch {
-    // localstorage facoltativo
-  }
-  window.dispatchEvent(new CustomEvent('rt-strip-toggle', { detail: { closed } }))
 }

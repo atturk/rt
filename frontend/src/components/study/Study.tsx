@@ -1,5 +1,5 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons } from '@/api/hooks'
@@ -16,7 +16,7 @@ import {
   recallKeys, useGenerateForUnits, useStudyLesson,
   type RecallType, type StudyUnit,
 } from '@/api/recall'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useStudyNotes, useApplyStudyNote, useUndoStudyNote, studyNotesApi, studyNotesKeys, type StudyNote } from '@/api/studyNotes'
 import { StudyNotePopup } from './StudyNotePopup'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -33,6 +33,7 @@ import { withImageUrls } from '@/lib/images'
 import { mountDocumentImageStrips } from '@/components/images/imageStripDOM'
 import { DELIMITED, renderDelimitedMath } from '@/lib/math'
 import { sourceOffsets, sourceParts, sourceTextOf } from '@/lib/sourceText'
+import { useHoverExpand } from '@/lib/useHoverExpand'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { useRsvpLayout, useZenLayout, useStudyZen } from '@/lib/zen'
@@ -111,8 +112,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const [indexOpen, setIndexOpen] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const closeGenerate = useCallback(() => setGenerateOpen(false), [])
+  const [pendingJobs, setPendingJobs] = useState<{ jobId: string; lessonId: number; unitId: string }[]>([])
+  const generationJobs = useQueries({ queries: pendingJobs.map(({ jobId }) => ({
+    queryKey: ['job', jobId],
+    queryFn: () => unwrap(api.GET('/api/v1/jobs/{job_id}', { params: { path: { job_id: jobId } } })),
+  })) })
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
+  const generateQuestions = useGenerateForUnits(lesson?.id ?? 0)
   const study = useStudyLesson(lesson?.id ?? null)
   // Le unità della lezione nell'ordine: con onlyUnits quelle della parte.
   const [units, setUnits] = useState<StudyUnit[] | null>(null)
@@ -157,7 +164,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate
   const changeStatus = () => {
-    if (unit && !status.isPending) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+    if (unit) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
   }
 
   useEffect(() => {
@@ -231,6 +238,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const setRsvpLayout = useRsvpLayout()
   const setZenLayout = useZenLayout()
   const [zenMode, setZenMode] = useStudyZen(entry?.zen ?? false)
+  const zenActive = zenMode && !speedReading
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
   const [textScale, setTextScale] = useState(getSavedStudyTextScale)
@@ -251,6 +259,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     anchor.current = node ? { node, top: node.getBoundingClientRect().top } : null
   }
   const toggleZen = () => {
+    if (speedReading) return
     savePosition()
     if (!zenMode) setZenMinHeight(document.documentElement.scrollHeight)
     textRoot?.closest('[data-testid=study]')?.querySelector('audio')?.pause()
@@ -275,7 +284,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     restore()
     const frame = requestAnimationFrame(restore)
     return () => cancelAnimationFrame(frame)
-  }, [zenMode, phase, rereading])
+  }, [zenActive, phase, rereading])
   const [notice, setNotice] = useState<{
     kind: 'status' | 'pen' | 'eraser' | 'verifica' | 'chiedi' | 'unit'
     label: string
@@ -317,7 +326,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
 
   const handleStatusFromReader = () => {
-    if (status.isPending) return
     changeStatus()
     const next = nextStudyStatus(live?.status)
     setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
@@ -333,9 +341,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     return () => clearTimeout(timer)
   }, [speedReading, readerMounted])
   useEffect(() => {
-    setZenLayout({ active: zenMode && (phase === 'lettura' || rereading), tint: rsvpPrefs.irlen })
+    setZenLayout({ active: zenActive && (phase === 'lettura' || rereading), tint: rsvpPrefs.irlen })
     return () => setZenLayout({ active: false, tint: null })
-  }, [zenMode, phase, rereading, rsvpPrefs.irlen, setZenLayout])
+  }, [zenActive, phase, rereading, rsvpPrefs.irlen, setZenLayout])
   const highlights = useStudyHighlighter({
     root: phase === 'lettura' || rereading ? textRoot : null, lessonId: lesson?.id ?? 0, unitId: unit?.id ?? '',
     mode: hlMode, color: highlighterPrefs.color,
@@ -352,6 +360,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     const timer = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(timer)
   }, [toast])
+
+  // Resta attivo anche quando il popup è chiuso o si cambia unità/lezione.
+  useEffect(() => {
+    const completed = pendingJobs.filter((_, index) => jobFinished(generationJobs[index].data))
+    if (!completed.length) return
+    for (const pending of completed) {
+      const result = generationJobs[pendingJobs.indexOf(pending)].data!
+      if (result.state === 'succeeded') {
+        void queryClient.invalidateQueries({ queryKey: recallKeys.all(pending.lessonId) })
+      } else {
+        // Il risultato del job esterno viene annunciato anche a popup chiuso.
+        // oxlint-disable-next-line react/set-state-in-effect
+        setToast({ message: result.error ?? 'Generazione non riuscita.' })
+      }
+    }
+    setPendingJobs(current => current.filter(pending => !completed.includes(pending)))
+  }, [generationJobs, pendingJobs, queryClient])
 
   const [popupState, setPopupState] = useState<{
     open: boolean
@@ -455,11 +480,26 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       }
 
       if (e.shiftKey && key !== 'e') return
-      if (key === 'z') { e.preventDefault(); toggleZen() }
+      if (key === 'z') {
+        if (speedReading) return
+        e.preventDefault()
+        toggleZen()
+      }
       else if (key === 'l') {
         if (textRoot) {
           e.preventDefault()
           openReader()
+        }
+      }
+      else if (key === 'm') {
+        if (!unit) return
+        e.preventDefault()
+        const currentButton = document.querySelector<HTMLButtonElement>(`.rt-unit-images-button[data-unit-images="${CSS.escape(unit.id)}"]`)
+        const currentSlot = document.querySelector<HTMLElement>(`.rt-image-strip-slot[data-unit-images="${CSS.escape(unit.id)}"]`)
+        if (currentButton) {
+          currentButton.click()
+        } else if (currentSlot) {
+          currentSlot.hidden = !currentSlot.hidden
         }
       }
       else if (key === 'd') { e.preventDefault(); review() }
@@ -470,19 +510,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         const color = e.shiftKey ? (highlighterPrefs.color + 1) % HIGHLIGHT_COLORS.length : highlighterPrefs.color
         setHlMode(next)
         if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
-        if (zenMode) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
+        if (zenActive) setNotice({ kind: key === 'g' ? 'eraser' : 'pen', off: next === null, color,
           label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
       } else if (key === 'v' || key === 'c') {
         e.preventDefault()
         const mode = key === 'v' ? 'verifica' : 'chiedi'
         const next = hlMode === mode ? null : mode
         setHlMode(next)
-        if (zenMode) setNotice({ kind: mode, off: next === null,
+        if (zenActive) setNotice({ kind: mode, off: next === null,
           label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
         changeStatus()
-        if (zenMode) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
+        if (zenActive) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
       } else if (e.key === 'Escape') {
         if (popupState?.open) {
           e.preventDefault()
@@ -491,8 +531,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           e.preventDefault()
           const currentMode = hlMode
           setHlMode(null)
-          if (zenMode) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
-        } else if (zenMode) {
+          if (zenActive) setNotice({ kind: currentMode, off: true, label: currentMode === 'verifica' ? 'Verifica spenta' : 'Chiedi spento' })
+        } else if (zenActive) {
           e.preventDefault()
           toggleZen()
         }
@@ -503,7 +543,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, status.isPending, hlMode, highlighterPrefs, zenMode, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -629,7 +669,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
         className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
         onClick={changeStatus}
-        unavailable={status.isPending ? 'salvataggio in corso' : null}
         data-testid="study-status"
       />
       <IconButton
@@ -662,7 +701,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   return (
     <>
-      {reading && !zenMode && !speedReading && lessonJump.jump && <LessonJumpTab neighbors={lessonNeighbors((allLessons.data ?? lessons) as Lesson[], lesson!.id, { readyOnly: true })}
+      {reading && !zenActive && !speedReading && lessonJump.jump && <LessonJumpTab neighbors={lessonNeighbors((allLessons.data ?? lessons) as Lesson[], lesson!.id, { readyOnly: true })}
         side={lessonJump.jump.side} sequence={lessonJump.jump.sequence} paused={lessonJump.paused} onPause={lessonJump.pause} onResume={lessonJump.resume}
         onJump={(target, side) => navigate(`/studio/lezione/${target.id}`, { state: { enter: side === 'left' ? 'last' : 'first', zen: zenMode } })} />}
       <div hidden={!reading}>
@@ -671,11 +710,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           back={speedReading ? undefined : studyBack}
           actions={speedReading ? rsvpActions : headerActions}
           rsvp={speedReading}
-          zen={zenMode}
+          zen={zenActive}
           zenMinHeight={zenMinHeight}
-          zenBar={zenMode ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
+          zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
-          notice={(zenMode || speedReading) && notice ? (
+          notice={(zenActive || speedReading) && notice ? (
             <div
               className={cn(
                 'fixed left-1/2 z-40 -translate-x-1/2 rounded-lg border bg-card p-3 shadow-panel',
@@ -731,9 +770,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
               {generateOpen && <GenerateUnitQuestions
                 open={generateOpen}
                 onClose={closeGenerate}
-                lessonId={lesson!.id}
                 unit={live}
                 suggestions={loaded.suggestions}
+                key={`${lesson!.id}-${live.id}`}
+                jobId={pendingJobs.find(pending => pending.lessonId === lesson!.id && pending.unitId === live.id)?.jobId ?? null}
+                generate={generateQuestions}
+                onGenerate={options => generateQuestions.mutate(options, { onSuccess: accepted => {
+                  setPendingJobs(current => [...current, { jobId: accepted.job_id, lessonId: lesson!.id, unitId: live.id }])
+                } })}
               />}
               {lesson && (
               <LessonDetailsPopup
@@ -760,23 +804,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
                   onSend={handleSendNote}
                   onApply={handleApplyNote}
                 />
-              )}
-              {toast && (
-                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2">
-                  <span>{toast.message}</span>
-                  {toast.actionLabel && toast.onAction && (
-                    <button
-                      type="button"
-                      className="font-semibold underline underline-offset-2 hover:opacity-80"
-                      onClick={() => {
-                        toast.onAction?.()
-                        setToast(null)
-                      }}
-                    >
-                      {toast.actionLabel}
-                    </button>
-                  )}
-                </div>
               )}
               {scaleNotice && (
                 <div
@@ -818,8 +845,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         >
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
-          <div hidden={zenMode}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
-          <span className="sr-only" aria-live="polite">{(zenMode || speedReading) ? notice?.label : null}</span>
+          <div hidden={zenActive}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
+          <span className="sr-only" aria-live="polite">{(zenActive || speedReading) ? notice?.label : null}</span>
           <UnitText
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
@@ -855,6 +882,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           />
         </StudyShell>
       </div>
+              {toast && (
+                <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full bg-foreground px-4 py-2 text-meta text-background shadow-panel animate-in fade-in slide-in-from-bottom-2">
+                  <span>{toast.message}</span>
+                  {toast.actionLabel && toast.onAction && (
+                    <button
+                      type="button"
+                      className="font-semibold underline underline-offset-2 hover:opacity-80"
+                      onClick={() => {
+                        toast.onAction?.()
+                        setToast(null)
+                      }}
+                    >
+                      {toast.actionLabel}
+                    </button>
+                  )}
+                </div>
+              )}
       {phase === 'domande' && (
         <div hidden={rereading}>
           {/* Ripasso dell'unità appena letta: la sessione di ripasso vera e propria, con
@@ -1107,8 +1151,8 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    return mountDocumentImageStrips(root)
-  }, [unit.html])
+    return mountDocumentImageStrips(root, [{ unit_id: unit.id, immagini_sezione: unit.immagini_sezione, start_formatted: unit.start_formatted }], { metaBelow: true })
+  }, [unit.html, unit.id, unit.immagini_sezione, unit.start_formatted])
   useEffect(() => {
     const root = ref.current
     if (!root) return
@@ -1355,16 +1399,17 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
 }
 
 /** Popup "genera ora": tipo, quante e istruzioni, poi il job di recall sull'unità (4.2.2b3). */
-function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
+function GenerateUnitQuestions({ open, onClose, unit, suggestions, jobId: startedJobId, generate, onGenerate }: {
   open: boolean
   onClose: () => void
-  lessonId: number
   unit: StudyUnit
   suggestions: boolean
+  jobId: string | null
+  generate: ReturnType<typeof useGenerateForUnits>
+  onGenerate: (options: Parameters<ReturnType<typeof useGenerateForUnits>['mutate']>[0]) => void
 }) {
-  const generate = useGenerateForUnits(lessonId)
-  const client = useQueryClient()
-  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobId, setJobId] = useState(startedJobId)
+  if (startedJobId && startedJobId !== jobId) setJobId(startedJobId)
   const job = useJobStatus(jobId)
   const [qtype, setQtype] = useState<RecallType>(suggestions ? unit.suggested_qtype ?? 'quiz' : 'quiz')
   const [count, setCount] = useState('3')
@@ -1377,15 +1422,15 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
   // col ripasso (il pulsante "Mettimi alla prova" aspetta un clic).
   useEffect(() => {
     if (!done || failed) return
-    void client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }).then(onClose)
-  }, [done, failed, client, lessonId, onClose])
+    if (job.data?.state === 'succeeded') onClose()
+  }, [done, failed, job.data?.state, onClose])
 
   return (
-    <Modal open={open} onClose={running ? () => undefined : onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
+    <Modal open={open} onClose={onClose} title={`Genera domande · ${unit.title}`} testId="study-generate-modal">
       <div className="mt-3 flex flex-col gap-3">
         <div>
           <span className="mb-1.5 block text-meta text-muted-foreground">Tipo</span>
-          <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running} />
+          <QuestionTypeChips value={qtype} onChange={setQtype} suggested={suggestions ? unit.suggested_qtype : null} unit disabled={running || generate.isPending} />
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="study-gen-count" className="text-meta text-muted-foreground">Fino a</label>
@@ -1394,7 +1439,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
             type="number"
             min="1"
             max="20"
-            disabled={running}
+            disabled={running || generate.isPending}
             value={count}
             onChange={(e) => setCount(e.target.value)}
             className="h-8 w-16 px-2 py-0 text-center"
@@ -1407,7 +1452,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
           <textarea
             id="study-gen-instructions"
             rows={2}
-            disabled={running}
+            disabled={running || generate.isPending}
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="Per esempio: concentrati sui valori soglia"
@@ -1427,10 +1472,7 @@ function GenerateUnitQuestions({ open, onClose, lessonId, unit, suggestions }: {
             disabled={running || generate.isPending}
             data-testid="study-generate-start"
             onClick={() =>
-              generate.mutate(
-                { unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions },
-                { onSuccess: (accepted) => setJobId(accepted.job_id) },
-              )
+              onGenerate({ unitIds: [unit.id], qtype, count: Math.min(20, Math.max(1, parseInt(count, 10) || 3)), instructions })
             }
           >
             <Sparkles aria-hidden />
@@ -1592,7 +1634,8 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
 }) {
   const [confirm, setConfirm] = useState(false)
   const [failed, setFailed] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const { open, setOpen, ref } = useHoverExpand<HTMLDivElement>()
+
   useEffect(() => {
     if (!confirm) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setConfirm(false) }
@@ -1603,11 +1646,42 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onClick)
     }
-  }, [confirm])
+  }, [confirm, ref])
+
   const segment = 'relative inline-flex size-8 max-md:size-7 items-center justify-center rounded-md text-muted-foreground aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
   return (
     <div className="relative flex items-center gap-1 max-md:gap-0.5" ref={ref}>
-      <div role="group" aria-label="Evidenziatore" className="inline-flex rounded-lg bg-muted p-0.5 max-md:p-0" data-testid="highlight-tools">
+      {!open && (
+        <IconButton
+          label="Strumenti"
+          icon={
+            mode === 'evidenzia'
+              ? HighlighterIcon
+              : mode === 'gomma'
+                ? Eraser
+                : mode === 'verifica'
+                  ? CheckCircle2
+                  : mode === 'chiedi'
+                    ? HelpCircle
+                    : PencilRuler
+          }
+          active={mode !== null}
+          badge={
+            mode === 'evidenzia' ? (
+              <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
+            ) : undefined
+          }
+          onClick={() => setOpen(true)}
+          data-testid="study-tools-toggle"
+          className="max-md:size-7"
+        />
+      )}
+      <div
+        role="group"
+        aria-label="Strumenti"
+        className={open ? 'inline-flex rounded-lg bg-muted p-0.5 max-md:p-0' : 'hidden'}
+        data-testid="highlight-tools"
+      >
         <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo, dopo l’ultimo si spegne · E`}>{(trigger) => <button
           {...trigger}
           type="button"
@@ -1653,8 +1727,19 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
         >
           <HelpCircle className="size-4" aria-hidden />
         </button>}</Tooltip>
+        <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
+        <Tooltip content="Togli tutte le evidenziazioni">{(trigger) => <button
+          {...trigger}
+          type="button"
+          aria-expanded={confirm}
+          aria-label="Togli tutte le evidenziazioni"
+          data-testid="highlight-clear"
+          className={segment}
+          onClick={() => setConfirm(!confirm)}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </button>}</Tooltip>
       </div>
-      <IconButton label="Togli tutte le evidenziazioni" icon={Trash2} aria-expanded={confirm} onClick={() => setConfirm(!confirm)} data-testid="highlight-clear" className="max-md:size-7 max-md:min-w-7" />
       {confirm && (
         <div role="dialog" aria-label="Togli le evidenziazioni" className="absolute right-0 top-10 z-30 w-64 rounded-lg border bg-card p-3 text-body shadow-panel">
           <p>Togli tutte le evidenziazioni di questa unità?</p>

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import type { LessonImage } from '@/api/images'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { groupMediaImages } from './mediaGalleryUtils'
+import { flashAndScroll, groupMediaImages } from './mediaGalleryUtils'
 
 interface MediaGalleryProps {
   lessonId?: number
@@ -279,6 +279,52 @@ export function MediaGallery({
 
   const groups = groupMediaImages(images)
   const flatImages = groups.flatMap((g) => g.images)
+  const pendingFlashRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (pendingFlashRef.current) {
+      const clean = pendingFlashRef.current
+      const el =
+        document.querySelector(`[data-testid="media-cell-${CSS.escape(clean)}"]`) ??
+        document.querySelector(`[data-image-name="${CSS.escape(clean)}"]`)
+      if (el) {
+        pendingFlashRef.current = null
+        flashAndScroll(el)
+      }
+    }
+  }, [collapsedGroups])
+
+  useEffect(() => {
+    const handleMediaSelect = (e: Event) => {
+      const custom = e as CustomEvent<{ name: string }>
+      const name = custom.detail?.name
+      if (!name) return
+      const clean = name.split('#')[0]
+
+      const targetGroup = groups.find((g) => g.images.some((img) => img.name === clean))
+      const isCollapsed = targetGroup ? collapsedGroups.has(targetGroup.name) : false
+
+      if (targetGroup && isCollapsed) {
+        pendingFlashRef.current = clean
+        setCollapsedGroups((prev) => {
+          if (!prev.has(targetGroup.name)) return prev
+          const next = new Set(prev)
+          next.delete(targetGroup.name)
+          return next
+        })
+      } else {
+        const el =
+          document.querySelector(`[data-testid="media-cell-${CSS.escape(clean)}"]`) ??
+          document.querySelector(`[data-image-name="${CSS.escape(clean)}"]`)
+        if (el) {
+          flashAndScroll(el)
+        }
+      }
+    }
+
+    window.addEventListener('rt-media-select', handleMediaSelect)
+    return () => window.removeEventListener('rt-media-select', handleMediaSelect)
+  }, [groups, collapsedGroups])
 
   const toggleGroup = useCallback((groupName: string) => {
     setCollapsedGroups((prev) => {
@@ -394,7 +440,12 @@ export function MediaGallery({
             {/* Miniature */}
             {isOpen && (
               <div
-                className={cn('pt-0.5', view === 'rows' ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-2.5')}
+                className={cn(
+                  'pt-0.5',
+                  view === 'rows'
+                    ? 'flex flex-col gap-3'
+                    : 'grid grid-cols-3 [grid-template-columns:repeat(auto-fill,minmax(96px,1fr))] gap-2.5',
+                )}
                 role="group"
                 aria-label={group.name}
               >

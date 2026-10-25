@@ -164,3 +164,13 @@ def export_schedule(_actor: Actor, response: Response):
 def import_schedule(body: schemas.CalendarImportRequest, _actor: Actor):
     from rt.services.calendar_transfer import import_schedule
     return import_schedule(body)
+
+
+@router.put('/calendar/period-start', response_model=schemas.CalendarPeriodStart)
+def set_period_start(body: schemas.CalendarPeriodStart, _actor: Actor):
+    return calendar_service.set_period_start(body)
+
+
+@router.get('/calendar/missing', response_model=schemas.CalendarMissingLessons)
+def get_missing_lessons(_actor: Actor):
+    return calendar_service.get_missing_lessons()

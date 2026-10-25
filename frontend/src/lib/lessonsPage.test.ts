@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
+  filterMissingLessons, formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -76,6 +76,34 @@ describe('lessonSubtitle', () => {
   })
   it('aggiunge le domande e non le unità apprese', () => {
     expect(lessonSubtitle(lesson(1, { study_learned: 7, recall_questions: 4 }), 'data', NOW)).toBe('Fisiologia · Rossi · 9 unità · 4 domande')
+  })
+  it('gestisce Verificato: presente solo se review è VALID e pending_issues è 0', () => {
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'VALID' }, pending_issues: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · Verificato')
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'VALID' }, pending_issues: 2 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+    expect(lessonSubtitle(lesson(1, { phases: { review: 'PARTIAL' }, pending_issues: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+  })
+  it('gestisce i media: presenti solo se media_count > 0', () => {
+    expect(lessonSubtitle(lesson(1, { media_count: 14 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · 14 media')
+    expect(lessonSubtitle(lesson(1, { media_count: 1 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande · 1 media')
+    expect(lessonSubtitle(lesson(1, { media_count: 0 }), 'data', NOW))
+      .toBe('Fisiologia · Rossi · 9 unità · 38 domande')
+  })
+  it('combina unità, Verificato e media in fondo al sottotitolo', () => {
+    const l = lesson(1, {
+      data: '2026-10-12',
+      docente: 'Fassetti',
+      unit_count: 16,
+      recall_questions: 0,
+      phases: { review: 'VALID' },
+      pending_issues: 0,
+      media_count: 14,
+    })
+    expect(lessonSubtitle(l, 'nessuno', NOW)).toBe('12 ott · Fisiologia · Fassetti · 16 unità · Verificato · 14 media')
   })
 })
 
@@ -252,6 +280,99 @@ describe('vista fissata', () => {
 
     const d: LessonsView = { group: 'materia', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
     expect(sameView(b, d)).toBe(false)
+  })
+})
+
+describe('filterMissingLessons', () => {
+  const missingData = {
+    start: '2026-10-01',
+    subjects: [
+      {
+        materia: 'FISIOLOGIA',
+        missing: [
+          {
+            key: 'e1',
+            date: '2026-10-12',
+            day_of_week: 0,
+            day_name: 'Lun',
+            day_number: 12,
+            month_number: 10,
+            materia: 'FISIOLOGIA',
+            docente: 'Rossi',
+            start_time: '09:00',
+            end_time: '11:00',
+          },
+          {
+            key: 'e2',
+            date: '2026-10-15',
+            day_of_week: 3,
+            day_name: 'Gio',
+            day_number: 15,
+            month_number: 10,
+            materia: 'FISIOLOGIA',
+            docente: 'Bianchi',
+            start_time: '11:00',
+            end_time: '12:00',
+          },
+        ],
+      },
+      {
+        materia: 'PATOLOGIA',
+        missing: [
+          {
+            key: 'e3',
+            date: '2026-11-03',
+            day_of_week: 1,
+            day_name: 'Mar',
+            day_number: 3,
+            month_number: 11,
+            materia: 'PATOLOGIA',
+            docente: 'Rossi',
+            start_time: '14:00',
+            end_time: '16:00',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('fuori dalla materia mette le ore in ordine di calendario', () => {
+    const october = { ...missingData, subjects: [missingData.subjects[0], { ...missingData.subjects[1], missing: [{ ...missingData.subjects[1].missing[0], key: 'e4', date: '2026-10-13' }] }] }
+    expect(filterMissingLessons(october, 'mese', '2026-10').map((x) => x.key)).toEqual(['e1', 'e4', 'e2'])
+  })
+
+  it('filtra per materia (case insensitive e trimmed)', () => {
+    const res = filterMissingLessons(missingData, 'materia', 'fisiologia')
+    expect(res.map((x) => x.key)).toEqual(['e1', 'e2'])
+    expect(filterMissingLessons(missingData, 'materia', 'PATOLOGIA').map((x) => x.key)).toEqual(['e3'])
+    expect(filterMissingLessons(missingData, 'materia', 'CHIMICA')).toEqual([])
+  })
+
+  it('filtra per data (giorno YYYY-MM-DD)', () => {
+    expect(filterMissingLessons(missingData, 'data', '2026-10-12').map((x) => x.key)).toEqual(['e1'])
+    expect(filterMissingLessons(missingData, 'data', '2026-10-15').map((x) => x.key)).toEqual(['e2'])
+    expect(filterMissingLessons(missingData, 'data', '2026-10-16')).toEqual([])
+  })
+
+  it('filtra per mese (YYYY-MM)', () => {
+    expect(filterMissingLessons(missingData, 'mese', '2026-10').map((x) => x.key)).toEqual(['e1', 'e2'])
+    expect(filterMissingLessons(missingData, 'mese', '2026-11').map((x) => x.key)).toEqual(['e3'])
+    expect(filterMissingLessons(missingData, 'mese', '2026-12')).toEqual([])
+  })
+
+  it('filtra per docente (case insensitive e trimmed)', () => {
+    expect(filterMissingLessons(missingData, 'docente', 'rossi').map((x) => x.key)).toEqual(['e1', 'e3'])
+    expect(filterMissingLessons(missingData, 'docente', 'Bianchi').map((x) => x.key)).toEqual(['e2'])
+    expect(filterMissingLessons(missingData, 'docente', 'Verdi')).toEqual([])
+  })
+
+  it('per nessuno non restituisce alcun elemento', () => {
+    expect(filterMissingLessons(missingData, 'nessuno', 'tutte')).toEqual([])
+  })
+
+  it('gestisce dati null o vuoti', () => {
+    expect(filterMissingLessons(null, 'materia', 'FISIOLOGIA')).toEqual([])
+    expect(filterMissingLessons(undefined, 'data', '2026-10-12')).toEqual([])
   })
 })
 

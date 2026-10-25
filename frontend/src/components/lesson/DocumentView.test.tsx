@@ -110,3 +110,20 @@ describe('DocumentView', () => {
     expect(queryByTestId('audio-line-1.2')).not.toBeInTheDocument()
   })
 })
+
+it('mostra la graffetta prima del timecode e solo le immagini dichiarate nella sezione', () => {
+  const document = { ...doc, html: '<h3 data-unit-id="1.1">Primo</h3><p data-unit-timecode="1.1">00:00</p><p><img src="assets/images/a.png" alt="Pagina"></p><p>Testo</p><p><img src="assets/images/b.png#w=240" width="240"></p>', sections: [
+    { unit_id: '1.1', title: 'Primo', start_segment_id: 'seg_1', end_segment_id: 'seg_2', start_seconds: 0, start_formatted: '00:00', immagini_sezione: ['a.png'] },
+  ] }
+  const tree = <QueryClientProvider client={new QueryClient()}><MemoryRouter><AudioProvider><DocumentView document={document} hasAudio={false} lessonId={1} /></AudioProvider></MemoryRouter></QueryClientProvider>
+  const view = render(tree)
+  const button = screen.getByRole('button', { name: 'Mostra le immagini' })
+  expect(button).toHaveTextContent('1')
+  expect(button.nextElementSibling).toHaveClass('rt-timecode')
+  const slot = view.container.querySelector<HTMLElement>('.rt-unit-images-section')!
+  expect(slot.hidden).toBe(true)
+  fireEvent.click(button)
+  expect(slot.hidden).toBe(false)
+  expect(view.container.querySelectorAll('.rt-unit-images-section img')).toHaveLength(1)
+  expect(view.container.querySelector('p img[width="240"]')).toBeInTheDocument()
+})

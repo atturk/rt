@@ -109,8 +109,7 @@ def list_archive(_actor: Actor, materia: str | None = None, tipo: str | None = N
 
 @router.get('/archive/summary', response_model=ArchiveSummary)
 def summary(_actor: Actor, materia: str | None = None):
-    entries = archive_service.list_entries(materia=materia)
-    return {'file': len(entries), 'da_continuare': sum(bool(e['da_continuare']) for e in entries)}
+    return archive_service.summary(materia=materia)
 
 
 @router.get('/archive/{sha}', response_model=ArchiveDetail)

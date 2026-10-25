@@ -242,6 +242,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
 def configure_restore_parser(p: argparse.ArgumentParser) -> None:
     p.add_argument("source", help="Cartella rt-backup-<data>, file .zip (da «Salva una copia»), o la cartella dei backup (usa il più recente)")
     p.add_argument("--yes", action="store_true", help="Non chiedere conferma")
+    p.add_argument("--json", action="store_true", help="Avanzamento JSON riga per riga")
 
 
 def cmd_restore(args: argparse.Namespace) -> None:
@@ -258,6 +259,17 @@ def cmd_restore(args: argparse.Namespace) -> None:
         if answer not in ("s", "si", "sì", "y", "yes"):
             print("Annullato.")
             return
+    if getattr(args, 'json', False):
+        lines = []
+        def progress(fase, fatto, totale):
+            print(json.dumps({'fase': fase, 'fatto': fatto, 'totale': totale}, ensure_ascii=False), flush=True)
+        try:
+            aside = bs.restore_backup(snap, say=lines.append, progress=progress)
+            print(json.dumps({'fine': True, 'percorso': aside, 'riepilogo': lines}, ensure_ascii=False), flush=True)
+        except Exception as exc:
+            print(json.dumps({'errore': str(exc)}, ensure_ascii=False), flush=True)
+            sys.exit(1)
+        return
     try:
         bs.restore_backup(snap)
     except bs.BackupError as exc:
@@ -357,3 +369,54 @@ def _remove_path_line() -> None:
             with open(profile, "w", encoding="utf-8") as f:
                 f.writelines(kept)
             print(f"🗑  Tolto RT dal PATH in {profile}")
+
+
+# ---------------------------------------------------------------- rt export / import
+
+def configure_export_parser(parser):
+    parser.add_argument('target', help='File ZIP della collezione (senza chiavi API)')
+    parser.add_argument('--yes', action='store_true', help='Conferma la migrazione delle lezioni in cartella')
+    parser.add_argument('--json', action='store_true', help='Avanzamento JSON riga per riga')
+
+
+def cmd_export(args):
+    from rt.services import backup_service as bs
+    lines = []
+    def progress(fase, fatto, totale):
+        if args.json:
+            print(json.dumps({'fase': fase, 'fatto': fatto, 'totale': totale}, ensure_ascii=False), flush=True)
+    def confirm(count):
+        if args.yes:
+            return True
+        if not sys.stdin.isatty():
+            raise bs.BackupError('Conferma richiesta per spostare le lezioni nel database: rilancia con --yes.')
+        return input(f'{count} lezioni sono ancora in una cartella: le sposto nel database e continuo? [s/N] ').strip().lower() in {'s', 'si', 'sì', 'y', 'yes'}
+    try:
+        target = bs.export_collection(args.target, confirm=confirm, say=lines.append if args.json else print, progress=progress)
+        if target is None:
+            if not args.json:
+                print('Annullato.')
+            return
+        if args.json:
+            print(json.dumps({'fine': True, 'percorso': target, 'riepilogo': [f'Collezione esportata: {target}']}, ensure_ascii=False), flush=True)
+        else:
+            print(f'Collezione esportata: {target}')
+    except Exception as exc:
+        if args.json:
+            print(json.dumps({'errore': str(exc)}, ensure_ascii=False), flush=True)
+            sys.exit(1)
+        _fail(str(exc))
+
+
+def cmd_import(args):
+    from rt.services import backup_service as bs
+    try:
+        manifest = bs.inspect_backup_zip(args.source)
+        if manifest.get('segreti') is not False:
+            raise bs.BackupError('Per importare una collezione usa uno ZIP creato con «Esporta tutto».')
+    except bs.BackupError as exc:
+        if getattr(args, 'json', False):
+            print(json.dumps({'errore': str(exc)}, ensure_ascii=False), flush=True)
+            sys.exit(1)
+        _fail(str(exc))
+    cmd_restore(args)

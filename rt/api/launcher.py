@@ -23,12 +23,9 @@ def worker_command(extra: Optional[List[str]] = None) -> List[str]:
 
 
 def worker_concurrency() -> int:
-    """Job in parallelo scelti in Impostazioni > Generali (worker.concurrency, default 2)."""
-    try:
-        from rt.core.config import load_config
-        return max(1, min(4, int(load_config().worker.concurrency)))
-    except Exception:
-        return 2
+    """Job in parallelo del worker (8 fissi)."""
+    from rt.services.settings_service import WORKER_CONCURRENCY
+    return WORKER_CONCURRENCY
 
 
 def _open_when_ready(base: str, url: str, say: Callable[[str], None], open_browser: bool) -> None:

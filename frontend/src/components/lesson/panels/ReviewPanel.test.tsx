@@ -18,7 +18,7 @@ vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: state.jobs }), useCancelJ
 vi.mock('@/lib/phone', () => ({ useIsPhone: () => state.phone }))
 const issue: Schemas['IssueItem'] = { quote_status: 'found', needs_reconfirmation: false, issue: { id: 'a', type: 'ERR_CONCETTUALE', severity: 'high', unit_id: '1.1', claim: 'Il pH è 6.', suggested_fix: 'Il pH è 7.', reason: 'Valore errato' }, context: { timecode: '00:00', start_s: 0, unit_content: 'Il pH è 6.' } }
 function mount(phases: Record<string, string> = { rewrite: 'VALID', review: 'VALID' }, beforeAction?: () => Promise<void>, _markdown?: string, detail: Partial<Schemas['LessonDetail']> = {}, initialEntry = '/') {
-  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, review_progress: { reviewed: 0, total: 0, completed_once: phases.review === 'VALID' }, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
+  return render(<MemoryRouter initialEntries={[initialEntry]}><AudioProvider><ReviewPanel lesson={{ id: 1, phases, review_progress: { reviewed: 0, total: 0, completed_once: phases.review === 'VALID' }, has_audio: false, folder_name: 'acidosi', path: '/acidosi', data: '', ora: '', materia: '', titolo: '', argomenti: '', docente: '', pending_issues: 0, recall_questions: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, media_count: 0, phase_report: [], segment_count: 0, outline_approved: false, ...detail }} beforeAction={beforeAction} /></AudioProvider></MemoryRouter>)
 }
 beforeEach(() => { vi.clearAllMocks(); state.items = [issue]; state.units = []; state.jobs = []; state.phone = false; state.refetch.mockImplementation(() => Promise.resolve({ data: { items: state.items } })) })
 it('salva le modifiche prima della decisione, senza scorciatoie', async () => {
@@ -630,3 +630,40 @@ it('resta sulla stessa issue se la decisione appena presa richiede ancora riconf
   expect(screen.getByRole('status')).toHaveTextContent('2 da decidere')
   expect(state.decide).toHaveBeenCalledExactlyOnceWith({ issueId: 'a', decision: 'accepted', text: undefined })
 })
+
+it('una issue con $x^2$ nella correzione e nella spiegazione rende MathML e il doppio clic apre Textarea col testo grezzo', async () => {
+  const mathIssue: Schemas['IssueItem'] = {
+    quote_status: 'found',
+    needs_reconfirmation: false,
+    issue: {
+      id: 'math-issue',
+      type: 'ERR_CONCETTUALE',
+      severity: 'high',
+      unit_id: '1.1',
+      claim: 'La funzione vale $x$.',
+      suggested_fix: 'La funzione vale $x^2$.',
+      reason: 'L’esponente corretto è $x^2$.',
+    },
+    context: { timecode: '00:00', start_s: 0, unit_content: 'La funzione vale $x$.' },
+  }
+  state.items = [mathIssue]
+  const { container } = mount()
+
+  // Aspetta che Temml generi gli elementi math
+  await waitFor(() => {
+    const mathElements = container.querySelectorAll('math')
+    expect(mathElements.length).toBeGreaterThanOrEqual(2)
+  })
+
+  // Nessun $ visibile nella correzione proposta
+  const correctionEl = screen.getByTestId('proposed-correction')
+  expect(correctionEl.querySelector('math')).not.toBeNull()
+  expect(correctionEl.textContent).not.toContain('$')
+
+  // Doppio clic apre il Textarea con il testo grezzo
+  fireEvent.doubleClick(correctionEl)
+  const textarea = screen.getByRole('textbox', { name: 'Correzione proposta' })
+  expect(textarea).toBeInTheDocument()
+  expect(textarea).toHaveValue('La funzione vale $x^2$.')
+})
+

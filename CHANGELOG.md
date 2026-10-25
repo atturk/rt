@@ -1,10 +1,89 @@
 # Novità di RT
 
+## 4.3.3 — 2026-10-25
+
+Raccoglie le beta 4.3.3b1–b4 (dettagli sotto).
+
+### Novità
+
+- **Immagini delle unità**: una graffetta con il numero accanto al timer apre le immagini sotto il titolo, anche nelle sezioni principali. Nel testo un clic apre il visore, il doppio clic mostra il markdown, tenendo premuto la sposti. Nello Studio graffetta e timecode stanno sotto il titolo; **M** apre le immagini.
+- **Esporta e importa** tutto su un altro PC, senza far uscire le chiavi API.
+- **Lezioni mancanti**: con l'«Inizio del periodo» impostato, un piccolo avviso accanto a ogni gruppo (materia, giorno, mese, docente). Al passaggio del mouse dice quante sono, con un clic le elenca in ordine di calendario e porta al blocco.
+- **Lezioni**: l'anello di studio è sul bordo destro e sotto il titolo compaiono «Verificato» e il numero di media. Tornando da una lezione, la sua riga è al centro ed evidenziata.
+- **Studio**: stato che cambia subito con S, strumenti in un gruppo unico, lettura veloce con conto alla rovescia e zen sospeso durante la lettura.
+- **Pannello arricchimento** allargabile dal bordo sinistro a qualsiasi altezza dello scorrimento.
+- Job sempre 8 in parallelo, con la trascrizione locale una alla volta. Esercizi che danno i dati e non il metodo. Gruppi che si aprono al passaggio del mouse e restano aperti 3 s.
+
+### Correzioni
+
+- Sul Mac il worker ignorava il numero di job in parallelo.
+- Le immagini delle sezioni principali non stanno più tutte aperte nel testo: vanno nella loro graffetta.
+- Trascinando un'immagine si vede solo l'immagine, non il testo sotto; niente più sfarfallio né immagini doppie dopo la classificazione.
+- Formule nelle domande in LaTeX, aggiornamenti dall'app senza loop verso GitHub, lezione già esistente segnalata con i suoi dati.
+- Il riepilogo della settimana nel calendario non elenca più le ore da recuperare: le mostra l'avviso delle lezioni mancanti.
+
+## 4.3.3b4 — 2026-10-23
+
+### Novità
+
+- **Job in parallelo**: sempre 8, l'impostazione non c'è più. La trascrizione locale resta una alla volta.
+- **Esercizi**: la traccia dà solo i dati, non il metodo. Il template generale si aggiorna da solo se non l'hai modificato.
+- **Immagini nel testo**: un clic apre il visore, o la porta al centro del pannello se è aperto; doppio clic mostra il markdown; tenendo premuto la sposti. Nel pannello l'immagine scelta si evidenzia con un piccolo rimbalzo.
+- **Studio**: graffetta e timecode piccoli sotto il titolo dell'unità, nascosti in zen. **M** apre e chiude le immagini.
+- **Calendario**: nel riepilogo della settimana ogni ora da recuperare porta al suo blocco.
+- **Stato di studio** istantaneo: con S o il pulsante si cicla fra gli stati senza attese; si salva l'ultimo appena ti fermi.
+- **Lezioni**: l'anello di studio sta sul bordo destro; sotto il titolo compaiono «Verificato» e il numero di media, se ci sono. Tornando da una lezione, la sua riga è al centro ed evidenziata per 2 s.
+- **Lezioni mancanti**: l'avviso compare in ogni raggruppamento (materia, giorno, mese, docente) e l'elenco si apre al passaggio del mouse. Serve l'«Inizio del periodo» nel riepilogo della settimana.
+- **Strumenti dello Studio** (evidenziatore, gomma, Verifica, Chiedi, cestino) in un solo gruppo che si apre al passaggio del mouse; chiuso mostra lo strumento attivo.
+- **Gruppi che si aprono al passaggio del mouse** (Aggiorna, matita del calendario, strumenti dello Studio, lezioni mancanti) restano aperti 3 s dopo l'uscita; un clic altrove o Esc li chiude subito.
+
+### Correzioni
+
+- Sul Mac il worker ignorava il numero di job in parallelo.
+- Niente più sfarfallio trascinando un'immagine nel testo; si può lasciare anche sulla graffetta vuota.
+- Dopo la classificazione l'immagine non compare più anche grande sotto la sezione.
+- Passando da zen alla lettura veloce lo zen si sospende e torna all'uscita.
+
+## 4.3.3b3 — 2026-10-22
+
+### Novità
+
+- **Lezioni mancanti**: dalle info di una settimana la imposti come inizio del periodo accademico. Se una materia ha meno lezioni elaborate di quelle svolte (contando cambi d'orario, annullate e da saltare), accanto al nome compare un piccolo avviso; il popup elenca le lezioni mancanti e la data porta al blocco nel calendario. Si nasconde dalle impostazioni.
+- **Esporta e importa**: dal menu dell'app esporti tutto in un file e lo importi su un altro PC. Le chiavi API non escono mai dal computer: all'importazione restano quelle locali.
+- **Lezione già esistente**: se i metadati sono già usati da un'altra lezione, RT dice quale e permette di cambiarli.
+- **Anello e scudo**: quando ogni unità ha uno stato diverso da «da apprendere» l'anello mostra una spunta; lo scudo compare solo sulle lezioni verificate.
+- **Lettura veloce**: conto alla rovescia prima di partire (0–10 s, predefinito 3), saltato se riprendi entro 5 s dalla pausa. Il rumore di fondo entra ed esce in 1 s. Le formule lunghe si adattano allo spazio reale e restano centrate.
+- **⌘/Ctrl + Invio** invia la risposta scritta; Invio va a capo.
+
+### Correzioni
+
+- Le formule nelle domande generate sono scritte in LaTeX e quindi rese correttamente.
+- Niente più bordo nero attorno ai campi di testo attivi.
+
+## 4.3.3b2 — 2026-10-22
+
+### Correzioni
+
+- **Aggiornamenti dall'app**: il popup non interroga più GitHub in loop (HTTP 429, download non riuscito). Come nella 4.3.2.2.
+
 ## 4.3.2.2 — 2026-10-22
 
 ### Correzioni
 
 - **Aggiornamenti dall'app**: il popup controllava gli aggiornamenti senza fermarsi, finché GitHub smetteva di rispondere (HTTP 429) e il download falliva. Ora controlla una volta sola, «Controlla ora» va su GitHub al massimo una volta al minuto e, se GitHub non risponde, resta valido l'ultimo controllo riuscito.
+
+## 4.3.3b1 — 2026-10-21
+
+### Novità
+
+- **Immagini della sottounità**: una graffetta con il numero accanto al timer apre le immagini in riga sotto il titolo. Trascinando un'immagine sulla graffetta finisce nella sezione, nel testo resta dove la lasci e si ridimensiona. Le miniature si spostano tra sezioni e testo. L'impostazione «Dove le lascio» non c'è più.
+- **Pannello arricchimento**: si allarga trascinando il bordo sinistro. Cliccando un'immagine nella lezione, il pannello la porta al centro.
+- **Archivio** più veloce ad aprirsi, con un'anteprima animata mentre carica. Le pagine dei PDF non compaiono più come immagini singole.
+- **Selezione multipla**: dai dettagli puoi rielaborare o rigenerare tutte le lezioni scelte insieme.
+- **Genera domande**: il popup si chiude e la generazione continua in background.
+- Verifiche: le formule nelle issue sono rese come nel testo.
+
+Contiene anche la correzione della 4.3.2.1.
 
 ## 4.3.2.1 — 2026-10-21
 

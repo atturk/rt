@@ -49,7 +49,8 @@ def system_for(definition) -> str:
     from rt.llm import prompts
     output = prompts._TEXT_OUTPUT if definition.correzione == "testo" else prompts._SPECIAL_OUTPUT
     return effective_system("recall", definition.chiedi + "\n\n" + output +
-                            "\nLa risposta dello studente è sempre testuale; non richiedere file o risposte interattive.")
+                            "\nLa risposta dello studente è sempre testuale; non richiedere file o risposte interattive.\n"
+                            + prompts.LATEX_WRITING_RULE)
 
 
 def groups(lesson_dir: str, qtype: RecallQuestionType, sections=None, labels=None) -> List[list]:

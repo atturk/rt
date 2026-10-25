@@ -272,6 +272,15 @@ test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomm
   await page.goto(`/studio/lezione/${l.id}`)
   const text = page.getByTestId('study-text')
   await expect(text).toHaveText(/\S.{40,}/)
+  const openTools = async () => {
+    const tools = page.getByTestId('highlight-tools')
+    if (await tools.isVisible().catch(() => false)) return
+    const toggle = page.getByTestId('study-tools-toggle')
+    await toggle.waitFor({ state: 'visible' })
+    await toggle.hover()
+    await expect(tools).toBeVisible()
+  }
+  await openTools()
   await page.getByTestId('highlight-pen').click()
   // Selezione delle prime parole del primo paragrafo, come col mouse.
   const selected = await text.evaluate((root) => {
@@ -292,6 +301,7 @@ test('Evidenziatore dello Studio: si salva su RT, torna alla riapertura, la gomm
 
   await page.reload()
   await expect(text.locator('.rt-hl')).toHaveText(selected)
+  await openTools()
   await page.getByTestId('highlight-eraser').click()
   await text.locator('.rt-hl').first().click()
   await expect(text.locator('.rt-hl')).toHaveCount(0)
@@ -572,6 +582,11 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
     await page.goto(`/studio/lezione/${l.id}`)
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    const toggle = page.getByTestId('study-tools-toggle')
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.hover()
+      await expect(page.getByTestId('highlight-tools')).toBeVisible()
+    }
     await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
@@ -773,6 +788,11 @@ test('il clic destro toglie un’evidenziazione salvata anche dopo il ricaricame
     await page.getByTestId('study-dots').locator('button').first().click()
     const text = page.getByTestId('study-text')
     await expect(text).toHaveText(/\S.{40,}/)
+    const toggle = page.getByTestId('study-tools-toggle')
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.hover()
+      await expect(page.getByTestId('highlight-tools')).toBeVisible()
+    }
     await page.getByTestId('highlight-pen').click()
     await text.evaluate(root => {
       const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (n.textContent ?? '').trim().length > 12 ? 1 : 3 }).nextNode()!
@@ -817,6 +837,11 @@ test('4.2.3.1: in cima alla finestra i suggerimenti scendono sotto; le info dell
     expect(box!.y + box!.height).toBeLessThanOrEqual(360)
   }
   const tools = page.getByTestId('study-header-tools')
+  const toggle = page.getByTestId('study-tools-toggle')
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.hover()
+    await expect(page.getByTestId('highlight-tools')).toBeVisible()
+  }
   for (const control of [tools.getByRole('button', { name: /^Evidenziatore/ }), tools.getByRole('button', { name: 'Gomma' }), page.getByTestId('study-title-button')]) {
     await page.mouse.move(0, 0)
     await control.hover()
@@ -951,3 +976,152 @@ test('Irlen in tema scuro: contrasto in zen e lettura veloce con ogni tinta', as
     expect(response.ok()).toBeTruthy()
   }
 })
+
+test('Studio: graffetta e timecode sotto il titolo, tasto M e scomparsa in zen', async ({ page }) => {
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=CHIRURGIA')
+  const before = await apiGet<{ markdown: string; sections: { unit_id: string }[] }>(page.request, `/lessons/${lesson.id}/document`)
+  const response = await page.request.post(`/api/v1/lessons/${lesson.id}/media/images`, {
+    headers: authHeaders(), multipart: { file: { name: 'figura_m.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') } },
+  })
+  expect(response.ok()).toBeTruthy()
+  const image = await response.json() as { name: string; path: string; alt_text: string }
+  try {
+    await loginViaLink(page)
+    await page.goto(`/lezioni/${lesson.id}`)
+    const editor = page.getByTestId('lesson-document')
+    await editor.locator('.cm-content').click()
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'ControlOrMeta+End')
+    await page.evaluate(item => window.dispatchEvent(new CustomEvent('rt-editor-insert-images', { detail: { items: [item] } })), image)
+    await expect.poll(async () => (await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)).markdown).toContain(`${image.name}#w=`)
+    const target = editor.locator(`.rt-unit-images-button[data-unit-images="${before.sections[0].unit_id}"]`)
+    await editor.locator('.cm-content').dispatchEvent('dragover', { dataTransfer: await page.evaluateHandle(() => {
+      const transfer = new DataTransfer(); transfer.setData('application/x-rt-section-image', ''); return transfer
+    }) })
+    await expect(target).toBeVisible()
+    const inline = editor.locator(`img[data-image-name="${image.name}"]`)
+    const transfer = await page.evaluateHandle(() => new DataTransfer())
+    await inline.dispatchEvent('dragstart', { dataTransfer: transfer })
+    await target.dispatchEvent('drop', { dataTransfer: transfer })
+    await target.dispatchEvent('dragend')
+    await expect.poll(async () => (await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)).markdown).not.toContain(`${image.name}#w=`)
+    await expect(target).toHaveText('1')
+    await expect.poll(async () => (await apiGet<{ sections: { immagini_sezione?: string[] }[] }>(page.request, `/lessons/${lesson.id}/document`)).sections[0].immagini_sezione?.length).toBe(1)
+
+    await page.goto(`/studio/lezione/${lesson.id}?unita=${before.sections[0].unit_id}`)
+    const meta = page.locator('.rt-unit-meta-below')
+    await expect(meta).toBeVisible()
+    const clip = meta.getByRole('button', { name: 'Mostra le immagini · M' })
+    await expect(clip).toBeVisible()
+    const timecode = meta.locator('.rt-timecode')
+    await expect(timecode).toBeVisible()
+    const section = page.locator('.rt-unit-images-section')
+    await expect(section).toBeHidden()
+
+    // M apre la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeVisible()
+
+    // M richiude la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeHidden()
+
+    // Entra in zen (Z)
+    await page.keyboard.press('z')
+    await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+
+    // In zen pulsante e timecode non sono visibili
+    await expect(meta).toBeHidden()
+    await expect(clip).toBeHidden()
+    await expect(timecode).toBeHidden()
+
+    // In zen M apre comunque la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeVisible()
+
+    // In zen M richiude la sezione
+    await page.keyboard.press('m')
+    await expect(section).toBeHidden()
+
+    // Esci da zen (Z)
+    await page.keyboard.press('z')
+    await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+    await expect(meta).toBeVisible()
+  } finally {
+    await page.goto('about:blank')
+    await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, {
+      headers: authHeaders(), data: { markdown: before.markdown },
+    })
+  }
+})
+
+test('Studio: da zen alla lettura veloce, sospensione e ripristino con Esc', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  await expect(page.getByTestId('study-text')).toBeVisible()
+
+  // 1. Entra in zen (Z)
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByRole('navigation')).toBeHidden()
+
+  // 2. Apri la lettura veloce (L)
+  await page.keyboard.press('l')
+  const reader = page.getByTestId('speed-reader')
+  await expect(reader).toBeVisible()
+  await expect(page.getByTestId('speed-reader-word')).toBeVisible()
+
+  // Layout normale della lettura veloce, nessun elemento zen visibile
+  await expect(page.getByTestId('study')).toHaveAttribute('data-rsvp', 'true')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(page.getByTestId('zen-bar')).toHaveCount(0)
+  await expect(page.locator('.rt-zen-bar')).toHaveCount(0)
+  await expect(page.locator('.rt-zen-hot')).toHaveCount(0)
+  await expect(page.locator('[data-zen]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Torna allo Studio', exact: true })).toBeVisible()
+  await expect(page.getByTestId('highlight-tools')).toHaveCount(0)
+  await expect(page.getByTestId('study-dots')).toBeHidden()
+
+  // Z durante la lettura veloce non riattiva zen sotto il lettore
+  await page.keyboard.press('z')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(reader).toBeVisible()
+
+  // 3. Esc torna alla lettura in zen
+  await page.keyboard.press('Escape')
+  await expect(reader).toHaveCount(0)
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect(page.getByTestId('study-text')).toBeVisible()
+  await expect(page.getByRole('navigation')).toBeHidden()
+
+  // Esc esce da zen
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
+  await expect(page.getByRole('navigation')).toBeVisible()
+})
+
+test('gruppo strumenti dello Studio: chiuso mostra icona/tooltip, si apre al passaggio del mouse', async ({ page }) => {
+  await loginViaLink(page)
+  const l = await lesson(page, 'PATOLOGIA')
+  await page.goto(`/studio/lezione/${l.id}`)
+  const toggle = page.getByTestId('study-tools-toggle')
+  await expect(toggle).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-label', 'Strumenti')
+
+  // Passaggio del mouse apre il gruppo
+  await toggle.hover()
+  const tools = page.getByTestId('highlight-tools')
+  await expect(tools).toBeVisible()
+  await expect(page.getByTestId('highlight-pen')).toBeVisible()
+  await expect(page.getByTestId('highlight-clear')).toBeVisible()
+
+  // Spostando il mouse fuori, resta visibile prima dei 3 s
+  await page.getByTestId('study-text').hover()
+  await expect(tools).toBeVisible()
+
+  // Con Esc si chiude subito
+  await page.keyboard.press('Escape')
+  await expect(tools).toBeHidden()
+  await expect(toggle).toBeVisible()
+})
+

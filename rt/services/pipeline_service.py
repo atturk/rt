@@ -237,6 +237,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> 
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
         # I metadati mancanti non si inventano: la run aspetta che arrivino.
         strict=True,
+        cancel_token=ctx.cancel_token,
     )
     return dict(setup_res, mock_asr=options.mock, skip_transcribe=options.skip_transcribe)
 

@@ -18,7 +18,9 @@ Sezioni e unità restano quelle della scaletta, nello stesso ordine. Il salvatag
 - titoli e timecode vanno in document_edits.json; un timecode si aggancia all'inizio del
   segmento audio in cui cade, deve stare nella durata dell'audio e venire dopo quello
   dell'unità precedente;
-- le immagini sotto i titoli di sezione aggiornano il posizionamento;
+- le immagini dopo il timecode, prima del testo e senza #w=, aggiornano la sezione
+  della sottounità; quelle con #w= sono sempre nel testo;
+- le immagini sotto i titoli macro aggiornano il posizionamento della macro;
 - il documento finale viene aggiornato automaticamente (le impronte del build cambiano) e le issue il cui
   testo non c'è più risultano orfane (rt.services.review_service.orphan_issue_ids).
 Gli errori tornano con la riga e il motivo; con un errore non si salva nulla.
@@ -127,7 +129,8 @@ def _parse_structure(markdown: str) -> Tuple[List[_Macro], List[Dict[str, Any]]]
                     continue
                 unit.timecode, unit.timecode_line = stripped, n
                 continue
-            if not unit.content_lines and IMAGE_LINE_RE.match(stripped):
+            image_line = IMAGE_LINE_RE.match(stripped)
+            if not unit.content_lines and image_line and "#w=" not in image_line.group(2):
                 unit.images.append((n, stripped))
                 continue
             if not stripped and not unit.content_lines:

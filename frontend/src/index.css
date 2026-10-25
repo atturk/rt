@@ -72,6 +72,7 @@
   --header-height: 52px;
   --control-size: 34px;
   --reading-width: 720px;
+  --rt-panel-width: 24rem;
 }
 
 .dark {
@@ -199,6 +200,9 @@
     opacity: 1;
   }
 }
+
+:is(textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"],
+    [type="submit"], [type="reset"], [type="file"], [type="color"])):focus-visible { outline: none; }
 
 @keyframes rt-pulse {
   50% {
@@ -420,11 +424,20 @@
   }
 }
 
+/* Il bordo per allargare il pannello sta fuori dallo scorrimento: resta afferrabile a ogni altezza. */
+.rt-panel-resize {
+  position: fixed;
+  z-index: 11;
+  top: calc(var(--header-height) + 8px);
+  bottom: 8px;
+  right: calc(8px + min(calc(var(--rt-panel-width) - 8px), calc(100vw - 16px)) - 3px);
+  width: 6px;
+}
 .rt-panel-container {
   top: calc(var(--header-height) + 8px);
   right: 8px;
   bottom: 8px;
-  width: min(calc(24rem - 8px), calc(100vw - 16px));
+  width: min(calc(var(--rt-panel-width) - 8px), calc(100vw - 16px));
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
@@ -434,6 +447,33 @@
 
 .rt-panel-body-switch {
   animation: rt-panel-switch 240ms ease-out both;
+}
+
+@keyframes rt-media-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.rt-media-flash {
+  animation: rt-media-pulse 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 5;
+}
+
+.rt-media-flash .rt-media-flash {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-media-flash {
+    animation: none;
+  }
 }
 
 @media (max-width: 767px) {
@@ -634,10 +674,18 @@
 }
 .cm-drop-line-widget {
   position: relative;
+  height: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.cm-drop-line-widget::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
   height: 2px;
   background-color: #3b82f6;
-  margin: 4px 0;
-  pointer-events: none;
 }
 .cm-drop-line-label {
   position: absolute;
@@ -710,7 +758,8 @@
 
 /* Righe vuote del testo che si sta scrivendo: un riflesso le attraversa, come nelle altre IA. */
 .rt-unit-pending > div,
-.rt-skeleton {
+.rt-skeleton,
+.rt-shimmer {
   background-color: var(--muted);
   background-image: linear-gradient(90deg, transparent 0%, var(--skeleton-shine) 50%, transparent 100%);
   background-repeat: no-repeat;
@@ -723,7 +772,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .rt-unit-pending > div,
-  .rt-skeleton { background-image: none; animation: none; }
+  .rt-skeleton,
+  .rt-shimmer { background-image: none; animation: none; }
 }
 
 /* Sezioni richiudibili (folding) come in Obsidian (K2) */
@@ -924,6 +974,8 @@
 /* Zen dello Studio: la barra si sovrappone al testo senza cambiarne la posizione. */
 [data-testid="study"][data-zen] .rt-study-classic-header { visibility: hidden; pointer-events: none; }
 [data-testid="study"][data-zen] .rt-study-footer { display: none; }
+[data-testid="study"][data-zen] .rt-unit-meta,
+[data-testid="study"][data-zen] .rt-unit-meta-below { display: none !important; }
 .rt-zen-bar { position: fixed; inset: 0 0 auto; height: 52px; z-index: 40; transform: translateY(-100%); transition: transform 200ms; }
 .rt-zen-bar[data-open], .rt-zen-bar:focus-within { transform: translateY(0); }
 .rt-zen-hot { position: fixed; inset: 0 0 auto; height: 40px; z-index: 39; }
@@ -976,11 +1028,90 @@
 @media (max-width: 767px) { .rt-rsvp-settings { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .rt-rsvp-settings { animation: none; } }
 
-.rt-rsvp-word[data-math] { width: 100%; max-width: 100%; }
-.rt-rsvp-formula { position: relative; display: grid; place-items: center; width: 100%; }
-.rt-rsvp-math { display: inline-block; grid-area: 1 / 1; white-space: nowrap; transform-origin: center; }
+.rt-rsvp-word[data-math] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.rt-rsvp-formula {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: start;
+  max-width: 100%;
+  margin-inline: auto;
+  box-sizing: content-box;
+}
+.rt-rsvp-math {
+  display: inline-block;
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  transform-origin: top left;
+}
 .rt-rsvp-math math, .rt-rsvp-math .katex { font-size: 1em; margin: 0; }
 .rt-rsvp-math .katex-display { margin: 0; }
+.rt-rsvp-math-context { display: inline-block; max-width: 100%; overflow-x: auto; vertical-align: middle; }
+
+/* Conto alla rovescia nella lettura veloce (4.3.3b3 piano 7) */
+.rt-rsvp-countdown {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: calc(var(--rsvp-size, 60px) * 2.2);
+  height: calc(var(--rsvp-size, 60px) * 2.2);
+  font-family: var(--font-sans);
+  color: var(--rsvp-focus, var(--link));
+  user-select: none;
+}
+.rt-rsvp-countdown-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.rt-rsvp-countdown-track {
+  fill: none;
+  stroke: color-mix(in oklch, var(--foreground) 10%, transparent);
+  stroke-width: 2.5;
+}
+.rt-rsvp-countdown-progress {
+  fill: none;
+  stroke: var(--rsvp-focus, var(--link));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 276.46;
+  stroke-dashoffset: 0;
+  animation: rt-rsvp-countdown-drain 1000ms linear forwards;
+}
+.rt-rsvp-countdown-num {
+  font-size: var(--rsvp-size, 60px);
+  font-weight: 600;
+  line-height: 1;
+  animation: rt-rsvp-countdown-pop 1000ms ease-out forwards;
+}
+@keyframes rt-rsvp-countdown-drain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: 276.46; }
+}
+@keyframes rt-rsvp-countdown-pop {
+  0% { transform: scale(0.8); opacity: 0; }
+  25% { transform: scale(1); opacity: 1; }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rt-rsvp-countdown-progress,
+  .rt-rsvp-countdown-num {
+    animation: none;
+  }
+}
 
 /* Una fascia continua sul testo effettivo: le colonne vuote della lettera di fuoco restano libere. */
 .rt-rsvp-hl,
@@ -1080,9 +1211,10 @@
 /* minmax(0, 1fr): la colonna resta larga quanto lo spazio disponibile e le miniature scorrono
    dentro la striscia invece di allargare editor e pagina. */
 .rt-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 10px 0; min-width: 0; max-width: 100%; }
-/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine cade subito dopo la striscia:
-   le pagine si vedono già come miniature. */
-.cm-content > .rt-strip + .cm-atomic-image { display: none; }
+/* Nell'editor l'anteprima a grandezza piena dell'ultima riga immagine della sezione cade subito
+   dopo la sezione (aperta o chiusa): le immagini si vedono già dentro la sezione. */
+.rt-unit-images-section + .cm-atomic-image,
+.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 .rt-strip-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted-foreground); }
 .rt-strip-head .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-strip-head .count-pill { font-variant-numeric: tabular-nums; }
@@ -1112,9 +1244,6 @@
 .rt-strip .rail:hover .nav.show { display: grid; }
 @media (hover: none) { .rt-strip .rail .nav { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { .rt-strip-head .chev { transition: none; } }
-
-/* Linee markdown di una striscia mentre il cursore è dentro l'editor */
-.cm-line.rt-strip-editing-line + .cm-atomic-image { display: none !important; }
 
 /* Visore a schermo pieno (IM1d) */
 .rt-viewer-overlay {
@@ -1239,3 +1368,68 @@
 .rt-reading math.rt-math-raw { display: none; }
 .rt-reading math.rt-math-raw + .rt-math-src { display: inline; }
 .rt-sn-math { background: color-mix(in oklch, var(--primary) 14%, transparent); cursor: pointer; }
+
+/* Immagini della sottounità */
+.rt-unit-images-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 30px; min-width: 30px; margin-right: 6px; padding: 0 7px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--foreground); font-size: var(--size-meta);
+  vertical-align: middle; cursor: pointer;
+}
+.rt-unit-images-button svg { width: 16px; height: 16px; flex-shrink: 0; }
+.rt-unit-images-button.active { background: var(--accent); color: var(--accent-foreground); }
+.rt-unit-images-button.empty { display: none; }
+.rt-dragging-images .rt-unit-images-button.empty { display: inline-flex; border-style: dashed; }
+.rt-unit-images-button.rt-image-drop-hover, .rt-unit-images-section.rt-image-drop-hover {
+  outline: 2px solid var(--success); outline-offset: 2px;
+}
+.rt-unit-images-section { overflow: hidden; animation: rt-unit-images-open 160ms ease-out; }
+.rt-unit-images-section[hidden], .rt-unit-images-section.closed { display: none; height: 0; }
+.rt-unit-images-section .rt-strip { border: 0; margin: 6px 0 12px; padding: 0; background: transparent; }
+.rt-unit-images-section .thumbs { display: flex; gap: 10px; overflow-x: auto; }
+.rt-unit-images-section .thumb { height: 120px; flex: 0 0 auto; }
+.rt-unit-images-section .thumb img { height: 100%; width: auto; object-fit: contain; }
+@keyframes rt-unit-images-open { from { max-height: 0; opacity: 0; } to { max-height: 160px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .rt-unit-images-section { animation: none; } }
+
+/* Metadati sotto il titolo dell'unità nello Studio */
+.rt-unit-meta-below {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 12px 0;
+  font-size: var(--size-meta);
+  color: var(--mute);
+}
+
+.rt-unit-meta-below .rt-unit-images-button {
+  height: 24px;
+  min-width: 24px;
+  margin-right: 0;
+  padding: 0 6px;
+  font-size: var(--size-meta);
+  border-radius: 6px;
+  color: var(--mute);
+}
+
+.rt-unit-meta-below .rt-unit-images-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rt-unit-meta-below .rt-unit-images-button.active {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.rt-unit-meta-below .rt-timecode {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mute);
+  padding: 0 6px;
+  font: 500 var(--size-meta) / 1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

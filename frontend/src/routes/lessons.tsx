@@ -23,6 +23,7 @@ import { LessonUpdateBar } from '@/components/lesson/LessonUpdateBar'
 import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
+import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
 import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
@@ -56,6 +57,36 @@ export function DashboardPage() {
       applyFilters({ q: pinned.q, materia: pinned.materia, stato: pinned.stato })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [highlightedLessonId, setHighlightedLessonId] = useState<number | null>(null)
+  const consumedRef = useRef(false)
+
+  useEffect(() => {
+    if (consumedRef.current || !all.data || all.data.length === 0) return
+    consumedRef.current = true
+    const targetId = consumeLastClosedLessonId()
+    if (targetId == null) return
+
+    if (!filtered.some((l) => l.id === targetId)) return
+
+    // oxlint-disable-next-line react/set-state-in-effect
+    setHighlightedLessonId(targetId)
+
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-lesson-id="${targetId}"]`)
+      if (el) {
+        el.scrollIntoView({ block: 'center' })
+      }
+    })
+  }, [all.data, filtered])
+
+  useEffect(() => {
+    if (highlightedLessonId == null) return
+    const timer = setTimeout(() => {
+      setHighlightedLessonId(null)
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [highlightedLessonId])
 
   const current: LessonsView = {
     group: prefs.group,
@@ -178,7 +209,7 @@ export function DashboardPage() {
           </p>
         )}
         {filtered.length > 0 && (
-          <LessonsList groups={groups} grouping={prefs.group} running={running} selecting={selecting} selected={selected} onSelected={setSelected} />
+          <LessonsList groups={groups} grouping={prefs.group} running={running} selecting={selecting} selected={selected} onSelected={setSelected} highlightedLessonId={highlightedLessonId} />
         )}
       </div>
       {selecting && <SelectionBar
@@ -271,6 +302,13 @@ function useSearchShortcut(inputId: string) {
 
 export function LessonPage() {
   const id = Number(useParams().lessonId)
+
+  useEffect(() => {
+    setLastClosedLessonId(id)
+    return () => {
+      setLastClosedLessonId(id)
+    }
+  }, [id])
   const editorActions = useRef<LessonEditorActions | null>(null)
   const [editingDocument, setEditingDocument] = useState(false)
   const [storedPanel, storePanel] = usePanelView()
@@ -340,7 +378,7 @@ export function LessonPage() {
         back={back}
         actions={<LessonHeaderActions lesson={l} panel={panel} onToggle={toggle} />}
       />
-      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'md:pr-[calc(24rem+28px)] max-xl:md:[@media(hover:hover)]:px-7 max-xl:md:[@media(hover:hover)]:pr-[calc(24rem+28px)] xl:[@media(hover:hover)]:pr-[calc(24rem+76px)]')}>
+      <div className={cn('flex-1 px-7 max-md:px-4 md:[@media(hover:hover)]:px-[76px]', panel && 'md:pr-[calc(var(--rt-panel-width)+28px)] max-xl:md:[@media(hover:hover)]:px-7 max-xl:md:[@media(hover:hover)]:pr-[calc(var(--rt-panel-width)+28px)] xl:[@media(hover:hover)]:pr-[calc(var(--rt-panel-width)+76px)]')}>
         <LessonPageNavigation id={id} panel={panel} title={<>
           <h1 className="mb-2 text-heading font-semibold leading-tight">{lessonTitle(l)}</h1>
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}

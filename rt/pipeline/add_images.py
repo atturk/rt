@@ -58,6 +58,15 @@ def load_image_descriptions(lesson_dir: str) -> Dict[str, Any]:
         return json.load(f)
 
 
+def is_standalone_image(description: Optional[Dict[str, Any]]) -> bool:
+    """Nell'archivio va come file 'immagine' solo un'immagine aggiunta come immagine dall'utente:
+    editor:<nome>, folder:<nome>, websearch:...; non le pagine di pdf, materiali o ritagli."""
+    if not description or description.get("crop_of"):
+        return False
+    source = str(description.get("source") or "")
+    return source.startswith(("editor:", "folder:", "websearch:"))
+
+
 def save_image_descriptions(lesson_dir: str, data: Dict[str, Any]) -> None:
     """Scrittura atomica (tmp file + os.replace), stesso pattern già usato in tutto il
     progetto per file di stato/artefatti."""
@@ -68,6 +77,8 @@ def save_image_descriptions(lesson_dir: str, data: Dict[str, Any]) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     fs.replace(tmp_path, path)
     for description in data.values():
+        if not is_standalone_image(description):
+            continue
         image = os.path.join(lesson_dir, description.get('filename', ''))
         if fs.isfile(image):
             register_image(image, description if any(description.get(k) for k in
@@ -88,7 +99,6 @@ def save_raw_image(lesson_dir: str, image_bytes: bytes, image_hash: str, ext: st
         with fs.open(tmp_path, "wb") as f:
             f.write(image_bytes)
         fs.replace(tmp_path, full_path)
-    register_image(full_path)
     return f"assets/images/{filename}"
 
 

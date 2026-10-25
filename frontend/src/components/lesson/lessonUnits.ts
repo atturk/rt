@@ -4,7 +4,7 @@ import type { UnitTask } from './lessonWorkflow'
 import { findMarkdownImageStrips } from './lessonImageStrips'
 import { parseImageAlt, type ImageItem } from '@/components/images/imageUtils'
 import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
-import { readPreference } from '@/lib/preferences'
+import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
 
 /**
  * Le unità nel Markdown dell'editor della lezione: dal titolo `### 1.1 Titolo` fino al titolo
@@ -118,6 +118,65 @@ const ATOMIC_IMAGE_RE = /^!\[([^\]]*)\]\(([^\s)"']+)(?:\s+["'][^)]*["'])?\)$/
 
 const imageUrl = (lessonId: number, name: string) => `/api/v1/lessons/${lessonId}/assets/images/${encodeURIComponent(name)}`
 
+export const IMAGE_CLICK_DELAY_MS = 250
+let pendingImageClickTimer: ReturnType<typeof setTimeout> | null = null
+
+export function cancelPendingImageClick() {
+  if (pendingImageClickTimer) {
+    clearTimeout(pendingImageClickTimer)
+    pendingImageClickTimer = null
+  }
+}
+
+function scheduleImageClick(view: EditorView, lessonId: number, img: HTMLImageElement, name: string) {
+  cancelPendingImageClick()
+  pendingImageClickTimer = setTimeout(() => {
+    pendingImageClickTimer = null
+    handleImageClick(view, lessonId, img, name)
+  }, IMAGE_CLICK_DELAY_MS)
+}
+
+function handleImageDblClick(view: EditorView, img: HTMLImageElement) {
+  cancelPendingImageClick()
+  const wrap = img.closest<HTMLElement>('.cm-atomic-image, .rt-editor-image') || img.parentElement
+  if (!wrap) return
+  const pos = view.posAtDOM(wrap)
+  if (pos < 0) return
+  const target = Math.max(0, pos - 1)
+  view.focus()
+  view.dispatch({
+    selection: { anchor: target },
+    scrollIntoView: false,
+  })
+}
+
+function attachImageGestures(view: EditorView, lessonId: number, img: HTMLImageElement, name: string) {
+  if (img.dataset.hasHandlers) return
+  img.dataset.hasHandlers = 'true'
+
+  img.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement).closest('.rt-image-resize-handle')) return
+    e.stopPropagation()
+  })
+
+  img.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    scheduleImageClick(view, lessonId, img, name)
+  })
+
+  img.addEventListener('dblclick', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    handleImageDblClick(view, img)
+  })
+
+  img.parentElement?.addEventListener('mouseenter', () => {
+    attachResizeHandles(view, img, name)
+  })
+  attachResizeHandles(view, img, name)
+}
+
 function handleImageClick(view: EditorView, lessonId: number, img: HTMLImageElement, name: string) {
   if (isEnrichmentPanelOpen()) {
     window.dispatchEvent(new CustomEvent('rt-media-select', { detail: { name } }))
@@ -157,18 +216,31 @@ function handleImageClick(view: EditorView, lessonId: number, img: HTMLImageElem
 }
 
 function attachResizeHandles(view: EditorView, img: HTMLImageElement, name: string) {
-  const mode = readPreference<'heading' | 'free'>('editor.image-drop', 'heading')
+  img.draggable = true
+  img.ondragstart = event => {
+    cancelPendingImageClick()
+    const sections = imageSections(view.state)
+    const source = Array.from({ length: view.state.doc.lines }, (_, i) => view.state.doc.line(i + 1)).find(line =>
+      new RegExp(`^!\\[.*\\]\\((?:\\.\\/)?assets/images/${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:#w=\\d+)?\\)\\s*$`).test(line.text) &&
+      !sections.some(section => section.images.some(image => image.from === line.from)))
+    if (!source || view.state.readOnly) { event.preventDefault(); return }
+    event.stopPropagation()
+    event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromText: source.from, width: img.naturalWidth || 480 }))
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      // Solo l'immagine come anteprima: WebKit, a fine unità, fotografava anche il testo sotto.
+      event.dataTransfer.setDragImage?.(img, event.offsetX, event.offsetY)
+    }
+    view.dom.classList.add('rt-dragging-images')
+  }
+  img.ondragend = () => {
+    cancelPendingImageClick()
+  }
   const wrap = img.parentElement
   if (!wrap) return
 
   const existingLeft = wrap.querySelector('.rt-image-resize-handle-left')
   const existingRight = wrap.querySelector('.rt-image-resize-handle-right')
-
-  if (mode !== 'free') {
-    existingLeft?.remove()
-    existingRight?.remove()
-    return
-  }
 
   if (existingLeft && existingRight) return
 
@@ -272,18 +344,8 @@ class LessonImageWidget extends WidgetType {
     if (this.width) img.style.width = `${this.width}px`
     img.style.maxWidth = '100%'
 
-    img.addEventListener('click', (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      handleImageClick(view, this.lessonId, img, this.name)
-    })
-
-    wrap.addEventListener('mouseenter', () => {
-      attachResizeHandles(view, img, this.name)
-    })
-
     wrap.append(img)
-    attachResizeHandles(view, img, this.name)
+    attachImageGestures(view, this.lessonId, img, this.name)
     return wrap
   }
 }
@@ -341,24 +403,30 @@ export function lessonImages(lessonId: number): Extension {
           img.style.maxWidth = '100%'
         }
         const name = img.dataset.imageName
-        if (name && !img.dataset.hasHandlers) {
-          img.dataset.hasHandlers = 'true'
-          img.addEventListener('click', (e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            handleImageClick(view, lessonId, img, name)
-          })
-          img.parentElement?.addEventListener('mouseenter', () => {
-            attachResizeHandles(view, img, name)
-          })
-          attachResizeHandles(view, img, name)
+        if (name) {
+          attachImageGestures(view, lessonId, img, name)
         }
       })
     }
+    const onMouseDownCapture = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('.rt-image-resize-handle')) return
+      if (target instanceof HTMLImageElement && (target.closest('.cm-atomic-image') || target.closest('.rt-editor-image'))) {
+        e.stopPropagation()
+      }
+    }
+    view.dom.addEventListener('mousedown', onMouseDownCapture, { capture: true })
     const observer = new MutationObserver(fix)
     observer.observe(view.contentDOM, { childList: true, subtree: true })
     fix()
-    return { destroy: () => observer.disconnect() }
+    return {
+      destroy: () => {
+        view.dom.removeEventListener('mousedown', onMouseDownCapture, { capture: true })
+        cancelPendingImageClick()
+        observer.disconnect()
+      },
+    }
   })
   return [images, urls]
 }

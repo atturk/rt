@@ -24,11 +24,10 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     argomenti = argomenti or ''
     docente = docente or ''
     ora = ora or ''
-    suffix = sanitize_filename_part(argomenti.strip())
-    folder = f'[{date}] {materia}' + (f' - {suffix}' if suffix else '')
+    from rt.services.lesson_conflicts import lesson_folder, require_no_lesson_conflict, create_lesson_directory
+    require_no_lesson_conflict(date, materia, argomenti, dest_dir)
+    folder = lesson_folder(date, materia, argomenti)
     lesson_dir = os.path.join(dest_dir, folder)
-    if fs.isdir(lesson_dir):
-        raise ValueError('Esiste già una lezione con questi metadati')
     # Verifica la principale prima di creare la lezione.
     if not audio and principale and principale not in {os.path.basename(path) for path in materiali} | ({'Appunti', 'appunti.txt'} if appunti.strip() else set()):
         raise ValueError('Fonte principale inesistente')
@@ -61,10 +60,12 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
         except BaseException:
             shutil.rmtree(merged_dir, ignore_errors=True)
             raise
-    if fs.new_lessons_use_db():
-        lesson_dir = fs.create_db_lesson(lesson_dir)
-    else:
-        fs.makedirs(lesson_dir, exist_ok=False)
+    try:
+        lesson_dir = create_lesson_directory(date, materia, argomenti, dest_dir)
+    except BaseException:
+        if merged_dir:
+            shutil.rmtree(merged_dir, ignore_errors=True)
+        raise
     info = {'data': date, 'materia': materia, 'argomenti': argomenti, 'docente': docente,
         'ora': ora, 'cartella': folder, 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
         'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',

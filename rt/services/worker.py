@@ -308,12 +308,19 @@ class Worker:
         try:
             try:
                 ctx.check_cancelled()
+                if job.type in {'ingest_audio', 'ingest_sources', 'ingest_notes', 'run_pipeline'} and not job.lesson_path:
+                    options = job.payload.get('options') or {}
+                    if options.get('date') and options.get('materia') and options.get('dest_dir'):
+                        from rt.services.lesson_conflicts import require_no_lesson_conflict
+                        require_no_lesson_conflict(options['date'], options['materia'], options.get('argomenti'), options['dest_dir'])
                 outcome = handler(job, ctx)
             except RunCancelled:
                 outcome = JobOutcome(state=JobState.CANCELLED)
             except Exception as exc:  # noqa: BLE001 - l'errore diventa lo stato del job
                 logger.exception("Job %s fallito", job.id)
-                outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(job_error_message(exc)))
+                from rt.services.lesson_conflicts import LessonConflict
+                result = {'code': exc.code, 'details': exc.details} if isinstance(exc, LessonConflict) else {}
+                outcome = JobOutcome(state=JobState.FAILED, error=_sanitize(job_error_message(exc)), result=result)
             except BaseException:
                 # Ctrl+C / arresto del worker: il job torna in coda e un altro worker lo
                 # riprende dai checkpoint già salvati.

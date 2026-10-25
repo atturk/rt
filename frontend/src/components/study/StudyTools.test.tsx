@@ -29,6 +29,7 @@ const LESSON = {
   id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', ora: '', data: '2026-10-02', folder_name: 'a',
   phases: { build: 'VALID', rewrite: 'VALID' }, argomenti: '', docente: '', path: '', duration_seconds: 0,
   unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, recall_questions: 0,
+  media_count: 0,
 } as Lesson
 const UNITS = [
   { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {} },
@@ -155,7 +156,8 @@ describe('lettura veloce', () => {
     fireEvent.keyDown(window, { key: ' ' })
     expect(screen.getByTestId('speed-reader-after')).toBeEmptyDOMElement()
     expect(screen.getByTestId('speed-reader-before')).toBeEmptyDOMElement()
-    act(() => { vi.advanceTimersByTime(5000) })
+    act(() => { vi.advanceTimersByTime(3000) })
+    act(() => { vi.advanceTimersByTime(2000) })
     expect(screen.getByTestId('speed-reader-word')).not.toHaveTextContent('Poi,')
     fireEvent.keyDown(window, { key: ' ' })
     expect(screen.getByTestId('speed-reader-before')).not.toBeEmptyDOMElement()
@@ -364,6 +366,44 @@ it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {
   scroll.mockRestore(); by.mockRestore()
 })
 
+it('M apre e chiude la sezione immagini, anche in zen', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const button = document.createElement('button')
+  button.className = 'rt-unit-images-button'
+  button.dataset.unitImages = '1.1'
+  let opened = false
+  const slot = document.createElement('div')
+  slot.className = 'rt-image-strip-slot'
+  slot.dataset.unitImages = '1.1'
+  slot.hidden = true
+  button.onclick = () => {
+    opened = !opened
+    slot.hidden = !opened
+  }
+  text.before(button)
+  text.before(slot)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(false)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(true)
+
+  fireEvent.keyDown(window, { key: 'z' })
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(false)
+
+  fireEvent.keyDown(window, { key: 'm' })
+  expect(slot.hidden).toBe(true)
+
+  button.remove()
+  slot.remove()
+})
+
 it('il triplo clic non seleziona il paragrafo', async () => {
   renderStudy()
   await waitFor(() => expect(api.list).toHaveBeenCalled())
@@ -415,3 +455,43 @@ it('la zen condivisa resta accesa quando la route rimonta il flusso', async () =
   view.rerender(renderFlow('seconda-lezione'))
   expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
 })
+
+it('il gruppo degli strumenti dello Studio si apre al passaggio del mouse e si chiude dopo 3 s', () => {
+  vi.useFakeTimers()
+  renderStudy()
+  const toggle = screen.getByTestId('study-tools-toggle')
+  expect(toggle).toBeVisible()
+  expect(toggle).toHaveAttribute('aria-label', 'Strumenti')
+  const toolsGroup = screen.getByTestId('highlight-tools')
+  expect(toolsGroup).toHaveClass('hidden')
+
+  // Hovering opens the group
+  fireEvent.pointerEnter(toggle.parentElement!)
+  expect(screen.queryByTestId('study-tools-toggle')).not.toBeInTheDocument()
+  expect(toolsGroup).not.toHaveClass('hidden')
+  expect(screen.getByTestId('highlight-clear')).toBeInTheDocument()
+
+  // Leaving starts 3s delay
+  fireEvent.pointerLeave(toolsGroup.parentElement!)
+  act(() => { vi.advanceTimersByTime(2900) })
+  expect(toolsGroup).not.toHaveClass('hidden')
+
+  act(() => { vi.advanceTimersByTime(200) })
+  expect(toolsGroup).toHaveClass('hidden')
+  expect(screen.getByTestId('study-tools-toggle')).toBeVisible()
+
+  // Keyboard shortcut works even when closed and updates closed icon/state
+  fireEvent.keyDown(window, { key: 'e' })
+  const toggleActive = screen.getByTestId('study-tools-toggle')
+  expect(toggleActive).toBeVisible()
+  expect(toggleActive.querySelector('.rt-hl-0')).toBeInTheDocument()
+
+  // Clicking toggle opens it
+  fireEvent.click(toggleActive)
+  expect(toolsGroup).not.toHaveClass('hidden')
+
+  // Esc closes it immediately
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(toolsGroup).toHaveClass('hidden')
+})
+

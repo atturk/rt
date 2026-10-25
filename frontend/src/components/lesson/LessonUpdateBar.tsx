@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { useHoverExpand } from '@/lib/useHoverExpand'
 
 export interface LessonUpdateBarProps {
   lessonId: number
@@ -30,8 +31,8 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
 
   // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga.
   const [dismissedAt, setDismissedAt] = useState<string | null>(null)
-  // Aperto col clic (anche al tocco, dove non c'è passaggio del mouse): mostra Estendi e Ricostruisci.
-  const [splitOpen, setSplitOpen] = useState(false)
+  // Aperto al passaggio del mouse o col clic (anche al tocco o da tastiera): mostra Estendi e Ricostruisci.
+  const { open: splitOpen, setOpen: setSplitOpen, ref: expandRef } = useHoverExpand<HTMLDivElement>()
   const splitRef = useRef<HTMLDivElement>(null)
   const [confirmRebuildOpen, setConfirmRebuildOpen] = useState(false)
   const [confirmPrimary, setConfirmPrimary] = useState<{ open: boolean; audioId: string | null }>({
@@ -198,8 +199,8 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
 
           {/* Al passaggio del mouse Aggiorna si divide; al tocco o con la tastiera lo divide il clic,
               che quindi non avvia mai Estendi da solo. */}
-          <div className="group/split relative flex items-center gap-0.5">
-            <div className={cn('flex group-hover/split:hidden', splitOpen && 'hidden')}>
+          <div ref={expandRef} className="relative flex items-center gap-0.5">
+            <div className={cn('flex', splitOpen && 'hidden')}>
               <Button
                 variant="outline"
                 size="sm"
@@ -218,7 +219,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
             </div>
             <div
               ref={splitRef}
-              className={cn('hidden items-center gap-0.5 group-hover/split:flex', splitOpen && 'flex')}
+              className={cn('hidden items-center gap-0.5', splitOpen && 'flex')}
               data-testid="bar-split"
             >
               <IconButton

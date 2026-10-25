@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 
 import type { LessonImage } from '@/api/images'
 import { MediaGallery } from './MediaGallery'
+import { flashAndScroll } from './mediaGalleryUtils'
 import { MediaSelectionBar } from './MediaSelectionBar'
 
 const mockImages: LessonImage[] = [
@@ -518,4 +519,75 @@ describe('MediaSelectionBar', () => {
     fireEvent.click(screen.getByLabelText(/^Elimina dalla lezione$/i))
     expect(onDelete).toHaveBeenCalled()
   })
+
+  it('rt-media-select su un gruppo chiuso apre il gruppo, scorre con block: center e aggiunge rt-media-flash', async () => {
+    render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set()}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    // Chiudi il gruppo Documento1.pdf
+    const toggleButton = screen.getByRole('button', { name: /Documento1\.pdf/ })
+    fireEvent.click(toggleButton)
+    expect(screen.queryByTestId('media-cell-source1-p1.png')).toBeNull()
+
+    // Prepara mock scroll
+    const scrollMock = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollMock
+
+    // Invia rt-media-select
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('rt-media-select', { detail: { name: 'source1-p1.png' } }),
+      )
+      await new Promise((r) => setTimeout(r, 10))
+    })
+
+    const cell = await screen.findByTestId('media-cell-source1-p1.png')
+    expect(cell).toBeInTheDocument()
+    expect(cell).toHaveClass('rt-media-flash')
+    expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+  })
+
+  it('flashAndScroll aggiunge e rimuove la classe rt-media-flash senza modificare lo scroll della finestra', () => {
+    const container = document.createElement('div')
+    container.className = 'rt-panel-container'
+    container.style.overflowY = 'auto'
+    container.style.height = '400px'
+    const scrollToMock = vi.fn()
+    container.scrollTo = scrollToMock
+    document.body.appendChild(container)
+
+    const cell = document.createElement('div')
+    cell.setAttribute('data-testid', 'media-cell-flash')
+    const btn = document.createElement('button')
+    cell.appendChild(btn)
+    container.appendChild(cell)
+
+    window.scrollY = 200
+    const initialWindowScroll = window.scrollY
+
+    flashAndScroll(cell)
+
+    expect(cell).toHaveClass('rt-media-flash')
+    expect(btn).toHaveClass('rt-media-flash')
+    expect(window.scrollY).toBe(initialWindowScroll)
+    expect(scrollToMock).toHaveBeenCalled()
+
+    fireEvent.animationEnd(cell)
+    expect(cell).not.toHaveClass('rt-media-flash')
+    expect(btn).not.toHaveClass('rt-media-flash')
+    expect(window.scrollY).toBe(initialWindowScroll)
+
+    container.remove()
+  })
 })
+

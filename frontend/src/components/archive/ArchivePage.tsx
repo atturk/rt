@@ -50,6 +50,34 @@ const color = (id: number | null) =>
   id === null ? '#cbd5e1' : ['#5d8dc5', '#b47d9e', '#70a695', '#b79b58', '#9386bb'][id % 5]
 const imageUrl = (sha: string, n: number, version = 0) => `/api/v1/archive/${sha}/pages/${n}.png?v=${version}`
 
+function ArchiveListSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Carico l'archivio" role="status" className="space-y-2">
+      {[70, 50, 65, 45, 60, 55].map((w, i) => (
+        <div key={i} className="flex min-h-14 items-center gap-3 rounded-lg p-3">
+          <div className="rt-shimmer size-5 shrink-0 rounded" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="rt-shimmer h-4 rounded" style={{ width: `${w}%` }} />
+            <div className="rt-shimmer h-3 w-1/3 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ArchiveDetailSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Carico l'archivio" role="status" className="space-y-4">
+      <div className="rt-shimmer h-64 w-full rounded-lg" />
+      <div className="space-y-2">
+        <div className="rt-shimmer h-4 w-3/4 rounded" />
+        <div className="rt-shimmer h-3 w-1/2 rounded" />
+      </div>
+    </div>
+  )
+}
+
 export function ArchivePage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -57,13 +85,21 @@ export function ArchivePage() {
   const lessons = useLessons()
   const [subject, setSubject] = useState<string | null>(null)
   const materia = subject ?? lessons.data?.find((l) => l.id === origin)?.materia ?? ''
+  const isMateriaReady = !origin || subject !== null || Boolean(lessons.data)
   const [kind, setKind] = useState('')
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query), 250)
+    return () => clearTimeout(handle)
+  }, [query])
+
   const [chosen, setChosen] = useState<string | null>(params.get('file'))
   const files = useQuery({
-    queryKey: ['archive', 'list', materia, kind, query],
+    queryKey: ['archive', 'list', materia, kind, debouncedQuery],
     queryFn: () =>
-      archiveFilesApi.list({ materia: materia || undefined, tipo: kind || undefined, q: query || undefined }),
+      archiveFilesApi.list({ materia: materia || undefined, tipo: kind || undefined, q: debouncedQuery || undefined }),
+    enabled: isMateriaReady,
   })
   const subjects = [...new Set((lessons.data ?? []).map((l) => l.materia).filter(Boolean))].sort()
   const sha = chosen ?? files.data?.[0]?.impronta
@@ -141,13 +177,14 @@ export function ArchivePage() {
       {files.error && <Alert tone="danger">{errorMessage(files.error)}</Alert>}
       <div ref={root} className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div className="min-w-0 flex-1 overflow-auto pr-3 md:min-w-[300px]" aria-label="File dell'archivio">
-          {files.data?.length === 0 && (
+          {files.isPending && <ArchiveListSkeleton />}
+          {!files.isPending && files.data?.length === 0 && (
             <div className="flex flex-col items-center gap-2 p-12 text-muted-foreground">
               <Archive className="size-8" />
               <span>Nessun file</span>
             </div>
           )}
-          {files.data?.map((file) => {
+          {!files.isPending && files.data?.map((file) => {
             const Icon = icons[file.tipo as keyof typeof icons] ?? FileText
             return (
               <button
@@ -301,7 +338,7 @@ function ArchiveDetailPanel({
     void act(action, after).catch(() => {})
   }
   if (query.error) return <Alert tone="danger">{errorMessage(query.error)}</Alert>
-  if (!detail) return <span role="status" aria-label="Caricamento" />
+  if (query.isPending || !detail) return <ArchiveDetailSkeleton />
   const allIgnored = chosen.every((n) => detail.pagine.find((p) => p.numero === n)?.ignorata)
   const crop = () => {
     if (chosen.length === 1) {

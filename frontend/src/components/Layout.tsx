@@ -1,3 +1,4 @@
+import { clearLastClosedLessonId } from '@/lib/lastClosedLesson'
 import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
@@ -95,6 +96,13 @@ export function Layout() {
     // L'indirizzo vive solo nella sessione di navigazione: una ricarica usa Lezioni.
     // oxlint-disable-next-line react/set-state-in-effect
     setReturnAddress(previous => rememberReturnAddress(previous, location))
+    if (
+      location.pathname !== '/' &&
+      location.pathname !== '/lezioni' &&
+      !/^\/lezioni\/\d+/.test(location.pathname)
+    ) {
+      clearLastClosedLessonId()
+    }
   }, [location])
   const [newLessonOptions, setNewLessonOptions] = useState<NewLessonOptions | null>(null)
   const openNewLesson = useCallback((options?: NewLessonOptions | unknown) => {

@@ -741,6 +741,104 @@
         "title": "BatchOut",
         "type": "object"
       },
+      "BatchPipelineQueued": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "job_id"
+        ],
+        "title": "BatchPipelineQueued",
+        "type": "object"
+      },
+      "BatchPipelineRequest": {
+        "properties": {
+          "lesson_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Lesson Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "run",
+            "enum": [
+              "run",
+              "force",
+              "reingest"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "with_review": {
+            "default": false,
+            "title": "With Review",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lesson_ids"
+        ],
+        "title": "BatchPipelineRequest",
+        "type": "object"
+      },
+      "BatchPipelineResult": {
+        "properties": {
+          "queued": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPipelineQueued"
+            },
+            "title": "Queued",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPipelineSkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped"
+        ],
+        "title": "BatchPipelineResult",
+        "type": "object"
+      },
+      "BatchPipelineSkipped": {
+        "properties": {
+          "lesson_id": {
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "motivo": {
+            "enum": [
+              "Lezione in lavorazione",
+              "Ripartenza da capo non disponibile",
+              "Lezione non trovata"
+            ],
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "motivo"
+        ],
+        "title": "BatchPipelineSkipped",
+        "type": "object"
+      },
       "Body_add_images_api_v1_lessons__lesson_id__images_post": {
         "properties": {
           "files": {
@@ -1779,6 +1877,51 @@
         "title": "CalendarLinkLessonRequest",
         "type": "object"
       },
+      "CalendarMissingLessons": {
+        "properties": {
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarMissingSubject"
+            },
+            "title": "Subjects",
+            "type": "array"
+          }
+        },
+        "title": "CalendarMissingLessons",
+        "type": "object"
+      },
+      "CalendarMissingSubject": {
+        "properties": {
+          "materia": {
+            "title": "Materia",
+            "type": "string"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarToRecoverItem"
+            },
+            "title": "Missing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "materia",
+          "missing"
+        ],
+        "title": "CalendarMissingSubject",
+        "type": "object"
+      },
       "CalendarOverrideCreate": {
         "properties": {
           "action": {
@@ -2051,6 +2194,26 @@
           "weeks"
         ],
         "title": "CalendarPasteResult",
+        "type": "object"
+      },
+      "CalendarPeriodStart": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "description": "Data YYYY-MM-DD",
+                "maxLength": 10,
+                "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          }
+        },
+        "title": "CalendarPeriodStart",
         "type": "object"
       },
       "CalendarSchedule": {
@@ -2387,6 +2550,11 @@
             "title": "Day Of Week",
             "type": "integer"
           },
+          "docente": {
+            "default": "",
+            "title": "Docente",
+            "type": "string"
+          },
           "end_time": {
             "title": "End Time",
             "type": "string"
@@ -2427,6 +2595,11 @@
           "hours_total": {
             "title": "Hours Total",
             "type": "number"
+          },
+          "is_period_start": {
+            "default": false,
+            "title": "Is Period Start",
+            "type": "boolean"
           },
           "modified_hours_count": {
             "title": "Modified Hours Count",
@@ -4378,6 +4551,13 @@
             "title": "End Segment Id",
             "type": "string"
           },
+          "immagini_sezione": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini Sezione",
+            "type": "array"
+          },
           "relevance": {
             "anyOf": [
               {
@@ -6202,6 +6382,12 @@
             "title": "Materia",
             "type": "string"
           },
+          "media_count": {
+            "default": 0,
+            "description": "Numero di media/immagini della lezione",
+            "title": "Media Count",
+            "type": "integer"
+          },
           "ora": {
             "default": "",
             "title": "Ora",
@@ -6835,6 +7021,12 @@
             "default": "",
             "title": "Materia",
             "type": "string"
+          },
+          "media_count": {
+            "default": 0,
+            "description": "Numero di media/immagini della lezione",
+            "title": "Media Count",
+            "type": "integer"
           },
           "ora": {
             "default": "",
@@ -9614,6 +9806,41 @@
         "title": "RecallVoteSettings",
         "type": "object"
       },
+      "RecreateLessonRequest": {
+        "properties": {
+          "argomenti": {
+            "default": "",
+            "title": "Argomenti",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "docente": {
+            "default": "",
+            "title": "Docente",
+            "type": "string"
+          },
+          "materia": {
+            "minLength": 1,
+            "title": "Materia",
+            "type": "string"
+          },
+          "ora": {
+            "default": "",
+            "pattern": "^(?:(?:[01]\\d|2[0-3]):[0-5]\\d)?$",
+            "title": "Ora",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "materia"
+        ],
+        "title": "RecreateLessonRequest",
+        "type": "object"
+      },
       "RemoveFromTextRequest": {
         "properties": {
           "image_names": {
@@ -11017,6 +11244,13 @@
             "title": "Id",
             "type": "string"
           },
+          "immagini_sezione": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini Sezione",
+            "type": "array"
+          },
           "last_read_at": {
             "anyOf": [
               {
@@ -11053,6 +11287,17 @@
             ],
             "description": "Inizio dell'unità nell'audio della lezione (secondi)",
             "title": "Start"
+          },
+          "start_formatted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Formatted"
           },
           "status": {
             "default": "da-imparare",
@@ -12320,21 +12565,6 @@
         "title": "WebSearchTestOut",
         "type": "object"
       },
-      "WorkerIn": {
-        "properties": {
-          "concurrency": {
-            "maximum": 4.0,
-            "minimum": 1.0,
-            "title": "Concurrency",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "concurrency"
-        ],
-        "title": "WorkerIn",
-        "type": "object"
-      },
       "WorkerInfo": {
         "properties": {
           "current_job_id": {
@@ -12402,11 +12632,6 @@
       },
       "WorkerSettings": {
         "properties": {
-          "concurrency": {
-            "description": "Job in parallelo del worker di 'rt web' (1-4, su lezioni diverse): vale dal prossimo avvio",
-            "title": "Concurrency",
-            "type": "integer"
-          },
           "running": {
             "default": 0,
             "description": "Worker attivi ora (uno per job eseguibile insieme)",
@@ -12414,9 +12639,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "concurrency"
-        ],
         "title": "WorkerSettings",
         "type": "object"
       }
@@ -14158,6 +14380,82 @@
         ]
       }
     },
+    "/api/v1/calendar/missing": {
+      "get": {
+        "operationId": "get_missing_lessons_api_v1_calendar_missing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarMissingLessons"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Missing Lessons",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
     "/api/v1/calendar/override": {
       "post": {
         "operationId": "create_override_api_v1_calendar_override_post",
@@ -14405,6 +14703,92 @@
           }
         ],
         "summary": "Paste Week",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
+    "/api/v1/calendar/period-start": {
+      "put": {
+        "operationId": "set_period_start_api_v1_calendar_period_start_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarPeriodStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarPeriodStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Period Start",
         "tags": [
           "calendar"
         ]
@@ -15771,6 +16155,103 @@
         ]
       }
     },
+    "/api/v1/jobs/{job_id}/recreate-lesson": {
+      "post": {
+        "operationId": "recreate_lesson_api_v1_jobs__job_id__recreate_lesson_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecreateLessonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Corregge i metadati di una lezione in conflitto riusando le fonti caricate",
+        "tags": [
+          "job"
+        ]
+      }
+    },
     "/api/v1/jobs/{job_id}/retry": {
       "post": {
         "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
@@ -16375,6 +16856,92 @@
         "summary": "Importa una lezione da audio (upload): job ingest_audio, o run_pipeline con run=true",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/batch/pipeline": {
+      "post": {
+        "operationId": "batch_pipeline_api_v1_lessons_batch_pipeline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchPipelineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPipelineResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accoda la pipeline per una selezione di lezioni",
+        "tags": [
+          "lezioni"
         ]
       }
     },
@@ -31315,92 +31882,6 @@
           }
         ],
         "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
-        "tags": [
-          "impostazioni"
-        ]
-      }
-    },
-    "/api/v1/settings/worker": {
-      "put": {
-        "operationId": "put_worker_api_v1_settings_worker_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkerIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Settings"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Autenticazione mancante o non valida"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "CSRF non valido"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Risorsa non trovata"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflitto (es. job in corso sulla lezione)"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Richiesta non valida"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Job in parallelo del worker avviato con la web (vale dal prossimo avvio)",
         "tags": [
           "impostazioni"
         ]

@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, ShieldCheck, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -26,6 +26,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
+import { MissingLessonsButton } from './MissingLessonsButton'
 import { SelectionDetails } from './SelectionDetails'
 
 const GROUP_ICONS = { data: Calendar, mese: CalendarRange, materia: Tag, docente: User, nessuno: List } as const
@@ -220,13 +221,14 @@ function StatusDot({ status }: { status: LessonStatus }) {
   )
 }
 
-export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect }: {
+export function LessonRow({ lesson, grouping, running, selecting, selected, onSelect, highlighted }: {
   lesson: Lesson
   grouping: LessonsGrouping
   running: boolean
   selecting: boolean
   selected: boolean
   onSelect: (checked: boolean) => void
+  highlighted?: boolean
 }) {
   const title = lessonTitle(lesson)
   const subtitle = lessonSubtitle(lesson, grouping)
@@ -245,19 +247,18 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
   )
   // In selezione la riga è un'etichetta della casella (niente controlli dentro un link).
   return (
-    <li data-testid="lesson-row" data-lesson-id={lesson.id}>
+    <li data-testid="lesson-row" data-lesson-id={lesson.id} data-highlighted={highlighted ? 'true' : undefined}>
       {selecting ? (
         <label className={cn(row, 'cursor-pointer', selected && 'bg-accent/40')}>
           <Checkbox className="mt-0.5" label={`Seleziona ${title}`} checked={selected} onChange={onSelect} />
           {text}
         </label>
       ) : (
-        <div className={row}>
+        <div className={cn(row, highlighted ? 'bg-accent' : 'transition-colors duration-500 motion-reduce:transition-none')}>
           <StatusDot status={lessonStatus(lesson, running)} />
           {text}
-          <div className="relative z-1 flex shrink-0 self-center items-center max-md:flex-col" data-testid="lesson-indicators">
+          <div className="relative z-1 flex shrink-0 self-center items-center" data-testid="lesson-indicators">
             <div className="flex size-[34px] items-center justify-center max-md:size-10"><StudyRing lesson={lesson} /></div>
-            <div className="flex size-[34px] items-center justify-center max-md:size-10"><ReviewShield lesson={lesson} /></div>
           </div>
         </div>
       )}
@@ -276,22 +277,14 @@ export function StudyRing({ lesson }: { lesson: Lesson }) {
   const learnedArc = total ? learned / total * 100 : 0
   const learningArc = total ? learning / total * 100 : 0
   const label = `${learned} ${learned === 1 ? 'appresa' : 'apprese'} · ${Math.max(0, total - learned - ignored)} da apprendere · ${ignored} ${ignored === 1 ? 'ignorata' : 'ignorate'}`
-  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="relative flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
     <svg width="19" height="19" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[2.6]">
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-track" />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learned" strokeDasharray={`${Math.max(0, learnedArc - 3)} ${100 - Math.max(0, learnedArc - 3)}`} />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learning" strokeDasharray={`${Math.max(0, learningArc - 3)} ${100 - Math.max(0, learningArc - 3)}`} strokeDashoffset={-learnedArc} />
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
     </svg>
-  </Link>}</Tooltip>
-}
-
-function ReviewShield({ lesson }: { lesson: Lesson }) {
-  if (lesson.phases.rewrite !== 'VALID') return null
-  const done = lesson.phases.review === 'VALID' && lesson.pending_issues === 0
-  const label = done ? 'Verifica fatta' : `Verifica da fare${lesson.pending_issues > 0 ? ` · ${lesson.pending_issues} issue da decidere` : ''}`
-  return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/lezioni/${lesson.id}?panel=verifica`} aria-label={label} data-testid="lesson-review-shield" className="flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
-    <ShieldCheck aria-hidden className={cn('size-[19px]', done ? 'text-study-learned' : 'text-study-learning')} />
+    {total > 0 && learned + learning + ignored >= total && <Check data-testid="lesson-study-complete" aria-hidden className="absolute size-2.5 text-study-learned" strokeWidth={1.5} />}
   </Link>}</Tooltip>
 }
 
@@ -314,20 +307,21 @@ function GroupHeader({ group, grouping, selecting, selectedCount, onSelectGroup 
           onChange={onSelectGroup}
         />
       )}
-      <h2 className="min-w-0 flex-1 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}</h2>
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-meta font-semibold uppercase tracking-[.05em] text-muted-foreground">{label}{grouping !== 'nessuno' && <MissingLessonsButton grouping={grouping} groupKey={group.key} />}</h2>
     </div>
   )
 }
 
 // ---------------------------------------------------------------- elenco e selezione
 
-export function LessonsList({ groups, grouping, running, selecting, selected, onSelected }: {
+export function LessonsList({ groups, grouping, running, selecting, selected, onSelected, highlightedLessonId }: {
   groups: LessonGroup[]
   grouping: LessonsGrouping
   running: Set<number>
   selecting: boolean
   selected: Set<number>
   onSelected: (next: Set<number>) => void
+  highlightedLessonId?: number | null
 }) {
   const background = useSettings().data?.preferences?.sfondo_gruppi
   const toggle = (ids: number[], on: boolean) => {
@@ -368,6 +362,7 @@ export function LessonsList({ groups, grouping, running, selecting, selected, on
                 selecting={selecting}
                 selected={selected.has(lesson.id)}
                 onSelect={(on) => toggle([lesson.id], on)}
+                highlighted={lesson.id === highlightedLessonId}
               />
             ))}
           </ul>
@@ -463,7 +458,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
       </div>
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
-      <SelectionDetails lessons={lessons} open={detailsOpen} onClose={() => setDetailsOpen(false)} />
+      {detailsOpen && <SelectionDetails lessons={lessons} open onClose={() => setDetailsOpen(false)} />}
       {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
       {exportJob?.state === 'succeeded' && (
         <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>

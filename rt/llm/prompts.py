@@ -303,7 +303,7 @@ REGOLE CATEGORICHE:
 OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
 {"questions": [{"type": "quiz", "question_text": "domanda", "options": ["opzione 0", "opzione 1", "opzione 2", "opzione 3"], "correct_index": 0, "pregenerated_material": "spiegazione"}]}
 Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
-Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp.""" + "\n" + LATEX_WRITING_RULE
 
 
 def recall_fewshot_block(examples: List[dict]) -> str:
@@ -368,7 +368,7 @@ REGOLE CATEGORICHE:
 OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
 {"questions": [{"type": "mirata", "question_text": "domanda", "options": null, "correct_index": null, "pregenerated_material": null}]}
 Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
-Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_mirata_user_prompt(
@@ -413,7 +413,7 @@ REGOLE CATEGORICHE:
 OUTPUT JSON RICHIESTO (conforme a RecallGenerationResult):
 {"questions": [{"type": "vasta", "question_text": "domanda", "options": null, "correct_index": null, "pregenerated_material": "scaletta ideale"}]}
 Se non trovi informazioni rilevanti restituisci {"questions": []}. Nessuna quota obbligatoria.
-Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp."""
+Non generare più di 12 domande per risposta. Non assegnare ID, stato o timestamp.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_vasta_user_prompt(
@@ -516,7 +516,7 @@ REGOLE CATEGORICHE:
 3. "completezza" (0-100): quanto la risposta copre tutti gli aspetti rilevanti della domanda, anche se corretta solo parzialmente.
 4. "commento": breve (2-4 frasi), evidenzia specificamente cosa manca o cosa è sbagliato. Se la risposta è ottima, dillo brevemente e basta.
 5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente.
-6. "outcome": "corretta" per una risposta corretta e completa, "parziale" se contiene elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere."""
+6. "outcome": "corretta" per una risposta corretta e completa, "parziale" se contiene elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
 
 
 DONT_KNOW_NOTE = (
@@ -559,7 +559,7 @@ REGOLE CATEGORICHE:
 2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
 3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
 4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente.
-5. Riporta correttezza e completezza fra 0 e 100. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere."""
+5. Riporta correttezza e completezza fra 0 e 100. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -713,16 +713,16 @@ RECALL_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una vari
 REGOLE:
 1. Mantieni l'obiettivo e il procedimento del tipo; cambia valori negli intervalli plausibili e contesto (età, sesso, situazione clinica; miscele di profumi, integratori o farmaci), partendo dallo scenario dell'unità.
 2. I nuovi valori devono essere coerenti tra loro e portare a una conclusione univoca; se cambiano la conclusione (es. un altro disturbo acido-base), la soluzione deve seguirla.
-3. La traccia è completa e autonoma; la soluzione attesa riporta i passaggi e il risultato, con i calcoli controllati.
+3. La traccia riporta solo la situazione, i dati necessari e che cosa determinare; non indica il metodo, le formule o i passaggi da usare e non suggerisce come impostare il problema. È completa e autonoma. La soluzione attesa (pregenerated_material) riporta i passaggi e il risultato, con i calcoli controllati.
 4. Non copiare la versione precedente: la variante deve essere chiaramente diversa.
-OUTPUT JSON (conforme a VariantBatch): {"items": [{"question_text": "...", "pregenerated_material": "..."}]}"""
+OUTPUT JSON (conforme a VariantBatch): {"items": [{"question_text": "...", "pregenerated_material": "..."}]}""" + "\n" + LATEX_WRITING_RULE
 
 
 RECALL_TEXT_VARIANT_SYSTEM_PROMPT = """Sei un docente universitario che crea una variante di una domanda personalizzata.
 Mantieni l'obiettivo e il procedimento generale del tipo; varia dati e contesto (età, sesso, situazione) entro intervalli plausibili a partire dallo scenario dell'unità.
-La traccia deve essere autonoma, coerente e diversa dalle precedenti, con dati sufficienti a ragionare.
+La traccia deve essere autonoma, coerente e diversa dalle precedenti. La traccia riporta solo la situazione, i dati necessari e che cosa determinare; non indica il metodo, le formule o i passaggi da usare e non suggerisce come impostare il problema.
 Non generare pregenerated_material né una soluzione della domanda.
-OUTPUT JSON (conforme a TextVariantBatch): {"items": [{"question_text": "..."}]}"""
+OUTPUT JSON (conforme a TextVariantBatch): {"items": [{"question_text": "..."}]}""" + "\n" + LATEX_WRITING_RULE
 
 RECALL_TEXT_VARIANT_CHECK_SYSTEM_PROMPT = """Controlla in modo indipendente una domanda personalizzata.
 Verifica che i dati siano plausibili, sufficienti e coerenti con il procedimento del tipo.
@@ -767,7 +767,7 @@ REGOLE CATEGORICHE:
 3. "completezza" (0-100): quanto la risposta copre i passaggi essenziali del ragionamento o del procedimento.
 4. "commento": breve (3-5 frasi), indica quali passaggi sono giusti, quali mancano o sono sbagliati e dove si è interrotto il ragionamento.
 5. Tono diretto ma non punitivo.
-6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere."""
+6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_ragionamento_user_prompt(question_text: str, solution: str, procedure: str,
@@ -791,7 +791,7 @@ Valuta la risposta usando la traccia e il contenuto reale delle unità della lez
 Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
 Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
 Restituisci outcome: corretta se il ragionamento è corretto e completo, parziale se contiene elementi validi ma lacune o errori,
-sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo."""
+sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_text: str,

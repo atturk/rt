@@ -7,7 +7,7 @@ import { test, apiGet, authHeaders, loginViaLink } from './support'
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
 
-type Lesson = { id: number; materia: string; data: string; docente: string; titolo: string; folder_name: string; phases: Record<string, string> }
+type Lesson = { id: number; materia: string; data: string; docente: string; titolo: string; folder_name: string; phases: Record<string, string>; pending_issues: number }
 
 const ids = (rows: import('@playwright/test').Locator) => rows.evaluateAll((r) => r.map((el) => Number(el.getAttribute('data-lesson-id'))))
 
@@ -291,22 +291,16 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
       await page.goto('/')
       const row = page.locator(`[data-testid=lesson-row][data-lesson-id="${l.id}"]`)
       const ring = row.getByTestId('lesson-study-ring')
-      const shield = row.getByTestId('lesson-review-shield')
       const ringBox = (await ring.boundingBox())!
-      const shieldBox = (await shield.boundingBox())!
+      const verified = l.phases.review === 'VALID' && l.pending_issues === 0
+      if (verified) {
+        await expect(row.getByTestId('lesson-subtitle')).toContainText('Verificato')
+      }
       const title = row.locator('a').filter({ hasText: l.titolo }).first()
       const titleBox = (await title.boundingBox())!
       expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(ringBox.x)
-      if (width === 390) {
-        expect(Math.abs(ringBox.x - shieldBox.x)).toBeLessThan(1)
-        expect(shieldBox.y).toBeGreaterThan(ringBox.y)
-      } else expect(Math.abs(ringBox.y - shieldBox.y)).toBeLessThan(1)
       await ring.click()
       await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
-      await page.goto('/')
-      await shield.click()
-      await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}\\?panel=verifica$`))
-      await expect(page.locator('[data-testid=lesson-panel][data-view=verifica]')).toBeVisible()
       await page.goto('/')
       await title.click()
       await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}$`))
@@ -315,3 +309,82 @@ test('anello, scudo e titolo aprono le destinazioni e su iPhone restano in colon
     await page.request.put(`/api/v1/lessons/${l.id}/study/units/${unit.id}`, { headers: authHeaders(), data: { status: unit.status } })
   }
 })
+
+test('Avviso lezioni mancanti: suggerimento al passaggio del mouse, elenco al clic', async ({ page }) => {
+  await loginViaLink(page)
+  await page.route('**/api/v1/calendar/missing', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        start: '2026-10-01',
+        subjects: [
+          {
+            materia: 'STUDIO',
+            missing: [
+              {
+                key: 'missing_1',
+                date: '2026-10-12',
+                day_of_week: 0,
+                day_name: 'Lun',
+                day_number: 12,
+                month_number: 10,
+                materia: 'STUDIO',
+                docente: '',
+                start_time: '09:00',
+                end_time: '11:00',
+              },
+            ],
+          },
+        ],
+      }),
+    })
+  })
+  await page.goto('/')
+  // Imposta raggruppamento per materia
+  await page.getByRole('button', { name: 'Per materia' }).click()
+  const warnBtn = page.getByTestId('missing-lessons-button').first()
+  await expect(warnBtn).toBeVisible()
+
+  // Al passaggio del mouse solo il suggerimento; il popup si apre col clic
+  await warnBtn.hover()
+  const popup = page.getByTestId('missing-lessons-popup')
+  await expect(page.getByRole('tooltip')).toContainText('1 lezioni mancanti')
+  await expect(popup).toHaveCount(0)
+  await warnBtn.click()
+  await expect(popup).toBeVisible()
+  await expect(popup).toContainText('Lun 12/10')
+  await expect(popup).toContainText('09:00–11:00')
+
+  // Cliccando fuori si chiude subito
+  await page.mouse.click(10, 10)
+  await expect(popup).not.toBeVisible()
+})
+
+test('ritorno a Lezioni da una lezione: la riga è visibile e evidenziata per 2 s', async ({ page }) => {
+  await loginViaLink(page)
+  await page.goto('/')
+  const rows = page.getByTestId('lesson-row')
+  await expect(rows.first()).toBeVisible()
+  const targetRow = rows.last()
+  const targetId = await targetRow.getAttribute('data-lesson-id')
+  expect(targetId).toBeTruthy()
+
+  // Apri la lezione in fondo alla lista
+  await targetRow.getByRole('link').click()
+  await expect(page).toHaveURL(new RegExp(`/lezioni/${targetId}`))
+
+  // Torna con l'icona della barra laterale
+  await page.getByRole('link', { name: 'Lezioni' }).first().click()
+  await expect(page).toHaveURL(/\/$/)
+
+  // La riga è visibile e ha l'attributo dell'evidenziazione
+  const rowAfterReturn = page.locator(`[data-testid="lesson-row"][data-lesson-id="${targetId}"]`)
+  await expect(rowAfterReturn).toBeVisible()
+  await expect(rowAfterReturn).toHaveAttribute('data-highlighted', 'true')
+
+  // L'evidenziazione sparisce dopo 2 s
+  await expect(rowAfterReturn).not.toHaveAttribute('data-highlighted', { timeout: 3500 })
+})
+
+

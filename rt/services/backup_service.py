@@ -232,7 +232,7 @@ def create_backup(dest: Optional[str] = None, say: Callable[[str], None] = print
 
 
 def export_backup(snapshot: str, target_zip: str,
-                  progress: Optional[Callable[[str, int, int], None]] = None) -> str:
+                  progress: Optional[Callable[[str, int, int], None]] = None, *, segreti: bool = False) -> str:
     import zipfile
     snap = resolve_snapshot(snapshot)
     if not os.path.isdir(snap):
@@ -264,6 +264,8 @@ def export_backup(snapshot: str, target_zip: str,
         for f in sorted(files):
             full = os.path.join(root, f)
             rel = os.path.relpath(full, snap).replace(os.sep, "/")
+            if not segreti and rel == 'config/secrets.enc':
+                continue
             arcname = f"{snap_base}/{rel}"
             files_to_pack.append((full, arcname, os.path.getsize(full)))
 
@@ -277,7 +279,15 @@ def export_backup(snapshot: str, target_zip: str,
         media_arcname = f"{STORE}/{sha[:2]}/{sha}"
         files_to_pack.append((media_full, media_arcname, os.path.getsize(media_full)))
 
-    total_bytes = sum(sz for _, _, sz in files_to_pack)
+    replacements = {}
+    if not segreti:
+        manifest['segreti'] = False
+        replacements[f'{snap_base}/{MANIFEST}'] = json.dumps(manifest, ensure_ascii=False, indent=1).encode('utf-8')
+        env_path = os.path.join(snap, 'env')
+        if os.path.isfile(env_path):
+            with open(env_path, encoding='utf-8') as stream:
+                replacements[f'{snap_base}/env'] = _env_parts(stream.read(), secret=False).encode('utf-8')
+    total_bytes = sum(len(replacements[arc]) if arc in replacements else sz for _, arc, sz in files_to_pack)
     bytes_written = 0
     if progress:
         progress("copia", 0, total_bytes)
@@ -285,6 +295,13 @@ def export_backup(snapshot: str, target_zip: str,
     try:
         with zipfile.ZipFile(part_file, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
             for full, arcname, _size in files_to_pack:
+                if arcname in replacements:
+                    payload = replacements[arcname]
+                    zf.writestr(arcname, payload)
+                    bytes_written += len(payload)
+                    if progress:
+                        progress('copia', bytes_written, total_bytes)
+                    continue
                 with open(full, "rb") as src_f, zf.open(arcname, "w") as dst_f:
                     while True:
                         chunk = src_f.read(1024 * 1024)
@@ -369,7 +386,8 @@ def resolve_snapshot(path: str) -> str:
     raise BackupError(f"Nessun backup di RT in {path}.")
 
 
-def restore_backup(source: str, say: Callable[[str], None] = print, check_services: bool = True) -> str:
+def restore_backup(source: str, say: Callable[[str], None] = print, check_services: bool = True,
+                   progress: Optional[Callable[[str, int, int], None]] = None) -> str:
     """Ripristina un backup nella cartella dati attiva. DB, config e .env attuali vengono
     prima spostati in <dati>/backups/prima-del-ripristino-<data>. Restituisce quella cartella."""
     import zipfile
@@ -379,6 +397,7 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
     tmp_restore: Optional[str] = None
     try:
         if os.path.isfile(snap) and (snap.lower().endswith(".zip") or zipfile.is_zipfile(snap)):
+            inspect_backup_zip(snap)
             stamp = time.strftime("%Y%m%d-%H%M%S")
             tmp_restore = os.path.join(paths.data_dir(), "backups", f"tmp-restore-{stamp}-{os.getpid()}")
             os.makedirs(tmp_restore, exist_ok=True)
@@ -401,6 +420,10 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
             manifest = json.load(f)
         if int(manifest.get("format", 0)) > FORMAT:
             raise BackupError("Il backup viene da una versione di RT più recente: aggiorna RT prima.")
+        _validate_manifest(manifest)
+        portable = manifest.get('segreti') is False
+        if not os.path.isfile(os.path.join(snap, manifest['database'])):
+            raise BackupError('Database mancante nel backup. Nulla è stato modificato.')
         store_root = os.path.dirname(snap)
         absent = [e["path"] for e in (manifest.get("media") or []) + (manifest.get("archivio") or [])
                   if not os.path.isfile(_store_path(store_root, e["sha256"]))]
@@ -423,8 +446,14 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         db_file = sqlite_file(url) if url else None
         stamp = time.strftime("%Y%m%d-%H%M%S")
         aside = os.path.join(data, "backups", f"prima-del-ripristino-{stamp}")
-        os.makedirs(aside, exist_ok=True)
+        if os.path.exists(aside):
+            import tempfile
+            aside = tempfile.mkdtemp(prefix=f'prima-del-ripristino-{stamp}-', dir=os.path.join(data, 'backups'))
+        else:
+            os.makedirs(aside)
 
+        if progress:
+            progress('database', 0, 1)
         # 1. database
         if manifest["database"] == "rt.db":
             if not db_file:
@@ -433,25 +462,61 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
             for suffix in ("", "-wal", "-shm"):
                 if os.path.exists(db_file + suffix):
                     shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))
+            if portable:
+                local_db = os.path.join(data, 'rt.db')
+                if os.path.abspath(local_db) != os.path.abspath(db_file):
+                    for suffix in ('', '-wal', '-shm'):
+                        if os.path.exists(local_db + suffix):
+                            shutil.move(local_db + suffix, os.path.join(aside, 'locale-rt.db' + suffix))
+                db_file = local_db
+                if 'RT_DATABASE_URL' in os.environ:
+                    os.environ['RT_DATABASE_URL'] = 'sqlite:///' + db_file
             os.makedirs(os.path.dirname(db_file), exist_ok=True)
             shutil.copy2(os.path.join(snap, "rt.db"), db_file)
         else:
             _pg_restore(url, os.path.join(snap, "rt.pgdump"))
         reset_database_cache()
         say("🗄  Database ripristinato.")
+        if progress:
+            progress('database', 1, 1)
 
         # 2. configurazione e .env
         home = paths.config_home()
-        if os.path.isdir(os.path.join(snap, "config")):
-            current = os.path.join(home, "config")
-            if os.path.isdir(current):
-                shutil.move(current, os.path.join(aside, "config"))
-            shutil.copytree(os.path.join(snap, "config"), current)
-        if os.path.isfile(os.path.join(snap, "env")):
-            current_env = os.path.join(home, ".env")
+        incoming_config = os.path.join(snap, 'config')
+        if os.path.isdir(incoming_config):
+            current = os.path.join(home, 'config')
+            if portable:
+                os.makedirs(current, exist_ok=True)
+                saved_config = os.path.join(aside, 'config')
+                os.makedirs(saved_config, exist_ok=True)
+                for name in os.listdir(current):
+                    if name != 'secrets.enc':
+                        shutil.move(os.path.join(current, name), os.path.join(saved_config, name))
+                shutil.copytree(incoming_config, current, dirs_exist_ok=True, ignore=shutil.ignore_patterns('secrets.enc'))
+            else:
+                if os.path.isdir(current):
+                    shutil.move(current, os.path.join(aside, 'config'))
+                shutil.copytree(incoming_config, current)
+        current_env = os.path.join(home, '.env')
+        incoming_env = os.path.join(snap, 'env')
+        if os.path.isfile(incoming_env):
+            old_env = ''
             if os.path.isfile(current_env):
-                shutil.move(current_env, os.path.join(aside, "env"))
-            shutil.copy2(os.path.join(snap, "env"), current_env)
+                with open(current_env, encoding='utf-8') as stream:
+                    old_env = stream.read()
+                shutil.copy2(current_env, os.path.join(aside, 'env'))
+            with open(incoming_env, encoding='utf-8') as stream:
+                imported_env = stream.read()
+            if portable:
+                imported_env = _env_parts(imported_env, secret=False).rstrip() + '\n' + _env_parts(old_env, secret=True)
+            with open(current_env, 'w', encoding='utf-8') as stream:
+                stream.write(imported_env)
+        if portable:
+            changed = _reset_imported_paths(home, data, manifest['database'] == 'rt.db')
+            if changed:
+                say('Percorsi ripristinati ai valori predefiniti: ' + ', '.join(changed) + '.')
+        if progress:
+            progress('config', 1, 1)
         if os.path.isdir(os.path.join(snap, "telegram-state")):
             from rt.core.config import load_config
             state_dir = load_config().telegram.state_dir
@@ -464,14 +529,21 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         from rt.db.engine import require_database
         from rt.storage import fs
         db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
+        if portable:
+            _relocate_imported_lessons(db)
         media_dir = fs.media_dir(db)
         copied = 0
-        for entry in manifest.get("media") or []:
+        media_entries = manifest.get('media') or []
+        for index, entry in enumerate(media_entries):
+            if progress:
+                progress('media', index, len(media_entries))
             target = os.path.join(media_dir, entry["path"])
             if os.path.isfile(target) and os.path.getsize(target) == entry["size"] and sha256_file(target) == entry["sha256"]:
                 continue
             _copy_atomic(_store_path(store_root, entry["sha256"]), target)
             copied += 1
+        if progress:
+            progress('media', len(media_entries), len(media_entries))
         for entry in manifest.get('archivio') or []:
             target = os.path.abspath(os.path.join(data, 'archivio', entry['path']))
             root = os.path.abspath(os.path.join(data, 'archivio'))
@@ -499,3 +571,151 @@ def _pg_restore(url: str, dump: str) -> None:
         raise BackupError("pg_restore non trovato: installa il client di PostgreSQL.") from exc
     except subprocess.CalledProcessError as exc:
         raise BackupError(f"pg_restore non riuscito: {exc.stderr.strip()}") from exc
+
+
+# ---------------------------------------------------------------- collezioni portabili (senza segreti)
+
+def _secret_name(name):
+    import re
+    return bool(re.search(r'(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD)(?:_\d+)?$', name.upper()))
+
+
+def _env_parts(text, *, secret):
+    from io import StringIO
+    from dotenv.parser import parse_stream
+    # Il parser conserva anche i valori multilinea: togliere solo la prima riga non basta.
+    return ''.join(binding.original.string for binding in parse_stream(StringIO(text))
+                   if bool(binding.key and _secret_name(binding.key)) == secret)
+
+
+def _validate_manifest(manifest):
+    import re
+    if not isinstance(manifest, dict) or not isinstance(manifest.get('format'), int) or manifest['format'] < 1:
+        raise BackupError('Manifest del backup non valido.')
+    if manifest['format'] > FORMAT:
+        raise BackupError('Il backup viene da una versione di RT più recente: aggiorna RT prima.')
+    if manifest.get('database') not in {'rt.db', 'rt.pgdump'}:
+        raise BackupError('Database del backup non valido.')
+    for entry in (manifest.get('media') or []) + (manifest.get('archivio') or []):
+        rel = entry.get('path', '').replace('\\', '/')
+        if not rel or rel.startswith('/') or ':' in rel or '..' in rel.split('/'):
+            raise BackupError('Percorso non sicuro nel manifest del backup.')
+        if not re.fullmatch('[a-f0-9]{64}', entry.get('sha256', '')):
+            raise BackupError('Hash non valido nel manifest del backup.')
+
+
+def inspect_backup_zip(source):
+    """Controllo rapido prima della conferma: non estrae e non modifica la collezione."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(source) as archive:
+            names = archive.namelist()
+            for name in names:
+                rel = name.replace('\\', '/')
+                if rel.startswith('/') or ':' in rel or '..' in rel.split('/'):
+                    raise BackupError(f'Percorso non sicuro nell’archivio di backup: {name}')
+            manifests = [name for name in names if name.count('/') == 1 and name.startswith(BACKUP_PREFIX) and name.endswith('/' + MANIFEST)]
+            if len(manifests) != 1:
+                raise BackupError('Nessun backup valido nello zip.')
+            if archive.getinfo(manifests[0]).file_size > 16 * 1024 * 1024:
+                raise BackupError('Manifest del backup troppo grande.')
+            manifest = json.loads(archive.read(manifests[0]))
+            _validate_manifest(manifest)
+            prefix = manifests[0].rsplit('/', 1)[0]
+            if prefix + '/' + manifest['database'] not in names:
+                raise BackupError('Database mancante nel backup.')
+            if manifest['database'] == 'rt.db':
+                with archive.open(prefix + '/rt.db') as stream:
+                    if stream.read(16) != b'SQLite format 3\x00':
+                        raise BackupError('Database SQLite del backup non valido.')
+            return manifest
+    except BackupError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as exc:
+        raise BackupError('Il file non contiene un backup valido di RT.') from exc
+
+
+def export_collection(target, *, confirm=None, say=print, progress=None):
+    from rt.db.engine import require_database
+    from rt.services.lesson_service import configured_lessons_root
+    from rt.storage.migrate import folder_lessons, migrate_storage
+    db = require_database()
+    folders = folder_lessons(db, configured_lessons_root())
+    if folders:
+        if confirm is None or not confirm(len(folders)):
+            return None
+        report = migrate_storage(configured_lessons_root(), backup_root=default_dest(), on_progress=say)
+        if report.errors:
+            raise BackupError('Migrazione delle lezioni non completata: ' + '; '.join(report.errors))
+    backup = create_backup(say=say, progress=progress)
+    return export_backup(backup.path, target, progress=progress, segreti=False)
+
+
+def _reset_imported_paths(home, data, sqlite):
+    import yaml
+    from dotenv.parser import parse_stream
+    from io import StringIO
+    from rt.core.config import RTConfig
+    defaults = RTConfig().model_dump()
+    changed = []
+    general = os.path.join(home, 'config', 'general.yaml')
+    if os.path.isfile(general):
+        with open(general, encoding='utf-8') as stream:
+            config = yaml.safe_load(stream) or {}
+        def reset(node, fallback, prefix=''):
+            for name, value in list(node.items()):
+                key = prefix + name
+                default = fallback.get(name) if isinstance(fallback, dict) else None
+                if isinstance(value, dict):
+                    reset(value, default, key + '.')
+                elif name.endswith(('_dir', '_root', '_path')) and isinstance(value, str) and value and not os.path.exists(os.path.expanduser(value)):
+                    node[name] = default
+                    changed.append(key)
+        reset(config, defaults)
+        if sqlite:
+            if config.get('database_url') != 'sqlite:///' + os.path.join(data, 'rt.db'):
+                changed.append('database_url')
+            config['database_url'] = 'sqlite:///' + os.path.join(data, 'rt.db')
+        with open(general, 'w', encoding='utf-8') as stream:
+            yaml.safe_dump(config, stream, allow_unicode=True, sort_keys=False)
+    env = os.path.join(home, '.env')
+    if os.path.isfile(env):
+        with open(env, encoding='utf-8') as stream:
+            text = stream.read()
+        lines = []
+        for binding in parse_stream(StringIO(text)):
+            name, value = binding.key, binding.value
+            if name == 'RT_DATABASE_URL' and sqlite:
+                lines.append('RT_DATABASE_URL=sqlite:///' + os.path.join(data, 'rt.db') + '\n')
+                changed.append(name)
+            elif name == 'RT_DATA_DIR' or (name and name.endswith(('_DIR', '_ROOT', '_PATH')) and value and not os.path.exists(os.path.expanduser(value))):
+                changed.append(name)
+            else:
+                lines.append(binding.original.string)
+        with open(env, 'w', encoding='utf-8') as stream:
+            stream.write(''.join(lines))
+    return changed
+
+
+
+def _relocate_imported_lessons(db):
+    """I percorsi virtuali del DB devono avere anche la sintassi del nuovo sistema operativo."""
+    from sqlalchemy import select
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    from rt.db.sync import relocate_path_keyed_rows
+    from rt.services.lesson_service import lessons_root
+    from rt.storage import fs
+    root = lessons_root()
+    with session_scope(db) as session:
+        for lesson in session.scalars(select(Lesson).where(Lesson.storage == 'db')):
+            # folder_name è il nome, anche quando path arriva da Windows su un Mac.
+            name = lesson.folder_name
+            if not name or '/' in name or '\\' in name or name in {'.', '..'}:
+                raise BackupError('Nome di lezione non valido nel backup.')
+            old = lesson.path
+            new = os.path.realpath(os.path.join(root, name))
+            if old != new:
+                lesson.path = new
+                relocate_path_keyed_rows(session, old, new)
+    fs.reset_cache()

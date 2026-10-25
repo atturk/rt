@@ -129,3 +129,24 @@ describe('BackupDialog', () => {
     expect(screen.getByRole('button', { name: 'Chiudi' })).toBeInTheDocument()
   })
 })
+
+it.each(['esporta', 'importa'] as const)('mostra avanzamento e riepilogo di %s senza API', async tipo => {
+  const restart = vi.fn(), reveal = vi.fn()
+  window.pywebview = { api: { salva_copia_backup: vi.fn(), riavvia_dopo_importazione: restart, mostra_esportazione: reveal } }
+  render(<BackupDialog />)
+  act(() => window.__rtBackup?.({ inizio: true, tipo }))
+  expect(screen.getByText(tipo === 'esporta' ? 'Esportazione in corso…' : 'Importazione in corso…')).toBeInTheDocument()
+  act(() => window.__rtBackup?.({ fase: 'media', fatto: 1, totale: 2, tipo }))
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+  act(() => window.__rtBackup?.({ fine: true, tipo, percorso: '/transfer', riepilogo: ['Dati salvati in /transfer'] }))
+  expect(screen.getByText(tipo === 'esporta' ? 'Collezione esportata' : 'Collezione importata')).toBeInTheDocument()
+  expect(screen.getByText('Dati salvati in /transfer')).toBeInTheDocument()
+  if (tipo === 'importa') {
+    await userEvent.click(screen.getByRole('button', { name: 'Riavvia RT' }))
+    expect(restart).toHaveBeenCalledOnce()
+  } else {
+    await userEvent.click(screen.getByRole('button', { name: /Mostra/ }))
+    expect(reveal).toHaveBeenCalledOnce()
+  }
+  delete window.pywebview
+})

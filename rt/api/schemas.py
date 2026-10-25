@@ -73,6 +73,7 @@ class LessonSummary(BaseModel):
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
+    media_count: int = Field(0, description="Numero di media/immagini della lezione")
     error: Optional[str] = None
 
 
@@ -153,6 +154,7 @@ class PhaseReport(BaseModel):
 
 
 class DocumentSection(BaseModel):
+    immagini_sezione: List[str] = Field(default_factory=list)
     unit_id: str
     title: str
     start_segment_id: str
@@ -564,6 +566,8 @@ SuggestedQuestionType = str
 
 
 class StudyUnit(BaseModel):
+    immagini_sezione: List[str] = Field(default_factory=list)
+    start_formatted: Optional[str] = None
     suggested_qtype: Optional[SuggestedQuestionType] = None
     id: str
     title: str
@@ -865,6 +869,7 @@ class StudyNoteApplyResponse(BaseModel):
 # Calendario (4.2.5 CA1)
 # ---------------------------------------------------------------------------
 from rt.services.calendar_models import (  # noqa: F401
+    CalendarPeriodStart, CalendarMissingLessons, CalendarMissingSubject,
     CalendarYearWeek, CalendarPasteRequest, CalendarPasteResult, CalendarSchedule,
     CalendarImportRequest, CalendarImportResult,
     CalendarTemplateEntryCreate,
@@ -886,3 +891,24 @@ from rt.services.calendar_models import (  # noqa: F401
     CalendarDayImportView,
 )
 
+
+
+class BatchPipelineRequest(BaseModel):
+    lesson_ids: List[int] = Field(min_length=1, max_length=200)
+    mode: Literal["run", "force", "reingest"] = "run"
+    with_review: bool = False
+
+
+class BatchPipelineQueued(BaseModel):
+    lesson_id: int
+    job_id: str
+
+
+class BatchPipelineSkipped(BaseModel):
+    lesson_id: int
+    motivo: Literal["Lezione in lavorazione", "Ripartenza da capo non disponibile", "Lezione non trovata"]
+
+
+class BatchPipelineResult(BaseModel):
+    queued: List[BatchPipelineQueued]
+    skipped: List[BatchPipelineSkipped]

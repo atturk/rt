@@ -100,6 +100,14 @@ test('Chiedi a 390 px: invio visibile e cliccabile sopra la barra delle sezioni'
   await page.goto(`/studio/lezione/${l.id}`)
   const text = page.getByTestId('study-text')
   await expect(text).toHaveText(/\S.{20,}/)
+  const openTools = async () => {
+    const toggle = page.getByTestId('study-tools-toggle')
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.hover()
+      await expect(page.getByTestId('highlight-tools')).toBeVisible()
+    }
+  }
+  await openTools()
   await page.getByTestId('highlight-chiedi').click()
   await text.evaluate((root) => {
     const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -131,6 +139,13 @@ test('formule nello Studio: selezione in LaTeX, copia, evidenziatore e citazione
   const l = await getLesson(page, 'STUDIO')
   const previous = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)
   try {
+    const openTools = async () => {
+      const toggle = page.getByTestId('study-tools-toggle')
+      if (await toggle.isVisible().catch(() => false)) {
+        await toggle.hover()
+        await expect(page.getByTestId('highlight-tools')).toBeVisible()
+      }
+    }
     await page.goto(`/studio/lezione/${l.id}`)
     await expect(page.getByTestId('study-dots')).toBeVisible()
     await page.getByTestId('study-dots').locator('button').first().click()
@@ -138,6 +153,7 @@ test('formule nello Studio: selezione in LaTeX, copia, evidenziatore e citazione
     const math = root.locator('math').first()
     await expect(math).toHaveAttribute('data-rt-source', '$z$')
     // La copia deve funzionare anche senza uno strumento attivo.
+    await openTools()
     if (await page.getByTestId('highlight-pen').getAttribute('aria-pressed') === 'true') await page.getByTestId('highlight-pen').click()
     const selectFormula = () => root.evaluate(root => {
       const p = root.querySelector('math')!.parentElement!
@@ -156,16 +172,20 @@ test('formule nello Studio: selezione in LaTeX, copia, evidenziatore e citazione
     await expect(math).not.toHaveClass(/rt-math-raw/)
     await expect(math).toBeVisible()
 
+    await openTools()
     await page.getByTestId('highlight-pen').click()
     await selectFormula()
     await root.dispatchEvent('mouseup', { button: 0 })
     await expect(math).toHaveClass(/rt-hl-math/)
     await expect(math.locator('.rt-hl')).toHaveCount(0)
     await expect.poll(async () => (await apiGet<{ source: { text?: string } }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)).some(row => row.source.text === 'Formula $z$')).toBe(true)
+    await openTools()
     await page.getByTestId('highlight-chiedi').click()
     await selectFormula()
     await root.dispatchEvent('mouseup', { button: 0 })
-    await expect(page.getByTestId('study-note-quote')).toHaveText('Formula $z$')
+    const quote = page.getByTestId('study-note-quote')
+    await expect(quote).toContainText('Formula')
+    await expect(quote.locator('math')).toHaveAttribute('data-rt-source', '$z$')
   } finally {
     const rows = await apiGet<{ id: number }[]>(page.request, `/lessons/${l.id}/highlights?unit=1.1`)
     for (const row of rows.filter(row => !previous.some(old => old.id === row.id))) {

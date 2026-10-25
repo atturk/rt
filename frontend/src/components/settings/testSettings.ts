@@ -2,7 +2,7 @@ import type { Settings } from '@/api/settings'
 
 export const testSettings: Settings = {
   setup_required: false, secrets_encrypted: true, data_dir: '/tmp/rt',
-  worker: { concurrency: 2, running: 2 }, notices: { dismissed: [] },
+  worker: { running: 2 }, notices: { dismissed: [] },
   preferences: { secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale' },
   transcription: {
     engine: 'macparakeet',

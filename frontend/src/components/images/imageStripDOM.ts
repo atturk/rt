@@ -1,15 +1,9 @@
-import { mountDomTooltip } from '@/components/ui/dom-tooltip'
+import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
-import {
-  formatStripLabel,
-  getStripClosedPreference,
-  parseImageAlt,
-  setStripClosedPreference,
-  type ImageItem,
-} from './imageUtils'
+import { parseImageAlt, type ImageItem } from './imageUtils'
+import { RT_SECTION_IMAGE_DRAG_TYPE } from '@/components/lesson/imageSections'
 
 const PAPERCLIP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="rt-strip-clip"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`
-const CHEV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="chev"><path d="m6 9 6 6 6-6"/></svg>`
 const PREV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`
 const NEXT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`
 
@@ -17,6 +11,7 @@ export const MIN_STRIP_IMAGES = 1
 
 export type StripOptions = {
   onImageClick?: (index: number) => void
+  fromUnit?: string
 }
 
 /**
@@ -26,45 +21,6 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
   const container = document.createElement('div')
   container.className = 'rt-strip'
   container.dataset.n = String(images.length)
-
-  const { countPill, docLabel } = formatStripLabel(images)
-
-  let closed = getStripClosedPreference()
-  if (closed) container.classList.add('closed')
-
-  const head = document.createElement('div')
-  head.className = 'rt-strip-head'
-
-  const toggleBtn = document.createElement('button')
-  toggleBtn.type = 'button'
-  toggleBtn.className = 'ib tg'
-  toggleBtn.setAttribute('aria-expanded', String(!closed))
-  toggleBtn.setAttribute('aria-label', closed ? 'Mostra le immagini' : 'Chiudi le immagini')
-  toggleBtn.innerHTML = CHEV_ICON
-
-  let cleanupTooltip: (() => void) | undefined
-  const updateTooltip = () => {
-    cleanupTooltip?.()
-    cleanupTooltip = mountDomTooltip(toggleBtn, closed ? 'Mostra le immagini' : 'Chiudi le immagini')
-  }
-  updateTooltip()
-
-  const nameSpan = document.createElement('span')
-  nameSpan.className = 'name'
-  // Nome del documento come testo: viene dall'alt dell'immagine (nome file o pagina web).
-  const pill = document.createElement('span')
-  pill.className = 'count-pill'
-  pill.textContent = String(countPill)
-  nameSpan.replaceChildren(pill, document.createTextNode(` · ${docLabel}`))
-
-  head.innerHTML = ''
-  head.append(toggleBtn)
-  const clipWrapper = document.createElement('span')
-  clipWrapper.className = 'rt-strip-icon'
-  clipWrapper.innerHTML = PAPERCLIP_ICON
-  head.append(clipWrapper)
-  head.append(nameSpan)
-  container.append(head)
 
   const rail = document.createElement('div')
   rail.className = 'rail'
@@ -82,6 +38,17 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
     const thumb = document.createElement('button')
     thumb.type = 'button'
     thumb.className = 'thumb'
+    const name = decodeURIComponent(img.src.split('/').pop()?.split('#')[0] ?? '')
+    thumb.dataset.imageName = name
+    if (options?.fromUnit) {
+      thumb.draggable = true
+      thumb.ondragstart = event => {
+        event.stopPropagation()
+        thumb.closest('.cm-editor')?.classList.add('rt-dragging-images')
+        event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromUnit: options.fromUnit, width: thumb.querySelector('img')?.naturalWidth || 480 }))
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+      }
+    }
     const pageLabel = img.pageNumber !== undefined ? `pagina ${img.pageNumber}` : `${idx + 1}`
     thumb.setAttribute('aria-label', `Apri ${pageLabel}`)
 
@@ -89,6 +56,7 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
     imageEl.src = img.src
     imageEl.alt = img.alt
     imageEl.loading = 'lazy'
+    imageEl.draggable = false
     thumb.append(imageEl)
 
     if (img.pageNumber !== undefined) {
@@ -159,134 +127,179 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
     thumbs.scrollBy({ left: thumbs.clientWidth * 0.8, behavior: 'smooth' })
   }
 
-  const applyClosedState = (isClosed: boolean) => {
-    closed = isClosed
-    container.classList.toggle('closed', closed)
-    toggleBtn.setAttribute('aria-expanded', String(!closed))
-    toggleBtn.setAttribute('aria-label', closed ? 'Mostra le immagini' : 'Chiudi le immagini')
-    updateTooltip()
-    if (!closed) setTimeout(checkEdges, 50)
-  }
-
-  toggleBtn.onclick = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const nextState = !closed
-    setStripClosedPreference(nextState)
-  }
-
-  const onToggleEvent = (e: Event) => {
-    const custom = e as CustomEvent<{ closed: boolean }>
-    if (custom.detail && typeof custom.detail.closed === 'boolean') {
-      applyClosedState(custom.detail.closed)
-    }
-  }
-
-  window.addEventListener('rt-strip-toggle', onToggleEvent)
-
-  // Pulizia quando il nodo viene rimosso dal DOM
-  const observer = new MutationObserver(() => {
-    if (!container.isConnected) {
-      window.removeEventListener('rt-strip-toggle', onToggleEvent)
-      thumbs.removeEventListener('scroll', checkEdges)
-      cleanupTooltip?.()
-      observer.disconnect()
-    }
-  })
-  observer.observe(document.body, { childList: true, subtree: true })
-
   return container
 }
 
-/**
- * Trasforma immagini (singole o in serie) nel DOM reso (DocumentView o Study) in una striscia di miniature.
- */
-export function mountDocumentImageStrips(root: HTMLElement, options?: StripOptions): () => void {
-  // Trova tutti i paragrafi che contengono solo immagini
-  const paragraphs = Array.from(root.querySelectorAll<HTMLElement>('p, figure'))
-
-  type ImageGroup = {
-    elements: HTMLElement[]
-    images: ImageItem[]
+/** Bottone condiviso da editor, lettura e Studio. */
+export function buildUnitImagesButton(
+  unitId: string,
+  count: number,
+  open: boolean,
+  toggle: () => void,
+  options?: { shortcut?: boolean },
+): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'rt-unit-images-button'
+  button.classList.toggle('empty', count === 0)
+  button.classList.toggle('active', open)
+  button.dataset.unitImages = unitId
+  button.setAttribute('aria-expanded', String(open))
+  const suffix = options?.shortcut ? ' · M' : ''
+  const label = (open ? 'Nascondi le immagini' : 'Mostra le immagini') + suffix
+  button.setAttribute('aria-label', label)
+  mountDomTooltip(button, label)
+  button.innerHTML = PAPERCLIP_ICON
+  if (count) {
+    const number = document.createElement('span')
+    number.textContent = String(count)
+    button.append(number)
   }
+  button.onclick = event => { event.preventDefault(); event.stopPropagation(); toggle() }
+  return button
+}
 
-  const groups: ImageGroup[] = []
-  let currentElements: HTMLElement[] = []
-  let currentImages: ImageItem[] = []
+type DocumentImageSection = { unit_id: string; immagini_sezione?: string[]; start_formatted?: string | null }
 
-  const flushGroup = () => {
-    if (currentImages.length >= MIN_STRIP_IMAGES) {
-      groups.push({
-        elements: [...currentElements],
-        images: [...currentImages],
-      })
-    }
-    currentElements = []
-    currentImages = []
-  }
+/** Solo i paragrafi iniziali dichiarati dall'API appartengono alla sezione. */
+export function mountDocumentImageStrips(
+  root: HTMLElement,
+  sections: DocumentImageSection[],
+  options?: { metaBelow?: boolean },
+): () => void {
+  const cleanups: (() => void)[] = []
+  for (const section of sections) {
+    const names = section.immagini_sezione ?? []
+    const unitRoot = root.dataset.unitId === section.unit_id ? root : null
+    const heading = unitRoot
+      ? (root.previousElementSibling?.matches('.rt-unit-meta')
+          ? (root.previousElementSibling.previousElementSibling as HTMLElement | null)
+          : (root.previousElementSibling as HTMLElement | null))
+      : root.querySelector<HTMLElement>(`[data-unit-id="${CSS.escape(section.unit_id)}"]`)
+    if (!heading) continue
 
-  for (const p of paragraphs) {
-    // Non toccare elementi dentro una striscia già montata
-    if (p.closest('.rt-strip') || p.closest('.rt-image-strip-slot')) continue
-
-    // Verifica se p contiene solo immagini (e testo vuoto)
-    const imgs = Array.from(p.querySelectorAll('img'))
-    if (imgs.length === 0) {
-      flushGroup()
+    if (!names.length) {
+      if (options?.metaBelow && section.start_formatted) {
+        let meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+          ? (heading.nextElementSibling as HTMLElement)
+          : null
+        const createdMeta = !meta
+        if (!meta) {
+          meta = document.createElement('span')
+          meta.className = 'rt-unit-meta rt-unit-meta-below'
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+          heading.after(meta)
+        }
+        cleanups.push(() => {
+          if (createdMeta) meta.remove()
+        })
+      }
       continue
     }
 
-    const textContent = p.textContent?.trim() ?? ''
-    // Se c'è testo didascalico significativo oltre alle immagini, non è un paragrafo di sole immagini
-    if (textContent.length > 0 && imgs.every((img) => !img.alt || !textContent.includes(img.alt.trim()))) {
-      flushGroup()
+    const originals: HTMLElement[] = []
+    const images: ImageItem[] = []
+    let next = unitRoot ? root.firstElementChild : heading.nextElementSibling
+    // Il timecode originale è nascosto dal renderer, resta nel DOM.
+    if (next?.hasAttribute('data-unit-timecode')) next = next.nextElementSibling
+    let index = 0
+    while (next && index < names.length) {
+      if (!next.matches('p, figure') || next.textContent?.trim()) break
+      const imgs = Array.from(next.querySelectorAll('img'))
+      if (!imgs.length || imgs.some((img, offset) => img.getAttribute('src')?.includes('#w=') ||
+        decodeURIComponent(img.getAttribute('src')?.split('/').pop()?.split('#')[0] ?? '') !== names[index + offset])) break
+      originals.push(next as HTMLElement)
+      for (const img of imgs) {
+        const alt = img.getAttribute('alt') ?? ''
+        images.push({ src: img.getAttribute('src') ?? '', alt, ...parseImageAlt(alt) })
+        index++
+      }
+      next = next.nextElementSibling
+    }
+    if (!images.length) {
+      if (options?.metaBelow && section.start_formatted) {
+        let meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+          ? (heading.nextElementSibling as HTMLElement)
+          : null
+        const createdMeta = !meta
+        if (!meta) {
+          meta = document.createElement('span')
+          meta.className = 'rt-unit-meta rt-unit-meta-below'
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+          heading.after(meta)
+        }
+        cleanups.push(() => {
+          if (createdMeta) meta.remove()
+        })
+      }
       continue
     }
 
-    // Controlla se p è adiacente all'elemento precedente del gruppo
-    if (currentElements.length > 0) {
-      const prev = currentElements[currentElements.length - 1]
-      // Sono fratelli consecutivi? (ignorando nodi di testo vuoti)
-      let sib = prev.nextSibling
-      while (sib && sib.nodeType === Node.TEXT_NODE && !sib.textContent?.trim()) {
-        sib = sib.nextSibling
+    let meta: HTMLElement | null = null
+    let createdMeta = false
+    if (options?.metaBelow) {
+      meta = heading.nextElementSibling?.classList.contains('rt-unit-meta')
+        ? (heading.nextElementSibling as HTMLElement)
+        : null
+      if (!meta) {
+        createdMeta = true
+        meta = document.createElement('span')
+        meta.className = 'rt-unit-meta rt-unit-meta-below'
+        if (section.start_formatted) {
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+        }
+        heading.after(meta)
       }
-      if (sib !== p) {
-        flushGroup()
+    } else {
+      meta = heading.querySelector<HTMLElement>('.rt-unit-meta')
+      if (!meta) {
+        createdMeta = true
+        meta = document.createElement('span')
+        meta.className = 'rt-unit-meta'
+        if (section.start_formatted) {
+          const time = document.createElement('span')
+          time.className = 'rt-timecode'
+          time.textContent = section.start_formatted
+          meta.append(time)
+        }
+        heading.append(meta)
       }
     }
 
-    currentElements.push(p)
-    for (const img of imgs) {
-      const src = img.getAttribute('src') || ''
-      const alt = img.getAttribute('alt') || ''
-      const { docName, pageNumber } = parseImageAlt(alt)
-      currentImages.push({ src, alt, docName, pageNumber })
-    }
-  }
-  flushGroup()
-
-  const mountedSlots: { slot: HTMLElement; originals: HTMLElement[] }[] = []
-
-  for (const group of groups) {
     const slot = document.createElement('div')
-    slot.className = 'rt-image-strip-slot'
-    const stripEl = buildImageStripDOM(group.images, options)
-    slot.append(stripEl)
+    slot.className = 'rt-image-strip-slot rt-unit-images-section'
+    slot.dataset.unitImages = section.unit_id
+    slot.hidden = true
+    slot.append(buildImageStripDOM(images))
+    originals[0].before(slot)
+    originals.forEach(element => element.remove())
 
-    const first = group.elements[0]
-    first.before(slot)
-    group.elements.forEach((el) => {
-      el.remove()
+    const hasShortcut = Boolean(options?.metaBelow)
+    const button = buildUnitImagesButton(section.unit_id, images.length, false, () => {
+      slot.hidden = !slot.hidden
+      button.classList.toggle('active', !slot.hidden)
+      button.setAttribute('aria-expanded', String(!slot.hidden))
+      const label = (slot.hidden ? 'Mostra le immagini' : 'Nascondi le immagini') + (hasShortcut ? ' · M' : '')
+      button.setAttribute('aria-label', label)
+      unmountDomTooltip(button)
+      mountDomTooltip(button, label)
+    }, { shortcut: hasShortcut })
+    meta.prepend(button)
+    cleanups.push(() => {
+      unmountDomTooltip(button)
+      button.remove()
+      if (createdMeta) meta.remove()
+      slot.replaceWith(...originals)
     })
-    mountedSlots.push({ slot, originals: group.elements })
   }
-
-  // Smontando si rimettono i paragrafi originali, così un nuovo montaggio li ritrova.
-  return () => {
-    mountedSlots.forEach(({ slot, originals }) => {
-      if (slot.isConnected) slot.replaceWith(...originals)
-      else slot.remove()
-    })
-  }
+  return () => cleanups.forEach(cleanup => cleanup())
 }

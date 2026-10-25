@@ -7,7 +7,7 @@ import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
-import { TranscriptionSection, WorkerSection } from '@/components/settings/general'
+import { TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
@@ -16,6 +16,7 @@ import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { QuestionsSettingsSection } from '@/components/settings/questions'
+import { CalendarSettingsSection } from '@/components/settings/calendar'
 import { SubjectsSettingsSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
@@ -94,10 +95,11 @@ export function SettingsIndexPage() {
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
+export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
-  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /><WorkerSection settings={s} /></>)
+  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
 }
 export function ModelsSettingsPage() {
   return page(s => <><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />

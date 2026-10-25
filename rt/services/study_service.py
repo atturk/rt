@@ -21,15 +21,17 @@ def study_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.document_edits import load_document_edits, unit_title
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.recall import load_recall_bank
-    from rt.services.lesson_service import document_sections
+    from rt.services.lesson_service import document_sections, unit_section_images
     pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value in ("pending", "asked")]
     draft = load_resolved_draft(lesson_dir)
     sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
+    images = unit_section_images(lesson_dir)
     edits = load_document_edits(lesson_dir)
     out = []
     for u in draft.units:
         s = sections.get(u.unit_id, {})
-        out.append({"id": u.unit_id, "title": unit_title(edits, u.unit_id, u.title), "content": u.content,
+        section_markdown = '\n\n'.join(f"![{img.get('alt_text', '')}]({img['filename']})" for img in images.get(u.unit_id, []))
+        out.append({"immagini_sezione": s.get("immagini_sezione", []), "start_formatted": s.get("start_formatted"), "id": u.unit_id, "title": unit_title(edits, u.unit_id, u.title), "content": section_markdown + "\n\n" + u.content if section_markdown else u.content,
                     "start": s.get("start_seconds"), "end": s.get("end_seconds"),
                     "pending": unit_pending(pending, u.unit_id)})
     return out
@@ -50,7 +52,7 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     units = []
     if ready:
         for unit in study_units(lesson_dir):
-            units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending")},
+            units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending", "immagini_sezione", "start_formatted")},
                           "suggested_qtype": suggested.get(unit["id"]),
                           "html": md.render(unit["content"]), "questions": sum(unit["pending"].values()),
                           **{k: v for k, v in progress.get(unit["id"], {}).items() if k != "unit_id"}})

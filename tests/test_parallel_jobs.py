@@ -91,16 +91,101 @@ def test_two_mock_pipelines_in_parallel_on_sqlite_wal(ws, rt_db):
         assert types[-1] == "job_finished" and "phase_completed" in types
 
 
-def test_worker_concurrency_setting(api_client, ws):
+def test_worker_concurrency_returns_8_and_loads_config(ws):
     from rt.api.launcher import worker_concurrency
-    settings = api_client.get("/api/v1/settings").json()
-    assert settings["worker"]["concurrency"] == 2 and worker_concurrency() == 2
-    res = api_client.put("/api/v1/settings/worker", json={"concurrency": 3})
-    assert res.status_code == 200 and res.json()["worker"]["concurrency"] == 3
-    assert api_client.get("/api/v1/settings").json()["worker"]["concurrency"] == 3
-    assert worker_concurrency() == 3
-    for bad in (0, 5):
-        assert api_client.put("/api/v1/settings/worker", json={"concurrency": bad}).status_code == 422
+    from rt.core.config import load_config
+    from rt.services.settings_service import general_config_path
+    from pathlib import Path
+    import yaml
+    cfg_file = general_config_path(Path(ws).parent)
+    cfg_file.parent.mkdir(parents=True, exist_ok=True)
+    cfg_file.write_text(yaml.safe_dump({"worker": {"concurrency": 2}}), encoding="utf-8")
+    cfg = load_config(str(Path(ws).parent))
+    assert cfg.worker is not None
+    assert worker_concurrency() == 8
+
+
+def test_rt_worker_concurrency_cli(monkeypatch):
+    import argparse
+    from rt.cli_jobs import cmd_worker
+    called = []
+
+    def fake_run_workers(queue_factory, concurrency, **kwargs):
+        called.append(concurrency)
+
+    monkeypatch.setattr("rt.services.worker.run_workers", fake_run_workers)
+    monkeypatch.setattr("rt.cli_jobs._queue", lambda: None)
+    monkeypatch.setattr("rt.cli_jobs.prepare_worker_process", lambda q: None)
+    monkeypatch.setattr("rt.services.worker.registered_handlers", lambda: {"prepare": None})
+    monkeypatch.setattr("rt.services.jobs.detect_stt_capability", lambda *a, **k: "mock")
+
+    args = argparse.Namespace(concurrency=None, types="prepare", lease=None, poll=1.0, mock=True, stt="none", once=False)
+    cmd_worker(args)
+    assert called == [8]
+
+    called.clear()
+    args_1 = argparse.Namespace(concurrency=1, types="prepare", lease=None, poll=1.0, mock=True, stt="none", once=False)
+    cmd_worker(args_1)
+    assert called == [1]
+
+
+def test_local_transcription_slot():
+    from rt.core.stt_slot import local_transcription_slot
+    from rt.services.context import CancelToken, RunCancelled
+
+    events = []
+    wait_messages = []
+
+    def task1():
+        with local_transcription_slot():
+            events.append("t1_start")
+            time.sleep(0.3)
+            events.append("t1_end")
+
+    def task2():
+        time.sleep(0.05)
+        with local_transcription_slot(on_wait=wait_messages.append):
+            events.append("t2_start")
+            events.append("t2_end")
+
+    t1 = threading.Thread(target=task1)
+    t2 = threading.Thread(target=task2)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert events == ["t1_start", "t1_end", "t2_start", "t2_end"]
+    assert len(wait_messages) == 1
+    assert "In attesa" in wait_messages[0]
+
+    cancel_token = CancelToken()
+    cancelled_raised = []
+    hold_event = threading.Event()
+
+    def task_occupy():
+        with local_transcription_slot():
+            hold_event.wait(3.0)
+
+    def task_cancel():
+        time.sleep(0.05)
+        try:
+            with local_transcription_slot(cancel_token=cancel_token):
+                pass
+        except RunCancelled:
+            cancelled_raised.append(True)
+        finally:
+            hold_event.set()
+
+    to = threading.Thread(target=task_occupy)
+    tc = threading.Thread(target=task_cancel)
+    to.start()
+    tc.start()
+    time.sleep(0.15)
+    cancel_token.cancel()
+    to.join()
+    tc.join()
+    assert cancelled_raised == [True]
 
 
 def test_launcher_passes_concurrency_to_worker(ws, monkeypatch):
@@ -117,10 +202,10 @@ def test_launcher_passes_concurrency_to_worker(ws, monkeypatch):
             return 0
 
     monkeypatch.setattr(launcher.subprocess, "Popen", FakePopen)
-    monkeypatch.setattr(launcher, "worker_concurrency", lambda: 3)
+    monkeypatch.setattr(launcher, "worker_concurrency", lambda: 8)
     monkeypatch.setattr(launcher, "_already_running", lambda *a: False)
     monkeypatch.setattr("uvicorn.Server.run", lambda *a, **k: None)
     monkeypatch.setattr("rt.api.server.prepare", lambda **k: True)
     monkeypatch.setattr(launcher, "_open_when_ready", lambda *a: None)
     assert launcher.run_spa(open_browser=False, worker_args=["--mock"], say=lambda m: None) == 0
-    assert started["cmd"][-3:] == ["--mock", "--concurrency", "3"]
+    assert started["cmd"][-3:] == ["--mock", "--concurrency", "8"]

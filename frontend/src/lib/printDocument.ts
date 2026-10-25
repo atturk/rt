@@ -96,6 +96,8 @@ export function transformPrintDom(root: HTMLElement) {
   }
 
   for (const child of children) {
+    // Il timecode è già accanto al titolo; il paragrafo nascosto non interrompe la sezione.
+    if (afterHeading && child.hasAttribute('data-unit-timecode')) continue
     if (afterHeading && isImageContainer(child)) {
       currentGroup.push(child as HTMLElement)
     } else {

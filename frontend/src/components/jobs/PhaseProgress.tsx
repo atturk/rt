@@ -3,6 +3,8 @@ import { useId, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { useJob, useJobEvents } from '@/api/jobs'
+import { LessonConflictAction } from './LessonConflictAction'
+import { hasLessonConflict } from '@/lib/jobs'
 import { RetryButton } from '@/components/jobs/JobParts'
 import { IconButton } from '@/components/ui/icon-button'
 import { useFollowTail } from '@/lib/followTail'
@@ -100,8 +102,9 @@ export function PhaseProgress({ jobId, events: withEvents = true, className, onR
           {summary}
         </span>
         {j.state === 'failed' && !j.retried_by && (
-          <RetryButton jobId={j.id} onRetried={onRetried ?? ((id) => navigate(`/job/${id}`))} />
+          <RetryButton title={hasLessonConflict(j) ? 'Esiste già una lezione con questi dati' : undefined} jobId={j.id} onRetried={onRetried ?? ((id) => navigate(`/job/${id}`))} />
         )}
+        <LessonConflictAction job={j} />
         {withEvents && (
           <IconButton
             label={show ? 'Nascondi eventi' : 'Mostra eventi'}

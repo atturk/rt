@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 
-import { useSaveTranscription, useSaveWorker, type Settings } from '@/api/settings'
+import { useSaveTranscription, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
@@ -11,52 +11,6 @@ import { ExtraSecretDelete } from './keys'
 
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
-
-const WORKER_CONCURRENCY_OPTIONS = [1, 2, 3, 4]
-
-/** "Job in parallelo": quanti job il worker avviato con la web esegue insieme (vale dal prossimo avvio). */
-export function WorkerSection({ settings }: { settings: Settings }) {
-  const save = useSaveWorker()
-  const saved = settings.worker.concurrency
-  const running = settings.worker.running
-  return (
-    <Section id="job-paralleli" title="Job">
-      <WorkerFields key={saved} saved={saved} pending={save.isPending} onSubmit={(n) => save.mutate(n)} />
-      <p className="text-meta text-muted-foreground">
-        Vale dal prossimo avvio di RT.
-        {running > 0 && running !== saved && ` Ora ne esegue fino a ${running} insieme.`}
-      </p>
-      <SaveFeedback mutation={save} success="Salvato: vale dal prossimo avvio di RT." />
-    </Section>
-  )
-}
-
-function WorkerFields({ saved, pending, onSubmit }: { saved: number; pending: boolean; onSubmit: (n: number) => void }) {
-  const [value, setValue] = useState(saved)
-  return (
-    <form
-      className="flex flex-wrap items-center gap-3"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSubmit(value)
-      }}
-    >
-      <label htmlFor="worker-concurrency" className="text-body font-medium">
-        Job in parallelo
-      </label>
-      <Select aria-label="Job in parallelo" id="worker-concurrency" className="w-20" value={value} onChange={(e) => setValue(Number(e.target.value))}>
-        {WORKER_CONCURRENCY_OPTIONS.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </Select>
-      <Button type="submit" variant="outline" size="sm" disabled={pending || value === saved}>
-        Salva
-      </Button>
-    </form>
-  )
-}
 
 export function TranscriptionSection({ settings }: { settings: Settings }) {
   const save = useSaveTranscription()
