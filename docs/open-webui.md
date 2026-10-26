@@ -51,3 +51,9 @@ Quando chiedi a Open WebUI informazioni su argomenti spiegati a lezione (es. *"C
 - **Indice di ricerca**: l'indice FTS5 si riallinea a ogni ricerca; le lezioni modificate (pipeline, aggiornamento, ripristino, revisione) vengono reindicizzate e quelle eliminate tolte.
 - **Autenticazione disattivata**: con `rt web --no-auth` (solo sviluppo) la chiave non serve, come per l'API principale; il vincolo di loopback resta.
 - **Revoca immediata**: Dalla stessa schermata in Impostazioni puoi cliccare **Revoca** o **Rigenera chiave** in qualsiasi momento per invalidare la chiave precedente.
+
+---
+
+## In alternativa: strumento Python
+
+`integrations/open-webui/rt_tool.py` è uno strumento pronto per Open WebUI (**Spazio di lavoro › Strumenti › +**): incolla il file, salva, poi nelle **Valvole** dello strumento inserisci la chiave `rt_ro_...` (e l'indirizzo di RT se non è `http://127.0.0.1:8765`). In chat attiva lo strumento RT dal pulsante **+** accanto al campo di testo.
