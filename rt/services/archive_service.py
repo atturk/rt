@@ -121,7 +121,7 @@ def list_entries(materia=None, tipo=None, q=None, index=None):
             if len(sha) != 64:
                 continue
             meta = archive.load_meta(sha)
-            if not meta or (tipo and meta['tipo'] != tipo) or (q and q.casefold() not in meta['nome'].casefold()):
+            if not meta or (tipo and meta['tipo'] != tipo) or (q and not archive.matches(meta, q)):
                 continue
             item = row(meta, index=index)
             if materia and materia not in item['materie']:
@@ -191,6 +191,19 @@ def image_path(sha, n):
         raise NotFound('page_not_found', 'Immagine della pagina non disponibile.')
     return path
 
+
+
+def page_info(sha, n):
+    """(descrizione, testo) di una pagina: testo da pages.json, descrizione dell'immagine se c'è."""
+    from rt.services.errors import NotFound
+    meta = require_entry(sha)
+    folder = archive.entry_dir(meta['impronta'])
+    data = archive.read_json(os.path.join(folder, 'pages.json'), {})
+    page = next((p for p in data.get('pages', []) if p['numero'] == n), None)
+    if page is None:
+        raise NotFound('page_not_found', 'Pagina non trovata.')
+    description = archive.read_json(os.path.join(folder, 'descrizione.json'), {}) if n == 1 else {}
+    return description or {}, page.get('testo') or ''
 
 
 def page_bytes(sha, n):

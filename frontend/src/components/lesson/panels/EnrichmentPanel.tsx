@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { useArchiveSummary } from '@/api/archive'
-import { errorMessage, type Schemas } from '@/api/client'
+import { api, errorMessage, unwrap, type Schemas } from '@/api/client'
+import { useQuery } from '@tanstack/react-query'
 import { useEnrichment, useEnrichmentActions } from '@/api/enrichment'
 import { useLesson, useLessonDocument } from '@/api/hooks'
 import {
@@ -38,6 +39,9 @@ import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
 import { MediaGallery } from './MediaGallery'
 import { MediaSelectionBar } from './MediaSelectionBar'
+import { ImageInfoModal, type ImageInfoTarget } from '@/components/images/ImageInfoModal'
+import { DescribeHintDialog } from '@/components/images/DescribeHintDialog'
+import { usePreference } from '@/lib/preferences'
 import { parseCount, PER_UNIT_MAX, PER_UNIT_MIN } from '@/lib/count'
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.gif,application/pdf,image/*'
@@ -67,6 +71,11 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const images = useLessonImages(id)
   const refreshImages = useRefreshImages(id)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [infoTarget, setInfoTarget] = useState<ImageInfoTarget | null>(null)
+  const [describeHint, setDescribeHint] = useState(false)
+  const [hideDescribeHint, setHideDescribeHint] = usePreference<boolean>('images.describeHint', false)
+  const classifier = useQuery({ queryKey: ['classifier-settings'], queryFn: () => unwrap(api.GET('/api/v1/settings/classifier')), staleTime: 60_000 })
+  const decisionReader = (classifier.data?.images_reader ?? 'decision') === 'decision' && (classifier.data?.jobs?.images?.mode ?? 'manual') !== 'off'
   const addImages = useAddImages(id)
   const outline = useOutline(id)
   const docQuery = useLessonDocument(id)
@@ -256,7 +265,23 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     summaryText = continuePart ? `${filePart} · ${continuePart}` : filePart
   }
 
-  const handleDescribe = async () => {
+  const handleDescribe = () => {
+    if (decisionReader && !hideDescribeHint) setDescribeHint(true)
+    else void describeSelected()
+  }
+
+  const handleInfo = () => {
+    const selected = imageList.find((i) => selectedNames.has(i.name))
+    if (!selected) return
+    if (selected.source?.startsWith('material:') && !selected.in_assets) {
+      const [, sourceId, page] = selected.source.split(':')
+      const sha = sourcesQuery.data?.sources.find((s) => s.id === sourceId)?.impronta
+      if (sha) return setInfoTarget({ sha, page: selected.page ?? Number(page || 1) })
+    }
+    setInfoTarget({ lessonId: id, name: selected.name })
+  }
+
+  const describeSelected = async () => {
     const names = undescribedSelected.map((img) => img.name)
     if (!names.length) return
     try {
@@ -857,9 +882,13 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
           onCrop={handleCropNavigation}
           onRemoveFromText={handleRemoveFromText}
           onDelete={() => setConfirmDelete(true)}
+          onInfo={handleInfo}
           onSelectAll={() => setSelectedNames(new Set(imageList.map((i) => i.name)))}
           onClearSelection={() => setSelectedNames(new Set())}
         />
+        <ImageInfoModal target={infoTarget} onClose={() => setInfoTarget(null)} />
+        <DescribeHintDialog open={describeHint} onCancel={() => setDescribeHint(false)}
+          onConfirm={(hide) => { setDescribeHint(false); if (hide) setHideDescribeHint(true); void describeSelected() }} />
         <ConfirmDialog
           open={confirmDelete}
           title="Eliminare dalla lezione?"

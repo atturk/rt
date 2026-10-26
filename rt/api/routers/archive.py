@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
-from rt.api.routers.images import EditorImage
+from rt.api.routers.images import EditorImage, ImageInfo, image_info
 from rt.core.sources import Source
 from rt.services import archive_service
 
@@ -121,6 +121,12 @@ def detail(sha: str, _actor: Actor):
 def page_image(sha: str, n: int, _actor: Actor):
     return Response(archive_service.page_bytes(sha, n), media_type='image/png',
         headers={'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff'})
+
+
+@router.get('/archive/{sha}/pages/{n}/info', response_model=ImageInfo)
+def page_info(sha: str, n: int, _actor: Actor):
+    description, text = archive_service.page_info(sha, n)
+    return image_info(description, text)
 
 
 @router.put('/archive/{sha}/ignored', response_model=ArchiveDetail)
