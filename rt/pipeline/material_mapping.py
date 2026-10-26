@@ -563,9 +563,40 @@ def assign_material_pages(
 
     descriptions = load_image_descriptions(lesson_dir)
 
+    image_cache = None
     for source in sources:
         is_primary = (source.id == primary_id)
         pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
+
+        if source.estrai == "solo_immagini":
+            # Solo immagini: niente testo né contesto; il modello decisionale guarda ogni pagina.
+            from rt.pipeline.image_decision import decide_image, load_cache, images_job_on
+            if not enabled or not images_job_on():
+                continue
+            image_cache = load_cache(lesson_dir) if image_cache is None else image_cache
+            for page in pages:
+                for img_rel in page.get("immagini") or []:
+                    img_path = page_image_path(source.impronta, img_rel)
+                    if not fs.isfile(img_path):
+                        continue
+                    with fs.open(img_path, "rb") as stream:
+                        data = stream.read()
+                    h = compute_image_hash(data)
+                    try:
+                        assigned_units, assigned_macros, role = decide_image(
+                            lesson_dir, outline, h, data, "", image_cache, mock=mock, ctx=ctx)
+                    except RunCancelled:
+                        raise
+                    except Exception:
+                        # Come il classificatore sul testo: la lezione si fa lo stesso.
+                        continue
+                    descriptions.setdefault(h, {
+                        "filename": save_raw_image(lesson_dir, data, h),
+                        "source": f"material:{source.id}:{page['numero']}",
+                        "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                    })["ruolo"] = role
+                    append_page_placements(units_placement, macros_placement, h, assigned_units, assigned_macros)
+            continue
 
         if is_primary or source.uso == "integra":
             # Le pagine della principale e delle fonti Integra diventano segmenti;

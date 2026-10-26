@@ -79,7 +79,7 @@ def file_type(path, tipo=None):
     ext = os.path.splitext(path)[1].lower()
     if tipo == 'audio':
         return 'audio'
-    if ext in ('.docx', '.txt'):
+    if ext in ('.docx', '.txt', '.md'):
         return 'testo'
     return 'slide' if ext in ('.pdf', '.pptx') else 'immagine'
 
@@ -200,6 +200,7 @@ def register_image(path, description=None):
     if description:
         with archive_lock(sha):
             write_json(os.path.join(entry_dir(sha), 'descrizione.json'), description)
+            refresh_search(sha)
     # Le immagini mantengono l'originale; la miniatura è una PNG indipendente.
     target = page_image_path(sha, 'page-1-1.png')
     if not os.path.exists(target):
@@ -223,4 +224,50 @@ def register_image(path, description=None):
                 current = load_meta(sha)
                 write_json(os.path.join(entry_dir(sha), 'meta.json'), {**current, 'estrai': 'immagini'})
             write_json(pages_path, {'impronta': sha, 'pages': [page]})
+            refresh_search(sha)
     return meta
+
+
+SEARCH_FILE = 'ricerca.txt'
+_DESCRIPTION_KEYS = ('slide_title', 'ocr_text', 'visual_elements', 'summary_keywords', 'alt_text')
+
+
+def search_text(sha):
+    """Nome, testo delle pagine e descrizione in minuscolo: quello che la ricerca confronta."""
+    meta = load_meta(sha) or {}
+    folder = entry_dir(sha)
+    parts = [meta.get('nome', '')]
+    parts += [p.get('testo') or '' for p in (read_json(os.path.join(folder, 'pages.json'), {}) or {}).get('pages', [])]
+    description = read_json(os.path.join(folder, 'descrizione.json'), {}) or {}
+    for key in _DESCRIPTION_KEYS:
+        value = description.get(key)
+        parts.append(' '.join(map(str, value)) if isinstance(value, list) else str(value or ''))
+    return '\n'.join(p for p in parts if p).casefold()
+
+
+def refresh_search(sha):
+    """Riscrive ricerca.txt; si chiama quando cambiano pages.json o descrizione.json."""
+    folder = entry_dir(sha)
+    if not os.path.isdir(folder):
+        return
+    path = os.path.join(folder, SEARCH_FILE)
+    with open(path + '.tmp', 'w', encoding='utf-8') as stream:
+        stream.write(search_text(sha))
+    os.replace(path + '.tmp', path)
+
+
+def matches(meta, q):
+    """La ricerca legge solo ricerca.txt (creato al primo uso per le voci vecchie), mai i pages.json."""
+    needle = q.casefold()
+    if needle in meta.get('nome', '').casefold():
+        return True
+    sha = meta['impronta']
+    path = os.path.join(entry_dir(sha), SEARCH_FILE)
+    sources = [os.path.join(entry_dir(sha), name) for name in ('pages.json', 'descrizione.json', 'meta.json')]
+    if not os.path.isfile(path) or any(os.path.isfile(f) and os.path.getmtime(f) > os.path.getmtime(path) for f in sources):
+        refresh_search(sha)
+    try:
+        with open(path, encoding='utf-8') as stream:
+            return needle in stream.read()
+    except FileNotFoundError:
+        return False

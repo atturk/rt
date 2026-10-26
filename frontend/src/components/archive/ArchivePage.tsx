@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Crop,
+  Info,
   Eye,
   EyeOff,
   FileAudio,
@@ -28,6 +29,7 @@ import {
 import { errorMessage } from '@/api/client'
 import { useLessons } from '@/api/hooks'
 import { MediaCropView } from '@/components/lesson/panels/MediaCropView'
+import { ImageInfoModal } from '@/components/images/ImageInfoModal'
 import { UseOptions } from '@/components/sources/AddSourceDialog'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -288,6 +290,7 @@ function ArchiveDetailPanel({
   const [single, setSingle] = useState(initialPage !== null)
   const [pageNumber, setPageNumber] = useState(initialPage ?? 1)
   const [cropping, setCropping] = useState(initialCrop)
+  const [infoPage, setInfoPage] = useState<number | null>(null)
   const [add, setAdd] = useState<'source' | 'media' | null>(null)
   const [confirm, setConfirm] = useState<'file' | 'pages' | null>(null)
   const [pending, setPending] = useState(false)
@@ -525,6 +528,12 @@ function ArchiveDetailPanel({
                   onClick={() => run(() => archiveFilesApi.ignore(sha, chosen, !allIgnored))}
                 />
                 <IconButton
+                  icon={Info}
+                  label="Informazioni"
+                  unavailable={chosen.length !== 1 ? 'Una pagina alla volta' : undefined}
+                  onClick={() => setInfoPage(chosen[0])}
+                />
+                <IconButton
                   icon={Crop}
                   label="Ritaglia"
                   unavailable={chosen.length !== 1 ? 'Una pagina alla volta' : undefined}
@@ -542,6 +551,7 @@ function ArchiveDetailPanel({
           )}
         </>
       )}
+      <ImageInfoModal target={infoPage ? { sha, page: infoPage } : null} onClose={() => setInfoPage(null)} />
       {detail.trascrizione_inizio && (
         <p className="max-h-40 overflow-auto whitespace-pre-line text-body text-muted-foreground">
           {detail.trascrizione_inizio}

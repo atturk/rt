@@ -62,7 +62,7 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 file: Optional[list[UploadFile]] = File(None), testo: Optional[str] = Form(None),
                 ordine: Optional[int] = Form(None, ge=1),
                 unisci: bool = Form(True), pagine: Optional[str] = Form(None),
-                estrai: Optional[Literal['testo', 'immagini']] = Form(None),
+                estrai: Optional[Literal['testo', 'immagini', 'solo_immagini']] = Form(None),
                 uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None)):
     from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
@@ -150,7 +150,7 @@ def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_p
 
 class SourceOptions(BaseModel):
     pagine: str | list[int] | None = None
-    estrai: Literal['testo', 'immagini'] | None = None
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] | None = None
     uso: Literal['guida', 'contesto', 'integra'] | None = None
 
 

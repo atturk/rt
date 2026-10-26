@@ -1,5 +1,19 @@
 # Novità di RT
 
+## 4.3.4b1 — 2026-10-26
+
+### Novità
+
+- **Il modello decisionale guarda le immagini**: Jev 1.14 riceve l'immagine stessa e decide se è contenuto, introduttiva o irrilevante e in quale unità va, senza descriverla prima. Si sceglie in Impostazioni > Modelli > Modelli decisionali (Lettura immagini); se un'immagine viene rifiutata si ripiega sul descrittore.
+- **Informazioni** sulle immagini, nel pannello e nell'archivio: testo estratto, descrizione e ruolo. La ricerca nell'archivio trova anche le descrizioni e il testo delle pagine.
+- **Fonti in tre modalità**: Testo, Testo e immagini (testo più descrizioni, le pagine diventano media), Solo immagini (il modello colloca ogni pagina, senza testo). I PDF orizzontali partono da Testo e immagini, quelli verticali da Testo; Word, TXT e Markdown solo Testo. I default si cambiano in Impostazioni > Lavorazione > Fonti.
+- **Nuova lezione**: un clic su un materiale apre sotto il riquadro modalità, uso e pagine, con il cestino. Senza registrazione c'è sempre una guida (la prima fonte con testo, o quella scelta); con la registrazione la guida è l'audio. Tolte la graffetta e la stellina.
+- Vision descrive solo le pagine scelte, e un PDF aperto nel pannello finisce nell'archivio: usato poi come fonte non si rilegge.
+
+### Correzioni
+
+- Formule a blocco distanziate dal testo; i comandi LaTeX come `\frac`, `\beta` e `\theta` rovinati dagli escape JSON si riparano, anche nei documenti già scritti.
+
 ## 4.3.3.1 — 2026-10-25
 
 ### Correzioni

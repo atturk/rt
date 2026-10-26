@@ -18,6 +18,12 @@ vi.mock('@/api/hooks', async (importOriginal) => {
   }
 })
 
+const facts = vi.fn()
+vi.mock('@/api/archive', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/archive')>()),
+  fileFacts: (file: File) => Promise.resolve(facts(file) ?? { entry: null, pagine_totali: null, estrai: null }),
+}))
+
 vi.mock('@/api/jobs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/jobs')>()
   return {
@@ -62,6 +68,7 @@ beforeEach(() => {
   resetUploadsForTests()
   mutateCreate.mockReset()
   mutateZips.mockReset()
+  facts.mockReset()
 })
 
 describe('NewLessonDialog', () => {
@@ -83,6 +90,8 @@ describe('NewLessonDialog', () => {
 
   it('cambia la frase con gli interruttori Solo trascrizione e Revisione', () => {
     renderDialog()
+    expect(screen.getByRole('button', { name: 'Solo trascrizione' })).toHaveAccessibleDescription('Solo trascrizione: serve una registrazione')
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), { target: { files: [new File(['a'], 'lezione.mp3', { type: 'audio/mpeg' })] } })
     const soloBtn = screen.getByRole('button', { name: 'Solo trascrizione' })
     const reviewBtn = screen.getByRole('button', { name: 'Revisione' })
 
@@ -216,124 +225,106 @@ describe('esito degli ZIP in Nuova lezione', () => {
   })
 })
 
-describe('Import nuovo (wireframe RT-import.html)', () => {
-  it('separa audio e materiali e mostra miniature dei materiali', () => {
+describe('Import nuovo: fonti con il layer delle opzioni', () => {
+  const choose = (...files: File[]) =>
+    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), { target: { files } })
+  const pdf = (name: string) => new File(['pdf'], name, { type: 'application/pdf' })
+  const sent = () => mutateCreate.mock.lastCall?.[0] as { principale?: string; opzioni: Record<string, unknown>; allega_materiali?: boolean }
+  const start = async () => {
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled())
+  }
+
+  it('separa audio e materiali senza graffetta né X sulle miniature', () => {
     renderDialog()
-    const audio = new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' })
-    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
-
-    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
-      target: { files: [audio, pdf] },
-    })
-
+    choose(new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' }), pdf('slide.pdf'))
     expect(screen.getByText('parte1.mp3')).toBeInTheDocument()
     expect(screen.getByText('slide.pdf')).toBeInTheDocument()
-    expect(screen.getByTestId('materials-container')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Allega documenti alle unità' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Allega documenti alle unità' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Togli slide.pdf' })).toBeNull()
+    expect(screen.queryByTestId('source-layer')).toBeNull()
   })
 
-  it('senza audio gestisce la stellina del materiale principale e manda principale', async () => {
+  it('un clic sulla miniatura apre e chiude il layer; con audio la guida è la registrazione', async () => {
     renderDialog()
-    const pdf1 = new File(['pdf1'], 'appunti.pdf', { type: 'application/pdf' })
-    const pdf2 = new File(['pdf2'], 'slide.pdf', { type: 'application/pdf' })
-
-    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
-      target: { files: [pdf1, pdf2] },
-    })
-
-    // Senza audio il primo documento è sempre scelto e mandato al server.
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent(/La scaletta segue «appunti.pdf»/)
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'false')
-
-    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'CHIMICA' } })
-    // La principale si manda anche senza clic sulla stellina.
-    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
-    expect(mutateCreate).toHaveBeenLastCalledWith(
-      expect.objectContaining({ principale: 'appunti.pdf' }),
-      expect.anything(),
-    )
-
-    // Clic sulla stellina della seconda miniatura, a primo invio uscito dalla coda
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled())
-    fireEvent.click(screen.getByTestId('material-star-1'))
-    expect(screen.getByTestId('material-star-1')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent('La scaletta segue «slide.pdf»')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
-
-    expect(mutateCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        files: [],
-        materiali: expect.arrayContaining([pdf1, pdf2]),
-        principale: 'slide.pdf',
-        allega_materiali: true,
-      }),
-      expect.anything(),
-    )
+    choose(new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' }), pdf('slide.pdf'))
+    const tile = screen.getByRole('button', { name: 'Opzioni slide.pdf' })
+    fireEvent.click(tile)
+    const layer = screen.getByTestId('source-layer')
+    expect(within(layer).getByRole('button', { name: 'Guida: fonte principale' })).toHaveAccessibleDescription(/Con una registrazione la guida è l’audio/)
+    expect(within(layer).getByRole('button', { name: 'Contesto: arricchisce la fonte principale' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(tile)
+    expect(screen.queryByTestId('source-layer')).toBeNull()
+    await start()
+    expect(sent().principale).toBeUndefined()
+    expect(sent().allega_materiali).toBeUndefined()
+    expect(sent().opzioni).toEqual({ 'slide.pdf': { estrai: 'immagini', uso: 'contesto' } })
   })
 
-  it('togliendo la principale passa al primo materiale rimasto', () => {
+  it('senza audio c’è sempre una guida: la prima, poi quella scelta', async () => {
     renderDialog()
-    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
-      target: { files: ['uno.pdf', 'due.pdf', 'tre.pdf'].map((name) => new File(['pdf'], name, { type: 'application/pdf' })) },
+    choose(pdf('appunti.pdf'), pdf('slide.pdf'))
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni appunti.pdf' }))
+    let layer = screen.getByTestId('source-layer')
+    expect(within(layer).getByRole('button', { name: 'Guida: fonte principale' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(layer).getByRole('button', { name: 'Contesto: arricchisce la fonte principale' })).toHaveAccessibleDescription(/Serve una guida: scegline un’altra/)
+    expect(within(layer).getByRole('button', { name: 'Solo immagini' })).toHaveAttribute('aria-disabled', 'true')
+    await start()
+    expect(sent().principale).toBe('appunti.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni slide.pdf' }))
+    layer = screen.getByTestId('source-layer')
+    fireEvent.click(within(layer).getByRole('button', { name: 'Guida: fonte principale' }))
+    await start()
+    expect(sent().principale).toBe('slide.pdf')
+    expect(sent().opzioni).toEqual({
+      'appunti.pdf': { estrai: 'immagini', uso: 'contesto' },
+      'slide.pdf': { estrai: 'immagini', uso: 'guida' },
     })
-    fireEvent.click(screen.getByTestId('material-star-2'))
-    fireEvent.click(screen.getByTestId('material-remove-2'))
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«uno.pdf»')
-    fireEvent.click(screen.getByTestId('material-remove-0'))
-    expect(screen.getByTestId('material-star-0')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('materials-hint')).toHaveTextContent('«due.pdf»')
   })
 
-  it('l interruttore graffetta controlla allega_materiali', () => {
+  it('eliminando la guida passa al primo documento con testo rimasto', async () => {
     renderDialog()
-    const pdf = new File(['pdf'], 'slide.pdf', { type: 'application/pdf' })
-
-    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
-      target: { files: [pdf] },
+    choose(pdf('uno.pdf'), pdf('due.pdf'), pdf('tre.pdf'))
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni uno.pdf' }))
+    expect(within(screen.getByTestId('source-layer')).getByRole('button', { name: 'Solo immagini' })).toHaveAccessibleDescription(/La guida ha bisogno del testo/)
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni due.pdf' }))
+    fireEvent.click(within(screen.getByTestId('source-layer')).getByRole('button', { name: 'Solo immagini' }))
+    expect(within(screen.getByTestId('source-layer')).getByRole('button', { name: 'Integra: può aggiungere unità' })).toHaveAccessibleDescription(/Solo immagini: nessun testo da usare/)
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni tre.pdf' }))
+    fireEvent.click(within(screen.getByTestId('source-layer')).getByRole('button', { name: 'Guida: fonte principale' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Elimina fonte' }))
+    expect(screen.queryByText('tre.pdf')).toBeNull()
+    await start()
+    expect(sent().principale).toBe('uno.pdf')
+    expect(sent().opzioni).toEqual({
+      'uno.pdf': { estrai: 'immagini', uso: 'guida' },
+      'due.pdf': { estrai: 'solo_immagini', uso: 'contesto' },
     })
-
-    const clipBtn = screen.getByTestId('attach-materials-btn')
-    expect(clipBtn).toHaveAttribute('aria-pressed', 'true')
-
-    // Spegne la graffetta
-    fireEvent.click(clipBtn)
-    expect(clipBtn).toHaveAttribute('aria-pressed', 'false')
-
-    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'FISICA' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
-
-    expect(mutateCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        allega_materiali: false,
-      }),
-      expect.anything(),
-    )
   })
 
-  it('senza materiali mostra il motivo per Allega documenti alle unità e il clic non cambia stato', () => {
+  it('i default vengono dal tipo di file e dall’orientamento del PDF; le pagine si scelgono con Da e A', async () => {
+    facts.mockImplementation((file: File) => file.name === 'libro.pdf' ? { entry: null, pagine_totali: 40, estrai: 'testo' } : null)
     renderDialog()
-    const attachBtn = screen.getByTestId('attach-materials-btn')
-    expect(attachBtn).toHaveAttribute('aria-disabled', 'true')
-    expect(attachBtn).toHaveAccessibleDescription('Allega documenti alle unità: aggiungi almeno un documento')
-
-    // Clic non cambia lo stato (resta true)
-    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(attachBtn)
-    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
-
-    // Con un documento il clic lo attiva come oggi
-    const pdf = new File(['pdf content'], 'appunti.pdf', { type: 'application/pdf' })
-    fireEvent.change(screen.getByLabelText('Audio o pacchetto della lezione'), {
-      target: { files: [pdf] },
+    choose(new File(['a'], 'lezione.mp3', { type: 'audio/mpeg' }), pdf('libro.pdf'), new File(['t'], 'note.md'), new File(['i'], 'lavagna.png', { type: 'image/png' }))
+    await waitFor(() => expect(facts).toHaveBeenCalledTimes(3))
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni note.md' }))
+    let layer = screen.getByTestId('source-layer')
+    expect(within(layer).getByRole('button', { name: 'Testo e immagini' })).toHaveAccessibleDescription(/Solo testo per Word, TXT e MD/)
+    expect(within(layer).queryByRole('group', { name: 'Pagine' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni libro.pdf' }))
+    layer = screen.getByTestId('source-layer')
+    await waitFor(() => expect(within(layer).getByRole('button', { name: 'Testo' })).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.click(within(layer).getByRole('button', { name: 'Intervallo di pagine' }))
+    fireEvent.change(within(layer).getByLabelText('Da'), { target: { value: '5' } })
+    fireEvent.change(within(layer).getByLabelText('A'), { target: { value: '12' } })
+    await start()
+    expect(sent().opzioni).toEqual({
+      'libro.pdf': { estrai: 'testo', uso: 'contesto', pagine: '5-12' },
+      'note.md': { estrai: 'testo', uso: 'contesto' },
+      'lavagna.png': { estrai: 'immagini', uso: 'contesto' },
     })
-    expect(attachBtn).not.toHaveAttribute('aria-disabled')
-    expect(attachBtn).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(attachBtn)
-    expect(attachBtn).toHaveAttribute('aria-pressed', 'false')
   })
 })
 

@@ -88,10 +88,12 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
     elif principale:
         primary = next(s for s in documents if os.path.basename(s.file) == principale)
     elif documents:
-        primary = documents[0]
+        primary = next((d for d in documents if d.estrai != 'solo_immagini'), documents[0])
     else:
         primary = notes
-    guide = [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida']
+    # Con una registrazione la guida è l'audio; senza, un documento con del testo.
+    guide = [] if audio_sources else [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida'
+             and s.estrai != 'solo_immagini']
     set_primary(lesson_dir, guide[-1].id if guide else primary.id)
     from rt.db.sync import dual_write_lesson
     dual_write_lesson(lesson_dir)

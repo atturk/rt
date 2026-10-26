@@ -37,14 +37,17 @@ function ClassifierForm({ initial }: { initial: Config }) {
     const seen = new Set<string>()
     for (const [job] of selected) {
       const own = draft.jobs?.[job]
-      const model = own?.model || draft.model
+      const shared = own?.model || draft.model
+      // Come classifier_job: senza modello proprio le immagini usano Jev 1.14.
+      const model = job === 'images' && !own?.model && shared?.startsWith('typesafe/jev-1.1') ? 'typesafe/jev-1.14' : shared
       const credential = own?.credential || draft.credential
       const base_url = own?.base_url || draft.base_url
       const request_type = job === 'relevance' ? decisions.data?.relevance_decision.type ?? 'score' : job === 'prefilter' ? decisions.data?.prefilter_decision.type ?? 'choice' : job === 'enrichment' || job === 'drift' ? 'noul' : 'choice'
-      const key = JSON.stringify([model, credential, base_url, request_type])
+      const key = JSON.stringify([model, credential, base_url, request_type, job === 'images'])
       if (seen.has(key)) continue
       seen.add(key)
-      await unwrap(api.POST('/api/v1/settings/classifier/probe', { body: { mode: 'manual', model, credential, base_url, timeout_seconds: draft.timeout_seconds, request_type, threshold: own?.threshold ?? (job === 'images' ? 0.7 : 0.8) } }))
+      const with_image = job === 'images' && (draft.images_reader ?? 'decision') === 'decision'
+      await unwrap(api.POST('/api/v1/settings/classifier/probe', { body: { mode: 'manual', model, credential, base_url, timeout_seconds: draft.timeout_seconds, request_type, with_image, threshold: own?.threshold ?? (job === 'images' ? 0.7 : 0.8) } }))
     }
   } })
   const update = (name: string, change: Partial<Job>) => setDraft(old => ({ ...old, jobs: { ...old.jobs, [name]: { mode: "off", ...old.jobs?.[name], ...change } } }))
@@ -59,6 +62,7 @@ function ClassifierForm({ initial }: { initial: Config }) {
     {jobs.map(([name, label, description, observe]) => <div key={name} className="border-t py-3">
       <div className="flex items-center gap-2"><div className="flex-1"><p className="text-body">{label}</p><p className="text-meta text-muted-foreground">{description}</p></div>
         <Select aria-label={`Modalità ${label}`} value={draft.jobs?.[name]?.mode ?? 'off'} onChange={e => update(name, { mode: e.target.value as Job['mode'] })}><option value="off">Spento</option><option value="manual">Manuale</option>{observe && <option value="observe">In osservazione</option>}{name !== 'images' && <option value="pipeline">In pipeline</option>}</Select>
+        {name === 'images' && (draft.jobs?.images?.mode ?? 'off') !== 'off' && <Select aria-label="Lettura immagini" value={draft.images_reader ?? 'decision'} onChange={e => setDraft({ ...draft, images_reader: e.target.value as Config['images_reader'] })}><option value="decision">Modello decisionale</option><option value="description">Descrittore</option></Select>}
         <IconButton icon={MoreHorizontal} label={`Modello proprio ${label}`} onClick={() => setExpanded(expanded === name ? null : name)} />
       </div>
       {expanded === name && <div className="grid gap-2 pt-2 sm:grid-cols-2"><Field label="Modello proprio" htmlFor={`cls-model-${name}`}><Input id={`cls-model-${name}`} value={draft.jobs?.[name]?.model ?? ''} onChange={e => update(name, { model: e.target.value || null })} /></Field><Field label="Connessione propria" htmlFor={`cls-credential-${name}`}><Select id={`cls-credential-${name}`} value={draft.jobs?.[name]?.credential ?? ''} onChange={e => update(name, { credential: e.target.value || null })}><option value="">Condivisa</option>{credentials.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}</Select></Field><Field label="Endpoint proprio" htmlFor={`cls-url-${name}`}><Input id={`cls-url-${name}`} value={draft.jobs?.[name]?.base_url ?? ''} onChange={e => update(name, { base_url: e.target.value || null })} /></Field>{name === 'images' && <Field label="Soglia assegnazione" htmlFor="cls-threshold-images"><Input id="cls-threshold-images" type="number" step={0.05} min={0} max={1} value={draft.jobs?.[name]?.threshold ?? 0.7} onChange={e => update(name, { threshold: Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : undefined })} /></Field>}<Button variant="outline" disabled={probe.isPending} onClick={() => probe.mutate(name)}>Prova modello proprio</Button></div>}

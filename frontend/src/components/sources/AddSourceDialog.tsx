@@ -1,58 +1,29 @@
-import { Archive, FileText, GitMerge, Image, Layers, Navigation, Type } from 'lucide-react'
+import { Archive } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
   archiveApi,
   compressPages,
-  defaultExtraction,
-  fileSha,
+  fileFacts,
   type ArchiveLookup,
+  type Extraction,
   type SourceOptions,
 } from '@/api/archive'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
+import { defaultOptions, sourceReasons, useSourceDefaults, type Uso } from '@/lib/sourceDefaults'
+import { ExtractOptions, SourceFileIcon, UseOptions } from './SourceControls'
 
-export function UseOptions({
-  value,
-  onChange,
-}: {
-  value: NonNullable<SourceOptions['uso']>
-  onChange: (value: NonNullable<SourceOptions['uso']>) => void
-}) {
-  return (
-    <div className="flex items-center gap-1" aria-label="Uso">
-      <IconButton
-        icon={Navigation}
-        label="Guida: fonte principale"
-        active={value === 'guida'}
-        onClick={() => onChange('guida')}
-      />
-      <IconButton
-        icon={Layers}
-        label="Contesto: arricchisce la fonte principale"
-        active={value === 'contesto'}
-        onClick={() => onChange('contesto')}
-      />
-      <IconButton
-        icon={GitMerge}
-        label="Integra: può aggiungere unità"
-        active={value === 'integra'}
-        onClick={() => onChange('integra')}
-      />
-      <span className="ml-2 text-meta text-muted-foreground">
-        {{ guida: 'Guida', contesto: 'Contesto', integra: 'Integra' }[value]}
-      </span>
-    </div>
-  )
-}
+export { UseOptions } from './SourceControls'
 
 export function AddSourceDialog({
   file,
   source,
   initial,
   hasSources,
+  hasAudio = false,
+  isGuide = false,
   onClose,
   onSubmit,
   submitLabel = 'Aggiungi',
@@ -61,6 +32,10 @@ export function AddSourceDialog({
   source?: { impronta: string; nome: string; pagine_totali?: number | null }
   initial?: SourceOptions
   hasSources: boolean
+  /** Con una registrazione la guida è l'audio. */
+  hasAudio?: boolean
+  /** La fonte è la guida della lezione: deve restarlo finché non se ne sceglie un'altra. */
+  isGuide?: boolean
   onClose: () => void
   onSubmit: (options: SourceOptions) => Promise<void> | void
   submitLabel?: string
@@ -69,10 +44,12 @@ export function AddSourceDialog({
   const [entry, setEntry] = useState<ArchiveLookup | null>(null)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [estrai, setEstrai] = useState(initial?.estrai ?? defaultExtraction(name))
-  const [uso, setUso] = useState<NonNullable<SourceOptions['uso']>>(
-    initial?.uso ?? (hasSources ? 'contesto' : 'guida'),
+  const [defaults] = useSourceDefaults()
+  const [estrai, setEstrai] = useState<Extraction>(initial?.estrai ?? defaultOptions(name, defaults).estrai ?? 'immagini')
+  const [uso, setUso] = useState<Uso>(
+    initial?.uso ?? (hasSources || hasAudio ? defaultOptions(name, defaults).uso ?? 'contesto' : 'guida'),
   )
+  const reasons = sourceReasons({ name, options: { estrai }, hasAudio, isGuide })
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const hasPages = /\.(pdf|pptx|docx|txt)$/i.test(name)
@@ -82,15 +59,24 @@ export function AddSourceDialog({
   useEffect(() => {
     let current = true
     async function load() {
-      const sha = source?.impronta ?? (file ? await fileSha(file) : null)
-      if (!sha) return
-      const result = (await archiveApi.lookup([sha]))[sha]
+      let result: ArchiveLookup | null = null
+      let pages: number | null = null
+      if (source) {
+        result = (await archiveApi.lookup([source.impronta]))[source.impronta]
+        pages = result?.pagine_totali ?? null
+        if (current && result?.estrai && !initial?.estrai) setEstrai(defaultOptions(name, defaults, result.estrai).estrai ?? 'immagini')
+      } else if (file) {
+        const facts = await fileFacts(file)
+        pages = facts.pagine_totali
+        result = facts.entry
+        if (current && facts.estrai && !initial?.estrai) setEstrai(defaultOptions(name, defaults, facts.estrai).estrai ?? 'immagini')
+      }
       if (!current) return
       setEntry(result)
       if (!initial?.pagine) {
         const range = result?.da_continuare?.split('–')
         setFrom(range?.[0] ?? '1')
-        setTo(range?.[1] ?? String(result?.pagine_totali ?? source?.pagine_totali ?? ''))
+        setTo(range?.[1] ?? String(pages ?? source?.pagine_totali ?? ''))
       }
     }
     void load().catch(() => {
@@ -99,6 +85,7 @@ export function AddSourceDialog({
     return () => {
       current = false
     }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- i default contano solo all'apertura
   }, [file, source, initial?.pagine])
   const used = entry?.usate.flatMap((u) => u.pagine ?? []) ?? []
   async function submit() {
@@ -108,7 +95,7 @@ export function AddSourceDialog({
       const pagine = pageText || (from && to ? `${from}-${to}` : null)
       if (hasPages && ((from && Number(from) < 1) || (to && Number(to) < Number(from))))
         throw new Error('Pagine fuori intervallo')
-      await onSubmit({ pagine: hasPages ? pagine : null, estrai, uso })
+      await onSubmit({ pagine: hasPages ? pagine : null, estrai, uso: estrai === 'solo_immagini' ? 'contesto' : uso })
     } catch (error) {
       setProblem(errorMessage(error))
     } finally {
@@ -119,7 +106,7 @@ export function AddSourceDialog({
     <Modal open title="Aggiungi fonte" onClose={onClose}>
       <div className="mt-4 flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <FileText className="size-4" aria-hidden />
+          <SourceFileIcon name={name} className="size-4" />
           <span className="truncate">{name}</span>
         </div>
         {entry && (
@@ -179,26 +166,9 @@ export function AddSourceDialog({
             )}
           </div>
         )}
-        <div>
-          <span className="text-meta">Estrai</span>
-          <div className="flex gap-1">
-            <IconButton
-              icon={Type}
-              label="Testo: niente immagini"
-              active={estrai === 'testo'}
-              onClick={() => setEstrai('testo')}
-            />
-            <IconButton
-              icon={Image}
-              label="Immagini: pagine e figure"
-              active={estrai === 'immagini'}
-              onClick={() => setEstrai('immagini')}
-            />
-          </div>
-        </div>
-        <div>
-          <span className="text-meta">Uso</span>
-          <UseOptions value={uso} onChange={setUso} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ExtractOptions value={estrai} onChange={setEstrai} unavailable={reasons.extract} />
+          <UseOptions value={uso} onChange={setUso} unavailable={reasons.use} off={reasons.off} />
         </div>
         {problem && <Alert tone="danger">{problem}</Alert>}
         <div className="flex justify-end gap-2">

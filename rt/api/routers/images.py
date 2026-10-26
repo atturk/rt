@@ -457,3 +457,33 @@ def crop_media(
 
 
 
+
+
+class ImageInfo(BaseModel):
+    testo: str = Field("", description="Testo estratto: OCR o testo della pagina")
+    descrizione: dict[str, str] = Field(default_factory=dict,
+        description="Campi della descrizione presenti: slide_title, visual_elements, summary_keywords, alt_text")
+    ruolo: Optional[str] = Field(None, description="Ruolo scelto dal modello decisionale: contenuto, introduttiva, irrilevante")
+
+
+DESCRIPTION_FIELDS = ("slide_title", "visual_elements", "summary_keywords", "alt_text")
+
+
+def image_info(description: dict, text: str = "") -> ImageInfo:
+    def clean(value):
+        return ", ".join(map(str, value)) if isinstance(value, list) else str(value or "").strip()
+    return ImageInfo(testo=clean(description.get("ocr_text")) or text.strip(),
+                     descrizione={k: clean(description.get(k)) for k in DESCRIPTION_FIELDS if clean(description.get(k))},
+                     ruolo=description.get("ruolo"))
+
+
+@router.get("/lessons/{lesson_id}/media/info", response_model=ImageInfo,
+            summary="Testo estratto, descrizione e ruolo di un'immagine della lezione")
+def media_info(lesson_id: int, lesson_dir: LessonDir, _actor: Actor, name: str = Query(...)):
+    from rt.pipeline.add_images import load_image_descriptions
+    descriptions = load_image_descriptions(lesson_dir)
+    found = descriptions.get(name) or next((d for d in descriptions.values()
+        if os.path.basename(d.get("filename", "")) == os.path.basename(name) or d.get("source") == name), None)
+    if found is None:
+        raise ApiError(404, "image_not_found", "Immagine non trovata.")
+    return image_info(found)
