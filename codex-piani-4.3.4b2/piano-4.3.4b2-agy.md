@@ -23,4 +23,48 @@ In Impostazioni > Aspetto la sezione **Studio** (riga «Colori dell'evidenziator
     non ci siano più il titolo «Studio» né «Colori dell'evidenziatore».
 - Verifica: `cd frontend && npm run lint && npx tsc -b && npm test`, e l'e2e `settings.spec.ts` se riesci a lanciarlo.
 
-<!-- Le prossime voci vanno qui sotto (## 2, ## 3, …). -->
+## 2. Studio: font e dimensione del testo dalle impostazioni
+
+Nello Studio si sceglie il font e la dimensione del testo dell'unità (titolo e testo), da una sezione
+delle impostazioni. Tra i font c'è **Seravek**.
+
+**Preferenze**
+- Nuovo file `frontend/src/lib/studyText.ts`:
+  - `STUDY_FONTS`: `[valore, etichetta, stack CSS]`:
+    - `sistema` · «Sistema» · `var(--font-sans)` (default, cioè come oggi);
+    - `seravek` · «Seravek» · `Seravek, 'Gill Sans Nova', 'Avenir Next', var(--font-sans)`;
+    - `avenir` · «Avenir Next» · `'Avenir Next', Avenir, var(--font-sans)`;
+    - `georgia` · «Georgia» · `Georgia, 'Iowan Old Style', serif`;
+    - `dislessia` · «OpenDyslexic» · `'OpenDyslexic', var(--font-sans)` (il font è già in `/fonts`, dichiarato in index.css).
+  - Font: preferenza condivisa `study.text-font` (nome valido per il server: minuscole, punto, trattino), con `usePreference(name, 'sistema')`.
+  - Dimensione: è lo stesso `textScale` che oggi lo Studio cambia con + e −, salvato per dispositivo in
+    `localStorage['rt-device:study-text-scale']`, da 0,8 a 2,0 a passi di 0,1. Sposta `getSavedStudyTextScale`
+    e il salvataggio da `Study.tsx` a un hook `useStudyTextScale()` in `studyText.ts`. Lo usano sia lo Studio
+    sia le impostazioni: cambiando da una parte si vede dall'altra (evento `storage` o un piccolo store in memoria).
+  - Font non installati: Seravek e Avenir ci sono solo sul Mac. In `studyText.ts` scrivi una funzione
+    `fontAvailable(name)` che confronta su un canvas la larghezza di un testo col font e con il solo
+    fallback. Nelle impostazioni mostra solo i font disponibili, più quello salvato. Se il font salvato
+    non c'è, lo stack CSS ripiega da solo.
+
+**Studio** (`frontend/src/components/study/Study.tsx`)
+- Sulla `<section>` di `UnitText` (titolo `h2` e testo) imposta `style={{ fontFamily: stack }}`, con lo stack del font scelto.
+  La dimensione resta com'è (`--study-text-scale`).
+- Non applicarlo alla lettura veloce, che ha già il suo «Font per dislessia», né alle formule (`.rt-math` resta com'è).
+
+**Impostazioni** (`frontend/src/components/settings/preferences.tsx`, `AppearanceSection`)
+- Al posto della sezione tolta alla voce 1, nuova `<Section id="testo-studio" title="Testo dello Studio">` con due campi:
+  - «Font»: `Select` (`SettingsSelect`) con i font disponibili. Ogni opzione è scritta nel suo font, se il Select lo permette.
+  - «Dimensione»: `Select` da 80% a 200% a passi di 10%, che legge e scrive la stessa scala dello Studio.
+- Niente frasi di spiegazione né anteprime lunghe. Al massimo una riga d'anteprima («Aa»
+  o il titolo di esempio) nel font scelto, solo se resta discreta.
+
+**Test**
+- `studyText.test.ts`:
+  - default `sistema`;
+  - lo stack di `seravek` contiene `Seravek`;
+  - la scala viene limitata fra 0,8 e 2,0.
+- `preferences.test.tsx`: scegliendo «Seravek» si salva `study.text-font = 'seravek'`; con la dimensione a 120% la scala vale 1,2.
+- `Study.test.tsx`: con `study.text-font = 'seravek'` la section del testo ha `font-family` con Seravek. Il test esistente dello zoom (+/−) deve restare verde.
+- In jsdom il canvas non misura: falsifica `fontAvailable` (vi.mock) o fallo tornare `true` quando non può misurare.
+
+<!-- Le prossime voci vanno qui sotto (## 3, ## 4, …). -->
