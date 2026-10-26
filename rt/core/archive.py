@@ -79,7 +79,7 @@ def file_type(path, tipo=None):
     ext = os.path.splitext(path)[1].lower()
     if tipo == 'audio':
         return 'audio'
-    if ext in ('.docx', '.txt'):
+    if ext in ('.docx', '.txt', '.md'):
         return 'testo'
     return 'slide' if ext in ('.pdf', '.pptx') else 'immagine'
 

@@ -105,7 +105,7 @@ def test_text_mode_hides_images_in_shared_full_cache(tmp_path):
     assert pages_for_use(source.impronta)[0]['immagini']
 
 
-def test_docx_embedded_images_in_paragraphs_and_tables(tmp_path):
+def test_docx_is_always_text_even_with_embedded_images(tmp_path):
     from docx import Document
     from tests.test_materials import png_bytes
     document = Document()
@@ -117,5 +117,6 @@ def test_docx_embedded_images_in_paragraphs_and_tables(tmp_path):
     document.save(stream)
     directory = lesson(tmp_path, 'word-images')
     source = add_source(directory, 'materiale', 'images.docx', stream.getvalue(), estrai='immagini')
+    assert source.estrai == 'testo'
     pages = material_pages(directory, source, mock=True)
-    assert len(pages[0]['immagini']) == 2
+    assert pages[0]['immagini'] == [] and 'Testo completo' in pages[0]['testo']

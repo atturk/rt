@@ -115,7 +115,7 @@ def segment_source_ids(sources, state, primary):
         selected = {primary}
     else:
         selected = {s.id for s in sources if s.tipo != "materiale"} or {primary}
-    return selected | {s.id for s in sources if s.uso == "integra"}
+    return selected | {s.id for s in sources if s.uso == "integra" and s.estrai != "solo_immagini"}
 
 
 def reingest_availability(lesson_dir, sources=None):

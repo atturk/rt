@@ -795,6 +795,8 @@ def run_add_images(
     if uploaded and not selected_images:
         prepare_uploaded_images(lesson_dir, uploaded, force_mock=force_mock,
                                 progress=report(30, 20, "Leggo le pagine"), **tolerant)
+        from rt.core.image_extract import update_archived_descriptions
+        update_archived_descriptions(uploaded, load_image_descriptions(lesson_dir))
 
     from rt.pipeline.image_decision import uses_decision_reader
     by_decision = uses_decision_reader()

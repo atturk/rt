@@ -27,7 +27,7 @@ def archive_lesson(api_client, rt_db, tmp_path, monkeypatch):
     root = isolated_workspace(tmp_path, monkeypatch)
     directory = make_lesson(root)
     lid = api_client.get('/api/v1/lessons').json()[0]['id']
-    source = add_source(directory, 'materiale', 'Libro.pdf', pdf(), pagine=[1, 2])
+    source = add_source(directory, 'materiale', 'Libro.pdf', pdf(), pagine=[1, 2], estrai='immagini')
     material_pages(directory, source)
     return lid, directory, source, root
 

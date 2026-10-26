@@ -21,6 +21,11 @@ PAGE_TEXT_LIMIT = 4000
 UNIT_TEXT_LIMIT = 600
 
 
+def images_job_on(cfg=None) -> bool:
+    from rt.core.config import classifier_job, load_config
+    return classifier_job(cfg or load_config(), "images").mode != "off"
+
+
 def uses_decision_reader(cfg=None) -> bool:
     from rt.core.config import classifier_job, load_config
     cfg = cfg or load_config()

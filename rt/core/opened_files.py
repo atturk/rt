@@ -24,6 +24,7 @@ ACCEPTED_EXTENSIONS = {
     ".pptx",
     ".docx",
     ".txt",
+    ".md",
     ".png",
     ".jpg",
     ".jpeg",

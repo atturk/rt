@@ -39,6 +39,13 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     from rt.core.idempotency import compute_file_sha256
     fingerprint = compute_file_sha256(pdf_path)
     basename = os.path.basename(pdf_path)
+    # Lo stesso PDF già letto come fonte (o da un altro pannello) riusa le pagine dell'archivio.
+    archived = _archived_pages(fingerprint, basename, doc.page_count)
+    if archived is not None:
+        doc.close()
+        if progress:
+            progress(len(archived), len(archived))
+        return archived
     results = []
     mat = fitz.Matrix(zoom, zoom)
     from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_pages_have_figures
@@ -61,7 +68,106 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
         if progress:
             progress(i + 1, doc.page_count)
     doc.close()
+    _archive_pages(pdf_path, fingerprint, results, texts)
     return results
+
+
+def _archived_pages(sha, basename, count):
+    """Pagine con immagine già nell'archivio, nello stesso formato di extract_images_from_pdf."""
+    from rt.core.archive import entry_dir, read_json
+    try:
+        folder = entry_dir(sha)
+    except ValueError:
+        return None
+    pages = (read_json(os.path.join(folder, 'pages.json'), {}) or {}).get('pages') or []
+    if len(pages) != count or not all(p and p.get('immagini') and 'has_figures' in p for p in pages):
+        return None
+    results = []
+    for page in pages:
+        path = os.path.join(folder, os.path.basename(page['immagini'][0]))
+        if not os.path.isfile(path):
+            return None
+        with open(path, 'rb') as stream:
+            data = stream.read()
+        text = '' if page.get('vision_pending') else page.get('mapping_text', page.get('testo', ''))
+        results.append(ExtractedImage(
+            image_bytes=data, source_label=f"pdf:{basename}#{page['numero']}", text=text or '',
+            page_number=page['numero'], file_fingerprint=sha, has_figures=page['has_figures'],
+            mapping_skip=bool(page.get('mapping_skip'))))
+    return results
+
+
+def _archive_pages(pdf_path, sha, results, texts):
+    """Il PDF del pannello entra nell'archivio con le sue pagine: come fonte non si rilegge."""
+    from rt.core.archive import archive_lock, entry_dir, read_json, refresh_search, register_file, save_meta, write_json
+    try:
+        register_file(pdf_path, nome=os.path.basename(pdf_path), tipo='slide', sha=sha)
+        folder = entry_dir(sha)
+        with archive_lock(sha + '-extract'):
+            if read_json(os.path.join(folder, 'pages.json')):
+                return
+            pages = []
+            for image, text in zip(results, texts):
+                name = f'page-{image.page_number}-1.png'
+                with open(os.path.join(folder, name), 'wb') as stream:
+                    stream.write(image.image_bytes)
+                pages.append({'numero': image.page_number, 'testo': text, 'immagini': [name],
+                              'mapping_text': text, 'has_figures': image.has_figures,
+                              'mapping_skip': image.mapping_skip,
+                              **({'vision_pending': True} if not image.text and not image.mapping_skip else {})})
+            write_json(os.path.join(folder, 'pages.json'), {'impronta': sha, 'pages': pages})
+            _write_page_entries(folder, pages)
+        save_meta(sha, {'pagine_totali': len(pages), 'estrai': 'immagini'})
+        refresh_search(sha)
+    except OSError:
+        # L'archivio è un'ottimizzazione: il pannello funziona anche senza.
+        return
+
+
+def _write_page_entries(folder, pages):
+    """page-N.json delle pagine finite: la lettura come fonte le riprende senza rifarle."""
+    import json
+    for page in pages:
+        target = os.path.join(folder, f"page-{page['numero']}.json")
+        if page.get('vision_pending') or os.path.exists(target):
+            continue
+        with open(target + '.tmp', 'w', encoding='utf-8') as stream:
+            json.dump(page, stream, ensure_ascii=False)
+        os.replace(target + '.tmp', target)
+
+
+def update_archived_descriptions(images, descriptions):
+    """Le descrizioni fatte dal pannello completano le pagine dell'archivio ancora da descrivere."""
+    from rt.core.archive import archive_lock, entry_dir, read_json, refresh_search, write_json
+    by_sha = {}
+    for image in images:
+        if image.source_label.startswith('pdf:') and image.file_fingerprint:
+            by_sha.setdefault(image.file_fingerprint, []).append(image)
+    import hashlib
+    for sha, pages_images in by_sha.items():
+        try:
+            path = os.path.join(entry_dir(sha), 'pages.json')
+        except ValueError:
+            continue
+        with archive_lock(sha + '-extract'):
+            data = read_json(path)
+            if not data:
+                continue
+            changed = False
+            by_number = {p['numero']: p for p in data.get('pages', []) if p}
+            for image in pages_images:
+                page = by_number.get(image.page_number)
+                description = descriptions.get(hashlib.sha256(image.image_bytes).hexdigest()) or {}
+                described = '\n'.join(str(description.get(k) or '') for k in ('slide_title', 'ocr_text', 'visual_elements')).strip()
+                if page and page.get('vision_pending') and described:
+                    page.pop('vision_pending')
+                    page.update(testo='\n'.join(filter(None, [page.get('testo'), described])), mapping_text=described)
+                    changed = True
+            if changed:
+                write_json(path, data)
+                _write_page_entries(os.path.dirname(path), data['pages'])
+        if changed:
+            refresh_search(sha)
 
 
 def extract_images_from_folder(folder_path: str, progress: Optional[Callable[[int, int], None]] = None) -> List[ExtractedImage]:

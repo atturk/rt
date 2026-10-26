@@ -94,7 +94,7 @@ class AddToLessonRequest(BaseModel):
     lesson_id: int
     uso: Literal['guida', 'contesto', 'integra'] = 'contesto'
     pagine: list[int] | None = None
-    estrai: Literal['testo', 'immagini'] = 'immagini'
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] = 'immagini'
 
 
 class AddToMediaRequest(PagesRequest):

@@ -17,7 +17,7 @@ from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_lock import lesson_lock
 from rt.storage import fs
 
-MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt'}
+MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt', '.md'}
 
 
 def page_count(path):
@@ -30,7 +30,7 @@ def page_count(path):
         if suffix == '.pptx':
             from pptx import Presentation
             return len(Presentation(real).slides)
-        if suffix in ('.txt', '.docx'):
+        if suffix in ('.txt', '.md', '.docx'):
             return len(list(_document_pages(real)))
         from PIL import Image
         from pillow_heif import register_heif_opener
@@ -143,7 +143,7 @@ def _slide_content(slide):
 def _document_pages(real, images=False):
     """Circa 400 parole, paragrafi indivisibili; ogni titolo apre una pagina."""
     blocks = []
-    if real.lower().endswith('.txt'):
+    if real.lower().endswith(('.txt', '.md')):
         with open(real, 'rb') as stream:
             data = stream.read()
         try:
@@ -192,7 +192,7 @@ def _document_pages(real, images=False):
 
 def _extract(real):
     suffix = os.path.splitext(real)[1].lower()
-    if suffix in ('.docx', '.txt'):
+    if suffix in ('.docx', '.txt', '.md'):
         yield from _document_pages(real, images=True)
     elif suffix == '.pdf':
         import fitz
@@ -215,7 +215,7 @@ def _extract(real):
 
 def _extract_text(real):
     suffix = os.path.splitext(real)[1].lower()
-    if suffix in ('.docx', '.txt'):
+    if suffix in ('.docx', '.txt', '.md'):
         yield from _document_pages(real)
     elif suffix == '.pdf':
         import fitz
@@ -253,7 +253,16 @@ def cached_pages(lesson_dir, source):
     if not data:
         return None
     pages = pages_for_use(source.impronta, getattr(source, 'pagine', None))
-    return [dict(p, immagini=[]) for p in pages] if getattr(source, 'estrai', None) == 'testo' else pages
+    return for_mode(pages, getattr(source, 'estrai', None))
+
+
+def for_mode(pages, mode):
+    """L'archivio tiene tutto; la lezione vede solo testo, testo e immagini, o solo immagini."""
+    if mode == 'testo':
+        return [dict(p, immagini=[]) for p in pages]
+    if mode == 'solo_immagini':
+        return [dict(p, testo='', mapping_text='', mapping_skip=False) for p in pages]
+    return pages
 
 
 def _elapsed(seconds):
@@ -300,15 +309,20 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         if ctx:
             ctx.progress('prepare', message=f"Lettura di {name}: finita in {_elapsed(stats['seconds'])} "
                          f"(Vision {calls} chiamate, media {mean:.1f} s)")
-        return [dict(p, immagini=[]) for p in pages] if mode == 'testo' else pages
+        return for_mode(pages, mode)
 
     from rt.core.source_options import default_extraction
-    mode = getattr(source, 'estrai', None) or default_extraction(source.file)
+    mode = getattr(source, 'estrai', None) or default_extraction(source.file, path)
+    # Testo e immagini e solo immagini estraggono le stesse pagine: cambia cosa vede la lezione.
+    extract = 'testo' if mode == 'testo' else 'immagini'
     from rt.core.archive import load_meta
     cached = None if refresh else cached_pages(lesson_dir, source)
     previous_mode = (load_meta(source.impronta) or {}).get('estrai', 'testo')
-    upgrading = mode == 'immagini' and previous_mode == 'testo'
-    if cached is not None and not upgrading and all('has_figures' in page for page in cached):
+    upgrading = extract == 'immagini' and previous_mode == 'testo'
+    # Vision descrive solo le pagine scelte; solo immagini non descrive nulla.
+    wanted_pages = getattr(source, 'pagine', None)
+    if cached is not None and not upgrading and all('has_figures' in page and (
+            mode == 'solo_immagini' or not page.get('vision_pending')) for page in cached):
         stats['cached_pages'] = len(cached)
         progress(len(cached), len(cached))
         return finish(cached)
@@ -320,7 +334,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
     with fs.materialize(path) as real:
         from rt.core.archive import read_json
         previous = read_json(os.path.join(folder, 'pages.json'), {}).get('pages', [])
-        extraction = (_extract_images(real, previous) if upgrading and previous else _extract(real)) if mode != 'testo' else _extract_text(real)
+        extraction = (_extract_images(real, previous) if upgrading and previous else _extract(real)) if extract != 'testo' else _extract_text(real)
         crops = (load_meta(source.impronta) or {}).get('ritagli', {})
         for number, (text, images, has_figures) in enumerate(extraction, 1):
             if ctx:
@@ -355,12 +369,16 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         if not refresh and fs.isfile(entry_path):
             with fs.open(entry_path, encoding='utf-8') as stream:
                 saved = json.load(stream)
-            if 'has_figures' in saved:
+            if 'has_figures' in saved and not saved.get('vision_pending'):
                 if upgrading:
                     saved['immagini'] = filenames
                     saved['has_figures'] = has_figures
                     saved['mapping_skip'] = few_words(saved.get('mapping_text', saved.get('testo', ''))) and not has_figures
                     if few_words(saved.get('mapping_text', saved.get('testo', ''))) and has_figures and filenames:
+                        if mode == 'solo_immagini' or (wanted_pages is not None and number not in wanted_pages):
+                            pages[number - 1] = dict(saved, vision_pending=True)
+                            completed += 1
+                            continue
                         pending.append(saved)
                         continue
                     save(saved)
@@ -374,7 +392,13 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         entry = {'numero': number, 'testo': text, 'immagini': filenames,
                  'mapping_text': mapping_text, 'has_figures': has_figures,
                  'mapping_skip': sparse and not has_figures}
-        if sparse and has_figures and filenames:
+        if sparse and has_figures and filenames and (mode == 'solo_immagini' or (
+                wanted_pages is not None and number not in wanted_pages)):
+            # Descritta solo quando una lezione la sceglie: niente page-N.json, resta da fare.
+            pages[number - 1] = dict(entry, vision_pending=True)
+            completed += 1
+            progress(completed, len(pages))
+        elif sparse and has_figures and filenames:
             pending.append(entry)
         else:
             pages[number - 1] = save(entry)
@@ -456,7 +480,9 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         with fs.open(cache_path + '.tmp', 'w', encoding='utf-8') as stream:
             json.dump({'impronta': source.impronta, 'pages': pages}, stream, ensure_ascii=False)
         fs.replace(cache_path + '.tmp', cache_path)
-    save_meta(source.impronta, {'pagine_totali': len(pages), 'estrai': mode if upgrading or previous_mode != 'immagini' else previous_mode})
+    save_meta(source.impronta, {'pagine_totali': len(pages), 'estrai': extract if upgrading or previous_mode != 'immagini' else previous_mode})
+    from rt.core.archive import refresh_search
+    refresh_search(source.impronta)
     return finish(pages_for_use(source.impronta, getattr(source, 'pagine', None)))
 
 
