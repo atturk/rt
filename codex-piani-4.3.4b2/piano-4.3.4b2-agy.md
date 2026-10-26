@@ -67,4 +67,19 @@ delle impostazioni. Tra i font c'è **Seravek**.
 - `Study.test.tsx`: con `study.text-font = 'seravek'` la section del testo ha `font-family` con Seravek. Il test esistente dello zoom (+/−) deve restare verde.
 - In jsdom il canvas non misura: falsifica `fontAvailable` (vi.mock) o fallo tornare `true` quando non può misurare.
 
+## 3. PDF: timecode duplicato sotto il titolo dell'unità
+
+Nel PDF ogni titolo di sottounità mostra il timecode due volte: accanto al titolo (`.print-timecode`, voluto) e, sotto, come paragrafo a sé («00:22»).
+
+**Causa.** L'HTML del documento contiene dopo ogni titolo il paragrafo `[data-unit-timecode]` (`rt/services/lesson_service.py`). Nell'app lo nasconde `index.css` con `.rt-document [data-unit-timecode] { display: none }`, ma la pagina di stampa (`components/lesson/PrintLessonPage.tsx`) usa `.print-content`, non `.rt-document`, quindi il paragrafo resta visibile.
+
+**Cosa fare**
+- In `PrintLessonPage.tsx`, subito dopo `root.innerHTML = rawHtml`, rimuovi i paragrafi: `root.querySelectorAll('[data-unit-timecode]').forEach((el) => el.remove())`.
+- Lascia com'è `lib/printDocument.ts` (la riga che salta `[data-unit-timecode]` è coperta da un test e non dà fastidio).
+- Non toccare il backend né `index.css`.
+
+**Test**
+- `PrintLessonPage.test.tsx` (nuovo; mocka `useLesson` e `useLessonDocument`): con un documento `<h3 data-unit-id="u1">Titolo</h3><p data-unit-timecode="u1">00:22</p><p>Testo</p>` e una sezione `{unit_id: 'u1', start_formatted: '00:22'}`, il testo «00:22» compare una sola volta (dentro `.print-timecode`) e non c'è nessun `[data-unit-timecode]`.
+- `printDocument.test.ts` resta verde senza modifiche.
+
 <!-- Le prossime voci vanno qui sotto (## 3, ## 4, …). -->
