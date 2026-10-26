@@ -59,6 +59,8 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
         # Jev (System One): output gratuito, non genera token in sequenza (single-pass).
         # Fallback usato solo se OpenRouter non riporta usage.cost direttamente nella risposta.
         "typesafe/jev-1.13": ModelPricing(input_per_million=0.042, output_per_million=0.0),
+        "typesafe/jev-1.14": ModelPricing(input_per_million=0.042, output_per_million=0.0),
+        "jev-1.14": ModelPricing(input_per_million=0.042, output_per_million=0.0),
         "jev-1.13": ModelPricing(input_per_million=0.042, output_per_million=0.0),
         "jev-latest": ModelPricing(input_per_million=0.042, output_per_million=0.0),
     },

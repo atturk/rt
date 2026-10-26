@@ -424,12 +424,15 @@ def fetch_web_images(
 
 
 def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=None, progress=None):
-    """Il testo dei PDF evita Vision; foto e pagine mute riusano le descrizioni in cache."""
+    """Il testo dei PDF evita Vision; foto e pagine mute riusano le descrizioni in cache.
+    Con la lettura "decision" non si descrive nulla: l'immagine la guarda il modello decisionale."""
+    from rt.pipeline.image_decision import uses_decision_reader
+    by_decision = uses_decision_reader()
     descriptions = load_image_descriptions(lesson_dir)
     for i, image in enumerate(images, 1):
         image_hash = compute_image_hash(image.image_bytes)
         if image_hash not in descriptions:
-            if image.text or image.mapping_skip:
+            if image.text or image.mapping_skip or by_decision:
                 descriptions[image_hash] = {
                     "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash),
                     "source": image.source_label,
@@ -453,8 +456,90 @@ def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=No
             break
 
 
-def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=None, progress=None):
+def _image_text(image, description):
+    return image.text or '\n'.join(str(description.get(key) or '')
+        for key in ('slide_title', 'ocr_text', 'visual_elements', 'summary_keywords'))
+
+
+def decide_images(lesson_dir, outline, images, *, force_mock=False, ctx=None, failures=None, progress=None):
+    """Lettura "decision": una richiesta per immagine al modello decisionale, che la guarda.
+    images: [(hash, byte, testo della pagina)]. Il ruolo finisce in descriptions.json.
+    Se il modello rifiuta l'immagine si ripiega sul descrittore e sulla collocazione dal testo."""
+    from rt.llm.cancel import RunCancelled
+    from rt.llm.jev_client import JevError
+    from rt.pipeline.image_decision import IMAGE_REJECTED, decide_image, load_cache
+    from rt.pipeline.material_mapping import append_page_placements
+    from rt.services.enrichment_service import units
+    cached = load_cache(lesson_dir)
+    lesson_units = None if LLMClient(force_mock=force_mock).force_mock else units(lesson_dir)
+    by_unit, by_macro, rejected = {}, {}, []
+    for i, (image_hash, data, text) in enumerate(images, 1):
+        try:
+            assigned_units, assigned_macros, role = decide_image(
+                lesson_dir, outline, image_hash, data, text, cached, mock=force_mock, ctx=ctx,
+                lesson_units=lesson_units)
+            descriptions = load_image_descriptions(lesson_dir)
+            if image_hash in descriptions and descriptions[image_hash].get('ruolo') != role:
+                descriptions[image_hash]['ruolo'] = role
+                save_image_descriptions(lesson_dir, descriptions)
+            append_page_placements(by_unit, by_macro, image_hash, assigned_units, assigned_macros)
+            if failures:
+                failures.succeeded()
+        except RunCancelled:
+            raise
+        except Exception as exc:
+            if isinstance(exc, JevError) and exc.http_status in IMAGE_REJECTED:
+                rejected.append((image_hash, data, text))
+            elif failures is None:
+                raise
+            else:
+                failures.failed(image_hash[:12], f"immagine {image_hash[:12]}", exc)
+                if failures.too_many():
+                    break
+        if progress:
+            progress(i, len(images))
+    if rejected:
+        units_fallback, macros_fallback = _place_by_description(
+            lesson_dir, outline, rejected, force_mock=force_mock, ctx=ctx, failures=failures)
+        for target, extra in ((by_unit, units_fallback), (by_macro, macros_fallback)):
+            for section_id, hashes in extra.items():
+                for image_hash in hashes:
+                    if image_hash not in target.setdefault(section_id, []):
+                        target[section_id].append(image_hash)
+    return by_unit, by_macro
+
+
+def _place_by_description(lesson_dir, outline, images, *, force_mock=False, ctx=None, failures=None):
+    """Il percorso della 4.3.3 per le immagini che il modello decisionale non accetta."""
+    descriptions = load_image_descriptions(lesson_dir)
+    pending = []
+    for image_hash, data, text in images:
+        description = descriptions.get(image_hash, {})
+        if not text and not description.get('visual_elements'):
+            source = description.get('source') or f"asset:{image_hash}"
+            pending.append((ExtractedImage(image_bytes=data, source_label=source), image_hash))
+    if pending:
+        describe_new_images(lesson_dir, pending, force_mock=force_mock, failures=failures)
+    descriptions = load_image_descriptions(lesson_dir)
+    placed = [ExtractedImage(image_bytes=data, source_label=descriptions[image_hash].get('source', ''),
+                             text=text, file_fingerprint=image_hash)
+              for image_hash, data, text in images if image_hash in descriptions]
+    return place_uploaded_images(lesson_dir, outline, placed, force_mock=force_mock, ctx=ctx, by_text=True)
+
+
+def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=None, progress=None,
+                          failures=None, by_text=False):
     """Solo posizionamento: non scrive mai pages_by_unit/pages_by_macro né la bozza."""
+    from rt.pipeline.image_decision import uses_decision_reader
+    if not by_text and uses_decision_reader():
+        descriptions = load_image_descriptions(lesson_dir)
+        wanted = []
+        for image in images:
+            image_hash = compute_image_hash(image.image_bytes)
+            if image_hash in descriptions and not image.mapping_skip:
+                wanted.append((image_hash, image.image_bytes, _image_text(image, descriptions[image_hash])))
+        return decide_images(lesson_dir, outline, wanted, force_mock=force_mock, ctx=ctx,
+                             failures=failures, progress=progress)
     from rt.core.models import SegmentsData
     from rt.core.segments import load_segments_json
     from rt.pipeline.material_mapping import (
@@ -471,8 +556,7 @@ def place_uploaded_images(lesson_dir, outline, images, *, force_mock=False, ctx=
         image_hash = compute_image_hash(image.image_bytes)
         description = descriptions.get(image_hash)
         if description is not None and not image.mapping_skip:
-            text = image.text or '\n'.join(str(description.get(key) or '')
-                for key in ('slide_title', 'ocr_text', 'visual_elements', 'summary_keywords'))
+            text = _image_text(image, description)
             identity = image.file_fingerprint or image_hash
             units, macros = place_page_in_outline(
                 {'numero': image.page_number, 'testo': text}, corpus, idf,
@@ -496,6 +580,8 @@ def resolve_selected_images(
     from rt.core.sources import load_sources
     from rt.core.materials import cached_pages
 
+    from rt.pipeline.image_decision import uses_decision_reader
+    by_decision = uses_decision_reader()
     descriptions = load_image_descriptions(lesson_dir)
     extracted: List[ExtractedImage] = []
 
@@ -529,7 +615,8 @@ def resolve_selected_images(
                 if m:
                     page_num = int(m.group(1))
                 text = target_desc.get("ocr_text") or target_desc.get("slide_title") or ""
-                if not text and not target_desc.get("visual_elements") and not LLMClient(force_mock=force_mock).force_mock:
+                if (not text and not target_desc.get("visual_elements") and not by_decision
+                        and not LLMClient(force_mock=force_mock).force_mock):
                     img_obj = ExtractedImage(image_bytes=data, page_number=page_num, source_label=source_str)
                     describe_new_images(lesson_dir, [(img_obj, target_hash)],
                                         lesson_context=get_lesson_context(lesson_dir),
@@ -709,16 +796,27 @@ def run_add_images(
         prepare_uploaded_images(lesson_dir, uploaded, force_mock=force_mock,
                                 progress=report(30, 20, "Leggo le pagine"), **tolerant)
 
+    from rt.pipeline.image_decision import uses_decision_reader
+    by_decision = uses_decision_reader()
     if extracted:
         new_images, _cached = partition_new_vs_cached_images(lesson_dir, extracted)
-        if new_images:
+        if new_images and by_decision:
+            descriptions = load_image_descriptions(lesson_dir)
+            for image, image_hash in new_images:
+                _mime, ext = _get_image_mime_type(image.source_label)
+                descriptions[image_hash] = {
+                    "filename": save_raw_image(lesson_dir, image.image_bytes, image_hash, ext=ext),
+                    "source": image.source_label,
+                }
+            save_image_descriptions(lesson_dir, descriptions)
+        elif new_images:
             lesson_context = get_lesson_context(lesson_dir)
             describe_new_images(lesson_dir, new_images, lesson_context=lesson_context, force_mock=force_mock,
                                 progress=report(50, 10, "Leggo le pagine"), **tolerant)
 
     uploaded_units, uploaded_macros = place_uploaded_images(
         lesson_dir, outline, uploaded, force_mock=force_mock, ctx=ctx,
-        progress=report(60, 25, "Colloco le immagini"),
+        progress=report(60, 25, "Colloco le immagini"), **tolerant,
     ) if uploaded else ({}, {})
     # La ricerca nasce già da una sottounità: la provenienza non va persa nel giudice macro.
     web_units = {}
@@ -739,10 +837,18 @@ def run_add_images(
         report(85, 5, "Colloco le immagini")(i, len(extracted))
     if extracted:
         save_image_descriptions(lesson_dir, descriptions)
-    assignments = judge_images_by_macro(
-        lesson_dir, outline, force_mock=force_mock, image_hashes=without_origin,
-        progress=report(90, 5, "Colloco le immagini"), **tolerant,
-    ) if without_origin else {}
+    if without_origin and by_decision:
+        by_hash = {compute_image_hash(image.image_bytes): image.image_bytes for image in extracted}
+        web_decided, assignments = decide_images(
+            lesson_dir, outline, [(h, by_hash[h], "") for h in without_origin],
+            force_mock=force_mock, ctx=ctx, progress=report(90, 5, "Colloco le immagini"), **tolerant)
+        for unit_id, hashes in web_decided.items():
+            web_units.setdefault(unit_id, []).extend(h for h in hashes if h not in web_units.get(unit_id, []))
+    else:
+        assignments = judge_images_by_macro(
+            lesson_dir, outline, force_mock=force_mock, image_hashes=without_origin,
+            progress=report(90, 5, "Colloco le immagini"), **tolerant,
+        ) if without_origin else {}
 
     from rt.pipeline.image_placement import load_image_placement
     from rt.pipeline.material_mapping import append_page_placements

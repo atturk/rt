@@ -20,6 +20,7 @@ chat/completions endpoint. Use the /api/alpha/decisions endpoint instead.").
 
 import datetime
 import math
+import re
 import time
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -121,8 +122,13 @@ def _parse_answer(name: str, raw: Dict) -> JevAnswer:
     raise JevError(f"Tipo di risposta del classificatore sconosciuto per la domanda '{name}': {a_type!r}")
 
 
+def _strip_images(text: str) -> str:
+    """Un errore che riporta la richiesta non deve finire nei log col base64 delle immagini."""
+    return re.sub(r"data:image/[a-z+.-]+;base64,[A-Za-z0-9+/=]+", "data:image/…", text)
+
+
 def call_jev(
-    state: str,
+    state: Union[str, List[Union[str, Dict[str, Any]]]],
     questions: Dict[str, JevQuestion],
     *,
     job_name: str,
@@ -138,6 +144,7 @@ def call_jev(
     OpenRouter. Registra costo e telemetria come ogni altra chiamata LLM del progetto
     (compare in 'rt cost' e in llm_debug.log), ma non passa da LLMClient.call_structured.
     Solleva JevError con fallimento di rete, autenticazione o formato risposta.
+    state può essere una lista di testi e parti image_url (rt.llm.decision_images.image_part).
     """
     from rt.llm.client import _append_debug_log  # import locale: evita un ciclo di import con rt.llm.client
 
@@ -151,6 +158,10 @@ def call_jev(
         "questions": {name: q.model_dump(exclude_none=True) for name, q in questions.items()},
     }
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    images = sum(1 for part in state if isinstance(part, dict)) if isinstance(state, list) else 0
+    if images:
+        # Con immagini Jev lavora in long context: serve più tempo.
+        timeout_seconds = max(timeout_seconds, 60.0)
 
     t_start = time.time()
     http_status: Optional[int] = None
@@ -161,10 +172,10 @@ def call_jev(
         http_status = resp.status_code
         resp_json = resp.json()
         if resp.status_code != 200:
-            error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(resp_json))
+            error_message = _strip_images(GLOBAL_CREDENTIALS.sanitize_secrets(str(resp_json)))
             raise JevError(f"Il classificatore ha risposto con status {resp.status_code}: {error_message}", http_status=resp.status_code)
     except (requests.RequestException, ValueError) as e:
-        error_message = GLOBAL_CREDENTIALS.sanitize_secrets(str(e))
+        error_message = _strip_images(GLOBAL_CREDENTIALS.sanitize_secrets(str(e)))
         raise JevError(f"Errore chiamando il classificatore: {error_message}") from e
     finally:
         elapsed = time.time() - t_start
@@ -207,6 +218,7 @@ def call_jev(
                 "output_tokens": out_tok,
                 "estimated_cost": cost_est,
                 "error_message": error_message,
+                **({"images": images} if images else {}),
                 "jev_answers": resp_json.get("answers") if isinstance(resp_json, dict) else None,
             })
 
