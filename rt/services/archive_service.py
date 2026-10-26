@@ -89,8 +89,27 @@ def lookup(hashes, index=None):
             continue
         usages = index.get(meta['impronta'], [])
         results[sha] = {'impronta': meta['impronta'], 'pagine_totali': meta.get('pagine_totali'),
-            'usate': usages, 'da_continuare': continuation(meta, usages)}
+            'usate': usages, 'da_continuare': continuation(meta, usages), 'estrai': default_mode(meta)}
     return results
+
+
+def default_mode(meta):
+    from rt.core.source_options import default_extraction
+    try:
+        return default_extraction(meta['nome'], archive.original_path(meta['impronta']))
+    except (OSError, ValueError, KeyError):
+        return default_extraction(meta.get('nome', ''))
+
+
+def inspect_upload(path, name):
+    """Pagine e modalità predefinita di un file non ancora in archivio (popup di import)."""
+    from rt.core.materials import page_count
+    from rt.core.source_options import default_extraction
+    try:
+        total = page_count(path)
+    except Exception:
+        total = None
+    return {'pagine_totali': total, 'estrai': default_extraction(name, path)}
 
 
 def require_entry(sha):

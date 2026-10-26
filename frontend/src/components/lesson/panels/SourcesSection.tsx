@@ -281,6 +281,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         initial={editingSource ? { pagine: editingSource.pagine, estrai: editingSource.estrai ?? undefined,
           uso: sourcesView?.principale === editingSource.id ? 'guida' : editingSource.uso ?? 'contesto' } : undefined}
         hasSources={sources.length > 0}
+        hasAudio={audioSources.length > 0}
+        isGuide={!!editingSource && audioSources.length === 0 && sourcesView?.principale === editingSource.id}
         submitLabel={editingSource ? 'Fatto' : 'Aggiungi'}
         onClose={() => { setPendingMaterials([]); setEditingSource(null) }} onSubmit={saveMaterial} />}
       {/* Intestazione Fonti */}
@@ -311,7 +313,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           ref={materialsInputRef}
           type="file"
           multiple
-          accept=".pdf,.png,.jpg,.jpeg,.heic,.pptx,.docx,.txt"
+          accept=".pdf,.png,.jpg,.jpeg,.heic,.pptx,.docx,.txt,.md"
           className="hidden"
           onChange={handleMaterialsSelected}
         />

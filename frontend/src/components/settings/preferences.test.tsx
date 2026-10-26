@@ -69,3 +69,22 @@ it('evento rt-zoom-change aggiorna il controllo', async () => {
   })
   expect(screen.getByTestId('pref-zoom')).toHaveTextContent('150%')
 })
+
+it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {
+  const { SourceDefaultsSection } = await import('./preferences')
+  const stored: Record<string, unknown> = {}
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve({ data: path === '/api/v1/preferences' ? stored : testSettings, response: new Response('{}') })) as never)
+  vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { params, body }: { params: { path: { name: string } }; body: unknown }) => {
+    stored[params.path.name] = body
+    return Promise.resolve({ data: body, response: new Response('{}') })
+  }) as never)
+  render(<QueryClientProvider client={client}><SourceDefaultsSection /></QueryClientProvider>)
+  const { within } = await import('@testing-library/react')
+  const slide = within(screen.getByTestId('source-default-slide'))
+  expect(slide.getByRole('button', { name: 'Testo e immagini' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(screen.getByTestId('source-default-testo')).getByRole('button', { name: 'Testo' })).toHaveAttribute('aria-pressed', 'true')
+  expect(slide.getByRole('button', { name: 'Guida: fonte principale' })).toHaveAttribute('aria-disabled', 'true')
+  await userEvent.click(slide.getByRole('button', { name: 'Solo immagini' }))
+  expect(slide.getByRole('button', { name: 'Solo immagini' })).toHaveAttribute('aria-pressed', 'true')
+  expect(slide.getByRole('button', { name: 'Integra: può aggiungere unità' })).toHaveAttribute('aria-disabled', 'true')
+})

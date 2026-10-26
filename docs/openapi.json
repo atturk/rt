@@ -139,7 +139,8 @@
             "default": "immagini",
             "enum": [
               "testo",
-              "immagini"
+              "immagini",
+              "solo_immagini"
             ],
             "title": "Estrai",
             "type": "string"
@@ -1104,6 +1105,20 @@
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
         "type": "object"
       },
+      "Body_inspect_api_v1_archive_inspect_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_inspect_api_v1_archive_inspect_post",
+        "type": "object"
+      },
       "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
         "properties": {
           "estrai": {
@@ -1111,7 +1126,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -5400,6 +5416,36 @@
         "title": "ImageInfo",
         "type": "object"
       },
+      "InspectedFile": {
+        "properties": {
+          "estrai": {
+            "enum": [
+              "testo",
+              "immagini",
+              "solo_immagini"
+            ],
+            "title": "Estrai",
+            "type": "string"
+          },
+          "pagine_totali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine Totali"
+          }
+        },
+        "required": [
+          "pagine_totali",
+          "estrai"
+        ],
+        "title": "InspectedFile",
+        "type": "object"
+      },
       "IssueContext": {
         "properties": {
           "asr_segments": {
@@ -7307,6 +7353,16 @@
               }
             ],
             "title": "Da Continuare"
+          },
+          "estrai": {
+            "default": "immagini",
+            "enum": [
+              "testo",
+              "immagini",
+              "solo_immagini"
+            ],
+            "title": "Estrai",
+            "type": "string"
           },
           "impronta": {
             "title": "Impronta",
@@ -10486,7 +10542,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -10595,7 +10652,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -10728,7 +10786,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -12829,6 +12888,93 @@
           }
         ],
         "summary": "List Archive",
+        "tags": [
+          "archivio"
+        ]
+      }
+    },
+    "/api/v1/archive/inspect": {
+      "post": {
+        "description": "Pagine e modalità predefinita (un PDF orizzontale sono slide) di un file nuovo.",
+        "operationId": "inspect_api_v1_archive_inspect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_inspect_api_v1_archive_inspect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectedFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inspect",
         "tags": [
           "archivio"
         ]

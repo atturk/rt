@@ -1,7 +1,7 @@
 """Archivio delle fonti, autenticato come gli altri dati della lezione."""
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,12 @@ class LookupEntry(BaseModel):
     pagine_totali: int | None
     usate: list[ArchiveUsage]
     da_continuare: str | None
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] = 'immagini'
+
+
+class InspectedFile(BaseModel):
+    pagine_totali: int | None
+    estrai: Literal['testo', 'immagini', 'solo_immagini']
 
 
 @router.post('/archive/lookup', response_model=dict[str, LookupEntry | None])
@@ -39,6 +45,20 @@ def lookup(body: LookupRequest, _actor: Actor):
     except ValueError:
         from rt.api.errors import ApiError
         raise ApiError(422, 'validation_error', 'Impronta non valida.') from None
+
+
+@router.post('/archive/inspect', response_model=InspectedFile)
+def inspect(_actor: Actor, file: UploadFile = File(...)):
+    """Pagine e modalità predefinita (un PDF orizzontale sono slide) di un file nuovo."""
+    import os
+    import shutil
+    import tempfile
+    name = os.path.basename(file.filename or 'file')
+    with tempfile.TemporaryDirectory(prefix='rt-inspect-') as folder:
+        path = os.path.join(folder, name)
+        with open(path, 'wb') as stream:
+            shutil.copyfileobj(file.file, stream)
+        return archive_service.inspect_upload(path, name)
 
 
 class ArchiveRow(BaseModel):

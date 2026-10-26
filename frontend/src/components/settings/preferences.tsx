@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { useCopyFormat } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
+import { useSourceDefaults, type SourceDefault, type SourceKind } from '@/lib/sourceDefaults'
+import { ExtractOptions, UseOptions } from '@/components/sources/SourceControls'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
@@ -111,4 +113,20 @@ export function OutlineSettingsSection({ settings }: { settings: Settings }) {
     </Field>
     <Button type="submit" disabled={save.isPending}>Salva scaletta</Button>
   </form><SaveFeedback mutation={save} /></Section>
+}
+
+const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Testi'], ['immagine', 'Immagini']]
+
+/** Modalità e uso proposti nell'import per ogni tipo di file; la guida si sceglie lì. */
+export function SourceDefaultsSection() {
+  const [defaults, setDefaults] = useSourceDefaults()
+  const set = (kind: SourceKind, change: Partial<SourceDefault>) => setDefaults({ ...defaults, [kind]: { ...defaults[kind], ...change } })
+  return <Section id="fonti" title="Fonti">
+    {SOURCE_ROWS.map(([kind, label]) => <div key={kind} className="flex flex-wrap items-center gap-3 text-body" data-testid={`source-default-${kind}`}>
+      <span className="w-20">{label}</span>
+      <ExtractOptions value={defaults[kind].estrai} onChange={estrai => set(kind, { estrai })} />
+      <UseOptions value={defaults[kind].uso} off={defaults[kind].estrai === 'solo_immagini' ? 'Solo immagini: nessun testo da usare' : null}
+        unavailable={{ guida: 'La guida si sceglie nell’import' }} onChange={uso => uso !== 'guida' && set(kind, { uso })} />
+    </div>)}
+  </Section>
 }

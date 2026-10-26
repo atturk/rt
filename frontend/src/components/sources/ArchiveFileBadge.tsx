@@ -17,7 +17,11 @@ export function ArchiveFileBadge({ file }: { file: File }) {
       current = false
     }
   }, [file])
-  return known ? (
+  return known ? <KnownBadge /> : null
+}
+
+export function KnownBadge() {
+  return (
     <Tooltip content="Già nell'archivio">
       {(trigger) => (
         <span {...trigger} tabIndex={0} className="absolute bottom-1 left-1">
@@ -25,5 +29,5 @@ export function ArchiveFileBadge({ file }: { file: File }) {
         </span>
       )}
     </Tooltip>
-  ) : null
+  )
 }

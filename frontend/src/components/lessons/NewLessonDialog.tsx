@@ -1,7 +1,8 @@
-import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
-import { ArchiveFileBadge } from '@/components/sources/ArchiveFileBadge'
-import { defaultExtraction, type SourceOptions } from '@/api/archive'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { KnownBadge } from '@/components/sources/ArchiveFileBadge'
+import { ExtractOptions, PagesOptions, SourceBadges, SourceFileIcon, UseOptions } from '@/components/sources/SourceControls'
+import { fileFacts, textOnly, type SourceOptions } from '@/api/archive'
+import { defaultOptions, hasPages, sourceReasons, useSourceDefaults } from '@/lib/sourceDefaults'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
   Check,
@@ -11,12 +12,11 @@ import {
   FileAudio,
   FileText,
   Image,
-  Paperclip,
   Pencil,
   Play,
   Plus,
   ShieldCheck,
-  Star,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
@@ -51,7 +51,7 @@ const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
 const DROP_TEXT = "Trascina qui l'audio della lezione, slide, PDF o foto, oppure un pacchetto .zip. Clic per scegliere."
 
 // Stesso insieme di rt/core/materials.py (MATERIAL_EXTENSIONS): il server rifiuta il resto.
-const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt']
+const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt', '.md']
 
 function isAudioFile(file: File): boolean {
   const dot = file.name.lastIndexOf('.')
@@ -119,9 +119,9 @@ const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
  * Popup Nuova lezione (4.2.5 con wireframe RT-import.html):
  * - Riquadro unico che accetta audio e materiali (e zip) separandoli automaticamente.
  * - Righe audio numerate riordinabili con maniglia e tastiera (AudioOrder).
- * - Miniature dei materiali con stellina (senza audio) per il materiale principale.
+ * - Miniature dei materiali: un clic apre sotto il riquadro modalità, uso e pagine del file.
+ *   Senza audio c'è sempre una guida (il primo documento con testo, o quello scelto).
  * - Ore del giorno dal calendario (GET /calendar/day) come scelte rapide; matita per i campi a mano.
- * - Graffetta per allegare i materiali alle unità (allega_materiali).
  * - Menu materie da GET /subjects.
  */
 export type NewLessonDialogProps = {
@@ -164,14 +164,44 @@ export function NewLessonDialog({
 
   const [audioFiles, setAudioFiles] = useState<File[]>([])
   const [materialOptions, setMaterialOptions] = useState<Record<string, SourceOptions>>({})
-  const [editingMaterial, setEditingMaterial] = useState<File | null>(null)
+  const [openMaterial, setOpenMaterial] = useState<string | null>(null)
   const [materialFiles, setMaterialFiles] = useState<File[]>([])
   const [zipFiles, setZipFiles] = useState<File[]>([])
   const [selectedPrimaryMaterialName, setPrimaryMaterialName] = useState<string | null>(null)
-  const primaryMaterialName = materialFiles.some((file) => file.name === selectedPrimaryMaterialName)
-    ? selectedPrimaryMaterialName
-    : materialFiles[0]?.name ?? null
-  const [attachMaterials, setAttachMaterials] = useState(true)
+  const [sourceDefaults] = useSourceDefaults()
+  const facts = useQueries({
+    queries: materialFiles.map((file) => ({
+      queryKey: ['file-facts', file.name, file.size, file.lastModified],
+      queryFn: () => fileFacts(file),
+      staleTime: Infinity,
+      retry: false,
+    })),
+  })
+  const hasAudio = audioFiles.length > 0
+  // Scelte dell'utente o, finché non tocca nulla, i default dal tipo di file (e dall'archivio).
+  const chosenOptions = (file: File, i: number): SourceOptions => {
+    const known = facts[i]?.data
+    return materialOptions[file.name] ?? {
+      ...defaultOptions(file.name, sourceDefaults, known?.estrai),
+      pagine: known?.entry?.da_continuare?.replace('–', '-') ?? null,
+    }
+  }
+  const withText = (file: File, i: number) => chosenOptions(file, i).estrai !== 'solo_immagini'
+  // Senza registrazione c'è sempre una guida: quella scelta o il primo documento con testo.
+  const primaryMaterialName = hasAudio
+    ? null
+    : (materialFiles.find((file, i) => file.name === selectedPrimaryMaterialName && withText(file, i))
+      ?? materialFiles.find(withText))?.name ?? null
+  const optionsOf = (file: File, i: number): SourceOptions => {
+    const chosen = chosenOptions(file, i)
+    const uso = chosen.estrai === 'solo_immagini' ? 'contesto'
+      : file.name === primaryMaterialName ? 'guida' : chosen.uso === 'guida' ? 'contesto' : chosen.uso
+    return { ...chosen, uso }
+  }
+  const updateMaterial = (file: File, i: number, patch: SourceOptions) => {
+    if (patch.uso === 'guida') setPrimaryMaterialName(file.name)
+    setMaterialOptions((previous) => ({ ...previous, [file.name]: { ...optionsOf(file, i), ...patch } }))
+  }
   const [manualMode, setManualMode] = useState(!!initialJob)
   const [selectedKey, setSelectedKey] = useState<string | null>(initialSlotKey ?? null)
 
@@ -183,7 +213,9 @@ export function NewLessonDialog({
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
-  const [solo, setSolo] = useState(!!initialJob && (initialJob.type === 'ingest_audio' || original?.run === false))
+  const [soloChosen, setSolo] = useState(!!initialJob && (initialJob.type === 'ingest_audio' || original?.run === false))
+  // Senza registrazione non c'è niente da trascrivere: l'opzione si spegne da sola.
+  const solo = soloChosen && (audioFiles.length > 0 || !!initialJob)
   const [review, setReview] = useState(!!options?.with_review)
   const [enrichment, setEnrichment] = useState(!!options?.with_enrichment)
   const [unisciAudio, setUnisciAudio] = useState(true)
@@ -285,7 +317,6 @@ export function NewLessonDialog({
       setZipFiles([])
       setAudioFiles((prev) => [...prev, ...sortedAuds])
       setMaterialFiles((prev) => [...prev, ...mats])
-      if (mats.length > 0) setAttachMaterials(true)
       setProblem(null)
       setZipJob(null)
       setUploadError(null)
@@ -305,19 +336,14 @@ export function NewLessonDialog({
     if (busy || chosen.length === 0) return
     const mats = chosen.filter(isMaterialFile)
     setMaterialFiles((prev) => [...prev, ...mats])
-    if (mats.length > 0) setAttachMaterials(true)
   }
 
+  // Togliendo la guida passa al primo documento con testo rimasto (primaryMaterialName).
   const removeMaterial = (index: number) => {
-    const toRemove = materialFiles[index]
-    const updated = materialFiles.filter((_, i) => i !== index)
-    setMaterialFiles(updated)
-    if (primaryMaterialName === toRemove?.name) {
-      setPrimaryMaterialName(updated[0]?.name ?? null)
-    }
-    if (updated.length === 0) {
-      setAttachMaterials(false)
-    }
+    const name = materialFiles[index]?.name
+    setMaterialFiles(materialFiles.filter((_, i) => i !== index))
+    setMaterialOptions(({ [name]: _removed, ...rest }) => rest)
+    setOpenMaterial(null)
   }
 
   const clear = () => {
@@ -417,11 +443,11 @@ export function NewLessonDialog({
     const input: NewLesson = {
       files: audioFiles,
       materiali: materialFiles.length > 0 ? materialFiles : undefined,
-      opzioni: Object.fromEntries(materialFiles.map((file) => [file.name, materialOptions[file.name] ?? { estrai: defaultExtraction(file.name), uso: audioFiles.length === 0 && primaryMaterialName === file.name ? 'guida' : 'contesto' }])),
-      // Solo dopo un clic sulla stellina: altrimenti il server sceglie il documento con più pagine.
-      principale:
-        audioFiles.length === 0 && primaryMaterialName ? primaryMaterialName : undefined,
-      allega_materiali: materialFiles.length > 0 ? attachMaterials : undefined,
+      opzioni: Object.fromEntries(materialFiles.map((file, i) => {
+        const { pagine, ...chosen } = optionsOf(file, i)
+        return [file.name, hasPages(file.name) && pagine ? { ...chosen, pagine } : chosen]
+      })),
+      principale: primaryMaterialName ?? undefined,
       unisci: audioFiles.length > 1 ? unisciAudio : undefined,
       calendar_entry_id: chosenSlot?.key,
       calendar_date: chosenSlot ? date : undefined,
@@ -506,8 +532,8 @@ export function NewLessonDialog({
   ]
   if (!solo && review) steps.push('revisione')
   if (!solo && enrichment) steps.push('arricchimento')
-  if (!solo && materialFiles.length > 0 && attachMaterials) {
-    steps.push('materiali allegati alle unità')
+  if (!solo && materialFiles.some((file, i) => optionsOf(file, i).estrai !== 'testo')) {
+    steps.push('immagini nelle unità')
   }
   const stepsList =
     steps.length > 1 ? `${steps.slice(0, -1).join(', ')} e ${steps[steps.length - 1]}` : steps[0]
@@ -525,7 +551,7 @@ export function NewLessonDialog({
       onClose={onClose}
       title="Nuova lezione"
       testId="new-lesson"
-      className="w-[min(560px,calc(100vw-32px))]"
+      className="w-[min(680px,calc(100vw-32px))]"
     >
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         {/* Input file principale (audio, zip, o materiali) */}
@@ -664,62 +690,31 @@ export function NewLessonDialog({
               <div className="flex flex-col gap-1.5" data-testid="materials-container">
                 <div className="flex flex-wrap items-end gap-2" data-testid="materials-list">
                   {materialFiles.map((m, i) => {
-                    const isPrimary = primaryMaterialName === m.name
+                    const isOpen = openMaterial === m.name
                     return (
                       <div
                         key={`${m.name}-${i}`}
-                        className="group relative flex w-16 flex-col gap-1 text-[11px] text-muted-foreground"
+                        className="relative flex w-16 flex-col gap-1 text-[11px] text-muted-foreground"
                         data-testid={`material-thumb-${i}`}
                       >
-                        <div className="relative flex h-12 w-16 items-center justify-center rounded-lg border border-border bg-card p-1 shadow-xs overflow-hidden">
-                          <button type="button" aria-label={`Impostazioni ${m.name}`} className="absolute inset-0" onClick={() => setEditingMaterial(m)} />
-                          <ArchiveFileBadge file={m} />
-                          {m.type.startsWith('image/') ? (
-                            <Image className="size-6 text-muted-foreground" aria-hidden />
-                          ) : (
-                            <FileText className="size-6 text-muted-foreground" aria-hidden />
+                        <button
+                          type="button"
+                          aria-label={`Opzioni ${m.name}`}
+                          aria-pressed={isOpen}
+                          aria-expanded={isOpen}
+                          onClick={() => setOpenMaterial(isOpen ? null : m.name)}
+                          className={cn(
+                            'relative flex h-12 w-16 items-center justify-center overflow-hidden rounded-lg bg-card p-1 shadow-xs',
+                            isOpen ? 'border-2 border-link' : 'border border-border hover:border-foreground',
                           )}
-                          {audioFiles.length === 0 && (
-                            <button
-                              type="button"
-                              className={cn(
-                                'absolute top-1 left-1 size-5 rounded-full bg-background/90 flex items-center justify-center transition-colors',
-                                isPrimary
-                                  ? 'text-amber-500'
-                                  : 'text-muted-foreground hover:text-foreground',
-                              )}
-                              aria-label={
-                                isPrimary
-                                  ? 'Materiale principale: fa da filo della lezione'
-                                  : 'Usa come materiale principale'
-                              }
-                              aria-pressed={isPrimary}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setPrimaryMaterialName(m.name)
-                                setMaterialOptions((previous) => Object.fromEntries(materialFiles.map((file) => [file.name, { ...previous[file.name], estrai: previous[file.name]?.estrai ?? defaultExtraction(file.name), uso: file.name === m.name ? 'guida' : previous[file.name]?.uso === 'integra' ? 'integra' : 'contesto' }])))
-                              }}
-                              data-testid={`material-star-${i}`}
-                            >
-                              <Star className={cn('size-3.5', isPrimary && 'fill-current')} />
-                            </button>
-                          )}
-                        </div>
+                        >
+                          <SourceFileIcon name={m.name} className="size-6 text-muted-foreground" />
+                          <SourceBadges options={optionsOf(m, i)} />
+                        </button>
+                        {facts[i]?.data?.entry && <KnownBadge />}
                         <span className="truncate text-center" title={m.name}>
                           {m.name}
                         </span>
-                        <button
-                          type="button"
-                          className="absolute -top-1.5 -right-1.5 hidden size-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-xs hover:text-foreground group-hover:flex group-focus-within:flex"
-                          aria-label={`Togli ${m.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeMaterial(i)
-                          }}
-                          data-testid={`material-remove-${i}`}
-                        >
-                          <X className="size-3" />
-                        </button>
                       </div>
                     )
                   })}
@@ -733,23 +728,27 @@ export function NewLessonDialog({
                     <Plus className="size-4" />
                   </button>
                 </div>
-                {audioFiles.length === 0 && (
-                  <div
-                    className="mt-1 flex items-center gap-1.5 text-meta text-muted-foreground"
-                    data-testid="materials-hint"
-                  >
-                    <Star
-                      className={cn(
-                        'size-3.5 shrink-0',
-                        primaryMaterialName && 'fill-amber-500 text-amber-500',
+                {materialFiles.map((m, i) => {
+                  if (m.name !== openMaterial) return null
+                  const current = optionsOf(m, i)
+                  const reasons = sourceReasons({ name: m.name, options: current, hasAudio, isGuide: m.name === primaryMaterialName })
+                  const total = facts[i]?.data?.pagine_totali ?? null
+                  return (
+                    <div key={m.name} data-testid="source-layer"
+                      className="-mx-3 -mb-3 mt-1 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-muted/40 px-3 py-2 sm:flex-nowrap">
+                      <ExtractOptions value={current.estrai ?? 'immagini'} unavailable={reasons.extract}
+                        onChange={(estrai) => updateMaterial(m, i, { estrai })} />
+                      <UseOptions value={current.uso ?? 'contesto'} unavailable={reasons.use} off={reasons.off}
+                        onChange={(uso) => updateMaterial(m, i, { uso })} />
+                      {hasPages(m.name) && !textOnly(m.name) && total !== 1 && (
+                        <PagesOptions value={current.pagine} total={total}
+                          onChange={(pagine) => updateMaterial(m, i, { pagine })} />
                       )}
-                      aria-hidden
-                    />
-                    <span>
-                      La scaletta segue «{primaryMaterialName}»; la stellina sceglie un altro file
-                    </span>
-                  </div>
-                )}
+                      <IconButton label="Elimina fonte" icon={Trash2} disabled={busy} className="ml-auto"
+                        onClick={() => removeMaterial(i)} />
+                    </div>
+                  )
+                })}
               </div>
             ) : audioFiles.length > 0 ? (
               <div className="flex items-center">
@@ -1015,7 +1014,7 @@ export function NewLessonDialog({
                 icon={FileText}
                 aria-pressed={solo}
                 active={solo}
-                unavailable={busy ? 'importazione in corso' : null}
+                unavailable={busy ? 'importazione in corso' : !hasAudio ? 'serve una registrazione' : null}
                 onClick={() => setSolo(!solo)}
               />
               <IconButton
@@ -1034,36 +1033,10 @@ export function NewLessonDialog({
                 unavailable={busy ? 'importazione in corso' : solo ? 'non con Solo trascrizione' : null}
                 onClick={() => setEnrichment(!enrichment)}
               />
-              <IconButton
-                label="Allega documenti alle unità"
-                icon={Paperclip}
-                aria-pressed={attachMaterials}
-                active={attachMaterials && materialFiles.length > 0 && !solo}
-                unavailable={
-                  busy
-                    ? 'importazione in corso'
-                    : solo
-                      ? 'non con Solo trascrizione'
-                      : materialFiles.length === 0
-                        ? 'aggiungi almeno un documento'
-                        : null
-                }
-                onClick={() => setAttachMaterials(!attachMaterials)}
-                data-testid="attach-materials-btn"
-              />
             </div>
           )}
         </div>
       </form>
-      {editingMaterial && <AddSourceDialog key={editingMaterial.name} file={editingMaterial}
-        initial={materialOptions[editingMaterial.name] ?? { uso: audioFiles.length === 0 && primaryMaterialName === editingMaterial.name ? 'guida' : 'contesto' }}
-        hasSources={audioFiles.length + materialFiles.length > 1}
-        submitLabel="Fatto" onClose={() => setEditingMaterial(null)}
-        onSubmit={(options) => {
-          setMaterialOptions((previous) => Object.fromEntries(Object.entries({ ...previous, [editingMaterial.name]: options }).map(([name, value]) => [name, name !== editingMaterial.name && options.uso === 'guida' && value.uso === 'guida' ? { ...value, uso: 'contesto' } : value])))
-          if (options.uso === 'guida') setPrimaryMaterialName(editingMaterial.name)
-          setEditingMaterial(null)
-        }} />}
     </Modal>
   )
 }

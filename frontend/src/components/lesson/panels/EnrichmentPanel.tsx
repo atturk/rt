@@ -73,9 +73,9 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [infoTarget, setInfoTarget] = useState<ImageInfoTarget | null>(null)
   const [describeHint, setDescribeHint] = useState(false)
-  const [hideDescribeHint, setHideDescribeHint] = usePreference<boolean>('images.describeHint', false)
+  const [hideDescribeHint, setHideDescribeHint] = usePreference<boolean>('images.describe-hint', false)
   const classifier = useQuery({ queryKey: ['classifier-settings'], queryFn: () => unwrap(api.GET('/api/v1/settings/classifier')), staleTime: 60_000 })
-  const decisionReader = (classifier.data?.images_reader ?? 'decision') === 'decision' && (classifier.data?.jobs?.images?.mode ?? 'manual') !== 'off'
+  const decisionReader = classifier.data?.images_reader === 'decision' && (classifier.data.jobs?.images?.mode ?? 'manual') !== 'off'
   const addImages = useAddImages(id)
   const outline = useOutline(id)
   const docQuery = useLessonDocument(id)
