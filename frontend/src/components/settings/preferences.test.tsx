@@ -7,8 +7,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
 import { PREFERENCES_KEY } from '@/lib/preferences'
 import { getZoom, resetZoom, setZoom } from '@/lib/zoom'
+import { getSavedStudyTextScale } from '@/lib/studyText'
 import { AppearanceSection } from './preferences'
 import { testSettings } from './testSettings'
+
+// In jsdom il canvas non misura: tutti i font risultano installati.
+vi.mock('@/lib/studyText', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/studyText')>(),
+  studyFontAvailable: () => true,
+}))
 
 let client: QueryClient
 
@@ -79,6 +86,29 @@ it('Aspetto non ha più la sezione Studio né i colori dell’evidenziatore', ()
   expect(screen.queryByText('Studio')).not.toBeInTheDocument()
   expect(screen.queryByText(/Colori dell.evidenziatore/)).not.toBeInTheDocument()
   expect(screen.queryByText('Frecce per cambiare unità')).not.toBeInTheDocument()
+})
+
+it('Testo dello Studio: Seravek salva study.text-font e 120% porta la scala a 1,2', async () => {
+  const stored: Record<string, unknown> = {}
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve({ data: path === '/api/v1/preferences' ? stored : testSettings, response: new Response('{}') })) as never)
+  const put = vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { params, body }: { params: { path: { name: string } }; body: unknown }) => {
+    stored[params.path.name] = body
+    return Promise.resolve({ data: body, response: new Response('{}') })
+  }) as never)
+  render(
+    <QueryClientProvider client={client}>
+      <AppearanceSection settings={testSettings} />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Font' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Seravek' }))
+  expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'study.text-font' } }, body: 'seravek' })
+  expect(screen.getByTestId('pref-study-font')).toHaveAttribute('data-value', 'seravek')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Dimensione' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: '120%' }))
+  expect(getSavedStudyTextScale()).toBe(1.2)
+  expect(screen.getByTestId('pref-study-scale')).toHaveTextContent('120%')
 })
 
 it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {

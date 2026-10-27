@@ -11,6 +11,7 @@ import { usePreference } from '@/lib/preferences'
 import { useSourceDefaults, type SourceDefault, type SourceKind } from '@/lib/sourceDefaults'
 import { ExtractOptions, UseOptions } from '@/components/sources/SourceControls'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudyTextScale, type StudyFont } from '@/lib/studyText'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
@@ -37,6 +38,10 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
   const [zoom, setZoomState] = useState(getZoom)
+  const [textFont, setTextFont] = useStudyFont()
+  const [textScale, setTextScale] = useStudyTextScale()
+  // Seravek e Avenir ci sono solo sul Mac: si mostrano i font installati, più quello salvato.
+  const [availableFonts] = useState(() => new Set(STUDY_FONTS.filter(([v]) => studyFontAvailable(v)).map(([v]) => v)))
   const save = useGeneralPreference()
   const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
 
@@ -71,6 +76,21 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         </div>
       </Field>
       <SaveFeedback mutation={save} />
+    </Section>
+    <Section id="testo-studio" title="Testo dello Studio">
+      <Field label="Font" htmlFor="pref-study-font">
+        <div className="flex items-center gap-2">
+          <Select id="pref-study-font" value={textFont} onChange={e => setTextFont(e.target.value as StudyFont)}>
+            {STUDY_FONTS.filter(([v]) => v === textFont || availableFonts.has(v)).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </Select>
+          <span aria-hidden="true" className="text-heading" style={{ fontFamily: studyFontStack(textFont) }}>Aa</span>
+        </div>
+      </Field>
+      <Field label="Dimensione" htmlFor="pref-study-scale">
+        <Select id="pref-study-scale" value={textScale.toFixed(1)} onChange={e => setTextScale(Number(e.target.value))}>
+          {Array.from({ length: 13 }, (_, i) => (8 + i) / 10).map(n => <option key={n} value={n.toFixed(1)}>{Math.round(n * 100)}%</option>)}
+        </Select>
+      </Field>
     </Section>
     <Section id="copia" title="Copia">
       <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
