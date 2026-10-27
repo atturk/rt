@@ -276,3 +276,125 @@ def test_material_context_for_unit(tmp_path):
     # Unit 2.1 under macro 2 gets neither
     assert material_context_for_unit(lesson_dir, "2.1", "2") == ""
 
+
+# 4.3.4b2: pagine delle fonti lette come descrizione (default) o come immagine.
+
+def _image_reader(monkeypatch, reader="image", images_mode=None):
+    import rt.core.config
+    base = rt.core.config.load_config()
+    classifier = base.classifier.model_copy(update={"material_pages_reader": reader})
+    if images_mode:
+        jobs = dict(classifier.jobs)
+        jobs["images"] = jobs["images"].model_copy(update={"mode": images_mode})
+        classifier = classifier.model_copy(update={"jobs": jobs})
+    cfg = base.model_copy(update={"classifier": classifier})
+    monkeypatch.setattr(rt.core.config, "load_config", lambda config_path=None: cfg)
+
+
+def _material_lesson(tmp_path, monkeypatch, pages):
+    """Una lezione con una fonte di contesto (né guida né Integra) e le pagine date."""
+    from rt.core.sources import Source
+    lesson = tmp_path / "lezione"
+    lesson.mkdir()
+    (lesson / "info.yaml").write_text("titolo: Prova\n", encoding="utf-8")
+    image = tmp_path / "pagina.png"
+    image.write_bytes(b"\x89PNG pagina con figure")
+    source = Source(id="src1", tipo="materiale", file="slide.pdf", impronta="abc", aggiunta_il="2026-10-01",
+                    ordine=1, estrai="immagini", uso="contesto")
+    monkeypatch.setattr("rt.core.sources.load_sources", lambda lesson_dir: [source])
+    monkeypatch.setattr("rt.core.source_selection.selection", lambda lesson_dir: {})
+    monkeypatch.setattr("rt.core.materials.material_pages", lambda *a, **k: pages)
+    monkeypatch.setattr("rt.pipeline.material_mapping.page_image_path", lambda impronta, rel: str(image))
+    calls = {"text": []}
+
+    def by_text(page, *a, **k):
+        calls["text"].append(page["numero"])
+        return ["1.2"], []
+    monkeypatch.setattr("rt.pipeline.material_mapping.place_page_in_outline", by_text)
+    outline = Outline(lesson_title="Prova", macro_sections=[OutlineMacro(id="1", title="Uno", units=[
+        OutlineUnit(id="1.1", title="Uno uno", start_segment_id="seg_000001", end_segment_id="seg_000001"),
+        OutlineUnit(id="1.2", title="Uno due", start_segment_id="seg_000001", end_segment_id="seg_000001")])])
+    return str(lesson), outline, calls, image.read_bytes()
+
+
+def _page(numero=1, figures=True):
+    return {"numero": numero, "testo": f"Testo pagina {numero}\nDescrizione della figura",
+            "mapping_text": "Descrizione della figura", "has_figures": figures,
+            "immagini": [f"p{numero}.png"], "mapping_skip": False}
+
+
+def _decide(monkeypatch, result=None, error=None):
+    seen = []
+
+    def fake(lesson_dir, outline, h, data, page_text, cached, *, mock=False, ctx=None, lesson_units=None):
+        seen.append((data, page_text))
+        if error:
+            raise error
+        return result
+    monkeypatch.setattr("rt.pipeline.image_decision.decide_image", fake)
+    return seen
+
+
+def test_material_pages_default_reads_description(tmp_path, monkeypatch):
+    from rt.pipeline.material_mapping import assign_material_pages
+    lesson, outline, calls, _ = _material_lesson(tmp_path, monkeypatch, [_page()])
+    seen = _decide(monkeypatch, (["1.1"], [], "contenuto"))
+    state = assign_material_pages(lesson, outline, mock=True)
+    assert calls["text"] == [1] and seen == []
+    assert [p["page"] for p in state["pages_by_unit"]["1.2"]] == [1]
+
+
+def test_material_pages_image_reader_uses_decision_model(tmp_path, monkeypatch):
+    from rt.pipeline.add_images import load_image_descriptions
+    from rt.pipeline.image_decision import uses_image_for_material_pages
+    from rt.pipeline.material_mapping import assign_material_pages
+    _image_reader(monkeypatch)
+    assert uses_image_for_material_pages()
+    lesson, outline, calls, data = _material_lesson(tmp_path, monkeypatch, [_page()])
+    seen = _decide(monkeypatch, (["1.1"], [], "contenuto"))
+    state = assign_material_pages(lesson, outline, mock=True)
+    assert seen == [(data, "Testo pagina 1\nDescrizione della figura")]
+    assert calls["text"] == []
+    assert [p["page"] for p in state["pages_by_unit"]["1.1"]] == [1]
+    assert "1.2" not in state["pages_by_unit"]
+    assert len(state["units"]["1.1"]) == 1
+    assert [d["ruolo"] for d in load_image_descriptions(lesson).values()] == ["contenuto"]
+
+
+def test_material_pages_image_reader_off_when_images_job_off(monkeypatch):
+    from rt.pipeline.image_decision import uses_image_for_material_pages
+    _image_reader(monkeypatch, images_mode="off")
+    assert not uses_image_for_material_pages()
+
+
+def test_material_pages_image_reader_not_content_is_not_placed(tmp_path, monkeypatch):
+    from rt.pipeline.material_mapping import assign_material_pages
+    _image_reader(monkeypatch)
+    lesson, outline, calls, _ = _material_lesson(tmp_path, monkeypatch, [_page()])
+    _decide(monkeypatch, (["1.1"], [], "introduttiva"))
+    state = assign_material_pages(lesson, outline, mock=True)
+    assert calls["text"] == []
+    assert state["pages_by_unit"] == {} and state["pages_by_macro"] == {}
+    assert state["units"] == {}
+
+
+def test_material_pages_image_reader_error_falls_back_to_text(tmp_path, monkeypatch):
+    from rt.pipeline.material_mapping import assign_material_pages
+    _image_reader(monkeypatch)
+    lesson, outline, calls, _ = _material_lesson(tmp_path, monkeypatch, [_page()])
+    seen = _decide(monkeypatch, error=RuntimeError("modello giù"))
+    state = assign_material_pages(lesson, outline, mock=True)
+    assert len(seen) == 1 and calls["text"] == [1]
+    assert [p["page"] for p in state["pages_by_unit"]["1.2"]] == [1]
+
+
+def test_material_pages_without_figures_always_use_text(tmp_path, monkeypatch):
+    from rt.pipeline.material_mapping import assign_material_pages
+    _image_reader(monkeypatch)
+    lesson, outline, calls, _ = _material_lesson(tmp_path, monkeypatch, [_page(1, figures=False), _page(2)])
+    seen = _decide(monkeypatch, (["1.1"], [], "contenuto"))
+    state = assign_material_pages(lesson, outline, mock=True)
+    assert calls["text"] == [1] and len(seen) == 1
+    assert [p["page"] for p in state["pages_by_unit"]["1.2"]] == [1]
+    assert [p["page"] for p in state["pages_by_unit"]["1.1"]] == [2]
+

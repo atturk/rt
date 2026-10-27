@@ -4623,6 +4623,12 @@ export interface components {
                 [key: string]: components["schemas"]["ClassifierJobConfig"];
             };
             /**
+             * Material Pages Reader
+             * @default description
+             * @enum {string}
+             */
+            material_pages_reader: "description" | "image";
+            /**
              * Model
              * @default typesafe/jev-1.13
              */

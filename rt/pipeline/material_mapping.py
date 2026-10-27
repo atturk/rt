@@ -564,6 +564,8 @@ def assign_material_pages(
     descriptions = load_image_descriptions(lesson_dir)
 
     image_cache = None
+    from rt.pipeline.image_decision import uses_image_for_material_pages
+    read_page_images = uses_image_for_material_pages()
     for source in sources:
         is_primary = (source.id == primary_id)
         pages = material_pages(lesson_dir, source, mock=mock, ctx=ctx)
@@ -638,10 +640,37 @@ def assign_material_pages(
             for page in pages:
                 if ctx:
                     ctx.check_cancelled()
-                assigned_units, assigned_macros = place_page_in_outline(
-                    page, corpus, idf, source, lesson_dir, cached_decisions,
-                    mock=mock, ctx=ctx, mock_fallback=True,
-                )
+                placed = None
+                if read_page_images and page.get("has_figures") and page.get("immagini") and not page.get("mapping_skip"):
+                    # Il modello decisionale guarda la pagina invece della sola descrizione.
+                    from rt.pipeline.image_decision import decide_image, load_cache
+                    image_cache = load_cache(lesson_dir) if image_cache is None else image_cache
+                    img_path = page_image_path(source.impronta, page["immagini"][0])
+                    if fs.isfile(img_path):
+                        with fs.open(img_path, "rb") as stream:
+                            data = stream.read()
+                        h = compute_image_hash(data)
+                        try:
+                            units_found, macros_found, role = decide_image(
+                                lesson_dir, outline, h, data, page["testo"], image_cache, mock=mock, ctx=ctx)
+                        except RunCancelled:
+                            raise
+                        except Exception:
+                            # Il modello non risponde: la pagina si colloca dal testo, come prima.
+                            pass
+                        else:
+                            descriptions.setdefault(h, {
+                                "filename": save_raw_image(lesson_dir, data, h),
+                                "source": f"material:{source.id}:{page['numero']}",
+                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                            })["ruolo"] = role
+                            placed = (units_found, macros_found) if role == "contenuto" else ([], [])
+                if placed is None:
+                    placed = place_page_in_outline(
+                        page, corpus, idf, source, lesson_dir, cached_decisions,
+                        mock=mock, ctx=ctx, mock_fallback=True,
+                    )
+                assigned_units, assigned_macros = placed
 
                 page_info = {
                     "source_id": source.id,
