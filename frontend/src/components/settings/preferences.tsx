@@ -10,7 +10,7 @@ import { useCopyFormat } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
 import { useSourceDefaults, type SourceDefault, type SourceKind } from '@/lib/sourceDefaults'
 import { ExtractOptions, UseOptions } from '@/components/sources/SourceControls'
-import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
@@ -33,7 +33,6 @@ function useGeneralPreference() {
 
 export function AppearanceSection({ settings }: { settings: Settings }) {
   const [theme, setTheme] = usePreference<ThemePreference>('theme', 'sistema')
-  const [highlighter, setHighlighter] = useHighlighterPrefs()
   const [rsvp, setRsvp] = useRsvpPrefs()
   const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
@@ -72,10 +71,6 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         </div>
       </Field>
       <SaveFeedback mutation={save} />
-    </Section>
-    <Section id="studio" title="Studio">
-      <div className="flex flex-wrap justify-between gap-2 text-body"><span>Colori dell’evidenziatore</span><span className="text-muted-foreground">Giallo, verde, azzurro, rosa, arancio</span></div>
-      <Checkbox id="pref-arrows" label="Frecce per cambiare unità" checked={highlighter.arrows} onChange={arrows => setHighlighter({ ...highlighter, arrows })} />
     </Section>
     <Section id="copia" title="Copia">
       <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />

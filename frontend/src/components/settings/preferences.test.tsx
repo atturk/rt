@@ -70,6 +70,17 @@ it('evento rt-zoom-change aggiorna il controllo', async () => {
   expect(screen.getByTestId('pref-zoom')).toHaveTextContent('150%')
 })
 
+it('Aspetto non ha più la sezione Studio né i colori dell’evidenziatore', () => {
+  render(
+    <QueryClientProvider client={client}>
+      <AppearanceSection settings={testSettings} />
+    </QueryClientProvider>,
+  )
+  expect(screen.queryByText('Studio')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Colori dell.evidenziatore/)).not.toBeInTheDocument()
+  expect(screen.queryByText('Frecce per cambiare unità')).not.toBeInTheDocument()
+})
+
 it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {
   const { SourceDefaultsSection } = await import('./preferences')
   const stored: Record<string, unknown> = {}
