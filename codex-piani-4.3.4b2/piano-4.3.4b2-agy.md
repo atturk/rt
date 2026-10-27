@@ -1,6 +1,6 @@
 # Piano 4.3.4b2 — agy
 
-Lista dei lavori della beta 4.3.4b2. Si aggiunge una voce per volta, quando Attilio la chiede.
+Lista dei lavori della beta 4.3.4b2: quattro voci, piano definitivo.
 Base: branch `claude/rt-4.3.4-beta` (contiene già la PR #135, errore leggibile nel popup di aggiornamento).
 Lavora su `agy/4.3.4b2`, una PR verso `claude/rt-4.3.4-beta`, un commit per voce.
 Regole UI: minimalismo, pulsanti a icona con suggerimento, niente testo superfluo.
@@ -82,4 +82,39 @@ Nel PDF ogni titolo di sottounità mostra il timecode due volte: accanto al tito
 - `PrintLessonPage.test.tsx` (nuovo; mocka `useLesson` e `useLessonDocument`): con un documento `<h3 data-unit-id="u1">Titolo</h3><p data-unit-timecode="u1">00:22</p><p>Testo</p>` e una sezione `{unit_id: 'u1', start_formatted: '00:22'}`, il testo «00:22» compare una sola volta (dentro `.print-timecode`) e non c'è nessun `[data-unit-timecode]`.
 - `printDocument.test.ts` resta verde senza modifiche.
 
-<!-- Le prossime voci vanno qui sotto (## 3, ## 4, …). -->
+## 4. Classificatore: pagine delle fonti lette come descrizione o come immagine
+
+Oggi una pagina di una fonte in «Testo e immagini» (né guida né Integra) si colloca solo sul testo: `place_page_in_outline` passa a Jev `mapping_text`, che per le pagine con figure e poche parole è la descrizione del modello visivo. L'immagine non arriva mai al classificatore. Serve un'impostazione per passargli l'immagine anche quando la pagina è stata descritta. **Il default resta il comportamento di oggi.**
+
+**Config** (`rt/core/config.py`, `ClassifierConfig`)
+- Nuovo campo `material_pages_reader: Literal["description", "image"] = "description"`, con un commento di una riga come quello di `images_reader`.
+- In `rt/pipeline/image_decision.py` aggiungi `uses_image_for_material_pages(cfg=None) -> bool`: vale `True` solo se `material_pages_reader == "image"` e il job `images` non è `off` (stessa forma di `uses_decision_reader`). Non leggere `RT_IMAGES_READER`.
+
+**Pipeline** (`rt/pipeline/material_mapping.py`, `assign_material_pages`, solo nel ramo `else`, cioè fonti non principali e non Integra)
+- Calcola il flag una volta prima del ciclo sulle fonti. Riusa `image_cache` (`load_cache`) come fa il ramo `solo_immagini`.
+- Per ogni pagina, con il flag attivo e `page.get("has_figures")`, `page.get("immagini")` e `not page.get("mapping_skip")`:
+  - per la prima immagine della pagina chiama `decide_image(lesson_dir, outline, h, data, page["testo"], image_cache, mock=mock, ctx=ctx)`. Il testo passato è quello completo, descrizione compresa;
+  - le unità e le macro restituite prendono il posto di quelle di `place_page_in_outline`. Se il ruolo non è `contenuto`, la pagina non va da nessuna parte;
+  - salva il ruolo in `descriptions[h]["ruolo"]`, come nel ramo `solo_immagini`;
+  - se `decide_image` solleva un errore (tranne `RunCancelled`), ricadi su `place_page_in_outline` per quella pagina.
+- Le altre pagine (senza figure, o con il flag spento) restano su `place_page_in_outline`.
+- Il resto non cambia: `page_info` va in `pages_by_unit` / `pages_by_macro` con le unità scelte, quindi il testo continua a fare da contesto, e le immagini si collocano come oggi.
+- La descrizione delle pagine in `rt/core/materials.py` resta com'è: serve al contesto e alla ricerca in archivio.
+- Non toccare `place_page_in_outline`, che usa anche l'Arricchimento.
+
+**API e tipi**
+- Il campo passa da GET/PUT delle impostazioni del classificatore come `images_reader`. Rigenera `docs/openapi.json` con `scripts/export_openapi.py` e `frontend/src/api/schema.d.ts` con `npm run gen:api`.
+
+**UI** (`frontend/src/components/settings/classifier.tsx`, riga del job `images`)
+- Accanto al Select «Lettura immagini», visibile alle stesse condizioni, aggiungi un Select con `aria-label="Lettura pagine delle fonti"` e le opzioni `description` «Descrizione» (default) e `image` «Immagine». Nessun testo in più.
+- Nella probe, `with_image` vale `true` anche quando `material_pages_reader === 'image'`.
+
+**Test**
+- `tests/test_material_mapping.py`:
+  - con il default, una pagina con figure passa da `place_page_in_outline` e `decide_image` non viene chiamato;
+  - con `material_pages_reader="image"` e job images non `off`, `decide_image` riceve i byte dell'immagine e il testo della pagina, e la sua scelta finisce in `units` e in `pages_by_unit`;
+  - con il ruolo diverso da `contenuto`, la pagina non viene collocata;
+  - se `decide_image` solleva un errore, si usa il risultato di `place_page_in_outline`;
+  - una pagina senza figure usa sempre il testo.
+  - Se un test richiede il marker `decision_reader` (vedi `tests/conftest.py` / `pytest.ini`), usalo.
+- `classifier.test.tsx` (o il test delle impostazioni del classificatore): il nuovo Select salva `material_pages_reader: 'image'`.
