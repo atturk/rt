@@ -66,6 +66,8 @@ def prepare_worker_process(queue) -> None:
 def cmd_worker(args: argparse.Namespace) -> None:
     from rt.services.jobs import DEFAULT_LEASE_SECONDS
     from rt.services.worker import Worker, registered_handlers, run_workers
+    from rt.core.log_stamp import stamp_std_streams
+    stamp_std_streams()
 
     handlers = registered_handlers()
     types = [t.strip() for t in args.types.split(",") if t.strip()] if args.types else sorted(handlers)

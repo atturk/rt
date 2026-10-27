@@ -947,6 +947,8 @@ def cmd_logs(args: argparse.Namespace) -> None:
 def cmd_api(args: argparse.Namespace) -> None:
     """Avvia l'API REST (FastAPI) su loopback."""
     from rt.api.server import run
+    from rt.core.log_stamp import stamp_std_streams
+    stamp_std_streams()
     code = run(host=args.host, port=args.port, reset_token=args.reset_token,
                no_auth=args.no_auth, dev_cors=args.dev_cors, service=getattr(args, "service", False))
     if code:

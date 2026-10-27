@@ -316,8 +316,9 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
         from rt.services.logs_service import log_path
         worker_log = log_path('worker')
         os.makedirs(os.path.dirname(worker_log), exist_ok=True)
+        from rt.core.log_stamp import stamp
         with open(worker_log, 'a', encoding='utf-8') as stream:
-            stream.write(json.dumps({'lesson': lesson_dir, 'message': summary, **timing}, ensure_ascii=False) + '\n')
+            stream.write(stamp() + json.dumps({'lesson': lesson_dir, 'message': summary, **timing}, ensure_ascii=False) + '\n')
     except OSError as exc:
         logging.getLogger(__name__).warning("Tempi della preparazione non salvati: %s", exc)
     return {"previous_segments": previous, "segments": ordered}
