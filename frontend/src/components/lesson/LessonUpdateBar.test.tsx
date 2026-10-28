@@ -34,6 +34,7 @@ function renderBar(lessonId = 1) {
 describe('LessonUpdateBar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockSourcesData = null
     mockJob = { running: false, percent: null, message: null, error: null }
     mockUpdateError = null
@@ -291,6 +292,33 @@ describe('LessonUpdateBar', () => {
     expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
     mockSourcesData = view('2026-10-13T09:00:00Z')
     rerender(ui())
+    expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'done')
+  })
+
+  it('la × resta chiusa riaprendo la lezione, finché non arriva un nuovo aggiornamento', () => {
+    const view = (il: string): SourcesView => ({
+      sources: [], has_unused_sources: false, can_undo: true,
+      ultimo_aggiornamento: { modo: 'extend', unita_nuove: 5, unita_cambiate: 12, il },
+      principale: '', ordine_usato: [], principale_usato: null, solo_ricostruzione: false,
+    })
+    mockSourcesData = view('2026-10-12T18:00:00Z')
+    const first = renderBar(7)
+    fireEvent.click(screen.getByTestId('bar-close-btn'))
+    first.unmount()
+
+    // Riaprendo la stessa lezione la riga non torna
+    const again = renderBar(7)
+    expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
+    again.unmount()
+
+    // Un'altra lezione non eredita la chiusura
+    const other = renderBar(8)
+    expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'done')
+    other.unmount()
+
+    // Un nuovo aggiornamento della stessa lezione la fa tornare
+    mockSourcesData = view('2026-10-13T09:00:00Z')
+    renderBar(7)
     expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'done')
   })
 })

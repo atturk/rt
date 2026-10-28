@@ -16,6 +16,17 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 
+const DISMISS_KEY = 'rt-lesson-update-dismissed-'
+
+/** L'aggiornamento chiuso con la × resta nel browser: la riga non torna riaprendo la lezione. */
+function readDismissed(lessonId: number): string | null {
+  try {
+    return localStorage.getItem(DISMISS_KEY + lessonId)
+  } catch {
+    return null
+  }
+}
+
 export interface LessonUpdateBarProps {
   lessonId: number
   className?: string
@@ -30,7 +41,17 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
   const job = useSourcesJob(lessonId)
 
   // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga.
-  const [dismissedAt, setDismissedAt] = useState<string | null>(null)
+  // La scelta resta nel browser, così riaprendo la lezione la riga non ricompare.
+  const [dismissed, setDismissed] = useState<Record<number, string>>({})
+  const dismissedAt = dismissed[lessonId] ?? readDismissed(lessonId)
+  const dismiss = (il: string) => {
+    setDismissed((prev) => ({ ...prev, [lessonId]: il }))
+    try {
+      localStorage.setItem(DISMISS_KEY + lessonId, il)
+    } catch {
+      /* archiviazione non disponibile: vale solo finché la pagina resta aperta */
+    }
+  }
   // Aperto al passaggio del mouse o col clic (anche al tocco o da tastiera): mostra Estendi e Ricostruisci.
   const { open: splitOpen, setOpen: setSplitOpen, ref: expandRef } = useHoverExpand<HTMLDivElement>()
   const splitRef = useRef<HTMLDivElement>(null)
@@ -312,7 +333,7 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           <IconButton
             icon={X}
             label="Chiudi"
-            onClick={() => setDismissedAt(u.il)}
+            onClick={() => dismiss(u.il)}
             data-testid="bar-close-btn"
           />
         </div>
