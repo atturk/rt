@@ -224,6 +224,8 @@ def _server_pid() -> int:
 def _serve(port: int) -> int:
     from rt.api.launcher import run_spa
     from rt.api.server import _without_token
+    from rt.core.log_stamp import stamp_std_streams
+    stamp_std_streams()
     filtered = _without_token(print)
 
     def say(message: str) -> None:
