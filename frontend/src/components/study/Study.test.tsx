@@ -453,6 +453,14 @@ it('zoom testo: + porta --study-text-scale a 1.1, - torna a 1, in textarea o con
   expect(studyText.style.getPropertyValue('--study-text-scale')).toBe('1')
 })
 
+it('font del testo: con study.text-font = seravek la section dell’unità usa Seravek', () => {
+  localStorage.clear()
+  localStorage.setItem('rt-pref:study.text-font', JSON.stringify('seravek'))
+  renderStudy('/studio/lezione/1')
+  expect(screen.getByTestId('study-unit').style.fontFamily).toContain('Seravek')
+  localStorage.clear()
+})
+
 
 async function startGeneration() {
   mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'generation-1' }))

@@ -26,6 +26,8 @@ export function PrintLessonPage() {
     // Prepara l'HTML con le immagini ridotte a max=1600
     const rawHtml = withImageUrls(doc.html, id, 1600)
     root.innerHTML = rawHtml
+    // Il timecode va solo accanto al titolo: qui non c'è .rt-document che nasconde il paragrafo.
+    root.querySelectorAll('[data-unit-timecode]').forEach((el) => el.remove())
 
     // Aggiungi i timecode accanto al titolo della sottounità (in grigio 8,5 pt)
     for (const section of doc.sections || []) {

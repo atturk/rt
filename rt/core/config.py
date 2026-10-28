@@ -418,6 +418,8 @@ class ClassifierConfig(BaseModel):
     timeout_seconds: float = Field(default=30, ge=1, le=300)
     # decision: il modello decisionale guarda l'immagine; description: descrittore vision e poi decisione sul testo.
     images_reader: Literal["decision", "description"] = "decision"
+    # description: le pagine delle fonti si collocano dal testo (anche descritto); image: il modello decisionale guarda la pagina.
+    material_pages_reader: Literal["description", "image"] = "description"
     jobs: Dict[str, ClassifierJobConfig] = Field(default_factory=lambda: {
         name: ClassifierJobConfig(mode=mode) for name, mode in {
             "relevance": "observe", "question_types": "pipeline", "section_labels": "pipeline",

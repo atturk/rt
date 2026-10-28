@@ -36,6 +36,7 @@ import { sourceOffsets, sourceParts, sourceTextOf } from '@/lib/sourceText'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 import { useIsPhone } from '@/lib/phone'
 import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { studyFontStack, useStudyFont, useStudyTextScale } from '@/lib/studyText'
 import { useRsvpLayout, useZenLayout, useStudyZen } from '@/lib/zen'
 import { cn } from '@/lib/utils'
 import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './highlights'
@@ -44,31 +45,6 @@ import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
 import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
-
-const STUDY_TEXT_SCALE_KEY = 'rt-device:study-text-scale'
-
-function getSavedStudyTextScale(): number {
-  try {
-    const raw = localStorage.getItem(STUDY_TEXT_SCALE_KEY)
-    if (raw) {
-      const val = parseFloat(raw)
-      if (Number.isFinite(val) && val >= 0.8 && val <= 2.0) {
-        return Math.round(val * 10) / 10
-      }
-    }
-  } catch {
-    return 1.0
-  }
-  return 1.0
-}
-
-function saveStudyTextScale(v: number): void {
-  try {
-    localStorage.setItem(STUDY_TEXT_SCALE_KEY, (Math.round(v * 10) / 10).toFixed(1))
-  } catch {
-    // Continua se localStorage non è disponibile
-  }
-}
 
 function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
   if (!root) return null
@@ -241,7 +217,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const zenActive = zenMode && !speedReading
   const [zenSettings, setZenSettings] = useState(false)
   const [rsvpPrefs, setRsvpPrefs] = useRsvpPrefs()
-  const [textScale, setTextScale] = useState(getSavedStudyTextScale)
+  const [textScale, setTextScale] = useStudyTextScale()
+  const [textFont] = useStudyFont()
   const [scaleNotice, setScaleNotice] = useState<string | null>(null)
   const scaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -469,7 +446,6 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           ? Math.min(2.0, Math.round((textScale + 0.1) * 10) / 10)
           : Math.max(0.8, Math.round((textScale - 0.1) * 10) / 10)
         setTextScale(next)
-        saveStudyTextScale(next)
         showScaleNotice(next)
         if (topEl) {
           requestAnimationFrame(() => {
@@ -854,6 +830,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             highlightMode={hlMode}
             onReady={setTextRoot}
             textScale={textScale}
+            fontFamily={studyFontStack(textFont)}
             notes={studyNotesQuery.data?.filter((n) => n.unit_id === unit.id)}
             activeNoteId={popupState?.open ? popupState.note?.id ?? null : null}
             onNoteClick={(note, rect) => {
@@ -1133,7 +1110,7 @@ function clipToRoot(range: Range, root: HTMLElement): Range | null {
 }
 
 /** Testo dell'unità: HTML sanificato dall'API, immagini della lezione e formule. */
-export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection, textScale = 1 }: {
+export function UnitText({ lessonId, unit, highlightMode, onReady, notes, activeNoteId, onNoteClick, onSelection, textScale = 1, fontFamily }: {
   lessonId: number
   unit: StudyUnit
   highlightMode: HighlightMode
@@ -1144,6 +1121,8 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   onNoteClick?: (note: StudyNote, rect: DOMRect) => void
   onSelection?: (quote: string, anchor: { quote: string; prefix: string; suffix: string; start: number; end: number }, rect: DOMRect) => void
   textScale?: number
+  /** Stack CSS del font scelto in Impostazioni › Testo dello Studio (titolo e testo). */
+  fontFamily?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [mathReady, setMathReady] = useState<string | null>(null)
@@ -1297,7 +1276,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   }
 
   return (
-    <section aria-labelledby="study-unit-title">
+    <section aria-labelledby="study-unit-title" data-testid="study-unit" style={fontFamily ? { fontFamily } : undefined}>
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
       <div
         ref={ref}
