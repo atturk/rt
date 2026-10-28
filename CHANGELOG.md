@@ -1,5 +1,24 @@
 # Novità di RT
 
+## 4.3.4 — 2026-10-28
+
+Raccoglie la beta 4.3.4b1 e le correzioni successive (dettagli della beta sotto).
+
+### Novità
+
+- **Il modello decisionale guarda le immagini**: Jev 1.14 riceve l'immagine e decide se è contenuto, introduttiva o irrilevante e in quale unità va, senza descriverla prima. Si sceglie in Impostazioni > Modelli > Modelli decisionali (Lettura immagini).
+- **Pagine delle fonti come immagine**: nella stessa riga, «Lettura pagine delle fonti» fa collocare le pagine con figure guardando la pagina invece della sua descrizione. Il default resta la descrizione.
+- **Fonti in tre modalità** (Testo, Testo e immagini, Solo immagini) con uso e pagine scelti per ogni materiale nella Nuova lezione; i default stanno in Impostazioni > Lavorazione > Fonti.
+- **Informazioni** sulle immagini nel pannello e nell'archivio; la ricerca trova anche descrizioni e testo delle pagine.
+- **Testo dello Studio**: in Impostazioni > Aspetto si scelgono il font (Sistema, Seravek, Avenir Next, Georgia, OpenDyslexic) e la dimensione, la stessa di + e − nello Studio.
+- Tolta la sezione «Studio» dalle impostazioni.
+
+### Correzioni
+
+- Nel PDF il timecode compare solo accanto al titolo dell'unità, non anche sotto.
+- Se l'aggiornamento dall'app non riesce, il popup dice il motivo.
+- Formule a blocco distanziate dal testo e comandi LaTeX rovinati dagli escape JSON riparati.
+
 ## 4.3.4b1 — 2026-10-26
 
 ### Novità
