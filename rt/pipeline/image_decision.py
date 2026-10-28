@@ -33,6 +33,13 @@ def uses_decision_reader(cfg=None) -> bool:
     return reader == "decision" and classifier_job(cfg, "images").mode != "off"
 
 
+def uses_image_for_material_pages(cfg=None) -> bool:
+    """Le pagine con figure delle fonti si collocano guardando l'immagine (non RT_IMAGES_READER)."""
+    from rt.core.config import classifier_job, load_config
+    cfg = cfg or load_config()
+    return cfg.classifier.material_pages_reader == "image" and classifier_job(cfg, "images").mode != "off"
+
+
 def lesson_schema(outline: Any, lesson_units: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Tuple[str, str]]]:
     """Schema compatto (mai la lezione intera) ed etichette {label: (tipo, id)}."""
     by_id = {u["id"]: u for u in lesson_units}

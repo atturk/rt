@@ -3007,6 +3007,15 @@
             "title": "Jobs",
             "type": "object"
           },
+          "material_pages_reader": {
+            "default": "description",
+            "enum": [
+              "description",
+              "image"
+            ],
+            "title": "Material Pages Reader",
+            "type": "string"
+          },
           "model": {
             "default": "typesafe/jev-1.13",
             "title": "Model",
