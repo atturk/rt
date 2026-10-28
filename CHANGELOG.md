@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.4.1 — 2026-10-28
+
+### Correzioni
+
+- **Registri con data e ora**: ogni riga di api.log e worker.log comincia con data e ora (con i millesimi), anche le richieste, i messaggi dei job e gli errori. Serve a misurare quanto durano le operazioni.
+
 ## 4.3.4 — 2026-10-28
 
 Raccoglie la beta 4.3.4b1 e le correzioni successive (dettagli della beta sotto).
