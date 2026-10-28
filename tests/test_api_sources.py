@@ -195,3 +195,16 @@ def test_post_source_multiple_audio_separate_when_unisci_false(api_client, sourc
     assert isinstance(data, list) and len(data) == 2
     assert [os.path.basename(s["file"]) for s in data] == ["partA.m4a", "partB.m4a"]
     assert all(s["parti"] is None for s in data)
+
+
+def test_post_material_distinguishes_wrong_pages_from_unreadable_file(api_client, source_lesson):
+    url = f"/api/v1/lessons/{lesson_id(api_client)}"
+    notes = ("file", ("schema.md", b"# Titolo\n\nTesto", "text/markdown"))
+    response = api_client.post(url + "/sources", data={"tipo": "materiale", "pagine": "3-1"}, files=[notes])
+    assert response.status_code == 422
+    assert "Materiale non leggibile" not in response.json()["error"]["message"]
+    assert "schema.md" in response.json()["error"]["message"]
+    broken = ("file", ("rotto.pdf", b"non un pdf", "application/pdf"))
+    response = api_client.post(url + "/sources", data={"tipo": "materiale"}, files=[broken])
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == "Materiale non leggibile: rotto.pdf."

@@ -236,6 +236,23 @@ describe('Import nuovo: fonti con il layer delle opzioni', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Avvia' })).toBeEnabled())
   }
 
+  it('un file già scelto si tiene una volta sola e lo dice', () => {
+    renderDialog()
+    choose(new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' }), pdf('slide.pdf'))
+    choose(new File(['audio'], 'Parte1.MP3', { type: 'audio/mp3' }), pdf('slide.pdf'), pdf('altre.pdf'))
+    expect(screen.getAllByText('parte1.mp3')).toHaveLength(1)
+    expect(screen.queryByText('Parte1.MP3')).toBeNull()
+    expect(screen.getAllByText('slide.pdf')).toHaveLength(1)
+    expect(screen.getByText('altre.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent("Parte1.MP3, slide.pdf sono già nell'elenco")
+  })
+
+  it('un audio con estensione non supportata si rifiuta anche se il tipo è audio/*', () => {
+    renderDialog()
+    choose(new File(['audio'], 'vocale.opus', { type: 'audio/ogg' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Formato non supportato: vocale.opus')
+  })
+
   it('separa audio e materiali senza graffetta né X sulle miniature', () => {
     renderDialog()
     choose(new File(['audio'], 'parte1.mp3', { type: 'audio/mp3' }), pdf('slide.pdf'))
