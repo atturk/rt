@@ -28,3 +28,28 @@ it.each([undefined, 0.65])('mostra il default immagini 0,7 e conserva la soglia 
  await userEvent.click(await screen.findByRole('button', { name: 'Modello proprio Immagini' }))
  expect(screen.getByLabelText('Soglia assegnazione')).toHaveValue(threshold ?? 0.7)
 })
+
+it('con le immagini accese sceglie la lettura e la salva', async () => {
+ const initial = { model: 'shared', credential: 'openrouter', timeout_seconds: 30, images_reader: 'decision', jobs: { images: { mode: 'manual' } } }
+ vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path.endsWith('/classifier') ? initial : { credentials: [] }))) as never)
+ const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(initial))
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ClassifierSettingsSection /></QueryClientProvider>)
+ await userEvent.click(await screen.findByRole('button', { name: 'Lettura immagini' }))
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'Descrittore' }))
+ await userEvent.click(screen.getByRole('button', { name: 'Salva classificatore' }))
+ await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/settings/classifier', { body: expect.objectContaining({ images_reader: 'description' }) }))
+ await userEvent.click(screen.getByRole('button', { name: 'Modalità Immagini' }))
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'Spento' }))
+ expect(screen.queryByRole('button', { name: 'Lettura immagini' })).toBeNull()
+})
+
+it('salva la lettura delle pagine delle fonti come immagine', async () => {
+ const initial = { model: 'shared', credential: 'openrouter', timeout_seconds: 30, material_pages_reader: 'description', jobs: { images: { mode: 'manual' } } }
+ vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path.endsWith('/classifier') ? initial : { credentials: [] }))) as never)
+ const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(initial))
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ClassifierSettingsSection /></QueryClientProvider>)
+ await userEvent.click(await screen.findByRole('button', { name: 'Lettura pagine delle fonti' }))
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'Immagine' }))
+ await userEvent.click(screen.getByRole('button', { name: 'Salva classificatore' }))
+ await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/settings/classifier', { body: expect.objectContaining({ material_pages_reader: 'image' }) }))
+})

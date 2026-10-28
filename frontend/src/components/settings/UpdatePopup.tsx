@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,8 +32,9 @@ export function UpdatePopup() {
   const isError = phase === 'error' || download.isError || install.isError
   const errorMessageText =
     data.progress?.error ||
-    (download.isError && 'Download non riuscito.') ||
-    (install.isError && 'Installazione non riuscita.') ||
+    // Il server dice perché (installer non pronto, hash, aggiornamento in corso): va mostrato.
+    (download.isError && `Download non riuscito: ${errorMessage(download.error)}`) ||
+    (install.isError && `Installazione non riuscita: ${errorMessage(install.error)}`) ||
     'Errore di aggiornamento.'
 
   return (

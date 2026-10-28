@@ -41,7 +41,7 @@ class Source(BaseModel):
     rimossa_il: str | None = None
     parti: list[SourcePart] | None = None
     pagine: list[int] | None = None
-    estrai: Literal['testo', 'immagini'] | None = None
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] | None = None
     uso: Literal['contesto', 'integra'] | None = None
 
 
@@ -94,8 +94,8 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
-    from rt.core.source_options import parse_pages, default_extraction
-    if estrai not in (None, 'testo', 'immagini') or uso not in (None, 'guida', 'contesto', 'integra'):
+    from rt.core.source_options import parse_pages, default_extraction, text_only
+    if estrai not in (None, 'testo', 'immagini', 'solo_immagini') or uso not in (None, 'guida', 'contesto', 'integra'):
         raise ValueError('Opzioni della fonte non valide')
     if tipo == 'materiale':
         from rt.core.materials import page_count
@@ -114,7 +114,6 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                 finally:
                     os.unlink(tmp.name)
             pagine = parse_pages(pagine, total)
-        estrai = estrai or default_extraction(filename)
     sources = load_sources(lesson_dir)
     from rt.core.source_selection import selection
     previous_primary = selection(lesson_dir)["principale"]
@@ -133,6 +132,9 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     else:
         with fs.open(path, "wb") as stream:
             stream.write(content)
+    if tipo == 'materiale':
+        # Il default guarda il file vero: un PDF orizzontale sono slide, uno verticale è testo.
+        estrai = 'testo' if text_only(filename) else estrai or default_extraction(filename, path)
     from rt.core.archive import find, original_path, register_file, file_type
     upload_sha = compute_file_sha256(path)
     archived = find(upload_sha) if tipo == 'audio' else None
@@ -215,9 +217,10 @@ def update_source(lesson_dir, source_id, **options):
         from rt.core.materials import page_count
         source.pagine = parse_pages(options['pagine'], page_count(os.path.join(lesson_dir, source.file)))
     if 'estrai' in options:
-        if options['estrai'] not in (None, 'testo', 'immagini'):
+        if options['estrai'] not in (None, 'testo', 'immagini', 'solo_immagini'):
             raise ValueError('Estrai non valido')
-        source.estrai = options['estrai']
+        from rt.core.source_options import text_only
+        source.estrai = 'testo' if text_only(source.file) else options['estrai']
     if 'uso' in options:
         if options['uso'] not in (None, 'guida', 'contesto', 'integra'):
             raise ValueError('Uso non valido')

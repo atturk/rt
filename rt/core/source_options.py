@@ -27,5 +27,31 @@ def parse_pages(value, total=None):
     return pages
 
 
-def default_extraction(filename):
-    return 'testo' if filename.lower().endswith(('.docx', '.txt')) else 'immagini'
+TEXT_DOCUMENTS = ('.docx', '.txt', '.md')
+
+
+def landscape_pdf(path):
+    """La prima pagina è orizzontale: di solito sono slide esportate in PDF."""
+    try:
+        import fitz
+        from rt.storage import fs
+        with fs.materialize(path) as real, fitz.open(real) as document:
+            rect = document[0].rect if len(document) else None
+        return bool(rect and rect.width > rect.height)
+    except Exception:
+        return True
+
+
+def default_extraction(filename, path=None):
+    """Testo per i documenti di testo e i PDF verticali; testo e immagini per slide, PDF
+    orizzontali e immagini singole. Solo immagini non è mai un default."""
+    name = filename.lower()
+    if name.endswith(TEXT_DOCUMENTS):
+        return 'testo'
+    if name.endswith('.pdf') and path is not None:
+        return 'immagini' if landscape_pdf(path) else 'testo'
+    return 'immagini'
+
+
+def text_only(filename):
+    return filename.lower().endswith(TEXT_DOCUMENTS)

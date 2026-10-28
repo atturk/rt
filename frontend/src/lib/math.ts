@@ -15,7 +15,21 @@ export function loadTemml(): Promise<Temml> {
   return loading
 }
 
-export function mathElement(temml: Temml, source: string, display: boolean, original: string): Node {
+/**
+ * Nel JSON dell'LLM "\frac" o "\theta" con una sola barra diventano form feed o tab seguiti
+ * dal resto del comando: dentro una formula si rimette la barra (come rt/core/encoding.py).
+ */
+export function repairLatexEscapes(source: string): string {
+  return source
+    .replaceAll('\f', '\\f')
+    .replaceAll('\b', '\\b')
+    .replace(/\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))/g, '\\t')
+    .replace(/\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))/g, '\\r')
+    .replace(/\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))/g, '\\n')
+}
+
+export function mathElement(temml: Temml, rawSource: string, display: boolean, original: string): Node {
+  const source = repairLatexEscapes(rawSource)
   const holder = window.document.createElement('span')
   // trust: false (predefinito) esclude \href, \class e simili; una formula non valida resta testo.
   // L'output è MathML generato da Temml, che fa l'escape del testo della formula.

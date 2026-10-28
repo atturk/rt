@@ -157,3 +157,13 @@ describe('useUpdatePopup', () => {
     expect(apriMock).toHaveBeenCalledTimes(1)
   })
 })
+
+it('se l’installazione non parte mostra il motivo dato da RT', async () => {
+  renderPopup({ ...basePopupData, ready: true, progress: { ...idle, phase: 'ready' } })
+  vi.spyOn(api, 'POST').mockImplementation((() => Promise.resolve({
+    error: { error: { code: 'not_ready', message: 'Hash dell’installer non corrispondente.' } },
+    response: new Response('{}', { status: 409 }),
+  })) as never)
+  await userEvent.click(await screen.findByRole('button', { name: 'Installa e riavvia' }))
+  expect(await screen.findByText('Installazione non riuscita: Hash dell’installer non corrispondente.')).toBeInTheDocument()
+})

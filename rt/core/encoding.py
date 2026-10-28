@@ -78,13 +78,35 @@ def sanitize_text(text: Union[str, None]) -> str:
     return fix_mojibake(str(text))
 
 
+# Nel JSON dell'LLM "\frac" o "\beta" con una sola barra diventano i caratteri di controllo
+# \f e \b seguiti da "rac", "eta". Form feed e backspace non compaiono mai in un testo vero.
+_CONTROL_ESCAPES = {"\x0c": "\\f", "\x08": "\\b"}
+# Tab, a capo e ritorno carrello invece sono legittimi: si riparano solo davanti al resto di un
+# comando LaTeX (l'escape ha già mangiato la prima lettera: "\theta" è tab + "heta").
+_LATEX_AFTER_ESCAPE = re.compile(
+    r"\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))"
+    r"|\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))"
+    r"|\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))"
+)
+
+
+def repair_latex_escapes(text: str) -> str:
+    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
+    if "\x0c" in text or "\x08" in text:
+        for char, escape in _CONTROL_ESCAPES.items():
+            text = text.replace(char, escape)
+    if "\t" in text or "\r" in text or "\n" in text:
+        text = _LATEX_AFTER_ESCAPE.sub(lambda m: {"\t": "\\t", "\r": "\\r", "\n": "\\n"}[m.group(0)], text)
+    return text
+
+
 def sanitize_object_encoding(obj: Any) -> Any:
     """
     Sanitizza ricorsivamente stringhe in dizionari, liste o oggetti arbitrari.
     Particolarmente utile prima o dopo il caricamento di JSON dall'LLM.
     """
     if isinstance(obj, str):
-        return fix_mojibake(obj)
+        return repair_latex_escapes(fix_mojibake(obj))
     elif isinstance(obj, list):
         return [sanitize_object_encoding(x) for x in obj]
     elif isinstance(obj, dict):

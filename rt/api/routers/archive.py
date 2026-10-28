@@ -1,12 +1,12 @@
 """Archivio delle fonti, autenticato come gli altri dati della lezione."""
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from rt.api.deps import Actor
-from rt.api.routers.images import EditorImage
+from rt.api.routers.images import EditorImage, ImageInfo, image_info
 from rt.core.sources import Source
 from rt.services import archive_service
 
@@ -30,6 +30,12 @@ class LookupEntry(BaseModel):
     pagine_totali: int | None
     usate: list[ArchiveUsage]
     da_continuare: str | None
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] = 'immagini'
+
+
+class InspectedFile(BaseModel):
+    pagine_totali: int | None
+    estrai: Literal['testo', 'immagini', 'solo_immagini']
 
 
 @router.post('/archive/lookup', response_model=dict[str, LookupEntry | None])
@@ -39,6 +45,20 @@ def lookup(body: LookupRequest, _actor: Actor):
     except ValueError:
         from rt.api.errors import ApiError
         raise ApiError(422, 'validation_error', 'Impronta non valida.') from None
+
+
+@router.post('/archive/inspect', response_model=InspectedFile)
+def inspect(_actor: Actor, file: UploadFile = File(...)):
+    """Pagine e modalità predefinita (un PDF orizzontale sono slide) di un file nuovo."""
+    import os
+    import shutil
+    import tempfile
+    name = os.path.basename(file.filename or 'file')
+    with tempfile.TemporaryDirectory(prefix='rt-inspect-') as folder:
+        path = os.path.join(folder, name)
+        with open(path, 'wb') as stream:
+            shutil.copyfileobj(file.file, stream)
+        return archive_service.inspect_upload(path, name)
 
 
 class ArchiveRow(BaseModel):
@@ -94,7 +114,7 @@ class AddToLessonRequest(BaseModel):
     lesson_id: int
     uso: Literal['guida', 'contesto', 'integra'] = 'contesto'
     pagine: list[int] | None = None
-    estrai: Literal['testo', 'immagini'] = 'immagini'
+    estrai: Literal['testo', 'immagini', 'solo_immagini'] = 'immagini'
 
 
 class AddToMediaRequest(PagesRequest):
@@ -121,6 +141,12 @@ def detail(sha: str, _actor: Actor):
 def page_image(sha: str, n: int, _actor: Actor):
     return Response(archive_service.page_bytes(sha, n), media_type='image/png',
         headers={'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff'})
+
+
+@router.get('/archive/{sha}/pages/{n}/info', response_model=ImageInfo)
+def page_info(sha: str, n: int, _actor: Actor):
+    description, text = archive_service.page_info(sha, n)
+    return image_info(description, text)
 
 
 @router.put('/archive/{sha}/ignored', response_model=ArchiveDetail)

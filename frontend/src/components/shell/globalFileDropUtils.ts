@@ -11,6 +11,7 @@ const ACCEPTED_EXTENSIONS = new Set([
   '.pptx',
   '.docx',
   '.txt',
+  '.md',
   '.png',
   '.jpg',
   '.jpeg',

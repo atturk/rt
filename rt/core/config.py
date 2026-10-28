@@ -416,6 +416,10 @@ class ClassifierConfig(BaseModel):
     credential: str = "openrouter"
     base_url: Optional[str] = None
     timeout_seconds: float = Field(default=30, ge=1, le=300)
+    # decision: il modello decisionale guarda l'immagine; description: descrittore vision e poi decisione sul testo.
+    images_reader: Literal["decision", "description"] = "decision"
+    # description: le pagine delle fonti si collocano dal testo (anche descritto); image: il modello decisionale guarda la pagina.
+    material_pages_reader: Literal["description", "image"] = "description"
     jobs: Dict[str, ClassifierJobConfig] = Field(default_factory=lambda: {
         name: ClassifierJobConfig(mode=mode) for name, mode in {
             "relevance": "observe", "question_types": "pipeline", "section_labels": "pipeline",
@@ -453,13 +457,20 @@ def migrate_classifier(jev, enrichment):
                             timeout_seconds=jev.timeout_seconds, jobs=jobs)
 
 
+IMAGES_JEV_MODEL = "typesafe/jev-1.14"
+
+
 def classifier_job(cfg, name) -> ClassifierJob:
     if name not in CLASSIFIER_MODES:
         raise ValueError("Job del classificatore non valido")
     classifier = cfg.classifier
     job = classifier.jobs.get(name, ClassifierJobConfig())
     threshold = job.threshold if job.threshold is not None else (0.7 if name == "images" else 0.8)
-    return ClassifierJob(mode=job.mode, model=job.model or classifier.model,
+    model = job.model or classifier.model
+    if name == "images" and not job.model and model.startswith("typesafe/jev-1.1"):
+        # Le immagini usano Jev 1.14 se non c'è un modello proprio.
+        model = IMAGES_JEV_MODEL
+    return ClassifierJob(mode=job.mode, model=model,
         credential=job.credential or classifier.credential,
         base_url=job.base_url or classifier.base_url,
         timeout_seconds=classifier.timeout_seconds,

@@ -89,8 +89,27 @@ def lookup(hashes, index=None):
             continue
         usages = index.get(meta['impronta'], [])
         results[sha] = {'impronta': meta['impronta'], 'pagine_totali': meta.get('pagine_totali'),
-            'usate': usages, 'da_continuare': continuation(meta, usages)}
+            'usate': usages, 'da_continuare': continuation(meta, usages), 'estrai': default_mode(meta)}
     return results
+
+
+def default_mode(meta):
+    from rt.core.source_options import default_extraction
+    try:
+        return default_extraction(meta['nome'], archive.original_path(meta['impronta']))
+    except (OSError, ValueError, KeyError):
+        return default_extraction(meta.get('nome', ''))
+
+
+def inspect_upload(path, name):
+    """Pagine e modalità predefinita di un file non ancora in archivio (popup di import)."""
+    from rt.core.materials import page_count
+    from rt.core.source_options import default_extraction
+    try:
+        total = page_count(path)
+    except Exception:
+        total = None
+    return {'pagine_totali': total, 'estrai': default_extraction(name, path)}
 
 
 def require_entry(sha):
@@ -121,7 +140,7 @@ def list_entries(materia=None, tipo=None, q=None, index=None):
             if len(sha) != 64:
                 continue
             meta = archive.load_meta(sha)
-            if not meta or (tipo and meta['tipo'] != tipo) or (q and q.casefold() not in meta['nome'].casefold()):
+            if not meta or (tipo and meta['tipo'] != tipo) or (q and not archive.matches(meta, q)):
                 continue
             item = row(meta, index=index)
             if materia and materia not in item['materie']:
@@ -191,6 +210,19 @@ def image_path(sha, n):
         raise NotFound('page_not_found', 'Immagine della pagina non disponibile.')
     return path
 
+
+
+def page_info(sha, n):
+    """(descrizione, testo) di una pagina: testo da pages.json, descrizione dell'immagine se c'è."""
+    from rt.services.errors import NotFound
+    meta = require_entry(sha)
+    folder = archive.entry_dir(meta['impronta'])
+    data = archive.read_json(os.path.join(folder, 'pages.json'), {})
+    page = next((p for p in data.get('pages', []) if p['numero'] == n), None)
+    if page is None:
+        raise NotFound('page_not_found', 'Pagina non trovata.')
+    description = archive.read_json(os.path.join(folder, 'descrizione.json'), {}) if n == 1 else {}
+    return description or {}, page.get('testo') or ''
 
 
 def page_bytes(sha, n):

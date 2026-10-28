@@ -289,3 +289,13 @@ def api_client(api_token):
     client = TestClient(create_app())
     client.headers["Authorization"] = f"Bearer {api_token}"
     return client
+
+
+@pytest.fixture(autouse=True)
+def _images_by_description(request, monkeypatch):
+    """I test storici delle immagini descrivono e poi collocano dal testo (lettura "description");
+    quelli col marker decision_reader usano il modello decisionale che guarda l'immagine."""
+    if request.node.get_closest_marker("decision_reader"):
+        return
+    # Variabile d'ambiente, non monkeypatch: vale anche per la CLI lanciata in un sottoprocesso.
+    monkeypatch.setenv("RT_IMAGES_READER", "description")

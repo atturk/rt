@@ -8,7 +8,10 @@ import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { useCopyFormat } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
-import { useHighlighterPrefs, useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { useSourceDefaults, type SourceDefault, type SourceKind } from '@/lib/sourceDefaults'
+import { ExtractOptions, UseOptions } from '@/components/sources/SourceControls'
+import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudyTextScale, type StudyFont } from '@/lib/studyText'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
@@ -31,11 +34,14 @@ function useGeneralPreference() {
 
 export function AppearanceSection({ settings }: { settings: Settings }) {
   const [theme, setTheme] = usePreference<ThemePreference>('theme', 'sistema')
-  const [highlighter, setHighlighter] = useHighlighterPrefs()
   const [rsvp, setRsvp] = useRsvpPrefs()
   const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
   const [zoom, setZoomState] = useState(getZoom)
+  const [textFont, setTextFont] = useStudyFont()
+  const [textScale, setTextScale] = useStudyTextScale()
+  // Seravek e Avenir ci sono solo sul Mac: si mostrano i font installati, più quello salvato.
+  const [availableFonts] = useState(() => new Set(STUDY_FONTS.filter(([v]) => studyFontAvailable(v)).map(([v]) => v)))
   const save = useGeneralPreference()
   const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
 
@@ -71,9 +77,20 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
       </Field>
       <SaveFeedback mutation={save} />
     </Section>
-    <Section id="studio" title="Studio">
-      <div className="flex flex-wrap justify-between gap-2 text-body"><span>Colori dell’evidenziatore</span><span className="text-muted-foreground">Giallo, verde, azzurro, rosa, arancio</span></div>
-      <Checkbox id="pref-arrows" label="Frecce per cambiare unità" checked={highlighter.arrows} onChange={arrows => setHighlighter({ ...highlighter, arrows })} />
+    <Section id="testo-studio" title="Testo dello Studio">
+      <Field label="Font" htmlFor="pref-study-font">
+        <div className="flex items-center gap-2">
+          <Select id="pref-study-font" value={textFont} onChange={e => setTextFont(e.target.value as StudyFont)}>
+            {STUDY_FONTS.filter(([v]) => v === textFont || availableFonts.has(v)).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </Select>
+          <span aria-hidden="true" className="text-heading" style={{ fontFamily: studyFontStack(textFont) }}>Aa</span>
+        </div>
+      </Field>
+      <Field label="Dimensione" htmlFor="pref-study-scale">
+        <Select id="pref-study-scale" value={textScale.toFixed(1)} onChange={e => setTextScale(Number(e.target.value))}>
+          {Array.from({ length: 13 }, (_, i) => (8 + i) / 10).map(n => <option key={n} value={n.toFixed(1)}>{Math.round(n * 100)}%</option>)}
+        </Select>
+      </Field>
     </Section>
     <Section id="copia" title="Copia">
       <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
@@ -111,4 +128,20 @@ export function OutlineSettingsSection({ settings }: { settings: Settings }) {
     </Field>
     <Button type="submit" disabled={save.isPending}>Salva scaletta</Button>
   </form><SaveFeedback mutation={save} /></Section>
+}
+
+const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Testi'], ['immagine', 'Immagini']]
+
+/** Modalità e uso proposti nell'import per ogni tipo di file; la guida si sceglie lì. */
+export function SourceDefaultsSection() {
+  const [defaults, setDefaults] = useSourceDefaults()
+  const set = (kind: SourceKind, change: Partial<SourceDefault>) => setDefaults({ ...defaults, [kind]: { ...defaults[kind], ...change } })
+  return <Section id="fonti" title="Fonti">
+    {SOURCE_ROWS.map(([kind, label]) => <div key={kind} className="flex flex-wrap items-center gap-3 text-body" data-testid={`source-default-${kind}`}>
+      <span className="w-20">{label}</span>
+      <ExtractOptions value={defaults[kind].estrai} onChange={estrai => set(kind, { estrai })} />
+      <UseOptions value={defaults[kind].uso} off={defaults[kind].estrai === 'solo_immagini' ? 'Solo immagini: nessun testo da usare' : null}
+        unavailable={{ guida: 'La guida si sceglie nell’import' }} onChange={uso => uso !== 'guida' && set(kind, { uso })} />
+    </div>)}
+  </Section>
 }

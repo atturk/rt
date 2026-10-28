@@ -11,7 +11,7 @@ import { TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
-import { AppearanceSection, OutlineSettingsSection } from '@/components/settings/preferences'
+import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
@@ -99,7 +99,7 @@ export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
-  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
+  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><SourceDefaultsSection /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
 }
 export function ModelsSettingsPage() {
   return page(s => <><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />

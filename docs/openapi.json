@@ -139,7 +139,8 @@
             "default": "immagini",
             "enum": [
               "testo",
-              "immagini"
+              "immagini",
+              "solo_immagini"
             ],
             "title": "Estrai",
             "type": "string"
@@ -1104,6 +1105,20 @@
         "title": "Body_import_lesson_zips_api_v1_lessons_import_zip_post",
         "type": "object"
       },
+      "Body_inspect_api_v1_archive_inspect_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_inspect_api_v1_archive_inspect_post",
+        "type": "object"
+      },
       "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
         "properties": {
           "estrai": {
@@ -1111,7 +1126,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -2975,12 +2991,30 @@
             "title": "Credential",
             "type": "string"
           },
+          "images_reader": {
+            "default": "decision",
+            "enum": [
+              "decision",
+              "description"
+            ],
+            "title": "Images Reader",
+            "type": "string"
+          },
           "jobs": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ClassifierJobConfig"
             },
             "title": "Jobs",
             "type": "object"
+          },
+          "material_pages_reader": {
+            "default": "description",
+            "enum": [
+              "description",
+              "image"
+            ],
+            "title": "Material Pages Reader",
+            "type": "string"
           },
           "model": {
             "default": "typesafe/jev-1.13",
@@ -3243,6 +3277,11 @@
           "timeout_seconds": {
             "title": "Timeout Seconds",
             "type": "number"
+          },
+          "with_image": {
+            "default": false,
+            "title": "With Image",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5354,6 +5393,68 @@
         "title": "IgnoreRequest",
         "type": "object"
       },
+      "ImageInfo": {
+        "properties": {
+          "descrizione": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Campi della descrizione presenti: slide_title, visual_elements, summary_keywords, alt_text",
+            "title": "Descrizione",
+            "type": "object"
+          },
+          "ruolo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ruolo scelto dal modello decisionale: contenuto, introduttiva, irrilevante",
+            "title": "Ruolo"
+          },
+          "testo": {
+            "default": "",
+            "description": "Testo estratto: OCR o testo della pagina",
+            "title": "Testo",
+            "type": "string"
+          }
+        },
+        "title": "ImageInfo",
+        "type": "object"
+      },
+      "InspectedFile": {
+        "properties": {
+          "estrai": {
+            "enum": [
+              "testo",
+              "immagini",
+              "solo_immagini"
+            ],
+            "title": "Estrai",
+            "type": "string"
+          },
+          "pagine_totali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine Totali"
+          }
+        },
+        "required": [
+          "pagine_totali",
+          "estrai"
+        ],
+        "title": "InspectedFile",
+        "type": "object"
+      },
       "IssueContext": {
         "properties": {
           "asr_segments": {
@@ -7261,6 +7362,16 @@
               }
             ],
             "title": "Da Continuare"
+          },
+          "estrai": {
+            "default": "immagini",
+            "enum": [
+              "testo",
+              "immagini",
+              "solo_immagini"
+            ],
+            "title": "Estrai",
+            "type": "string"
           },
           "impronta": {
             "title": "Impronta",
@@ -10440,7 +10551,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -10549,7 +10661,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -10682,7 +10795,8 @@
               {
                 "enum": [
                   "testo",
-                  "immagini"
+                  "immagini",
+                  "solo_immagini"
                 ],
                 "type": "string"
               },
@@ -12788,6 +12902,93 @@
         ]
       }
     },
+    "/api/v1/archive/inspect": {
+      "post": {
+        "description": "Pagine e modalità predefinita (un PDF orizzontale sono slide) di un file nuovo.",
+        "operationId": "inspect_api_v1_archive_inspect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_inspect_api_v1_archive_inspect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectedFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inspect",
+        "tags": [
+          "archivio"
+        ]
+      }
+    },
     "/api/v1/archive/lookup": {
       "post": {
         "operationId": "lookup_api_v1_archive_lookup_post",
@@ -13729,6 +13930,102 @@
           }
         ],
         "summary": "Crop",
+        "tags": [
+          "archivio"
+        ]
+      }
+    },
+    "/api/v1/archive/{sha}/pages/{n}/info": {
+      "get": {
+        "operationId": "page_info_api_v1_archive__sha__pages__n__info_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sha",
+            "required": true,
+            "schema": {
+              "title": "Sha",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Page Info",
         "tags": [
           "archivio"
         ]
@@ -20975,6 +21272,104 @@
           }
         ],
         "summary": "Carica un'immagine PNG, JPEG o GIF dall'editor nei media della lezione",
+        "tags": [
+          "immagini"
+        ]
+      }
+    },
+    "/api/v1/lessons/{lesson_id}/media/info": {
+      "get": {
+        "operationId": "media_info_api_v1_lessons__lesson_id__media_info_get",
+        "parameters": [
+          {
+            "description": "Id della lezione (da GET /lessons)",
+            "in": "path",
+            "name": "lesson_id",
+            "required": true,
+            "schema": {
+              "description": "Id della lezione (da GET /lessons)",
+              "title": "Lesson Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Testo estratto, descrizione e ruolo di un'immagine della lezione",
         "tags": [
           "immagini"
         ]

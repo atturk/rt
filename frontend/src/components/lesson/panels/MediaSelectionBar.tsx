@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Crop, ImageMinus, ScanEye, Trash2, WandSparkles } from 'lucide-react'
+import { ArrowDownToLine, Crop, ImageMinus, Info, ScanEye, Trash2, WandSparkles } from 'lucide-react'
 
 import { IconButton } from '@/components/ui/icon-button'
 import { SelectionBar } from '@/components/ui/selection-bar'
@@ -15,6 +15,7 @@ export interface MediaSelectionBarProps {
   onCrop: () => void
   onRemoveFromText: () => void
   onDelete: () => void
+  onInfo?: () => void
   onSelectAll?: () => void
   onClearSelection?: () => void
 }
@@ -31,6 +32,7 @@ export function MediaSelectionBar({
   onCrop,
   onRemoveFromText,
   onDelete,
+  onInfo,
 }: MediaSelectionBarProps) {
   if (selectedCount === 0) return null
 
@@ -43,6 +45,13 @@ export function MediaSelectionBar({
       data-testid="media-selection-bar"
     >
       <SelectionBar count={countLabel}>
+        {onInfo && <IconButton
+          icon={Info}
+          label="Informazioni"
+          unavailable={canCrop ? undefined : 'Solo con una immagine'}
+          onClick={canCrop ? onInfo : undefined}
+          data-testid="info-media-button"
+        />}
         <IconButton
           icon={ScanEye}
           label="Descrivi"

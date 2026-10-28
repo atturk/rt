@@ -15,8 +15,9 @@ def lesson_info(tmp_path):
 
 
 def pdf_bytes(text='Testo della pagina'):
+    # Pagina orizzontale: come le slide, il default è testo e immagini.
     document = fitz.open()
-    page = document.new_page()
+    page = document.new_page(width=842, height=595)
     if text:
         page.insert_text((50, 50), text)
     data = document.tobytes()

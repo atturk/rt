@@ -668,6 +668,8 @@ from rt.core.config import ClassifierConfig, ClassifierJob
 class ClassifierProbeIn(ClassifierJob):
     mode: Literal["off", "manual", "observe", "pipeline"] = "manual"
     request_type: Literal["choice", "noul", "score"] = "choice"
+    # Lettura "decision" delle immagini: il modello deve accettare un'immagine nello state.
+    with_image: bool = False
 
 
 @router.get("/settings/classifier", response_model=ClassifierConfig)
@@ -685,8 +687,16 @@ def probe_classifier_settings(body: ClassifierProbeIn, actor: Actor):
         "noul": JevNoulQuestion(instructions="La banana è un frutto"),
         "score": JevScoreQuestion(instructions="Valuta la banana", criteria=["È un frutto"]),
     }
+    state = "Una banana"
+    if body.with_image:
+        import io
+        from PIL import Image
+        from rt.llm.decision_images import image_part
+        png = io.BytesIO()
+        Image.new("RGB", (280, 280), (250, 220, 60)).save(png, "PNG")
+        state = ["Una banana", image_part(png.getvalue())]
     try:
-        answer = call_jev("Una banana", {"categoria": questions[body.request_type]},
+        answer = call_jev(state, {"categoria": questions[body.request_type]},
             model=body.model, credential=body.credential, base_url=body.base_url,
             timeout_seconds=body.timeout_seconds, job_name="classifier_probe").answers.get("categoria")
         if answer is None or answer.type != body.request_type:
