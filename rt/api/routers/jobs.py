@@ -469,15 +469,24 @@ def sse_stream(job_id: str, after: int, request: Optional[Request] = None,
         time.sleep(poll)
 
 
+def _resume_from(after: Optional[int], last_event_id: Optional[str]) -> Optional[int]:
+    """Punto di ripresa dello stream: il maggiore fra ?after= e Last-Event-ID. Si controlla prima
+    di rispondere: a stream avviato un id fuori dai 64 bit di SQLite non sarebbe più un errore."""
+    start = after
+    if last_event_id and last_event_id.strip().isdigit():
+        start = max(start or 0, int(last_event_id.strip()))
+    if start is not None and start >= 2 ** 63:
+        raise ApiError(422, "validation_error", "Id dell'evento fuori intervallo.")
+    return start
+
+
 @router.get("/jobs/{job_id}/events", summary="Eventi live del job (Server-Sent Events; riprende da Last-Event-ID)",
             response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
 def stream_events(job_id: str, request: Request, _actor: Actor,
                   after: int = Query(0, ge=0, description="Id dell'ultimo evento già ricevuto"),
                   last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
     _get(job_id)
-    start = after
-    if last_event_id and last_event_id.strip().isdigit():
-        start = max(start, int(last_event_id.strip()))
+    start = _resume_from(after, last_event_id)
     return StreamingResponse(sse_stream(job_id, start, request), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
@@ -526,9 +535,7 @@ async def app_sse_stream(after: int, keepalive: float = SSE_KEEPALIVE_SECONDS, p
 async def stream_app_events(_actor: Actor,
                             after: Optional[int] = Query(None, ge=0, description="Id dell'ultimo evento già ricevuto (senza: da adesso)"),
                             last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
-    start = after
-    if last_event_id and last_event_id.strip().isdigit():
-        start = max(start or 0, int(last_event_id.strip()))
+    start = _resume_from(after, last_event_id)
     if start is None:
         # Il punto di partenza si fissa prima di rispondere: quello che la pagina rilegge
         # all'apertura dello stream (onopen) è già successivo, quindi niente buchi.

@@ -3,6 +3,7 @@ rt.api.errors
 Formato uniforme degli errori: {"error": {"code": "...", "message": "...", "details": ...}}.
 Gli errori di dominio dei servizi (rt.services.errors.ServiceError) diventano risposte con un
 solo handler: lo stato HTTP viene dal loro kind, codice e messaggio restano quelli del servizio.
+Una lezione inesistente è un 404 ovunque la si cerchi.
 I messaggi passano dal sanificatore delle credenziali; le eccezioni inattese diventano un
 500 generico (il dettaglio resta nel log del server, mai nella risposta).
 """
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from rt.services.errors import ServiceError
+from rt.services.lesson_service import LessonNotFound
 
 logger = logging.getLogger("rt.api")
 
@@ -98,6 +100,16 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _validation_error(_request: Request, exc: RequestValidationError):
         details = [{"loc": list(e.get("loc", ())), "msg": e.get("msg", "")} for e in exc.errors()]
         return error_response(422, "validation_error", "Richiesta non valida.", details)
+
+    @app.exception_handler(LessonNotFound)
+    async def _lesson_not_found(_request: Request, exc: LessonNotFound):
+        return error_response(404, "lesson_not_found", str(exc))
+
+    @app.exception_handler(OverflowError)
+    async def _overflow(_request: Request, exc: OverflowError):
+        # Un id o un numero oltre i 64 bit di SQLite: è la richiesta a essere sbagliata.
+        logger.warning("Valore numerico fuori intervallo: %s", sanitize(str(exc)))
+        return error_response(422, "validation_error", "Valore numerico fuori intervallo.")
 
     @app.exception_handler(Exception)
     async def _unexpected(_request: Request, exc: Exception):

@@ -9,6 +9,7 @@ certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
+coverage==7.17.0
 cryptography==50.0.1
 execnet==2.1.2
 fastapi==0.141.1
@@ -22,6 +23,7 @@ httpcore2==2.13.1
 httpx==0.28.1
 httpx2==2.13.1
 huggingface_hub==2.2.0
+hypothesis==6.170.13
 idna==3.20
 imageio-ffmpeg==0.6.0
 importlib_metadata==9.0.1
@@ -49,12 +51,14 @@ pydantic_core==2.46.5
 Pygments==2.21.0
 pymupdf==1.28.2
 pytest==9.1.1
+pytest-cov==7.1.0
 pytest-xdist==3.8.0
 python-dotenv==1.2.3
 python-multipart==0.0.32
 PyYAML==6.0.3
 requests==2.34.2
 rich==15.0.0
+schemathesis==4.32.7
 SecretStorage==3.5.0
 SQLAlchemy==2.1.1
 starlette==1.7.0

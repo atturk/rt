@@ -38,7 +38,7 @@ def recall_types(_actor: Actor, lesson_id: Optional[int] = Query(None), materia:
         lesson_dirs = [resolve_lesson_dir(lesson_id)]
     elif materia is not None:
         from rt.services.recall_subject import subject_lessons
-        lesson_dirs = [resolve_lesson_dir(row["id"]) for row in subject_lessons(materia)]
+        lesson_dirs = [resolve_lesson_dir(row["id"]) for row in _subject_call(subject_lessons, materia)]
     else:
         lesson_dirs = []
     result = [{"id": key, "nome": name, "icona": icon} for key, name, icon in (
