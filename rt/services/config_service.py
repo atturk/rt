@@ -89,15 +89,25 @@ def validate_config() -> List[str]:
     return []
 
 
+# Le chiavi API e i token sono corti; Windows rifiuta le variabili d'ambiente oltre 32767
+# caratteri, e un valore così salvato in .env farebbe fallire ogni lettura successiva.
+SECRET_MAX_LENGTH = 4096
+ENV_VALUE_MAX_LENGTH = 32000
+
+
 def validate_secret(secret: str) -> None:
     if not secret or any(char in secret for char in "\r\n\0"):
         raise ValueError("La chiave non può essere vuota o contenere interruzioni di riga.")
+    if len(secret) > SECRET_MAX_LENGTH:
+        raise ValueError(f"La chiave è troppo lunga (massimo {SECRET_MAX_LENGTH} caratteri).")
 
 
 def set_env_var(path: PathLike, key: str, value: str, quote: bool = False) -> None:
     """Aggiorna o aggiunge KEY=valore in un file .env preservando le altre righe (e il
     prefisso 'export'), in modo atomico e con permessi 600; aggiorna anche os.environ.
     quote=True scrive il valore come stringa JSON tra virgolette."""
+    if len(value) > ENV_VALUE_MAX_LENGTH:
+        raise ValueError(f"Valore troppo lungo per {key} (massimo {ENV_VALUE_MAX_LENGTH} caratteri).")
     path = Path(path)
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     encoded = json.dumps(value, ensure_ascii=False) if quote else value

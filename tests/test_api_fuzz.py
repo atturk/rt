@@ -107,3 +107,11 @@ def test_decision_model_rejects_instructions_the_classifier_cannot_use(client):
 def test_event_stream_rejects_an_id_beyond_64_bits(client):
     assert client.get("/api/v1/events", params={"after": 2 ** 63}).status_code == 422
     assert client.get("/api/v1/events", headers={"Last-Event-ID": str(2 ** 63)}).status_code == 422
+
+
+def test_overlong_secret_is_rejected_before_reaching_env(client):
+    """Su Windows una variabile d'ambiente oltre 32767 caratteri, salvata in .env, faceva
+    fallire ogni lettura successiva delle impostazioni."""
+    response = client.put("/api/v1/settings/telegram", json={"bot_token": "1" * 40000, "chat_id": "1" * 40000})
+    assert response.status_code == 422
+    assert client.get("/api/v1/settings").status_code == 200
