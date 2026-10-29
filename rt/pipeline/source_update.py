@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
@@ -174,17 +175,27 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
     materials_pending = [s for s in sources if s.tipo == 'materiale' and s.id not in cache]
     timing['parallel'] = bool(audio_pending and materials_pending)
 
+    materials_lock = threading.Lock()
+    materials_span = []
+
     def read_material(source):
         material_ctx.check_cancelled()
         stats = {'file': os.path.basename(source.file)}
+        before = time.monotonic()
         with material_ctx.activate():
             pages = material_pages(lesson_dir, source, mock=mock, ctx=material_ctx,
                                    refresh=reingest, checked=True, timing=stats)
-        timing['materials'].append(stats)
-        timing['materials_seconds'] += stats['seconds']
+        with materials_lock:
+            timing['materials'].append(stats)
+            # Con più file in parallelo conta il tempo reale, non la somma dei file.
+            materials_span.extend((before, time.monotonic()))
+            timing['materials_seconds'] = max(materials_span) - min(materials_span)
         return pages
 
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='rt-materials') as pool:
+    # Più file in parallelo: le foto sono una pagina ciascuna e da sole non sfrutterebbero parallel_pages.
+    from rt.core.config import load_config
+    material_workers = max(1, min(load_config().pipeline.parallel_pages, len(materials_pending)))
+    with ThreadPoolExecutor(max_workers=material_workers, thread_name_prefix='rt-materials') as pool:
         futures = {s.id: pool.submit(copy_context().run, read_material, s) for s in materials_pending}
         try:
             for source in sources:
