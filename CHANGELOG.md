@@ -1,5 +1,18 @@
 # Novità di RT
 
+## 4.3.4.2 — 2026-10-30
+
+### Correzioni
+
+- **Lezione aggiornata con una fonte nuova**: Preparazione, Scaletta e Rielaborazione non risultano più da rifare e lo Studio non si blocca più.
+- **Versioni**: al primo aggiornamento di una lezione costruita prima delle Versioni si salva anche la lezione com'era.
+- La barra «Lezione aggiornata» chiusa con la × non torna quando rientri nella lezione.
+- **Nuova lezione**: un file scelto due volte si carica una volta sola, con un avviso; i formati audio non supportati vengono fermati prima del caricamento.
+- Un intervallo di pagine sbagliato dice quale file è, invece di «Materiale non leggibile».
+- L'ora del calendario degli appunti si registra anche quando la lavorazione non riesce.
+- **Preparazione più veloce**: foto e materiali si leggono in parallelo.
+- Se il classificatore non riesce, nel registro c'è il motivo.
+
 ## 4.3.4.1 — 2026-10-28
 
 ### Correzioni
