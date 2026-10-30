@@ -21,6 +21,24 @@ export interface LessonUpdateBarProps {
   className?: string
 }
 
+const dismissedKey = (lessonId: number) => `rt.updateBarDismissed.${lessonId}`
+
+function readDismissed(lessonId: number): string | null {
+  try {
+    return localStorage.getItem(dismissedKey(lessonId))
+  } catch {
+    return null
+  }
+}
+
+function saveDismissed(lessonId: number, il: string) {
+  try {
+    localStorage.setItem(dismissedKey(lessonId), il)
+  } catch {
+    /* Senza storage la × vale finché la pagina resta aperta. */
+  }
+}
+
 export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
   const sourcesQuery = useSources(lessonId)
   const updateMutation = useUpdateLesson(lessonId)
@@ -29,8 +47,9 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
   const primaryMutation = useSetPrimarySource(lessonId)
   const job = useSourcesJob(lessonId)
 
-  // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga.
-  const [dismissedAt, setDismissedAt] = useState<string | null>(null)
+  // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga. Resta chiusa
+  // anche uscendo e rientrando nella lezione (prima tornava a ogni apertura della pagina).
+  const [dismissedAt, setDismissedAt] = useState<string | null>(() => readDismissed(lessonId))
   // Aperto al passaggio del mouse o col clic (anche al tocco o da tastiera): mostra Estendi e Ricostruisci.
   const { open: splitOpen, setOpen: setSplitOpen, ref: expandRef } = useHoverExpand<HTMLDivElement>()
   const splitRef = useRef<HTMLDivElement>(null)
@@ -312,7 +331,10 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           <IconButton
             icon={X}
             label="Chiudi"
-            onClick={() => setDismissedAt(u.il)}
+            onClick={() => {
+              setDismissedAt(u.il)
+              saveDismissed(lessonId, u.il)
+            }}
             data-testid="bar-close-btn"
           />
         </div>

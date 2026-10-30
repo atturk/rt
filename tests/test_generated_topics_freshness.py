@@ -88,3 +88,18 @@ def test_user_edit_of_topics_still_marks_outline_stale(lesson_without_topics):
     update_info_yaml(lesson_path(lesson_dir, "info.yaml"), {"argomenti": "Argomenti scelti a mano"})
     status, _ = check_phase_status(lesson_dir, "outline")
     assert status == PhaseStatus.STALE
+
+
+def test_outline_rerun_keeps_generated_topics_and_prepare_valid(lesson_without_topics):
+    """Rifare la scaletta (Aggiorna con una fonte nuova, o la fase forzata) non deve perdere
+    gli argomenti generati: info.yaml li ha già, e senza di loro nella scaletta l'impronta di
+    prepare cambia e Preparazione, Scaletta e Rielaborazione risultano non valide."""
+    lesson_dir = lesson_without_topics
+    _run_all(lesson_dir)
+    run_outline(lesson_dir, force=True, force_mock=True)
+    with open(get_outline_path(lesson_dir), "r", encoding="utf-8") as f:
+        assert json.load(f)["generated_topics"] == GENERATED
+    status, reason = check_phase_status(lesson_dir, "prepare")
+    assert status == PhaseStatus.VALID, reason
+    status, reason = check_phase_status(lesson_dir, "outline")
+    assert status == PhaseStatus.VALID, reason
