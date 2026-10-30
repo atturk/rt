@@ -303,3 +303,21 @@ def test_prepare_failure_waits_for_materials_and_stops_new_pages(tmp_path, monke
     assert 1 <= count <= 3
     time.sleep(.1)
     assert len(finished) == count
+
+
+def test_first_update_of_lesson_without_versions_keeps_the_previous_one(tmp_path, monkeypatch):
+    """Lezione costruita prima delle Versioni: il primo aggiornamento conserva anche la lezione
+    com'era, non solo il risultato."""
+    from rt.pipeline.source_update import run_source_update
+    from rt.core.update_history import VERSIONS, list_versions
+    from rt.storage import fs
+    legacy(tmp_path)
+    lesson = str(tmp_path)
+    monkeypatch.setattr('rt.services.classifier.classify_units', lambda *a, **k: None)
+    run_source_update(lesson, mode='rebuild', mock=True)
+    fs.remove(lesson_path(lesson, VERSIONS))
+    add_source(lesson, 'appunti', 'new.txt', b'new notes')
+    run_source_update(lesson, mode='rebuild', mock=True)
+    assert [v['modo'] for v in list_versions(lesson)] == ['rebuild', 'import']
+    run_source_update(lesson, mode='rebuild', mock=True)
+    assert [v['modo'] for v in list_versions(lesson)] == ['rebuild', 'rebuild', 'import']

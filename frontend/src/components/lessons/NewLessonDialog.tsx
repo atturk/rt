@@ -56,7 +56,8 @@ const MATERIAL_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', 
 function isAudioFile(file: File): boolean {
   const dot = file.name.lastIndexOf('.')
   const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
-  return AUDIO_EXTENSIONS.includes(ext) || file.type.startsWith('audio/')
+  // Solo l'estensione: un .opus o un .webm con tipo audio/* il server lo rifiuterebbe a upload finito.
+  return AUDIO_EXTENSIONS.includes(ext)
 }
 
 function isMaterialFile(file: File): boolean {
@@ -110,6 +111,28 @@ function formatDayLabel(dateStr: string): string {
 }
 
 const isZip = (file: File) => file.name.toLowerCase().endsWith('.zip')
+
+/** Il server rifiuta due file con lo stesso nome (anche solo per maiuscole), e lo scopre solo
+ * a upload finito: un file già scelto, o ripetuto nella stessa scelta, si tiene una volta sola. */
+function withoutRepeated(chosen: File[], current: File[]) {
+  const names = new Set(current.map((file) => file.name.toLowerCase()))
+  const fresh: File[] = []
+  const repeated: string[] = []
+  for (const file of chosen) {
+    const name = file.name.toLowerCase()
+    if (names.has(name)) repeated.push(file.name)
+    else {
+      names.add(name)
+      fresh.push(file)
+    }
+  }
+  return { fresh, repeated }
+}
+
+const repeatedNotice = (repeated: string[]) =>
+  repeated.length === 0 ? null
+    : repeated.length === 1 ? `${repeated[0]} è già nell'elenco: l'ho aggiunto una volta sola.`
+      : `${repeated.join(', ')} sono già nell'elenco: li ho aggiunti una volta sola.`
 
 const field =
   'mt-1.5 block min-h-10 w-full rounded-md border bg-card p-2 text-body text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
@@ -220,6 +243,7 @@ export function NewLessonDialog({
   const [enrichment, setEnrichment] = useState(!!options?.with_enrichment)
   const [unisciAudio, setUnisciAudio] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
   const openedJob = useRef<string | null>(null)
   const job = useJobStatus(zipJob)
@@ -290,6 +314,7 @@ export function NewLessonDialog({
           return
         }
         setZipFiles(zipsFound)
+        setNotice(null)
         setAudioFiles([])
         setMaterialFiles([])
         setProblem(null)
@@ -298,9 +323,6 @@ export function NewLessonDialog({
         return
       }
 
-      const auds = chosen.filter(isAudioFile)
-      const mats = chosen.filter(isMaterialFile)
-
       const unsupported = chosen.find((f) => !isAudioFile(f) && !isMaterialFile(f) && !isZip(f))
       if (unsupported) {
         setProblem(
@@ -308,6 +330,10 @@ export function NewLessonDialog({
         )
         return
       }
+
+      const { fresh, repeated } = withoutRepeated(chosen, [...audioFiles, ...materialFiles])
+      const auds = fresh.filter(isAudioFile)
+      const mats = fresh.filter(isMaterialFile)
 
       // Ordinamento di partenza: data di modifica del file, poi per nome
       const sortedAuds = [...auds].sort(
@@ -318,10 +344,11 @@ export function NewLessonDialog({
       setAudioFiles((prev) => [...prev, ...sortedAuds])
       setMaterialFiles((prev) => [...prev, ...mats])
       setProblem(null)
+      setNotice(repeatedNotice(repeated))
       setZipJob(null)
       setUploadError(null)
     },
-    [busy],
+    [busy, audioFiles, materialFiles],
   )
 
   const initialFilesHandled = useRef(false)
@@ -334,8 +361,9 @@ export function NewLessonDialog({
 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
-    const mats = chosen.filter(isMaterialFile)
-    setMaterialFiles((prev) => [...prev, ...mats])
+    const { fresh, repeated } = withoutRepeated(chosen.filter(isMaterialFile), [...audioFiles, ...materialFiles])
+    setMaterialFiles((prev) => [...prev, ...fresh])
+    setNotice(repeatedNotice(repeated))
   }
 
   // Togliendo la guida passa al primo documento con testo rimasto (primaryMaterialName).
@@ -347,6 +375,7 @@ export function NewLessonDialog({
   }
 
   const clear = () => {
+    setNotice(null)
     setAudioFiles([])
     setMaterialFiles([])
     setZipFiles([])
@@ -918,6 +947,7 @@ export function NewLessonDialog({
         )}
 
         {problem && <Alert tone="danger">{problem}</Alert>}
+        {notice && !problem && <Alert tone="warning">{notice}</Alert>}
         {conflict && <Alert tone="danger">Esiste già: <Link to={`/lezioni/${conflict.lesson_id}`} target="_blank" rel="noopener" className="underline">{conflict.titolo}</Link></Alert>}
         {errorText && !conflict && <Alert tone="danger">{errorText}</Alert>}
         {upload && isUploadActive(upload) && (

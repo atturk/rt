@@ -358,6 +358,17 @@ def _check_extend_keeps_units(lesson_dir, outline):
                 raise ValidationError("Una fonte rimossa svuota un'unità: usa Ricostruisci")
 
 
+def _record_starting_version(lesson_dir, old_outline, previously_used):
+    """Le lezioni costruite prima delle Versioni non hanno la voce 'import': senza, dopo il
+    primo aggiornamento l'elenco mostra solo il risultato e la lezione di prima resta
+    raggiungibile soltanto con Annulla, finché un altro aggiornamento non lo sostituisce."""
+    from rt.core.update_history import list_versions, record_version
+    if old_outline is None or list_versions(lesson_dir):
+        return
+    record_version(lesson_dir, "import", added=list(previously_used),
+                   new=sum(len(m.units) for m in old_outline.macro_sections))
+
+
 def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None, reingest=False, with_review=False):
     from rt.pipeline.outline import load_outline
     from rt.core.update_history import begin_update, finish_update, abort_update
@@ -377,6 +388,7 @@ def run_source_update(lesson_dir, *, mode="extend", mock=False, ctx=None, reinge
     if mode == "extend" and old_outline:
         _check_extend_keeps_units(lesson_dir, old_outline)
     previously_used = _read_state(lesson_dir).get("used", [s.id for s in load_sources(lesson_dir) if s.id == "src_000001"])
+    _record_starting_version(lesson_dir, old_outline, previously_used)
     # Negli aggiornamenti normali una nuova conversione resta riutilizzabile dopo un errore.
     previous_snapshot = begin_update(lesson_dir, include_material_cache=reingest)
     try:

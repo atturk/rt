@@ -87,6 +87,21 @@ def _save_uploads(files: List[UploadFile], allowed: set, target: str, prefix: st
     return saved
 
 
+def _check_pages(path: str, pagine) -> None:
+    """Il materiale si legge e le pagine scelte esistono: due errori diversi, perché un
+    intervallo sbagliato si corregge nel campo Pagine, un file illeggibile no."""
+    from rt.core.materials import page_count
+    from rt.core.source_options import parse_pages
+    try:
+        total = page_count(path)
+    except Exception:
+        raise ApiError(422, "validation_error", f"Materiale non leggibile: {os.path.basename(path)}.") from None
+    try:
+        parse_pages(pagine, total)
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", f"{exc}: {os.path.basename(path)}.") from None
+
+
 def _with_upload_cleanup(target: str, fn):
     try:
         return fn()
@@ -213,7 +228,7 @@ def create_lesson(
     except (ValueError, TypeError):
         raise ApiError(422, 'validation_error', 'Opzioni delle fonti non valide.') from None
     if materiali:
-        from rt.core.materials import MATERIAL_EXTENSIONS, page_count
+        from rt.core.materials import MATERIAL_EXTENSIONS
         if len(appunti.encode("utf-8")) > _max_upload_bytes():
             raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
         target = _upload_dir()
@@ -227,11 +242,7 @@ def create_lesson(
             for path in documents:
                 if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
                     raise ApiError(415, "unsupported_media_type", "Tipo di materiale non ammesso.")
-                try:
-                    from rt.core.source_options import parse_pages
-                    parse_pages(source_options.get(os.path.basename(path), {}).get('pagine'), page_count(path))
-                except Exception:
-                    raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
+                _check_pages(path, source_options.get(os.path.basename(path), {}).get('pagine'))
             if not audio and principale and principale not in {os.path.basename(p) for p in documents} | ({"Appunti", "appunti.txt"} if appunti.strip() else set()):
                 raise ApiError(422, "validation_error", "Fonte principale inesistente.")
             options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),

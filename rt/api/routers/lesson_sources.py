@@ -64,30 +64,29 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 unisci: bool = Form(True), pagine: Optional[str] = Form(None),
                 estrai: Optional[Literal['testo', 'immagini', 'solo_immagini']] = Form(None),
                 uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None)):
-    from rt.api.routers.jobs import _max_upload_bytes, _save_uploads, _upload_dir
+    from rt.api.routers.jobs import _check_pages, _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
     import shutil
     if tipo == "materiale":
-        from rt.core.materials import MATERIAL_EXTENSIONS, page_count
+        from rt.core.materials import MATERIAL_EXTENSIONS
         if not file or testo is not None:
             raise ApiError(422, "validation_error", "Carica almeno un materiale.")
         target = _upload_dir()
         try:
             saved = _save_uploads(file, MATERIAL_EXTENSIONS, target)
             for path in saved:
-                try:
-                    from rt.core.source_options import parse_pages
-                    parse_pages(pagine, page_count(path))
-                except Exception:
-                    raise ApiError(422, "validation_error", "Materiale non leggibile.") from None
+                _check_pages(path, pagine)
             with source_mutation(lesson_id, lesson_dir):
                 if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
                     raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
-                added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
-                                    None if ordine is None else ordine + i, source_path=path,
-                                    pagine=pagine, estrai=estrai, uso=uso)
-                         for i, path in enumerate(saved)]
+                try:
+                    added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                        None if ordine is None else ordine + i, source_path=path,
+                                        pagine=pagine, estrai=estrai, uso=uso)
+                             for i, path in enumerate(saved)]
+                except ValueError as exc:
+                    raise ApiError(422, "validation_error", str(exc)) from None
                 return added[0] if len(added) == 1 else added
         finally:
             shutil.rmtree(target, ignore_errors=True)
@@ -126,9 +125,12 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 with source_mutation(lesson_id, lesson_dir):
                     if ordine is not None and ordine > len(load_sources(lesson_dir)) + 1:
                         raise ApiError(422, "validation_error", "Posizione della fonte non valida.")
-                    added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
-                                        None if ordine is None else ordine + i, source_path=path)
-                             for i, path in enumerate(saved)]
+                    try:
+                        added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
+                                            None if ordine is None else ordine + i, source_path=path)
+                                 for i, path in enumerate(saved)]
+                    except ValueError as exc:
+                        raise ApiError(422, "validation_error", str(exc)) from None
                     return added[0] if len(added) == 1 else added
         finally:
             shutil.rmtree(target, ignore_errors=True)

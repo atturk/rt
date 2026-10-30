@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LessonUpdateBar } from './LessonUpdateBar'
@@ -34,6 +34,7 @@ function renderBar(lessonId = 1) {
 describe('LessonUpdateBar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockSourcesData = null
     mockJob = { running: false, percent: null, message: null, error: null }
     mockUpdateError = null
@@ -289,8 +290,13 @@ describe('LessonUpdateBar', () => {
     expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
     rerender(ui())
     expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
+    // Uscendo e rientrando nella lezione resta chiusa.
+    cleanup()
+    render(ui())
+    expect(screen.queryByTestId('lesson-update-bar')).toBeNull()
     mockSourcesData = view('2026-10-13T09:00:00Z')
-    rerender(ui())
+    cleanup()
+    render(ui())
     expect(screen.getByTestId('lesson-update-bar')).toHaveAttribute('data-state', 'done')
   })
 })

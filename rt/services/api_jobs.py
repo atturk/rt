@@ -72,7 +72,12 @@ def ingest_notes_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         for name in ("date", "materia", "argomenti", "docente", "ora", "dest_dir")})
     ctx.lesson_dir = lesson
     ctx.progress("setup", message="Lezione creata", lesson_dir=lesson)
-    from rt.services.materials_lesson_service import finish_import
+    from rt.services.materials_lesson_service import finish_import, link_imported_lesson
+    # Come ingest_sources: l'ora del calendario si collega appena la lezione esiste, anche se
+    # poi la pipeline si ferma (altrimenti l'ora resta "da registrare" e un nuovo import
+    # trova la lezione già esistente).
+    link_imported_lesson(lesson, job.payload.get("calendar_entry_id"), job.payload.get("calendar_date"),
+                         job.payload.get("calendar_materia"), job.payload.get("calendar_start"))
     if job.payload.get("run"):
         return finish_import(outcome_from_pipeline(run_pipeline([lesson], pipeline_options(options), ctx)), job.payload)
     return finish_import(_done({"status": "setup_completato", "lesson_dir": lesson}, lesson_path=lesson), job.payload)

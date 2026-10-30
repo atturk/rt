@@ -52,8 +52,30 @@ def load_outline(lesson_dir: str) -> Outline:
     return Outline.model_validate(cleaned_data)
 
 
+def _kept_generated_topics(lesson_dir: str, path: str) -> Optional[List[str]]:
+    """Argomenti generati della scaletta precedente, se il build li ha già scritti in info.yaml.
+    Una scaletta rifatta (fase forzata, Aggiorna, revisione) non li rigenera perché info.yaml
+    ora ha gli argomenti: senza riportarli cambierebbe l'impronta di prepare e outline
+    (vedi _info_fingerprint_strs) e le fasi risulterebbero non valide."""
+    if not fs.isfile(path):
+        return None
+    try:
+        with fs.open(path, "r", encoding="utf-8") as f:
+            previous = json.load(f).get("generated_topics") or []
+        topics = read_info_yaml(lesson_path(lesson_dir, "info.yaml")).get("argomenti")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if previous and topics and str(topics).strip() == ", ".join(previous):
+        return previous
+    return None
+
+
 def save_outline(outline: Outline, lesson_dir: str) -> None:
     path = get_outline_path(lesson_dir)
+    if not outline.generated_topics:
+        kept = _kept_generated_topics(lesson_dir, path)
+        if kept:
+            outline = outline.model_copy(update={"generated_topics": kept})
     tmp_path = path + ".tmp"
     data = sanitize_object_encoding(outline.model_dump(mode="json"))
     with fs.open(tmp_path, "w", encoding="utf-8") as f:

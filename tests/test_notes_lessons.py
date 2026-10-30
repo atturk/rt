@@ -87,3 +87,23 @@ def test_notes_import_resumes_same_lesson_after_outline_approval(api_client, rt_
     assert completed.state == "succeeded", completed.error
     assert completed.lesson_path == waiting.lesson_path
     assert len(api_client.get("/api/v1/lessons").json()) == 1
+
+
+def test_notes_import_links_calendar_even_if_pipeline_fails(api_client, rt_db, tmp_path, monkeypatch):
+    from rt.api import schemas
+    from rt.services import calendar_service
+    isolated_workspace(tmp_path, monkeypatch)
+    tpl = calendar_service.create_template_entry(schemas.CalendarTemplateEntryCreate(
+        valid_from='2026-10-01', day_of_week=0, start_time='09:00', end_time='10:00', materia='Test'), db=rt_db)
+    key = f'tpl_{tpl.id}'
+
+    def broken_pipeline(*_args, **_kwargs):
+        raise RuntimeError('pipeline rotta')
+    monkeypatch.setattr("rt.services.pipeline_service.run_pipeline", broken_pipeline)
+    response = api_client.post("/api/v1/lessons", data={"date": "2026-10-12", "materia": "Test", "appunti": "Testo",
+                               "run": "true", "mock": "true", "calendar_entry_id": key, "calendar_date": "2026-10-12"})
+    assert response.status_code == 202, response.text
+    job = Worker(DbJobQueue(rt_db), job_types=["ingest_notes"], on_message=lambda *_: None).run_once()
+    assert job.state == "failed"
+    event = calendar_service.get_day_view('2026-10-12', db=rt_db).events[0]
+    assert event.is_recorded and event.lesson is not None
