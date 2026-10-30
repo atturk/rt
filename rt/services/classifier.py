@@ -28,6 +28,7 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
         import logging
         logging.getLogger(__name__).warning("Etichette non disponibili", exc_info=True)
     owner, labels = question_types._sections(lesson_dir, units)
+    failed = []
     for unit in units:
         questions = {}
         rel = relevance.get(unit.unit_id, {})
@@ -58,8 +59,13 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
                         model=connection.relevance_model, credential=connection.credential, base_url=connection.base_url,
                         timeout_seconds=connection.timeout_seconds)
                     answers.update(response.answers)
-                except Exception:
-                    pass  # I servizi registrano la risposta mancante senza ripetere la chiamata.
+                except Exception as exc:
+                    # I servizi registrano la risposta mancante senza ripetere la chiamata;
+                    # qui resta la causa vera, una volta per lezione.
+                    if not failed:
+                        import logging
+                        logging.getLogger(__name__).warning("Classificatore non disponibile (%s): %s", unit.unit_id, exc)
+                    failed.append(unit.unit_id)
             responses[unit.unit_id] = jev_client.JevResponse(model=rel_cfg.relevance_model, answers=answers)
     relevance = unit_relevance.refresh(lesson_dir, force_mock=mock, ctx=ctx, responses=responses) if rel_enabled else relevance
     try:
