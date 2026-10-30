@@ -167,6 +167,8 @@ def fake_searxng_server(results=3, json_enabled=True):
 def fake_llm_server():
     """Provider OpenAI-compatible finto: POST /v1/chat/completions. Il modello 'inesistente'
     risponde 404 con un errore nel formato OpenAI; 'lento' non risponde per 5 secondi.
+    Per la prova della visione: 'vede-rosso' risponde "Rossa.", 'pensa-troppo' esaurisce i token
+    nel ragionamento (contenuto vuoto, finish_reason length), 'cieco' risponde "Non vedo immagini".
     Le richieste ricevute restano in server.requests (per controllare prompt e max_tokens)."""
     import json as _json
     import time as _time
@@ -186,8 +188,10 @@ def fake_llm_server():
                 body = {"error": {"message": "The model `inesistente` does not exist", "type": "invalid_request_error"}}
             else:
                 status = 200
-                body = {"id": "x", "model": model, "choices": [{"index": 0, "finish_reason": "stop",
-                        "message": {"role": "assistant", "content": "ok"}}],
+                content, finish = {"vede-rosso": ("Rossa.", "stop"), "pensa-troppo": ("", "length"),
+                                   "cieco": ("Non vedo immagini", "stop")}.get(model, ("ok", "stop"))
+                body = {"id": "x", "model": model, "choices": [{"index": 0, "finish_reason": finish,
+                        "message": {"role": "assistant", "content": content}}],
                         "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}}
             data = _json.dumps(body).encode()
             try:
