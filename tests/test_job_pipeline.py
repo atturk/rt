@@ -23,7 +23,7 @@ from rt.services.jobs import has_live_worker
 from rt.services.pipeline_service import PipelineOptions
 from rt.services.review_service import is_review_complete, list_pending_issues, record_review_decision
 from rt.services.worker import Worker
-from tests.golden_support import AUDIO_FIXTURE, LESSON_NAME
+from tests.golden_support import AUDIO_FIXTURE, AUDIO_LESSON_NAME
 from tests.test_jobs import MOCK_OPTIONS, _payload, _worker, make_lesson, queue  # noqa: F401
 
 
@@ -79,10 +79,10 @@ def test_ingest_audio_waits_for_metadata_then_resumes(queue, tmp_path):
     job_id = queue.enqueue(INGEST_AUDIO, None, {"inputs": [str(tmp_path / "demo_lecture.wav")], "options": opts})
     job = _worker(queue).run_once()
     assert job.state == "waiting_for_decision" and job.decision["kind"] == "setup_metadata"
-    queue.resume(job_id, {"options": {"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi"}})
+    queue.resume(job_id, {"options": {"date": "2026-09-05", "materia": "BIOCHIMICA"}})
     job = _worker(queue).run_once()
     assert job.state == "succeeded", job.error
-    assert job.lesson_path.endswith(LESSON_NAME)
+    assert job.lesson_path.endswith(AUDIO_LESSON_NAME)
     assert queue.get(job_id).payload["options"]["dest_dir"] == out_dir  # merge, non sostituzione
 
 

@@ -3893,11 +3893,6 @@ export interface components {
              */
             appunti: string;
             /**
-             * Argomenti
-             * @default
-             */
-            argomenti: string;
-            /**
              * Audio
              * @description Uno o più file audio della stessa lezione; facoltativo con soli appunti
              * @default []
@@ -7746,11 +7741,6 @@ export interface components {
         };
         /** RecreateLessonRequest */
         RecreateLessonRequest: {
-            /**
-             * Argomenti
-             * @default
-             */
-            argomenti: string;
             /** Date */
             date: string;
             /**

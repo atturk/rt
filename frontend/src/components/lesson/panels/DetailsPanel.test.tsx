@@ -124,6 +124,23 @@ describe('DetailsPanel', () => {
     )
   })
 
+  it("mostra gli argomenti generati dall'IA in sola lettura", () => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <DetailsPanel lesson={{ ...(sampleLesson as object), argomenti: 'Acidosi, Compensi' } as never} sections={[]} editingDocument={false} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('lesson-topics')).toHaveTextContent('Acidosi, Compensi')
+    expect(screen.queryByLabelText('Argomenti')).toBeNull()
+    unmount()
+    render(
+      <MemoryRouter>
+        <DetailsPanel lesson={sampleLesson} sections={[]} editingDocument={false} />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByTestId('lesson-topics')).toBeNull()
+  })
+
   it('la materia si può spostare anche su una materia senza lezioni', () => {
     render(
       <MemoryRouter>

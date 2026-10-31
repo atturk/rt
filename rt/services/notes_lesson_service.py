@@ -10,20 +10,19 @@ from rt.pipeline.setup import parse_flexible_date, sanitize_filename_part
 from rt.storage import fs
 
 
-def create_notes_lesson(text, *, date, materia, argomenti="", docente="", ora="", dest_dir):
+def create_notes_lesson(text, *, date, materia, docente="", ora="", dest_dir):
     if not text or not text.strip():
         raise ValueError("Inserisci il testo degli appunti")
     date = parse_flexible_date(date)
     materia = sanitize_filename_part(materia.strip().upper())
     if not materia:
         raise ValueError("Indica la materia")
-    from rt.services.lesson_conflicts import lesson_folder, require_no_lesson_conflict, create_lesson_directory
-    require_no_lesson_conflict(date, materia, argomenti, dest_dir)
-    folder = lesson_folder(date, materia, argomenti)
-    lesson_dir = os.path.join(dest_dir, folder)
-    lesson_dir = create_lesson_directory(date, materia, argomenti, dest_dir)
-    info = {"data": date, "materia": materia, "argomenti": argomenti, "docente": docente,
-            "ora": ora, "cartella": folder, "file_audio": "",
+    from rt.services.lesson_conflicts import require_no_lesson_conflict, create_lesson_directory
+    require_no_lesson_conflict(date, materia, ora, dest_dir)
+    lesson_dir = create_lesson_directory(date, materia, ora, dest_dir)
+    # Gli argomenti li scrive il build, generati dall'IA.
+    info = {"data": date, "materia": materia, "argomenti": "", "docente": docente,
+            "ora": ora, "cartella": os.path.basename(lesson_dir), "file_audio": "",
             "creato_il": datetime.now(timezone.utc).isoformat(),
             "fase_corrente": "setup_completato", "stato": "pronto_per_rielaborazione"}
     with fs.open(lesson_path(lesson_dir, "info.yaml"), "w", encoding="utf-8") as stream:

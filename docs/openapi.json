@@ -960,11 +960,6 @@
             "title": "Appunti",
             "type": "string"
           },
-          "argomenti": {
-            "default": "",
-            "title": "Argomenti",
-            "type": "string"
-          },
           "audio": {
             "default": [],
             "description": "Uno o più file audio della stessa lezione; facoltativo con soli appunti",
@@ -9919,11 +9914,6 @@
       },
       "RecreateLessonRequest": {
         "properties": {
-          "argomenti": {
-            "default": "",
-            "title": "Argomenti",
-            "type": "string"
-          },
           "date": {
             "title": "Date",
             "type": "string"
