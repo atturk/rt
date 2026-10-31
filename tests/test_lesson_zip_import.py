@@ -41,6 +41,16 @@ def _run(client, worker, response):
     return job
 
 
+def _set_info(lesson_dir, **fields):
+    import yaml
+    path = os.path.join(lesson_dir, "info.yaml")
+    with open(path, encoding="utf-8") as f:
+        info = yaml.safe_load(f)
+    info.update(fields)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(info, f, allow_unicode=True)
+
+
 def _uploads(root):
     folder = os.path.join(root, ".rt", "uploads")
     return os.listdir(folder) if os.path.isdir(folder) else []
@@ -52,10 +62,13 @@ def test_import_all_roundtrip_rejects_duplicate_and_continues(api_client, worksp
     os.rename(lesson, lesson + "-outside")
     job = _run(api_client, worker, _post(api_client, ("one.zip", payload), ("two.zip", payload)))
     results = job["result"]["results"]
-    assert [item["status"] for item in results] == ["imported", "rejected"]
+    assert [item["status"] for item in results] == ["imported", "conflict"]
     assert [item["file"] for item in results] == ["one.zip", "two.zip"]
-    assert results[1]["reason"].endswith("esiste già.")
-    assert job["result"]["imported"] == 1 and job["result"]["rejected"] == 1
+    assert results[1]["code"] == "lesson_already_present"
+    assert results[1]["reason"].startswith("Hai già una lezione di BIOCHIMICA del 05/09/2026")
+    assert results[1]["existing"]["lesson_id"] == results[0]["lesson_id"]
+    assert results[1]["can_keep_both"] is False  # stesso nome di cartella: o rimpiazzi o salti
+    assert job["result"]["imported"] == 1 and job["result"]["conflicts"] == 1 and job["result"]["rejected"] == 0
     lesson_id = results[0]["lesson_id"]
     assert api_client.get(f"/api/v1/lessons/{lesson_id}").status_code == 200
     assert job["progress"]["phase"] == "import_lesson_zips" and job["progress"]["current"] == 2
@@ -124,6 +137,7 @@ def test_group_export_imports_each_lesson_and_distinguishes_duplicates(api_clien
     from rt.storage.export import export_many_to_tempfile
     first = make_lesson(workspace)
     second = make_lesson(workspace, name="altra lezione")
+    _set_info(second, data="2026-09-06")  # un altro giorno: non è la stessa lezione
     group, _count = export_many_to_tempfile([first, second], "zip")
     try:
         with zipfile.ZipFile(group, "a") as outer:
@@ -136,10 +150,11 @@ def test_group_export_imports_each_lesson_and_distinguishes_duplicates(api_clien
     job = _run(api_client, worker, _post(api_client, ("Lezioni selezionate.zip", payload)))
     results = job["result"]["results"]
     assert [r["file"] for r in results] == [os.path.basename(first) + ".zip", "altra lezione.zip", "danneggiata.zip"]
-    assert [r["status"] for r in results] == ["rejected", "imported", "rejected"]
-    assert results[0]["code"] == "duplicate_lesson"
+    assert [r["status"] for r in results] == ["conflict", "imported", "rejected"]
+    assert results[0]["code"] == "lesson_already_present" and results[0]["member"] == results[0]["file"]
+    assert results[0]["archive"] == "Lezioni selezionate.zip"  # per rimandare il gruppo con la scelta
     assert results[2]["reason"] == "Archivio ZIP non valido."
-    assert job["result"]["imported"] == 1 and job["result"]["rejected"] == 2
+    assert job["result"]["imported"] == 1 and job["result"]["conflicts"] == 1 and job["result"]["rejected"] == 1
     assert api_client.get(f"/api/v1/lessons/{results[1]['lesson_id']}").status_code == 200
     events = api_client.get(f"/api/v1/jobs/{job['id']}/events/list").json()
     progress = [e["payload"] for e in events if e["type"] == "phase_progress"]
@@ -161,7 +176,7 @@ def test_group_can_contain_more_than_twenty_lessons(api_client, workspace, worke
     job = _run(api_client, worker, _post(api_client, ("gruppo.zip", group.getvalue())))
     assert len(job["result"]["results"]) == 21
     assert job["result"]["imported"] == 1
-    assert all(r["code"] == "duplicate_lesson" for r in job["result"]["results"][1:])
+    assert all(r["code"] == "lesson_already_present" for r in job["result"]["results"][1:])
     assert job["progress"]["current"] == job["progress"]["total"] == 21
 
 
@@ -204,7 +219,7 @@ def test_group_import_can_be_cancelled_between_lessons(workspace, monkeypatch):
     token = CancelToken()
     imported = []
 
-    def cancel_after_first(path, member):
+    def cancel_after_first(path, member, **choice):
         imported.append(member)
         token.cancel()
         return 1
