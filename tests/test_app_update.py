@@ -89,6 +89,54 @@ def test_download_verifies_sha256(tmp_path, monkeypatch):
     assert not os.path.exists(path) and not os.path.exists(path + ".part")
 
 
+class _DroppingResp(_Resp):
+    """Risposta che smette di ricevere dati a metà, come quando cade o cambia la rete."""
+
+    def __init__(self, payload, error):
+        super().__init__(payload)
+        self.error = error
+        self.sent = False
+
+    def read(self, size=-1):
+        if self.sent:
+            if self.error:
+                raise self.error
+            return b""
+        self.sent = True
+        return super().read(len(self.getvalue()) // 2)
+
+
+@pytest.mark.parametrize("error", [TimeoutError("timed out"), ConnectionResetError(54, "reset"), None])
+def test_download_dropped_connection_says_so(tmp_path, monkeypatch, error):
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+    payload = b"x" * (3 << 20)
+    sums = f"{hashlib.sha256(payload).hexdigest()}  {EXE}\n".encode()
+    info = _info()
+    info.asset_size = len(payload)
+    timeouts = []
+
+    def opener(request, timeout=None):
+        timeouts.append(timeout)
+        name = request.full_url.rsplit("/", 1)[-1]
+        return _Resp(sums) if name == "SHA256SUMS" else _DroppingResp(payload, error)
+    with pytest.raises(app_update.AppUpdateError) as exc:
+        app_update.download(info, opener=opener)
+    assert str(exc.value).startswith("La connessione si è interrotta durante il download dell'aggiornamento dopo 1,5 MB su 3,0 MB")
+    assert "timed out" not in str(exc.value)
+    assert timeouts == [app_update.READ_TIMEOUT] * 2
+    assert not list((tmp_path / "updates").glob("*.part"))
+
+
+def test_download_without_network_says_so(tmp_path, monkeypatch):
+    import urllib.error
+    monkeypatch.setenv("RT_DATA_DIR", str(tmp_path))
+
+    def opener(request, timeout=None):
+        raise urllib.error.URLError(TimeoutError("timed out"))
+    with pytest.raises(app_update.AppUpdateError, match="Non riesco a raggiungere il server degli aggiornamenti"):
+        app_update.download(_info(), opener=opener)
+
+
 def test_bundle_marker_and_app_path(tmp_path):
     root = tmp_path / "RT.app" / "Contents" / "Resources" / "app"
     root.mkdir(parents=True)
