@@ -32,11 +32,13 @@ import {
   sendLesson,
   sendLessonZips,
   type NewLesson,
+  type ZipImportDecision,
   type ZipImportResult,
 } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
 import { AudioOrder } from '@/components/lessons/AudioOrder'
+import { ImportConflicts } from '@/components/lessons/ImportConflicts'
 import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
@@ -245,6 +247,8 @@ export function NewLessonDialog({
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
+  // Gli ZIP dell'ultimo invio: per una lezione già presente si rimandano con la scelta.
+  const [sentZips, setSentZips] = useState<File[]>([])
   const openedJob = useRef<string | null>(null)
   const job = useJobStatus(zipJob)
   const result = job.data?.state === 'succeeded' ? (job.data.result as ZipImportResult | null) : null
@@ -409,14 +413,15 @@ export function NewLessonDialog({
 
   const imported =
     result?.results.filter((item) => item.status === 'imported' && item.lesson_id != null) ?? []
+  const conflicts = result?.results.filter((item) => item.status === 'conflict') ?? []
   const alreadyPresent =
-    result?.results.filter((item) => item.code === 'duplicate_lesson').length ?? 0
+    (result?.results.filter((item) => item.code === 'duplicate_lesson').length ?? 0) + conflicts.length
   const rejected =
     result?.results.filter(
       (item) => item.status === 'rejected' && item.code !== 'duplicate_lesson',
     ).length ?? 0
   const only =
-    result && imported.length === 1 && result.rejected === 0 ? imported[0].lesson_id : null
+    result && imported.length === 1 && result.rejected === 0 && conflicts.length === 0 ? imported[0].lesson_id : null
 
   useEffect(() => {
     if (only == null || !zipJob || openedJob.current === zipJob) return
@@ -430,16 +435,7 @@ export function NewLessonDialog({
     if (busy || zipJob) return
 
     if (kind === 'zip') {
-      const files = zipFiles
-      startUpload(
-        files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
-        files,
-        (onProgress, signal) => sendLessonZips(files, onProgress, signal),
-        (accepted) => {
-          setZipJob(accepted.job_id)
-          setZipFiles([])
-        },
-      )
+      sendZips(zipFiles)
       return
     }
 
@@ -498,6 +494,20 @@ export function NewLessonDialog({
       (accepted) => {
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
+      },
+    )
+  }
+
+  /** Invia gli ZIP; con decisions sono le scelte per le lezioni già presenti del primo invio. */
+  function sendZips(files: File[], decisions?: ZipImportDecision[]) {
+    startUpload(
+      files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
+      files,
+      (onProgress, signal) => sendLessonZips(files, onProgress, signal, decisions),
+      (accepted) => {
+        setSentZips(files)
+        setZipJob(accepted.job_id)
+        setZipFiles([])
       },
     )
   }
@@ -1000,12 +1010,26 @@ export function NewLessonDialog({
                         </>
                       )}
                     </>
+                  ) : item.status === 'conflict' ? (
+                    'già presente · scegli qui sotto'
                   ) : (
                     `${item.code === 'duplicate_lesson' ? 'già presente' : 'rifiutata'} · ${item.reason}`
                   )}
+                  {item.replaced_lesson_id != null && ' (ha rimpiazzato la tua)'}
                 </li>
               ))}
             </ul>
+            {conflicts.length > 0 && (
+              <ImportConflicts
+                key={zipJob}
+                items={conflicts}
+                files={sentZips}
+                onSubmit={(files, decisions) => {
+                  setZipJob(null)
+                  sendZips(files, decisions)
+                }}
+              />
+            )}
           </div>
         )}
 

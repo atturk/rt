@@ -157,17 +157,36 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   return unwrap(api.POST('/api/v1/lessons', { body, bodySerializer: () => form, fetch: xhrFetch(form, onProgress), signal }))
 }
 
+/** Una lezione nel conflitto "già presente": quella dell'utente (existing) o quella del pacchetto (incoming). */
+export type ImportedLessonInfo = { lesson_id?: number; data: string; ora: string; materia: string; titolo: string; argomenti: string; folder_name: string }
 /** Esito di un archivio nel risultato del job import_lesson_zips. */
-export type ZipImportItem = { file: string; status: 'imported' | 'rejected'; lesson_id?: number | null; reason?: string | null; code?: string | null }
-export type ZipImportResult = { results: ZipImportItem[]; imported: number; rejected: number }
+export type ZipImportItem = {
+  file: string
+  status: 'imported' | 'rejected' | 'conflict'
+  lesson_id?: number | null
+  replaced_lesson_id?: number | null
+  reason?: string | null
+  code?: string | null
+  /** Solo per i conflitti: lo ZIP caricato e, se è un gruppo, la lezione al suo interno. */
+  archive?: string
+  member?: string
+  existing?: ImportedLessonInfo
+  incoming?: ImportedLessonInfo
+  can_keep_both?: boolean
+}
+export type ZipImportResult = { results: ZipImportItem[]; imported: number; rejected: number; conflicts?: number }
+/** Scelta per una lezione già presente, da rimandare con lo ZIP. */
+export type ZipImportDecision = { file: string; member?: string; action: 'replace' | 'keep'; lesson_id?: number }
 
 /** POST /lessons/import-zip multipart con avanzamento dell'upload: accoda il job
  * import_lesson_zips (202). I rifiuti immediati (nome, firma ZIP) tornano nel risultato del job;
  * se nessun archivio è valido l'API risponde subito 422. */
-export function sendLessonZips(files: File[], onProgress: (progress: UploadProgress) => void, signal: AbortSignal) {
+export function sendLessonZips(files: File[], onProgress: (progress: UploadProgress) => void, signal: AbortSignal,
+  decisions?: ZipImportDecision[]) {
   const form = new FormData()
   for (const file of files) form.append('archives', file, file.name)
-  const body = { archives: files.map((f) => f.name) } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
+  if (decisions?.length) form.append('decisions', JSON.stringify(decisions))
+  const body = { archives: files.map((f) => f.name), decisions: decisions?.length ? JSON.stringify(decisions) : undefined } satisfies Schemas['Body_import_lesson_zips_api_v1_lessons_import_zip_post']
   return unwrap(api.POST('/api/v1/lessons/import-zip', { body, bodySerializer: () => form, fetch: xhrFetch(form, onProgress), signal }))
 }
 

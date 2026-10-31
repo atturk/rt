@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 
 import { api } from '@/api/client'
 import { resetUploadsForTests, useUploads } from '@/lib/uploadQueue'
@@ -30,7 +30,8 @@ vi.mock('@/api/jobs', async (importOriginal) => {
     ...actual,
     // L'invio passa dalla coda dei caricamenti: qui risponde subito con un job accettato.
     sendLesson: (input: unknown) => Promise.resolve(mutateCreate(input, {}) ?? { job_id: 'job-1' }),
-    sendLessonZips: (files: unknown) => Promise.resolve(mutateZips(files, {}) ?? { job_id: 'zip-1' }),
+    sendLessonZips: (files: unknown, _progress: unknown, _signal: unknown, decisions?: unknown) =>
+      Promise.resolve(mutateZips(files, decisions ?? {}) ?? { job_id: 'zip-1' }),
   }
 })
 
@@ -200,6 +201,57 @@ describe('esito degli ZIP in Nuova lezione', () => {
     await within(screen.getByRole('form', { name: 'Nuova lezione' })).findByRole('button', { name: 'Chiudi' })
     expect(screen.getByTestId('import-summary')).toHaveTextContent('2 importate, 0 già presenti, 0 rifiutate')
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('una lezione già presente chiede se rimpiazzarla e offre la copia prima di farlo', async () => {
+    const existing = { lesson_id: 7, data: '2026-09-05', ora: '09:00', materia: 'BIOCHIMICA', titolo: 'Lipidi', argomenti: 'Lipidi', folder_name: '[2026-09-05] BIOCHIMICA - Lipidi' }
+    mockImport({ imported: 0, rejected: 0, conflicts: 1, results: [{
+      file: 'b.zip', archive: 'gruppo.zip', member: 'b.zip', status: 'conflict', code: 'lesson_already_present',
+      reason: 'Hai già una lezione…', can_keep_both: true, existing,
+      incoming: { ...existing, lesson_id: undefined, titolo: '', argomenti: 'Membrane', folder_name: '[2026-09-05] BIOCHIMICA - Membrane' },
+    }] })
+    const onClose = vi.fn()
+    renderDialog(true, onClose)
+    chooseZip()
+    fireEvent.click(screen.getByRole('button', { name: 'Importa' }))
+    const conflicts = await screen.findByTestId('import-conflicts')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(conflicts).toHaveTextContent('BIOCHIMICA · 05/09/2026 · 09:00')
+    expect(conflicts).toHaveTextContent('La tua: «Lipidi» · Nel pacchetto: «Membrane»')
+    expect(within(conflicts).getByRole('button', { name: 'Continua' })).toBeDisabled()  // di base non importa
+    fireEvent.click(within(conflicts).getByLabelText('Rimpiazza la mia'))
+    fireEvent.click(within(conflicts).getByRole('button', { name: 'Continua' }))
+    expect(within(conflicts).getByText(/Prima di rimpiazzare vuoi scaricare una copia/)).toBeInTheDocument()
+    expect(within(conflicts).getByRole('button', { name: 'Scarica la copia e rimpiazza' })).toBeEnabled()
+    fireEvent.click(within(conflicts).getByRole('button', { name: 'Rimpiazza senza copia' }))
+    await waitFor(() => expect(mutateZips).toHaveBeenCalledTimes(2))
+    const [files, decisions] = mutateZips.mock.calls[1]
+    expect((files as File[]).map((f) => f.name)).toEqual(['gruppo.zip'])
+    expect(decisions).toEqual([{ file: 'gruppo.zip', member: 'b.zip', action: 'replace', lesson_id: 7 }])
+  })
+
+  it('scarica la copia della lezione prima di rimpiazzarla', async () => {
+    const existing = { lesson_id: 7, data: '2026-09-05', ora: '', materia: 'BIOCHIMICA', titolo: 'Lipidi', argomenti: '', folder_name: 'A' }
+    mockImport({ imported: 0, rejected: 0, conflicts: 1, results: [{
+      file: 'gruppo.zip', status: 'conflict', code: 'lesson_already_present', can_keep_both: false, existing, incoming: existing,
+    }] })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('PK', { status: 200 }))
+    const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:copia'), revokeObjectURL: vi.fn() })
+    onTestFinished(() => { Object.assign(URL, original) })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    renderDialog()
+    chooseZip()
+    fireEvent.click(screen.getByRole('button', { name: 'Importa' }))
+    const conflicts = await screen.findByTestId('import-conflicts')
+    expect(within(conflicts).queryByLabelText('Tienile entrambe')).toBeNull()
+    fireEvent.click(within(conflicts).getByLabelText('Rimpiazza la mia'))
+    fireEvent.click(within(conflicts).getByRole('button', { name: 'Continua' }))
+    fireEvent.click(within(conflicts).getByRole('button', { name: 'Scarica la copia e rimpiazza' }))
+    await waitFor(() => expect(mutateZips).toHaveBeenCalledTimes(2))
+    expect(fetchSpy).toHaveBeenCalledWith('/api/v1/lessons/7/export?format=zip&scope=all&study=1', { credentials: 'same-origin' })
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(fetchSpy.mock.invocationCallOrder[0]).toBeLessThan(mutateZips.mock.invocationCallOrder[1])
   })
 
   it('un solo import riuscito apre ancora la lezione', async () => {
