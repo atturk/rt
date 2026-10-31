@@ -382,6 +382,60 @@ def _check_permissions(window) -> None:
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
 
 
+def _copy_to_clipboard(text: str) -> None:
+    if sys.platform == "darwin":
+        from AppKit import NSPasteboard, NSPasteboardTypeString
+        board = NSPasteboard.generalPasteboard()
+        board.clearContents()
+        if not board.setString_forType_(text, NSPasteboardTypeString):
+            raise RuntimeError("appunti non disponibili")
+    elif sys.platform == "win32":
+        subprocess.run(["clip"], input=text.encode("utf-16-le"), check=True, creationflags=0x08000000)
+    else:
+        raise RuntimeError("appunti non disponibili su questo sistema")
+
+
+def _copy_token(window) -> None:
+    from rt.api import auth
+    token = auth.saved_token()
+    if not token:
+        _notice(window, "Il token attuale non è salvato, quindi non posso copiarlo (è stato creato da "
+                        "una versione precedente di RT o senza portachiavi). Usa Rigenera token: "
+                        "quello nuovo viene copiato negli appunti.")
+        return
+    try:
+        _copy_to_clipboard(token)
+    except Exception as exc:
+        _log(f"Token non copiato: {exc}")
+        _notice(window, f"Non riesco a copiare il token negli appunti: {exc}")
+        return
+    _notice(window, "Token copiato negli appunti.")
+
+
+def _regenerate_token(window, base_url: str) -> None:
+    from rt.api import auth
+    if not window.create_confirmation_dialog(
+            "Rigenera token", "Il token attuale smette di funzionare: script, Swagger e browser "
+            "collegati dovranno usare quello nuovo. Continuare?"):
+        return
+    try:
+        token = auth.reset_token()
+    except Exception as exc:
+        _log(f"Token non rigenerato: {exc}")
+        _notice(window, f"Non riesco a rigenerare il token: {exc}")
+        return
+    try:
+        _copy_to_clipboard(token)
+        copied = True
+    except Exception as exc:
+        _log(f"Token nuovo non copiato: {exc}")
+        copied = False
+    _notice(window, "Token nuovo copiato negli appunti." if copied else
+            "Token rigenerato, ma non riesco a copiarlo negli appunti: riprova con Copia token.")
+    # Il reset chiude anche la sessione di questa finestra: la riapre con un link monouso.
+    window.load_url(f"{base_url}/login?code={auth.create_login_code()}")
+
+
 def _menu(window, base_url: str, api=None):
     from webview.menu import Menu, MenuAction, MenuSeparator
 
@@ -424,6 +478,10 @@ def _menu(window, base_url: str, api=None):
         *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
           if sys.platform in ("darwin", "win32") else []),
         MenuSeparator(),
+        Menu("Autenticazione", [
+            MenuAction("Copia token", lambda: _copy_token(window)),
+            MenuAction("Rigenera token…", lambda: _regenerate_token(window, base_url)),
+        ]),
         MenuAction("Apri nel browser", browser),
         MenuAction("Ricarica", lambda: window.load_url(window.get_current_url() or base_url)),
         MenuSeparator(),
