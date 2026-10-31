@@ -321,3 +321,35 @@ def test_first_update_of_lesson_without_versions_keeps_the_previous_one(tmp_path
     assert [v['modo'] for v in list_versions(lesson)] == ['rebuild', 'import']
     run_source_update(lesson, mode='rebuild', mock=True)
     assert [v['modo'] for v in list_versions(lesson)] == ['rebuild', 'rebuild', 'import']
+
+
+def test_prepare_reads_photos_in_parallel_with_wall_clock_timing(tmp_path, monkeypatch):
+    import io
+    import time
+    from PIL import Image
+    from rt.core.config import load_config
+    from rt.pipeline import source_update
+    legacy(tmp_path)
+    (tmp_path / 'segments.json').unlink()
+    for index, colour in enumerate(('red', 'green', 'blue')):
+        stream = io.BytesIO()
+        Image.new('RGB', (30, 20), colour).save(stream, format='PNG')
+        add_source(str(tmp_path), 'materiale', f'foto{index}.png', stream.getvalue())
+    cfg = load_config()
+    cfg.pipeline.parallel_pages = 3
+    monkeypatch.setattr('rt.core.config.load_config', lambda: cfg)
+
+    def describe(*a):
+        time.sleep(.5)
+        return 'foto'
+
+    monkeypatch.setattr(source_update, '_transcribe', lambda *a, **kw: [])
+    monkeypatch.setattr(source_update, '_duration', lambda _: 2)
+    monkeypatch.setattr('rt.core.materials._describe', describe)
+    started = time.monotonic()
+    prepare_source_update(str(tmp_path))
+    assert time.monotonic() - started < 1.2
+    with open(lesson_path(str(tmp_path), 'prepare_timing.json')) as stream:
+        timing = json.load(stream)
+    assert len(timing['materials']) == 3
+    assert .5 <= timing['materials_seconds'] < 1.2
