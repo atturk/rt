@@ -20,6 +20,8 @@ GOLDEN_DIR = os.path.join(PROJECT_ROOT, "tests", "golden")
 AUDIO_FIXTURE = os.path.join(PROJECT_ROOT, "tests", "fixtures", "demo_lecture.wav")
 
 LESSON_NAME = "[2026-09-05] BIOCHIMICA - Lipidi"
+# Lezione creata dall'audio: il nome è data e materia (gli argomenti li genera l'IA).
+AUDIO_LESSON_NAME = "[2026-09-05] BIOCHIMICA"
 
 # File della lezione confrontati (percorsi relativi alla cartella lezione). llm_debug.log e
 # telemetry_summary.json sono diagnostici e restano fuori; l'audio è una copia della fixture.
@@ -162,10 +164,10 @@ def scenario_audio_full(root: str) -> Dict[str, str]:
     first = _run_cli(
         ["run", "demo_lecture.wav", "--mock", "--auto-accept", "--with-review",
          "--no-rename",
-         "-d", "2026-09-05", "-m", "BIOCHIMICA", "-a", "Lipidi", "-o", out_dir],
+         "-d", "2026-09-05", "-m", "BIOCHIMICA", "-o", out_dir],
         cwd=root, stdin="",
     )
-    lesson_dir = os.path.join(out_dir, LESSON_NAME)
+    lesson_dir = os.path.join(out_dir, AUDIO_LESSON_NAME)
     second = _run_cli(
         ["run", lesson_dir, "--mock", "--auto-accept", "--with-review",
          "--no-rename"],

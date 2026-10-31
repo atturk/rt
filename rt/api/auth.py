@@ -32,6 +32,8 @@ CSRF_COOKIE = "rt_csrf"
 CSRF_HEADER = "X-CSRF-Token"
 SESSION_DAYS = 30
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# Copia del token nell'archivio cifrato dei segreti, per "Copia token" del menu dell'app.
+TOKEN_SECRET = "RT_API_TOKEN"
 
 bearer_scheme = HTTPBearer(auto_error=False, description="Token mostrato da 'rt api' al primo avvio")
 
@@ -69,7 +71,29 @@ def reset_token(db=None) -> str:
         repo = SettingRepository(session)
         repo.set(AUTH_KEY, {"salt": salt, "token_hash": _hash(token, salt), "created_at": _now().isoformat()})
         repo.delete(SESSIONS_KEY)
+    _remember(token)
     return token
+
+
+def _remember(token: str) -> None:
+    """Il DB tiene solo l'hash: una copia cifrata (chiave master nel portachiavi) permette di
+    ricopiare il token dal menu. Senza archivio dei segreti il token resta solo nell'hash."""
+    try:
+        from rt.services import secrets_service
+        if secrets_service.is_ready():
+            secrets_service.store().set(TOKEN_SECRET, token)
+    except Exception:  # noqa: BLE001 - la copia è una comodità, il token vale comunque
+        pass
+
+
+def saved_token() -> Optional[str]:
+    """Il token attuale dall'archivio cifrato, se c'è ed è ancora quello valido."""
+    try:
+        from rt.services import secrets_service
+        token = secrets_service.store().get(TOKEN_SECRET) if secrets_service.is_ready() else None
+    except Exception:  # noqa: BLE001 - archivio illeggibile: come se non ci fosse
+        return None
+    return token if token and verify_token(token) else None
 
 
 def ensure_token(db=None) -> Optional[str]:

@@ -31,7 +31,6 @@ def test_rt_setup_clean_initialization(tmp_path):
         audio_file,
         "-d", "2026-09-05",
         "-m", "IMMUNOLOGIA",
-        "-a", "Risposta innata e complemento",
         "-o", dest_dir,
         "--skip-transcribe"
     ]
@@ -41,7 +40,7 @@ def test_rt_setup_clean_initialization(tmp_path):
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     assert res.returncode == 0, f"'rt setup' fallito: {res.stderr}"
     
-    folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta innata e complemento"
+    folder_name = "[2026-09-05] IMMUNOLOGIA"
     lecture_dir = os.path.join(dest_dir, folder_name)
     assert os.path.isdir(lecture_dir)
     
@@ -155,7 +154,6 @@ def test_macparakeet_failure_hard_fails(tmp_path):
                     audio=audio_file,
                     date="2026-09-05",
                     materia="PATOLOGIA",
-                    argomenti="Infiammazione",
                     dest_dir=dest_dir,
                     interactive=False
                 )
@@ -180,7 +178,6 @@ def test_run_setup_on_progress_callback(tmp_path):
         audio=audio_file,
         date="2026-09-05",
         materia="FARMACOLOGIA",
-        argomenti="Farmacocinetica",
         dest_dir=dest_dir,
         mock_asr=True,
         interactive=False,
@@ -209,7 +206,6 @@ def test_run_setup_on_progress_callback(tmp_path):
                 audio=audio_file,
                 date="2026-09-06",
                 materia="ANATOMIA",
-                argomenti="Apparato cardiovascolare",
                 dest_dir=dest_dir,
                 interactive=False,
                 on_progress=messages_real.append
@@ -272,7 +268,6 @@ def test_macparakeet_single_run_per_audio(tmp_path):
                 audio=audio_file,
                 date="2026-09-07",
                 materia="FISIOLOGIA",
-                argomenti="Potenziale d'azione",
                 dest_dir=dest_dir,
                 interactive=False
             )
@@ -301,7 +296,6 @@ def test_setup_optional_argomenti_empty(tmp_path):
         audio=audio_file,
         date="2026-09-07",
         materia="NEUROLOGIA",
-        argomenti="",
         dest_dir=dest_dir,
         skip_transcribe=True,
         interactive=False
@@ -316,31 +310,29 @@ def test_setup_optional_argomenti_empty(tmp_path):
     assert info.get("materia") == "NEUROLOGIA"
 
 
-def test_setup_argomenti_provided(tmp_path):
-    """Verifica che con argomenti forniti la cartella mantenga il suffisso."""
-    from rt.pipeline.setup import run_setup
+def test_setup_name_has_time_or_number(tmp_path):
+    """Il nome è data, materia e ora; senza ora la seconda lezione del giorno prende "(2)"."""
+    from rt.pipeline.setup import run_setup, SetupError
     from rt.core.state import read_info_yaml
 
     dest_dir = str(tmp_path)
     audio_file = os.path.join(dest_dir, "test_provided_args.wav")
     with open(audio_file, "wb") as f:
         f.write(b"fake wav")
+    kwargs = dict(audio=audio_file, date="2026-09-07", materia="NEUROLOGIA", dest_dir=dest_dir,
+                  skip_transcribe=True, interactive=False)
 
-    res = run_setup(
-        audio=audio_file,
-        date="2026-09-07",
-        materia="NEUROLOGIA",
-        argomenti="Sinapsi chimiche",
-        dest_dir=dest_dir,
-        skip_transcribe=True,
-        interactive=False
-    )
-    lesson_dir = res["lesson_dir"]
-    folder_name = os.path.basename(lesson_dir)
-    assert folder_name == "[2026-09-07] NEUROLOGIA - Sinapsi chimiche"
+    with_time = run_setup(**kwargs, ora="09:30")["lesson_dir"]
+    assert os.path.basename(with_time) == "[2026-09-07] NEUROLOGIA - ore 09.30"
+    assert read_info_yaml(os.path.join(with_time, "info.yaml")).get("ora") == "09:30"
+    with pytest.raises(SetupError, match="già inizializzata"):
+        run_setup(**kwargs, ora="09:30")
 
-    info = read_info_yaml(os.path.join(lesson_dir, "info.yaml"))
-    assert info.get("argomenti") == "Sinapsi chimiche"
+    first = run_setup(**kwargs)["lesson_dir"]
+    second = run_setup(**kwargs)["lesson_dir"]
+    assert os.path.basename(first) == "[2026-09-07] NEUROLOGIA"
+    assert os.path.basename(second) == "[2026-09-07] NEUROLOGIA (2)"
+    assert read_info_yaml(os.path.join(second, "info.yaml")).get("cartella") == "[2026-09-07] NEUROLOGIA (2)"
 
 
 def test_outline_prompt_and_manifest_with_empty_argomenti(tmp_path):
@@ -393,7 +385,6 @@ def test_full_pipeline_with_empty_argomenti_e2e_mock(tmp_path):
         audio=audio_file,
         date="2026-09-07",
         materia="FISIOLOGIA",
-        argomenti="",
         dest_dir=dest_dir,
         mock_asr=True,
         interactive=False
@@ -446,8 +437,8 @@ def test_setup_metadata_available_before_transcription(tmp_path, monkeypatch, re
         assert info["materia"] == "BIOCHIMICA"
         assert info["ora"] == "09:30"
         assert info["docente"] == "Rossi"
-        assert info["argomenti"] == "Lipidi"
-        assert info["cartella"] == "[2026-10-05] BIOCHIMICA - Lipidi"
+        assert info["argomenti"] == ""
+        assert info["cartella"] == "[2026-10-05] BIOCHIMICA - ore 09.30"
         assert info["creato_il"]
         assert info["fase_corrente"] == "metadata_only"
         assert info["stato"] == "in_attesa_di_trascrizione"
@@ -464,7 +455,7 @@ def test_setup_metadata_available_before_transcription(tmp_path, monkeypatch, re
     monkeypatch.setattr(setup, "find_macparakeet_binary", lambda: "macparakeet-cli")
     monkeypatch.setattr(setup, "_run_transcribe_with_spinner", transcribe)
     result = setup.run_setup(str(audio), date="2026-10-05", materia="Biochimica",
-                             ora="09:30", docente="Rossi", argomenti="Lipidi",
+                             ora="09:30", docente="Rossi",
                              dest_dir=str(tmp_path / "lessons"), interactive=False,
                              mock_asr=mode == "mock", skip_transcribe=mode == "skip",
                              on_lesson_created=on_created)
@@ -487,9 +478,11 @@ def test_setup_resume_interrupted_import(tmp_path, request, storage):
 
     with pytest.raises(RuntimeError, match="Import interrotto"):
         run_setup(**kwargs, on_lesson_created=interrupted)
-    assert run_setup(**kwargs)["status"] == "setup_completato"
-    with pytest.raises(Exception, match="già inizializzata"):
-        run_setup(**kwargs)
+    resumed = run_setup(**kwargs)
+    assert resumed["status"] == "setup_completato"
+    assert os.path.basename(resumed["lesson_dir"]) == "[2026-10-05] BIOCHIMICA"
+    # Senza ora la stessa materia nello stesso giorno è un'altra lezione.
+    assert os.path.basename(run_setup(**kwargs)["lesson_dir"]) == "[2026-10-05] BIOCHIMICA (2)"
 
 
 @pytest.mark.parametrize("artifact", ["trascritto grezzo.json", "trascritto grezzo.md",
@@ -503,9 +496,19 @@ def test_provisional_info_does_not_bypass_existing_work(tmp_path, artifact):
     lesson.mkdir()
     (lesson / "info.yaml").write_text("stato: in_attesa_di_trascrizione\n")
     (lesson / artifact).write_text("{}")
+    # Con l'ora la cartella è la stessa: il lavoro esistente blocca il setup.
+    timed = tmp_path / "[2026-10-05] BIOCHIMICA - ore 09.00"
+    timed.mkdir()
+    (timed / "info.yaml").write_text("stato: in_attesa_di_trascrizione\n")
+    (timed / artifact).write_text("{}")
     with pytest.raises(SetupError):
-        run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+        run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA", ora="09:00",
                   dest_dir=str(tmp_path), interactive=False, mock_asr=True)
+    # Senza ora non la riprende: la nuova lezione prende "(2)" e quella esistente resta com'è.
+    res = run_setup(str(audio), date="2026-10-05", materia="BIOCHIMICA",
+                    dest_dir=str(tmp_path), interactive=False, mock_asr=True)
+    assert os.path.basename(res["lesson_dir"]) == "[2026-10-05] BIOCHIMICA (2)"
+    assert (lesson / artifact).read_text() == "{}"
 
 
 @pytest.mark.parametrize("mode", ["real", "mock", "skip"])

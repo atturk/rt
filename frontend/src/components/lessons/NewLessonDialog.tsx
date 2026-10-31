@@ -230,7 +230,6 @@ export function NewLessonDialog({
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState(String(options?.materia ?? ''))
-  const [argomenti, setArgomenti] = useState(String(options?.argomenti ?? ''))
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
   const clearConflict = () => { setConflict(null); setUploadError(null) }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
@@ -446,7 +445,7 @@ export function NewLessonDialog({
     if (initialJob) {
       setUploadError(null)
       setRecreating(true)
-      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, argomenti, docente, ora: time } })).then(accepted => {
+      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, docente, ora: time } })).then(accepted => {
         invalidateAfterJob(client)
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
@@ -482,7 +481,6 @@ export function NewLessonDialog({
       calendar_date: chosenSlot ? date : undefined,
       date,
       materia: materia.trim(),
-      argomenti,
       docente: docente.trim(),
       ora: time,
       run: !solo,
@@ -918,15 +916,13 @@ export function NewLessonDialog({
               <label className={labelText}>
                 Ora
                 <input
-                  className={field}
+                  className={cn(field, conflict && 'border-danger')}
                   type="time"
                   value={time}
                   disabled={busy}
-                  onChange={(e) => setTime(e.target.value)}
+                  aria-invalid={!!conflict}
+                  onChange={(e) => { setTime(e.target.value); clearConflict() }}
                 />
-              </label>
-              <label className={labelText}>Argomenti
-                <input className={cn(field, conflict && 'border-danger')} value={argomenti} disabled={busy} aria-invalid={!!conflict} onChange={e => { setArgomenti(e.target.value); clearConflict() }} />
               </label>
               <datalist id={`${listId}-materie`}>
                 {subjects.map((s) => (

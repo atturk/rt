@@ -47,7 +47,6 @@ def test_transcribe_cmd_contains_output_dir_and_no_diarize(tmp_path):
                 audio=audio_file,
                 date="2026-09-12",
                 materia="TEST",
-                argomenti="Test",
                 dest_dir=dest_dir,
                 interactive=False
             )
@@ -107,7 +106,6 @@ def test_transcribe_large_word_timestamps_no_deadlock(tmp_path):
                     audio=audio_file,
                     date="2026-09-12",
                     materia="TEST",
-                    argomenti="Large",
                     dest_dir=dest_dir,
                     interactive=False
                 )

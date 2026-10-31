@@ -1,7 +1,7 @@
 ---
 data: '2026-09-05'
 materia: 'BIOCHIMICA'
-argomenti: 'Lipidi'
+argomenti: ''
 file_audio: 'demo_lecture.wav'
 modello: 'mock-asr'
 data_trascrizione: '<TS>'
@@ -11,7 +11,7 @@ stato: pronto_per_rielaborazione
 
 # Trascritto Grezzo (Mock ASR)
 
-**[00:00 - 00:08]** Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando lipidi.
+**[00:00 - 00:08]** Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando argomenti da definire.
 
 **[00:08 - 00:24]** Nel dettaglio analizzeremo i meccanismi molecolari e i principi fondamentali che regolano questo processo biologico.
 

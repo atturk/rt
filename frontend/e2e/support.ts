@@ -158,7 +158,7 @@ export async function disableOutlineTimer(request: APIRequestContext) {
 export async function importAudioApi(
   request: APIRequestContext,
   audio: string,
-  fields: { materia: string; argomenti: string; date: string; run: boolean; withReview?: boolean },
+  fields: { materia: string; date: string; run: boolean; withReview?: boolean },
 ) {
   const res = await request.post('/api/v1/lessons', {
     headers: authHeaders(),
@@ -166,7 +166,6 @@ export async function importAudioApi(
       audio: { name: 'demo_lecture.wav', mimeType: 'audio/wav', buffer: readFileSync(audio) },
       date: fields.date,
       materia: fields.materia,
-      argomenti: fields.argomenti,
       docente: '',
       ora: '',
       run: String(fields.run),

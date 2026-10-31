@@ -2,7 +2,7 @@ exit_code: 0
 --- stdout ---
 
 ============================================================
-🚀 RT 2.0 — PIPELINE END-TO-END PER: <ROOT>/out/[2026-09-05] BIOCHIMICA - Lipidi
+🚀 RT 2.0 — PIPELINE END-TO-END PER: <ROOT>/out/[2026-09-05] BIOCHIMICA
 ============================================================
 
 [1/5] PREPARE (Parsing deterministico segmenti)...

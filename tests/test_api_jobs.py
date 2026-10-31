@@ -42,7 +42,7 @@ def job(client, job_id):
 def upload(client, run=False, mock=True, with_review=True):
     with open(AUDIO_FIXTURE, "rb") as f:
         return client.post("/api/v1/lessons", files={"audio": ("lezione.wav", f, "audio/wav")},
-                           data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi",
+                           data={"date": "2026-09-05", "materia": "BIOCHIMICA",
                                  "mock": str(mock).lower(), "run": str(run).lower(),
                                  "with_review": str(with_review).lower()})
 
