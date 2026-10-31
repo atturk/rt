@@ -32,7 +32,6 @@ async function newLesson(page: Page): Promise<number> {
       audio: { name: 'lezione.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
       date: '2026-09-26',
       materia: 'ISTOLOGIA',
-      argomenti: 'Epiteli',
       mock: 'true',
       run: 'false',
     },

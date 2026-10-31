@@ -16,7 +16,7 @@ type Outline = { approved: boolean; macro_sections: { units: unknown[] }[] }
 type Lesson = { id: number; materia: string; argomenti: string; pending_issues: number; state: string | null }
 
 /** Importazione dall'API (la pagina Importa non c'è più) e pagina del job che la segue. */
-async function importAudio(page: Page, fields: { materia: string; argomenti: string; date: string; run: boolean }) {
+async function importAudio(page: Page, fields: { materia: string; date: string; run: boolean }) {
   await disableOutlineTimer(page.request)
   const jobId = await importAudioApi(page.request, AUDIO, fields)
   await page.goto(`/job/${jobId}`)
@@ -35,7 +35,7 @@ test('importa un audio, segue gli eventi, approva la scaletta e arriva alla revi
   test.setTimeout(4 * LONG)
   await loginViaLink(page)
   await expect(page.getByTestId('worker-warning')).toHaveCount(0)
-  const jobId = await importAudio(page, { materia: 'ANATOMIA', argomenti: 'Il cuore', date: '2026-09-19', run: true })
+  const jobId = await importAudio(page, { materia: 'ANATOMIA', date: '2026-09-19', run: true })
 
   // La pipeline si ferma sulla scaletta: lo stream mostra fasi e decisione, poi si chiude.
   await expect(jobCard(page)).toHaveAttribute('data-state', 'waiting_for_decision', { timeout: LONG })
@@ -89,7 +89,7 @@ test('importa un audio, segue gli eventi, approva la scaletta e arriva alla revi
 test('importazione senza pipeline: solo trascrizione, come rt setup', async ({ page }) => {
   test.setTimeout(2 * LONG)
   await loginViaLink(page)
-  const jobId = await importAudio(page, { materia: 'ISTOLOGIA', argomenti: 'Epiteli', date: '2026-09-20', run: false })
+  const jobId = await importAudio(page, { materia: 'ISTOLOGIA', date: '2026-09-20', run: false })
   await expect(jobCard(page)).toHaveAttribute('data-state', 'succeeded', { timeout: LONG })
   const job = await apiGet<Job>(page.request, `/jobs/${jobId}`)
   expect(job.type).toBe('ingest_audio')
@@ -99,7 +99,8 @@ test('importazione senza pipeline: solo trascrizione, come rt setup', async ({ p
   await page.goto(`/lezioni/${job.lesson_id}`)
   const lesson = await apiGet<Lesson>(page.request, `/lessons/${job.lesson_id}`)
   expect(lesson.materia).toBe('ISTOLOGIA')
-  expect(lesson.argomenti).toContain('Epiteli')
+  // Gli argomenti non si chiedono: li genera l'IA con la scaletta, che qui non è ancora partita.
+  expect(lesson.argomenti).toBe('')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 })
 
@@ -117,7 +118,7 @@ test('errori leggibili su formato e campi mancanti', async ({ page }) => {
 test('richiesta di modifiche alla scaletta e annullamento del job in attesa', async ({ page }) => {
   test.setTimeout(3 * LONG)
   await loginViaLink(page)
-  const jobId = await importAudio(page, { materia: 'GENETICA', argomenti: 'Mendel', date: '2026-09-21', run: true })
+  const jobId = await importAudio(page, { materia: 'GENETICA', date: '2026-09-21', run: true })
   await expect(jobCard(page)).toHaveAttribute('data-state', 'waiting_for_decision', { timeout: LONG })
   const { lesson_id: lessonId } = await apiGet<Job>(page.request, `/jobs/${jobId}`)
 
