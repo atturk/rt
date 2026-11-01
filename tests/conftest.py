@@ -7,6 +7,13 @@ import pytest
 from rt.llm.credentials import GLOBAL_CREDENTIALS, CredentialRef
 from rt.core.config import RouteConfig, JobRoutingConfig
 import rt.core.config
+from hypothesis import settings as hypothesis_settings
+
+# Test a proprietà (Hypothesis): in CI esempi fissi e nessun limite di tempo per esempio, così
+# un runner lento o un seme sfortunato non fanno fallire una PR che non c'entra.
+hypothesis_settings.register_profile("ci", derandomize=True, deadline=None)
+if os.environ.get("CI"):
+    hypothesis_settings.load_profile("ci")
 
 ORIGINAL_BUILD_DEFAULT_JOBS = rt.core.config._build_default_jobs
 

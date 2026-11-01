@@ -79,6 +79,21 @@ Per eseguire l'intera suite:
   `rt/telegram` (registrato nel worker con `register_job_notifier`), l'output del terminale
   negli adattatori CLI (`rt/cli.py`, `rt/cli_reporter.py`).
 
+### Controllo qualità automatico (4.3.5)
+
+- `test_api_fuzz.py`: fuzzing dell'API con Schemathesis. Da `/openapi.json` genera richieste
+  valide e al limite per ogni endpoint (una lezione elaborata in mock, rete esterna bloccata) e
+  fallisce su ogni 500, cioè un'eccezione non gestita. In CI gli esempi sono fissi; per una
+  ricerca più ampia e casuale: `RT_FUZZ_EXAMPLES=200 .venv/bin/python -m pytest tests/test_api_fuzz.py`.
+  Ogni bug trovato diventa un test deterministico in fondo allo stesso file.
+- `test_properties.py`: test a proprietà con Hypothesis su timestamp, trascritto Markdown,
+  ancore delle revisioni e inserimento di sorgenti: regole generali provate su centinaia di
+  input generati. Con `CI` impostata vale il profilo `ci` di `tests/conftest.py` (esempi fissi,
+  nessun limite di tempo per esempio).
+- Copertura: in CI la suite gira con `--cov=rt` e la tabella finisce nel riepilogo del job. Non
+  c'è una soglia: serve a vedere dove mancano test. I comandi lanciati in sottoprocesso (golden
+  test, CLI) non vengono contati.
+
 ---
 
 ### Installazione, aggiornamento e Docker (RT 4.0, fase G)
