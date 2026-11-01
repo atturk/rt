@@ -17,7 +17,7 @@ valutazione prima di superarlo.
 Uso:
   OPENROUTER_API_KEY=... python scripts/eval_quality.py lezione.zip [altra.zip ...] \\
       [--units 5] [--issues 5] [--questions 6] [--budget 0.06] [--out rapporto.json]
-La chiave si legge solo dall'ambiente e non viene mai scritta.
+La chiave si legge da OPENROUTER_API_KEY o da ~/.rt/mcp/eval-openrouter-key, mai dal repo.
 """
 import argparse
 import json
@@ -32,6 +32,8 @@ from pathlib import Path
 
 JUDGE_MODEL = "openai/gpt-6-sol"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# In alternativa all'ambiente, fuori dal repo e leggibile solo dall'utente (chmod 600).
+KEY_FILE = Path.home() / ".rt" / "mcp" / "eval-openrouter-key"
 
 SYSTEM = (
     "Sei un docente universitario esperto e un revisore severo ma equo. Valuti il lavoro di "
@@ -236,8 +238,10 @@ def main():
     parser.add_argument("--out", type=Path, help="Rapporto JSON (default: stampa)")
     args = parser.parse_args()
     key = os.environ.get("OPENROUTER_API_KEY")
+    if not key and KEY_FILE.is_file():
+        key = KEY_FILE.read_text(encoding="utf-8").strip()
     if not key:
-        sys.exit("Imposta OPENROUTER_API_KEY nell'ambiente.")
+        sys.exit(f"Imposta OPENROUTER_API_KEY nell'ambiente o scrivi la chiave in {KEY_FILE}.")
     reports = []
     for path in args.zips:
         report = evaluate(path, key, args)
