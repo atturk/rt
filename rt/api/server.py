@@ -50,8 +50,38 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, reset_token: bool = 
     if no_auth:
         say("⚠️  Autenticazione disattivata (--no-auth).")
     # Gli stream SSE (canale live della web app) restano aperti: allo stop si chiudono dopo pochi secondi.
-    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)
+    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5,
+                log_config=log_config())
     return 0
+
+
+# Richieste che la web app ripete da sola ogni pochi secondi: riuscite non dicono nulla e
+# riempivano api.log (il 70% delle righe). Errori e lentezze restano: cambiano lo status.
+POLLING_PATHS = ("/api/v1/jobs", "/api/v1/workers", "/api/v1/system/update")
+POLLING_SUFFIXES = ("/classifier",)
+
+
+class PollingAccessFilter:
+    """Toglie dall'access log di uvicorn i GET di polling andati a buon fine (200/304)."""
+
+    def filter(self, record) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        _client, method, full_path, _version, status = args[:5]
+        if method != "GET" or status not in (200, 304):
+            return True
+        path = str(full_path).split("?", 1)[0]
+        return not (path in POLLING_PATHS or (path.startswith("/api/v1/lessons/") and path.endswith(POLLING_SUFFIXES)))
+
+
+def log_config() -> dict:
+    import copy
+    from uvicorn.config import LOGGING_CONFIG
+    config = copy.deepcopy(LOGGING_CONFIG)
+    config.setdefault("filters", {})["polling"] = {"()": "rt.api.server.PollingAccessFilter"}
+    config["handlers"]["access"].setdefault("filters", []).append("polling")
+    return config
 
 
 def _without_token(say: Callable[[str], None]) -> Callable[[str], None]:

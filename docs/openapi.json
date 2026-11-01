@@ -3340,6 +3340,43 @@
         "title": "ClassifierUnit",
         "type": "object"
       },
+      "ClientLogEntry": {
+        "properties": {
+          "level": {
+            "description": "console.error / errori non gestiti, oppure console.warn",
+            "enum": [
+              "error",
+              "warn"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 2000,
+            "title": "Message",
+            "type": "string"
+          },
+          "page": {
+            "default": "",
+            "description": "Percorso della pagina della web app",
+            "maxLength": 300,
+            "title": "Page",
+            "type": "string"
+          },
+          "stack": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Stack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "message"
+        ],
+        "title": "ClientLogEntry",
+        "type": "object"
+      },
       "CompactAudioPreview": {
         "properties": {
           "bytes_convertibili": {
@@ -32873,6 +32910,46 @@
           }
         ],
         "summary": "Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/client-log": {
+      "post": {
+        "description": "La web app inoltra console.error, console.warn ed errori non gestiti: così si leggono nel registro anche senza aprire gli strumenti per sviluppatori. Lo stesso messaggio si registra al massimo una volta al minuto.",
+        "operationId": "client_log_api_v1_system_client_log_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientLogEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Registra in api.log un errore o un avviso della console della web app",
         "tags": [
           "sistema"
         ]

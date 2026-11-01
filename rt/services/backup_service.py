@@ -444,6 +444,9 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         data = paths.data_dir()
         url = current_database_url()
         db_file = sqlite_file(url) if url else None
+        if manifest["database"] == "rt.db" and not db_file:
+            raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database. "
+                              "Nulla è stato modificato.")
         stamp = time.strftime("%Y%m%d-%H%M%S")
         aside = os.path.join(data, "backups", f"prima-del-ripristino-{stamp}")
         if os.path.exists(aside):
@@ -452,108 +455,114 @@ def restore_backup(source: str, say: Callable[[str], None] = print, check_servic
         else:
             os.makedirs(aside)
 
-        if progress:
-            progress('database', 0, 1)
-        # 1. database
-        if manifest["database"] == "rt.db":
-            if not db_file:
-                raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database.")
-            reset_database_cache()  # su Windows un file SQLite aperto non si può spostare
-            for suffix in ("", "-wal", "-shm"):
-                if os.path.exists(db_file + suffix):
-                    shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))
-            if portable:
-                local_db = os.path.join(data, 'rt.db')
-                if os.path.abspath(local_db) != os.path.abspath(db_file):
-                    for suffix in ('', '-wal', '-shm'):
-                        if os.path.exists(local_db + suffix):
-                            shutil.move(local_db + suffix, os.path.join(aside, 'locale-rt.db' + suffix))
-                db_file = local_db
-                if 'RT_DATABASE_URL' in os.environ:
-                    os.environ['RT_DATABASE_URL'] = 'sqlite:///' + db_file
-            os.makedirs(os.path.dirname(db_file), exist_ok=True)
-            shutil.copy2(os.path.join(snap, "rt.db"), db_file)
-        else:
-            _pg_restore(url, os.path.join(snap, "rt.pgdump"))
-        reset_database_cache()
-        say("🗄  Database ripristinato.")
-        if progress:
-            progress('database', 1, 1)
-
-        # 2. configurazione e .env
-        home = paths.config_home()
-        incoming_config = os.path.join(snap, 'config')
-        if os.path.isdir(incoming_config):
-            current = os.path.join(home, 'config')
-            if portable:
-                os.makedirs(current, exist_ok=True)
-                saved_config = os.path.join(aside, 'config')
-                os.makedirs(saved_config, exist_ok=True)
-                for name in os.listdir(current):
-                    if name != 'secrets.enc':
-                        shutil.move(os.path.join(current, name), os.path.join(saved_config, name))
-                shutil.copytree(incoming_config, current, dirs_exist_ok=True, ignore=shutil.ignore_patterns('secrets.enc'))
-            else:
-                if os.path.isdir(current):
-                    shutil.move(current, os.path.join(aside, 'config'))
-                shutil.copytree(incoming_config, current)
-        current_env = os.path.join(home, '.env')
-        incoming_env = os.path.join(snap, 'env')
-        if os.path.isfile(incoming_env):
-            old_env = ''
-            if os.path.isfile(current_env):
-                with open(current_env, encoding='utf-8') as stream:
-                    old_env = stream.read()
-                shutil.copy2(current_env, os.path.join(aside, 'env'))
-            with open(incoming_env, encoding='utf-8') as stream:
-                imported_env = stream.read()
-            if portable:
-                imported_env = _env_parts(imported_env, secret=False).rstrip() + '\n' + _env_parts(old_env, secret=True)
-            with open(current_env, 'w', encoding='utf-8') as stream:
-                stream.write(imported_env)
-        if portable:
-            changed = _reset_imported_paths(home, data, manifest['database'] == 'rt.db')
-            if changed:
-                say('Percorsi ripristinati ai valori predefiniti: ' + ', '.join(changed) + '.')
-        if progress:
-            progress('config', 1, 1)
-        if os.path.isdir(os.path.join(snap, "telegram-state")):
-            from rt.core.config import load_config
-            state_dir = load_config().telegram.state_dir
-            if os.path.isdir(state_dir):
-                shutil.move(state_dir, os.path.join(aside, "telegram-state"))
-            shutil.copytree(os.path.join(snap, "telegram-state"), state_dir)
-        say("⚙️  Configurazione ripristinata.")
-
-        # 3. media: si copiano solo quelli mancanti o diversi
-        from rt.db.engine import require_database
-        from rt.storage import fs
-        db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
-        if portable:
-            _relocate_imported_lessons(db)
-        media_dir = fs.media_dir(db)
-        copied = 0
-        media_entries = manifest.get('media') or []
-        for index, entry in enumerate(media_entries):
+        try:
             if progress:
-                progress('media', index, len(media_entries))
-            target = os.path.join(media_dir, entry["path"])
-            if os.path.isfile(target) and os.path.getsize(target) == entry["size"] and sha256_file(target) == entry["sha256"]:
-                continue
-            _copy_atomic(_store_path(store_root, entry["sha256"]), target)
-            copied += 1
-        if progress:
-            progress('media', len(media_entries), len(media_entries))
-        for entry in manifest.get('archivio') or []:
-            target = os.path.abspath(os.path.join(data, 'archivio', entry['path']))
-            root = os.path.abspath(os.path.join(data, 'archivio'))
-            if not target.startswith(root + os.sep):
-                raise BackupError('Percorso archivio non valido nel backup.')
-            _copy_atomic(_store_path(store_root, entry['sha256']), target)
-        say(f"🎧 Media ripristinati: {copied} copiati, {len(manifest.get('media') or []) - copied} già presenti.")
-        problems = verify_media(db, media_dir)
-        if problems:
-            say(f"⚠️  {len(problems)} media referenziati mancano ancora (es. {problems[0]}).")
+                progress('database', 0, 1)
+            # 1. database
+            if manifest["database"] == "rt.db":
+                if not db_file:
+                    raise BackupError("Il backup contiene un database SQLite ma RT usa un altro database.")
+                reset_database_cache()  # su Windows un file SQLite aperto non si può spostare
+                for suffix in ("", "-wal", "-shm"):
+                    if os.path.exists(db_file + suffix):
+                        shutil.move(db_file + suffix, os.path.join(aside, os.path.basename(db_file) + suffix))
+                if portable:
+                    local_db = os.path.join(data, 'rt.db')
+                    if os.path.abspath(local_db) != os.path.abspath(db_file):
+                        for suffix in ('', '-wal', '-shm'):
+                            if os.path.exists(local_db + suffix):
+                                shutil.move(local_db + suffix, os.path.join(aside, 'locale-rt.db' + suffix))
+                    db_file = local_db
+                    if 'RT_DATABASE_URL' in os.environ:
+                        os.environ['RT_DATABASE_URL'] = 'sqlite:///' + db_file
+                os.makedirs(os.path.dirname(db_file), exist_ok=True)
+                shutil.copy2(os.path.join(snap, "rt.db"), db_file)
+            else:
+                _pg_restore(url, os.path.join(snap, "rt.pgdump"))
+            reset_database_cache()
+            say("🗄  Database ripristinato.")
+            if progress:
+                progress('database', 1, 1)
+
+            # 2. configurazione e .env
+            home = paths.config_home()
+            incoming_config = os.path.join(snap, 'config')
+            if os.path.isdir(incoming_config):
+                current = os.path.join(home, 'config')
+                if portable:
+                    os.makedirs(current, exist_ok=True)
+                    saved_config = os.path.join(aside, 'config')
+                    os.makedirs(saved_config, exist_ok=True)
+                    for name in os.listdir(current):
+                        if name != 'secrets.enc':
+                            shutil.move(os.path.join(current, name), os.path.join(saved_config, name))
+                    shutil.copytree(incoming_config, current, dirs_exist_ok=True, ignore=shutil.ignore_patterns('secrets.enc'))
+                else:
+                    if os.path.isdir(current):
+                        shutil.move(current, os.path.join(aside, 'config'))
+                    shutil.copytree(incoming_config, current)
+            current_env = os.path.join(home, '.env')
+            incoming_env = os.path.join(snap, 'env')
+            if os.path.isfile(incoming_env):
+                old_env = ''
+                if os.path.isfile(current_env):
+                    with open(current_env, encoding='utf-8') as stream:
+                        old_env = stream.read()
+                    shutil.copy2(current_env, os.path.join(aside, 'env'))
+                with open(incoming_env, encoding='utf-8') as stream:
+                    imported_env = stream.read()
+                if portable:
+                    imported_env = _env_parts(imported_env, secret=False).rstrip() + '\n' + _env_parts(old_env, secret=True)
+                with open(current_env, 'w', encoding='utf-8') as stream:
+                    stream.write(imported_env)
+            if portable:
+                changed = _reset_imported_paths(home, data, manifest['database'] == 'rt.db')
+                if changed:
+                    say('Percorsi ripristinati ai valori predefiniti: ' + ', '.join(changed) + '.')
+            if progress:
+                progress('config', 1, 1)
+            if os.path.isdir(os.path.join(snap, "telegram-state")):
+                from rt.core.config import load_config
+                state_dir = load_config().telegram.state_dir
+                if os.path.isdir(state_dir):
+                    shutil.move(state_dir, os.path.join(aside, "telegram-state"))
+                shutil.copytree(os.path.join(snap, "telegram-state"), state_dir)
+            say("⚙️  Configurazione ripristinata.")
+
+            # 3. media: si copiano solo quelli mancanti o diversi
+            from rt.db.engine import require_database
+            from rt.storage import fs
+            db = require_database()  # applica anche le migrazioni se il backup è di una versione precedente
+            if portable:
+                _relocate_imported_lessons(db)
+            media_dir = fs.media_dir(db)
+            copied = 0
+            media_entries = manifest.get('media') or []
+            for index, entry in enumerate(media_entries):
+                if progress:
+                    progress('media', index, len(media_entries))
+                target = os.path.join(media_dir, entry["path"])
+                if os.path.isfile(target) and os.path.getsize(target) == entry["size"] and sha256_file(target) == entry["sha256"]:
+                    continue
+                _copy_atomic(_store_path(store_root, entry["sha256"]), target)
+                copied += 1
+            if progress:
+                progress('media', len(media_entries), len(media_entries))
+            for entry in manifest.get('archivio') or []:
+                target = os.path.abspath(os.path.join(data, 'archivio', entry['path']))
+                root = os.path.abspath(os.path.join(data, 'archivio'))
+                if not target.startswith(root + os.sep):
+                    raise BackupError('Percorso archivio non valido nel backup.')
+                _copy_atomic(_store_path(store_root, entry['sha256']), target)
+            say(f"🎧 Media ripristinati: {copied} copiati, {len(manifest.get('media') or []) - copied} già presenti.")
+            problems = verify_media(db, media_dir)
+            if problems:
+                say(f"⚠️  {len(problems)} media referenziati mancano ancora (es. {problems[0]}).")
+        except Exception as exc:
+            # Da qui in poi i dati di prima sono già stati spostati: va detto dove sono.
+            raise BackupError(f"Ripristino interrotto a metà: {exc}. I dati che c'erano prima "
+                              f"(database, configurazione, .env) sono in {aside}: "
+                              "rimettili nella cartella dati per tornare com'eri.") from exc
         say(f"📦 I dati sostituiti sono in {aside}.")
         return aside
     finally:

@@ -777,7 +777,7 @@ def test_import_stops_before_restore_and_restart_after_success(data, webview, mo
     events = []
     monkeypatch.setattr(desktop, 'stop_background', lambda _: events.append('stop'))
     monkeypatch.setattr('rt.db.engine.reset_database_cache', lambda: events.append('close-db'))
-    def stream(win, args, tipo, *, before_start, on_success):
+    def stream(win, args, tipo, *, before_start, on_success, on_failure=None):
         assert tipo == 'importa'
         assert args == ['restore', '/collection.zip', '--yes', '--json']
         before_start()

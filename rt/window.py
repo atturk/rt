@@ -243,7 +243,8 @@ _backup_lock = threading.Lock()
 _backup_running = False
 
 
-def _stream_backup(window, args: list[str], tipo: str = "backup", *, before_start=None, on_success=None) -> bool:
+def _stream_backup(window, args: list[str], tipo: str = "backup", *, before_start=None, on_success=None,
+                   on_failure=None) -> bool:
     global _backup_running
     with _backup_lock:
         if _backup_running:
@@ -328,6 +329,8 @@ def _stream_backup(window, args: list[str], tipo: str = "backup", *, before_star
             proc.wait()
             if proc.returncode == 0 and succeeded and on_success:
                 on_success()
+            elif on_failure:
+                on_failure()
             if pending_event and not final_event_sent:
                 send_event(pending_event, immediate=True)
 
@@ -338,6 +341,11 @@ def _stream_backup(window, args: list[str], tipo: str = "backup", *, before_star
                     _notice(window, err_msg)
         except Exception as exc:
             _log(f"Backup {tipo} eccezione: {exc}")
+            if on_failure:
+                try:
+                    on_failure()
+                except Exception as failure_exc:
+                    _log(f"Backup {tipo}: on_failure non riuscito: {failure_exc}")
             send_event({"errore": str(exc), "tipo": tipo}, immediate=True)
             if not has_client:
                 _notice(window, str(exc))
@@ -856,7 +864,8 @@ def _import_collection(window, base_url):
         def ready():
             global _import_ready
             _import_ready = True
+        # I servizi sono fermi anche se l'importazione fallisce: RT va riavviato comunque.
         _stream_backup(window, ['restore', chosen, '--yes', '--json'], tipo='importa',
-                       before_start=stop, on_success=ready)
+                       before_start=stop, on_success=ready, on_failure=ready)
     except Exception as exc:
         _notice(window, str(exc))

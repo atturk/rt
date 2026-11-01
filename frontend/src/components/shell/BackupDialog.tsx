@@ -40,6 +40,7 @@ type DialogState =
   | {
       kind: 'errore'
       messaggio: string
+      tipo?: 'backup' | 'copia' | 'esporta' | 'importa'
     }
 
 export function BackupDialog() {
@@ -79,7 +80,7 @@ export function BackupDialog() {
         }
       } else if ('errore' in evento) {
         setOpen(true)
-        setState({ kind: 'errore', messaggio: evento.errore })
+        setState({ kind: 'errore', messaggio: evento.errore, tipo: evento.tipo })
       }
     }
 
@@ -270,9 +271,19 @@ export function BackupDialog() {
             <Alert tone="danger" className="text-sm">
               {state.messaggio}
             </Alert>
-            <div className="flex justify-end pt-2">
-              <Button onClick={() => setOpen(false)}>Chiudi</Button>
-            </div>
+            {state.tipo === 'importa' ? (
+              <>
+                {/* L'importazione ferma RT prima di partire: anche se fallisce va riavviato. */}
+                <p className="text-sm text-muted-foreground">RT è fermo: riavvialo per tornare a lavorare.</p>
+                <div className="flex justify-end pt-2">
+                  <IconButton icon={RotateCcw} label="Riavvia RT" onClick={() => void window.pywebview?.api.riavvia_dopo_importazione?.()} />
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-end pt-2">
+                <Button onClick={() => setOpen(false)}>Chiudi</Button>
+              </div>
+            )}
           </>
         )}
       </div>

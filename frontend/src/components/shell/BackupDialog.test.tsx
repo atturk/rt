@@ -128,6 +128,19 @@ describe('BackupDialog', () => {
     expect(screen.getByText('Spazio su disco esaurito')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Chiudi' })).toBeInTheDocument()
   })
+
+  it('un’importazione fallita lascia riavviare RT, che è fermo', async () => {
+    const restart = vi.fn()
+    window.pywebview = { api: { salva_copia_backup: vi.fn(), riavvia_dopo_importazione: restart } }
+    render(<BackupDialog />)
+    act(() => {
+      window.__rtBackup?.({ errore: 'Ripristino interrotto a metà: disco pieno.', tipo: 'importa' })
+    })
+    expect(screen.getByText('RT è fermo: riavvialo per tornare a lavorare.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Chiudi' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Riavvia RT' }))
+    expect(restart).toHaveBeenCalledOnce()
+  })
 })
 
 it.each(['esporta', 'importa'] as const)('mostra avanzamento e riepilogo di %s senza API', async tipo => {
