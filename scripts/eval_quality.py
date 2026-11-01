@@ -116,6 +116,9 @@ def read_lesson(zip_path):
     files = {}
     with zipfile.ZipFile(zip_path) as archive:
         for name in archive.namelist():
+            # history/ver_*/ tiene le versioni precedenti con gli stessi nomi: vale solo la corrente
+            if "history/" in name:
+                continue
             if name.endswith(".json") or name.endswith(".yaml"):
                 files[Path(name).name] = archive.read(name).decode("utf-8")
     def load(name, default):

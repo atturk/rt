@@ -23,6 +23,10 @@ def lesson_zip(tmp_path):
         for root, _, files in os.walk(lesson):
             for name in files:
                 archive.write(os.path.join(root, name), os.path.join("lezione", name))
+        # una versione precedente con un'unità diversa, dopo la corrente come nell'export vero
+        old = json.load(open(os.path.join(lesson, "_state", "draft.json"), encoding="utf-8"))
+        old["units"][0]["content"] = "VERSIONE VECCHIA"
+        archive.writestr("lezione/history/ver_000001/draft.json", json.dumps(old))
     return path
 
 
@@ -68,6 +72,7 @@ def test_report_from_a_lesson_zip(tmp_path, monkeypatch):
     # il giudice vede il trascritto della sua unità e lavora a temperatura 0
     assert all(body["temperature"] == 0 and body["model"] == eval_quality.JUDGE_MODEL for body in calls)
     assert "TRASCRITTO" in calls[0]["messages"][1]["content"]
+    assert "VERSIONE VECCHIA" not in calls[0]["messages"][1]["content"]
 
 
 def test_budget_stops_the_evaluation(tmp_path, monkeypatch):
