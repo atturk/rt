@@ -47,6 +47,7 @@ from rt.llm.errors import (
     LLMTimeoutError,
 )
 from rt.llm.router import RoutingEngine, ExecutionRoute
+from rt.llm.strict_schema import strict_json_schema
 from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
 
@@ -530,7 +531,7 @@ class LLMClient:
                     stream=use_stream,
                     max_thinking_tokens=route.max_thinking_tokens,
                     provider_routing=self._resolve_provider_routing(route, provider_name),
-                    response_json_schema=(response_model.model_json_schema()
+                    response_json_schema=(strict_json_schema(response_model)
                                           if constrained_schema or getattr(response_model, "constrained_schema", False)
                                           or provider_name not in {"openrouter", "google"} else None)
                 )

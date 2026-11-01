@@ -64,3 +64,8 @@ Thumbs.db
 # Build della SPA inclusa nelle release (fase F)
 rt/spa/
 .stt-models/
+
+# copertura dei test (pytest --cov) e database degli esempi di Hypothesis
+.coverage.*
+coverage.md
+.hypothesis/

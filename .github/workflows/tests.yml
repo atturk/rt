@@ -45,7 +45,11 @@ jobs:
         run: python -m pip check
       - name: Run test suite
         # loadfile: i test di un file restano sullo stesso worker e nel loro ordine
-        run: python -m pytest tests/ -q -n auto --dist loadfile
+        # copertura: report nel riepilogo del job, per scegliere dove servono test (nessuna soglia)
+        run: python -m pytest tests/ -q -n auto --dist loadfile --cov=rt --cov-report=term:skip-covered --cov-report=markdown:coverage.md
+      - name: Coverage summary
+        if: always()
+        run: test -f coverage.md && cat coverage.md >> "$GITHUB_STEP_SUMMARY" || true
       - name: Verify distribution archive
         run: python scripts/check_release.py
 
