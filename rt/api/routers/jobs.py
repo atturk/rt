@@ -123,12 +123,18 @@ def _zip_signature_ok(path: str) -> bool:
 
 @router.post("/lessons/import-zip", response_model=schemas.JobAccepted, status_code=202,
              summary="Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)")
-def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
+def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...),
+                       decisions: Optional[str] = Form(None, description=(
+                           "JSON: scelte per le lezioni già presenti segnalate da un import precedente "
+                           "(status 'conflict'), [{file, member?, action: 'replace'|'keep', lesson_id?}]. "
+                           "Con 'replace' lesson_id è la lezione da rimpiazzare (existing.lesson_id). "
+                           "Di un gruppo si importano solo le lezioni con una scelta."))):
     """Salva gli archivi e accoda il job: estrazione e controlli completi li fa 'rt worker'.
     Qui solo i controlli immediati (nome, dimensione, firma ZIP): un archivio che non li
     supera finisce tra i rifiutati del risultato senza fermare gli altri."""
     if len(archives) > MAX_ZIP_ARCHIVES:
         raise ApiError(413, "too_many_archives", f"Carica al massimo {MAX_ZIP_ARCHIVES} archivi alla volta.")
+    chosen = _import_decisions(decisions)
     target = _upload_dir()
 
     def _go():
@@ -136,6 +142,8 @@ def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
         for index, archive in enumerate(archives):
             filename = os.path.basename((archive.filename or "").replace("\\", "/"))
             entry = {"file": filename, "path": None, "reason": None}
+            if filename in chosen:
+                entry["decisions"] = chosen[filename]
             entries.append(entry)
             if not filename.lower().endswith(".zip"):
                 entry["reason"] = "Serve un archivio ZIP."
@@ -161,6 +169,27 @@ def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...)):
     return _with_upload_cleanup(target, _go)
 
 
+def _import_decisions(raw: Optional[str]) -> Dict[str, Dict[str, dict]]:
+    """{nome dell'archivio: {membro del gruppo o "": {action, lesson_id}}}."""
+    if not raw:
+        return {}
+    try:
+        items = json.loads(raw)
+        if not isinstance(items, list):
+            raise ValueError
+        chosen: Dict[str, Dict[str, dict]] = {}
+        for item in items:
+            action, lesson_id = item.get("action"), item.get("lesson_id")
+            if not isinstance(item.get("file"), str) or action not in ("replace", "keep"):
+                raise ValueError
+            if action == "replace" and (not isinstance(lesson_id, int) or isinstance(lesson_id, bool)):
+                raise ValueError
+            chosen.setdefault(item["file"], {})[str(item.get("member") or "")] = {"action": action, "lesson_id": lesson_id}
+        return chosen
+    except (ValueError, TypeError, AttributeError):
+        raise ApiError(422, "invalid_decision", "Scelte per le lezioni già presenti non valide.")
+
+
 def _remove_partial(path: str) -> None:
     if os.path.isfile(path):
         os.unlink(path)
@@ -173,7 +202,6 @@ def create_lesson(
     audio: List[UploadFile] = File([], description="Uno o più file audio della stessa lezione; facoltativo con soli appunti"),
     date: str = Form(..., description="Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')"),
     materia: str = Form(...),
-    argomenti: str = Form(""),
     docente: str = Form("", description="Nome del docente (facoltativo)"),
     ora: str = Form("", pattern=r"^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$", description="Ora della lezione (HH:MM, facoltativa)"),
     run: bool = Form(False, description="True: esegue tutta la pipeline dopo l'importazione (come 'rt run audio')"),
@@ -194,7 +222,7 @@ def create_lesson(
     from rt.services.lesson_service import lessons_root
     from rt.services.lesson_conflicts import require_no_lesson_conflict
     try:
-        require_no_lesson_conflict(date, materia, argomenti, lessons_root())
+        require_no_lesson_conflict(date, materia, ora, lessons_root())
     except ValueError as exc:
         from rt.services.lesson_conflicts import LessonConflict
         if isinstance(exc, LessonConflict):
@@ -245,7 +273,7 @@ def create_lesson(
                 _check_pages(path, source_options.get(os.path.basename(path), {}).get('pagine'))
             if not audio and principale and principale not in {os.path.basename(p) for p in documents} | ({"Appunti", "appunti.txt"} if appunti.strip() else set()):
                 raise ApiError(422, "validation_error", "Fonte principale inesistente.")
-            options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),
+            options = {"date": date, "materia": materia, "docente": docente.strip(),
                 "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
                 "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
             return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
@@ -259,7 +287,7 @@ def create_lesson(
             raise ApiError(422, "validation_error", "Carica un audio o inserisci gli appunti.")
         if len(appunti.encode("utf-8")) > _max_upload_bytes():
             raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
-        options = {"date": date, "materia": materia, "argomenti": argomenti, "docente": docente.strip(),
+        options = {"date": date, "materia": materia, "docente": docente.strip(),
                    "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
                    "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
         return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options, **calendar}, actor)
@@ -269,7 +297,7 @@ def create_lesson(
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
-        options = {"date": date, "materia": materia, "argomenti": argomenti or None, "docente": docente.strip() or None, "ora": ora or None,
+        options = {"date": date, "materia": materia, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
                    "auto_accept": auto_accept, "channel": "terminal"}
@@ -480,15 +508,24 @@ def sse_stream(job_id: str, after: int, request: Optional[Request] = None,
         time.sleep(poll)
 
 
+def _resume_from(after: Optional[int], last_event_id: Optional[str]) -> Optional[int]:
+    """Punto di ripresa dello stream: il maggiore fra ?after= e Last-Event-ID. Si controlla prima
+    di rispondere: a stream avviato un id fuori dai 64 bit di SQLite non sarebbe più un errore."""
+    start = after
+    if last_event_id and last_event_id.strip().isdigit():
+        start = max(start or 0, int(last_event_id.strip()))
+    if start is not None and start >= 2 ** 63:
+        raise ApiError(422, "validation_error", "Id dell'evento fuori intervallo.")
+    return start
+
+
 @router.get("/jobs/{job_id}/events", summary="Eventi live del job (Server-Sent Events; riprende da Last-Event-ID)",
             response_class=StreamingResponse, responses={200: {"content": {"text/event-stream": {}}}})
 def stream_events(job_id: str, request: Request, _actor: Actor,
                   after: int = Query(0, ge=0, description="Id dell'ultimo evento già ricevuto"),
                   last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
     _get(job_id)
-    start = after
-    if last_event_id and last_event_id.strip().isdigit():
-        start = max(start, int(last_event_id.strip()))
+    start = _resume_from(after, last_event_id)
     return StreamingResponse(sse_stream(job_id, start, request), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
@@ -537,9 +574,7 @@ async def app_sse_stream(after: int, keepalive: float = SSE_KEEPALIVE_SECONDS, p
 async def stream_app_events(_actor: Actor,
                             after: Optional[int] = Query(None, ge=0, description="Id dell'ultimo evento già ricevuto (senza: da adesso)"),
                             last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")):
-    start = after
-    if last_event_id and last_event_id.strip().isdigit():
-        start = max(start or 0, int(last_event_id.strip()))
+    start = _resume_from(after, last_event_id)
     if start is None:
         # Il punto di partenza si fissa prima di rispondere: quello che la pagina rilegge
         # all'apertura dello stream (onopen) è già successivo, quindi niente buchi.
@@ -559,7 +594,6 @@ from pydantic import BaseModel, Field
 class RecreateLessonRequest(BaseModel):
     date: str
     materia: str = Field(min_length=1)
-    argomenti: str = ''
     docente: str = ''
     ora: str = Field(default='', pattern=r'^(?:(?:[01]\d|2[0-3]):[0-5]\d)?$')
 
@@ -574,7 +608,7 @@ def recreate_lesson(job_id: str, body: RecreateLessonRequest, actor: Actor):
     if info.state != 'failed' or (info.result or {}).get('code') != 'lesson_exists':
         raise ApiError(409, 'job_not_retryable', 'Il job non ha metadati da correggere.')
     try:
-        require_no_lesson_conflict(body.date, body.materia, body.argomenti, lessons_root())
+        require_no_lesson_conflict(body.date, body.materia, body.ora, lessons_root())
     except ValueError as exc:
         from rt.services.lesson_conflicts import LessonConflict
         if isinstance(exc, LessonConflict):

@@ -7,7 +7,11 @@ sincrone e con timeout brevi; l'esito (anche l'errore) è il risultato, sempre s
 from __future__ import annotations
 
 import os
+import re
+import struct
 import time
+import unicodedata
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +21,40 @@ MODEL_TIMEOUT_SECONDS = 20.0
 SEARXNG_TIMEOUT_SECONDS = 10.0
 _PROMPT = "Rispondi solo: ok"
 _MAX_OUTPUT_TOKENS = 16  # alcuni provider rifiutano limiti più bassi
-_RED_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP8z4AdMOEQH6QSAM1BAQ/oQeJvAAAAAElFTkSuQmCC"
+# La prova della visione ha bisogno di più spazio: i modelli con ragionamento (quasi tutti i
+# vision recenti) spendono i token nel ragionamento e con 16 restituiscono una risposta vuota.
+_VISION_MAX_OUTPUT_TOKENS = 1024
+_VISION_PROMPT = "Di che colore è il quadrato nell'immagine? Rispondi solo con il colore."
+# Parole che indicano il rosso, in qualunque lingua il modello scelga di rispondere.
+_RED_WORDS = re.compile(r"\b(ross\w*|red|reddish|rouge|rojo|roja|rot|rote|vermelh\w*|scarlat\w*|scarlet|"
+                        r"crimson|cremisi|carmin\w*|vermiglio)\b|#?ff0000")
+
+
+def _png(width: int, height: int, pixel) -> bytes:
+    """PNG RGB minimale (senza dipendenze): pixel(x, y) -> (r, g, b)."""
+    rows = b"".join(b"\x00" + b"".join(bytes(pixel(x, y)) for x in range(width)) for y in range(height))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+
+
+def _test_image() -> str:
+    """Quadrato rosso pieno su fondo bianco, 128x128: abbastanza grande per i provider che
+    rifiutano o deformano le immagini minuscole (il vecchio 8x8 lo era troppo)."""
+    import base64
+    red, white = (220, 20, 20), (255, 255, 255)
+    png = _png(128, 128, lambda x, y: red if 24 <= x < 104 and 24 <= y < 104 else white)
+    return base64.b64encode(png).decode("ascii")
+
+
+_RED_IMAGE = _test_image()
+
+
+def _says_red(reply: str) -> bool:
+    text = unicodedata.normalize("NFKD", reply or "").encode("ascii", "ignore").decode().lower()
+    return bool(_RED_WORDS.search(text))
 
 
 def probes_mocked() -> bool:
@@ -81,10 +118,11 @@ def probe_model(project_root: Path | None, connection: str, model: str, mock: bo
     keys = [k for k in (GLOBAL_CREDENTIALS.get_api_key(name) for name in conn.get("credentials") or []) if k]
     if not keys:
         return {**base, "ok": False, "message": "Nessuna chiave impostata per questa connessione."}
-    message = ([{"type": "text", "text": "Di che colore è il quadrato nell'immagine? Rispondi solo con il colore."},
+    message = ([{"type": "text", "text": _VISION_PROMPT},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_RED_IMAGE}"}}] if vision else _PROMPT)
     payload = provider.build_payload(
-        model=model, messages=[{"role": "user", "content": message}], max_tokens=_MAX_OUTPUT_TOKENS,
+        model=model, messages=[{"role": "user", "content": message}],
+        max_tokens=_VISION_MAX_OUTPUT_TOKENS if vision else _MAX_OUTPUT_TOKENS,
         stream=False,  # niente thinking né temperatura: alcuni modelli rifiutano valori espliciti
     )
     endpoint = provider.get_endpoint(conn.get("base_url") or None)
@@ -104,12 +142,30 @@ def probe_model(project_root: Path | None, connection: str, model: str, mock: bo
         normalized = provider.normalize_response(resp.json(), model)
     except Exception as exc:  # noqa: BLE001 - risposta 200 ma non nel formato atteso
         return {**base, "ok": False, "message": _sanitize(f"Risposta non valida dal provider: {exc}")[:500]}
-    reply = (normalized.content or "").strip()[:80] or None
-    if vision and not any(color in (reply or "").lower() for color in ("rosso", "red")):
-        return {**base, "ok": False, "reply": reply, "vision_verified": False,
-                "message": "Il modello ha risposto, ma non ha riconosciuto il colore dell'immagine di prova."}
+    full_reply = (normalized.content or "").strip()
+    reply = full_reply[:80] or None
+    if vision:
+        _log_vision_probe(conn["name"], model, latency, normalized, full_reply)
+    if vision and not _says_red(full_reply):
+        if not full_reply and normalized.finish_reason == "length":
+            why = ("Il modello ha usato tutti i token a disposizione per ragionare e non ha dato una risposta: "
+                   "riprova, o scegli un modello senza ragionamento obbligatorio.")
+        elif not full_reply:
+            why = "Il modello ha restituito una risposta vuota: probabilmente non legge le immagini."
+        else:
+            why = f"Il modello ha risposto «{_sanitize(full_reply)[:120]}» invece di «rosso»: non ha visto l'immagine di prova."
+        return {**base, "ok": False, "reply": reply, "vision_verified": False, "message": why}
     return {**base, "ok": True, "reply": reply, "vision_verified": vision,
             "message": "Visione verificata." if vision else "Modello raggiungibile."}
+
+
+def _log_vision_probe(connection: str, model: str, latency_ms: int, normalized: Any, reply: str) -> None:
+    """Una riga in api.log con cosa ha risposto davvero il modello: senza, una prova fallita
+    non si può diagnosticare."""
+    usage = getattr(normalized, "usage", None) or {}
+    print(f"🔎 Prova visione {connection} · {model}: {latency_ms} ms, fine={normalized.finish_reason}, "
+          f"token uscita={usage.get('completion_tokens')}, ragionamento={'sì' if normalized.reasoning else 'no'}, "
+          f"risposta={_sanitize(reply)[:200]!r}", flush=True)
 
 
 # ---------------------------------------------------------------- SearXNG

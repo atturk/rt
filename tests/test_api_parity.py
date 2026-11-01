@@ -20,7 +20,7 @@ from rt.services.jobs import DbJobQueue
 from rt.services.worker import Worker
 from tests.api_support import isolated_workspace, make_lesson
 from tests.golden_support import (
-    AUDIO_FIXTURE, COMPARED_FILES, LESSON_NAME, _run_cli, normalize_text,
+    AUDIO_FIXTURE, AUDIO_LESSON_NAME, COMPARED_FILES, LESSON_NAME, _run_cli, normalize_text,
 )
 
 # Chi ha preso la decisione e da quale canale: diverso per costruzione tra CLI e API.
@@ -180,15 +180,15 @@ def test_row_run_folder_pipeline(api, cli, pair):
 
 
 def test_row_setup_audio(api, cli):
-    """rt setup <audio> -d -m -a --mock ⇔ POST /lessons (upload) → job ingest_audio."""
+    """rt setup <audio> -d -m --mock ⇔ POST /lessons (upload) → job ingest_audio."""
     shutil.copy(AUDIO_FIXTURE, os.path.join(cli.root, "lezione.wav"))
     out_dir = os.path.join(cli.root, "out")
-    cli.rt("setup", "lezione.wav", "-d", "2026-09-05", "-m", "BIOCHIMICA", "-a", "Lipidi", "-o", out_dir, "--mock")
+    cli.rt("setup", "lezione.wav", "-d", "2026-09-05", "-m", "BIOCHIMICA", "-o", out_dir, "--mock")
     with open(AUDIO_FIXTURE, "rb") as f:
         job = api.run("/lessons", files={"audio": ("lezione.wav", f, "audio/wav")},
-                      data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi", "mock": "true"})
+                      data={"date": "2026-09-05", "materia": "BIOCHIMICA", "mock": "true"})
     assert job["state"] == "succeeded", job
-    cli_dir, api_dir = os.path.join(out_dir, LESSON_NAME), os.path.join(api.root, LESSON_NAME)
+    cli_dir, api_dir = os.path.join(out_dir, AUDIO_LESSON_NAME), os.path.join(api.root, AUDIO_LESSON_NAME)
     assert fs.is_db_lesson(cli_dir) and fs.is_db_lesson(api_dir)
     assert not os.path.exists(cli_dir) and not os.path.exists(api_dir)  # nessuna cartella di lavoro
     assert all_files(cli_dir) == all_files(api_dir)

@@ -3,7 +3,9 @@ titolo: 'Lezione Accademica Rielaborata'
 materia: 'BIOCHIMICA'
 data: '2026-09-05'
 argomenti:
-  - 'Lipidi'
+  - 'Introduzione e concetti fondamentali'
+  - 'Meccanismi patologici e adattamento'
+  - 'Implicazioni cliniche e conclusioni'
 ---
 
 # Pre-elaborato - [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata

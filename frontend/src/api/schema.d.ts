@@ -3913,11 +3913,6 @@ export interface components {
              */
             appunti: string;
             /**
-             * Argomenti
-             * @default
-             */
-            argomenti: string;
-            /**
              * Audio
              * @description Uno o più file audio della stessa lezione; facoltativo con soli appunti
              * @default []
@@ -3988,6 +3983,11 @@ export interface components {
         Body_import_lesson_zips_api_v1_lessons_import_zip_post: {
             /** Archives */
             archives: string[];
+            /**
+             * Decisions
+             * @description JSON: scelte per le lezioni già presenti segnalate da un import precedente (status 'conflict'), [{file, member?, action: 'replace'|'keep', lesson_id?}]. Con 'replace' lesson_id è la lezione da rimpiazzare (existing.lesson_id). Di un gruppo si importano solo le lezioni con una scelta.
+             */
+            decisions?: string | null;
         };
         /** Body_inspect_api_v1_archive_inspect_post */
         Body_inspect_api_v1_archive_inspect_post: {
@@ -7788,11 +7788,6 @@ export interface components {
         };
         /** RecreateLessonRequest */
         RecreateLessonRequest: {
-            /**
-             * Argomenti
-             * @default
-             */
-            argomenti: string;
             /** Date */
             date: string;
             /**

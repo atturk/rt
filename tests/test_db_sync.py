@@ -18,7 +18,7 @@ from rt.db.repositories import DecisionRepository, IssueRepository, LessonReposi
 from rt.db.session import session_scope
 from rt.db.sync import check_all, sync_all
 from rt.pipeline.ledger import get_ledger_path, record_decision
-from tests.golden_support import LESSON_NAME, load_golden, scenario_audio_full
+from tests.golden_support import AUDIO_LESSON_NAME, LESSON_NAME, load_golden, scenario_audio_full
 
 
 def _make_lesson(root, name, materia="BIOCHIMICA", decisions=0, issues=0):
@@ -184,9 +184,9 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     work.mkdir()
     actual = scenario_audio_full(str(work))
     expected = load_golden("audio_full")
-    folder = f"<ROOT>/out/{LESSON_NAME}"
+    folder = f"<ROOT>/out/{AUDIO_LESSON_NAME}"
     expected["cli_first_run.txt"] = expected["cli_first_run.txt"].replace(
-        f"✔ Cartella lezione: {folder}", f"✔ Lezione nel database: {LESSON_NAME}").replace(
+        f"✔ Cartella lezione: {folder}", f"✔ Lezione nel database: {AUDIO_LESSON_NAME}").replace(
         "✔ File finali generati con successo:\n"
         f"  - Rielaborato: {folder}/_state/rielaborato.md\n"
         f"  - Pre-elaborato: {folder}/_state/pre-elaborato.md\n"
@@ -194,11 +194,11 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
         "✔ File finali generati con successo (salvati nel database):\n"
         "  - Rielaborato: [2026-09-05] BIOCHIMICA - Lezione Accademica Rielaborata.md\n"
         "  - Errori concettuali: Errori concettuali.md\n"
-        f"  Per scaricarli: rt export \"{LESSON_NAME}\" -o <cartella>\n")
+        f"  Per scaricarli: rt export \"{AUDIO_LESSON_NAME}\" -o <cartella>\n")
     for rel in sorted(expected):
         assert actual[rel] == expected[rel], rel
     out_dir = str(work / "out")
-    assert not os.path.exists(os.path.join(out_dir, LESSON_NAME))  # nessuna cartella di lavoro
+    assert not os.path.exists(os.path.join(out_dir, AUDIO_LESSON_NAME))  # nessuna cartella di lavoro
     # L'import a file singolo converte il wav in m4a dove c'è ffmpeg (4.2.2b4) e lo tiene
     # com'è dove non c'è: in un caso o nell'altro nei media sta un file solo.
     from rt.core.media_tools import ffmpeg_path
@@ -206,7 +206,7 @@ def test_full_mock_run_with_database_is_unchanged_and_in_sync(rt_db, tmp_path):
     assert os.listdir(fs.media_dir(rt_db)) == [stored]
     assert check_all(rt_db, out_dir) == []
     with session_scope(rt_db) as s:
-        lesson = LessonRepository(s).get_by_path(os.path.join(out_dir, LESSON_NAME))
+        lesson = LessonRepository(s).get_by_path(os.path.join(out_dir, AUDIO_LESSON_NAME))
         assert lesson.workflow_state == "pronto_per_build"  # come info.yaml nel golden
         assert PhaseRunRepository(s).for_lesson(lesson)["build"].status == "VALID"
         assert DecisionRepository(s).active(lesson)

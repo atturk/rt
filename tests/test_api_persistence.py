@@ -145,7 +145,7 @@ def test_job_writes_persist(api_client, api_token, ws, worker, tmp_path):
     c = api_client
     with open(AUDIO_FIXTURE, "rb") as f:
         ingest = ok(c.post("/api/v1/lessons", files={"audio": ("lezione.wav", f, "audio/wav")},
-                           data={"date": "2026-09-05", "materia": "BIOCHIMICA", "argomenti": "Lipidi", "mock": "true"}))
+                           data={"date": "2026-09-05", "materia": "BIOCHIMICA", "mock": "true"}))
     drain(worker)
     lid = lesson_id(c)
     run = ok(c.post(f"/api/v1/lessons/{lid}/jobs", json={"type": "run_pipeline", "mock": True, "rename": False}))
@@ -156,7 +156,7 @@ def test_job_writes_persist(api_client, api_token, ws, worker, tmp_path):
 
     data = reread(api_token, "/lessons", f"/lessons/{lid}", *(f"/jobs/{j['job_id']}" for j in
                                                               (ingest, run, phase, cancelled, cred)))
-    assert data["/lessons"][0]["folder_name"] == "[2026-09-05] BIOCHIMICA - Lipidi"
+    assert data["/lessons"][0]["folder_name"] == "[2026-09-05] BIOCHIMICA"
     assert data[f"/jobs/{ingest['job_id']}"]["state"] == "succeeded"
     assert data[f"/jobs/{run['job_id']}"]["type"] == "run_pipeline"
     assert data[f"/jobs/{phase['job_id']}"]["payload"]["phase"] == "prepare"

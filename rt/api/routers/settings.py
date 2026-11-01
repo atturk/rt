@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from rt.api.deps import Actor
 from rt.api.errors import ApiError, require_telegram
@@ -601,6 +601,14 @@ def put_decision_model(body: DecisionModelIn, _actor: Actor):
     legacy = JevConfig(task_a_skip_confidence_threshold=body.threshold, relevance_prompt=body.relevance_prompt,
                        relevance_threshold=body.relevance_threshold, prefilter_type=prefilter_type,
                        prefilter_prompt=body.prefilter_prompt)
+    # Le istruzioni aggiuntive finiscono nelle domande predefinite (nel prefiltro score in un
+    # livello, max 4000 caratteri): si rifiutano qui, prima di salvare una configurazione che né
+    # il classificatore né questa pagina potrebbero più leggere.
+    from rt.services.jev_playground import templates
+    try:
+        templates(legacy)
+    except ValidationError as exc:
+        raise ApiError(422, "validation_error", "Istruzioni aggiuntive troppo lunghe per la domanda del classificatore.") from exc
     # Una decisione identica alla predefinita non si salva: impronta e cache restano quelle di prima.
     if relevance and jev_mapping.is_default("relevance", relevance, legacy):
         relevance = None

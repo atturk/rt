@@ -54,6 +54,25 @@ def test_reset_token_invalidates_previous(anon, rt_db, api_token):
     assert anon.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {new}"}).status_code == 200
 
 
+def test_token_copy_kept_encrypted_for_the_menu(rt_db, tmp_path, monkeypatch):
+    from rt.api.auth import TOKEN_SECRET, reset_token, saved_token
+    from rt.security import secrets as sec
+    from rt.services import secrets_service
+    # Senza archivio dei segreti il token resta solo come hash.
+    assert reset_token(rt_db) and saved_token() is None
+    monkeypatch.setenv("RT_SECRETS_FILE", str(tmp_path / "secrets.enc"))
+    monkeypatch.setenv("RT_MASTER_KEY", sec.generate_master_key())
+    secrets_service.store().initialize()
+    first = reset_token(rt_db)
+    assert saved_token() == first
+    assert first not in (tmp_path / "secrets.enc").read_text(errors="replace")  # cifrato
+    second = reset_token(rt_db)
+    assert saved_token() == second
+    # Una copia che non vale più (token cambiato altrove) non si restituisce.
+    secrets_service.store().set(TOKEN_SECRET, first)
+    assert saved_token() is None
+
+
 def test_ensure_token_only_first_time(rt_db):
     from rt.api.auth import ensure_token
     assert ensure_token(rt_db)

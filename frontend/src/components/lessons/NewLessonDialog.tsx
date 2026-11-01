@@ -32,11 +32,13 @@ import {
   sendLesson,
   sendLessonZips,
   type NewLesson,
+  type ZipImportDecision,
   type ZipImportResult,
 } from '@/api/jobs'
 import { jobFinished, useJobStatus } from '@/api/jobStatus'
 import { JobProgress } from '@/components/JobProgress'
 import { AudioOrder } from '@/components/lessons/AudioOrder'
+import { ImportConflicts } from '@/components/lessons/ImportConflicts'
 import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
@@ -230,7 +232,6 @@ export function NewLessonDialog({
 
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState(String(options?.materia ?? ''))
-  const [argomenti, setArgomenti] = useState(String(options?.argomenti ?? ''))
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
   const clearConflict = () => { setConflict(null); setUploadError(null) }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
@@ -245,6 +246,8 @@ export function NewLessonDialog({
   const [problem, setProblem] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [zipJob, setZipJob] = useState<string | null>(null)
+  // Gli ZIP dell'ultimo invio: per una lezione già presente si rimandano con la scelta.
+  const [sentZips, setSentZips] = useState<File[]>([])
   const openedJob = useRef<string | null>(null)
   const job = useJobStatus(zipJob)
   const result = job.data?.state === 'succeeded' ? (job.data.result as ZipImportResult | null) : null
@@ -409,14 +412,15 @@ export function NewLessonDialog({
 
   const imported =
     result?.results.filter((item) => item.status === 'imported' && item.lesson_id != null) ?? []
+  const conflicts = result?.results.filter((item) => item.status === 'conflict') ?? []
   const alreadyPresent =
-    result?.results.filter((item) => item.code === 'duplicate_lesson').length ?? 0
+    (result?.results.filter((item) => item.code === 'duplicate_lesson').length ?? 0) + conflicts.length
   const rejected =
     result?.results.filter(
       (item) => item.status === 'rejected' && item.code !== 'duplicate_lesson',
     ).length ?? 0
   const only =
-    result && imported.length === 1 && result.rejected === 0 ? imported[0].lesson_id : null
+    result && imported.length === 1 && result.rejected === 0 && conflicts.length === 0 ? imported[0].lesson_id : null
 
   useEffect(() => {
     if (only == null || !zipJob || openedJob.current === zipJob) return
@@ -430,23 +434,14 @@ export function NewLessonDialog({
     if (busy || zipJob) return
 
     if (kind === 'zip') {
-      const files = zipFiles
-      startUpload(
-        files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
-        files,
-        (onProgress, signal) => sendLessonZips(files, onProgress, signal),
-        (accepted) => {
-          setZipJob(accepted.job_id)
-          setZipFiles([])
-        },
-      )
+      sendZips(zipFiles)
       return
     }
 
     if (initialJob) {
       setUploadError(null)
       setRecreating(true)
-      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, argomenti, docente, ora: time } })).then(accepted => {
+      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, docente, ora: time } })).then(accepted => {
         invalidateAfterJob(client)
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
@@ -482,7 +477,6 @@ export function NewLessonDialog({
       calendar_date: chosenSlot ? date : undefined,
       date,
       materia: materia.trim(),
-      argomenti,
       docente: docente.trim(),
       ora: time,
       run: !solo,
@@ -498,6 +492,20 @@ export function NewLessonDialog({
       (accepted) => {
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
+      },
+    )
+  }
+
+  /** Invia gli ZIP; con decisions sono le scelte per le lezioni già presenti del primo invio. */
+  function sendZips(files: File[], decisions?: ZipImportDecision[]) {
+    startUpload(
+      files.length === 1 ? files[0].name : `${files.length} pacchetti .zip`,
+      files,
+      (onProgress, signal) => sendLessonZips(files, onProgress, signal, decisions),
+      (accepted) => {
+        setSentZips(files)
+        setZipJob(accepted.job_id)
+        setZipFiles([])
       },
     )
   }
@@ -918,15 +926,13 @@ export function NewLessonDialog({
               <label className={labelText}>
                 Ora
                 <input
-                  className={field}
+                  className={cn(field, conflict && 'border-danger')}
                   type="time"
                   value={time}
                   disabled={busy}
-                  onChange={(e) => setTime(e.target.value)}
+                  aria-invalid={!!conflict}
+                  onChange={(e) => { setTime(e.target.value); clearConflict() }}
                 />
-              </label>
-              <label className={labelText}>Argomenti
-                <input className={cn(field, conflict && 'border-danger')} value={argomenti} disabled={busy} aria-invalid={!!conflict} onChange={e => { setArgomenti(e.target.value); clearConflict() }} />
               </label>
               <datalist id={`${listId}-materie`}>
                 {subjects.map((s) => (
@@ -1000,12 +1006,26 @@ export function NewLessonDialog({
                         </>
                       )}
                     </>
+                  ) : item.status === 'conflict' ? (
+                    'già presente · scegli qui sotto'
                   ) : (
                     `${item.code === 'duplicate_lesson' ? 'già presente' : 'rifiutata'} · ${item.reason}`
                   )}
+                  {item.replaced_lesson_id != null && ' (ha rimpiazzato la tua)'}
                 </li>
               ))}
             </ul>
+            {conflicts.length > 0 && (
+              <ImportConflicts
+                key={zipJob}
+                items={conflicts}
+                files={sentZips}
+                onSubmit={(files, decisions) => {
+                  setZipJob(null)
+                  sendZips(files, decisions)
+                }}
+              />
+            )}
           </div>
         )}
 

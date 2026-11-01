@@ -36,7 +36,6 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
         input=[FIXTURE_AUDIO],
         date="2026-09-05",
         materia="IMMUNOLOGIA",
-        argomenti="Risposta Innata Demo",
         dest_dir=dest_dir,
         model=None,
         skip_transcribe=False,
@@ -53,7 +52,7 @@ def test_audio_run_e2e_mock(tmp_path, capsys):
         cmd_run(args)
     captured = capsys.readouterr().out
 
-    expected_folder_name = "[2026-09-05] IMMUNOLOGIA - Risposta Innata Demo"
+    expected_folder_name = "[2026-09-05] IMMUNOLOGIA"
     lesson_dir = os.path.join(dest_dir, expected_folder_name)
     assert os.path.isdir(lesson_dir), f"Cartella lezione non creata: {lesson_dir}"
 
@@ -96,7 +95,6 @@ def test_audio_skip_transcribe_creates_metadata_only(tmp_path):
         audio=FIXTURE_AUDIO,
         date="2026-09-05",
         materia="VIROLOGIA",
-        argomenti="Coronavirus",
         dest_dir=dest_dir,
         skip_transcribe=True,
         interactive=False
@@ -123,7 +121,7 @@ def test_existing_folder_protection_and_force(tmp_path):
         audio=FIXTURE_AUDIO,
         date="2026-09-05",
         materia="FARMACOLOGIA",
-        argomenti="Farmacocinetica",
+        ora="10:00",
         dest_dir=dest_dir,
         mock_asr=True,
         interactive=False
@@ -141,7 +139,7 @@ def test_existing_folder_protection_and_force(tmp_path):
             audio=FIXTURE_AUDIO,
             date="2026-09-05",
             materia="FARMACOLOGIA",
-            argomenti="Farmacocinetica",
+            ora="10:00",
             dest_dir=dest_dir,
             mock_asr=True,
             force=False,
@@ -153,7 +151,7 @@ def test_existing_folder_protection_and_force(tmp_path):
         audio=FIXTURE_AUDIO,
         date="2026-09-05",
         materia="FARMACOLOGIA",
-        argomenti="Farmacocinetica",
+        ora="10:00",
         dest_dir=dest_dir,
         mock_asr=True,
         force=True,
@@ -200,7 +198,6 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
         input=[FIXTURE_AUDIO],
         date="2026-09-06",
         materia="BIOINFORMATICA",
-        argomenti="Test Pipeline Custom Dest",
         dest_dir=custom_dest,
         model=None,
         skip_transcribe=False,
@@ -218,7 +215,7 @@ def test_audio_run_with_custom_dest_dir(tmp_path, capsys):
     captured = capsys.readouterr().out
     assert "PIPELINE COMPLETATA CON SUCCESSO" in captured
 
-    expected_folder_name = "[2026-09-06] BIOINFORMATICA - Test Pipeline Custom Dest"
+    expected_folder_name = "[2026-09-06] BIOINFORMATICA"
     expected_lesson_dir = os.path.join(custom_dest, expected_folder_name)
     assert os.path.isdir(expected_lesson_dir), f"La cartella deve essere creata sotto {custom_dest}"
 
@@ -262,7 +259,6 @@ def test_audio_setup_with_custom_dest_dir(tmp_path):
         audio=[FIXTURE_AUDIO],
         date="2026-09-06",
         materia="GENETICA",
-        argomenti="Sequenziamento",
         dest_dir=custom_dest,
         model=None,
         skip_transcribe=False,
@@ -271,7 +267,7 @@ def test_audio_setup_with_custom_dest_dir(tmp_path):
     )
     cmd_setup(args)
 
-    expected_folder_name = "[2026-09-06] GENETICA - Sequenziamento"
+    expected_folder_name = "[2026-09-06] GENETICA"
     expected_lesson_dir = os.path.join(custom_dest, expected_folder_name)
     assert os.path.isdir(expected_lesson_dir), f"Cartella non creata sotto {custom_dest}"
     assert os.path.isfile(os.path.join(expected_lesson_dir, "info.yaml"))

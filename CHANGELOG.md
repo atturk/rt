@@ -1,5 +1,23 @@
 # Novità di RT
 
+## 4.3.5 — 2026-11-01
+
+Raccoglie le correzioni arrivate dopo la 4.3.4.2.
+
+### Novità
+
+- **Nuova lezione senza argomenti**: gli argomenti li scrive l'IA con la scaletta. Il nome della lezione è data, materia e, se c'è, l'ora. Le lezioni che hai già tengono il loro nome.
+- **Import ZIP**: se una lezione con stessa data, materia e ora c'è già, RT chiede se rimpiazzarla, tenerle entrambe o saltarla, e propone di scaricarne prima una copia. Se il rimpiazzo non va a buon fine, la lezione originale torna com'era.
+- **Menu dell'app › Autenticazione**: «Copia token» e «Rigenera token…».
+
+### Correzioni
+
+- **Verifica con i modelli OpenAI** (anche tramite OpenRouter): non fallisce più per lo schema della risposta.
+- **Prova del modello visivo**: niente più «non ha riconosciuto il colore» con i modelli che ragionano. Il messaggio dice perché la prova non è riuscita e api.log riporta la risposta.
+- **Aggiornamento dell'app**: se la connessione cade durante il download, il messaggio lo dice chiaramente e propone di riprovare.
+- Valori troppo lunghi nei segreti, nelle variabili e nelle istruzioni del classificatore vengono rifiutati prima di salvarli, invece di rompere le impostazioni.
+- Richieste con id o materie non validi rispondono con un errore chiaro invece che con un errore interno.
+
 ## 4.3.4.2 — 2026-10-30
 
 ### Correzioni
