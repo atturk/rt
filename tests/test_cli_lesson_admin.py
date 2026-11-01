@@ -67,7 +67,7 @@ def test_import_matches_api_and_reports_rejected_archives(workspace, rt_db, api_
     out, err = capsys.readouterr()
     assert "lezione.zip: importata come" in out
     assert "rotto.zip: Archivio ZIP non valido." in err
-    assert "esiste già." in err  # il secondo import della stessa lezione, come nell'API
+    assert "lezione.zip: Hai già una lezione di BIOCHIMICA" in err  # il secondo import della stessa lezione, come nell'API
     imported = [item for item in api_client.get("/api/v1/lessons").json()
                 if item["folder_name"] == os.path.basename(lesson)]
     assert len(imported) == 1

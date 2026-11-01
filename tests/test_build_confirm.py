@@ -265,7 +265,7 @@ def test_preview_zip_all_reimports(api_client, api_lesson):
     with zipfile.ZipFile(io.BytesIO(res.content)) as source, zipfile.ZipFile(copy, "w") as target:
         for name in source.namelist():
             target.writestr("Copia/" + name.split("/", 1)[1], source.read(name))
-    imported = import_archive(io.BytesIO(copy.getvalue()))
+    imported = import_archive(io.BytesIO(copy.getvalue()), on_existing="keep")  # è la stessa lezione: si tiene accanto
     assert api_client.get(f"/api/v1/lessons/{imported}").status_code == 200
 
 

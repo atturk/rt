@@ -45,9 +45,8 @@ def test_strict_reports_all_missing_fields(audio):
 
 
 def test_defaults_without_prompter(audio):
-    req = resolve_setup_request(audio, argomenti=" Lipidi ")
+    req = resolve_setup_request(audio)
     assert req.materia == "BIOCHIMICA"  # dedotta dal nome del file
-    assert req.argomenti == "Lipidi"
     assert len(req.date) == 10
 
 

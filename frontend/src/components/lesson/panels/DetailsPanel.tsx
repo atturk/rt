@@ -423,6 +423,14 @@ export function DetailsPanel({
 
       {/* Riepilogo */}
       <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body" data-testid="lesson-details">
+        {/* Generati dall'IA con la scaletta: non si scrivono, ma si cercano dalla lista. */}
+        {l.argomenti && (
+          <>
+            <dt className="text-meta text-muted-foreground">Argomenti</dt>
+            <dd data-testid="lesson-topics">{l.argomenti}</dd>
+          </>
+        )}
+
         <dt className="self-center text-meta text-muted-foreground">Stato</dt>
         <dd>{l.state ? STATE_LABELS[l.state] ?? l.state : '—'}</dd>
 

@@ -54,16 +54,129 @@ def group_archive_members(archive: str) -> Optional[List[str]]:
         return [item.filename for item in _checked_files(zipped)]
 
 
-def import_group_member(archive: str, member: str) -> int:
+def import_group_member(archive: str, member: str, **choice) -> int:
     """Ogni ZIP interno passa dall'importatore normale, inclusi manifesto e checksum."""
     with zipfile.ZipFile(archive) as zipped, tempfile.TemporaryFile() as temporary:
         with zipped.open(member) as source:
             shutil.copyfileobj(source, temporary, length=1 << 20)
         temporary.seek(0)
-        return import_archive(temporary)
+        return import_archive(temporary, **choice)
 
 
-def import_archive(archive: Union[str, BinaryIO]) -> int:
+EXISTING_ACTIONS = ("ask", "replace", "keep")
+
+
+class LessonAlreadyPresent(Conflict):
+    """Nell'archivio c'è una lezione che l'utente ha già (stessa data, materia e ora):
+    l'importazione si ferma e chiede se rimpiazzarla, tenerle entrambe o saltarla."""
+
+    def __init__(self, existing: dict, incoming: dict, can_keep_both: bool):
+        from datetime import date as calendar_date
+        try:
+            day = calendar_date.fromisoformat(existing["data"]).strftime("%d/%m/%Y")
+        except ValueError:
+            day = existing["data"]
+        when = f"del {day}" + (f" alle {existing['ora']}" if existing.get("ora") else "")
+        super().__init__("lesson_already_present",
+                         f"Hai già una lezione di {existing['materia']} {when}: «{existing['titolo']}».",
+                         {"existing": existing, "incoming": incoming, "can_keep_both": can_keep_both})
+
+
+def _iso_day(value) -> str:
+    from rt.pipeline.setup import parse_flexible_date
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return parse_flexible_date(text)
+    except Exception:  # noqa: BLE001 - una data illeggibile non identifica nessuna lezione
+        return ""
+
+
+def _identity(info: dict) -> dict:
+    from rt.services.calendar_service import normalize_subject, normalize_time
+    return {"data": _iso_day(info.get("data")), "materia": normalize_subject(info.get("materia")),
+            "ora": normalize_time(str(info.get("ora") or "")),
+            "titolo": str(info.get("titolo") or ""), "argomenti": str(info.get("argomenti") or "")}
+
+
+def _archive_info(zipped: zipfile.ZipFile, name: str) -> dict:
+    import yaml
+    try:
+        info = yaml.safe_load(zipped.read(name).decode("utf-8"))
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise Invalid("invalid_archive", "info.yaml dell'archivio illeggibile.")
+    return info if isinstance(info, dict) else {}
+
+
+def _same_lesson(session, target: str, incoming: dict) -> Optional[dict]:
+    """La lezione già presente che corrisponde a quella dell'archivio: prima quella con lo
+    stesso nome di cartella, poi una con stessa data e materia e, se entrambe hanno l'ora,
+    la stessa ora. Argomenti e fonti non contano: due studenti alla stessa lezione li
+    scrivono diversi, ma la lezione è la stessa."""
+    from sqlalchemy import select
+    from rt.core.state import read_info_yaml
+    same_folder = LessonRepository(session).get_by_path(target)
+    candidates = [same_folder] if same_folder is not None else []
+    if incoming["data"] and incoming["materia"]:
+        candidates += [row for row in session.scalars(select(Lesson).order_by(Lesson.id)) if row is not same_folder]
+    for row in candidates:
+        try:
+            info_file = lesson_path(row.path, "info.yaml")
+            info = read_info_yaml(info_file) if fs.isfile(info_file) else {}
+        except Exception:  # noqa: BLE001 - una lezione illeggibile non blocca l'import
+            info = {}
+        have = _identity({"data": info.get("data") or row.data, "materia": info.get("materia") or row.materia,
+                          "ora": info.get("ora"), "titolo": info.get("titolo") or row.titolo,
+                          "argomenti": info.get("argomenti") or row.argomenti})
+        if row is not same_folder and (have["data"] != incoming["data"] or have["materia"] != incoming["materia"]
+                                       or (have["ora"] and incoming["ora"] and have["ora"] != incoming["ora"])):
+            continue
+        return {**have, "lesson_id": row.id, "folder_name": row.folder_name,
+                "titolo": have["titolo"] or row.folder_name}
+    return None
+
+
+def _backup_for_replace(lesson_id: int) -> str:
+    """ZIP completo (stato dello studio compreso) della lezione da rimpiazzare: se la
+    sostituzione si interrompe, la lezione torna com'era."""
+    from rt.services.lesson_service import resolve_lesson_dir
+    from rt.storage.export import ExportError, export_zip_to_tempfile
+    try:
+        return export_zip_to_tempfile(resolve_lesson_dir(lesson_id), "all", study=True)
+    except ExportError as exc:
+        raise Conflict("replace_backup_failed",
+                       f"Non riesco a fare la copia di sicurezza della lezione da rimpiazzare: {exc}")
+
+
+def _calendar_links(session, lesson_id: int) -> List[int]:
+    from sqlalchemy import select
+    from rt.db.models import CalendarEntryState
+    return list(session.scalars(select(CalendarEntryState.id).where(CalendarEntryState.lesson_id == lesson_id)))
+
+
+def _relink_calendar(session, state_ids: List[int], lesson_id: int) -> None:
+    from sqlalchemy import update
+    from rt.db.models import CalendarEntryState
+    if state_ids:
+        session.execute(update(CalendarEntryState).where(CalendarEntryState.id.in_(state_ids))
+                        .values(lesson_id=lesson_id))
+
+
+def _remove_lesson(lesson_id: int) -> None:
+    from rt.services.lesson_delete_service import delete_lesson
+    from rt.services.lesson_service import resolve_lesson_dir
+    delete_lesson(lesson_id, resolve_lesson_dir(lesson_id))
+
+
+def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
+                   replace_id: Optional[int] = None) -> int:
+    """Importa un export completo. Se la lezione c'è già (vedi _same_lesson):
+    on_existing="ask" la rifiuta con LessonAlreadyPresent; "replace" sostituisce per intero
+    la lezione replace_id (file, scaletta, stato dello studio), con ripristino automatico se
+    qualcosa va storto; "keep" la importa accanto, se il nome della cartella è libero."""
+    if on_existing not in EXISTING_ACTIONS:
+        raise Invalid("invalid_decision", "Scelta non valida per una lezione già presente.")
     root = lessons_root()
     db = get_database()
     if db is None:
@@ -94,6 +207,7 @@ def import_archive(archive: Union[str, BinaryIO]) -> int:
             raise Invalid("invalid_archive", "File non dichiarati nel manifesto.")
         if not declared or not f"{folder}/info.yaml" in declared or set(declared) - set(names):
             raise Invalid("invalid_archive", "Archivio incompleto: manca info.yaml o un file dichiarato.")
+        incoming = {**_identity(_archive_info(zipped, f"{folder}/info.yaml")), "folder_name": folder}
 
         target = os.path.join(os.path.realpath(root), folder)
         with session_scope(db) as session:
@@ -103,8 +217,21 @@ def import_archive(archive: Union[str, BinaryIO]) -> int:
                 from rt.services.lesson_delete_service import purge_lesson_records
                 purge_lesson_records(session, existing)
                 session.delete(existing)
+                session.flush()
                 existing = None
-            if existing is not None or os.path.lexists(target):
+            folder_taken = existing is not None or os.path.lexists(target)
+            existing_id = existing.id if existing is not None else None
+            match = _same_lesson(session, target, incoming)
+        if match is None and folder_taken:
+            # Cartella con lo stesso nome ma fuori dal database: non è una lezione da rimpiazzare.
+            raise Conflict("duplicate_lesson", f"La lezione {folder} esiste già.")
+        replacing = None
+        if match is not None:
+            if on_existing == "replace" and replace_id == match["lesson_id"]:
+                replacing = match
+            elif not (on_existing == "keep" and not folder_taken):
+                raise LessonAlreadyPresent(match, incoming, can_keep_both=not folder_taken)
+            if replacing and folder_taken and existing_id != match["lesson_id"]:
                 raise Conflict("duplicate_lesson", f"La lezione {folder} esiste già.")
         staging_base = work_dir()
         os.makedirs(staging_base, exist_ok=True)
@@ -123,21 +250,55 @@ def import_archive(archive: Union[str, BinaryIO]) -> int:
                         output.write(chunk)
                 if digest.hexdigest() != row.get("sha256"):
                     raise Invalid("invalid_archive", "Checksum dei file non corrispondente.")
-            # Copy into DB storage only after every entry has passed validation.
-            target = fs.create_db_lesson(target)
+            # La lezione da rimpiazzare si toglie solo dopo che l'archivio ha passato ogni
+            # controllo, e prima se ne fa una copia completa per poterla rimettere.
+            backup, links = None, []
+            if replacing:
+                backup = _backup_for_replace(replacing["lesson_id"])
+                with session_scope(db) as session:
+                    links = _calendar_links(session, replacing["lesson_id"])
+                try:
+                    _remove_lesson(replacing["lesson_id"])
+                except BaseException:
+                    os.unlink(backup)
+                    raise
+            created_id = None
             try:
+                target = fs.create_db_lesson(target)
+                with session_scope(db) as session:
+                    created_id = LessonRepository(session).get_by_path(target).id
                 for name in declared:
                     rel = name[len(folder) + 1:]
                     fs.copy2(os.path.join(staging, *rel.split("/")), lesson_path(target, rel))
-            except BaseException:
-                from rt.services.lesson_delete_service import delete_lesson
                 with session_scope(db) as session:
-                    created = LessonRepository(session).get_by_path(target)
-                    lesson_id = created.id
-                delete_lesson(lesson_id, target)
+                    from rt.services.study_progress_service import restore_units
+                    restore_units(session, created_id, manifest.get("study"))
+                    _relink_calendar(session, links, created_id)
+            except BaseException:
+                if created_id is not None:
+                    _remove_lesson(created_id)
+                if backup:
+                    _restore_replaced(backup, links)
                 raise
-        with session_scope(db) as session:
-            lesson = LessonRepository(session).get_by_path(target)
-            from rt.services.study_progress_service import restore_units
-            restore_units(session, lesson.id, manifest.get("study"))
-            return lesson.id
+            if backup:
+                os.unlink(backup)
+            return created_id
+
+
+def _restore_replaced(backup: str, links: List[int]) -> None:
+    """Rimette la lezione rimpiazzata dalla sua copia. Se nemmeno questo riesce, la copia
+    resta nella cartella dei backup di RT invece di essere cancellata."""
+    try:
+        restored = import_archive(backup, on_existing="keep")
+        with session_scope(get_database()) as session:
+            _relink_calendar(session, links, restored)
+    except BaseException as exc:
+        from rt.core.paths import data_dir
+        folder = os.path.join(data_dir(), "backups")
+        os.makedirs(folder, exist_ok=True)
+        kept = os.path.join(folder, "lezione-rimpiazzata-" + os.path.basename(backup))
+        shutil.move(backup, kept)
+        raise Conflict("replace_restore_failed",
+                       f"Sostituzione non riuscita e lezione originale non ripristinata: la sua copia è in {kept}. "
+                       f"Importala da lì.") from exc
+    os.unlink(backup)

@@ -13,6 +13,7 @@ Lo stato dell'operazione (scaricamento, installazione, errore) vive nel processo
 esegue: la pagina Info lo legge con GET /api/v1/system/update.
 """
 import hashlib
+import http.client
 import json
 import os
 import shutil
@@ -226,6 +227,22 @@ def expected_sha256(sums_text: str, name: str) -> Optional[str]:
     return None
 
 
+# Secondi senza ricevere dati prima di dichiarare caduta la connessione: con un cambio di
+# rete il socket resta appeso e senza un limite breve l'app sembra bloccata.
+READ_TIMEOUT = 20
+
+
+def _megabytes(size: int) -> str:
+    return f"{size / (1 << 20):.1f} MB".replace(".", ",")
+
+
+def _interrupted(done: int, total: Optional[int]) -> AppUpdateError:
+    """Errore chiaro quando la rete cade o cambia durante il download."""
+    progress = f" dopo {_megabytes(done)}" + (f" su {_megabytes(total)}" if total else "") if done else ""
+    return AppUpdateError(f"La connessione si è interrotta durante il download dell'aggiornamento{progress}. "
+                          "Controlla la rete e riprova: il download riparte da capo.")
+
+
 def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None] = lambda done, total: None,
              opener: Callable = urllib.request.urlopen) -> str:
     """Scarica l'installer e lo verifica con SHA256SUMS; restituisce il percorso del file."""
@@ -233,10 +250,11 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
         raise AppUpdateError("Nessun aggiornamento da scaricare.")
     headers = {"User-Agent": "RT-Updater"}
     try:
-        with opener(urllib.request.Request(info.sums_url, headers=headers), timeout=30) as resp:
+        with opener(urllib.request.Request(info.sums_url, headers=headers), timeout=READ_TIMEOUT) as resp:
             sums = resp.read().decode("utf-8", "replace")
-    except (urllib.error.URLError, OSError) as exc:
-        raise AppUpdateError(f"Impossibile scaricare SHA256SUMS: {exc}") from None
+    except (urllib.error.URLError, OSError):
+        raise AppUpdateError("Non riesco a raggiungere il server degli aggiornamenti: controlla la "
+                             "connessione e riprova.") from None
     expected = expected_sha256(sums, info.asset_name)
     if not expected:
         raise AppUpdateError(f"SHA256SUMS non elenca {info.asset_name}.")
@@ -244,8 +262,9 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
     partial = target + ".part"
     digest = hashlib.sha256()
     done = 0
+    total = info.asset_size or None
     try:
-        with opener(urllib.request.Request(info.asset_url, headers=headers), timeout=60) as resp, \
+        with opener(urllib.request.Request(info.asset_url, headers=headers), timeout=READ_TIMEOUT) as resp, \
                 open(partial, "wb") as out:
             total = info.asset_size or int(resp.headers.get("Content-Length") or 0) or None
             while True:
@@ -256,9 +275,13 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
                 digest.update(chunk)
                 done += len(chunk)
                 on_progress(done, total)
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
         _remove(partial)
-        raise AppUpdateError(f"Download interrotto: {exc}") from None
+        raise _interrupted(done, total) from None
+    if total and done < total:
+        # Il server ha chiuso la connessione prima della fine: non è un file alterato.
+        _remove(partial)
+        raise _interrupted(done, total)
     if digest.hexdigest() != expected:
         _remove(partial)
         raise AppUpdateError("Il file scaricato non corrisponde a SHA256SUMS: aggiornamento annullato.")

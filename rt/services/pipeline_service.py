@@ -31,7 +31,6 @@ class PipelineOptions:
     """Opzioni di 'rt run'. I campi di setup servono solo quando l'input è audio."""
     date: Optional[str] = None
     materia: Optional[str] = None
-    argomenti: Optional[str] = None
     docente: Optional[str] = None
     ora: Optional[str] = None
     dest_dir: Optional[str] = None
@@ -222,7 +221,6 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> 
         audio=raw_inputs,
         date=options.date,
         materia=options.materia,
-        argomenti=options.argomenti,
         docente=options.docente,
         ora=options.ora,
         dest_dir=options.dest_dir,

@@ -57,6 +57,41 @@ def test_model_test_minimal_call_before_saving(api_client, ws, llm):
     assert api_client.get("/api/v1/settings").json()["phases"] == before
 
 
+def test_vision_test_sends_readable_image_and_room_for_reasoning(api_client, ws, llm):
+    import base64
+    import struct
+    server, url = llm
+    _connection(api_client, f"{url}/v1")
+    data = api_client.post("/api/v1/settings/models/test",
+                           json={"connection": "Locale", "model": "vede-rosso", "vision": True}).json()
+    assert data["ok"] is True and data["vision_verified"] is True, data
+    sent = server.requests[-1]["json"]
+    # i modelli con ragionamento hanno bisogno di token oltre la risposta
+    assert sent["max_tokens"] >= 512
+    image_url = sent["messages"][0]["content"][1]["image_url"]["url"]
+    png = base64.b64decode(image_url.split(",", 1)[1])
+    assert png.startswith(b"\x89PNG") and min(struct.unpack(">II", png[16:24])) >= 64
+
+
+def test_vision_test_explains_why_it_failed(api_client, ws, llm):
+    _, url = llm
+    _connection(api_client, f"{url}/v1")
+    data = api_client.post("/api/v1/settings/models/test",
+                           json={"connection": "Locale", "model": "pensa-troppo", "vision": True}).json()
+    assert data["ok"] is False and "ragionare" in data["message"]
+    data = api_client.post("/api/v1/settings/models/test",
+                           json={"connection": "Locale", "model": "cieco", "vision": True}).json()
+    assert data["ok"] is False and "Non vedo immagini" in data["message"]
+
+
+@pytest.mark.parametrize("reply, red", [("Rosso", True), ("rossa.", True), ("The square is red.", True),
+                                        ("Rouge", True), ("#FF0000", True), ("", False), ("blu", False),
+                                        ("rosa", False)])
+def test_vision_reply_color_matching(reply, red):
+    from rt.services.probes import _says_red
+    assert _says_red(reply) is red
+
+
 def test_model_test_reports_provider_error(api_client, ws, llm):
     _, url = llm
     _connection(api_client, f"{url}/v1")

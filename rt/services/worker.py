@@ -312,7 +312,7 @@ class Worker:
                     options = job.payload.get('options') or {}
                     if options.get('date') and options.get('materia') and options.get('dest_dir'):
                         from rt.services.lesson_conflicts import require_no_lesson_conflict
-                        require_no_lesson_conflict(options['date'], options['materia'], options.get('argomenti'), options['dest_dir'])
+                        require_no_lesson_conflict(options['date'], options['materia'], options.get('ora'), options['dest_dir'])
                 outcome = handler(job, ctx)
             except RunCancelled:
                 outcome = JobOutcome(state=JobState.CANCELLED)

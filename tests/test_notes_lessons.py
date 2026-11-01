@@ -65,9 +65,14 @@ def test_create_notes_via_api_without_audio(api_client, rt_db, tmp_path, monkeyp
 def test_notes_creation_rejects_empty_and_duplicate(tmp_path):
     with pytest.raises(ValueError):
         create_notes_lesson(" ", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
-    lesson = create_notes_lesson("original", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
+    lesson = create_notes_lesson("original", date="2026-10-12", materia="Test", ora="09:00", dest_dir=str(tmp_path))
     with pytest.raises(ValueError):
-        create_notes_lesson("replacement", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
+        create_notes_lesson("replacement", date="2026-10-12", materia="Test", ora="09:00", dest_dir=str(tmp_path))
+    # Senza ora la stessa materia nello stesso giorno è un'altra lezione: prende "(2)".
+    first = create_notes_lesson("prima", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
+    second = create_notes_lesson("seconda", date="2026-10-12", materia="Test", dest_dir=str(tmp_path))
+    assert [os.path.basename(p) for p in (lesson, first, second)] == [
+        "[2026-10-12] TEST - ore 09.00", "[2026-10-12] TEST", "[2026-10-12] TEST (2)"]
     from rt.core.sources import load_sources
     with fs.open(os.path.join(lesson, load_sources(lesson)[0].file)) as stream:
         assert stream.read() == "original"
