@@ -1,6 +1,8 @@
 """Creazione di una lezione con fonti miste, mantenendo l'import storico separato."""
 import os
+import shutil
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import yaml
@@ -63,39 +65,64 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
         if merged_dir:
             shutil.rmtree(merged_dir, ignore_errors=True)
         raise
-    # Gli argomenti li scrive il build, generati dall'IA.
-    info = {'data': date, 'materia': materia, 'argomenti': '', 'docente': docente,
-        'ora': ora, 'cartella': os.path.basename(lesson_dir), 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
-        'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',
-        'allega_materiali': bool(materiali and allega_materiali)}
-    with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
-        yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
-    if merged_dir:
-        try:
-            audio_sources = [add_source(lesson_dir, 'audio', 'audio completo.m4a', None, source_path=temp_merged, parti=parts)]
-        finally:
+    try:
+        # Gli argomenti li scrive il build, generati dall'IA.
+        info = {'data': date, 'materia': materia, 'argomenti': '', 'docente': docente,
+            'ora': ora, 'cartella': os.path.basename(lesson_dir), 'file_audio': '', 'creato_il': datetime.now(timezone.utc).isoformat(),
+            'fase_corrente': 'setup_completato', 'stato': 'pronto_per_rielaborazione',
+            'allega_materiali': bool(materiali and allega_materiali)}
+        with fs.open(lesson_path(lesson_dir, 'info.yaml'), 'w', encoding='utf-8') as stream:
+            yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
+        if merged_dir:
+            try:
+                audio_sources = [add_source(lesson_dir, 'audio', 'audio completo.m4a', None, source_path=temp_merged, parti=parts)]
+            finally:
+                shutil.rmtree(merged_dir, ignore_errors=True)
+        else:
+            audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
+        notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
+        documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path, **(opzioni or {}).get(os.path.basename(path), {})) for path in materiali]
+        if audio_sources:
+            primary = audio_sources[0]
+        elif principale in ('Appunti', 'appunti.txt') and notes:
+            primary = notes
+        elif principale:
+            primary = next(s for s in documents if os.path.basename(s.file) == principale)
+        elif documents:
+            primary = next((d for d in documents if d.estrai != 'solo_immagini'), documents[0])
+        else:
+            primary = notes
+        # Con una registrazione la guida è l'audio; senza, un documento con del testo.
+        guide = [] if audio_sources else [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida'
+                 and s.estrai != 'solo_immagini']
+        set_primary(lesson_dir, guide[-1].id if guide else primary.id)
+        from rt.db.sync import dual_write_lesson
+        dual_write_lesson(lesson_dir)
+    except BaseException:
+        # Una lezione senza fonti bloccherebbe il nuovo tentativo: si toglie del tutto.
+        if merged_dir:
             shutil.rmtree(merged_dir, ignore_errors=True)
-    else:
-        audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
-    notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
-    documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path, **(opzioni or {}).get(os.path.basename(path), {})) for path in materiali]
-    if audio_sources:
-        primary = audio_sources[0]
-    elif principale in ('Appunti', 'appunti.txt') and notes:
-        primary = notes
-    elif principale:
-        primary = next(s for s in documents if os.path.basename(s.file) == principale)
-    elif documents:
-        primary = next((d for d in documents if d.estrai != 'solo_immagini'), documents[0])
-    else:
-        primary = notes
-    # Con una registrazione la guida è l'audio; senza, un documento con del testo.
-    guide = [] if audio_sources else [s for s in documents if (opzioni or {}).get(os.path.basename(s.file), {}).get('uso') == 'guida'
-             and s.estrai != 'solo_immagini']
-    set_primary(lesson_dir, guide[-1].id if guide else primary.id)
-    from rt.db.sync import dual_write_lesson
-    dual_write_lesson(lesson_dir)
+        discard_new_lesson(lesson_dir)
+        raise
     return lesson_dir
+
+
+def discard_new_lesson(lesson_dir):
+    """Toglie una lezione appena creata dall'import che non è riuscito a completarla.
+    Nessun job la indica ancora (il job la collega solo dopo la creazione)."""
+    import logging
+    try:
+        from rt.db.engine import get_database
+        if get_database() is not None:
+            from rt.services.lesson_delete_service import delete_lesson
+            from rt.services.lesson_service import lesson_id_for_dir
+            lesson_id = lesson_id_for_dir(lesson_dir)
+            if lesson_id is not None:
+                delete_lesson(lesson_id, lesson_dir)
+                return
+        fs.rmtree(lesson_dir, ignore_errors=True)
+    except Exception:
+        logging.getLogger(__name__).exception("Lezione incompleta non rimossa: %s", lesson_dir)
 
 
 def link_imported_lesson(lesson_dir, entry_id, calendar_date, calendar_materia=None, calendar_start=None):
@@ -136,6 +163,23 @@ def record_import(lesson_dir):
     if fs.isfile(lesson_path(lesson_dir, 'outline.json')):
         count = sum(len(m.units) for m in load_outline(lesson_dir).macro_sections)
     record_version(lesson_dir, 'import', added=[s.id for s in load_sources(lesson_dir)], new=count)
+
+
+@contextmanager
+def link_after_failure(ctx, payload, enabled=True):
+    """Se il job fallisce dopo aver creato la lezione, l'ora del calendario si collega lo
+    stesso: altrimenti resta "da registrare" accanto a una lezione che esiste già."""
+    try:
+        yield
+    except BaseException:
+        if enabled and getattr(ctx, 'lesson_dir', None) and fs.isdir(ctx.lesson_dir):
+            try:
+                link_imported_lesson(ctx.lesson_dir, payload.get('calendar_entry_id'), payload.get('calendar_date'),
+                                     payload.get('calendar_materia'), payload.get('calendar_start'))
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Collegamento al calendario non riuscito")
+        raise
 
 
 def finish_import(outcome, payload):
