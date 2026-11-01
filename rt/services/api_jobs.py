@@ -416,11 +416,14 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Importa gli archivi ZIP completi caricati via API, uno alla volta: un archivio rifiutato
     (anche già alla richiesta, per nome o firma) non ferma gli altri. Il risultato elenca per
-    ogni file l'esito e l'id della lezione creata."""
+    ogni file l'esito e l'id della lezione creata. Una lezione che l'utente ha già finisce tra
+    i conflitti ("conflict") con i dati delle due lezioni: l'interfaccia chiede cosa fare e
+    rimanda l'archivio con la scelta (decisions: rimpiazza o tieni entrambe)."""
     import zipfile
     from rt.services.context import RunCancelled, _sanitize
     from rt.services.errors import ServiceError
-    from rt.services.lesson_import_service import group_archive_members, import_archive, import_group_member
+    from rt.services.lesson_import_service import (LessonAlreadyPresent, group_archive_members, import_archive,
+                                                    import_group_member)
     entries = []
     for entry in job.payload.get("archives") or []:
         if not isinstance(entry, dict):
@@ -436,10 +439,14 @@ def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         except (zipfile.BadZipFile, ValueError):
             entries.append({**entry, "reason": "Archivio ZIP non valido.", "code": "invalid_archive"})
         else:
+            decisions = entry.get("decisions")
             if members is None:
                 entries.append(entry)
             else:
-                entries.extend({**entry, "file": member, "member": member} for member in members)
+                # Rimandando un gruppo con le scelte si importano solo le lezioni decise:
+                # le altre sono già entrate al primo invio.
+                entries.extend({**entry, "archive": entry["file"], "file": member, "member": member} for member in members
+                               if not decisions or member in decisions)
     total, results = len(entries), []
     for index, entry in enumerate(entries):
         ctx.check_cancelled()
@@ -451,10 +458,18 @@ def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                             "reason": entry.get("reason") or "Archivio non più disponibile: caricalo di nuovo.",
                             "code": entry.get("code") or "invalid_archive"})
             continue
+        decision = (entry.get("decisions") or {}).get(entry.get("member") or "") or {}
+        choice = {"on_existing": decision.get("action") or "ask", "replace_id": decision.get("lesson_id")}
+        member = {"member": entry["member"]} if entry.get("member") else {}
         try:
-            lesson_id = import_group_member(path, entry["member"]) if entry.get("member") else import_archive(path)
+            lesson_id = (import_group_member(path, entry["member"], **choice) if entry.get("member")
+                         else import_archive(path, **choice))
         except RunCancelled:
             raise
+        except LessonAlreadyPresent as exc:
+            results.append({"file": name, "archive": entry.get("archive") or name, **member, "status": "conflict", "reason": exc.message, "code": exc.code,
+                            "existing": exc.details["existing"], "incoming": exc.details["incoming"],
+                            "can_keep_both": exc.details["can_keep_both"]})
         except ServiceError as exc:
             results.append({"file": name, "status": "rejected", "reason": exc.message, "code": exc.code})
         except (zipfile.BadZipFile, ValueError):
@@ -463,10 +478,14 @@ def import_lesson_zips_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
             results.append({"file": name, "status": "rejected",
                             "reason": _sanitize(f"Importazione non riuscita: {type(exc).__name__}: {exc}")[:500]})
         else:
-            results.append({"file": name, "status": "imported", "lesson_id": lesson_id})
+            replaced = choice["replace_id"] if choice["on_existing"] == "replace" else None
+            results.append({"file": name, "status": "imported", "lesson_id": lesson_id,
+                            **({"replaced_lesson_id": replaced} if replaced is not None else {})})
     imported = sum(1 for r in results if r["status"] == "imported")
+    conflicts = sum(1 for r in results if r["status"] == "conflict")
     ctx.progress(IMPORT_LESSON_ZIPS, total, total, message=f"Importate {imported} su {total}")
-    return _done({"results": results, "imported": imported, "rejected": total - imported})
+    return _done({"results": results, "imported": imported, "conflicts": conflicts,
+                  "rejected": total - imported - conflicts})
 
 
 EXPORT_MAX_AGE_HOURS = 24

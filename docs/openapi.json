@@ -1097,6 +1097,18 @@
             },
             "title": "Archives",
             "type": "array"
+          },
+          "decisions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "JSON: scelte per le lezioni già presenti segnalate da un import precedente (status 'conflict'), [{file, member?, action: 'replace'|'keep', lesson_id?}]. Con 'replace' lesson_id è la lezione da rimpiazzare (existing.lesson_id). Di un gruppo si importano solo le lezioni con una scelta.",
+            "title": "Decisions"
           }
         },
         "required": [
