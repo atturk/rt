@@ -105,7 +105,6 @@ export type NewLesson = {
   calendar_date?: string
   date: string
   materia: string
-  argomenti: string
   docente: string
   ora?: string
   run: boolean
@@ -132,7 +131,6 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   if (input.calendar_date) form.append('calendar_date', input.calendar_date)
   form.append('date', input.date)
   form.append('materia', input.materia)
-  form.append('argomenti', input.argomenti)
   form.append('docente', input.docente)
   form.append('ora', input.ora ?? '')
   form.append('run', String(input.run))
@@ -145,7 +143,6 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
     appunti: '',
     date: input.date,
     materia: input.materia,
-    argomenti: input.argomenti,
     docente: input.docente,
     ora: input.ora ?? '',
     run: input.run,

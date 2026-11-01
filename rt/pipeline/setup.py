@@ -122,7 +122,6 @@ class SetupRequest(BaseModel):
     audio: List[str]
     date: str
     materia: str
-    argomenti: str = ""
     docente: str = ""
     ora: str = ""
 
@@ -396,7 +395,6 @@ def resolve_setup_request(
     audio: Union[str, List[str], None],
     date: Optional[str] = None,
     materia: Optional[str] = None,
-    argomenti: Optional[str] = None,
     prompter: Optional[SetupPrompter] = None,
     strict: bool = False,
     docente: Optional[str] = None,
@@ -463,19 +461,30 @@ def resolve_setup_request(
         audio=cleaned_audios,
         date=date_val,
         materia=sanitize_filename_part(materia_val.upper()),
-        # Argomenti opzionali: se vuoti non vengono registrati né mostrati all'LLM.
-        argomenti=sanitize_filename_part(argomenti.strip()) if argomenti and argomenti.strip() else "",
         # Il docente non entra nel nome della cartella: resta com'è scritto (una riga).
         docente=" ".join((docente or "").split()),
         ora=(ora or "").strip(),
     )
 
 
+def _resumable_setup_folder(path: str) -> bool:
+    """Cartella con i soli metadati provvisori di un import interrotto: si può riprendere."""
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.state import read_info_yaml
+    names = ("review_decisions.json", "draft.json", "rielaborato.md", "trascritto grezzo.json", "trascritto grezzo.md")
+    if any(fs.isfile(lesson_path(path, name)) for name in names):
+        return False
+    info_file = lesson_path(path, "info.yaml")
+    try:
+        return fs.isfile(info_file) and read_info_yaml(info_file).get("stato") == "in_attesa_di_trascrizione"
+    except Exception:  # noqa: BLE001 - una cartella illeggibile non si riprende
+        return False
+
+
 def run_setup(
     audio: Union[str, List[str]],
     date: Optional[str] = None,
     materia: Optional[str] = None,
-    argomenti: Optional[str] = None,
     dest_dir: Optional[str] = None,
     model: str = DEFAULT_MODEL,
     skip_transcribe: bool = False,
@@ -500,11 +509,11 @@ def run_setup(
     - Gestione coerente di --skip-transcribe (stato METADATA_ONLY)
     - Supporto a file audio singolo o lista di file audio (concatenazione deterministica con offset temporale cumulativo)
     """
-    # 1-2. Metadati (audio, data, materia, argomenti) validati, eventualmente chiesti al prompter
+    # 1-2. Metadati (audio, data, materia) validati, eventualmente chiesti al prompter
     if not model:
         model = DEFAULT_MODEL
     request = resolve_setup_request(
-        audio, date=date, materia=materia, argomenti=argomenti,
+        audio, date=date, materia=materia,
         prompter=prompter if interactive else None, strict=strict, docente=docente, ora=ora,
     )
     cleaned_audios = request.audio
@@ -513,7 +522,8 @@ def run_setup(
     audio_dir = os.path.dirname(os.path.abspath(primary_audio))
     date_val = request.date
     materia_val = request.materia
-    argomenti_val = request.argomenti
+    # Gli argomenti non si chiedono più: li genera l'IA e il build li scrive in info.yaml.
+    argomenti_val = ""
     docente_val = request.docente
     ora_val = request.ora
 
@@ -533,8 +543,16 @@ def run_setup(
     else:
         default_base = audio_dir if (audio_dir and fs.isdir(audio_dir)) else os.getcwd()
 
-    folder_name = f"[{date_val}] {materia_val}" + (f" - {argomenti_val}" if argomenti_val else "")
-    target_folder_path = os.path.join(default_base, folder_name)
+    from rt.services.lesson_conflicts import free_lesson_path, lesson_folder
+    if ora_val:
+        # Stessa data, materia e ora: è la stessa lezione, e i controlli qui sotto lo dicono.
+        target_folder_path = os.path.join(default_base, lesson_folder(date_val, materia_val, ora_val))
+    else:
+        # Senza ora un'altra lezione dello stesso giorno prende "(2)"; un import interrotto
+        # (solo metadati provvisori) si riprende nella sua cartella; --force riusa la prima.
+        target_folder_path = free_lesson_path(default_base, lesson_folder(date_val, materia_val),
+                                              reusable=(lambda _path: True) if force else _resumable_setup_folder)
+    folder_name = os.path.basename(target_folder_path)
 
     # 4. CONTROLLO DI SICUREZZA CARTELLA ESISTENTE (Parte Q)
     if fs.isdir(target_folder_path):
@@ -563,7 +581,7 @@ def run_setup(
             else:
                 raise SetupError(
                     f"La cartella '{target_folder_path}' è già inizializzata come lezione RT: apri la lezione "
-                    f"esistente o importa con argomenti diversi.",
+                    f"esistente o importa con un'altra ora.",
                     cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
                 )
 
@@ -915,7 +933,6 @@ def configure_setup_parser(parser: Any) -> Any:
     parser.add_argument("audio", nargs="*", help="Uno o più percorsi di file audio da trascrivere")
     parser.add_argument("-d", "--date", help="Data della lezione (es. '2026-09-05', '26 sett 2025', '3 marzo 2024')")
     parser.add_argument("-m", "--materia", help="Nome della materia (es. BIOCHIMICA, BIOINFORMATICA)")
-    parser.add_argument("-a", "--argomenti", help="Argomenti trattati (es. 'Trigliceridi e beta-ossidazione')")
     parser.add_argument("--docente", help="Nome del docente (facoltativo)")
     parser.add_argument("-o", "--dest-dir", help="Directory base di destinazione")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Modello macparakeet-cli (default: {DEFAULT_MODEL})")

@@ -157,7 +157,7 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
             "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
-            "Diagnostica", "Apri nel browser", "Ricarica",
+            "Diagnostica", "Autenticazione", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
         items[0].function()
         webview.create_window.assert_called_with(
@@ -816,3 +816,34 @@ def test_invalid_import_never_stops_services(data, webview, monkeypatch):
     window._import_collection(fake, 'http://127.0.0.1:8765')
     stop.assert_not_called()
     assert 'ZIP non valido' in fake.evaluate_js.call_args.args[0]
+
+
+def test_auth_menu_copies_and_regenerates_token(monkeypatch, webview):
+    monkeypatch.setattr(sys, "platform", "linux")
+    win = webview.create_window.return_value
+    menu = window._menu(win, "http://127.0.0.1:8765")[0].items
+    section = next(x for x in menu if getattr(x, "title", None) == "Autenticazione")
+    copy, regenerate = section.items
+    assert [copy.title, regenerate.title] == ["Copia token", "Rigenera token…"]
+    copied, notices = [], []
+    monkeypatch.setattr(window, "_copy_to_clipboard", copied.append)
+    monkeypatch.setattr(window, "_notice", lambda w, message: notices.append(message))
+
+    monkeypatch.setattr(auth, "saved_token", lambda: None)
+    copy.function()
+    assert copied == [] and "Rigenera token" in notices[-1]
+    monkeypatch.setattr(auth, "saved_token", lambda: "attuale")
+    copy.function()
+    assert copied == ["attuale"] and notices[-1] == "Token copiato negli appunti."
+
+    reset = Mock(return_value="nuovo")
+    monkeypatch.setattr(auth, "reset_token", reset)
+    monkeypatch.setattr(auth, "create_login_code", lambda: "monouso")
+    win.create_confirmation_dialog.return_value = False
+    regenerate.function()
+    reset.assert_not_called()
+    win.create_confirmation_dialog.return_value = True
+    regenerate.function()
+    assert copied[-1] == "nuovo" and notices[-1] == "Token nuovo copiato negli appunti."
+    # La sessione della finestra è chiusa dal reset: si riapre con un link monouso.
+    win.load_url.assert_called_with("http://127.0.0.1:8765/login?code=monouso")

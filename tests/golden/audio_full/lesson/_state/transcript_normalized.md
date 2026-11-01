@@ -1,7 +1,7 @@
 # Trascritto Normalizzato con Riferimento Segmenti
 
 **[seg_000001]** `00:00 - 00:08`
-Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando lipidi.
+Buongiorno a tutti. Oggi iniziamo la lezione di biochimica trattando argomenti da definire.
 
 **[seg_000002]** `00:08 - 00:24`
 Nel dettaglio analizzeremo i meccanismi molecolari e i principi fondamentali che regolano questo processo biologico.

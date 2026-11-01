@@ -3,9 +3,10 @@ name: App
 # L'app installabile (scripts/build_app.py): .dmg per il Mac e setup .exe per Windows, con la
 # prova dell'installazione, dell'avvio e di una trascrizione vera con Parakeet ONNX. Su
 # Windows gira anche la suite dei test. release.yml la richiama e allega gli installer.
+# Sulle PR gira solo la suite su Windows: gli installer si costruiscono e si provano con le
+# beta e le release (release.yml) o a mano (workflow_dispatch), non a ogni PR.
 on:
   pull_request:
-    # anche le PR verso un branch beta (claude/rt-X.Y.Z-beta): gli installer si provano lì
     branches: [main, 'claude/rt-*-beta']
   workflow_call:
   workflow_dispatch:
@@ -22,6 +23,7 @@ env:
 
 jobs:
   windows:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,6 +135,7 @@ jobs:
           retention-days: 7
 
   macos:
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
