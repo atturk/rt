@@ -402,5 +402,6 @@ def test_restore_interrupted_midway_says_where_the_previous_data_is(data, tmp_pa
         bs.restore_backup(str(tmp_path / "b"), say=lambda _m: None)
     message = str(info.value)
     assert "disco pieno" in message and "prima-del-ripristino-" in message
-    aside = message.split(" sono in ", 1)[1].split(":", 1)[0]
-    assert os.path.isfile(os.path.join(aside, "rt.db"))
+    asides = [p for p in (data_dir / "backups").iterdir() if p.name.startswith("prima-del-ripristino-")]
+    assert len(asides) == 1 and str(asides[0]) in message  # su Windows il percorso ha "C:"
+    assert (asides[0] / "rt.db").is_file()
