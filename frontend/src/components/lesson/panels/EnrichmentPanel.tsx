@@ -76,11 +76,14 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [hideDescribeHint, setHideDescribeHint] = usePreference<boolean>('images.describe-hint', false)
   const classifier = useQuery({ queryKey: ['classifier-settings'], queryFn: () => unwrap(api.GET('/api/v1/settings/classifier')), staleTime: 60_000 })
   const decisionReader = classifier.data?.images_reader === 'decision' && (classifier.data.jobs?.images?.mode ?? 'manual') !== 'off'
+  const lessonQuery = useLesson(id)
+  const hasOutline = lessonQuery.data?.phases?.outline !== 'MISSING'
+  const hasRewrite = lessonQuery.data?.phases?.rewrite !== undefined ? lessonQuery.data.phases.rewrite === 'VALID' : true
   const addImages = useAddImages(id)
-  const outline = useOutline(id)
+  const outline = useOutline(id, { enabled: hasOutline })
   const docQuery = useLessonDocument(id)
 
-  const enrichment = useEnrichment(id)
+  const enrichment = useEnrichment(id, { enabled: hasRewrite })
   const { analyze, generate, action, refresh: refreshEnrichment } = useEnrichmentActions(id)
 
   const [openUpload, setOpenUpload] = useState(false)
@@ -97,7 +100,6 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const navigate = useNavigate()
-  const lessonQuery = useLesson(id)
   const sourcesQuery = useSources(id)
   const archiveSummary = useArchiveSummary(lessonQuery.data?.materia)
   const [mediaFilter, setMediaFilter] = useState<'all' | 'undescribed'>('all')

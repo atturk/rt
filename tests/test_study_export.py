@@ -80,3 +80,31 @@ def test_study_does_not_change_final_zip_or_markdown(api_client, ready):
         assert not any(n.endswith("rt-export.json") for n in archive.namelist())
     url = f"/api/v1/lessons/{lid}/export?format=markdown"
     assert api_client.get(url).content == api_client.get(url + "&study=1").content
+
+
+def test_export_sources_with_multipart_audio_contains_parti_txt(tmp_path):
+    from rt.core.sources import Source, SourcePart, _save
+    lesson = tmp_path / "test_lesson"
+    lesson.mkdir()
+    (lesson / "info.yaml").write_text("file_audio: merged.m4a\n")
+    (lesson / "merged.m4a").write_bytes(b"dummy-audio")
+    s = Source(
+        id="src_audio",
+        tipo="audio",
+        file="merged.m4a",
+        impronta="fake-sha",
+        aggiunta_il="2026-11-02T00:00:00Z",
+        ordine=1,
+        parti=[
+            SourcePart(nome="parte 1.m4a"),
+            SourcePart(nome="parte 2.m4a"),
+        ],
+    )
+    _save(str(lesson), [s])
+    zip_bytes = export_zip(str(lesson), scope="sources")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = zf.namelist()
+        parti_name = next(n for n in names if n.endswith("parti.txt"))
+        content = zf.read(parti_name).decode("utf-8")
+        assert "1. parte 1.m4a" in content
+        assert "2. parte 2.m4a" in content

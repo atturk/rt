@@ -369,6 +369,11 @@ def _run_rewrite(
                     ctx.check_cancelled()
 
                 position = outline_position.get(u.id, 1)
+                if ctx is not None:
+                    ctx.progress("rewrite", current=position, total=len(all_outline_units),
+                                 message=f"{u.id} {u.title}".strip(),
+                                 unit_id=u.id, unit_title=(u.title or "").strip() or None,
+                                 failed=len(failures.failures))
 
                 start_seg = seg_by_id[u.start_segment_id]
                 end_seg = seg_by_id[u.end_segment_id]
@@ -492,11 +497,6 @@ def _run_rewrite(
                         artifact_fingerprints={"draft.json": draft_hash},
                         completed_items=[ou.unit_id for ou in draft.units],
                     )
-                    if ctx is not None:
-                        ctx.progress("rewrite", current=len(draft.units), total=len(all_outline_units),
-                                     message=f"{u.id} {u.title}".strip(),
-                                     unit_id=u.id, unit_title=(u.title or "").strip() or None,
-                                     failed=len(failures.failures))
 
         if macro_groups:
             max_workers = min(max(1, parallel_macros), len(macro_groups))

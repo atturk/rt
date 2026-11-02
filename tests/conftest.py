@@ -33,6 +33,8 @@ def _isolate_encrypted_secret_store(tmp_path_factory):
     def _no_network(url, timeout):
         raise app_update.urllib.error.URLError("rete disattivata nei test")
     app_update._get_json = _no_network
+    import rt.llm.pricing
+    rt.llm.pricing._OPENROUTER_DYNAMIC_FETCHED = True
     missing = tmp_path_factory.mktemp("secrets") / "absent-secrets.enc"
     previous = os.environ.get("RT_SECRETS_FILE")
     os.environ["RT_SECRETS_FILE"] = str(missing)

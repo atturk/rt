@@ -205,14 +205,18 @@ def test_export_only_sources_single_and_group(api_client, rt_db, tmp_path, monke
     assert 'fonti.zip' in single.headers['content-disposition']
     with zf_mod.ZipFile(io.BytesIO(single.content)) as archive:
         names = sorted(n.split('/', 1)[1] for n in archive.namelist())
-    # Un solo audio (quello unito della lezione) e il PDF col suo nome; niente documento o stato.
-    assert names == ['audio completo.m4a', 'slide.pdf']
+    # Un solo audio (quello unito della lezione), parti.txt con l'elenco delle parti e il PDF col suo nome; niente documento o stato.
+    assert names == ['audio completo.m4a', 'parti.txt', 'slide.pdf']
+    with zf_mod.ZipFile(io.BytesIO(single.content)) as archive:
+        parti_txt = archive.read([n for n in archive.namelist() if n.endswith('parti.txt')][0]).decode('utf-8')
+        assert '1. part1.wav' in parti_txt
+        assert '2. part2.wav' in parti_txt
     accepted = api_client.post('/api/v1/lesson-exports', json={'ids': [lid], 'format': 'sources', 'name': 'oggi'}).json()
     assert Worker(DbJobQueue(rt_db)).run_once() is not None
     group = api_client.get(f"/api/v1/lesson-exports/{accepted['job_id']}/file")
     assert group.status_code == 200
     with zf_mod.ZipFile(io.BytesIO(group.content)) as archive:
-        assert sorted(n.split('/', 1)[1] for n in archive.namelist()) == ['audio completo.m4a', 'slide.pdf']
+        assert sorted(n.split('/', 1)[1] for n in archive.namelist()) == ['audio completo.m4a', 'parti.txt', 'slide.pdf']
 
 
 def test_merge_writes_outside_a_missing_lessons_folder(api_client, rt_db, tmp_path, monkeypatch):

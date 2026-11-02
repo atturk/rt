@@ -308,7 +308,7 @@ it('la riga mostra In coda mentre si accoda il job', async () => {
 it('una citazione non ancorata si può soltanto rifiutare', async () => {
   state.items = [{ ...issue, quote_status: 'changed', issue: { ...issue.issue, unanchored: true } }]
   mount(undefined, undefined, 'testo senza la citazione')
-  expect(screen.getByText('Non ancorata')).toBeInTheDocument()
+  expect(screen.getByText('Posizione nel testo non trovata')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Correzione proposta')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))

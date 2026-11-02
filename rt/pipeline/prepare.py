@@ -78,7 +78,7 @@ def _run_prepare(lesson_dir: str, force: bool = False, ctx=None) -> Dict[str, An
     if phase_status == PhaseStatus.VALID and not force:
         from rt.core.segments import load_segments_json
         seg_data = load_segments_json(segments_json_path)
-        duration = seg_data.segments[-1].end_seconds if seg_data.segments else 0.0
+        duration = seg_data.audio_duration_seconds or (seg_data.segments[-1].end_seconds if seg_data.segments else 0.0)
         return {
             "status": "prepared",
             "action": "SKIP",
@@ -153,19 +153,32 @@ def _run_prepare(lesson_dir: str, force: bool = False, ctx=None) -> Dict[str, An
         raise ValueError("Nessun parlato rilevato: la trascrizione è vuota.")
         
     # 3. Salvataggio atomico di segments.json (Source of truth derivata dal JSON sorgente)
+    duration = None
     if source_type == "sources":
         from rt.pipeline.source_update import _read_state
         state = _read_state(lesson_dir)
         # Conta soltanto fonti già usate: nuove fonti restano pendenti.
         duration = sum(state["sources"][sid]["duration"] for sid in state.get("used", []) if sid in state["sources"])
-        save_segments_json(segments, segments_json_path, lesson_id=lesson_id, audio_duration_seconds=duration)
-    else:
-        save_segments_json(segments, segments_json_path, lesson_id=lesson_id)
+    elif audio_file and fs.isfile(lesson_path(lesson_dir, audio_file)):
+        from rt.core.media_tools import audio_duration
+        try:
+            with fs.materialize(lesson_path(lesson_dir, audio_file)) as real_path:
+                audio_dur = audio_duration(real_path)
+                seg_end = segments[-1].end_seconds if segments else 0.0
+                if seg_end > 0 and seg_end > audio_dur * 2:
+                    duration = seg_end
+                else:
+                    duration = audio_dur
+        except Exception:
+            pass
+
+    if duration is None:
+        duration = segments[-1].end_seconds if segments else 0.0
+
+    save_segments_json(segments, segments_json_path, lesson_id=lesson_id, audio_duration_seconds=duration)
     
     # 4. Esportazione atomica di transcript_normalized.md
     export_normalized_transcript_md(segments, norm_md_path)
-    
-    duration = duration if source_type == "sources" else (segments[-1].end_seconds if segments else 0.0)
     
     # 5. Registrazione fingerprint e invalidazione mirata downstream
     source_fp = compute_source_fingerprint(lesson_dir, "prepare")

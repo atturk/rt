@@ -391,7 +391,7 @@ def build_warnings(lesson_dir: str) -> List[Dict[str, Any]]:
     try:
         orphans = set(orphan_issue_ids(lesson_dir))
         decided = {d.issue_id for d in load_ledger(lesson_dir).decisions}
-        pending = [i for i in load_science_issues(lesson_dir) if i.id not in decided and i.id not in orphans]
+        pending = [i for i in load_science_issues(lesson_dir) if i.id not in decided]
     except Exception as exc:  # file illeggibili: lo dice l'avviso, il build decide
         warnings.append({"code": "review_invalid", "count": None,
                          "message": f"Issue della revisione non leggibili: {exc}."})

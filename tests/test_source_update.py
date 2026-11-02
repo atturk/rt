@@ -87,7 +87,7 @@ def test_force_prepare_after_undo_preserves_legacy_duration_and_pending_sources(
     undo_update(lesson)
     assert _read_state(lesson)["sources"] == {}
     result = run_prepare(lesson, force=True)
-    assert result["duration_seconds"] == 1
+    assert result["duration_seconds"] == 2.0
     assert [s.id for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["seg_000001"]
     assert sources_pending(lesson)
     assert _read_state(lesson)["next_segment"] >= 3

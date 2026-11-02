@@ -340,7 +340,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
       return Promise.resolve({ data: {}, response: new Response('{}') } as never)
     })
     renderComponent()
-    expect(await screen.findByText('Registrazione unita')).toBeInTheDocument()
+    expect(await screen.findByText('Registrazione unita da 2 parti')).toBeInTheDocument()
     const chip = await screen.findByRole('button', { name: '2 parti' })
     expect(chip).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()

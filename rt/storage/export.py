@@ -174,6 +174,11 @@ def _collect_sources(lesson_dir: str) -> List[Tuple[str, Source]]:
     audio = lesson_audio_file(lesson_dir)
     if audio:
         add(*_light_audio(audio, sources))
+    for s in sources:
+        if s.tipo == "audio" and s.parti and len(s.parti) > 1:
+            parti_lines = [f"{i}. {p.nome}" for i, p in enumerate(s.parti, 1)]
+            parti_content = "\n".join(parti_lines) + "\n"
+            add("parti.txt", parti_content.encode("utf-8"))
     for source in sources:
         if source.tipo == "audio":
             continue

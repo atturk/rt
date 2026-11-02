@@ -913,6 +913,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           <LightweightSession
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
+            materia={lesson!.materia}
             unit={{
               id: unit.id,
               title: unit.title,

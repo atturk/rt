@@ -125,7 +125,7 @@ def lesson_with_audio(sha: str) -> dict | None:
 
     for path, lesson_id in lesson_map.items():
         try:
-            sources = load_sources(path)
+            sources = load_sources(path, readonly=True)
             for s in sources:
                 if s.tipo == "audio" and s.impronta in target_shas and not s.rimossa_il:
                     info = read_info_yaml(lesson_path(path, "info.yaml"))

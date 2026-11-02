@@ -35,7 +35,7 @@ afterEach(() => {
   localStorage.clear()
 })
 
-it('cambiare la Select aggiorna lo zoom e il pulsante 100% lo azzera', async () => {
+it('cambiare la Select aggiorna lo zoom', async () => {
   render(
     <QueryClientProvider client={client}>
       <AppearanceSection settings={testSettings} />
@@ -54,13 +54,12 @@ it('cambiare la Select aggiorna lo zoom e il pulsante 100% lo azzera', async () 
   expect(getZoom()).toBe(1.25)
   expect(screen.getByTestId('pref-zoom')).toHaveTextContent('125%')
 
-  // Pulsante 100%
-  const resetBtn = screen.getByRole('button', { name: '100%' })
-  expect(resetBtn).not.toBeDisabled()
-  await userEvent.click(resetBtn)
+  // Reimposta a 100% dalla select
+  await userEvent.click(menuButton)
+  const option100 = screen.getByRole('menuitemradio', { name: '100%' })
+  await userEvent.click(option100)
 
   expect(getZoom()).toBe(1)
-  expect(resetBtn).toBeDisabled()
   expect(screen.getByTestId('pref-zoom')).toHaveTextContent('100%')
 })
 
