@@ -94,6 +94,56 @@ function pickSlot(hours: CalendarEventView[], date: string, now = new Date()) {
   return free[0]
 }
 
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1]
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+      }
+    }
+  }
+
+  return dp[m][n]
+}
+
+function findSimilarSubject(input: string, subjectsList: string[]): string | null {
+  const normInput = input.toLowerCase().replace(/\s+/g, '')
+  const lowerInput = input.toLowerCase()
+
+  // 1. Uguale senza spazi e maiuscole
+  for (const s of subjectsList) {
+    if (s.toLowerCase().replace(/\s+/g, '') === normInput) {
+      return s
+    }
+  }
+
+  // 2. Distanza di Levenshtein <= 2
+  let best: string | null = null
+  let minDistance = Infinity
+
+  for (const s of subjectsList) {
+    const dist = Math.min(
+      levenshteinDistance(input, s),
+      levenshteinDistance(lowerInput, s.toLowerCase()),
+    )
+    if (dist <= 2 && dist < minDistance) {
+      minDistance = dist
+      best = s
+    }
+  }
+
+  return best
+}
+
 function today(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -233,7 +283,9 @@ export function NewLessonDialog({
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState(String(options?.materia ?? ''))
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
-  const clearConflict = () => { setConflict(null); setUploadError(null) }
+  const [audioDuplicate, setAudioDuplicate] = useState<{ lesson_id?: number; titolo: string; data: string } | null>(null)
+  const [subjectConfirm, setSubjectConfirm] = useState<{ name: string; similar: string | null } | null>(null)
+  const clearConflict = () => { setConflict(null); setAudioDuplicate(null); setSubjectConfirm(null); setUploadError(null) }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
@@ -431,6 +483,10 @@ export function NewLessonDialog({
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    doSubmit(false)
+  }
+
+  function doSubmit(consentiDuplicato = false, overrideMateria?: string, skipSubjectConfirm = false) {
     if (busy || zipJob) return
 
     if (kind === 'zip') {
@@ -441,7 +497,7 @@ export function NewLessonDialog({
     if (initialJob) {
       setUploadError(null)
       setRecreating(true)
-      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, docente, ora: time } })).then(accepted => {
+      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia: (overrideMateria ?? materia).trim(), docente, ora: time } })).then(accepted => {
         invalidateAfterJob(client)
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
@@ -455,9 +511,23 @@ export function NewLessonDialog({
       return
     }
 
-    if (!materia.trim()) {
+    const currentMateria = (overrideMateria ?? materia).trim()
+    if (!currentMateria) {
       setProblem('Indica la materia.')
       return
+    }
+
+    const isFromSlot = !manualMode && selectedSlot && selectedSlot.materia === currentMateria
+    if (!skipSubjectConfirm && !isFromSlot && Array.isArray(subjectsQuery.data) && subjectsQuery.data.length > 0) {
+      const subjectsList = subjectsQuery.data.map((s) => s.nome)
+      if (!subjectsList.includes(currentMateria)) {
+        const similar = findSimilarSubject(currentMateria, subjectsList)
+        setSubjectConfirm({
+          name: currentMateria,
+          similar,
+        })
+        return
+      }
     }
 
     setProblem(null)
@@ -476,7 +546,7 @@ export function NewLessonDialog({
       calendar_entry_id: chosenSlot?.key,
       calendar_date: chosenSlot ? date : undefined,
       date,
-      materia: materia.trim(),
+      materia: currentMateria,
       docente: docente.trim(),
       ora: time,
       run: !solo,
@@ -484,9 +554,10 @@ export function NewLessonDialog({
       auto_accept: false,
       with_review: !solo && review,
       with_enrichment: !solo && enrichment,
+      consenti_duplicato: consentiDuplicato || undefined,
     }
     startUpload(
-      `${materia.trim()} · ${date}`,
+      `${currentMateria} · ${date}`,
       [...audioFiles, ...materialFiles],
       (onProgress, signal) => sendLesson(input, onProgress, signal),
       (accepted) => {
@@ -515,6 +586,8 @@ export function NewLessonDialog({
     if (reason instanceof ApiError && reason.code === 'lesson_exists') {
       setConflict(reason.details as { lesson_id?: number; titolo: string })
       setManualMode(true)
+    } else if (reason instanceof ApiError && reason.code === 'audio_duplicate') {
+      setAudioDuplicate(reason.details as { lesson_id?: number; titolo: string; data: string })
     }
   }
 
@@ -552,9 +625,11 @@ export function NewLessonDialog({
   const errorText =
     error instanceof ApiError && error.code === 'payload_too_large'
       ? `${error.message} Dividi l'audio in più file più piccoli.`
-      : error
-        ? errorMessage(error)
-        : null
+      : error instanceof ApiError && (error.code === 'lesson_exists' || error.code === 'audio_duplicate')
+        ? null
+        : error
+          ? errorMessage(error)
+          : null
 
   const totalAudioBytes = audioFiles.reduce((sum, f) => sum + f.size, 0)
   const totalZipBytes = zipFiles.reduce((sum, f) => sum + f.size, 0)
@@ -583,13 +658,14 @@ export function NewLessonDialog({
   const showSlots = hours.length > 0 && !manualMode && kind !== 'zip'
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Nuova lezione"
-      testId="new-lesson"
-      className="w-[min(680px,calc(100vw-32px))]"
-    >
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Nuova lezione"
+        testId="new-lesson"
+        className="w-[min(680px,calc(100vw-32px))]"
+      >
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         {/* Input file principale (audio, zip, o materiali) */}
         <input
@@ -1088,5 +1164,92 @@ export function NewLessonDialog({
         </div>
       </form>
     </Modal>
+    {audioDuplicate && (
+      <Modal
+        open={!!audioDuplicate}
+        onClose={() => setAudioDuplicate(null)}
+        title="Registrazione già presente"
+        testId="audio-duplicate-modal"
+      >
+        <div className="flex flex-col gap-4">
+          <p>
+            Questa registrazione è già nella lezione «{audioDuplicate.titolo}» del {audioDuplicate.data}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setAudioDuplicate(null)}>
+              Annulla
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={audioDuplicate.lesson_id == null}
+              onClick={() => {
+                const id = audioDuplicate.lesson_id
+                setAudioDuplicate(null)
+                onClose()
+                if (id != null) navigate(`/lezioni/${id}`)
+              }}
+            >
+              Apri la lezione
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setAudioDuplicate(null)
+                doSubmit(true)
+              }}
+            >
+              Crea comunque
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    {subjectConfirm && (
+      <Modal
+        open={!!subjectConfirm}
+        onClose={() => setSubjectConfirm(null)}
+        title="Nuova materia"
+        testId="subject-confirm-modal"
+      >
+        <div className="flex flex-col gap-4">
+          {subjectConfirm.similar ? (
+            <p>Forse intendevi «{subjectConfirm.similar}»?</p>
+          ) : (
+            <p>Creare la nuova materia «{subjectConfirm.name}»?</p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setSubjectConfirm(null)}>
+              Annulla
+            </Button>
+            {subjectConfirm.similar && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const sim = subjectConfirm.similar!
+                  setMateria(sim)
+                  setSubjectConfirm(null)
+                  doSubmit(false, sim, true)
+                }}
+              >
+                Usa «{subjectConfirm.similar}»
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={() => {
+                const name = subjectConfirm.name
+                setSubjectConfirm(null)
+                doSubmit(false, name, true)
+              }}
+            >
+              Crea «{subjectConfirm.name}»
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   )
 }

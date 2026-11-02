@@ -385,3 +385,23 @@ def test_portable_import_rebases_windows_lesson_paths(data, tmp_path):
         assert lesson.path == str(data_dir / 'lessons' / 'L1')
         assert session.get(Job, 'old-job').lesson_path == lesson.path
         assert fs.isfile(os.path.join(lesson.path, 'audio.m4a'))
+
+
+def test_restore_interrupted_midway_says_where_the_previous_data_is(data, tmp_path, monkeypatch):
+    """Dopo che DB e config sono stati spostati da parte, un errore deve dire dove sono."""
+    data_dir, db = data
+    _add_media(db, data_dir, 1, "audio.m4a", b"audio")
+    monkeypatch.setattr(data_service, "running_services", lambda: [])
+    bs.create_backup(str(tmp_path / "b"), say=lambda _m: None)
+
+    def broken_copytree(*_a, **_k):
+        raise OSError("disco pieno")
+
+    monkeypatch.setattr(bs.shutil, "copytree", broken_copytree)
+    with pytest.raises(bs.BackupError) as info:
+        bs.restore_backup(str(tmp_path / "b"), say=lambda _m: None)
+    message = str(info.value)
+    assert "disco pieno" in message and "prima-del-ripristino-" in message
+    asides = [p for p in (data_dir / "backups").iterdir() if p.name.startswith("prima-del-ripristino-")]
+    assert len(asides) == 1 and str(asides[0]) in message  # su Windows il percorso ha "C:"
+    assert (asides[0] / "rt.db").is_file()

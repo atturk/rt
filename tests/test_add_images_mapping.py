@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from rt.core.idempotency import compute_file_sha256, compute_source_fingerprint, record_phase_fingerprint

@@ -270,7 +270,9 @@ def test_vasta_receives_each_unit_assessment_without_inventing_group_score(tmp_p
     from rt.llm.prompts import GROUP_GUIDANCE
     path = setup_mock_lesson(tmp_path, num_units=2)
     cfg = RTConfig(jev=JevConfig(relevance_mode='active', relevance_model='typesafe/jev-1.13'))
-    with patch.object(gate, 'load_config', return_value=cfg), patch('rt.llm.jev_client.call_jev', side_effect=[score_response(0), score_response(2)]):
+    scores = {"1.1": 0, "1.2": 2}
+    with patch.object(gate, 'load_config', return_value=cfg), \
+            patch('rt.llm.jev_client.call_jev', side_effect=lambda **kw: score_response(scores.get(kw.get("unit_id"), 0))):
         gate.refresh(path, view='resolved')
         # L'unità di livello 0 non è selezionata di predefinito: l'utente la aggiunge.
         from rt.services.recall_units import set_selection

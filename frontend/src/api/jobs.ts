@@ -113,6 +113,7 @@ export type NewLesson = {
   with_review: boolean
   with_enrichment?: boolean
   unisci?: boolean
+  consenti_duplicato?: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. Gira nella coda dei caricamenti
@@ -138,6 +139,7 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   form.append('auto_accept', String(input.auto_accept))
   form.append('with_review', String(input.with_review))
   if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
+  if (input.consenti_duplicato !== undefined) form.append('consenti_duplicato', String(input.consenti_duplicato))
   const body = {
     audio: input.files.map((f) => f.name),
     appunti: '',
@@ -189,11 +191,11 @@ export function sendLessonZips(files: File[], onProgress: (progress: UploadProgr
 
 // ---------------------------------------------------------------- outline
 
-export function useOutline(lessonId: number) {
+export function useOutline(lessonId: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: jobKeys.outline(lessonId),
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/outline', { params: { path: { lesson_id: lessonId } } })),
-    enabled: Number.isFinite(lessonId),
+    enabled: Number.isFinite(lessonId) && (options?.enabled ?? true),
     retry: false,
   })
 }
@@ -254,6 +256,14 @@ export function useJobEvents(
     lessonId.current = job?.lesson_id
     onEventRef.current = onEvent
   }, [job?.lesson_id, onEvent])
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    setEvents([])
+    lastId.current = 0
+    setEndedAt(0)
+    setStatus('connecting')
+  }, [jobId])
 
   // riaperto solo se, dopo la fine, l'API dice che il job è di nuovo attivo
   const shouldStream = !!jobId && (endedAt === 0 || (dataUpdatedAt > endedAt && isActive(job?.state)))

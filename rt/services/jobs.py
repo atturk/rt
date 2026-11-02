@@ -450,6 +450,7 @@ class DbJobQueue:
                     row.attempts += 1
                     row.started_at = row.started_at or now
                     row.active_lesson = row.lesson_path
+                    row.result = None
                     s.add(JobEvent(job_id=row.id, type="job_started",
                                    payload={"worker_id": worker_id, "attempt": row.attempts}))
                     s.flush()

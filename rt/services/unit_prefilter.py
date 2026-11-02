@@ -28,19 +28,25 @@ def configuration(cfg, task):
 def cached(task):
     def decorate(fn):
         @wraps(fn)
-        def run(unit, *args, force=False):
-            cfg, lesson_dir = args[-2:]
+        def run(unit, *args, force=False, **kwargs):
+            materials_ctx = kwargs.get("materials_context", args[3] if len(args) > 3 else None)
+            if len(args) >= 3 and not kwargs.get("lesson_dir"):
+                cfg = args[1]
+                lesson_dir = args[2]
+            else:
+                cfg = kwargs.get("jev_cfg", args[-2] if len(args) >= 2 else None)
+                lesson_dir = kwargs.get("lesson_dir", args[-1] if len(args) >= 1 else "")
             text_hash = digest([unit.title, unit.content, lesson_context(lesson_dir)])
             config_hash = configuration(cfg, task)
-            # La deriva diventa vecchia anche se cambia soltanto il trascritto.
-            source_hash = digest(args[0]) if task == "task_b" else None
+            # La deriva diventa vecchia anche se cambia soltanto il trascritto o i materiali.
+            source_hash = digest([args[0], materials_ctx or ""]) if task == "task_b" else None
             row = load(lesson_dir).get(unit.unit_id, {})
             entry = row.get(task) or {}
             if (not force and row.get("text_hash") == text_hash and entry.get("config_hash") == config_hash
                     and entry.get("source_hash") == source_hash and entry.get("verdict") is not None):
                 from rt.pipeline.review import JevTaskAVerdict, JevTaskBVerdict
                 return (JevTaskAVerdict if task == "task_a" else JevTaskBVerdict)(**entry["verdict"])
-            verdict = fn(unit, *args)
+            verdict = fn(unit, *args, **kwargs)
             now = datetime.now(timezone.utc).isoformat()
             try:
                 with _lock(lesson_dir, "draft"):

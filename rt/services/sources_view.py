@@ -1,4 +1,5 @@
 """Misure delle fonti e riepilogo dell'ultimo aggiornamento riuscito."""
+import json
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -56,9 +57,18 @@ def sources_view(lesson_dir):
                 except (OSError, ValueError, subprocess.SubprocessError):
                     pass
         views.append(SourceView(**values))
+    mat_path = lesson_path(lesson_dir, "material_attachments.json")
+    unplaced = []
+    if fs.isfile(mat_path):
+        try:
+            with fs.open(mat_path, "r", encoding="utf-8") as f:
+                unplaced = json.load(f).get("unplaced", [])
+        except Exception:
+            pass
     return {"sources": views, "has_unused_sources": sources_pending(lesson_dir),
             "can_undo": has_update_snapshot(lesson_dir),
             "ultimo_aggiornamento": state.get("ultimo_aggiornamento"),
+            "unplaced": unplaced,
             **selection(lesson_dir), **reingest_availability(lesson_dir, sources)}
 
 

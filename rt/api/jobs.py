@@ -22,8 +22,10 @@ def queue():
 
 def job_view(info) -> Dict[str, Any]:
     from rt.services.lesson_service import lesson_id_for_dir
-    import os
+    from rt.services.jobs import JobState
     data = info.to_dict()
+    if data.get("state") == JobState.RUNNING.value:
+        data["result"] = None
     lesson_path = data.get("lesson_path")
     data["lesson_id"] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
     return data

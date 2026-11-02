@@ -1,5 +1,64 @@
 # Novità di RT
 
+## 4.3.6 — 2026-11-02
+
+Raccoglie le beta 4.3.6b1 e 4.3.6b2 (dettagli sotto).
+
+### Novità
+
+- **La verifica controlla i materiali**: prima di segnalare un errore concettuale cerca nelle slide e nelle foto; se il dubbio è su quello che ha detto il docente, la segnalazione lo dice e mostra la prova.
+- **Contesto della rielaborazione** (Impostazioni): «solo la macro-unità», in parallelo e più veloce (predefinito), oppure «tutte le unità precedenti».
+- **Registrazione già caricata** e **materia nuova**: RT avvisa e chiede conferma prima di creare doppioni.
+- **Materiali non collocati**: le pagine che non corrispondono a nessuna unità sono indicate tra le fonti.
+- **Errori della web app in api.log**, con un messaggio in italiano e «Ricarica la pagina» se una pagina va in errore.
+
+### Correzioni
+
+- **Costi più bassi con i modelli OpenAI**: il prompt della lezione resta in cache tra un'unità e l'altra.
+- **Export** che non blocca l'app, **PDF** anche dall'iPhone con Tailscale, riavvio dal messaggio se «Importa tutto» non riesce.
+- **Importazione più robusta**: niente lezioni vuote dopo un errore, audio non leggibili rifiutati subito, lezioni fallite visibili nell'elenco.
+- **Formule** LaTeX rovinate dagli escape riparate; domande, classificatore ed etichette in parallelo.
+- **Aggiornamento dell'app**: la pagina non si ricarica più prima del riavvio; api.log senza le richieste ripetute ogni pochi secondi.
+
+## 4.3.6b2 — 2026-11-02
+
+Beta con le correzioni dal controllo qualità del 2 novembre.
+
+### Novità
+
+- **La verifica controlla i materiali**: prima di segnalare un errore concettuale, la verifica cerca nelle slide e nelle foto della lezione. Se il docente ha usato quella definizione, la segnalazione sparisce. Se il dubbio è su quello che ha detto il docente, la segnalazione lo dice e mostra la prova.
+- **Contesto della rielaborazione** (Impostazioni): «solo la macro-unità», con le macro-unità rielaborate in parallelo (predefinito, più veloce), oppure «tutte le unità precedenti», una dopo l'altra.
+- **Registrazione già caricata**: se l'audio è già in un'altra lezione, RT te lo dice e ti chiede se vuoi crearla lo stesso.
+- **Materia nuova**: RT chiede conferma prima di crearne una, per evitare doppioni scritti in modo diverso.
+- **Materiali non collocati**: le pagine dei materiali che non corrispondono a nessuna unità sono indicate tra le fonti.
+
+### Correzioni
+
+- **Costi più bassi con i modelli OpenAI**: il prompt della lezione resta in cache tra un'unità e l'altra.
+- **Formule**: i comandi LaTeX rovinati dagli escape (come `\frac` o `\theta`) vengono riparati, senza toccare le formule su più righe.
+- Le domande e lo Studio saltano le unità con segnalazioni ancora aperte e lo dicono.
+- La verifica della deriva tiene conto anche dei materiali del docente.
+- Un file audio non leggibile viene rifiutato subito con un messaggio chiaro, e le lezioni fallite restano visibili nell'elenco.
+- Domande, classificatore ed etichette delle sezioni lavorano in parallelo: sono più veloci.
+- Correzioni minori nei testi e nei messaggi.
+
+## 4.3.6b1 — 2026-11-02
+
+Beta con i risultati della revisione del codice e della revisione dell'entrata dei dati.
+
+### Correzioni
+
+- **Errori della web app in api.log**: gli errori del frontend finiscono nel registro, e se una pagina va in errore compare un messaggio in italiano con «Ricarica la pagina».
+- **Export**: preparare una lezione da esportare non blocca più il resto dell'app.
+- **PDF**: funziona anche quando usi RT dall'iPhone con Tailscale.
+- Se «Importa tutto» non riesce, puoi riavviare RT dal messaggio di errore.
+- api.log non registra più le richieste ripetute ogni pochi secondi.
+- **Importazione più robusta**: se l'aggiunta delle fonti fallisce non resta una lezione vuota; l'ora del calendario si collega anche quando un import audio si ferma dopo la creazione della lezione; via API si accettano audio e appunti senza materiali; l'ispezione dei PDF nel popup di import ha il limite di dimensione e non va più in errore con un nome file vuoto.
+- **Aggiornamento dell'app**: la pagina non si ricarica più prima che RT si sia riavviato dopo «Installa e riavvia».
+- «1 lezione mancante» al singolare.
+- **Novità**: il testo in grassetto appare senza asterischi.
+- Sparito l'avviso «fitz API deprecated» di PyMuPDF.
+
 ## 4.3.5 — 2026-11-01
 
 Raccoglie le correzioni arrivate dopo la 4.3.4.2.

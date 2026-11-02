@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, lessonJobs } from './support'
+import { test, apiGet, authHeaders, loginViaLink, lessonJobs, uniqueAudio } from './support'
 
 // RT4-FA1: un job fallito si riprova dalla web. Il job in mock fallisce apposta
 // (mock_fail_once: la review risponde fuori schema, come openrouter/free nel test reale); con
@@ -29,7 +28,7 @@ async function newLesson(page: Page): Promise<number> {
   const res = await page.request.post('/api/v1/lessons', {
     headers: authHeaders(),
     multipart: {
-      audio: { name: 'lezione.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+      audio: uniqueAudio(AUDIO, 'lezione.wav'),
       date: '2026-09-26',
       materia: 'ISTOLOGIA',
       mock: 'true',

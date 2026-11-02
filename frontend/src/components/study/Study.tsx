@@ -1,8 +1,8 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { useLessons } from '@/api/hooks'
+import { useLessons, useIssues } from '@/api/hooks'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
@@ -95,6 +95,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   })) })
   const [finished, setFinished] = useState(false)
   const lesson = lessons[lessonIndex] ?? null
+  const issuesQuery = useIssues(lesson?.id ?? 0, Boolean(lesson?.id))
+  const pendingItems = (issuesQuery.data?.items ?? []).filter(item => !item.decision || item.needs_reconfirmation)
+  const openIssuesCount = issuesQuery.data?.pending ?? (issuesQuery.data ? pendingItems.length : (lesson?.pending_issues ?? 0))
+  const pendingUnitIds = new Set(
+    pendingItems
+      .map(item => String((item.issue as { unit_id?: string })?.unit_id || ''))
+      .filter(Boolean)
+  )
   const generateQuestions = useGenerateForUnits(lesson?.id ?? 0)
   const study = useStudyLesson(lesson?.id ?? null)
   // Le unità della lezione nell'ordine: con onlyUnits quelle della parte.
@@ -663,6 +671,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           open={indexOpen}
           onOpenChange={setIndexOpen}
           onSelectUnit={goToUnit}
+          pendingUnitIds={pendingUnitIds}
         />
       )}
     </div>
@@ -672,7 +681,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
     <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
-    <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} />
+    <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} pendingUnitIds={pendingUnitIds} />
   </div>
 
   return (
@@ -688,6 +697,27 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           rsvp={speedReading}
           zen={zenActive}
           zenMinHeight={zenMinHeight}
+          banner={
+            openIssuesCount > 0 && !zenActive && !speedReading ? (
+              <div
+                data-testid="study-pending-issues-banner"
+                className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-900 dark:text-amber-200"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+                  <span>
+                    {openIssuesCount} {openIssuesCount === 1 ? 'punto da verificare' : 'punti da verificare'}
+                  </span>
+                </div>
+                <Link
+                  to={`/lezioni/${lesson!.id}?panel=verifica`}
+                  className="font-medium underline underline-offset-2 hover:opacity-80"
+                >
+                  Apri Verifica
+                </Link>
+              </div>
+            ) : undefined
+          }
           zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
@@ -821,7 +851,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         >
           {status.isError && <Alert tone="danger">{errorMessage(status.error)}</Alert>}
           {read.isError && <Alert tone="danger">{errorMessage(read.error)}</Alert>}
-          <div hidden={zenActive}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} /></div>
+          <div hidden={zenActive}><Dots units={liveUnits} current={unitIndex} onSelect={goToUnit} pendingUnitIds={pendingUnitIds} /></div>
           <span className="sr-only" aria-live="polite">{(zenActive || speedReading) ? notice?.label : null}</span>
           <UnitText
             key={`${lesson!.id}-${unit.id}`}
@@ -883,6 +913,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           <LightweightSession
             key={`${lesson!.id}-${unit.id}`}
             lessonId={lesson!.id}
+            materia={lesson!.materia}
             unit={{
               id: unit.id,
               title: unit.title,
@@ -1022,6 +1053,7 @@ function StudyShell({
   back,
   actions,
   popup,
+  banner,
   footer,
   readingProps,
   edge,
@@ -1043,6 +1075,7 @@ function StudyShell({
   back?: { to: string; label: string }
   actions?: ReactNode
   popup?: ReactNode
+  banner?: ReactNode
   footer?: ReactNode
   edge?: { side: 'left' | 'right'; sequence: number } | null
   readingProps?: ComponentProps<'div'>
@@ -1054,6 +1087,7 @@ function StudyShell({
       {zenBar}
       {notice}
       {popup}
+      {banner}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="rt-study-text flex-1 touch-pan-y px-7 max-md:px-[18px]" aria-hidden={rsvp || undefined} inert={rsvp || undefined} {...readingProps}>
           <div className={cn("mx-auto w-full max-w-(--reading-width) pb-8 pt-3", edge && `rt-study-bump-${edge.side}`)} data-testid="study-reading-column">
@@ -1073,17 +1107,25 @@ function StudyShell({
   )
 }
 
-function Dots({ units, current, onSelect }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void }) {
+function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void; pendingUnitIds?: Set<string> }) {
   return (
     <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
       {units.map((u, i) => {
-        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}`
+        const hasPending = pendingUnitIds?.has(u.id)
+        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}${hasPending ? ' · Punto da verificare' : ''}`
         return <Tooltip key={u.id} content={label}>{(trigger) => <button {...trigger} type="button" aria-label={`Unità ${i + 1}: ${label}`}
           onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
-          className="flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
+          className="relative flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
             u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
+          {hasPending && (
+            <span
+              data-testid="unit-pending-marker"
+              title="Punto da verificare"
+              className="absolute -top-1.5 left-1/2 -translate-x-1/2 size-1.5 rounded-full bg-amber-500 ring-1 ring-background"
+            />
+          )}
         </button>}</Tooltip>
       })}
     </div>
@@ -1471,6 +1513,7 @@ function UnitIndexMenu({
   onOpenChange,
   onSelectUnit,
   compact = false,
+  pendingUnitIds,
 }: {
   units: StudyUnit[]
   compact?: boolean
@@ -1478,6 +1521,7 @@ function UnitIndexMenu({
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelectUnit: (index: number) => void
+  pendingUnitIds?: Set<string>
 }) {
   const phone = useIsPhone()
   const ref = useRef<HTMLDivElement>(null)
@@ -1519,27 +1563,40 @@ function UnitIndexMenu({
               {g.title}
             </p>
           )}
-          {g.items.map(({ unit: u, index: i }) => (
-            <button
-              key={u.id}
-              type="button"
-              role="menuitem"
-              className={cn(
-                'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-body transition-colors hover:bg-muted',
-                i === unitIndex && 'bg-accent font-medium text-accent-foreground',
-              )}
-              onClick={() => {
-                onSelectUnit(i)
-                onOpenChange(false)
-              }}
-            >
-              <span className="mr-2"><StudyStatusIcon status={u.status} /></span>
-              <span className="min-w-0 flex-1 truncate">{u.id} {u.title}</span>
-              <span className="ml-2 shrink-0 text-meta text-muted-foreground">
-                {i === unitIndex ? 'qui' : studyDate(u.status_at)}
-              </span>
-            </button>
-          ))}
+          {g.items.map(({ unit: u, index: i }) => {
+            const hasPending = pendingUnitIds?.has(u.id)
+            return (
+              <button
+                key={u.id}
+                type="button"
+                role="menuitem"
+                className={cn(
+                  'flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-body transition-colors hover:bg-muted',
+                  i === unitIndex && 'bg-accent font-medium text-accent-foreground',
+                )}
+                onClick={() => {
+                  onSelectUnit(i)
+                  onOpenChange(false)
+                }}
+              >
+                <span className="mr-2 flex items-center gap-1.5">
+                  <StudyStatusIcon status={u.status} />
+                  {hasPending && (
+                    <span
+                      title="Punto da verificare"
+                      aria-label="Punto da verificare"
+                      data-testid="unit-menu-pending-marker"
+                      className="size-2 rounded-full bg-amber-500 shrink-0"
+                    />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{u.id} {u.title}</span>
+                <span className="ml-2 shrink-0 text-meta text-muted-foreground">
+                  {i === unitIndex ? 'qui' : studyDate(u.status_at)}
+                </span>
+              </button>
+            )
+          })}
         </div>
       ))}
     </div>

@@ -395,12 +395,13 @@ class LLMClient:
         if history:
             messages.extend(history)
         if image_data_url:
+            urls = [image_data_url] if isinstance(image_data_url, str) else list(image_data_url)
+            content = [{"type": "text", "text": prompt}]
+            for u in urls:
+                content.append({"type": "image_url", "image_url": {"url": u}})
             messages.append({
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
+                "content": content,
             })
         else:
             messages.append({"role": "user", "content": prompt})
@@ -1433,6 +1434,9 @@ class LLMClient:
                     "citazione": issue.claim, "motivazione": issue.reason, "sostituzione": issue.suggested_fix,
                 } for issue in mock_issues])
             return ScienceIssueList(issues=mock_issues)  # type: ignore
+
+        elif model_name == "SecondPassReviewResponse":
+            return response_model(classificazione="errore_della_rielaborazione", prova="slide 3: testo discordante", nota=None)
 
         elif model_name == "RecallQuestion":
             from rt.core.models import RecallQuestionType

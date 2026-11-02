@@ -51,14 +51,14 @@ def lookup(body: LookupRequest, _actor: Actor):
 def inspect(_actor: Actor, file: UploadFile = File(...)):
     """Pagine e modalità predefinita (un PDF orizzontale sono slide) di un file nuovo."""
     import os
-    import shutil
     import tempfile
-    name = os.path.basename(file.filename or 'file')
+    from rt.api.routers.jobs import _save_uploads
+    from rt.core.materials import MATERIAL_EXTENSIONS
+    # Stesso limite di dimensione, stessi tipi e stesso controllo del nome degli altri upload
+    # (prima un nome vuoto dava 500 e la copia non aveva limite).
     with tempfile.TemporaryDirectory(prefix='rt-inspect-') as folder:
-        path = os.path.join(folder, name)
-        with open(path, 'wb') as stream:
-            shutil.copyfileobj(file.file, stream)
-        return archive_service.inspect_upload(path, name)
+        path = _save_uploads([file], MATERIAL_EXTENSIONS, folder)[0]
+        return archive_service.inspect_upload(path, os.path.basename(path))
 
 
 class ArchiveRow(BaseModel):

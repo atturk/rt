@@ -589,7 +589,7 @@ export function LessonEditor({
           {hasAudio && <EditorAudioLines view={editor?.view ?? null} sections={doc.sections} />}
         </div>
       </DocumentMenu>
-      <EnrichmentPortals slots={slots} lessonId={lessonId} />
+      <EnrichmentPortals slots={slots} lessonId={lessonId} enabled={ready} />
       {Object.entries(taskSlots).map(([id, task]) => {
         const Icon = task.state === 'done' ? Check : task.state === 'working' ? LoaderCircle : Circle
         const label = task.state === 'done' ? 'Fatta' : task.state === 'working' ? 'In corso' : 'Da fare'

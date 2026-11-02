@@ -2,6 +2,7 @@ import { lazy, Suspense, type ComponentType } from 'react'
 import { Navigate, Outlet, useLocation, useParams, type RouteObject } from 'react-router'
 
 import { Layout } from '@/components/Layout'
+import { RouteError } from '@/components/shell/RouteError'
 import { SETTINGS_REDIRECTS } from '@/lib/settings'
 import { useTheme } from '@/lib/theme'
 import { SetupGate } from './setupGate'
@@ -161,6 +162,7 @@ const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 export const routes: RouteObject[] = [
   {
     path: '/login',
+    errorElement: <RouteError />,
     element: (
       <Suspense fallback={<p className="p-8 text-sm text-muted-foreground">Carico…</p>}>
         <LoginPage />
@@ -170,8 +172,10 @@ export const routes: RouteObject[] = [
   {
     path: '/',
     element: <Layout />,
+    errorElement: <RouteError />,
     // SetupGate porta alla configurazione guidata se il backend segnala setup_required (RT4-F5).
-    children: [{ element: <PersonalPreferences />, children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }] }],
+    // L'errore di una pagina resta dentro il Layout: il menu rimane usabile.
+    children: [{ element: <PersonalPreferences />, errorElement: <RouteError />, children: [{ element: <SetupGate />, children: areas.flatMap((a) => a.routes) }] }],
   },
   { path: '*', element: <NotFound /> },
 ]

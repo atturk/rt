@@ -2999,6 +2999,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/rewrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Configurazione della rielaborazione */
+        put: operations["put_rewrite_api_v1_settings_rewrite_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/routes/{job}/{role}": {
         parameters: {
             query?: never;
@@ -3285,6 +3302,26 @@ export interface paths {
         put?: never;
         /** Apre la finestra di Finder per scegliere una cartella (solo macOS e loopback) */
         post: operations["choose_folder_api_v1_system_choose_folder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/client-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Registra in api.log un errore o un avviso della console della web app
+         * @description La web app inoltra console.error, console.warn ed errori non gestiti: così si leggono nel registro anche senza aprire gli strumenti per sviluppatori. Lo stesso messaggio si registra al massimo una volta al minuto.
+         */
+        post: operations["client_log_api_v1_system_client_log_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3907,6 +3944,11 @@ export interface components {
             calendar_date?: string | null;
             /** Calendar Entry Id */
             calendar_entry_id?: string | null;
+            /**
+             * Consenti Duplicato
+             * @default false
+             */
+            consenti_duplicato: boolean;
             /**
              * Date
              * @description Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')
@@ -4752,6 +4794,28 @@ export interface components {
             section_id: string;
             /** Title */
             title: string;
+        };
+        /** ClientLogEntry */
+        ClientLogEntry: {
+            /**
+             * Level
+             * @description console.error / errori non gestiti, oppure console.warn
+             * @enum {string}
+             */
+            level: "error" | "warn";
+            /** Message */
+            message: string;
+            /**
+             * Page
+             * @description Percorso della pagina della web app
+             * @default
+             */
+            page: string;
+            /**
+             * Stack
+             * @default
+             */
+            stack: string;
         };
         /** CompactAudioPreview */
         CompactAudioPreview: {
@@ -7333,6 +7397,11 @@ export interface components {
             correct_index?: number | null;
             /** Custom Type */
             custom_type?: string | null;
+            /**
+             * Da Verificare
+             * @default false
+             */
+            da_verificare: boolean;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Evaluation Job Id */
@@ -7381,6 +7450,11 @@ export interface components {
             created_at?: string | null;
             /** Custom Type */
             custom_type?: string | null;
+            /**
+             * Da Verificare
+             * @default false
+             */
+            da_verificare: boolean;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Evaluation Job Id */
@@ -7830,6 +7904,30 @@ export interface components {
             /** Unit Id */
             unit_id: string;
         };
+        /** RewriteIn */
+        RewriteIn: {
+            /**
+             * Context Mode
+             * @enum {string}
+             */
+            context_mode: "macro" | "all";
+            /** Parallel Macros */
+            parallel_macros?: number | null;
+        };
+        /** RewriteSettings */
+        RewriteSettings: {
+            /**
+             * Context Mode
+             * @default macro
+             * @enum {string}
+             */
+            context_mode: "macro" | "all";
+            /**
+             * Parallel Macros
+             * @default 4
+             */
+            parallel_macros: number;
+        };
         /** RouteIn */
         RouteIn: {
             /**
@@ -8002,6 +8100,8 @@ export interface components {
                     };
                 };
             };
+            /** @description Configurazione della rielaborazione */
+            rewrite?: components["schemas"]["RewriteSettings"];
             /**
              * Secrets Encrypted
              * @description True se i segreti sono nell'archivio cifrato (rt secrets init)
@@ -8138,6 +8238,11 @@ export interface components {
             /** Sources */
             sources: components["schemas"]["SourceView"][];
             ultimo_aggiornamento?: components["schemas"]["LastUpdate"] | null;
+            /**
+             * Unplaced
+             * @default []
+             */
+            unplaced: components["schemas"]["UnplacedMaterial"][];
         };
         /** StudyLesson */
         StudyLesson: {
@@ -8742,6 +8847,27 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /** UnplacedMaterial */
+        UnplacedMaterial: {
+            /**
+             * Immagini
+             * @default []
+             */
+            immagini: string[];
+            /** Macro Id */
+            macro_id?: string | null;
+            /** Page */
+            page: number;
+            /** Source File */
+            source_file: string;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
         };
         /** UpdateChannelRequest */
         UpdateChannelRequest: {
@@ -22493,6 +22619,75 @@ export interface operations {
             };
         };
     };
+    put_rewrite_api_v1_settings_rewrite_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RewriteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_route_api_v1_settings_routes__job___role__get: {
         parameters: {
             query?: never;
@@ -23711,6 +23906,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    client_log_api_v1_system_client_log_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientLogEntry"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

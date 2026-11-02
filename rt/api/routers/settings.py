@@ -135,6 +135,11 @@ class PreferencesSettings(BaseModel):
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
 
 
+class RewriteSettings(BaseModel):
+    context_mode: Literal["macro", "all"] = "macro"
+    parallel_macros: int = Field(default=4, ge=1, le=8)
+
+
 class Settings(BaseModel):
     worker: WorkerSettings
     notices: NoticeSettings
@@ -146,6 +151,7 @@ class Settings(BaseModel):
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     web_search: WebSearchSettings
     preferences: PreferencesSettings = Field(default_factory=PreferencesSettings, description="Preferenze generali")
+    rewrite: RewriteSettings = Field(default_factory=RewriteSettings, description="Configurazione della rielaborazione")
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
     setup_required: bool = Field(False, description="True se manca un passo obbligatorio della configurazione e la SPA "
@@ -200,7 +206,8 @@ class ConnectionIn(BaseModel):
     name: str
     provider: Literal["openrouter", "google", "deepseek", "openai_compatible"]
     base_url: str = ""
-    api_keys: List[str] = Field(min_length=1)
+    # Ogni chiave è un salvataggio su disco: senza limite 100 chiavi tengono ferma la richiesta ~10 s
+    api_keys: List[str] = Field(min_length=1, max_length=20)
 
 
 class ModelIn(BaseModel):
@@ -306,6 +313,18 @@ def put_notice(body: NoticeIn, _actor: Actor):
 def put_preferences(body: PreferencesSettings, _actor: Actor):
     from rt.services.settings_service import save_preferences, snapshot
     _call(save_preferences, _project_root(), body.model_dump(exclude_unset=True))
+    return snapshot(_project_root())
+
+
+class RewriteIn(BaseModel):
+    context_mode: Literal["macro", "all"]
+    parallel_macros: Optional[int] = Field(None, ge=1, le=8)
+
+
+@router.put("/settings/rewrite", response_model=Settings, summary="Configurazione della rielaborazione")
+def put_rewrite(body: RewriteIn, _actor: Actor):
+    from rt.services.settings_service import save_rewrite, snapshot
+    _call(save_rewrite, _project_root(), body.context_mode, body.parallel_macros)
     return snapshot(_project_root())
 
 

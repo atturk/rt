@@ -366,6 +366,10 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
             "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
         },
+        "rewrite": {
+            "context_mode": getattr(cfg.rewrite, "context_mode", "macro"),
+            "parallel_macros": getattr(cfg.rewrite, "parallel_macros", 4),
+        },
         "secrets_encrypted": default_store_path().is_file(),
         "data_dir": _data_dir(),
         # Primo avvio: senza connessioni non gira niente, la SPA porta alla configurazione
@@ -478,3 +482,13 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
         "sfondo_gruppi": bg_val,
         "modalita_arricchimento": enr_val,
     }
+
+
+def save_rewrite(project_root: Path, context_mode: str, parallel_macros: int | None = None) -> None:
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    rewrite_data = data.setdefault("rewrite", {})
+    rewrite_data["context_mode"] = context_mode
+    if parallel_macros is not None:
+        rewrite_data["parallel_macros"] = parallel_macros
+    _atomic_yaml(path, data)

@@ -225,3 +225,13 @@ it('Info mostra la riga Build quando l’API la fornisce e non la mostra quando 
   expect(await screen.findByText('4.3.2b1')).toBeInTheDocument()
   expect(screen.queryByText('Build')).not.toBeInTheDocument()
 })
+
+it('Novità mostra in grassetto il testo tra ** senza gli asterischi', async () => {
+  const sections = [{ version: '4.3.5', date: '', groups: [{ title: 'Novità', items: ['**Token**: copia e rigenera.'] }] }]
+  vi.spyOn(api, 'GET').mockResolvedValue(result(sections) as never)
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ChangelogSection version="4.3.5" /></QueryClientProvider>)
+  const current = (await screen.findByText('4.3.5')).closest('details')!
+  expect(within(current).getByText('Token').tagName).toBe('STRONG')
+  expect(current.textContent).not.toContain('**')
+  expect(within(current).getByRole('checkbox', { name: 'Token: copia e rigenera.' })).toBeInTheDocument()
+})

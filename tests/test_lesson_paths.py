@@ -262,14 +262,15 @@ class TestBuildFolderRename:
         run_rewrite(lesson_dir, force_mock=True)
         run_review(lesson_dir, force_mock=True)
 
-    def test_rename_option_preserves_folder_and_outputs(self, tmp_path):
+    def test_renames_to_target_and_result_reflects_new_dir(self, tmp_path):
         lesson_dir = str(tmp_path / "provvisorio")
         self._build_ready_lesson(lesson_dir)
 
         res = run_build(lesson_dir, rename_folder=True)
         assert res["status"] == "completed"
-        assert res["lesson_dir"] == lesson_dir
-        assert os.path.isdir(lesson_dir)
+        assert res["lesson_dir"] != lesson_dir
+        assert os.path.isdir(res["lesson_dir"])
+        assert not os.path.isdir(lesson_dir)
         assert os.path.isfile(res["named_file"])
         assert os.path.basename(res["named_file"]).startswith("[2026-09-09] TEST")
 
@@ -288,7 +289,7 @@ class TestBuildFolderRename:
         lesson_dir = str(tmp_path / "provvisorio3")
         self._build_ready_lesson(lesson_dir)
 
-        # Una cartella col titolo del documento resta intatta: la build non la usa.
+        # Una cartella col titolo del documento esiste già: con free_lesson_path prende (2)
         from rt.pipeline.build import render_lesson_documents
         folder_name = render_lesson_documents(lesson_dir)["named_filename"][:-3]
         target_dir = tmp_path / folder_name
@@ -298,6 +299,6 @@ class TestBuildFolderRename:
 
         res = run_build(lesson_dir, rename_folder=True)
         assert res["status"] == "completed"
-        assert res["lesson_dir"] == lesson_dir
-        assert os.path.isdir(lesson_dir)
+        assert res["lesson_dir"] == str(target_dir) + " (2)"
+        assert os.path.isdir(res["lesson_dir"])
         assert marker.read_text(encoding="utf-8") == "non sovrascrivere"

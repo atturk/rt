@@ -75,7 +75,9 @@ def run(base: str, login_output: Callable[[], str], expect_lessons: int = 0) -> 
         r = s.post(f"{base}/api/v1/lessons", timeout=60,
                    files={"audio": ("demo_lecture.wav", f, "audio/wav")},
                    data={"date": "2026-09-26", "materia": "Anatomia", "argomenti": f"Prova installazione {before + 1}",
-                         "run": "true", "mock": "true", "auto_accept": "true"})
+                         "run": "true", "mock": "true", "auto_accept": "true",
+                         # la stessa registrazione può già esserci (lezione 3.x o giro precedente)
+                         "consenti_duplicato": "true"})
     if not r.ok:
         print(f"❌ Importazione rifiutata: {r.status_code} {r.text[:300]}", file=sys.stderr)
         return 1

@@ -20,14 +20,19 @@ def create_notes_lesson(text, *, date, materia, docente="", ora="", dest_dir):
     from rt.services.lesson_conflicts import require_no_lesson_conflict, create_lesson_directory
     require_no_lesson_conflict(date, materia, ora, dest_dir)
     lesson_dir = create_lesson_directory(date, materia, ora, dest_dir)
-    # Gli argomenti li scrive il build, generati dall'IA.
-    info = {"data": date, "materia": materia, "argomenti": "", "docente": docente,
-            "ora": ora, "cartella": os.path.basename(lesson_dir), "file_audio": "",
-            "creato_il": datetime.now(timezone.utc).isoformat(),
-            "fase_corrente": "setup_completato", "stato": "pronto_per_rielaborazione"}
-    with fs.open(lesson_path(lesson_dir, "info.yaml"), "w", encoding="utf-8") as stream:
-        yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
-    add_source(lesson_dir, "appunti", "appunti.txt", text.encode("utf-8"))
-    from rt.db.sync import dual_write_lesson
-    dual_write_lesson(lesson_dir)
+    try:
+        # Gli argomenti li scrive il build, generati dall'IA.
+        info = {"data": date, "materia": materia, "argomenti": "", "docente": docente,
+                "ora": ora, "cartella": os.path.basename(lesson_dir), "file_audio": "",
+                "creato_il": datetime.now(timezone.utc).isoformat(),
+                "fase_corrente": "setup_completato", "stato": "pronto_per_rielaborazione"}
+        with fs.open(lesson_path(lesson_dir, "info.yaml"), "w", encoding="utf-8") as stream:
+            yaml.safe_dump(info, stream, allow_unicode=True, sort_keys=False)
+        add_source(lesson_dir, "appunti", "appunti.txt", text.encode("utf-8"))
+        from rt.db.sync import dual_write_lesson
+        dual_write_lesson(lesson_dir)
+    except BaseException:
+        from rt.services.materials_lesson_service import discard_new_lesson
+        discard_new_lesson(lesson_dir)
+        raise
     return lesson_dir

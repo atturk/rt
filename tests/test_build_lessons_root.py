@@ -108,9 +108,11 @@ def test_build_ignores_rename_and_lessons_root(tmp_path):
     with patch("rt.core.config.load_config", return_value=mock_cfg):
         res = run_build(lesson_dir, rename_folder=True)
 
-    assert res["lesson_dir"] == lesson_dir
-    assert os.path.isdir(lesson_dir)
     assert not os.path.exists(lessons_root)
+    assert res["lesson_dir"] != lesson_dir
+    assert os.path.isdir(res["lesson_dir"])
+    assert not os.path.exists(lesson_dir)
+    assert os.path.dirname(res["lesson_dir"]) == audio_dir
     assert os.path.isfile(res["named_file"])
 
 

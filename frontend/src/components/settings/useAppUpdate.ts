@@ -14,7 +14,7 @@ export function useAppUpdate() {
   const update = useQuery({
     queryKey: updateKey,
     queryFn: () => unwrap(api.GET('/api/v1/system/update')),
-    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 1000 : false),
+    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 3000 : false),
   })
   const refresh = useMutation({
     mutationFn: () => unwrap(api.GET('/api/v1/system/update', { params: { query: { refresh: true } } })),
@@ -55,7 +55,7 @@ export function useUpdatePopup() {
     queryKey: updateKey,
     queryFn: () => unwrap(api.GET('/api/v1/system/update')),
     enabled: isApp,
-    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 1000 : false),
+    refetchInterval: (query) => (BUSY_PHASES.has(query.state.data?.progress?.phase ?? '') ? 3000 : false),
   })
 
   const prevPhaseRef = useRef<string | undefined>(undefined)

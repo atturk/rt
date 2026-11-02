@@ -33,7 +33,7 @@ TEXT_DOCUMENTS = ('.docx', '.txt', '.md')
 def landscape_pdf(path):
     """La prima pagina è orizzontale: di solito sono slide esportate in PDF."""
     try:
-        import fitz
+        import pymupdf as fitz
         from rt.storage import fs
         with fs.materialize(path) as real, fitz.open(real) as document:
             rect = document[0].rect if len(document) else None

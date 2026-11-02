@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from rt.core.image_extract import extract_images
@@ -80,7 +80,7 @@ def test_repeated_logo_and_background_are_not_figures():
     """Esportazioni di slide: sfondo e logo su ogni pagina non rendono 'figura' la copertina."""
     import io
 
-    import fitz
+    import pymupdf as fitz
     from PIL import Image
 
     from rt.core.material_page_filter import pdf_pages_have_figures

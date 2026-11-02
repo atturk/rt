@@ -324,6 +324,7 @@ export function useSubjectRecall(materia: string) {
   return useQuery({
     queryKey: subjectKeys.one(materia),
     queryFn: () => unwrap(api.GET('/api/v1/recall/subject', { params: { query: { materia } } })),
+    enabled: !!materia,
   })
 }
 

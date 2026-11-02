@@ -65,7 +65,7 @@ export function EnrichmentCard({ element: e, lessonId, manage = false }: { eleme
 }
 
 /** Portals attach after the last text block of each existing unit, preserving audio markers. */
-export function EnrichmentSlots({ root, lessonId, documentKey }: { root: RefObject<HTMLElement | null>; lessonId: number; documentKey: string }) {
+export function EnrichmentSlots({ root, lessonId, documentKey, enabled = true }: { root: RefObject<HTMLElement | null>; lessonId: number; documentKey: string; enabled?: boolean }) {
   const [slots, setSlots] = useState<Record<string, HTMLElement>>({})
   useEffect(() => {
     const node = root.current
@@ -86,12 +86,12 @@ export function EnrichmentSlots({ root, lessonId, documentKey }: { root: RefObje
     setSlots(next)
     return () => { Object.values(next).forEach(slot => slot.remove()) }
   }, [root, documentKey])
-  return <EnrichmentPortals slots={slots} lessonId={lessonId} />
+  return <EnrichmentPortals slots={slots} lessonId={lessonId} enabled={enabled} />
 }
 
 /** Schede dell'arricchimento nei riquadri delle unità (elementi DOM già al loro posto). */
-export function EnrichmentPortals({ slots, lessonId }: { slots: Record<string, HTMLElement>; lessonId: number }) {
-  const query = useEnrichment(lessonId)
+export function EnrichmentPortals({ slots, lessonId, enabled = true }: { slots: Record<string, HTMLElement>; lessonId: number; enabled?: boolean }) {
+  const query = useEnrichment(lessonId, { enabled })
   return <>{query.data?.elements.filter(e => (e.asset_image && e.status !== 'dismissed') || ['queued', 'generating', 'error'].includes(e.status) || e.status === 'suggestion' && !e.stale)
     .map(e => slots[e.unit_id] ? createPortal(<EnrichmentCard element={e} lessonId={lessonId} />, slots[e.unit_id], e.id) : null)}</>
 }

@@ -13,6 +13,7 @@ import {
   useJob,
   useRoute,
   useSaveRoute,
+  useSaveRewrite,
   useTestCredential,
   useTestModel,
   type RouteOut,
@@ -94,14 +95,15 @@ export function PhaseRows({ settings }: { settings: Settings }) {
   return (
     <div className="flex flex-col divide-y">
       {settings.phases.map((phase) => (
-        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} />
+        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} settings={settings} />
       ))}
     </div>
   )
 }
 
-function PhaseRow({ phase, connections }: { phase: Phase; connections: Connection[] }) {
+function PhaseRow({ phase, connections, settings }: { phase: Phase; connections: Connection[]; settings?: Settings }) {
   const assign = useAssignPhase()
+  const saveRewrite = useSaveRewrite()
   const [connection, setConnection] = useState(phase.connection ?? '')
   const [model, setModel] = useState(phase.model ?? '')
   const models = connections.find((c) => c.name === connection)?.models ?? []
@@ -167,6 +169,31 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
         Salva
       </Button>
       {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
+      {phase.job === 'rewrite' && (
+        <div className="flex flex-col gap-1 pt-2 sm:col-span-5" data-testid="rewrite-context-mode-container">
+          <Field label="Contesto della rielaborazione" htmlFor="rewrite-context-mode">
+            <Select
+              id="rewrite-context-mode"
+              value={settings?.rewrite?.context_mode ?? 'macro'}
+              onChange={(e) => saveRewrite.mutate({ context_mode: e.target.value as 'macro' | 'all' })}
+              disabled={saveRewrite.isPending}
+            >
+              <option value="macro">Macro-sezione, in parallelo (predefinito)</option>
+              <option value="all">Tutte le unità precedenti, in sequenza (più lento)</option>
+            </Select>
+          </Field>
+          <p className="text-meta text-muted-foreground">
+            {settings?.rewrite?.context_mode === 'all'
+              ? 'Ogni unità riceve tutte le unità precedenti della lezione. Elaborazione sequenziale più lenta con prompt crescenti.'
+              : 'Ogni unità riceve solo le unità della stessa macro-sezione. Le macro-sezioni girano in parallelo.'}
+          </p>
+          {saveRewrite.isError && (
+            <Alert tone="danger">
+              {errorMessage(saveRewrite.error)}
+            </Alert>
+          )}
+        </div>
+      )}
       {assign.isError && (
         <Alert tone="danger" className="sm:col-span-5">
           {errorMessage(assign.error)}

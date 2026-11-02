@@ -36,6 +36,10 @@ export function useSavePreferences() {
   )
 }
 
+export function useSaveRewrite() {
+  return useSettingsMutation((body: Schemas['RewriteIn']) => unwrap(api.PUT('/api/v1/settings/rewrite', { body })))
+}
+
 export function useSaveTranscription() {
   return useSettingsMutation((body: Schemas['TranscriptionIn']) => unwrap(api.PUT('/api/v1/settings/transcription', { body })))
 }

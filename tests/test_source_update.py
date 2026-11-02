@@ -87,7 +87,7 @@ def test_force_prepare_after_undo_preserves_legacy_duration_and_pending_sources(
     undo_update(lesson)
     assert _read_state(lesson)["sources"] == {}
     result = run_prepare(lesson, force=True)
-    assert result["duration_seconds"] == 1
+    assert result["duration_seconds"] == 2.0
     assert [s.id for s in load_segments_json(str(tmp_path / "segments.json")).segments] == ["seg_000001"]
     assert sources_pending(lesson)
     assert _read_state(lesson)["next_segment"] >= 3
@@ -229,12 +229,22 @@ def test_prepare_overlaps_audio_and_materials_with_stable_ids_and_timing(tmp_pat
     sequential = tmp_path / 'sequential'
     shutil.copytree(original, sequential)
 
+    import threading
+    # Sovrapposizione dimostrata con due eventi, non col tempo trascorso (sui runner carichi
+    # la soglia di 0.9 s veniva superata): ciascuna chiamata aspetta che parta l'altra.
+    audio_started, material_started = threading.Event(), threading.Event()
+    overlapped = []
+
     def transcribe(*a, **kw):
+        audio_started.set()
+        overlapped.append(material_started.wait(10))
         time.sleep(.5)
         return [Segment(id='seg_000001', index=1, start_seconds=0, end_seconds=1,
                         start_formatted='00:00', end_formatted='00:01', text_raw='audio')]
 
     def describe(*a):
+        material_started.set()
+        overlapped.append(audio_started.wait(10))
         time.sleep(.5)
         return 'materiale'
 
@@ -242,9 +252,8 @@ def test_prepare_overlaps_audio_and_materials_with_stable_ids_and_timing(tmp_pat
     monkeypatch.setattr(source_update, '_duration', lambda _: 2)
     monkeypatch.setattr('rt.core.materials._describe', describe)
     reporter = ListReporter()
-    started = time.monotonic()
     parallel_result = prepare_source_update(str(original), ctx=RunContext(reporter=reporter))
-    assert time.monotonic() - started < .9
+    assert overlapped == [True, True]
     with open(lesson_path(str(original), 'prepare_timing.json')) as stream:
         timing = json.load(stream)
     assert timing['parallel']
@@ -267,6 +276,8 @@ def test_prepare_overlaps_audio_and_materials_with_stable_ids_and_timing(tmp_pat
             return result
 
     monkeypatch.setattr(source_update, 'ThreadPoolExecutor', SequentialExecutor)
+    # In serie l'altra chiamata non parte mai mentre si aspetta: eventi già impostati.
+    audio_started.set(); material_started.set()
     sequential_result = prepare_source_update(str(sequential))
     assert parallel_result['segments'] == sequential_result['segments']
     assert source_update._read_state(str(original))['sources'] == source_update._read_state(str(sequential))['sources']

@@ -760,9 +760,16 @@ def run_setup(
                         except (OSError, ValueError):
                             raw_data = None
                     if res_json.returncode != 0 or raw_data is None:
+                        err_detail = (
+                            res_json.stderr.strip()
+                            if res_json.stderr and res_json.stderr.strip()
+                            else res_json.stdout.strip()
+                            if res_json.stdout and res_json.stdout.strip()
+                            else "Il file audio non è leggibile o è danneggiato."
+                        )
                         raise SetupError(
                             f"Trascrizione macparakeet-cli JSON fallita per '{os.path.basename(aud_file)}' "
-                            f"(codice uscita: {res_json.returncode}). Dettagli errore: {res_json.stderr.strip() if res_json.stderr else ''}"
+                            f"(codice uscita: {res_json.returncode}). Dettagli errore: {err_detail}"
                         )
 
                 word_ts = raw_data.get("wordTimestamps", [])

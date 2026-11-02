@@ -92,7 +92,7 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           <>
             {' · '}
             <Link to={`/job/${j.retry_of}`} className="underline" data-testid="retry-of">
-              nuovo tentativo di un job fallito
+              Tentativo precedente
             </Link>
           </>
         )}

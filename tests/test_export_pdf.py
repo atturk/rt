@@ -131,11 +131,36 @@ def test_export_lesson_pdf_with_simulated_browser(api_client, ws, monkeypatch):
     mock_context.add_cookies.assert_called_once_with([{
         "name": auth.SESSION_COOKIE,
         "value": session_id,
-        "url": "http://127.0.0.1:8000",
+        "url": "http://127.0.0.1:80",
     }])
-    mock_page.goto.assert_called_once_with(f"http://127.0.0.1:8000/lezioni/{lid}/stampa", wait_until="commit")
+    # La porta è quella su cui ascolta il server (TestClient: 80), non quella dell'URL.
+    mock_page.goto.assert_called_once_with(f"http://127.0.0.1:80/lezioni/{lid}/stampa", wait_until="commit")
     mock_page.wait_for_selector.assert_called_once_with('body[data-ready="1"]', timeout=60000)
     assert mock_page.pdf.called
+
+
+def test_pdf_uses_the_local_port_behind_tailscale_serve():
+    """Da https://mac.ts.net (Tailscale Serve) l'URL non ha porta: conta quella del server."""
+    from starlette.requests import Request
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": [(b"host", b"mac.tailnet.ts.net")],
+             "scheme": "https", "server": ("127.0.0.1", 8765), "query_string": b""}
+    assert lessons_router._local_port(Request(scope)) == 8765
+    scope_without_server = {**scope, "server": None}
+    assert lessons_router._local_port(Request(scope_without_server)) == 8765  # DEFAULT_PORT
+
+
+def test_export_lesson_pdf_print_page_timeout_returns_504(api_client, ws, monkeypatch):
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = api_client.get("/api/v1/lessons").json()[0]["id"]
+    mock_browser = MagicMock()
+    page = mock_browser.new_context.return_value.new_page.return_value
+    page.wait_for_selector.side_effect = TimeoutError("Timeout 60000ms exceeded")
+    monkeypatch.setattr("rt.llm.enrichment_media.launch_capture_browser", lambda p, **kw: mock_browser)
+    res = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res.status_code == 504
+    assert res.json()["error"]["code"] == "pdf_timeout"
+    mock_browser.close.assert_called_once()
 
 
 def test_export_lesson_pdf_browser_missing_returns_409(api_client, ws, monkeypatch):

@@ -567,6 +567,38 @@ def finish_generation_summary(summary, count, results, rounds=0, active=False):
                                   else 'max_rounds' if rounds == 2 and active else 'empty')
 
 
+def _parallel_units(work, run, parallel, stop, started=None):
+    """Al massimo parallel chiamate avviate; le risposte passano al thread chiamante.
+
+    La coda conserva l'ordine di completamento. Quando stop diventa vero non
+    partono nuove unità, ma si aspettano e si raccolgono quelle già avviate.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+    from queue import Queue
+    finished = Queue()
+    remaining = iter(work)
+    pending = set()
+    exhausted = False
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        while pending or not exhausted:
+            while not exhausted and len(pending) < parallel and not stop() and finished.empty():
+                item = next(remaining, None)
+                if item is None:
+                    exhausted = True
+                    break
+                if started:
+                    started(item)
+                future = pool.submit(copy_context().run, run, *item)
+                pending.add(future)
+                future.add_done_callback(finished.put)
+            if not pending:
+                break
+            future = finished.get()
+            pending.remove(future)
+            yield future.result()
+
+
 def generate_recall_batch(
     lesson_dir: str, qtype: RecallQuestionType, count: Optional[int], few_shot_examples: List[dict],
     force_mock: bool = False, *, regenerate: bool = False, shuffle: bool = False,
@@ -617,6 +649,18 @@ def generate_recall_batch(
         units = [u for u in _units(lesson_dir) if u.unit_id in wanted]
     else:
         units = selected_units(lesson_dir)
+    from rt.pipeline.ledger import get_pending_issues
+    _, pending_issues = get_pending_issues(lesson_dir)
+    pending_conceptual_units = {
+        iss.unit_id for iss in pending_issues
+        if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+    }
+    if unit_ids is None:
+        skipped_units = [u for u in units if u.unit_id in pending_conceptual_units]
+        if skipped_units:
+            units = [u for u in units if u.unit_id not in pending_conceptual_units]
+            n = len(skipped_units)
+            report(None, None, f"{n} {'unità saltata: ha' if n == 1 else 'unità saltate: hanno'} segnalazioni da decidere nella Verifica")
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
     from rt.services import recall_rules
@@ -640,10 +684,14 @@ def generate_recall_batch(
     active = groups
     round_index = 0
     next_groups = []
+    parallel_units = getattr(load_config().recall, "parallel_units", 4)
+    parallel = max(1, min(16, parallel_units))
+    if count is not None:
+        parallel = max(1, min(parallel, count))
     for round_index in range(3):
         next_groups = []
+        work_items = []
         for position, group in enumerate(active):
-            raise_if_cancelled()
             key = _generation_key(qtype, group)
             fingerprint = _generation_digest(lesson_dir, group, policy)
             old = bank.generation_attempts.get(key, {})
@@ -653,26 +701,28 @@ def generate_recall_batch(
             if round_index == 0 and not regenerate and old.get("exhausted") and old.get("fingerprint") == fingerprint:
                 report(position + 1, len(groups), f"{head}: già valutata, nessuna domanda nuova possibile", **where)
                 continue
-            report(position, len(groups), f"{head}: chiedo le domande al recaller", **where)
-            started = time.monotonic()
-            assessment = recall_assessment(lesson_dir, group[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
-                "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in group]}
-            previous = previous_questions_on_units(bank, ids)
+            work_items.append((position, group, key, fingerprint, ids, where, head))
+
+        def run_group(pos, grp, k, fp, grp_ids, wh, hd):
+            if pos > 0:
+                time.sleep(min(pos * 0.02, 0.1))
+            raise_if_cancelled()
+            started_t = time.monotonic()
+            assessment = recall_assessment(lesson_dir, grp[0]) if qtype != RecallQuestionType.VASTA else {"state": "group", "level": None,
+                "units": [{"unit_id": u.unit_id, **recall_assessment(lesson_dir, u)} for u in grp]}
+            previous = previous_questions_on_units(bank, grp_ids)
             examples = load_fewshot_examples(qtype, subject=context.get('materia', ''),
-                unit_text=' '.join(u.content for u in group)) if load_config().recall.votes_enabled else []
+                unit_text=' '.join(u.content for u in grp)) if load_config().recall.votes_enabled else []
             if few_shot_examples and not examples and load_config().recall.votes_enabled:
                 examples = few_shot_examples
             if mock:
-                # Come un modello reale, il mock può restituire più domande per gruppo: numerate,
-                # così i refill successivi non sono duplicati e anche le lezioni corte
-                # raggiungono l'obiettivo del batch.
-                wanted = 2 if count is None else max(1, -(-(count - len(results)) // (len(active) - position)))
-                start = sum(1 for q in bank.questions if question_key(q) == type_key(qtype) and q.unit_ids == ids)
+                wanted = 2 if count is None else max(1, ((count * (pos + 1)) // len(active)) - ((count * pos) // len(active)))
+                start = sum(1 for q in bank.questions if question_key(q) == type_key(qtype) and q.unit_ids == grp_ids)
                 from rt.pipeline.recall_checks import keywords
-                mock_topic = ' '.join(sorted(keywords(' '.join(u.content for u in group)))[:5])
+                mock_topic = ' '.join(sorted(keywords(' '.join(u.content for u in grp)))[:5])
                 batch = []
                 for n in range(start + 1, start + 1 + min(wanted, 12)):
-                    data = {"type": qtype, "question_text": f"Qual è il concetto mock {qtype.value} n. {n} per unità {', '.join(ids)}: {group[0].title}? {mock_topic}"}
+                    data = {"type": qtype, "question_text": f"Qual è il concetto mock {qtype.value} n. {n} per unità {', '.join(grp_ids)}: {grp[0].title}? {mock_topic}"}
                     if qtype == RecallQuestionType.QUIZ:
                         data.update(options=["Opzione A (corretta)", "Opzione B", "Opzione C", "Opzione D"],
                                     correct_index=0, pregenerated_material="La A è corretta; B, C e D sono errate.")
@@ -680,38 +730,62 @@ def generate_recall_batch(
                         data["pregenerated_material"] = "Scaletta ideale: 1) Punto essenziale; 2) Collegamento."
                     batch.append(data)
                 generated = response_model.model_validate({"questions": batch}).questions
+                return pos, grp, k, fp, grp_ids, wh, hd, generated, assessment, started_t, None
             else:
                 if qtype == RecallQuestionType.VASTA:
-                    prompt = prompts.build_recall_vasta_user_prompt(ids, [u.title for u in group],
-                             [u.content for u in group], examples,
+                    prompt = prompts.build_recall_vasta_user_prompt(grp_ids, [u.title for u in grp],
+                             [u.content for u in grp], examples,
                              instructions=instructions, selection=selection)
                 else:
-                    u = group[0]
+                    u = grp[0]
                     builder = getattr(prompts, "build_recall_" + qtype.value + "_user_prompt")
                     prompt = builder(u.unit_id, u.title, u.content, examples,
                                      instructions=instructions, selection=selection)
                 prompt = recall_rules.block(rules) + prompts.contextualize_recall_prompt(prompt, context, assessment, previous)
+                worker_client = LLMClient(force_mock=force_mock)
                 try:
-                    generated = client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),
-                        response_model=response_model, job_name="recall", unit_id=", ".join(ids), lesson_dir=lesson_dir).questions
+                    generated = worker_client.call_structured(prompt=prompt, system_prompt=effective_system("recall", system),
+                        response_model=response_model, job_name="recall", unit_id=", ".join(grp_ids), lesson_dir=lesson_dir).questions
+                    return pos, grp, k, fp, grp_ids, wh, hd, generated, assessment, started_t, None
                 except Exception as exc:
-                    if not is_unit_failure(exc):
-                        raise
-                    failures.failed(", ".join(ids), qtype.value, exc)
-                    report(position + 1, len(groups), f"{head}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
-                           failed=len(failures.failures), **where)
-                    last_error = exc
-                    if failures.too_many():
-                        break
+                    return pos, grp, k, fp, grp_ids, wh, hd, None, assessment, started_t, exc
+
+        def on_started(item):
+            pos, grp, k, fp, grp_ids, wh, hd = item
+            report(pos, len(groups), f"{hd}: chiedo le domande al recaller", **wh)
+
+        def should_stop():
+            from rt.llm.cancel import current_cancel_token
+            tok = current_cancel_token()
+            if tok and tok.cancelled:
+                return True
+            return (count is not None and len(results) >= count) or failures.too_many()
+
+        for pos, grp, k, fp, grp_ids, wh, hd, generated, assessment, started_t, exc in _parallel_units(
+            work_items, run_group, min(parallel, len(work_items)) if work_items else 1, should_stop, started=on_started
+        ):
+            if exc is not None:
+                from rt.services.context import RunCancelled
+                if isinstance(exc, RunCancelled):
                     continue
+                if not is_unit_failure(exc):
+                    raise exc
+                failures.failed(", ".join(grp_ids), qtype.value, exc)
+                report(pos + 1, len(groups), f"{hd}: non riuscita ({type(exc).__name__}), si riprova alla prossima generazione",
+                       failed=len(failures.failures), **wh)
+                last_error = exc
+                if failures.too_many():
+                    break
+                continue
+
             failures.succeeded()
             succeeded = True
             known = {q.question_text.strip().casefold() for q in bank.questions if question_key(q) == type_key(qtype)}
             group_results = []
             for question in generated:
                 from rt.pipeline.recall_checks import question_issue
-                previous = [q for q in [*bank.questions, *group_results] if set(q.unit_ids) & set(ids)]
-                issue = question_issue(question, ' '.join(u.title + ' ' + u.content for u in group), previous)
+                previous = [q for q in [*bank.questions, *group_results] if set(q.unit_ids) & set(grp_ids)]
+                issue = question_issue(question, ' '.join(u.title + ' ' + u.content for u in grp), previous)
                 if issue:
                     if summary is not None:
                         summary['local_discarded'] = summary.get('local_discarded', 0) + 1
@@ -720,28 +794,30 @@ def generate_recall_batch(
                 if text_key in known:
                     continue
                 known.add(text_key)
-                question = RecallQuestion(id="temporary", unit_ids=ids,
-                    **question.model_dump(), content_fingerprint=_compute_units_fingerprint(lesson_dir, ids),
-                    generation_version=POLICY_VERSION, generation_fingerprint=fingerprint,
-                    classifier_level=assessment.get("level"))
+                question = RecallQuestion(id="temporary", unit_ids=grp_ids,
+                    **question.model_dump(), content_fingerprint=_compute_units_fingerprint(lesson_dir, grp_ids),
+                    generation_version=POLICY_VERSION, generation_fingerprint=fp,
+                    classifier_level=assessment.get("level"),
+                    da_verificare=bool(set(grp_ids) & pending_conceptual_units))
                 group_results.append(question)
             group_results = recall_rules.filter_group(group_results, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
-            attempt = {"fingerprint": fingerprint, "exhausted": not group_results,
+            attempt = {"fingerprint": fp, "exhausted": not group_results,
                        "outcome": "questions" if group_results else "empty",
                        "generated_at": datetime.now().isoformat(), "question_ids": []}
-            saved = _persist_generation(lesson_dir, group_results, key, attempt)
+            saved = _persist_generation(lesson_dir, group_results, k, attempt)
             results.extend(saved)
             bank = load_recall_bank(lesson_dir)
             found = len(saved)
             if found:
-                next_groups.append(group)
-            report(position + 1, len(groups), f"{head}: " + (f"{found} {'domanda nuova' if found == 1 else 'domande nuove'}" if found
-                   else "nessuna domanda nuova") + f" ({time.monotonic() - started:.0f}s)", **where)
+                next_groups.append(grp)
+            report(pos + 1, len(groups), f"{hd}: " + (f"{found} {'domanda nuova' if found == 1 else 'domande nuove'}" if found
+                   else "nessuna domanda nuova") + f" ({time.monotonic() - started_t:.0f}s)", **wh)
             if count is not None and len(results) >= count:
                 break
         if count is None or len(results) >= count or not next_groups or failures.too_many():
             break
         active = next_groups
+    raise_if_cancelled()
     if last_error is not None:
         _LOG.warning("Recall %s: %d gruppi non generati; restano riprovabili", qtype.value, len(failures.failures))
         if not succeeded:

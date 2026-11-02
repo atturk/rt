@@ -7,6 +7,9 @@
       "start": 0,
       "end": 2
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000001",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
@@ -27,6 +30,9 @@
       "start": 3,
       "end": 14
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000002",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
@@ -47,6 +53,9 @@
       "start": 15,
       "end": 26
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000003",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
@@ -67,6 +76,9 @@
       "start": 27,
       "end": 29
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000004",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
@@ -87,6 +99,9 @@
       "start": 30,
       "end": 38
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000005",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
@@ -107,6 +122,9 @@
       "start": 39,
       "end": 48
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000006",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",
@@ -127,6 +145,9 @@
       "start": 49,
       "end": 60
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000007",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
@@ -147,6 +168,9 @@
       "start": 61,
       "end": 64
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000008",
     "type": "ERR_CONCETTUALE",
     "severity": "low",
@@ -167,6 +191,9 @@
       "start": 65,
       "end": 75
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000009",
     "type": "ERR_CONCETTUALE",
     "severity": "high",
@@ -187,6 +214,9 @@
       "start": 76,
       "end": 100
     },
+    "origine": null,
+    "prova": null,
+    "nota": null,
     "id": "sci_000010",
     "type": "ERR_CONCETTUALE",
     "severity": "medium",

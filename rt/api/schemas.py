@@ -503,6 +503,7 @@ class RecallQuestion(BaseModel):
     asked_at: Optional[str] = None
     correct_index: Optional[int] = None
     explanation: Optional[str] = None
+    da_verificare: bool = False
 
 
 class RecallQuestionDetail(RecallQuestion):

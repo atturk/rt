@@ -1,6 +1,7 @@
 """Stato del servizio e sessione della SPA."""
 import os
-from typing import Optional
+import threading
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
@@ -19,11 +20,10 @@ class Health(BaseModel):
 
 
 @router.get("/health", response_model=Health, summary="Stato del servizio (senza autenticazione)")
-def health() -> Health:
-    from rt.core.config import _default_project_root
-    from rt.core.version import get_current_version
+def health(request: Request) -> Health:
+    # Versione letta all'avvio: durante un aggiornamento il file VERSION cambia prima che questo processo si fermi.
     from rt.db.engine import get_database
-    return Health(version=get_current_version(_default_project_root()), database=get_database() is not None)
+    return Health(version=request.app.version, database=get_database() is not None)
 
 
 @router.post("/system/quit", status_code=204, summary="Ferma RT e il worker (solo da questo computer)",
@@ -322,3 +322,44 @@ class Me(BaseModel):
 @router.get("/auth/me", response_model=Me, summary="Verifica le credenziali")
 def me(actor: Actor) -> Me:
     return Me(actor=actor)
+
+
+class ClientLogEntry(BaseModel):
+    level: Literal["error", "warn"] = Field(description="console.error / errori non gestiti, oppure console.warn")
+    message: str = Field(max_length=2000)
+    page: str = Field("", max_length=300, description="Percorso della pagina della web app")
+    stack: str = Field("", max_length=4000)
+
+
+_client_log_seen: dict = {}
+_client_log_lock = threading.Lock()
+CLIENT_LOG_REPEAT_SECONDS = 60
+CLIENT_LOG_PER_MINUTE = 60
+
+
+def _one_line(text: str) -> str:
+    return " ⏎ ".join(part.strip() for part in text.replace("\r", "\n").split("\n") if part.strip())
+
+
+@router.post("/system/client-log", status_code=204,
+             summary="Registra in api.log un errore o un avviso della console della web app",
+             description="La web app inoltra console.error, console.warn ed errori non gestiti: così si "
+                         "leggono nel registro anche senza aprire gli strumenti per sviluppatori. Lo stesso "
+                         "messaggio si registra al massimo una volta al minuto.")
+def client_log(entry: ClientLogEntry, _actor: Actor) -> Response:
+    import time
+    now = time.monotonic()
+    key = (entry.level, entry.message)
+    with _client_log_lock:
+        for old, at in list(_client_log_seen.items()):
+            if now - at > CLIENT_LOG_REPEAT_SECONDS:
+                del _client_log_seen[old]
+        if key in _client_log_seen or len(_client_log_seen) >= CLIENT_LOG_PER_MINUTE:
+            return Response(status_code=204)
+        _client_log_seen[key] = now
+    icon = "🔴" if entry.level == "error" else "🟡"
+    lines = [f"{icon} frontend {entry.level} [{_one_line(entry.page) or '?'}] {_one_line(entry.message)}"]
+    lines += [f"    {line.strip()}" for line in entry.stack.splitlines()[:12] if line.strip()]
+    # stdout del server è api.log, con data e ora (rt.core.log_stamp).
+    print("\n".join(lines), flush=True)
+    return Response(status_code=204)

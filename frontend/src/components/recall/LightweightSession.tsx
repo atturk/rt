@@ -74,10 +74,12 @@ const LAST_TYPE_KEY = 'rt-recall-last-type'
 export function LightweightSession({
   lessonId: propLessonId,
   selectionIds: propSelectionIds,
+  materia: propMateria,
   unit,
 }: {
   lessonId?: number
   selectionIds?: number[]
+  materia?: string
   /** Ripasso di una sola unità (dallo Studio): domande filtrate e ritorno alla lettura. */
   unit?: {
     id: string
@@ -106,12 +108,12 @@ export function LightweightSession({
     return []
   }, [propSelectionIds, params.ids])
 
-  const subjectKey = isSelection ? selectionSubject(selectionIds.join(',')) : ''
+  // Dati lezione o selezione
+  const lessonQuery = useLesson(lessonId ?? 0)
+  const subjectKey = isSelection ? selectionSubject(selectionIds.join(',')) : (propMateria || lessonQuery.data?.materia || '')
   const types = useRecallTypes(lessonId, subjectKey || undefined).data ?? BASE_RECALL_TYPES
   const sessionTypes = [{ id: 'mista', label: 'Mista' }, ...types.filter(t => !unit || t.id !== 'vasta').map(t => ({ id: t.id, label: t.nome }))]
 
-  // Dati lezione o selezione
-  const lessonQuery = useLesson(lessonId ?? 0)
   const overviewQuery = useRecallOverview(lessonId ?? 0)
   const subjectRecallQuery = useSubjectRecall(subjectKey)
 

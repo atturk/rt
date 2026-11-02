@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink } from './support'
+import { test, apiGet, authHeaders, loginViaLink, uniqueAudio } from './support'
 
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
@@ -190,7 +189,7 @@ const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', imp
 async function newLesson(request: APIRequestContext, materia: string): Promise<number> {
   const res = await request.post('/api/v1/lessons', {
     headers: authHeaders(),
-    multipart: { audio: { name: 'lezione.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) }, date: '2026-01-15', materia, mock: 'true' },
+    multipart: { audio: uniqueAudio(AUDIO, 'lezione.wav'), date: '2026-01-15', materia, mock: 'true' },
   })
   expect(res.ok()).toBeTruthy()
   const { job_id } = (await res.json()) as { job_id: string }
@@ -349,7 +348,7 @@ test('Avviso lezioni mancanti: suggerimento al passaggio del mouse, elenco al cl
   // Al passaggio del mouse solo il suggerimento; il popup si apre col clic
   await warnBtn.hover()
   const popup = page.getByTestId('missing-lessons-popup')
-  await expect(page.getByRole('tooltip')).toContainText('1 lezioni mancanti')
+  await expect(page.getByRole('tooltip')).toContainText('1 lezione mancante')
   await expect(popup).toHaveCount(0)
   await warnBtn.click()
   await expect(popup).toBeVisible()

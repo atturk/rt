@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { installClientLog } from './lib/clientLog'
 import { initZoom } from './lib/zoom'
 import './index.css'
 
+installClientLog()
 initZoom()
 
 // Le pagine si caricano a pezzi (routes/index.tsx): dopo un aggiornamento di RT una scheda aperta

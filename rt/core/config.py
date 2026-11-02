@@ -282,6 +282,11 @@ class TranscriptionConfig(BaseModel):
     timeout_seconds: int = Field(default=600, ge=10)
 
 
+class RewriteConfig(BaseModel):
+    context_mode: Literal["macro", "all"] = "macro"
+    parallel_macros: int = Field(default=4, ge=1, le=8)
+
+
 class PipelineConfig(BaseModel):
     parallel_pages: int = Field(default=4, ge=1, le=16, description="Pagine dei materiali lette in parallelo dal modello visivo")
 
@@ -534,6 +539,7 @@ class CustomQuestionType(BaseModel):
 class RecallConfig(BaseModel):
     votes_enabled: bool = True
     presave_check: bool = True
+    parallel_units: int = Field(default=4, ge=1, le=16)
     custom_types: List[CustomQuestionType] = Field(default_factory=list)
     custom_type_threshold: float = Field(default=.25, ge=0, le=1)
     refill_thresholds: Dict[str, int] = Field(default_factory=dict)
@@ -563,6 +569,7 @@ class RTConfig(BaseModel):
     version: str = "2.0.0"
     retry: LLMRetryConfig = Field(default_factory=LLMRetryConfig, description="Configurazione retry per timeout LLM")
     review: ReviewConfig = Field(default_factory=ReviewConfig, description="Configurazione per la fase di review")
+    rewrite: RewriteConfig = Field(default_factory=RewriteConfig, description="Configurazione per la fase di rewrite")
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     jev: JevConfig = Field(default_factory=JevConfig, description="Configurazione del classificatore (es. Jev): pre-filtro della review scientifica e gate di rilevanza")
     ui: UiConfig = Field(default_factory=UiConfig, description="Configurazione interfaccia utente")

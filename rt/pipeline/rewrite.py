@@ -327,140 +327,328 @@ def _run_rewrite(
     # Ultimo uso osservato (modello, usage, output riservato): una chiamata fallita senza usage non lo azzera.
     observed = (None, None, None)
 
-    for idx, u in enumerate(units_to_process, start=1):
-        # Posizione nella lezione (es. 8/31), anche quando si riprende da un checkpoint
-        position, of_total = ((idx, total_units_count) if target_unit_id
-                              else (outline_position.get(u.id, idx), len(all_outline_units)))
-        if ctx is not None:
-            # Annullamento solo tra un'unità e l'altra: le unità già elaborate sono nel
-            # checkpoint e una nuova run riprende da lì.
-            ctx.check_cancelled()
-            ctx.progress("rewrite", current=position, total=of_total, message=f"{u.id} {u.title}".strip(),
-                         unit_id=u.id, unit_title=(u.title or "").strip() or None, failed=len(failures.failures))
-        start_seg = seg_by_id[u.start_segment_id]
-        end_seg = seg_by_id[u.end_segment_id]
-        
-        # Segmenti principali: dal start_seg.index al end_seg.index (inclusi)
-        main_segs = all_segments[start_seg.index - 1 : end_seg.index]
-        main_seg_ids = [s.id for s in main_segs]
-        main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {segment_content(s)}" for s in main_segs)
-        
-        # Contesto temporale basato su ~90s (precedente e successivo, max 20 segmenti)
-        prev_segs, next_segs = extract_context_window(
-            all_segments=all_segments,
-            start_seg=start_seg,
-            end_seg=end_seg,
-            window_seconds=90.0,
-            max_segments=20
-        )
-        prev_text = "\n".join(s.text_raw for s in prev_segs)
-        next_text = "\n".join(s.text_raw for s in next_segs)
-        current_position = outline_position[u.id] - 1
-        previous_units = [draft_units_map[unit.id] for unit in all_outline_units[context_floor:current_position]
-                          if unit.id in draft_units_map]
-        if getattr(client, "last_usage", None):
-            observed = (client.last_context_model, client.last_usage, getattr(client, "last_max_tokens", None))
-        from rt.llm.pricing import get_model_context_length
-        model, usage, max_output = observed
-        limit = get_model_context_length(model["provider"], model["model"]) if model and usage else None
-        retained, material_parts = context_for_usage(previous_units, material_parts, limit, usage, max_output)
-        if len(retained) < len(previous_units):
-            # La finestra avanza di una unità: le chiamate successive non reinseriscono
-            # quelle già tolte e non si stima la dimensione del nuovo prompt.
-            context_floor = outline_position[previous_units[0].unit_id]
-        prefix = build_rewrite_prefix_parts(outline_summary, [
-            f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained],
-            materials_text="\n\n".join(material_parts))
-        
-        u_macro_id = unit_to_macro.get(u.id, "")
-        unit_mat_text = material_context_for_unit(lesson_dir, u.id, u_macro_id)
+    from rt.core.config import load_config, RewriteConfig
+    cfg = load_config()
+    rewrite_cfg = getattr(cfg, "rewrite", None) or RewriteConfig()
+    context_mode = getattr(rewrite_cfg, "context_mode", "macro")
+    parallel_macros = getattr(rewrite_cfg, "parallel_macros", 4)
 
-        prompt = build_rewrite_user_prompt(
-            unit_id=u.id,
-            unit_title=u.title,
-            main_segments_text=main_text,
-            main_segment_ids=main_seg_ids,
-            prev_context=prev_text,
-            next_context=next_text,
-            outline_summary=outline_summary,
-            include_prefix=False,
-            unit_materials_text=unit_mat_text,
-        )
-        
-        u_title = u.title.strip() if getattr(u, "title", None) else ""
-        if len(u_title) > 28:
-            u_title = u_title[:25] + "..."
-        unit_label = f"unit {idx}/{total_units_count} ({u.id}: {u_title})" if u_title else f"unit {idx}/{total_units_count} ({u.id})"
+    if context_mode == "macro":
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from contextvars import copy_context
+        from rt.llm.cancel import raise_if_cancelled
 
-        try:
-            unit_draft = client.call_structured(
-                prompt=append_extra(lesson_dir, "rewrite", prompt),
-                system_prompt=effective_system("rewrite", REWRITE_SYSTEM_PROMPT),
-                response_model=DraftUnit,
-                job_name="rewrite",
-                unit_id=unit_label,
-                lesson_dir=lesson_dir,
-                prompt_prefix=prefix,
-            )
-        except Exception as exc:
-            if not is_unit_failure(exc):
-                raise
-            # L'unità resta fuori dal draft e dal checkpoint: le altre proseguono e una nuova
-            # run rifà solo le unità mancanti.
-            title = (u.title or "").strip()
-            failure = failures.failed(u.id, f"{position}/{of_total} ({u.id}{': ' + title if title else ''})", exc)
-            LOG.error("Rewrite unità %s non riuscita: %s", u.id, failure.message)
+        macro_map = {str(macro.id): macro for macro in outline.macro_sections}
+        macro_groups = []
+        for macro in outline.macro_sections:
+            m_id = str(macro.id)
+            m_units = [u for u in units_to_process if unit_to_macro.get(u.id) == m_id]
+            if m_units:
+                macro_groups.append((macro, m_units))
+        orphan_units = [u for u in units_to_process if unit_to_macro.get(u.id) not in macro_map]
+        if orphan_units:
+            macro_groups.append((None, orphan_units))
+
+        write_lock = threading.Lock()
+        stop_event = threading.Event()
+
+        def process_macro_group(macro, group_units):
+            nonlocal stopped_early, processed_count
+            macro_client = LLMClient(force_mock=force_mock)
+            if client is not None:
+                if hasattr(client, "_mock_issue_calls"):
+                    macro_client._mock_issue_calls = client._mock_issue_calls
+                if hasattr(client, "_mock_review_wait"):
+                    macro_client._mock_review_wait = client._mock_review_wait
+            macro_observed = (None, None, None)
+            macro_context_floor = 0
+            macro_material_parts = list(material_parts)
+            macro_units_list = macro.units if macro else group_units
+
+            for u in group_units:
+                if stop_event.is_set():
+                    break
+                raise_if_cancelled()
+                if ctx is not None:
+                    ctx.check_cancelled()
+
+                position = outline_position.get(u.id, 1)
+                if ctx is not None:
+                    with write_lock:
+                        ctx.progress("rewrite", current=position, total=len(all_outline_units),
+                                     message=f"{u.id} {u.title}".strip(),
+                                     unit_id=u.id, unit_title=(u.title or "").strip() or None,
+                                     failed=len(failures.failures))
+
+                start_seg = seg_by_id[u.start_segment_id]
+                end_seg = seg_by_id[u.end_segment_id]
+                main_segs = all_segments[start_seg.index - 1 : end_seg.index]
+                main_seg_ids = [s.id for s in main_segs]
+                main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {segment_content(s)}" for s in main_segs)
+
+                prev_segs, next_segs = extract_context_window(
+                    all_segments=all_segments,
+                    start_seg=start_seg,
+                    end_seg=end_seg,
+                    window_seconds=90.0,
+                    max_segments=20,
+                )
+                prev_text = "\n".join(s.text_raw for s in prev_segs)
+                next_text = "\n".join(s.text_raw for s in next_segs)
+
+                u_pos_in_macro = next((i for i, mu in enumerate(macro_units_list) if mu.id == u.id), len(macro_units_list))
+                with write_lock:
+                    previous_units = [draft_units_map[mu.id] for mu in macro_units_list[macro_context_floor:u_pos_in_macro]
+                                      if mu.id in draft_units_map]
+
+                if getattr(macro_client, "last_usage", None):
+                    macro_observed = (macro_client.last_context_model, macro_client.last_usage, getattr(macro_client, "last_max_tokens", None))
+                from rt.llm.pricing import get_model_context_length
+                m_model, m_usage, m_max_output = macro_observed
+                limit = get_model_context_length(m_model["provider"], m_model["model"]) if m_model and m_usage else None
+                retained, macro_material_parts = context_for_usage(previous_units, macro_material_parts, limit, m_usage, m_max_output)
+                if len(retained) < len(previous_units):
+                    macro_context_floor += 1
+
+                prefix = build_rewrite_prefix_parts(
+                    outline_summary,
+                    [f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained],
+                    materials_text="\n\n".join(macro_material_parts),
+                )
+
+                u_macro_id = unit_to_macro.get(u.id, "")
+                unit_mat_text = material_context_for_unit(lesson_dir, u.id, u_macro_id)
+
+                prompt = build_rewrite_user_prompt(
+                    unit_id=u.id,
+                    unit_title=u.title,
+                    main_segments_text=main_text,
+                    main_segment_ids=main_seg_ids,
+                    prev_context=prev_text,
+                    next_context=next_text,
+                    outline_summary=outline_summary,
+                    include_prefix=False,
+                    unit_materials_text=unit_mat_text,
+                )
+
+                u_title = u.title.strip() if getattr(u, "title", None) else ""
+                if len(u_title) > 28:
+                    u_title = u_title[:25] + "..."
+                unit_label = f"unit {position}/{len(all_outline_units)} ({u.id}: {u_title})" if u_title else f"unit {position}/{len(all_outline_units)} ({u.id})"
+
+                try:
+                    unit_draft = macro_client.call_structured(
+                        prompt=append_extra(lesson_dir, "rewrite", prompt),
+                        system_prompt=effective_system("rewrite", REWRITE_SYSTEM_PROMPT),
+                        response_model=DraftUnit,
+                        job_name="rewrite",
+                        unit_id=unit_label,
+                        lesson_dir=lesson_dir,
+                        prompt_prefix=prefix,
+                    )
+                except Exception as exc:
+                    if not is_unit_failure(exc):
+                        stop_event.set()
+                        raise
+                    with write_lock:
+                        title = (u.title or "").strip()
+                        failure = failures.failed(u.id, f"{position}/{len(all_outline_units)} ({u.id}{': ' + title if title else ''})", exc)
+                        LOG.error("Rewrite unità %s non riuscita: %s", u.id, failure.message)
+                        if ctx is not None:
+                            ctx.emit(Notice(level="warning", message=f"Rielaborazione dell'unità {failure.label} non riuscita: {failure.message}"))
+                        if failures.too_many():
+                            stopped_early = True
+                            stop_event.set()
+                    continue
+
+                unit_draft.start_segment_id = u.start_segment_id
+                unit_draft.end_segment_id = u.end_segment_id
+                unit_draft.unit_id = u.id
+                if changed_unit_ids is not None:
+                    unit_draft.title = fixed_titles.get(u.id, u.title)
+                if not unit_draft.source_segment_ids:
+                    unit_draft.source_segment_ids = main_seg_ids
+                else:
+                    start_idx = seg_by_id[u.start_segment_id].index
+                    end_idx = seg_by_id[u.end_segment_id].index
+                    valid_ids = [
+                        s_id for s_id in unit_draft.source_segment_ids
+                        if s_id in seg_by_id and start_idx <= seg_by_id[s_id].index <= end_idx
+                    ]
+                    valid_ids.sort(key=lambda s_id: seg_by_id[s_id].index)
+                    seen_s = set()
+                    dedup_ids = []
+                    for s_id in valid_ids:
+                        if s_id not in seen_s:
+                            dedup_ids.append(s_id)
+                            seen_s.add(s_id)
+                    unit_draft.source_segment_ids = dedup_ids if dedup_ids else main_seg_ids
+
+                with write_lock:
+                    failures.succeeded()
+                    draft_units_map[u.id] = unit_draft
+                    processed_count += 1
+
+                    ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
+                    draft.units = ordered_units
+                    save_draft(draft, lesson_dir)
+
+                    source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
+                    draft_hash = compute_file_sha256(draft_path)
+                    record_phase_checkpoint(
+                        lesson_dir=lesson_dir,
+                        phase_name="rewrite",
+                        source_fingerprint=source_fp,
+                        artifact_fingerprints={"draft.json": draft_hash},
+                        completed_items=[ou.unit_id for ou in draft.units],
+                    )
+
+        if macro_groups:
+            max_workers = min(max(1, parallel_macros), len(macro_groups))
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [
+                    pool.submit(copy_context().run, process_macro_group, macro, m_units)
+                    for macro, m_units in macro_groups
+                ]
+                for future in as_completed(futures):
+                    future.result()
+
+    else:
+        for idx, u in enumerate(units_to_process, start=1):
+            # Posizione nella lezione (es. 8/31), anche quando si riprende da un checkpoint
+            position, of_total = ((idx, total_units_count) if target_unit_id
+                                  else (outline_position.get(u.id, idx), len(all_outline_units)))
             if ctx is not None:
-                ctx.emit(Notice(level="warning", message=f"Rielaborazione dell'unità {failure.label} non riuscita: {failure.message}"))
-            if failures.too_many():
-                stopped_early = True
-                break
-            continue
-        failures.succeeded()
-
-        # Forziamo rigorosamente la rispondenza della provenance prima del commit
-        unit_draft.start_segment_id = u.start_segment_id
-        unit_draft.end_segment_id = u.end_segment_id
-        unit_draft.unit_id = u.id
-        if changed_unit_ids is not None:
-            unit_draft.title = fixed_titles.get(u.id, u.title)
-        if not unit_draft.source_segment_ids:
-            unit_draft.source_segment_ids = main_seg_ids
-        else:
-            # Filtra solo i segmenti validi ed entro l'intervallo outline dell'unità [start .. end]
-            start_idx = seg_by_id[u.start_segment_id].index
-            end_idx = seg_by_id[u.end_segment_id].index
-            valid_ids = [
-                s_id for s_id in unit_draft.source_segment_ids
-                if s_id in seg_by_id and start_idx <= seg_by_id[s_id].index <= end_idx
-            ]
-            # Ordina rigorosamente per indice temporale ed elimina duplicati
-            valid_ids.sort(key=lambda s_id: seg_by_id[s_id].index)
-            seen_s = set()
-            dedup_ids = []
-            for s_id in valid_ids:
-                if s_id not in seen_s:
-                    dedup_ids.append(s_id)
-                    seen_s.add(s_id)
-            unit_draft.source_segment_ids = dedup_ids if dedup_ids else main_seg_ids
+                # Annullamento solo tra un'unità e l'altra: le unità già elaborate sono nel
+                # checkpoint e una nuova run riprende da lì.
+                ctx.check_cancelled()
+                ctx.progress("rewrite", current=position, total=of_total, message=f"{u.id} {u.title}".strip(),
+                             unit_id=u.id, unit_title=(u.title or "").strip() or None, failed=len(failures.failures))
+            start_seg = seg_by_id[u.start_segment_id]
+            end_seg = seg_by_id[u.end_segment_id]
             
-        draft_units_map[u.id] = unit_draft
-        processed_count += 1
+            # Segmenti principali: dal start_seg.index al end_seg.index (inclusi)
+            main_segs = all_segments[start_seg.index - 1 : end_seg.index]
+            main_seg_ids = [s.id for s in main_segs]
+            main_text = "\n".join(f"[{s.id}] ({s.start_formatted}) {segment_content(s)}" for s in main_segs)
+            
+            # Contesto temporale basato su ~90s (precedente e successivo, max 20 segmenti)
+            prev_segs, next_segs = extract_context_window(
+                all_segments=all_segments,
+                start_seg=start_seg,
+                end_seg=end_seg,
+                window_seconds=90.0,
+                max_segments=20
+            )
+            prev_text = "\n".join(s.text_raw for s in prev_segs)
+            next_text = "\n".join(s.text_raw for s in next_segs)
+            current_position = outline_position[u.id] - 1
+            previous_units = [draft_units_map[unit.id] for unit in all_outline_units[context_floor:current_position]
+                              if unit.id in draft_units_map]
+            if getattr(client, "last_usage", None):
+                observed = (client.last_context_model, client.last_usage, getattr(client, "last_max_tokens", None))
+            from rt.llm.pricing import get_model_context_length
+            model, usage, max_output = observed
+            limit = get_model_context_length(model["provider"], model["model"]) if model and usage else None
+            retained, material_parts = context_for_usage(previous_units, material_parts, limit, usage, max_output)
+            if len(retained) < len(previous_units):
+                # La finestra avanza di una unità: le chiamate successive non reinseriscono
+                # quelle già tolte e non si stima la dimensione del nuovo prompt.
+                context_floor = outline_position[previous_units[0].unit_id]
+            prefix = build_rewrite_prefix_parts(outline_summary, [
+                f"Unità {unit.unit_id}: {unit.title}\n{unit.content}" for unit in retained],
+                materials_text="\n\n".join(material_parts))
+            
+            u_macro_id = unit_to_macro.get(u.id, "")
+            unit_mat_text = material_context_for_unit(lesson_dir, u.id, u_macro_id)
 
-        # Ordinamento canonico e checkpoint atomico su disco
-        ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
-        draft.units = ordered_units
-        save_draft(draft, lesson_dir)
+            prompt = build_rewrite_user_prompt(
+                unit_id=u.id,
+                unit_title=u.title,
+                main_segments_text=main_text,
+                main_segment_ids=main_seg_ids,
+                prev_context=prev_text,
+                next_context=next_text,
+                outline_summary=outline_summary,
+                include_prefix=False,
+                unit_materials_text=unit_mat_text,
+            )
+            
+            u_title = u.title.strip() if getattr(u, "title", None) else ""
+            if len(u_title) > 28:
+                u_title = u_title[:25] + "..."
+            unit_label = f"unit {idx}/{total_units_count} ({u.id}: {u_title})" if u_title else f"unit {idx}/{total_units_count} ({u.id})"
 
-        source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
-        draft_hash = compute_file_sha256(draft_path)
-        record_phase_checkpoint(
-            lesson_dir=lesson_dir,
-            phase_name="rewrite",
-            source_fingerprint=source_fp,
-            artifact_fingerprints={"draft.json": draft_hash},
-            completed_items=[ou.unit_id for ou in draft.units]
-        )
+            try:
+                unit_draft = client.call_structured(
+                    prompt=append_extra(lesson_dir, "rewrite", prompt),
+                    system_prompt=effective_system("rewrite", REWRITE_SYSTEM_PROMPT),
+                    response_model=DraftUnit,
+                    job_name="rewrite",
+                    unit_id=unit_label,
+                    lesson_dir=lesson_dir,
+                    prompt_prefix=prefix,
+                )
+            except Exception as exc:
+                if not is_unit_failure(exc):
+                    raise
+                # L'unità resta fuori dal draft e dal checkpoint: le altre proseguono e una nuova
+                # run rifà solo le unità mancanti.
+                title = (u.title or "").strip()
+                failure = failures.failed(u.id, f"{position}/{of_total} ({u.id}{': ' + title if title else ''})", exc)
+                LOG.error("Rewrite unità %s non riuscita: %s", u.id, failure.message)
+                if ctx is not None:
+                    ctx.emit(Notice(level="warning", message=f"Rielaborazione dell'unità {failure.label} non riuscita: {failure.message}"))
+                if failures.too_many():
+                    stopped_early = True
+                    break
+                continue
+            failures.succeeded()
+
+            # Forziamo rigorosamente la rispondenza della provenance prima del commit
+            unit_draft.start_segment_id = u.start_segment_id
+            unit_draft.end_segment_id = u.end_segment_id
+            unit_draft.unit_id = u.id
+            if changed_unit_ids is not None:
+                unit_draft.title = fixed_titles.get(u.id, u.title)
+            if not unit_draft.source_segment_ids:
+                unit_draft.source_segment_ids = main_seg_ids
+            else:
+                # Filtra solo i segmenti validi ed entro l'intervallo outline dell'unità [start .. end]
+                start_idx = seg_by_id[u.start_segment_id].index
+                end_idx = seg_by_id[u.end_segment_id].index
+                valid_ids = [
+                    s_id for s_id in unit_draft.source_segment_ids
+                    if s_id in seg_by_id and start_idx <= seg_by_id[s_id].index <= end_idx
+                ]
+                # Ordina rigorosamente per indice temporale ed elimina duplicati
+                valid_ids.sort(key=lambda s_id: seg_by_id[s_id].index)
+                seen_s = set()
+                dedup_ids = []
+                for s_id in valid_ids:
+                    if s_id not in seen_s:
+                        dedup_ids.append(s_id)
+                        seen_s.add(s_id)
+                unit_draft.source_segment_ids = dedup_ids if dedup_ids else main_seg_ids
+                
+            draft_units_map[u.id] = unit_draft
+            processed_count += 1
+
+            # Ordinamento canonico e checkpoint atomico su disco
+            ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
+            draft.units = ordered_units
+            save_draft(draft, lesson_dir)
+
+            source_fp = compute_source_fingerprint(lesson_dir, "rewrite")
+            draft_hash = compute_file_sha256(draft_path)
+            record_phase_checkpoint(
+                lesson_dir=lesson_dir,
+                phase_name="rewrite",
+                source_fingerprint=source_fp,
+                artifact_fingerprints={"draft.json": draft_hash},
+                completed_items=[ou.unit_id for ou in draft.units]
+            )
         
     # Verifica stato finale
     ordered_units = [draft_units_map[ou.id] for ou in all_outline_units if ou.id in draft_units_map]
