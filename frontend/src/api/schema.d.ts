@@ -2999,6 +2999,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/rewrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Configurazione della rielaborazione */
+        put: operations["put_rewrite_api_v1_settings_rewrite_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/routes/{job}/{role}": {
         parameters: {
             query?: never;
@@ -7887,6 +7904,30 @@ export interface components {
             /** Unit Id */
             unit_id: string;
         };
+        /** RewriteIn */
+        RewriteIn: {
+            /**
+             * Context Mode
+             * @enum {string}
+             */
+            context_mode: "macro" | "all";
+            /** Parallel Macros */
+            parallel_macros?: number | null;
+        };
+        /** RewriteSettings */
+        RewriteSettings: {
+            /**
+             * Context Mode
+             * @default macro
+             * @enum {string}
+             */
+            context_mode: "macro" | "all";
+            /**
+             * Parallel Macros
+             * @default 4
+             */
+            parallel_macros: number;
+        };
         /** RouteIn */
         RouteIn: {
             /**
@@ -8059,6 +8100,8 @@ export interface components {
                     };
                 };
             };
+            /** @description Configurazione della rielaborazione */
+            rewrite?: components["schemas"]["RewriteSettings"];
             /**
              * Secrets Encrypted
              * @description True se i segreti sono nell'archivio cifrato (rt secrets init)
@@ -22501,6 +22544,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallRulesView"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_rewrite_api_v1_settings_rewrite_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RewriteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
