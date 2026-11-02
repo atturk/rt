@@ -228,3 +228,33 @@ def test_all_context_mode_includes_all_previous_units(two_macro_lesson, monkeypa
     assert "Rielaborato 1.1" in captured["2.2"]
     assert "Rielaborato 1.2" in captured["2.2"]
     assert "Rielaborato 2.1" in captured["2.2"]
+
+
+def test_macro_groups_use_distinct_client_instances(two_macro_lesson, monkeypatch):
+    test_cfg = RTConfig(rewrite=RewriteConfig(context_mode="macro", parallel_macros=2))
+    monkeypatch.setattr("rt.core.config.load_config", lambda *a, **kw: test_cfg)
+
+    clients_per_unit = {}
+    original_call = LLMClient.call_structured
+
+    def tracking_call(self, **kwargs):
+        unit_id = kwargs.get("unit_id", "")
+        for uid in ("1.1", "1.2", "2.1", "2.2"):
+            if uid in unit_id:
+                clients_per_unit[uid] = id(self)
+                break
+        res = original_call(self, **kwargs)
+        res.content = f"Rielaborato {res.unit_id}"
+        return res
+
+    monkeypatch.setattr(LLMClient, "call_structured", tracking_call)
+
+    _run_rewrite(two_macro_lesson, force=True, force_mock=True)
+
+    # In Macro 1: 1.1 and 1.2 use the same macro client
+    assert clients_per_unit["1.1"] == clients_per_unit["1.2"]
+    # In Macro 2: 2.1 and 2.2 use the same macro client
+    assert clients_per_unit["2.1"] == clients_per_unit["2.2"]
+    # But Macro 1 and Macro 2 use DIFFERENT clients!
+    assert clients_per_unit["1.1"] != clients_per_unit["2.1"]
+

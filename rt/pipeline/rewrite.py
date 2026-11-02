@@ -355,7 +355,12 @@ def _run_rewrite(
 
         def process_macro_group(macro, group_units):
             nonlocal stopped_early, processed_count
-            macro_client = client if client is not None else LLMClient(force_mock=force_mock)
+            macro_client = LLMClient(force_mock=force_mock)
+            if client is not None:
+                if hasattr(client, "_mock_issue_calls"):
+                    macro_client._mock_issue_calls = client._mock_issue_calls
+                if hasattr(client, "_mock_review_wait"):
+                    macro_client._mock_review_wait = client._mock_review_wait
             macro_observed = (None, None, None)
             macro_context_floor = 0
             macro_material_parts = list(material_parts)
@@ -370,10 +375,11 @@ def _run_rewrite(
 
                 position = outline_position.get(u.id, 1)
                 if ctx is not None:
-                    ctx.progress("rewrite", current=position, total=len(all_outline_units),
-                                 message=f"{u.id} {u.title}".strip(),
-                                 unit_id=u.id, unit_title=(u.title or "").strip() or None,
-                                 failed=len(failures.failures))
+                    with write_lock:
+                        ctx.progress("rewrite", current=position, total=len(all_outline_units),
+                                     message=f"{u.id} {u.title}".strip(),
+                                     unit_id=u.id, unit_title=(u.title or "").strip() or None,
+                                     failed=len(failures.failures))
 
                 start_seg = seg_by_id[u.start_segment_id]
                 end_seg = seg_by_id[u.end_segment_id]
