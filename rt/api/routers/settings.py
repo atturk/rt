@@ -206,7 +206,8 @@ class ConnectionIn(BaseModel):
     name: str
     provider: Literal["openrouter", "google", "deepseek", "openai_compatible"]
     base_url: str = ""
-    api_keys: List[str] = Field(min_length=1)
+    # Ogni chiave è un salvataggio su disco: senza limite 100 chiavi tengono ferma la richiesta ~10 s
+    api_keys: List[str] = Field(min_length=1, max_length=20)
 
 
 class ModelIn(BaseModel):

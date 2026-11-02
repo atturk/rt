@@ -126,3 +126,10 @@ def test_validation_errors_translated_to_italian(client):
     assert any("Manca la data" in m for m in msgs)
     assert any("Manca la materia" in m for m in msgs)
     assert "Manca la data" in err["message"]
+
+
+def test_too_many_api_keys_is_rejected_quickly(client):
+    # Il fuzz su macOS mandava liste enormi di chiavi: ognuna è una scrittura su disco (timeout).
+    keys = [f"sk-or-v1-{index:040d}" for index in range(21)]
+    res = client.post("/api/v1/settings/connections", json={"name": "Troppe", "provider": "openrouter", "api_keys": keys})
+    assert res.status_code == 422
