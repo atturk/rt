@@ -201,7 +201,7 @@ def test_warnings_count_orphan_issues(root):
     codes = {w["code"]: w for w in build_warnings(lesson_dir)}
     assert codes["orphan_issues"]["count"] == len(orphans)
     assert codes["orphan_issues"]["message"].endswith("il suo testo non è più nella bozza." if len(orphans) == 1 else "il loro testo non è più nella bozza.")
-    assert codes.get("pending_issues", {}).get("count", 0) == len(issues) - len(orphans)
+    assert codes.get("pending_issues", {}).get("count", 0) == len(issues)
     assert "review_stale" in codes  # la bozza è cambiata dopo la review
 
     # una issue rifiutata non è orfana: il testo resta com'è

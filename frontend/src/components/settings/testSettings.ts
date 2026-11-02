@@ -4,6 +4,7 @@ export const testSettings: Settings = {
   setup_required: false, secrets_encrypted: true, data_dir: '/tmp/rt',
   worker: { running: 2 }, notices: { dismissed: [] },
   preferences: { secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale' },
+  rewrite: { context_mode: 'macro', parallel_macros: 4 },
   transcription: {
     engine: 'macparakeet',
     api_key_set: false,

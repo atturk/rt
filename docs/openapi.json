@@ -997,6 +997,11 @@
             ],
             "title": "Calendar Entry Id"
           },
+          "consenti_duplicato": {
+            "default": false,
+            "title": "Consenti Duplicato",
+            "type": "boolean"
+          },
           "date": {
             "description": "Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')",
             "title": "Date",
@@ -8864,6 +8869,11 @@
             ],
             "title": "Custom Type"
           },
+          "da_verificare": {
+            "default": false,
+            "title": "Da Verificare",
+            "type": "boolean"
+          },
           "discard_reasons": {
             "items": {
               "type": "string"
@@ -9069,6 +9079,11 @@
               }
             ],
             "title": "Custom Type"
+          },
+          "da_verificare": {
+            "default": false,
+            "title": "Da Verificare",
+            "type": "boolean"
           },
           "discard_reasons": {
             "items": {
@@ -10164,6 +10179,58 @@
         "title": "ReviewUnit",
         "type": "object"
       },
+      "RewriteIn": {
+        "properties": {
+          "context_mode": {
+            "enum": [
+              "macro",
+              "all"
+            ],
+            "title": "Context Mode",
+            "type": "string"
+          },
+          "parallel_macros": {
+            "anyOf": [
+              {
+                "maximum": 8.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parallel Macros"
+          }
+        },
+        "required": [
+          "context_mode"
+        ],
+        "title": "RewriteIn",
+        "type": "object"
+      },
+      "RewriteSettings": {
+        "properties": {
+          "context_mode": {
+            "default": "macro",
+            "enum": [
+              "macro",
+              "all"
+            ],
+            "title": "Context Mode",
+            "type": "string"
+          },
+          "parallel_macros": {
+            "default": 4,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Parallel Macros",
+            "type": "integer"
+          }
+        },
+        "title": "RewriteSettings",
+        "type": "object"
+      },
       "RouteIn": {
         "properties": {
           "base_url": {
@@ -10539,6 +10606,10 @@
             },
             "title": "Pricing",
             "type": "object"
+          },
+          "rewrite": {
+            "$ref": "#/components/schemas/RewriteSettings",
+            "description": "Configurazione della rielaborazione"
           },
           "secrets_encrypted": {
             "description": "True se i segreti sono nell'archivio cifrato (rt secrets init)",
@@ -11044,6 +11115,14 @@
                 "type": "null"
               }
             ]
+          },
+          "unplaced": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UnplacedMaterial"
+            },
+            "title": "Unplaced",
+            "type": "array"
           }
         },
         "required": [
@@ -12406,6 +12485,53 @@
           }
         },
         "title": "UnitRelevanceSummary",
+        "type": "object"
+      },
+      "UnplacedMaterial": {
+        "properties": {
+          "immagini": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini",
+            "type": "array"
+          },
+          "macro_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macro Id"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_file": {
+            "title": "Source File",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_file",
+          "page"
+        ],
+        "title": "UnplacedMaterial",
         "type": "object"
       },
       "UpdateChannelRequest": {
@@ -31352,6 +31478,92 @@
         "summary": "Recall Votes",
         "tags": [
           "impostazioni",
+          "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/settings/rewrite": {
+      "put": {
+        "operationId": "put_rewrite_api_v1_settings_rewrite_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewriteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Configurazione della rielaborazione",
+        "tags": [
           "impostazioni"
         ]
       }

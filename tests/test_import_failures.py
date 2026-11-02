@@ -7,6 +7,7 @@ import pytest
 from rt.services.jobs import DbJobQueue
 from rt.services.worker import Worker
 from tests.api_support import isolated_workspace
+from tests.test_material_import import wav_bytes
 from tests.test_materials import pdf_bytes
 
 
@@ -73,7 +74,7 @@ def test_setup_tells_the_job_which_lesson_it_created(tmp_path):
 def test_audio_with_notes_is_accepted_as_mixed_sources(api_client, rt_db, tmp_path, monkeypatch):
     isolated_workspace(tmp_path, monkeypatch)
     response = api_client.post("/api/v1/lessons", data={"date": "2026-10-12", "materia": "Test", "appunti": "Note",
-                               "mock": "true"}, files=[("audio", ("lezione.m4a", b"audio", "audio/mp4"))])
+                               "mock": "true"}, files=[("audio", ("lezione.wav", wav_bytes(), "audio/wav"))])
     assert response.status_code == 202, response.text
     assert response.json()["type"] == "ingest_sources"
 

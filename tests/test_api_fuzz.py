@@ -115,3 +115,14 @@ def test_overlong_secret_is_rejected_before_reaching_env(client):
     response = client.put("/api/v1/settings/telegram", json={"bot_token": "1" * 40000, "chat_id": "1" * 40000})
     assert response.status_code == 422
     assert client.get("/api/v1/settings").status_code == 200
+
+
+def test_validation_errors_translated_to_italian(client):
+    response = client.post("/api/v1/lessons", data={})
+    assert response.status_code == 422
+    err = response.json()["error"]
+    assert err["code"] == "validation_error"
+    msgs = [d["msg"] for d in err.get("details", [])]
+    assert any("Manca la data" in m for m in msgs)
+    assert any("Manca la materia" in m for m in msgs)
+    assert "Manca la data" in err["message"]

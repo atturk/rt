@@ -18,6 +18,15 @@ from rt.services.sources_view import SourceView, LastUpdate, sources_view
 router = APIRouter(tags=["lezioni"])
 
 
+class UnplacedMaterial(BaseModel):
+    source_id: str
+    source_file: str
+    page: int
+    text: str = ""
+    macro_id: str | None = None
+    immagini: list[str] = []
+
+
 class SourcesView(BaseModel):
     sources: list[SourceView]
     has_unused_sources: bool
@@ -30,6 +39,7 @@ class SourcesView(BaseModel):
     principale_usato: str | None
     solo_ricostruzione: bool
     fonti_tolte_usate: list[str] = []
+    unplaced: list[UnplacedMaterial] = []
 
 
 class UpdateRequest(BaseModel):
@@ -64,7 +74,7 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 unisci: bool = Form(True), pagine: Optional[str] = Form(None),
                 estrai: Optional[Literal['testo', 'immagini', 'solo_immagini']] = Form(None),
                 uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None)):
-    from rt.api.routers.jobs import _check_pages, _max_upload_bytes, _save_uploads, _upload_dir
+    from rt.api.routers.jobs import _check_audio_file, _check_pages, _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
     import shutil
@@ -97,6 +107,8 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
         target = _upload_dir()
         try:
             saved = _save_uploads(file, SUPPORTED_AUDIO_EXTENSIONS, target)
+            for p in saved:
+                _check_audio_file(p)
             if len(saved) == 1:
                 return _add_source(lesson_id, lesson_dir, tipo, os.path.basename(saved[0]), None, ordine, saved[0])
             if unisci:

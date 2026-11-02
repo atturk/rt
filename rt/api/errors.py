@@ -81,6 +81,49 @@ COMMON_RESPONSES = {
 }
 
 
+FIELD_NAMES_IT = {
+    "date": "la data",
+    "data": "la data",
+    "materia": "la materia",
+    "titolo": "il titolo",
+    "ora": "l'ora",
+    "docente": "il docente",
+    "argomenti": "gli argomenti",
+    "file": "il file",
+    "audio": "l'audio",
+    "ordine": "l'ordine",
+    "durata": "la durata",
+    "files": "i file",
+    "archives": "gli archivi",
+}
+
+
+def _translate_validation_error(err: dict) -> str:
+    loc = err.get("loc", ())
+    field = str(loc[-1]) if loc else ""
+    err_type = err.get("type", "")
+    msg = err.get("msg", "")
+
+    article_field = FIELD_NAMES_IT.get(field.lower())
+    if not article_field:
+        article_field = f"il campo '{field}'" if field and field != "body" else "un campo obbligatorio"
+
+    if err_type == "missing" or msg == "Field required":
+        return f"Manca {article_field}"
+    elif "too_short" in err_type:
+        return f"{article_field.capitalize()} non può essere vuoto"
+    elif "too_long" in err_type:
+        return f"{article_field.capitalize()} è troppo lungo"
+    elif "string_type" in err_type or "int_type" in err_type or "float_type" in err_type or "bool_type" in err_type:
+        return f"Formato non valido per {article_field}"
+    elif "enum" in err_type:
+        return f"Valore non valido per {article_field}"
+    else:
+        if msg and msg != "Field required" and not msg.startswith("Value error, "):
+            return msg
+        return f"Valore non valido per {article_field}"
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_request: Request, exc: ApiError):
@@ -98,8 +141,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_request: Request, exc: RequestValidationError):
-        details = [{"loc": list(e.get("loc", ())), "msg": e.get("msg", "")} for e in exc.errors()]
-        return error_response(422, "validation_error", "Richiesta non valida.", details)
+        details = []
+        translated = []
+        for e in exc.errors():
+            msg = _translate_validation_error(e)
+            details.append({"loc": list(e.get("loc", ())), "msg": msg})
+            translated.append(msg)
+        summary = f"Richiesta non valida: {'; '.join(translated)}." if translated else "Richiesta non valida."
+        return error_response(422, "validation_error", summary, details)
 
     @app.exception_handler(LessonNotFound)
     async def _lesson_not_found(_request: Request, exc: LessonNotFound):

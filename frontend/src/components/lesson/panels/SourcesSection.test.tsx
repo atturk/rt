@@ -340,7 +340,7 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
       return Promise.resolve({ data: {}, response: new Response('{}') } as never)
     })
     renderComponent()
-    expect(await screen.findByText('Registrazione unita')).toBeInTheDocument()
+    expect(await screen.findByText('Registrazione unita da 2 parti')).toBeInTheDocument()
     const chip = await screen.findByRole('button', { name: '2 parti' })
     expect(chip).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByTestId('source-parts-s_aud_merged')).toBeNull()
@@ -375,6 +375,30 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     // Clic per spegnerlo
     fireEvent.click(unisciBtn)
     expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('mostra materiali non collocati se presenti nella sourcesView', async () => {
+    vi.spyOn(api, 'GET').mockImplementation(async (path) => ({
+      data: String(path).endsWith('/versions')
+        ? []
+        : {
+            ...mockView,
+            unplaced: [
+              {
+                source_id: 's_mat_1',
+                source_file: 'Slide_extra.pdf',
+                page: 7,
+                macro_id: '1',
+              },
+            ],
+          },
+      response: new Response(),
+    } as never))
+    renderComponent()
+    expect(await screen.findByTestId('unplaced-materials')).toBeInTheDocument()
+    expect(screen.getByText('Materiali non collocati')).toBeInTheDocument()
+    expect(screen.getByText('Slide_extra.pdf, pag. 7')).toBeInTheDocument()
+    expect(screen.getByText('Sezione 1')).toBeInTheDocument()
   })
 })
 

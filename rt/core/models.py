@@ -165,6 +165,9 @@ class ScienceIssue(BaseModel):
     unanchored: bool = False
     anchor: Optional[Anchor] = None
     origin: Literal["verifica", "parte", "studio"] = "verifica"
+    origine: Optional[Literal["docente", "rielaborazione"]] = None
+    prova: Optional[str] = None
+    nota: Optional[str] = None
     id: str = Field(..., description="ID univoco (es. sci_000001)")
     type: ScienceType = Field(..., description="Tipo di problematica scientifica")
     severity: ScienceSeverity = Field(..., description="Gravità dell'incongruenza")
@@ -271,6 +274,7 @@ class RecallQuestion(BaseModel):
     discarded_from: Optional[RecallQuestionStatus] = None
     regeneration_job_id: Optional[str] = None
     regenerated_from: Optional[str] = None
+    da_verificare: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class GeneratedRecallQuestion(BaseModel):

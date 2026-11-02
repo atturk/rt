@@ -643,3 +643,151 @@ it('precompila un conflitto del worker con metadati e fonti già caricate', () =
   expect(screen.getByRole('list', { name: 'Fonti già caricate' })).toHaveTextContent('audio.wavslide.pdf')
   expect(screen.getByRole('link', { name: 'Lezione esistente' })).toHaveAttribute('href', '/lezioni/7')
 })
+
+it('audio_duplicate: mostra dialogo con titolo, data e 3 pulsanti funzionanti', async () => {
+  const { ApiError } = await import('@/api/client')
+  mutateCreate.mockImplementationOnce(() => {
+    throw new ApiError(409, 'audio_duplicate', 'Già caricata', { lesson_id: 15, titolo: 'Immunologia 1', data: '2026-10-18' })
+  })
+  const close = vi.fn()
+  const audioFile = new File(['audio content'], 'lezione.mp3')
+  renderDialog(true, close, '2026-10-21', undefined, [audioFile])
+  fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'IMMUNOLOGIA' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+  // Verifica comparsa del dialogo modale con testo e i 3 pulsanti
+  expect(await screen.findByRole('dialog', { name: 'Registrazione già presente' })).toBeInTheDocument()
+  expect(screen.getByText(/Questa registrazione è già nella lezione.*Immunologia 1.*del.*2026-10-18/)).toBeInTheDocument()
+  const openBtn = screen.getByRole('button', { name: 'Apri la lezione' })
+  const forceBtn = screen.getByRole('button', { name: 'Crea comunque' })
+  const cancelBtn = screen.getByRole('button', { name: 'Annulla' })
+  expect(openBtn).toBeInTheDocument()
+  expect(forceBtn).toBeInTheDocument()
+  expect(cancelBtn).toBeInTheDocument()
+
+  // Test Annulla: chiude il popup duplicate senza navigare né chiudere il dialog principale
+  fireEvent.click(cancelBtn)
+  expect(screen.queryByRole('dialog', { name: 'Registrazione già presente' })).toBeNull()
+  expect(close).not.toHaveBeenCalled()
+
+  // Re-trigger audio_duplicate
+  mutateCreate.mockImplementationOnce(() => {
+    throw new ApiError(409, 'audio_duplicate', 'Già caricata', { lesson_id: 15, titolo: 'Immunologia 1', data: '2026-10-18' })
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+  expect(await screen.findByRole('dialog', { name: 'Registrazione già presente' })).toBeInTheDocument()
+
+  // Test Crea comunque: reinvia con consenti_duplicato=true
+  mutateCreate.mockImplementationOnce(() => ({ job_id: 'job-dup' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Crea comunque' }))
+  await waitFor(() => {
+    expect(mutateCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ consenti_duplicato: true }),
+      {},
+    )
+  })
+
+  // Test Apri la lezione: naviga alla lezione esistente e chiude il dialog
+  mutateCreate.mockImplementationOnce(() => {
+    throw new ApiError(409, 'audio_duplicate', 'Già caricata', { lesson_id: 15, titolo: 'Immunologia 1', data: '2026-10-18' })
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+  expect(await screen.findByRole('dialog', { name: 'Registrazione già presente' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Apri la lezione' }))
+  expect(close).toHaveBeenCalled()
+  expect(screen.getByTestId('location')).toHaveTextContent('/lezioni/15')
+})
+
+describe('Conferma materia nuova (Voce 10)', () => {
+  const subjectsData = [
+    { nome: 'Biologia', lezioni: 2, docenti: [] },
+    { nome: 'Data mining', lezioni: 1, docenti: [] },
+    { nome: 'PGSS', lezioni: 3, docenti: [] },
+  ]
+
+  beforeEach(() => {
+    vi.spyOn(api, 'GET').mockImplementation((path) =>
+      Promise.resolve({
+        data: path === '/api/v1/subjects' ? subjectsData : { hours: [] },
+        response: new Response('{}'),
+      }) as never,
+    )
+  })
+
+  it('materia nuova → richiesta di conferma', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Fisica Quantistica' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    const modal = await screen.findByTestId('subject-confirm-modal')
+    expect(modal).toBeInTheDocument()
+    expect(within(modal).getByText('Creare la nuova materia «Fisica Quantistica»?')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Crea «Fisica Quantistica»' })).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Annulla' })).toBeInTheDocument()
+    expect(within(modal).queryByText(/Forse intendevi/)).toBeNull()
+
+    // Clic su Crea crea la lezione
+    fireEvent.click(within(modal).getByRole('button', { name: 'Crea «Fisica Quantistica»' }))
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Fisica Quantistica' }),
+        {},
+      )
+    })
+  })
+
+  it('refuso → suggerimento con opzione di usare la materia simile', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Data minig' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    const modal = await screen.findByTestId('subject-confirm-modal')
+    expect(modal).toBeInTheDocument()
+    expect(within(modal).getByText('Forse intendevi «Data mining»?')).toBeInTheDocument()
+    const useBtn = within(modal).getByRole('button', { name: 'Usa «Data mining»' })
+    const createBtn = within(modal).getByRole('button', { name: 'Crea «Data minig»' })
+    const cancelBtn = within(modal).getByRole('button', { name: 'Annulla' })
+    expect(useBtn).toBeInTheDocument()
+    expect(createBtn).toBeInTheDocument()
+    expect(cancelBtn).toBeInTheDocument()
+
+    // Clic su Usa usa la materia corretta
+    fireEvent.click(useBtn)
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Data mining' }),
+        {},
+      )
+    })
+    expect(screen.getByLabelText('Materia')).toHaveValue('Data mining')
+  })
+
+  it('materia esistente → nessuna domanda', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Biologia' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    expect(screen.queryByTestId('subject-confirm-modal')).toBeNull()
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Biologia' }),
+        {},
+      )
+    })
+  })
+})

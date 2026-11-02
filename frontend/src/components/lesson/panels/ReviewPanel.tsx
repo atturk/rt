@@ -240,10 +240,10 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     return () => document.removeEventListener('mousedown', outside)
   }, [editing, readOnly, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
   return <Card className="flex min-w-0 flex-col gap-3 p-3 [overflow-wrap:anywhere]" data-testid="issue-detail">
-    <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge></div>
+    <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge>{issue.origine === 'docente' && <Badge tone="warning">Possibile errore del docente</Badge>}</div>
     {phone && !paragraph && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="min-w-0 rounded-lg border border-warning p-3 [overflow-wrap:anywhere]"><MathText text={item.context?.unit_content ?? issue.claim} /></p></div>}
     {issue.type === 'ERR_ASR_ST' && <ASRSegments segments={item.context?.asr_segments ?? [{ segment_id: issue.segment_id ?? '', text_raw: issue.claim, start_s: item.context?.start_s, end_s: item.context?.end_s }]} onSeek={!readOnly ? onSeek : undefined} />}
-    {!paragraph && <div ref={box}>
+    {!paragraph && issue.origine !== 'docente' && <div ref={box}>
       <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{paragraph ? 'Testo del paragrafo' : 'Correzione proposta'}</h3>
         {editing && <IconButton label="Ripristina la correzione proposta" icon={RotateCcw} disabled={!modified || busy} onClick={() => setText(proposed)} className="size-7 min-w-7" />}
       </div>
@@ -259,8 +259,10 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
     </div>}
     {failure && <Alert tone="danger">{failure}</Alert>}
     <p className="min-w-0 text-meta [overflow-wrap:anywhere]"><MathText text={issue.reason} /></p>
+    {issue.nota && <p className="min-w-0 text-meta text-muted-foreground [overflow-wrap:anywhere]"><MathText text={`Nota: ${issue.nota}`} /></p>}
+    {issue.prova && <p className="min-w-0 text-meta text-muted-foreground [overflow-wrap:anywhere]"><MathText text={`Prova: ${issue.prova}`} /></p>}
     {issue.source_quote && <p className="min-w-0 border-l-2 pl-2 text-meta text-muted-foreground [overflow-wrap:anywhere]">Docente: <MathText text={issue.source_quote} /></p>}
-    {issue.unanchored && <><Badge tone="warning">Non ancorata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. {readOnly ? 'Il rifiuto è registrato.' : 'Puoi solo rifiutare questa issue.'}</p></>}
+    {(issue.unanchored || (!paragraph && !issue.anchor)) && <><Badge tone="warning">Posizione nel testo non trovata</Badge><p className="text-meta">La citazione non è stata trovata nel testo. {readOnly ? 'Il rifiuto è registrato.' : 'Puoi solo rifiutare questa issue.'}</p></>}
     {item.needs_reconfirmation && <><Badge tone="warning">Da riconfermare</Badge><p className="text-meta">La decisione precedente resta registrata. Puoi riconfermare la correzione se il passaggio è ritrovato oppure mantenere il testo attuale.</p></>}
     {changed && !paragraph && <><Badge tone="warning">Testo cambiato</Badge><p className="text-meta">Il passaggio non si ritrova nel testo attuale. Puoi mantenerlo e chiudere l’issue.</p></>}
     {readOnly ? <div className="flex items-center justify-between gap-2"><Badge tone="success">{decisionLabels[item.decision!.decision]}</Badge><Button variant="ghost" size="sm" disabled={busy} onClick={onUndo}><Undo2 />Annulla</Button></div> : changed && !paragraph ? <div className="flex flex-wrap gap-2">
@@ -268,7 +270,7 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
       {issue.unit_id && <Button size="sm" variant="outline" disabled={busy} onClick={onReverify}>Verifica di nuovo l'unità</Button>}
       {listen}
     </div> : <div ref={controls} className="flex gap-2 max-md:[&_button]:h-12 max-md:[&_button]:min-w-12">
-      {paragraph ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('accepted')}><Check />Ho controllato</Button> : !cannotApply && (!suggestion || editing) && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
+      {paragraph ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onDecide('accepted')}><Check />Ho controllato</Button> : !cannotApply && (!suggestion || editing) && issue.origine !== 'docente' && <IconButton label={editing && modified || suggestion ? 'Applica la tua correzione' : item.needs_reconfirmation ? 'Riconferma la correzione' : paragraph ? 'Accetta il testo' : 'Accetta la correzione'} icon={Check} variant="solid" disabled={busy || (editing && modified && !text.trim())} onClick={() => editing ? apply() : onDecide('accepted')} />}
       {!paragraph && <IconButton label={issue.unanchored ? 'Rifiuta' : 'Mantieni il testo attuale'} icon={X} className="border" disabled={busy} onClick={() => { cancelEdit(); onDecide('rejected') }} />}
       {listen}
     </div>}

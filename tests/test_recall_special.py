@@ -82,14 +82,25 @@ def test_sections_follow_the_outline_and_mock_labels_use_keywords(tmp_path):
 
 def test_classifier_reads_whole_sections_once_and_keeps_user_corrections(tmp_path):
     path = lesson(tmp_path)
-    responses = [jev('nessuno', 'presente'), jev('presente', 'nessuno'), jev('nessuno', 'nessuno')]
+    def _jev_side_effect(**kwargs):
+        state = kwargs.get('state', '')
+        if '[1.1]' in state:
+            return jev('nessuno', 'presente')
+        elif '[2.1]' in state:
+            return jev('presente', 'nessuno')
+        elif '[3.1]' in state:
+            return jev('nessuno', 'nessuno')
+        return jev('nessuno', 'nessuno')
+
     with patch.object(section_labels, 'load_config', return_value=ACTIVE), \
-            patch('rt.llm.jev_client.call_jev', side_effect=responses) as call:
+            patch('rt.llm.jev_client.call_jev', side_effect=_jev_side_effect) as call:
         section_labels.refresh(path)
         assert call.call_count == 3  # una chiamata per sezione, una scelta con tutti i tipi
-        state = call.call_args_list[0].kwargs['state']
-        assert '[1.1]' in state and '[1.2]' in state
-        assert set(call.call_args_list[0].kwargs['questions']) == {'tipo'}
+        states = [c.kwargs['state'] for c in call.call_args_list]
+        assert any('[1.1]' in s and '[1.2]' in s for s in states)
+        assert any('[2.1]' in s and '[2.2]' in s for s in states)
+        assert any('[3.1]' in s for s in states)
+        assert all(set(c.kwargs['questions']) == {'tipo'} for c in call.call_args_list)
         section_labels.refresh(path)  # testo invariato: nessuna nuova chiamata
         assert call.call_count == 3
         section_labels.set_override(path, '3', CASO, 'presente')

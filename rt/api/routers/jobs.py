@@ -102,6 +102,31 @@ def _check_pages(path: str, pagine) -> None:
         raise ApiError(422, "validation_error", f"{exc}: {os.path.basename(path)}.") from None
 
 
+def _check_audio_file(path: str) -> None:
+    import subprocess
+    from rt.core.media_tools import audio_duration
+    try:
+        audio_duration(path)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return
+    except (ValueError, subprocess.CalledProcessError):
+        raise ApiError(422, "invalid_audio", f'"{os.path.basename(path)}" non è un file audio leggibile.')
+
+
+def _check_duplicate_audio(path: str, consenti_duplicato: bool) -> None:
+    from rt.core.idempotency import compute_file_sha256
+    from rt.services.lesson_conflicts import lesson_with_audio
+    sha = compute_file_sha256(path)
+    existing = lesson_with_audio(sha)
+    if existing and not consenti_duplicato:
+        raise ApiError(
+            409,
+            "audio_duplicate",
+            f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
+            details=existing,
+        )
+
+
 def _with_upload_cleanup(target: str, fn):
     try:
         return fn()
@@ -217,6 +242,7 @@ def create_lesson(
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
     unisci: bool = Form(True),
+    consenti_duplicato: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
@@ -267,6 +293,9 @@ def create_lesson(
             for path in paths[:len(audio)]:
                 if os.path.splitext(path)[1].lower() not in SUPPORTED_AUDIO_EXTENSIONS:
                     raise ApiError(415, "unsupported_media_type", "Tipo di file audio non ammesso.")
+                _check_audio_file(path)
+            if len(audio) == 1:
+                _check_duplicate_audio(paths[0], consenti_duplicato)
             documents = paths[len(audio):]
             for path in documents:
                 if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
@@ -276,7 +305,7 @@ def create_lesson(
                 raise ApiError(422, "validation_error", "Fonte principale inesistente.")
             options = {"date": date, "materia": materia, "docente": docente.strip(),
                 "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
-                "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
+                "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "api"}
             return enqueue_job("ingest_sources", None, {"audio": paths[:len(audio)], "materiali": documents,
                 "appunti": appunti, "principale": principale, "opzioni": source_options,
                 "allega_materiali": True if allega_materiali is None else allega_materiali,
@@ -290,16 +319,20 @@ def create_lesson(
             raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
         options = {"date": date, "materia": materia, "docente": docente.strip(),
                    "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
-                   "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
+                   "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "api"}
         return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options, **calendar}, actor)
     target = _upload_dir()
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
+        for path in paths:
+            _check_audio_file(path)
+        if len(paths) == 1:
+            _check_duplicate_audio(paths[0], consenti_duplicato)
         options = {"date": date, "materia": materia, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
-                   "auto_accept": auto_accept, "channel": "terminal"}
+                   "auto_accept": auto_accept, "channel": "api"}
         if len(paths) > 1:
             return enqueue_job("ingest_sources", None, {"audio": paths, "materiali": [],
                 "appunti": "", "principale": None, "allega_materiali": False, "unisci": unisci,
@@ -353,7 +386,7 @@ def start_job(lesson_id: int, body: schemas.JobRequest, lesson_dir: LessonDir, a
         return enqueue_job("run_phase", lesson_dir, {"phase": body.phase, "options": options, **extra, **prompt_payload}, actor)
     options = {"force": body.force, "mock": body.mock, "with_review": body.with_review,
                "with_enrichment": body.with_enrichment,
-               "auto_accept": body.auto_accept, "rename": body.rename, "channel": "terminal"}
+               "auto_accept": body.auto_accept, "rename": body.rename, "channel": "api"}
     return enqueue_job("run_pipeline", lesson_dir, {"inputs": [lesson_dir], "options": options, **extra}, actor)
 
 
@@ -432,7 +465,10 @@ def get_job(job_id: str, _actor: Actor):
 @router.post("/jobs/{job_id}/cancel", response_model=schemas.Job,
              summary="Annulla un job (quello in esecuzione si ferma al prossimo punto sicuro)")
 def cancel_job(job_id: str, _actor: Actor):
-    _get(job_id)
+    info = _get(job_id)
+    from rt.services.jobs import TERMINAL_STATES
+    if info.state in TERMINAL_STATES:
+        raise ApiError(409, "job_not_running", "Il job è già concluso.")
     return job_view(queue().cancel(job_id))
 
 

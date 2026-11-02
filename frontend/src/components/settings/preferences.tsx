@@ -14,7 +14,7 @@ import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudyTextScale, type StudyFont } from '@/lib/studyText'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
-import { ZOOM_LEVELS, getZoom, resetZoom, setZoom } from '@/lib/zoom'
+import { ZOOM_LEVELS, getZoom, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
@@ -64,16 +64,11 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         </Select>
       </Field>
       <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
-        <div className="flex items-center gap-2">
-          <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
-            {ZOOM_LEVELS.map(level => (
-              <option key={level} value={level}>{Math.round(level * 100)}%</option>
-            ))}
-          </Select>
-          <Button type="button" variant="outline" size="sm" onClick={resetZoom} disabled={zoom === 1}>
-            100%
-          </Button>
-        </div>
+        <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
+          {ZOOM_LEVELS.map(level => (
+            <option key={level} value={level}>{Math.round(level * 100)}%</option>
+          ))}
+        </Select>
       </Field>
       <SaveFeedback mutation={save} />
     </Section>

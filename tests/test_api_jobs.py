@@ -164,6 +164,34 @@ def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []  # niente file lasciati a metà
 
 
+def test_upload_rejects_fake_audio_file(api_client, ws):
+    fake_audio = b"Questo non e' un file audio ma puro testo."
+    res = api_client.post("/api/v1/lessons", files={"audio": ("fake.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-05", "materia": "BIOLOGIA"})
+    assert res.status_code == 422
+    err = res.json()["error"]
+    assert err["code"] == "invalid_audio"
+    assert '"fake.mp3" non è un file audio leggibile.' in err["message"]
+    assert len(api_client.get("/api/v1/lessons").json()) == 0
+    assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
+
+
+def test_upload_allows_audio_when_ffprobe_missing_or_timed_out(api_client, ws, monkeypatch):
+    import subprocess
+    fake_audio = b"Qualunque audio."
+    # 1. FileNotFoundError (ffprobe missing)
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: (_ for _ in ()).throw(FileNotFoundError("ffprobe not found")))
+    res = api_client.post("/api/v1/lessons", files={"audio": ("audio.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-05", "materia": "BIOLOGIA", "mock": "true"})
+    assert res.status_code == 202
+
+    # 2. TimeoutExpired (ffprobe slow)
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: (_ for _ in ()).throw(subprocess.TimeoutExpired(["ffprobe"], 5.0)))
+    res = api_client.post("/api/v1/lessons", files={"audio": ("audio2.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-06", "materia": "BIOLOGIA", "mock": "true"})
+    assert res.status_code == 202
+
+
 def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
     res = api_client.post("/api/v1/lessons", files=[
         ("audio", ("same.wav", b"first", "audio/wav")),
@@ -172,6 +200,33 @@ def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "duplicate_filename"
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
+
+
+def test_upload_duplicate_audio_warning_and_override(api_client, ws, worker):
+    with open(AUDIO_FIXTURE, "rb") as f:
+        audio_content = f.read()
+    # Primo upload con creazione lezione
+    res1 = api_client.post("/api/v1/lessons", files={"audio": ("lezione1.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-05", "materia": "ANATOMIA", "mock": "true"})
+    assert res1.status_code == 202
+    drain(worker)
+    assert len(api_client.get("/api/v1/lessons").json()) == 1
+
+    # Secondo upload dello stesso file audio senza consenti_duplicato -> 409 audio_duplicate
+    res2 = api_client.post("/api/v1/lessons", files={"audio": ("lezione2.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-06", "materia": "FISIOLOGIA", "mock": "true"})
+    assert res2.status_code == 409
+    err = res2.json()["error"]
+    assert err["code"] == "audio_duplicate"
+    assert err["details"]["titolo"]
+    assert err["details"]["data"] == "2026-09-05"
+
+    # Terzo upload dello stesso file audio con consenti_duplicato=true -> 202
+    res3 = api_client.post("/api/v1/lessons", files={"audio": ("lezione3.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-06", "materia": "FISIOLOGIA", "consenti_duplicato": "true", "mock": "true"})
+    assert res3.status_code == 202
+    drain(worker)
+    assert len(api_client.get("/api/v1/lessons").json()) == 2
 
 
 @pytest.fixture

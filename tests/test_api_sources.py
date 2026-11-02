@@ -119,6 +119,7 @@ def test_audio_upload_is_streamed_with_limit_and_cleaned_up(api_client, source_l
     uploads = os.path.join(work_dir(), "uploads")
     before = len(load_sources(source_lesson))
     monkeypatch.setenv("RT_API_MAX_UPLOAD_MB", str(2048 / (1024 * 1024)))
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: 1.0)
     response = api_client.post(url + "/sources", data={"tipo": "audio"}, files={"file": ("big.m4a", b"x" * 4096, "audio/mp4")})
     assert response.status_code == 413
     assert len(load_sources(source_lesson)) == before
@@ -163,6 +164,7 @@ def test_remove_and_restore_used_source_api(api_client, source_lesson):
 def test_post_source_multiple_audio_merged_with_parts(api_client, source_lesson, monkeypatch):
     url = f"/api/v1/lessons/{lesson_id(api_client)}"
     monkeypatch.setattr("rt.pipeline.source_update._duration", lambda path: 120.0 if "part1" in path else 60.0)
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: 120.0 if "part1" in path else 60.0)
     monkeypatch.setattr("rt.pipeline.setup.merge_audio_for_transcription",
                         lambda audios, out: open(out, "wb").write(b"fake-merged"))
     files = [
@@ -183,7 +185,8 @@ def test_post_source_multiple_audio_merged_with_parts(api_client, source_lesson,
     assert merged["parti"] == data["parti"]
 
 
-def test_post_source_multiple_audio_separate_when_unisci_false(api_client, source_lesson):
+def test_post_source_multiple_audio_separate_when_unisci_false(api_client, source_lesson, monkeypatch):
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: 1.0)
     url = f"/api/v1/lessons/{lesson_id(api_client)}"
     files = [
         ("file", ("partA.m4a", b"audioA", "audio/mp4")),

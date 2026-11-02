@@ -137,7 +137,11 @@ def test_worker_sees_cancel_from_the_app_within_seconds(rt_db, tmp_path, monkeyp
     assert queue.get(job_id).state == JobState.CANCELLED.value
 
 
-def test_generation_reports_each_unit_and_stops_before_the_next(tmp_path):
+def test_generation_reports_each_unit_and_stops_before_the_next(tmp_path, monkeypatch):
+    from rt.core.config import load_config
+    base_cfg = load_config()
+    base_cfg.recall.parallel_units = 1
+    monkeypatch.setattr("rt.pipeline.recall.load_config", lambda *a, **k: base_cfg)
     path = setup_mock_lesson(tmp_path, num_units=3)
     token = CancelToken()
     events = []

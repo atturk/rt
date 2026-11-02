@@ -6,7 +6,7 @@ export type Temml = typeof import('temml').default
  * così "costa 5$ e 10$" o "da $5 a $10" restano testo. Le stesse regole le applica l'API
  * (rt/core/markdown_render.py), che consegna le formule intatte in un solo nodo di testo.
  */
-export const DELIMITED = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))/g
+export const DELIMITED = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<![\\$\d])\$(?!\$)(?! )[^$\n]+?(?<![ \\])\$(?!\d))/g
 
 let loading: Promise<Temml> | null = null
 /** Temml una volta sola per sessione: pesa, e serve sia alla lettura sia all'editor. */
@@ -15,21 +15,36 @@ export function loadTemml(): Promise<Temml> {
   return loading
 }
 
+const ESC_MAP: Record<string, string> = {
+  '\t': '\\t',
+  '\x08': '\\b',
+  '\x0c': '\\f',
+}
+
+const REPAIR_N = /\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))/g
+const REPAIR_R = /\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)/g
+
 /**
  * Nel JSON dell'LLM "\frac" o "\theta" con una sola barra diventano form feed o tab seguiti
  * dal resto del comando: dentro una formula si rimette la barra (come rt/core/encoding.py).
  */
-export function repairLatexEscapes(source: string): string {
+export function repairLatexEscapes(source: string, display: boolean = false): string {
+  const isDisplay =
+    display ||
+    (source.startsWith('$$') && source.endsWith('$$')) ||
+    (source.startsWith('\\[') && source.endsWith('\\]'))
   return source
-    .replaceAll('\f', '\\f')
-    .replaceAll('\b', '\\b')
-    .replace(/\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))/g, '\\t')
-    .replace(/\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))/g, '\\r')
-    .replace(/\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))/g, '\\n')
+    // oxlint-disable-next-line no-control-regex
+    .replace(/([\t\x08\x0c])(?=[a-zA-Z])/g, (_, ch) => ESC_MAP[ch] ?? ch)
+    .replace(REPAIR_N, '\\n')
+    .replace(REPAIR_R, '\\r')
+    .replace(/\\(?:trm|rm|textrm)\s*\{/g, '\\mathrm{')
+    // oxlint-disable-next-line no-control-regex
+    .replace(isDisplay ? /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g : /[\x00-\x1f\x7f]/g, '')
 }
 
 export function mathElement(temml: Temml, rawSource: string, display: boolean, original: string): Node {
-  const source = repairLatexEscapes(rawSource)
+  const source = repairLatexEscapes(rawSource, display)
   const holder = window.document.createElement('span')
   // trust: false (predefinito) esclude \href, \class e simili; una formula non valida resta testo.
   // L'output è MathML generato da Temml, che fa l'escape del testo della formula.

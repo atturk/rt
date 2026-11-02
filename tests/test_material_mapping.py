@@ -301,7 +301,7 @@ def _material_lesson(tmp_path, monkeypatch, pages):
     image.write_bytes(b"\x89PNG pagina con figure")
     source = Source(id="src1", tipo="materiale", file="slide.pdf", impronta="abc", aggiunta_il="2026-10-01",
                     ordine=1, estrai="immagini", uso="contesto")
-    monkeypatch.setattr("rt.core.sources.load_sources", lambda lesson_dir: [source])
+    monkeypatch.setattr("rt.core.sources.load_sources", lambda lesson_dir, *a, **k: [source])
     monkeypatch.setattr("rt.core.source_selection.selection", lambda lesson_dir: {})
     monkeypatch.setattr("rt.core.materials.material_pages", lambda *a, **k: pages)
     monkeypatch.setattr("rt.pipeline.material_mapping.page_image_path", lambda impronta, rel: str(image))

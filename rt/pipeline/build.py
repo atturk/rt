@@ -168,8 +168,10 @@ def render_rielaborato_md(
         
         macro_id_str = str(macro.id)
         macro_imgs = (images_by_macro or {}).get(macro_id_str, [])
-        if macro_imgs:
-            for img in macro_imgs:
+        placed_macro_imgs = [img for img in macro_imgs if not img.get("unplaced")]
+        unplaced_macro_imgs = [img for img in macro_imgs if img.get("unplaced")]
+        if placed_macro_imgs:
+            for img in placed_macro_imgs:
                 alt = img.get("alt_text", "")
                 lines.append(f"![{alt}]({img['filename']})")
                 lines.append("")
@@ -203,6 +205,12 @@ def render_rielaborato_md(
             lines.append("")
             if enrichment_by_unit:
                 lines.extend(enrichment_by_unit.get(str(unit.id), []))
+
+        if unplaced_macro_imgs:
+            for img in unplaced_macro_imgs:
+                alt = img.get("alt_text") or "Materiale non collocato"
+                lines.append(f"![{alt}]({img['filename']})")
+                lines.append("")
             
     return "\n".join(lines)
 
@@ -363,7 +371,7 @@ def write_automatic_documents(lesson_dir: str) -> Dict[str, Any]:
 
 
 def run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False, ctx: "Optional[RunContext]" = None) -> Dict[str, Any]:
-    """Scrive subito i documenti. rename_folder resta leggibile ma non sposta più la lezione."""
+    """Scrive subito i documenti e, se rename_folder è True, rinomina la cartella col titolo finale."""
     with phase_scope(ctx, "build") as scope:
         return scope.complete(_run_build(lesson_dir, force=force, rename_folder=rename_folder))
 
@@ -400,6 +408,22 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     previous_automatic = bool(current_manifest and current_manifest.phase_records.get("build", {}).get("automatic_documents"))
     if phase_status == PhaseStatus.VALID and not force and fs.isfile(named_filepath) and not documents_pending(lesson_dir) and not previous_automatic:
         current_dir = lesson_dir
+        if rename_folder and not fs.is_db_lesson(lesson_dir) and fs.isdir(lesson_dir):
+            from rt.services.lesson_conflicts import free_lesson_path
+            safe_title = docs.get("safe_title", "")
+            folder_target_name = f"[{date_val}] {subject_val.upper()} - {safe_title}" if safe_title else f"[{date_val}] {subject_val.upper()}"
+            parent = os.path.dirname(os.path.abspath(lesson_dir))
+            target_dir = free_lesson_path(
+                parent,
+                folder_target_name,
+                reusable=lambda p: os.path.realpath(p) == os.path.realpath(lesson_dir),
+            )
+            if os.path.realpath(target_dir) != os.path.realpath(lesson_dir):
+                fs.rename(lesson_dir, target_dir)
+                current_dir = target_dir
+                from rt.db.sync import relocate_lesson
+                relocate_lesson(lesson_dir, current_dir)
+                named_filepath = os.path.join(current_dir, named_filename)
         return {
             "status": "completed",
             "action": "SKIP",
@@ -420,6 +444,23 @@ def _run_build(lesson_dir: str, force: bool = False, rename_folder: bool = False
     named_filepath = _write_rendered_documents(lesson_dir, docs)
 
     current_dir = lesson_dir
+    if rename_folder and not fs.is_db_lesson(lesson_dir) and fs.isdir(lesson_dir):
+        from rt.services.lesson_conflicts import free_lesson_path
+        safe_title = docs.get("safe_title", "")
+        folder_target_name = f"[{date_val}] {subject_val.upper()} - {safe_title}" if safe_title else f"[{date_val}] {subject_val.upper()}"
+        parent = os.path.dirname(os.path.abspath(lesson_dir))
+        target_dir = free_lesson_path(
+            parent,
+            folder_target_name,
+            reusable=lambda p: os.path.realpath(p) == os.path.realpath(lesson_dir),
+        )
+        if os.path.realpath(target_dir) != os.path.realpath(lesson_dir):
+            fs.rename(lesson_dir, target_dir)
+            current_dir = target_dir
+            from rt.db.sync import relocate_lesson
+            relocate_lesson(lesson_dir, current_dir)
+            yaml_path = lesson_path(current_dir, "info.yaml")
+            named_filepath = os.path.join(current_dir, named_filename)
     # 7. Registrazione fingerprint build. Le fasi a monte non aggiornate in questo momento
     # (es. scaletta STALE dopo un cambio di materia) sono "confermate": il documento appena
     # scritto riflette i file attuali e resta valido finché quelle fasi non cambiano ancora.

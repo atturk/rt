@@ -8,10 +8,15 @@ export type EnrichmentSettings = Schemas['EnrichmentConfig']
 export const enrichmentKey = (id: number) => ['enrichment', id] as const
 
 /** Gli elementi in generazione (job enrichment_*) li aggiorna il canale live (liveUpdates.ts). */
-export function useEnrichment(id: number) {
-  return useQuery({ queryKey: enrichmentKey(id), queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/enrichment', {
-    params: { path: { lesson_id: id } },
-  })) })
+export function useEnrichment(id: number, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: enrichmentKey(id),
+    queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/enrichment', {
+      params: { path: { lesson_id: id } },
+    })),
+    enabled: Number.isFinite(id) && (options?.enabled ?? true),
+    retry: false,
+  })
 }
 
 export function useEnrichmentActions(id: number) {

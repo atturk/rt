@@ -220,7 +220,9 @@ export function DetailsPanel({
 
   // Fasi e Job
   const phases = usePhases(l.id)
-  const outline = useOutline(l.id)
+  const outline = useOutline(l.id, {
+    enabled: l.phases?.outline !== 'MISSING',
+  })
   const draftUnits = sections.map((unit) => ({ id: unit.unit_id, title: unit.title }))
   const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
   const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)

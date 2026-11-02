@@ -58,4 +58,15 @@ describe('repairLatexEscapes', () => {
     await renderDelimitedMath(root)
     expect(root.querySelector('mfrac')).not.toBeNull()
   })
+
+  it('ripara \\trm in \\mathrm dentro le formule', () => {
+    expect(repairLatexEscapes('\trm{RTPL}')).toBe('\\mathrm{RTPL}')
+  })
+
+  it('preserva gli a capo nelle formule su piu righe e ripara i comandi noti', async () => {
+    expect(repairLatexEscapes('$$\na = b\n$$')).toBe('$$\na = b\n$$')
+    expect(repairLatexEscapes('\na = b\n', true)).toBe('\na = b\n')
+    expect(repairLatexEscapes('\nabla')).toBe('\\nabla')
+    expect(repairLatexEscapes('\rho')).toBe('\\rho')
+  })
 })

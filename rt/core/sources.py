@@ -59,7 +59,7 @@ def _save(lesson_dir: str, sources: list[Source]) -> None:
 
 
 @lesson_locked
-def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Source]:
+def load_sources(lesson_dir: str, *, include_removed: bool = False, readonly: bool = False) -> list[Source]:
     """Crea soltanto il registro se assente; non modifica i file storici.
     Un registro vuoto non si salva: durante il setup info.yaml non ha ancora l'audio, e un
     registro vuoto scritto allora lo avrebbe nascosto per sempre (lo si ricostruisce qui)."""
@@ -79,7 +79,7 @@ def load_sources(lesson_dir: str, *, include_removed: bool = False) -> list[Sour
             impronta=compute_file_sha256(os.path.join(lesson_dir, audio)),
             aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=1,
         ))
-    if sources:
+    if sources and not readonly:
         _save(lesson_dir, sources)
     return sources
 
@@ -94,6 +94,8 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
+    if tipo == 'materiale' and uso is None:
+        uso = 'contesto'
     from rt.core.source_options import parse_pages, default_extraction, text_only
     if estrai not in (None, 'testo', 'immagini', 'solo_immagini') or uso not in (None, 'guida', 'contesto', 'integra'):
         raise ValueError('Opzioni della fonte non valide')
