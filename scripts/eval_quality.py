@@ -135,21 +135,37 @@ def read_lesson(zip_path):
         "segments": segments,
         "issues": issues,
         "questions": load("recall_questions.json", {}).get("questions", []),
+        "materials": load("material_attachments.json", {}),
     }
 
 
 def sample(items, count, seed):
+    if count <= 0:
+        return []
     if len(items) <= count:
         return list(items)
     # campione sparso su tutta la lezione, uguale a ogni esecuzione
     rng = random.Random(seed)
     step = len(items) / count
-    return [items[min(len(items) - 1, int(i * step + rng.random() * step))] for i in range(count)]
+    picks = sorted({min(len(items) - 1, int(i * step + rng.random() * step)) for i in range(count)})
+    return [items[i] for i in picks]
 
 
 def source_text(lesson, unit):
     return "\n".join(f"[{lesson['segments'][s]['start_formatted']}] {lesson['segments'][s]['text_raw']}"
                      for s in unit.get("source_segment_ids", []) if s in lesson["segments"])
+
+
+def material_text(lesson, unit, limit=6000):
+    """Testo delle slide e delle foto agganciate all'unità o alla sua macro-sezione, se ci sono."""
+    materials = lesson["materials"]
+    pages = list(materials.get("pages_by_unit", {}).get(unit["unit_id"], []))
+    pages += materials.get("pages_by_macro", {}).get(unit["unit_id"].split(".")[0], [])
+    text = "\n\n".join(f"[{p.get('source_file')}, pagina {p.get('page')}]\n{p.get('text', '').strip()}"
+                       for p in pages if p.get("text"))
+    if not text:
+        return ""
+    return f"MATERIALI DEL DOCENTE (slide o foto usate dalla rielaborazione):\n{text[:limit]}\n\n"
 
 
 def evaluate(zip_path, key, args):
@@ -159,16 +175,18 @@ def evaluate(zip_path, key, args):
     units_by_id = {u["unit_id"]: u for u in lesson["units"]}
     header = f"Metadati della lezione:\n{lesson['info'][:600]}\n\n"
 
+    report["materiali"] = bool(lesson["materials"].get("pages_by_unit") or lesson["materials"].get("pages_by_macro"))
     for unit in sample(lesson["units"], args.units, zip_path.name):
         if budget.left() <= 0:
             break
         prompt = (header + f"TRASCRITTO (fonte) dell'unità {unit['unit_id']}:\n{source_text(lesson, unit)}\n\n"
+                  + material_text(lesson, unit) +
                   f"TESTO RIELABORATO dell'unità \"{unit['title']}\":\n{unit['content']}\n\n"
                   "Valuta da 1 a 5: fedelta (nessuna informazione inventata o distorta), completezza "
                   "(tutti i concetti didattici del trascritto, escluse digressioni organizzative), "
                   "chiarezza (testo di studio ben organizzato), formule_e_termini (formule, unità, "
                   "nomi tecnici corretti, anche dove l'ASR li ha storpiati). Elenca le affermazioni "
-                  "inventate e i concetti omessi, brevi.")
+                  "inventate (senza riscontro né nel trascritto né nei materiali) e i concetti omessi, brevi.")
         verdict, usage = judge(key, budget, prompt, "unita", UNIT_SCHEMA)
         report["unita"].append({"unit_id": unit["unit_id"], "titolo": unit["title"], **verdict,
                                 "token_in": usage.get("prompt_tokens")})
@@ -178,6 +196,7 @@ def evaluate(zip_path, key, args):
         if budget.left() <= 0 or unit is None:
             continue
         prompt = (header + f"TRASCRITTO dell'unità:\n{source_text(lesson, unit)}\n\n"
+                  + material_text(lesson, unit) +
                   f"TESTO RIELABORATO:\n{unit['content']}\n\n"
                   f"SEGNALAZIONE del revisore scientifico ({issue.get('type')}, gravità {issue.get('severity')}):\n"
                   f"Affermazione: {issue.get('claim')}\nMotivo: {issue.get('reason')}\n"

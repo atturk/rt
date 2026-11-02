@@ -84,3 +84,21 @@ def test_budget_stops_the_evaluation(tmp_path, monkeypatch):
     finally:
         Args.budget, Args.issues = 1.0, 1
     assert report["chiamate"] == 2  # la seconda supera il budget: le altre tre non partono
+
+
+def test_sample_handles_zero_and_never_repeats_an_item():
+    items = list(range(7))
+    assert eval_quality.sample(items, 0, "x") == []
+    for seed in ("a", "b", "c", "lezione.zip"):
+        picked = eval_quality.sample(items, 5, seed)
+        assert len(picked) == len(set(picked))
+
+
+def test_judge_sees_the_slides_of_the_unit_and_its_section():
+    lesson = {"materials": {
+        "pages_by_unit": {"1.2": [{"source_file": "slide.pdf", "page": 3, "text": "NRTPL = nuovi pazienti"}]},
+        "pages_by_macro": {"1": [{"source_file": "slide.pdf", "page": 1, "text": "Titolo"}]},
+    }}
+    text = eval_quality.material_text(lesson, {"unit_id": "1.2"})
+    assert "NRTPL" in text and "pagina 1" in text
+    assert eval_quality.material_text({"materials": {}}, {"unit_id": "2.1"}) == ""
