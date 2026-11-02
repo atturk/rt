@@ -24,7 +24,7 @@ def page_count(path):
     with fs.materialize(path) as real:
         suffix = os.path.splitext(real)[1].lower()
         if suffix == '.pdf':
-            import fitz
+            import pymupdf as fitz
             with fitz.open(real) as document:
                 return len(document)
         if suffix == '.pptx':
@@ -103,7 +103,7 @@ def _quicklook_slides(real, count):
         try:
             subprocess.run(command, capture_output=True, check=True, timeout=120)
             from pathlib import Path
-            import fitz
+            import pymupdf as fitz
             for path in Path(target).rglob('*.pdf'):
                 candidate = fitz.open(path)
                 if len(candidate) == count:
@@ -195,7 +195,7 @@ def _extract(real):
     if suffix in ('.docx', '.txt', '.md'):
         yield from _document_pages(real, images=True)
     elif suffix == '.pdf':
-        import fitz
+        import pymupdf as fitz
         from rt.core.material_page_filter import pdf_pages_have_figures
         with fitz.open(real) as document:
             figures = pdf_pages_have_figures(document)
@@ -218,7 +218,7 @@ def _extract_text(real):
     if suffix in ('.docx', '.txt', '.md'):
         yield from _document_pages(real)
     elif suffix == '.pdf':
-        import fitz
+        import pymupdf as fitz
         with fitz.open(real) as document:
             for page in document:
                 yield page.get_text().strip(), [], False
@@ -233,7 +233,7 @@ def _extract_text(real):
 def _extract_images(real, previous):
     """Upgrade di una cache testuale: conserva il testo, rende le sole immagini mancanti."""
     if real.lower().endswith('.pdf'):
-        import fitz
+        import pymupdf as fitz
         from rt.core.material_page_filter import pdf_pages_have_figures
         with fitz.open(real) as document:
             figures = pdf_pages_have_figures(document)

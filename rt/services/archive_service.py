@@ -238,7 +238,7 @@ def page_bytes(sha, n):
         if not page or n in meta.get('eliminate', []):
             raise
     if meta['estensione'] == '.pdf':
-        import fitz
+        import pymupdf as fitz
         with fitz.open(archive.original_path(sha)) as document:
             return document[n - 1].get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).tobytes('png')
     import io

@@ -79,11 +79,11 @@ function ChangelogItem({ version, text }: { version: string; text: string }) {
     try { return localStorage.getItem(storageKey) === '1' } catch { return false }
   })
   return <li><label className="flex cursor-pointer items-start gap-2">
-    <Checkbox label={text} checked={checked} className="mt-1" onChange={value => {
+    <Checkbox label={text.replace(/\*\*/g, '')} checked={checked} className="mt-1" onChange={value => {
       setChecked(value)
       try { if (value) localStorage.setItem(storageKey, '1'); else localStorage.removeItem(storageKey) } catch { /* La casella resta utilizzabile senza memoria del browser. */ }
     }} />
-    <span className={checked ? 'text-muted-foreground line-through' : undefined}>{text}</span>
+    <span className={checked ? 'text-muted-foreground line-through' : undefined}>{text.split(/\*\*(.+?)\*\*/g).map((part, i) => i % 2 ? <strong key={i}>{part}</strong> : part)}</span>
   </label></li>
 }
 

@@ -27,7 +27,7 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     """Estrae ogni pagina del PDF come immagine PNG in memoria, zoom 2x.
     Solleva FileNotFoundError se pdf_path non esiste, ValueError se il PDF
     non si apre o non ha pagine."""
-    import fitz
+    import pymupdf as fitz
     if not fs.isfile(pdf_path):
         raise FileNotFoundError(f"File PDF non trovato: '{pdf_path}'")
     try:
@@ -186,7 +186,7 @@ def extract_images_from_folder(folder_path: str, progress: Optional[Callable[[in
                 continue
             paths.append(os.path.join(root, fn))
     # I caricamenti multipli arrivano nella stessa cartella, anche PDF e foto insieme.
-    import fitz
+    import pymupdf as fitz
     counts = []
     for full in paths:
         if full.lower().endswith('.pdf'):
