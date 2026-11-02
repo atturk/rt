@@ -94,6 +94,56 @@ function pickSlot(hours: CalendarEventView[], date: string, now = new Date()) {
   return free[0]
 }
 
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1]
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+      }
+    }
+  }
+
+  return dp[m][n]
+}
+
+function findSimilarSubject(input: string, subjectsList: string[]): string | null {
+  const normInput = input.toLowerCase().replace(/\s+/g, '')
+  const lowerInput = input.toLowerCase()
+
+  // 1. Uguale senza spazi e maiuscole
+  for (const s of subjectsList) {
+    if (s.toLowerCase().replace(/\s+/g, '') === normInput) {
+      return s
+    }
+  }
+
+  // 2. Distanza di Levenshtein <= 2
+  let best: string | null = null
+  let minDistance = Infinity
+
+  for (const s of subjectsList) {
+    const dist = Math.min(
+      levenshteinDistance(input, s),
+      levenshteinDistance(lowerInput, s.toLowerCase()),
+    )
+    if (dist <= 2 && dist < minDistance) {
+      minDistance = dist
+      best = s
+    }
+  }
+
+  return best
+}
+
 function today(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -234,7 +284,8 @@ export function NewLessonDialog({
   const [materia, setMateria] = useState(String(options?.materia ?? ''))
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
   const [audioDuplicate, setAudioDuplicate] = useState<{ lesson_id?: number; titolo: string; data: string } | null>(null)
-  const clearConflict = () => { setConflict(null); setAudioDuplicate(null); setUploadError(null) }
+  const [subjectConfirm, setSubjectConfirm] = useState<{ name: string; similar: string | null } | null>(null)
+  const clearConflict = () => { setConflict(null); setAudioDuplicate(null); setSubjectConfirm(null); setUploadError(null) }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
@@ -435,7 +486,7 @@ export function NewLessonDialog({
     doSubmit(false)
   }
 
-  function doSubmit(consentiDuplicato = false) {
+  function doSubmit(consentiDuplicato = false, overrideMateria?: string, skipSubjectConfirm = false) {
     if (busy || zipJob) return
 
     if (kind === 'zip') {
@@ -446,7 +497,7 @@ export function NewLessonDialog({
     if (initialJob) {
       setUploadError(null)
       setRecreating(true)
-      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia, docente, ora: time } })).then(accepted => {
+      void unwrap(api.POST('/api/v1/jobs/{job_id}/recreate-lesson', { params: { path: { job_id: initialJob.id } }, body: { date, materia: (overrideMateria ?? materia).trim(), docente, ora: time } })).then(accepted => {
         invalidateAfterJob(client)
         onClose()
         navigate(`/lezioni/nuova/${accepted.job_id}`)
@@ -460,9 +511,23 @@ export function NewLessonDialog({
       return
     }
 
-    if (!materia.trim()) {
+    const currentMateria = (overrideMateria ?? materia).trim()
+    if (!currentMateria) {
       setProblem('Indica la materia.')
       return
+    }
+
+    const isFromSlot = !manualMode && selectedSlot && selectedSlot.materia === currentMateria
+    if (!skipSubjectConfirm && !isFromSlot && Array.isArray(subjectsQuery.data) && subjectsQuery.data.length > 0) {
+      const subjectsList = subjectsQuery.data.map((s) => s.nome)
+      if (!subjectsList.includes(currentMateria)) {
+        const similar = findSimilarSubject(currentMateria, subjectsList)
+        setSubjectConfirm({
+          name: currentMateria,
+          similar,
+        })
+        return
+      }
     }
 
     setProblem(null)
@@ -481,7 +546,7 @@ export function NewLessonDialog({
       calendar_entry_id: chosenSlot?.key,
       calendar_date: chosenSlot ? date : undefined,
       date,
-      materia: materia.trim(),
+      materia: currentMateria,
       docente: docente.trim(),
       ora: time,
       run: !solo,
@@ -492,7 +557,7 @@ export function NewLessonDialog({
       consenti_duplicato: consentiDuplicato || undefined,
     }
     startUpload(
-      `${materia.trim()} · ${date}`,
+      `${currentMateria} · ${date}`,
       [...audioFiles, ...materialFiles],
       (onProgress, signal) => sendLesson(input, onProgress, signal),
       (accepted) => {
@@ -1135,6 +1200,51 @@ export function NewLessonDialog({
               }}
             >
               Crea comunque
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    {subjectConfirm && (
+      <Modal
+        open={!!subjectConfirm}
+        onClose={() => setSubjectConfirm(null)}
+        title="Nuova materia"
+        testId="subject-confirm-modal"
+      >
+        <div className="flex flex-col gap-4">
+          {subjectConfirm.similar ? (
+            <p>Forse intendevi «{subjectConfirm.similar}»?</p>
+          ) : (
+            <p>Creare la nuova materia «{subjectConfirm.name}»?</p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setSubjectConfirm(null)}>
+              Annulla
+            </Button>
+            {subjectConfirm.similar && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const sim = subjectConfirm.similar!
+                  setMateria(sim)
+                  setSubjectConfirm(null)
+                  doSubmit(false, sim, true)
+                }}
+              >
+                Usa «{subjectConfirm.similar}»
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={() => {
+                const name = subjectConfirm.name
+                setSubjectConfirm(null)
+                doSubmit(false, name, true)
+              }}
+            >
+              Crea «{subjectConfirm.name}»
             </Button>
           </div>
         </div>

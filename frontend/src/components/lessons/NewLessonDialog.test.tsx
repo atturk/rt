@@ -697,3 +697,97 @@ it('audio_duplicate: mostra dialogo con titolo, data e 3 pulsanti funzionanti', 
   expect(close).toHaveBeenCalled()
   expect(screen.getByTestId('location')).toHaveTextContent('/lezioni/15')
 })
+
+describe('Conferma materia nuova (Voce 10)', () => {
+  const subjectsData = [
+    { nome: 'Biologia', lezioni: 2, docenti: [] },
+    { nome: 'Data mining', lezioni: 1, docenti: [] },
+    { nome: 'PGSS', lezioni: 3, docenti: [] },
+  ]
+
+  beforeEach(() => {
+    vi.spyOn(api, 'GET').mockImplementation((path) =>
+      Promise.resolve({
+        data: path === '/api/v1/subjects' ? subjectsData : { hours: [] },
+        response: new Response('{}'),
+      }) as never,
+    )
+  })
+
+  it('materia nuova → richiesta di conferma', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Fisica Quantistica' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    const modal = await screen.findByTestId('subject-confirm-modal')
+    expect(modal).toBeInTheDocument()
+    expect(within(modal).getByText('Creare la nuova materia «Fisica Quantistica»?')).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Crea «Fisica Quantistica»' })).toBeInTheDocument()
+    expect(within(modal).getByRole('button', { name: 'Annulla' })).toBeInTheDocument()
+    expect(within(modal).queryByText(/Forse intendevi/)).toBeNull()
+
+    // Clic su Crea crea la lezione
+    fireEvent.click(within(modal).getByRole('button', { name: 'Crea «Fisica Quantistica»' }))
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Fisica Quantistica' }),
+        {},
+      )
+    })
+  })
+
+  it('refuso → suggerimento con opzione di usare la materia simile', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Data minig' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    const modal = await screen.findByTestId('subject-confirm-modal')
+    expect(modal).toBeInTheDocument()
+    expect(within(modal).getByText('Forse intendevi «Data mining»?')).toBeInTheDocument()
+    const useBtn = within(modal).getByRole('button', { name: 'Usa «Data mining»' })
+    const createBtn = within(modal).getByRole('button', { name: 'Crea «Data minig»' })
+    const cancelBtn = within(modal).getByRole('button', { name: 'Annulla' })
+    expect(useBtn).toBeInTheDocument()
+    expect(createBtn).toBeInTheDocument()
+    expect(cancelBtn).toBeInTheDocument()
+
+    // Clic su Usa usa la materia corretta
+    fireEvent.click(useBtn)
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Data mining' }),
+        {},
+      )
+    })
+    expect(screen.getByLabelText('Materia')).toHaveValue('Data mining')
+  })
+
+  it('materia esistente → nessuna domanda', async () => {
+    const audioFile = new File(['audio'], 'lezione.mp3')
+    renderDialog(true, vi.fn(), '2026-10-21', undefined, [audioFile])
+    const materiaInput = screen.getByLabelText('Materia')
+    const listId = materiaInput.getAttribute('list')!
+    await waitFor(() => expect(document.querySelectorAll(`#${listId} option`)).toHaveLength(3))
+
+    fireEvent.change(materiaInput, { target: { value: 'Biologia' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Avvia' }))
+
+    expect(screen.queryByTestId('subject-confirm-modal')).toBeNull()
+    await waitFor(() => {
+      expect(mutateCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ materia: 'Biologia' }),
+        {},
+      )
+    })
+  })
+})
