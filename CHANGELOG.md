@@ -1,5 +1,22 @@
 # Novità di RT
 
+## 4.3.6b1 — 2026-11-02
+
+Beta con i risultati della revisione del codice e della revisione dell'entrata dei dati.
+
+### Correzioni
+
+- **Errori della web app in api.log**: gli errori del frontend finiscono nel registro, e se una pagina va in errore compare un messaggio in italiano con «Ricarica la pagina».
+- **Export**: preparare una lezione da esportare non blocca più il resto dell'app.
+- **PDF**: funziona anche quando usi RT dall'iPhone con Tailscale.
+- Se «Importa tutto» non riesce, puoi riavviare RT dal messaggio di errore.
+- api.log non registra più le richieste ripetute ogni pochi secondi.
+- **Importazione più robusta**: se l'aggiunta delle fonti fallisce non resta una lezione vuota; l'ora del calendario si collega anche quando un import audio si ferma dopo la creazione della lezione; via API si accettano audio e appunti senza materiali; l'ispezione dei PDF nel popup di import ha il limite di dimensione e non va più in errore con un nome file vuoto.
+- **Aggiornamento dell'app**: la pagina non si ricarica più prima che RT si sia riavviato dopo «Installa e riavvia».
+- «1 lezione mancante» al singolare.
+- **Novità**: il testo in grassetto appare senza asterischi.
+- Sparito l'avviso «fitz API deprecated» di PyMuPDF.
+
 ## 4.3.5 — 2026-11-01
 
 Raccoglie le correzioni arrivate dopo la 4.3.4.2.
