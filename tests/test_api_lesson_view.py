@@ -42,7 +42,7 @@ def test_document_says_when_there_is_nothing_to_show(api_client, lesson):
     with mock.patch("rt.services.lesson_service.load_markdown_preview", return_value=NO_PREVIEW_MARKDOWN):
         doc = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/document").json()
     assert doc["pending"] is True
-    assert "Nessuna anteprima disponibile" in doc["markdown"]
+    assert "Questa lezione non è ancora pronta" in doc["markdown"]
 
 
 def test_document_marks_only_known_units(api_client, lesson):

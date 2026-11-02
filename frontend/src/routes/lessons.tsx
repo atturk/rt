@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'rea
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
-import { useLesson, useLessonDocument, useLessons } from '@/api/hooks'
+import { useDeleteLesson, useLesson, useLessonDocument, useLessons } from '@/api/hooks'
 import { LessonPageNavigation } from '@/components/shared/LessonPageNavigation'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider } from '@/components/lesson/audio'
@@ -13,6 +13,7 @@ import { LessonOutline } from '@/components/lesson/LessonOutline'
 import { isRewriting, liveRewrite } from '@/components/lesson/lessonWorkflow'
 import { isPanelView, OPEN_QUESTIONS_EVENT, PANEL_ID, usePanelView, type PanelView } from '@/lib/lessonPanel'
 import { PhaseProgress } from '@/components/jobs/PhaseProgress'
+import { RetryButton } from '@/components/jobs/JobParts'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -28,6 +29,7 @@ import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { lessonTitle } from '@/lib/format'
@@ -302,6 +304,9 @@ function useSearchShortcut(inputId: string) {
 
 export function LessonPage() {
   const id = Number(useParams().lessonId)
+  const navigate = useNavigate()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleteLesson = useDeleteLesson(id)
 
   useEffect(() => {
     setLastClosedLessonId(id)
@@ -350,6 +355,8 @@ export function LessonPage() {
   const document = useLessonDocument(id)
   const outline = useOutline(id)
   const jobs = useJobs({ lesson_id: id, limit: 20 })
+  const latestJob = jobs.data?.[0]
+  const failedJob = latestJob?.state === 'failed' ? latestJob : null
   const job = jobs.data?.find((j) => j.type !== 'documents' && isActive(j.state)) ?? jobs.data?.find((j) => j.state === 'waiting_for_decision')
   const back = { to: '/', label: 'Lezioni' }
   if (lesson.isPending || lesson.isError) {
@@ -384,6 +391,17 @@ export function LessonPage() {
           {path && <p className="text-meta text-muted-foreground" data-testid="lesson-path">{path}</p>}
           {meta && <p className="text-meta text-muted-foreground" data-testid="lesson-meta">{meta}</p>}
         </>}>
+          {failedJob && (
+            <Alert tone="danger" className="mt-5 flex flex-col gap-2" data-testid="failed-lesson-banner">
+              <p className="font-medium">{failedJob.error || 'Elaborazione della lezione fallita.'}</p>
+              <div className="flex items-center gap-2">
+                <RetryButton jobId={failedJob.id} />
+                <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
+                  Elimina
+                </Button>
+              </div>
+            </Alert>
+          )}
           <LessonProgress lessonId={l.id} job={job} pendingOutline={pendingOutline} />
           {outline.isError && !(outline.error instanceof ApiError && outline.error.code === 'outline_not_found') && <Alert tone="danger" className="mt-5">{errorMessage(outline.error)}<Button size="sm" variant="outline" onClick={() => void outline.refetch()}>Riprova</Button></Alert>}
           {outline.data && pendingOutline
@@ -415,6 +433,23 @@ export function LessonPage() {
           }}
         />
       )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Elimina lezione"
+        confirmLabel="Elimina"
+        confirmDisabled={deleteLesson.isPending}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          deleteLesson.mutate(undefined, {
+            onSuccess: () => {
+              setConfirmDelete(false)
+              navigate('/')
+            },
+          })
+        }}
+      >
+        Eliminare questa lezione? L'azione non può essere annullata.
+      </ConfirmDialog>
     </AudioProvider>
   )
 }

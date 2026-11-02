@@ -512,10 +512,7 @@ def _read_rielaborato(lesson_dir: str) -> Optional[str]:
 
 
 NO_PREVIEW_MARKDOWN = (
-    "# Nessuna anteprima disponibile\n\n"
-    "Il documento Markdown di questa lezione non è ancora stato generato.\n\n"
-    "Serve almeno la fase di *rewrite* completata per un'anteprima live, "
-    "oppure la fase di *build* per il documento finale."
+    "Questa lezione non è ancora pronta. Avvia l'elaborazione o riprova se si è interrotta."
 )
 
 

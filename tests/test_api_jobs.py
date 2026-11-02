@@ -164,6 +164,18 @@ def test_upload_rejects_wrong_type_and_size(api_client, ws, monkeypatch):
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []  # niente file lasciati a metà
 
 
+def test_upload_rejects_fake_audio_file(api_client, ws):
+    fake_audio = b"Questo non e' un file audio ma puro testo."
+    res = api_client.post("/api/v1/lessons", files={"audio": ("fake.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-05", "materia": "BIOLOGIA"})
+    assert res.status_code == 422
+    err = res.json()["error"]
+    assert err["code"] == "invalid_audio"
+    assert '"fake.mp3" non è un file audio leggibile.' in err["message"]
+    assert len(api_client.get("/api/v1/lessons").json()) == 0
+    assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
+
+
 def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
     res = api_client.post("/api/v1/lessons", files=[
         ("audio", ("same.wav", b"first", "audio/wav")),

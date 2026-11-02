@@ -102,6 +102,15 @@ def _check_pages(path: str, pagine) -> None:
         raise ApiError(422, "validation_error", f"{exc}: {os.path.basename(path)}.") from None
 
 
+def _check_audio_file(path: str) -> None:
+    import subprocess
+    from rt.core.media_tools import audio_duration
+    try:
+        audio_duration(path)
+    except (ValueError, subprocess.CalledProcessError):
+        raise ApiError(422, "invalid_audio", f'"{os.path.basename(path)}" non è un file audio leggibile.')
+
+
 def _with_upload_cleanup(target: str, fn):
     try:
         return fn()
@@ -268,6 +277,7 @@ def create_lesson(
             for path in paths[:len(audio)]:
                 if os.path.splitext(path)[1].lower() not in SUPPORTED_AUDIO_EXTENSIONS:
                     raise ApiError(415, "unsupported_media_type", "Tipo di file audio non ammesso.")
+                _check_audio_file(path)
             if len(audio) == 1:
                 from rt.core.idempotency import compute_file_sha256
                 from rt.services.lesson_conflicts import lesson_with_audio
@@ -309,6 +319,8 @@ def create_lesson(
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
+        for path in paths:
+            _check_audio_file(path)
         if len(paths) == 1:
             from rt.core.idempotency import compute_file_sha256
             from rt.services.lesson_conflicts import lesson_with_audio

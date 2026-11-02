@@ -7,13 +7,24 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { LessonPage } from './lessons'
 
 const workflow = vi.hoisted(() => ({ outline: undefined as Schemas['Outline'] | undefined, document: undefined as Schemas['LessonDocument'] | undefined, jobs: [] as Schemas['Job'][], ready: false }))
+const mockDeleteLesson = vi.fn()
+const mockRetryJob = vi.fn()
 
 vi.mock('@/api/hooks', () => ({
   useLessons: () => ({ data: [] }),
   useLesson: () => ({ data: { id: 1, titolo: 'Acidosi', materia: 'FISIOLOGIA', data: '2026-10-02', docente: 'Rossi', unit_count: 9, duration_seconds: 4800, phases: { rewrite: workflow.ready ? 'VALID' : 'MISSING' }, has_audio: false, actions: { recall: { available: false, preview: false }, images: { available: false, preview: false }, export_markdown: { available: true, preview: false }, export_zip: { available: true, preview: false } } } }),
   useLessonDocument: () => ({ data: workflow.document }),
+  useDeleteLesson: () => ({ mutate: mockDeleteLesson, isPending: false }),
 }))
-vi.mock('@/api/jobs', () => ({ useJobs: () => ({ data: workflow.jobs }), useOutline: () => ({ data: workflow.outline }), useJob: () => ({ data: undefined }), useApproveOutline: () => ({}), useReviseOutline: () => ({}), useSuspendOutline: () => ({}) }))
+vi.mock('@/api/jobs', () => ({
+  useJobs: () => ({ data: workflow.jobs }),
+  useOutline: () => ({ data: workflow.outline }),
+  useJob: () => ({ data: undefined }),
+  useApproveOutline: () => ({}),
+  useReviseOutline: () => ({}),
+  useSuspendOutline: () => ({}),
+  useRetryJob: () => ({ mutate: mockRetryJob, isPending: false }),
+}))
 vi.mock('@/components/jobs/JobsIndicator', () => ({ LessonWaiting: () => null }))
 vi.mock('@/components/jobs/PhaseProgress', () => ({ PhaseProgress: () => null }))
 vi.mock('@/components/lesson/panels/QuestionsPanel', () => ({ QuestionsPanel: () => null }))
@@ -97,4 +108,45 @@ it('una lezione già rielaborata resta leggibile anche senza approvazione della 
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
   expect(await screen.findByLabelText('Editor')).toHaveValue('Lezione importata')
   expect(screen.queryByTestId('outline-approval')).toBeNull()
+})
+
+it('mostra il riquadro di errore se l’ultimo job è fallito, con Riprova ed Elimina', () => {
+  workflow.jobs = [
+    {
+      id: 'job-fail-1',
+      type: 'ingest_audio',
+      state: 'failed',
+      error: 'Il file audio non è leggibile o è danneggiato.',
+      attempts: 1,
+      cancel_requested: false,
+      payload: {},
+    } as Schemas['Job'],
+  ]
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={['/lezioni/1']}>
+        <Routes>
+          <Route path="/lezioni/:lessonId" element={<LessonPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  const banner = screen.getByTestId('failed-lesson-banner')
+  expect(banner).toBeInTheDocument()
+  expect(banner).toHaveTextContent('Il file audio non è leggibile o è danneggiato.')
+
+  const retryBtn = within(banner).getByRole('button', { name: 'Riprova' })
+  expect(retryBtn).toBeInTheDocument()
+  fireEvent.click(retryBtn)
+  expect(mockRetryJob).toHaveBeenCalledWith('job-fail-1', expect.anything())
+
+  const deleteBtn = within(banner).getByRole('button', { name: 'Elimina' })
+  expect(deleteBtn).toBeInTheDocument()
+  fireEvent.click(deleteBtn)
+
+  expect(screen.getByRole('dialog', { name: 'Elimina lezione' })).toBeInTheDocument()
+  const confirmDeleteBtn = within(screen.getByRole('dialog', { name: 'Elimina lezione' })).getByRole('button', { name: 'Elimina' })
+  fireEvent.click(confirmDeleteBtn)
+  expect(mockDeleteLesson).toHaveBeenCalled()
 })
