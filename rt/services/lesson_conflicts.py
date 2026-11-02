@@ -85,3 +85,56 @@ def create_lesson_directory(date, materia, ora, dest_dir):
             return fs.create_db_lesson(path)
         fs.makedirs(path, exist_ok=False)
         return path
+
+
+def lesson_with_audio(sha: str) -> dict | None:
+    """Cerca se esiste già una lezione con questo audio (confrontando l'impronta sha256).
+    Ritorna {'lesson_id': ..., 'titolo': ..., 'data': ...} oppure None."""
+    if not sha:
+        return None
+    from rt.core.archive import find
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.sources import load_sources
+    from rt.core.state import read_info_yaml
+    from rt.db.engine import get_database
+    from rt.services.lesson_service import indexed_lesson_ids, lessons_root
+    from rt.storage import fs
+
+    target_shas = {sha}
+    try:
+        archived = find(sha)
+        if archived and archived.get("impronta"):
+            target_shas.add(archived["impronta"])
+    except Exception:
+        pass
+
+    lesson_map = {}
+    if get_database():
+        try:
+            lesson_map = indexed_lesson_ids()
+        except Exception:
+            lesson_map = {}
+    root = lessons_root()
+    if fs.isdir(root):
+        for d in fs.listdir(root):
+            if d.startswith("."):
+                continue
+            p = os.path.join(root, d)
+            if fs.isdir(p) and p not in lesson_map:
+                lesson_map[p] = None
+
+    for path, lesson_id in lesson_map.items():
+        try:
+            sources = load_sources(path)
+            for s in sources:
+                if s.tipo == "audio" and s.impronta in target_shas and not s.rimossa_il:
+                    info = read_info_yaml(lesson_path(path, "info.yaml"))
+                    return {
+                        "lesson_id": lesson_id,
+                        "titolo": info.get("titolo") or os.path.basename(path),
+                        "data": str(info.get("data") or ""),
+                    }
+        except Exception:
+            continue
+    return None
+

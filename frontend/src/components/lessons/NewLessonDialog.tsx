@@ -233,7 +233,8 @@ export function NewLessonDialog({
   const [dragging, setDragging] = useState(false)
   const [materia, setMateria] = useState(String(options?.materia ?? ''))
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
-  const clearConflict = () => { setConflict(null); setUploadError(null) }
+  const [audioDuplicate, setAudioDuplicate] = useState<{ lesson_id?: number; titolo: string; data: string } | null>(null)
+  const clearConflict = () => { setConflict(null); setAudioDuplicate(null); setUploadError(null) }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
@@ -431,6 +432,10 @@ export function NewLessonDialog({
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    doSubmit(false)
+  }
+
+  function doSubmit(consentiDuplicato = false) {
     if (busy || zipJob) return
 
     if (kind === 'zip') {
@@ -484,6 +489,7 @@ export function NewLessonDialog({
       auto_accept: false,
       with_review: !solo && review,
       with_enrichment: !solo && enrichment,
+      consenti_duplicato: consentiDuplicato || undefined,
     }
     startUpload(
       `${materia.trim()} · ${date}`,
@@ -515,6 +521,8 @@ export function NewLessonDialog({
     if (reason instanceof ApiError && reason.code === 'lesson_exists') {
       setConflict(reason.details as { lesson_id?: number; titolo: string })
       setManualMode(true)
+    } else if (reason instanceof ApiError && reason.code === 'audio_duplicate') {
+      setAudioDuplicate(reason.details as { lesson_id?: number; titolo: string; data: string })
     }
   }
 
@@ -552,9 +560,11 @@ export function NewLessonDialog({
   const errorText =
     error instanceof ApiError && error.code === 'payload_too_large'
       ? `${error.message} Dividi l'audio in più file più piccoli.`
-      : error
-        ? errorMessage(error)
-        : null
+      : error instanceof ApiError && (error.code === 'lesson_exists' || error.code === 'audio_duplicate')
+        ? null
+        : error
+          ? errorMessage(error)
+          : null
 
   const totalAudioBytes = audioFiles.reduce((sum, f) => sum + f.size, 0)
   const totalZipBytes = zipFiles.reduce((sum, f) => sum + f.size, 0)
@@ -583,13 +593,14 @@ export function NewLessonDialog({
   const showSlots = hours.length > 0 && !manualMode && kind !== 'zip'
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Nuova lezione"
-      testId="new-lesson"
-      className="w-[min(680px,calc(100vw-32px))]"
-    >
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Nuova lezione"
+        testId="new-lesson"
+        className="w-[min(680px,calc(100vw-32px))]"
+      >
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         {/* Input file principale (audio, zip, o materiali) */}
         <input
@@ -1088,5 +1099,47 @@ export function NewLessonDialog({
         </div>
       </form>
     </Modal>
+    {audioDuplicate && (
+      <Modal
+        open={!!audioDuplicate}
+        onClose={() => setAudioDuplicate(null)}
+        title="Registrazione già presente"
+        testId="audio-duplicate-modal"
+      >
+        <div className="flex flex-col gap-4">
+          <p>
+            Questa registrazione è già nella lezione «{audioDuplicate.titolo}» del {audioDuplicate.data}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setAudioDuplicate(null)}>
+              Annulla
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={audioDuplicate.lesson_id == null}
+              onClick={() => {
+                const id = audioDuplicate.lesson_id
+                setAudioDuplicate(null)
+                onClose()
+                if (id != null) navigate(`/lezioni/${id}`)
+              }}
+            >
+              Apri la lezione
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setAudioDuplicate(null)
+                doSubmit(true)
+              }}
+            >
+              Crea comunque
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   )
 }

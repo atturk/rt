@@ -174,6 +174,33 @@ def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
 
 
+def test_upload_duplicate_audio_warning_and_override(api_client, ws, worker):
+    with open(AUDIO_FIXTURE, "rb") as f:
+        audio_content = f.read()
+    # Primo upload con creazione lezione
+    res1 = api_client.post("/api/v1/lessons", files={"audio": ("lezione1.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-05", "materia": "ANATOMIA", "mock": "true"})
+    assert res1.status_code == 202
+    drain(worker)
+    assert len(api_client.get("/api/v1/lessons").json()) == 1
+
+    # Secondo upload dello stesso file audio senza consenti_duplicato -> 409 audio_duplicate
+    res2 = api_client.post("/api/v1/lessons", files={"audio": ("lezione2.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-06", "materia": "FISIOLOGIA", "mock": "true"})
+    assert res2.status_code == 409
+    err = res2.json()["error"]
+    assert err["code"] == "audio_duplicate"
+    assert err["details"]["titolo"]
+    assert err["details"]["data"] == "2026-09-05"
+
+    # Terzo upload dello stesso file audio con consenti_duplicato=true -> 202
+    res3 = api_client.post("/api/v1/lessons", files={"audio": ("lezione3.wav", audio_content, "audio/wav")},
+                          data={"date": "2026-09-06", "materia": "FISIOLOGIA", "consenti_duplicato": "true", "mock": "true"})
+    assert res3.status_code == 202
+    drain(worker)
+    assert len(api_client.get("/api/v1/lessons").json()) == 2
+
+
 @pytest.fixture
 def lesson(api_client, ws):
     lesson_dir = make_lesson(ws)

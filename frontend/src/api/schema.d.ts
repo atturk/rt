@@ -3928,6 +3928,11 @@ export interface components {
             /** Calendar Entry Id */
             calendar_entry_id?: string | null;
             /**
+             * Consenti Duplicato
+             * @default false
+             */
+            consenti_duplicato: boolean;
+            /**
              * Date
              * @description Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')
              */

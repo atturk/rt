@@ -113,6 +113,7 @@ export type NewLesson = {
   with_review: boolean
   with_enrichment?: boolean
   unisci?: boolean
+  consenti_duplicato?: boolean
 }
 
 /** POST /lessons multipart con avanzamento dell'upload. Gira nella coda dei caricamenti
@@ -138,6 +139,7 @@ export function sendLesson(input: NewLesson, onProgress: (progress: UploadProgre
   form.append('auto_accept', String(input.auto_accept))
   form.append('with_review', String(input.with_review))
   if (input.with_enrichment !== undefined) form.append('with_enrichment', String(input.with_enrichment))
+  if (input.consenti_duplicato !== undefined) form.append('consenti_duplicato', String(input.consenti_duplicato))
   const body = {
     audio: input.files.map((f) => f.name),
     appunti: '',

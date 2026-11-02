@@ -217,6 +217,7 @@ def create_lesson(
     calendar_entry_id: Optional[str] = Form(None),
     calendar_date: Optional[str] = Form(None),
     unisci: bool = Form(True),
+    consenti_duplicato: bool = Form(False),
 ):
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     from rt.services.lesson_service import lessons_root
@@ -267,6 +268,18 @@ def create_lesson(
             for path in paths[:len(audio)]:
                 if os.path.splitext(path)[1].lower() not in SUPPORTED_AUDIO_EXTENSIONS:
                     raise ApiError(415, "unsupported_media_type", "Tipo di file audio non ammesso.")
+            if len(audio) == 1:
+                from rt.core.idempotency import compute_file_sha256
+                from rt.services.lesson_conflicts import lesson_with_audio
+                sha = compute_file_sha256(paths[0])
+                existing = lesson_with_audio(sha)
+                if existing and not consenti_duplicato:
+                    raise ApiError(
+                        409,
+                        "audio_duplicate",
+                        f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
+                        details=existing,
+                    )
             documents = paths[len(audio):]
             for path in documents:
                 if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
@@ -296,6 +309,18 @@ def create_lesson(
 
     def _go():
         paths = _save_uploads(audio, SUPPORTED_AUDIO_EXTENSIONS, target)
+        if len(paths) == 1:
+            from rt.core.idempotency import compute_file_sha256
+            from rt.services.lesson_conflicts import lesson_with_audio
+            sha = compute_file_sha256(paths[0])
+            existing = lesson_with_audio(sha)
+            if existing and not consenti_duplicato:
+                raise ApiError(
+                    409,
+                    "audio_duplicate",
+                    f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
+                    details=existing,
+                )
         options = {"date": date, "materia": materia, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,

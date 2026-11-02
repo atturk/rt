@@ -997,6 +997,11 @@
             ],
             "title": "Calendar Entry Id"
           },
+          "consenti_duplicato": {
+            "default": false,
+            "title": "Consenti Duplicato",
+            "type": "boolean"
+          },
           "date": {
             "description": "Data della lezione (YYYY-MM-DD o formati accettati da 'rt setup')",
             "title": "Date",

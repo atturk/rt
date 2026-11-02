@@ -23,6 +23,7 @@ export function repairLatexEscapes(source: string): string {
   return source
     .replaceAll('\f', '\\f')
     .replaceAll('\b', '\\b')
+    // oxlint-disable-next-line no-control-regex
     .replace(/([\t\r\n\x08\x0c])(?=[a-zA-Z])/g, (_, ch) => {
       if (ch === '\t') return '\\t'
       if (ch === '\r') return '\\r'
@@ -32,6 +33,7 @@ export function repairLatexEscapes(source: string): string {
       return ch
     })
     .replace(/\\(?:trm|rm|textrm)\s*\{/g, '\\mathrm{')
+    // oxlint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f\x7f]/g, '')
 }
 
