@@ -3291,6 +3291,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/client-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Registra in api.log un errore o un avviso della console della web app
+         * @description La web app inoltra console.error, console.warn ed errori non gestiti: così si leggono nel registro anche senza aprire gli strumenti per sviluppatori. Lo stesso messaggio si registra al massimo una volta al minuto.
+         */
+        post: operations["client_log_api_v1_system_client_log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/compact-audio": {
         parameters: {
             query?: never;
@@ -4752,6 +4772,28 @@ export interface components {
             section_id: string;
             /** Title */
             title: string;
+        };
+        /** ClientLogEntry */
+        ClientLogEntry: {
+            /**
+             * Level
+             * @description console.error / errori non gestiti, oppure console.warn
+             * @enum {string}
+             */
+            level: "error" | "warn";
+            /** Message */
+            message: string;
+            /**
+             * Page
+             * @description Percorso della pagina della web app
+             * @default
+             */
+            page: string;
+            /**
+             * Stack
+             * @default
+             */
+            stack: string;
         };
         /** CompactAudioPreview */
         CompactAudioPreview: {
@@ -23711,6 +23753,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    client_log_api_v1_system_client_log_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientLogEntry"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

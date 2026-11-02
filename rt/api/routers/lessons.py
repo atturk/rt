@@ -1,4 +1,5 @@
 """Lezioni: elenco, dettaglio, stato delle fasi, documento, audio, export, outline, issue, costi."""
+import logging
 import os
 from typing import List, Literal, Optional
 
@@ -242,6 +243,14 @@ def get_waveform(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     return {"ready": peaks is not None, "peaks": peaks or []}
 
 
+def _local_port(request: Request) -> int:
+    """Porta su cui ascolta questo server. Da Tailscale Serve (https://mac.ts.net) l'URL della
+    richiesta non ha porta: il browser del PDF deve comunque andare su 127.0.0.1:<porta locale>."""
+    from rt.api.server import DEFAULT_PORT
+    server = request.scope.get("server") or (None, None)
+    return int(server[1] or request.url.port or DEFAULT_PORT)
+
+
 def _render_pdf(lesson_id: int, port: int) -> bytes:
     from playwright.sync_api import sync_playwright
     from rt.api import auth
@@ -258,8 +267,14 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
         try:
             try:
                 browser = launch_capture_browser(p)
-            except (BrowserMissingError, Exception) as exc:
+            except BrowserMissingError as exc:
+                # Nel registro il motivo vero: browser assente oppure presente ma non avviabile.
+                logging.getLogger(__name__).warning("PDF: browser non disponibile: %s", exc)
                 raise ApiError(409, "pdf_browser_missing", "Il browser per il PDF si sta ancora scaricando. Riprova tra poco.") from exc
+            except Exception as exc:
+                # Un browser presente che non parte non si risolve aspettando: si dice il motivo.
+                logging.getLogger(__name__).exception("PDF: avvio del browser non riuscito")
+                raise ApiError(500, "pdf_browser_failed", f"Il browser per il PDF non si avvia: {exc}") from exc
 
             try:
                 context = browser.new_context(viewport={"width": 1200, "height": 900}, device_scale_factor=1)
@@ -270,7 +285,12 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
                 }])
                 page = context.new_page()
                 page.goto(f"http://127.0.0.1:{port}/lezioni/{lesson_id}/stampa", wait_until="commit")
-                page.wait_for_selector('body[data-ready="1"]', timeout=60000)
+                try:
+                    page.wait_for_selector('body[data-ready="1"]', timeout=60000)
+                except Exception as exc:
+                    logging.getLogger(__name__).exception("PDF: pagina di stampa non pronta")
+                    raise ApiError(504, "pdf_timeout", "La pagina di stampa non si è caricata entro un minuto: "
+                                   "riprova, e se si ripete controlla api.log.") from exc
 
                 footer_html = '<div style="font-size: 8px; color: #888888; width: 100%; text-align: center;"><span class="pageNumber"></span></div>'
                 return page.pdf(
@@ -311,20 +331,22 @@ async def export_lesson(
     from starlette.concurrency import run_in_threadpool
     from rt.storage.export import ExportError, export_zip_to_tempfile, final_markdown, zip_name
     try:
+        # Zip e anteprima leggono e comprimono file anche grandi: fuori dal ciclo degli eventi,
+        # altrimenti tutta l'API (eventi live, altre pagine) resta ferma finché non finiscono.
         if format == "markdown":
-            filename, content = final_markdown(lesson_dir)
+            filename, content = await run_in_threadpool(final_markdown, lesson_dir)
             media_type = "text/markdown; charset=utf-8"
         elif format == "zip":
-            path = export_zip_to_tempfile(lesson_dir, scope, study=study)
-            filename = zip_name(lesson_dir, scope)
+            path = await run_in_threadpool(export_zip_to_tempfile, lesson_dir, scope, study=study)
+            filename = await run_in_threadpool(zip_name, lesson_dir, scope)
             disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
             return FileResponse(path, media_type="application/zip", filename=filename,
                                 headers={"Content-Disposition": disposition},
                                 background=BackgroundTask(os.unlink, path))
         else:
-            md_filename, _ = final_markdown(lesson_dir)
+            md_filename, _ = await run_in_threadpool(final_markdown, lesson_dir)
             filename = (md_filename[:-3] if md_filename.endswith(".md") else md_filename) + ".pdf"
-            port = request.url.port or 8000
+            port = _local_port(request)
             content = await run_in_threadpool(_render_pdf, lesson_id, port)
             media_type = "application/pdf"
     except ExportError as exc:

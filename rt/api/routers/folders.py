@@ -11,12 +11,12 @@ from rt.api.errors import ApiError
 
 router = APIRouter(tags=["sistema"])
 
-LOOPBACK = {"127.0.0.1", "::1", "localhost"}
-
 
 def _require_loopback(request: Request) -> None:
-    host = request.client.host if request.client else ""
-    if host not in LOOPBACK and not host.startswith("127."):
+    # Tailscale Serve e i proxy arrivano da 127.0.0.1: contano anche gli header di inoltro,
+    # altrimenti dall'iPhone si aprirebbe Finder sul Mac e si leggerebbero le sue cartelle.
+    from rt.api.readonly_auth import is_local_request
+    if not is_local_request(request):
         raise ApiError(403, "loopback_only", "Disponibile solo dal computer su cui gira RT.")
 
 
