@@ -176,6 +176,22 @@ def test_upload_rejects_fake_audio_file(api_client, ws):
     assert os.listdir(os.path.join(ws, ".rt", "uploads")) == []
 
 
+def test_upload_allows_audio_when_ffprobe_missing_or_timed_out(api_client, ws, monkeypatch):
+    import subprocess
+    fake_audio = b"Qualunque audio."
+    # 1. FileNotFoundError (ffprobe missing)
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: (_ for _ in ()).throw(FileNotFoundError("ffprobe not found")))
+    res = api_client.post("/api/v1/lessons", files={"audio": ("audio.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-05", "materia": "BIOLOGIA", "mock": "true"})
+    assert res.status_code == 202
+
+    # 2. TimeoutExpired (ffprobe slow)
+    monkeypatch.setattr("rt.core.media_tools.audio_duration", lambda path: (_ for _ in ()).throw(subprocess.TimeoutExpired(["ffprobe"], 5.0)))
+    res = api_client.post("/api/v1/lessons", files={"audio": ("audio2.mp3", fake_audio, "audio/mpeg")},
+                          data={"date": "2026-09-06", "materia": "BIOLOGIA", "mock": "true"})
+    assert res.status_code == 202
+
+
 def test_upload_rejects_duplicate_names_without_overwriting(api_client, ws):
     res = api_client.post("/api/v1/lessons", files=[
         ("audio", ("same.wav", b"first", "audio/wav")),

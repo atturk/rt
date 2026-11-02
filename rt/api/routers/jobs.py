@@ -107,8 +107,24 @@ def _check_audio_file(path: str) -> None:
     from rt.core.media_tools import audio_duration
     try:
         audio_duration(path)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return
     except (ValueError, subprocess.CalledProcessError):
         raise ApiError(422, "invalid_audio", f'"{os.path.basename(path)}" non è un file audio leggibile.')
+
+
+def _check_duplicate_audio(path: str, consenti_duplicato: bool) -> None:
+    from rt.core.idempotency import compute_file_sha256
+    from rt.services.lesson_conflicts import lesson_with_audio
+    sha = compute_file_sha256(path)
+    existing = lesson_with_audio(sha)
+    if existing and not consenti_duplicato:
+        raise ApiError(
+            409,
+            "audio_duplicate",
+            f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
+            details=existing,
+        )
 
 
 def _with_upload_cleanup(target: str, fn):
@@ -279,17 +295,7 @@ def create_lesson(
                     raise ApiError(415, "unsupported_media_type", "Tipo di file audio non ammesso.")
                 _check_audio_file(path)
             if len(audio) == 1:
-                from rt.core.idempotency import compute_file_sha256
-                from rt.services.lesson_conflicts import lesson_with_audio
-                sha = compute_file_sha256(paths[0])
-                existing = lesson_with_audio(sha)
-                if existing and not consenti_duplicato:
-                    raise ApiError(
-                        409,
-                        "audio_duplicate",
-                        f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
-                        details=existing,
-                    )
+                _check_duplicate_audio(paths[0], consenti_duplicato)
             documents = paths[len(audio):]
             for path in documents:
                 if os.path.splitext(path)[1].lower() not in MATERIAL_EXTENSIONS:
@@ -322,17 +328,7 @@ def create_lesson(
         for path in paths:
             _check_audio_file(path)
         if len(paths) == 1:
-            from rt.core.idempotency import compute_file_sha256
-            from rt.services.lesson_conflicts import lesson_with_audio
-            sha = compute_file_sha256(paths[0])
-            existing = lesson_with_audio(sha)
-            if existing and not consenti_duplicato:
-                raise ApiError(
-                    409,
-                    "audio_duplicate",
-                    f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
-                    details=existing,
-                )
+            _check_duplicate_audio(paths[0], consenti_duplicato)
         options = {"date": date, "materia": materia, "docente": docente.strip() or None, "ora": ora or None,
                    "dest_dir": lessons_root(),
                    "mock": mock, "with_review": with_review, "with_enrichment": with_enrichment,
