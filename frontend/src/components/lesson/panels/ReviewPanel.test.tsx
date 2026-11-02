@@ -667,3 +667,31 @@ it('una issue con $x^2$ nella correzione e nella spiegazione rende MathML e il d
   expect(textarea).toHaveValue('La funzione vale $x^2$.')
 })
 
+it('mostra Possibile errore del docente per origine docente, senza pulsante di correzione e con la prova', () => {
+  const teacherIssue: Schemas['IssueItem'] = {
+    quote_status: 'found',
+    needs_reconfirmation: false,
+    issue: {
+      id: 'teacher-issue',
+      type: 'ERR_CONCETTUALE',
+      severity: 'high',
+      unit_id: '1.1',
+      claim: "Tutta l'energia va nel condensatore.",
+      reason: 'Metà dell’energia si dissipa nel resistore.',
+      origine: 'docente',
+      prova: 'slide 8 e trascritto',
+      nota: "Il docente dice che tutta l'energia va nel condensatore.",
+    },
+    context: { timecode: '00:00', start_s: 0, unit_content: "Tutta l'energia va nel condensatore." },
+  }
+  state.items = [teacherIssue]
+  mount()
+
+  expect(screen.getByText('Possibile errore del docente')).toBeInTheDocument()
+  expect(screen.getByText('Prova: slide 8 e trascritto')).toBeInTheDocument()
+  expect(screen.getByText("Nota: Il docente dice che tutta l'energia va nel condensatore.")).toBeInTheDocument()
+  expect(screen.queryByTestId('proposed-correction')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Accetta la correzione' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Mantieni il testo attuale' })).toBeInTheDocument()
+})
+

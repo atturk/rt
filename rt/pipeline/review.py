@@ -367,7 +367,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
                  st_issues_by_unit: Dict[str, List[ScienceIssue]], all_science_issues: List[ScienceIssue],
                  _cfg, lesson_dir: str, asr_llm: bool, shadow_jev: bool, ctx: "Optional[RunContext]" = None,
                  jev_log: Optional[Dict[str, Any]] = None, parent_context: Optional[str] = None,
-                 skip_prefilter: bool = False) -> str:
+                 skip_prefilter: bool = False, macro_id: Optional[str] = None) -> str:
     """Critica di una unità: aggiunge le sue issue ad all_science_issues (errori LLM rilanciati)."""
     source_texts = []
     for s_id in unit.source_segment_ids:
@@ -375,6 +375,24 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
         if s:
             source_texts.append(f"[{s.id}] {s.text_raw}")
     source_context = "\n".join(source_texts)
+
+    if macro_id is None:
+        try:
+            from rt.pipeline.outline import load_outline
+            ot = load_outline(lesson_dir)
+            if ot:
+                for m in getattr(ot, "macro_sections", []):
+                    for u in getattr(m, "units", []):
+                        if str(u.id) == str(unit.unit_id):
+                            macro_id = str(m.id)
+                            break
+                    if macro_id:
+                        break
+        except Exception:
+            macro_id = ""
+
+    from rt.pipeline.material_mapping import material_context_for_unit
+    materials_context = material_context_for_unit(lesson_dir, unit.unit_id, macro_id or "")
 
     # Pre-filtro Jev (System One): due valutazioni indipendenti PRIMA della critica LLM
     # completa. In modalità ombra (--shadow-jev) girano e vengono loggate come sempre,
@@ -422,6 +440,8 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
             rewritten_content=unit.content,
             asr_risk_context=asr_risk_context,
             parent_context=parent_context,
+            source_context=source_context,
+            materials_context=materials_context,
         )
 
         unit_title = unit.title.strip() if getattr(unit, "title", None) else ""
@@ -430,10 +450,126 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
         unit_label = f"unit {idx}/{total_units} ({unit.unit_id}: {unit_title})" if unit_title else f"unit {idx}/{total_units} ({unit.unit_id})"
 
         prompt = append_extra(lesson_dir, "review", prompt)
-        all_science_issues.extend(_validated_review_issues(
-            client, unit, prompt, lesson_dir, unit_label, seg_by_id))
+        initial_findings = _validated_review_issues(
+            client, unit, prompt, lesson_dir, unit_label, seg_by_id)
+        filtered_findings = _apply_second_pass_review(
+            client, initial_findings, unit, macro_id or "", source_context, lesson_dir, unit_label)
+        all_science_issues.extend(filtered_findings)
 
     return "skipped_by_prefilter" if skip_expensive_llm else "ok"
+
+
+def _apply_second_pass_review(
+    client: LLMClient,
+    findings: List[ScienceIssue],
+    unit: DraftUnit,
+    macro_id: str,
+    source_context: str,
+    lesson_dir: str,
+    unit_label: str,
+) -> List[ScienceIssue]:
+    """Seconda passata con le fonti per ogni segnalazione concettuale."""
+    from rt.services.source_index import SourceIndex
+    from rt.llm.prompts import (
+        SecondPassReviewResponse,
+        SECOND_PASS_REVIEW_SYSTEM_PROMPT,
+        build_second_pass_review_prompt,
+    )
+    from rt.services.prompt_settings import effective_system
+
+    source_index: Optional[SourceIndex] = None
+    final_issues: List[ScienceIssue] = []
+
+    for issue in findings:
+        if issue.type != ScienceType.ERR_CONCETTUALE:
+            final_issues.append(issue)
+            continue
+
+        if source_index is None:
+            try:
+                source_index = SourceIndex(lesson_dir)
+            except Exception:
+                source_index = None
+
+        if not source_index:
+            final_issues.append(issue)
+            continue
+
+        query = f"{issue.claim} {issue.suggested_fix or ''}".strip()
+        matches = source_index.search(query, unit_id=unit.unit_id, macro_id=macro_id)
+        if not matches:
+            final_issues.append(issue)
+            continue
+
+        needs_image = any(m.da_descrizione for m in matches) or (
+            len(matches) >= 2 and matches[0].score > 0 and matches[1].score >= 0.8 * matches[0].score
+        )
+        images_data_urls: List[str] = []
+        if needs_image:
+            for m in matches[:2]:
+                png = source_index.render_page_png(m.fonte, m.pagina)
+                if png:
+                    import base64
+                    b64 = base64.b64encode(png).decode("ascii")
+                    images_data_urls.append(f"data:image/png;base64,{b64}")
+
+        matched_pages_text = "\n\n".join(
+            f"[Fonte: {m.fonte}, pag. {m.pagina}]\n{m.testo}" for m in matches
+        )
+        second_prompt = build_second_pass_review_prompt(
+            claim=issue.claim,
+            reason=issue.reason,
+            suggested_fix=issue.suggested_fix,
+            matched_pages_text=matched_pages_text,
+            source_context=source_context,
+        )
+
+        resp: Optional[SecondPassReviewResponse] = None
+        if images_data_urls:
+            try:
+                resp = client.call_structured(
+                    prompt=second_prompt,
+                    system_prompt=effective_system("review_second_pass", SECOND_PASS_REVIEW_SYSTEM_PROMPT),
+                    response_model=SecondPassReviewResponse,
+                    job_name="review",
+                    unit_id=unit_label,
+                    lesson_dir=lesson_dir,
+                    image_data_url=images_data_urls,
+                )
+            except Exception:
+                resp = None
+
+        if resp is None:
+            try:
+                resp = client.call_structured(
+                    prompt=second_prompt,
+                    system_prompt=effective_system("review_second_pass", SECOND_PASS_REVIEW_SYSTEM_PROMPT),
+                    response_model=SecondPassReviewResponse,
+                    job_name="review",
+                    unit_id=unit_label,
+                    lesson_dir=lesson_dir,
+                )
+            except Exception:
+                final_issues.append(issue)
+                continue
+
+        if resp.classificazione == "definizione_del_corso":
+            # Viene scartata
+            continue
+        elif resp.classificazione == "possibile_errore_del_docente":
+            issue.origine = "docente"
+            issue.prova = resp.prova
+            issue.suggested_fix = None
+            if resp.nota and resp.nota.strip():
+                issue.nota = resp.nota.strip()
+            final_issues.append(issue)
+        else:
+            issue.origine = "rielaborazione"
+            if resp.prova:
+                issue.prova = resp.prova
+            final_issues.append(issue)
+
+    return final_issues
 
 
 def run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, asr_llm: bool = False, shadow_jev: bool = False, ctx: "Optional[RunContext]" = None, skip_prefilter: bool = False) -> Dict[str, Any]:
@@ -951,6 +1087,15 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
     if ctx:
         ctx.emit(ReviewUnitsQueued(pending_units=sorted(pending_units)))
 
+    unit_to_macro: Dict[str, str] = {}
+    try:
+        from rt.pipeline.outline import load_outline
+        ot = load_outline(lesson_dir)
+        if ot:
+            unit_to_macro = {su.id: str(macro.id) for macro in ot.macro_sections for su in macro.units}
+    except Exception:
+        unit_to_macro = {}
+
     def examine(idx, unit):
         # Client separati; soltanto il budget del mock resta quello della lezione.
         client = None
@@ -968,7 +1113,7 @@ def _run_review(lesson_dir: str, force: bool = False, force_mock: bool = False, 
                 if unit.unit_id in eligible_ids:
                     result = _review_unit(client, unit, idx, total_units, seg_by_id, st_issues_by_unit, generated,
                                           _cfg, lesson_dir, asr_llm, shadow_jev, ctx=child, jev_log=prefilter,
-                                          skip_prefilter=skip_prefilter)
+                                          skip_prefilter=skip_prefilter, macro_id=unit_to_macro.get(unit.unit_id, ""))
                 elif child:
                     child.emit(Notice(level="info", message=f"Unità {unit.unit_id} esclusa dalla review: priva di contenuto didattico."))
         except Exception as exc:

@@ -44,6 +44,20 @@ def test_verifica_schema_requires_correzione_and_accepts_null():
     assert payload["response_format"]["json_schema"]["schema"]["required"][-1] == "correzione"
 
 
+def test_second_pass_review_schema_requires_prova_and_nota_and_accepts_null():
+    from rt.llm.prompts import SecondPassReviewResponse
+    schema = strict_json_schema(SecondPassReviewResponse)
+    assert schema["required"] == ["classificazione", "prova", "nota"]
+    valid = SecondPassReviewResponse.model_validate(
+        {"classificazione": "definizione_del_corso", "prova": None, "nota": None}
+    )
+    assert valid.prova is None and valid.nota is None
+    payload = OpenRouterProvider().build_payload(model="openai/gpt-6-luna", messages=[],
+                                                 response_json_schema=schema, stream=False)
+    req = payload["response_format"]["json_schema"]["schema"]["required"]
+    assert "prova" in req and "nota" in req
+
+
 def test_pydantic_schema_is_not_mutated():
     strict_json_schema(StudyNoteVerificaResponse)
     assert "correzione" not in StudyNoteVerificaResponse.model_json_schema().get("required", [])

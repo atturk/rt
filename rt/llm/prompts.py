@@ -28,6 +28,49 @@ class ReviewFindingList(BaseModel):
     issues: List[ReviewFinding]
 
 
+class SecondPassReviewResponse(BaseModel):
+    constrained_schema: ClassVar[bool] = True
+    model_config = ConfigDict(extra="forbid")
+    classificazione: Literal["definizione_del_corso", "possibile_errore_del_docente", "errore_della_rielaborazione"]
+    prova: Optional[str] = None
+    nota: Optional[str] = None
+
+
+SECOND_PASS_REVIEW_SYSTEM_PROMPT = """Sei un revisore scientifico accademico esperto. Il tuo compito è classificare una segnalazione di potenziale errore concettuale alla luce delle fonti del docente (trascritto e materiali/slide).
+
+Classifica la segnalazione in una delle tre categorie:
+1. "definizione_del_corso": se il testo coincide con le fonti ed è una definizione, una notazione, un indice temporale o una convenzione del corso. La segnalazione verrà scartata.
+2. "possibile_errore_del_docente": se il testo coincide con le fonti ma contraddice un fatto della materia (il docente o le slide hanno riportato un'affermazione scientificamente errata). Fornisci nel campo "nota" una spiegazione chiara (es. "Il docente dice X; in generale vale Y").
+3. "errore_della_rielaborazione": se il testo si discosta dalle fonti o è un errore introdotto durante la rielaborazione.
+
+Indica nel campo "prova" la fonte precisa a supporto del giudizio (es. "slide 16: ..." o "trascritto: ...").
+Restituisci un oggetto JSON conforme a SecondPassReviewResponse."""
+
+
+def build_second_pass_review_prompt(
+    claim: str,
+    reason: str,
+    suggested_fix: Optional[str],
+    matched_pages_text: str,
+    source_context: str,
+) -> str:
+    fix_part = f"\nCorrezione proposta: {suggested_fix}" if suggested_fix else ""
+    return f"""Valuta la seguente segnalazione concettuale rispetto alle fonti fornite:
+
+SEGNALAZIONE:
+Testo contestato: {claim}
+Motivazione: {reason}{fix_part}
+
+FONTI TROVATE DAI MATERIALI:
+{matched_pages_text or "Nessuna pagina trovata"}
+
+TRASCRITTO DEL DOCENTE:
+{source_context or "Nessun segmento trascritto disponibile"}
+
+Determina se si tratta di una definizione/notazione del corso ("definizione_del_corso"), di un possibile errore del docente presente nelle fonti ("possibile_errore_del_docente"), oppure di un errore introdotto dalla rielaborazione ("errore_della_rielaborazione").
+Indica la prova e restituisci l'oggetto JSON conforme a SecondPassReviewResponse."""
+
+
 LATEX_WRITING_RULE = r"Formule, insiemi, variabili con indici, frazioni ed equazioni in LaTeX ($...$ in riga, $$...$$ a blocco), mai pedici/apici Unicode o <sub>/<sup>; chimica: reazioni in $$\mathrm{...}$$ con \rightarrow o \rightleftharpoons, specie in riga come $\mathrm{CO_2}$, mai \ce; testo normale e sigle non chimiche restano testo."
 
 
@@ -263,6 +306,8 @@ def build_science_review_user_prompt(
     rewritten_content: str,
     asr_risk_context: Optional[str] = None,
     parent_context: Optional[str] = None,
+    source_context: Optional[str] = None,
+    materials_context: Optional[str] = None,
 ) -> str:
     asr_block = ""
     if asr_risk_context:
@@ -272,12 +317,18 @@ def build_science_review_user_prompt(
         parent_block = ("\n\n---\nCONTESTO: le altre subunità della stessa unità, solo come riferimento per capire "
                         "il testo da esaminare. Non segnalare problemi che stanno solo qui.\n"
                         f"{parent_context.strip()}\n---")
+    transcript_block = ""
+    if source_context and source_context.strip():
+        transcript_block = f"\n\n---\nTRASCRITTO DEL DOCENTE:\n{source_context.strip()}\n---"
+    materials_block = ""
+    if materials_context and materials_context.strip():
+        materials_block = f"\n\n---\nMATERIALI DEL DOCENTE:\n{materials_context.strip()}\n---"
     return f"""Esamina criticamente la seguente unità rielaborata:
 
 UNITÀ: {unit_id}
 
 TESTO RIELABORATO:
-{rewritten_content}{asr_block}{parent_block}
+{rewritten_content}{asr_block}{parent_block}{transcript_block}{materials_block}
 
 Individua eventuali incongruenze scientifiche e restituisci l'oggetto JSON conforme a ReviewFindingList."""
 
