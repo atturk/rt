@@ -356,3 +356,14 @@ def test_usage_index_and_single_directories_call(tmp_path, monkeypatch):
     summ = summary()
     assert summ['file'] == 30
     assert call_count == 1
+
+
+def test_usage_index_skips_lesson_without_info(tmp_path, monkeypatch):
+    """Una lezione registrata ma senza info.yaml non blocca l'archivio (Immagini, lookup)."""
+    from rt.services.archive_service import usage_index
+    good = lesson(tmp_path, "buona")
+    src = add_source(good, 'audio', 'a.m4a', b'audio')
+    ghost = tmp_path / "fantasma"
+    (ghost / "_state").mkdir(parents=True)
+    monkeypatch.setattr('rt.services.archive_backfill.lesson_directories', lambda: [str(ghost), good])
+    assert src.impronta in usage_index()
