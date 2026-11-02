@@ -505,6 +505,40 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         })}
       </div>
 
+      {/* Materiali non collocati */}
+      {sourcesView?.unplaced && sourcesView.unplaced.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3" data-testid="unplaced-materials">
+          <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+            Materiali non collocati
+          </span>
+          <div className="flex flex-col gap-1.5">
+            {sourcesView.unplaced.map((item, idx) => (
+              <div
+                key={`${item.source_id}-${item.page}-${idx}`}
+                className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2 text-body"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', item.text || `Fonte: ${item.source_file}, pag. ${item.page}`)
+                }}
+                data-testid={`unplaced-material-item-${item.page}`}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">
+                    {item.source_file}, pag. {item.page}
+                  </span>
+                </div>
+                {item.macro_id && (
+                  <span className="shrink-0 text-meta text-muted-foreground">
+                    Sezione {item.macro_id}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sezione Versioni chiusa di default */}
       <details className="vers group rounded-lg border bg-card p-3" data-testid="versions-details">
         <summary className="flex cursor-pointer items-center justify-between text-body font-semibold">

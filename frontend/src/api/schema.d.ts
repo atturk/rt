@@ -8238,6 +8238,11 @@ export interface components {
             /** Sources */
             sources: components["schemas"]["SourceView"][];
             ultimo_aggiornamento?: components["schemas"]["LastUpdate"] | null;
+            /**
+             * Unplaced
+             * @default []
+             */
+            unplaced: components["schemas"]["UnplacedMaterial"][];
         };
         /** StudyLesson */
         StudyLesson: {
@@ -8842,6 +8847,27 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /** UnplacedMaterial */
+        UnplacedMaterial: {
+            /**
+             * Immagini
+             * @default []
+             */
+            immagini: string[];
+            /** Macro Id */
+            macro_id?: string | null;
+            /** Page */
+            page: number;
+            /** Source File */
+            source_file: string;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
         };
         /** UpdateChannelRequest */
         UpdateChannelRequest: {

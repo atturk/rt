@@ -18,6 +18,15 @@ from rt.services.sources_view import SourceView, LastUpdate, sources_view
 router = APIRouter(tags=["lezioni"])
 
 
+class UnplacedMaterial(BaseModel):
+    source_id: str
+    source_file: str
+    page: int
+    text: str = ""
+    macro_id: str | None = None
+    immagini: list[str] = []
+
+
 class SourcesView(BaseModel):
     sources: list[SourceView]
     has_unused_sources: bool
@@ -30,6 +39,7 @@ class SourcesView(BaseModel):
     principale_usato: str | None
     solo_ricostruzione: bool
     fonti_tolte_usate: list[str] = []
+    unplaced: list[UnplacedMaterial] = []
 
 
 class UpdateRequest(BaseModel):

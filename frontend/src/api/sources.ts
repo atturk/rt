@@ -39,6 +39,15 @@ export type LastUpdateInfo = {
   il: string
 }
 
+export type UnplacedMaterial = {
+  source_id: string
+  source_file: string
+  page: number
+  text?: string
+  macro_id?: string | null
+  immagini?: string[]
+}
+
 export type SourcesView = {
   sources: SourceItem[]
   has_unused_sources: boolean
@@ -51,6 +60,7 @@ export type SourcesView = {
   principale_usato: string | null
   solo_ricostruzione: boolean
   fonti_tolte_usate?: string[]
+  unplaced?: UnplacedMaterial[]
 }
 
 export type LessonVersion = {

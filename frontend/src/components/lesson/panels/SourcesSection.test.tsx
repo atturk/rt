@@ -376,6 +376,30 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     fireEvent.click(unisciBtn)
     expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
   })
+
+  it('mostra materiali non collocati se presenti nella sourcesView', async () => {
+    vi.spyOn(api, 'GET').mockImplementation(async (path) => ({
+      data: String(path).endsWith('/versions')
+        ? []
+        : {
+            ...mockView,
+            unplaced: [
+              {
+                source_id: 's_mat_1',
+                source_file: 'Slide_extra.pdf',
+                page: 7,
+                macro_id: '1',
+              },
+            ],
+          },
+      response: new Response(),
+    } as never))
+    renderComponent()
+    expect(await screen.findByTestId('unplaced-materials')).toBeInTheDocument()
+    expect(screen.getByText('Materiali non collocati')).toBeInTheDocument()
+    expect(screen.getByText('Slide_extra.pdf, pag. 7')).toBeInTheDocument()
+    expect(screen.getByText('Sezione 1')).toBeInTheDocument()
+  })
 })
 
 it('chiede conferma prima di togliere una fonte usata e permette di annullare', async () => {

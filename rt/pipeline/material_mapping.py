@@ -368,7 +368,8 @@ def classify_material_page(
     Se passa per 3 o più sottounità della stessa macro, va sotto la macro al posto loro.
     Se il classificatore è spento o in errore: restituisce ([], []).
     """
-    if not candidates:
+    if not candidates and not page.get("testo", "").strip() and not page.get("immagini"):
+        page["unplaced"] = False
         return [], []
 
     from rt.core.config import load_config, classifier_job
@@ -378,6 +379,7 @@ def classify_material_page(
 
     cfg = classifier_job(load_config(), "images")
     if cfg.mode == "off":
+        page["unplaced"] = False
         return [], []
 
     threshold = cfg.threshold if getattr(cfg, "threshold", None) is not None else 0.7
@@ -399,7 +401,7 @@ def classify_material_page(
         f"### Sottounità {c.unit_id}: {c.title}\n"
         + "\n[…]\n".join(transcript_windows(page['testo'], c.transcript, idf))
         for c in candidates
-    )
+    ) if candidates else "(nessuna)"
     prompt_state = (
         f"PAGINA DEL MATERIALE (pagina {page['numero']})\n"
         f"{page['testo']}\n\n"
@@ -453,9 +455,11 @@ def classify_material_page(
             raise
         except Exception:
             # Il classificatore spento o in errore: nessuna pagina assegnata, la lezione si fa lo stesso
+            page["unplaced"] = False
             return [], []
 
     if probabilities.get('didactic_content', 0.0) < threshold:
+        page["unplaced"] = False
         return [], []
 
     # Sottounità approvate con probabilità >= soglia
@@ -472,7 +476,13 @@ def classify_material_page(
         by_macro.setdefault(c.macro_id, []).append(c)
 
     if not approved_candidates:
+        page["unplaced"] = True
+        if candidates:
+            best = max(candidates, key=lambda c: probabilities.get(f"unit_{c.unit_id.replace('.', '_')}", 0.0))
+            return [], [best.macro_id]
         return [], []
+
+    page["unplaced"] = False
     best = max(approved_candidates, key=lambda c: probabilities[f"unit_{c.unit_id.replace('.', '_')}"])
     if len(by_macro[best.macro_id]) >= 3:
         return [], [best.macro_id]
@@ -497,12 +507,15 @@ def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock
         ctx.check_cancelled()
     if page.get("mapping_skip"):
         return [], []
-    page = {**page, "testo": page.get("mapping_text", page.get("testo", ""))}
-    candidates = find_candidate_subunits_for_page(page.get("testo", ""), corpus, idf)
-    if not candidates and mock and mock_fallback and corpus and page.get("testo", "").strip():
+    page_dict = {**page, "testo": page.get("mapping_text", page.get("testo", ""))}
+    candidates = find_candidate_subunits_for_page(page_dict.get("testo", ""), corpus, idf)
+    if not candidates and mock and mock_fallback and corpus and page_dict.get("testo", "").strip():
         entry = corpus[0]
         candidates = [CandidateSubunit(entry.unit_id, entry.macro_id, entry.title, entry.transcript, 1.0)]
-    return classify_material_page(page, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf)
+    res = classify_material_page(page_dict, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf)
+    if "unplaced" in page_dict:
+        page["unplaced"] = page_dict["unplaced"]
+    return res
 
 
 def append_page_placements(units, macros, image_hash, assigned_units, assigned_macros):
@@ -560,6 +573,7 @@ def assign_material_pages(
     macros_placement: Dict[str, List[str]] = {}
     pages_by_unit: Dict[str, List[Dict[str, Any]]] = {}
     pages_by_macro: Dict[str, List[Dict[str, Any]]] = {}
+    unplaced_list: List[Dict[str, Any]] = []
 
     descriptions = load_image_descriptions(lesson_dir)
 
@@ -679,12 +693,22 @@ def assign_material_pages(
                     "text": page["testo"],
                 }
 
+                if page.get("unplaced"):
+                    unplaced_list.append({
+                        "source_id": source.id,
+                        "source_file": os.path.basename(source.file),
+                        "page": page["numero"],
+                        "text": page["testo"],
+                        "macro_id": assigned_macros[0] if assigned_macros else None,
+                        "immagini": page.get("immagini") or [],
+                    })
+
                 for uid in assigned_units:
                     pages_by_unit.setdefault(uid, []).append(page_info)
                 for mid in assigned_macros:
                     pages_by_macro.setdefault(mid, []).append(page_info)
 
-                if enabled and page.get("immagini") and (assigned_units or assigned_macros):
+                if enabled and page.get("immagini"):
                     for img_rel in page["immagini"]:
                         img_path = page_image_path(source.impronta, img_rel)
                         if fs.isfile(img_path):
@@ -692,13 +716,17 @@ def assign_material_pages(
                                 data = stream.read()
                             h = compute_image_hash(data)
                             fn = save_raw_image(lesson_dir, data, h)
-                            descriptions.setdefault(h, {
+                            desc = descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
                                 "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
                             })
-                            append_page_placements(units_placement, macros_placement, h,
-                                                   assigned_units, assigned_macros)
+                            if page.get("unplaced"):
+                                desc["unplaced"] = True
+                                desc["alt_text"] = "Materiale non collocato"
+                            if assigned_units or assigned_macros:
+                                append_page_placements(units_placement, macros_placement, h,
+                                                       assigned_units, assigned_macros)
 
     save_image_descriptions(lesson_dir, descriptions)
 
@@ -707,6 +735,7 @@ def assign_material_pages(
         "macros": macros_placement if enabled else {},
         "pages_by_unit": pages_by_unit,
         "pages_by_macro": pages_by_macro,
+        "unplaced": unplaced_list,
     }
     _write_json(lesson_dir, STATE_FILE, state)
 
@@ -734,8 +763,8 @@ def assign_material_pages(
 def clear_material_context(lesson_dir: str) -> None:
     """Assegnazione non riuscita: nessuna pagina va nel contesto (le immagini restano)."""
     state = _read_json(lesson_dir, STATE_FILE)
-    if state.get("pages_by_unit") or state.get("pages_by_macro"):
-        state.update(pages_by_unit={}, pages_by_macro={})
+    if state.get("pages_by_unit") or state.get("pages_by_macro") or state.get("unplaced"):
+        state.update(pages_by_unit={}, pages_by_macro={}, unplaced=[])
         _write_json(lesson_dir, STATE_FILE, state)
 
 

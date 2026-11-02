@@ -11115,6 +11115,14 @@
                 "type": "null"
               }
             ]
+          },
+          "unplaced": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UnplacedMaterial"
+            },
+            "title": "Unplaced",
+            "type": "array"
           }
         },
         "required": [
@@ -12477,6 +12485,53 @@
           }
         },
         "title": "UnitRelevanceSummary",
+        "type": "object"
+      },
+      "UnplacedMaterial": {
+        "properties": {
+          "immagini": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Immagini",
+            "type": "array"
+          },
+          "macro_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macro Id"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_file": {
+            "title": "Source File",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_file",
+          "page"
+        ],
+        "title": "UnplacedMaterial",
         "type": "object"
       },
       "UpdateChannelRequest": {
