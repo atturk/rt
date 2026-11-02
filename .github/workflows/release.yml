@@ -15,13 +15,41 @@ permissions:
   contents: read
 
 jobs:
+  # Test già fatti: se lo stesso codice (stesso commit, o un merge con lo stesso albero della
+  # testa della PR) ha già la Test Suite e la suite Windows verdi, la release non le rifà.
+  prior:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tested: ${{ steps.find.outputs.tested }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Look for green runs on the same code
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: python scripts/ci_already_tested.py "$REPO" >> "$GITHUB_OUTPUT"
   tests:
+    needs: prior
+    if: needs.prior.outputs.tested != 'true'
     uses: ./.github/workflows/tests.yml
   # .dmg e setup .exe, provati prima di pubblicare: l'app si aggiorna da qui (solo stabili)
   app:
+    needs: prior
     uses: ./.github/workflows/app.yml
+    with:
+      skip_tests: ${{ needs.prior.outputs.tested == 'true' }}
   release:
-    needs: [tests, app]
+    needs: [prior, tests, app]
+    # 'tests' saltato va bene solo se 'prior' ha trovato i test già verdi
+    if: >-
+      !cancelled() && needs.app.result == 'success' &&
+      (needs.tests.result == 'success' || (needs.tests.result == 'skipped' && needs.prior.outputs.tested == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: write

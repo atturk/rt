@@ -1,8 +1,8 @@
 name: Test Suite
 
+# Niente giro su push a main: il codice unito è quello già provato sulla PR, e un secondo giro
+# identico si contendeva i pochi runner macOS con la release lanciata subito dopo il merge.
 on:
-  push:
-    branches: [main]
   pull_request:
     # anche le PR verso un branch beta (claude/rt-X.Y.Z-beta): gli installer si provano lì
     branches: [main, 'claude/rt-*-beta']
@@ -16,8 +16,8 @@ permissions:
 
 jobs:
   # Sulle PR basta la versione di Python più bassa supportata (3.11): i runner macOS sono lenti
-  # e costosi, e le differenze tra versioni emergono di rado. La matrice completa gira su push
-  # a main, workflow_call (release.yml, prima di pubblicare), workflow_dispatch e sulle PR con
+  # e costosi, e le differenze tra versioni emergono di rado. La matrice completa gira su
+  # workflow_call (release.yml, prima di pubblicare), workflow_dispatch e sulle PR con
   # l'etichetta 'full-matrix' (da aggiungere prima del merge quando serve la verifica completa).
   # Un'etichetta diversa da 'full-matrix' non rilancia nulla (vedi gli 'if' dei job).
   test:
