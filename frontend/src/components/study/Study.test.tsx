@@ -5,6 +5,7 @@ import { vi } from 'vitest'
 
 import { StudyFlow } from './Study'
 import type { Lesson } from '@/lib/format'
+import { reviewKeys } from '@/api/hooks'
 
 const LESSON: Lesson = {
   id: 1,
@@ -62,13 +63,16 @@ function CurrentLocation() {
   return <output data-testid="study-location">{location.pathname + location.search + location.hash}</output>
 }
 
-function renderStudy(entry: string | { pathname: string; search: string; state: { enter: string } } = '/') {
+function renderStudy(
+  entry: string | { pathname: string; search: string; state: { enter: string } } = '/',
+  lessons: Lesson[] = [LESSON],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <CurrentLocation />
-        <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        <StudyFlow lessons={lessons} back={{ to: '/', label: 'Esci' }} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -534,4 +538,41 @@ it('l’errore della generazione resta visibile passando alle domande', async ()
   fireEvent.click(screen.getByTestId('study-quiz'))
   act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generazione interrotta' }))
   expect(await screen.findByText('Generazione interrotta')).toBeVisible()
+})
+
+describe('Segnalazioni aperte nello Studio', () => {
+  it('la barra non compare quando ci sono 0 segnalazioni aperte', () => {
+    renderStudy('/', [{ ...LESSON, pending_issues: 0 }])
+    expect(screen.queryByTestId('study-pending-issues-banner')).not.toBeInTheDocument()
+    expect(screen.queryByText(/punti da verificare/i)).not.toBeInTheDocument()
+  })
+
+  it('la barra compare quando ci sono segnalazioni aperte e rimanda alla Verifica', () => {
+    renderStudy('/', [{ ...LESSON, pending_issues: 2 }])
+    expect(screen.getByTestId('study-pending-issues-banner')).toBeInTheDocument()
+    expect(screen.getByText('2 punti da verificare')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'Apri Verifica' })
+    expect(link).toHaveAttribute('href', '/lezioni/1?panel=verifica')
+  })
+
+  it('mostra il contrassegno sulle unità con segnalazioni aperte', async () => {
+    const client = renderStudy('/', [{ ...LESSON, pending_issues: 1 }])
+    act(() => {
+      client.setQueryData(reviewKeys.issues(1), {
+        pending: 1,
+        total: 1,
+        review_complete: false,
+        items: [
+          {
+            issue: { id: 'sci_1', unit_id: '1.2' },
+            decision: null,
+            needs_reconfirmation: false,
+          },
+        ],
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
+    })
+  })
 })

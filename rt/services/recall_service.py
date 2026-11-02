@@ -266,6 +266,7 @@ def question_view(question, reveal: bool = False, outcome=None, *, lesson_dir=No
         "question_text": question.question_text, "options": question.options,
         "status": question.status.value, "outcome": outcome,
         "discard_reasons": question.discard_reasons, "comment": question.comment,
+        "da_verificare": getattr(question, "da_verificare", False),
     }
     from rt.services.previous_study import is_previous
     data["precedente"] = bool(lesson_dir and is_previous(lesson_dir, question.unit_ids, question.created_at))

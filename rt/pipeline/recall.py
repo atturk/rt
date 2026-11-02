@@ -617,6 +617,18 @@ def generate_recall_batch(
         units = [u for u in _units(lesson_dir) if u.unit_id in wanted]
     else:
         units = selected_units(lesson_dir)
+    from rt.pipeline.ledger import get_pending_issues
+    _, pending_issues = get_pending_issues(lesson_dir)
+    pending_conceptual_units = {
+        iss.unit_id for iss in pending_issues
+        if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+    }
+    if unit_ids is None:
+        skipped_units = [u for u in units if u.unit_id in pending_conceptual_units]
+        if skipped_units:
+            units = [u for u in units if u.unit_id not in pending_conceptual_units]
+            n = len(skipped_units)
+            report(None, None, f"{n} {'unità saltata: ha' if n == 1 else 'unità saltate: hanno'} segnalazioni da decidere nella Verifica")
     bank = load_recall_bank(lesson_dir)
     context = lesson_context(lesson_dir)
     from rt.services import recall_rules
@@ -723,7 +735,8 @@ def generate_recall_batch(
                 question = RecallQuestion(id="temporary", unit_ids=ids,
                     **question.model_dump(), content_fingerprint=_compute_units_fingerprint(lesson_dir, ids),
                     generation_version=POLICY_VERSION, generation_fingerprint=fingerprint,
-                    classifier_level=assessment.get("level"))
+                    classifier_level=assessment.get("level"),
+                    da_verificare=bool(set(ids) & pending_conceptual_units))
                 group_results.append(question)
             group_results = recall_rules.filter_group(group_results, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
             attempt = {"fingerprint": fingerprint, "exhausted": not group_results,

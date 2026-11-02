@@ -8864,6 +8864,11 @@
             ],
             "title": "Custom Type"
           },
+          "da_verificare": {
+            "default": false,
+            "title": "Da Verificare",
+            "type": "boolean"
+          },
           "discard_reasons": {
             "items": {
               "type": "string"
@@ -9069,6 +9074,11 @@
               }
             ],
             "title": "Custom Type"
+          },
+          "da_verificare": {
+            "default": false,
+            "title": "Da Verificare",
+            "type": "boolean"
           },
           "discard_reasons": {
             "items": {

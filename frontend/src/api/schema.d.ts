@@ -7375,6 +7375,11 @@ export interface components {
             correct_index?: number | null;
             /** Custom Type */
             custom_type?: string | null;
+            /**
+             * Da Verificare
+             * @default false
+             */
+            da_verificare: boolean;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Evaluation Job Id */
@@ -7423,6 +7428,11 @@ export interface components {
             created_at?: string | null;
             /** Custom Type */
             custom_type?: string | null;
+            /**
+             * Da Verificare
+             * @default false
+             */
+            da_verificare: boolean;
             /** Discard Reasons */
             discard_reasons?: string[];
             /** Evaluation Job Id */

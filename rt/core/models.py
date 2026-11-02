@@ -274,6 +274,7 @@ class RecallQuestion(BaseModel):
     discarded_from: Optional[RecallQuestionStatus] = None
     regeneration_job_id: Optional[str] = None
     regenerated_from: Optional[str] = None
+    da_verificare: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class GeneratedRecallQuestion(BaseModel):

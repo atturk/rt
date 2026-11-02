@@ -188,6 +188,50 @@ def _validated_text(lesson_dir: str, issue: ScienceIssue, decision: str, text: O
     return resolved
 
 
+def sync_recall_questions_with_review(lesson_dir: str) -> None:
+    """Sincronizza le domande del recall con le decisioni della review:
+    - se la decisione ha cambiato il testo dell'unità, le domande relative diventano stale;
+    - se il testo non è cambiato, restano;
+    - se l'unità non ha più segnalazioni concettuali aperte, da_verificare diventa False.
+    """
+    import os
+    from rt.core.lesson_paths import lesson_path
+    from rt.core.models import RecallQuestionStatus
+    from rt.pipeline.ledger import get_pending_issues
+    from rt.pipeline.recall import get_recall_bank_path, load_recall_bank, recall_bank_lock, save_recall_bank
+    from rt.services.recall_service import is_question_stale
+
+    bank_file = get_recall_bank_path(lesson_dir)
+    if not os.path.exists(bank_file):
+        return
+
+    try:
+        with recall_bank_lock(lesson_dir):
+            bank = load_recall_bank(lesson_dir)
+            _, pending_issues = get_pending_issues(lesson_dir)
+            pending_conceptual_units = {
+                iss.unit_id for iss in pending_issues
+                if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+            }
+            modified = False
+            for q in bank.questions:
+                if q.status != RecallQuestionStatus.DISCARDED and is_question_stale(lesson_dir, q):
+                    q.discarded_from = q.status
+                    q.status = RecallQuestionStatus.DISCARDED
+                    if "stale" not in q.discard_reasons:
+                        q.discard_reasons.append("stale")
+                    modified = True
+                else:
+                    new_dv = bool(set(q.unit_ids) & pending_conceptual_units)
+                    if getattr(q, "da_verificare", False) != new_dv:
+                        q.da_verificare = new_dv
+                        modified = True
+            if modified:
+                save_recall_bank(bank, lesson_dir)
+    except Exception:
+        pass
+
+
 def record_review_decision(
     lesson_dir: str,
     issue_id: str,
@@ -248,6 +292,7 @@ def record_review_decision(
         )
         from rt.services.documents_service import request_documents
         request_documents(lesson_dir)
+        sync_recall_questions_with_review(lesson_dir)
     # Con l'ultima issue decisa, il job della coda fermo sulla review riparte verso il build.
     from rt.services.jobs import resume_waiting_jobs
     resume_waiting_jobs(lesson_dir, "science_issue", condition=lambda: is_review_complete(lesson_dir))
@@ -266,6 +311,7 @@ def undo_last_decision(lesson_dir: str, issue_id: str, only_channel: Optional[st
             raise ReviewDecisionError("La decisione non è più presente nel ledger.", reason="missing")
         from rt.services.documents_service import request_documents
         request_documents(lesson_dir)
+        sync_recall_questions_with_review(lesson_dir)
         return last
 
 
