@@ -15,30 +15,36 @@ export function loadTemml(): Promise<Temml> {
   return loading
 }
 
+const ESC_MAP: Record<string, string> = {
+  '\t': '\\t',
+  '\x08': '\\b',
+  '\x0c': '\\f',
+}
+
+const REPAIR_N = /\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))/g
+const REPAIR_R = /\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)/g
+
 /**
  * Nel JSON dell'LLM "\frac" o "\theta" con una sola barra diventano form feed o tab seguiti
  * dal resto del comando: dentro una formula si rimette la barra (come rt/core/encoding.py).
  */
-export function repairLatexEscapes(source: string): string {
+export function repairLatexEscapes(source: string, display: boolean = false): string {
+  const isDisplay =
+    display ||
+    (source.startsWith('$$') && source.endsWith('$$')) ||
+    (source.startsWith('\\[') && source.endsWith('\\]'))
   return source
-    .replaceAll('\f', '\\f')
-    .replaceAll('\b', '\\b')
     // oxlint-disable-next-line no-control-regex
-    .replace(/([\t\r\n\x08\x0c])(?=[a-zA-Z])/g, (_, ch) => {
-      if (ch === '\t') return '\\t'
-      if (ch === '\r') return '\\r'
-      if (ch === '\n') return '\\n'
-      if (ch === '\x08') return '\\b'
-      if (ch === '\x0c') return '\\f'
-      return ch
-    })
+    .replace(/([\t\x08\x0c])(?=[a-zA-Z])/g, (_, ch) => ESC_MAP[ch] ?? ch)
+    .replace(REPAIR_N, '\\n')
+    .replace(REPAIR_R, '\\r')
     .replace(/\\(?:trm|rm|textrm)\s*\{/g, '\\mathrm{')
     // oxlint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1f\x7f]/g, '')
+    .replace(isDisplay ? /[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g : /[\x00-\x1f\x7f]/g, '')
 }
 
 export function mathElement(temml: Temml, rawSource: string, display: boolean, original: string): Node {
-  const source = repairLatexEscapes(rawSource)
+  const source = repairLatexEscapes(rawSource, display)
   const holder = window.document.createElement('span')
   // trust: false (predefinito) esclude \href, \class e simili; una formula non valida resta testo.
   // L'output è MathML generato da Temml, che fa l'escape del testo della formula.

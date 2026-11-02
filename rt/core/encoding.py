@@ -85,8 +85,8 @@ _CONTROL_ESCAPES = {"\x0c": "\\f", "\x08": "\\b"}
 # davanti al resto di un comando LaTeX noto.
 _LATEX_AFTER_ESCAPE = re.compile(
     r"\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))"
-    r"|\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))"
-    r"|\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))"
+    r"|\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)"
+    r"|\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
 )
 
 MATH_REGEX = re.compile(
@@ -96,14 +96,19 @@ MATH_REGEX = re.compile(
     r"|(?<![\$\\\d])\$(?!\$)(?! )(?:\\.|[^\$\n])+?(?<![ \\])\$(?!\d))"
 )
 
-_CONTROL_IN_MATH = re.compile(r"([\t\r\n\x08\x0c])(?=[a-zA-Z])")
+_CONTROL_IN_MATH = re.compile(r"([\t\x08\x0c])(?=[a-zA-Z])")
 _ESC_MAP = {
     "\t": "\\t",
-    "\r": "\\r",
-    "\n": "\\n",
     "\x08": "\\b",
     "\x0c": "\\f",
 }
+
+_REPAIR_N_IN_MATH = re.compile(
+    r"\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
+)
+_REPAIR_R_IN_MATH = re.compile(
+    r"\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)"
+)
 
 _INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
 
@@ -111,6 +116,8 @@ _INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
 def _repair_inside_math(content: str, is_display: bool) -> str:
     # 1. Caratteri di controllo seguiti da lettera -> con la barra
     content = _CONTROL_IN_MATH.sub(lambda m: _ESC_MAP[m.group(1)], content)
+    content = _REPAIR_N_IN_MATH.sub(r"\\n", content)
+    content = _REPAIR_R_IN_MATH.sub(r"\\r", content)
     # 2. Comandi non validi più comuni: \trm{, \rm{ e \textrm{ dentro una formula diventano \mathrm{
     content = _INVALID_MATH_COMMANDS.sub(r"\\mathrm{", content)
     # 3. Ultimo controllo: togli eventuali caratteri di controllo rimasti dentro la formula

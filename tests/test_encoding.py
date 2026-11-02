@@ -133,3 +133,13 @@ def test_latex_formula_repairs_and_invalid_commands():
     # 4. un testo senza formule non cambia
     plain = "Testo accademico normale senza alcuna formula o comando."
     assert repair_latex_escapes(plain) == plain
+
+
+def test_multiline_display_formulas_and_known_commands():
+    from rt.core.encoding import repair_latex_escapes
+    assert repair_latex_escapes("$$\na = b\n$$") == "$$\na = b\n$$"
+    assert repair_latex_escapes("$\nabla$") == "$\\nabla$"
+    assert repair_latex_escapes("$\rho$") == "$\\rho$"
+    assert repair_latex_escapes("\nabla") == "\\nabla"
+    assert repair_latex_escapes("\rho") == "\\rho"
+
