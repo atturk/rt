@@ -16,8 +16,9 @@ SHADOW = RTConfig(jev=JevConfig(relevance_mode='shadow', relevance_model='typesa
 def classified(tmp_path, levels):
     """Lezione con un'unità per livello, classificata col gate in ombra."""
     path = setup_mock_lesson(tmp_path, num_units=len(levels))
+    level_by_unit = {f"1.{i+1}": level for i, level in enumerate(levels)}
     with patch.object(gate, 'load_config', return_value=SHADOW), \
-            patch('rt.llm.jev_client.call_jev', side_effect=[score_response(level) for level in levels]):
+            patch('rt.llm.jev_client.call_jev', side_effect=lambda **kw: score_response(level_by_unit.get(kw.get("unit_id"), 0))):
         gate.refresh(path, view='resolved')
     return path
 
