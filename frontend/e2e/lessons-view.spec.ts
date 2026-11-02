@@ -349,7 +349,7 @@ test('Avviso lezioni mancanti: suggerimento al passaggio del mouse, elenco al cl
   // Al passaggio del mouse solo il suggerimento; il popup si apre col clic
   await warnBtn.hover()
   const popup = page.getByTestId('missing-lessons-popup')
-  await expect(page.getByRole('tooltip')).toContainText('1 lezioni mancanti')
+  await expect(page.getByRole('tooltip')).toContainText('1 lezione mancante')
   await expect(popup).toHaveCount(0)
   await warnBtn.click()
   await expect(popup).toBeVisible()
