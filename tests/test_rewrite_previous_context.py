@@ -152,7 +152,7 @@ def test_metadata_context_length_uses_same_model_fetch_as_prices(monkeypatch):
     assert get.call_count == 1
 
 
-@pytest.mark.parametrize("model", ["anthropic/claude", "google/gemini-2.5-flash"])
+@pytest.mark.parametrize("model", ["anthropic/claude", "google/gemini-2.5-flash", "openai/gpt-6-luna"])
 def test_cache_marker_is_on_fixed_block_and_last_previous_unit_without_mutating_fallback(model):
     blocks = [{"type": "text", "text": "outline"}, {"type": "text", "text": "previous one"},
               {"type": "text", "text": "previous two"}]
@@ -165,7 +165,7 @@ def test_cache_marker_is_on_fixed_block_and_last_previous_unit_without_mutating_
     assert all("cache_control" not in b for b in cached[1]["content"][1:-1])
 
 
-@pytest.mark.parametrize("model", ["anthropic/claude", "google/gemini-2.5-flash"])
+@pytest.mark.parametrize("model", ["anthropic/claude", "google/gemini-2.5-flash", "openai/gpt-6-luna"])
 def test_growing_prefix_is_split_in_blocks_at_unit_boundaries(model):
     prefix = build_rewrite_prefix_parts("outline", ["Unità 1.1\nuno", "Unità 1.2\ndue", "Unità 1.3\ntre"])
     messages = [{"role": "system", "content": "system"}, {"role": "user", "content": str(prefix)},
