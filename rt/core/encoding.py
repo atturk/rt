@@ -81,23 +81,82 @@ def sanitize_text(text: Union[str, None]) -> str:
 # Nel JSON dell'LLM "\frac" o "\beta" con una sola barra diventano i caratteri di controllo
 # \f e \b seguiti da "rac", "eta". Form feed e backspace non compaiono mai in un testo vero.
 _CONTROL_ESCAPES = {"\x0c": "\\f", "\x08": "\\b"}
-# Tab, a capo e ritorno carrello invece sono legittimi: si riparano solo davanti al resto di un
-# comando LaTeX (l'escape ha già mangiato la prima lettera: "\theta" è tab + "heta").
+# Tab, a capo e ritorno carrello invece sono legittimi fuori dalle formule: si riparano solo
+# davanti al resto di un comando LaTeX noto.
 _LATEX_AFTER_ESCAPE = re.compile(
     r"\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))"
     r"|\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))"
     r"|\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))"
 )
 
+MATH_REGEX = re.compile(
+    r"(\$\$[\s\S]*?\$\$"
+    r"|\\\[[\s\S]*?\\\]"
+    r"|\\\([\s\S]*?\\\)"
+    r"|(?<![\$\\\d])\$(?!\$)(?! )(?:\\.|[^\$\n])+?(?<![ \\])\$(?!\d))"
+)
 
-def repair_latex_escapes(text: str) -> str:
-    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
+_CONTROL_IN_MATH = re.compile(r"([\t\r\n\x08\x0c])(?=[a-zA-Z])")
+_ESC_MAP = {
+    "\t": "\\t",
+    "\r": "\\r",
+    "\n": "\\n",
+    "\x08": "\\b",
+    "\x0c": "\\f",
+}
+
+_INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
+
+
+def _repair_inside_math(content: str, is_display: bool) -> str:
+    # 1. Caratteri di controllo seguiti da lettera -> con la barra
+    content = _CONTROL_IN_MATH.sub(lambda m: _ESC_MAP[m.group(1)], content)
+    # 2. Comandi non validi più comuni: \trm{, \rm{ e \textrm{ dentro una formula diventano \mathrm{
+    content = _INVALID_MATH_COMMANDS.sub(r"\\mathrm{", content)
+    # 3. Ultimo controllo: togli eventuali caratteri di controllo rimasti dentro la formula
+    if is_display:
+        content = re.sub(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]", "", content)
+    else:
+        content = re.sub(r"[\x00-\x1f\x7f]", "", content)
+    return content
+
+
+def _repair_formula(match_str: str) -> str:
+    if match_str.startswith("$$") and match_str.endswith("$$"):
+        return "$$" + _repair_inside_math(match_str[2:-2], is_display=True) + "$$"
+    elif match_str.startswith("\\[") and match_str.endswith("\\]"):
+        return "\\[" + _repair_inside_math(match_str[2:-2], is_display=True) + "\\]"
+    elif match_str.startswith("\\(") and match_str.endswith("\\)"):
+        return "\\(" + _repair_inside_math(match_str[2:-2], is_display=False) + "\\)"
+    elif match_str.startswith("$") and match_str.endswith("$"):
+        return "$" + _repair_inside_math(match_str[1:-1], is_display=False) + "$"
+    return match_str
+
+
+def _repair_outside_math(text: str) -> str:
     if "\x0c" in text or "\x08" in text:
         for char, escape in _CONTROL_ESCAPES.items():
             text = text.replace(char, escape)
     if "\t" in text or "\r" in text or "\n" in text:
         text = _LATEX_AFTER_ESCAPE.sub(lambda m: {"\t": "\\t", "\r": "\\r", "\n": "\\n"}[m.group(0)], text)
     return text
+
+
+def repair_latex_escapes(text: str) -> str:
+    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
+    if not text:
+        return text
+    parts = []
+    last_end = 0
+    for match in MATH_REGEX.finditer(text):
+        start, end = match.span()
+        if start > last_end:
+            parts.append(_repair_outside_math(text[last_end:start]))
+        parts.append(_repair_formula(match.group(0)))
+        last_end = end
+    if last_end < len(text):
+        parts.append(_repair_outside_math(text[last_end:]))
+    return "".join(parts)
 
 
 def sanitize_object_encoding(obj: Any) -> Any:

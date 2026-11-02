@@ -113,3 +113,23 @@ def test_latex_commands_eaten_by_json_escapes_are_repaired():
     assert fixed == "$$\\sum_v\\frac{|S_v|}{|S|}$$, $\\beta$, $\\theta$, $x\\neq y$\nPoi\ttab\nne"
     # a capo e tab veri restano: "\nne" è una riga che comincia con "ne", non \ne.
     assert repair_latex_escapes("riga\nuna\tvolta") == "riga\nuna\tvolta"
+
+
+def test_latex_formula_repairs_and_invalid_commands():
+    from rt.core.encoding import repair_latex_escapes
+    # 1. "($\trm{RTPL}$)" diventa "($\mathrm{RTPL}$)"
+    assert repair_latex_escapes("($\trm{RTPL}$)") == "($\\mathrm{RTPL}$)"
+    assert repair_latex_escapes("($\\rm{RTPL}$)") == "($\\mathrm{RTPL}$)"
+    assert repair_latex_escapes("($\\textrm{RTPL}$)") == "($\\mathrm{RTPL}$)"
+
+    # 2. \theta, \frac, \nabla e \rho rovinati vengono riparati sia dentro che fuori
+    # Rovinati da JSON: \t + heta, \x0c + rac, \n + abla, \r + ho
+    assert repair_latex_escapes("$\\theta + \frac{1}{2} + \nabla + \rho$") == "$\\theta + \\frac{1}{2} + \\nabla + \\rho$"
+    assert repair_latex_escapes("formula: \theta, \frac, \nabla, \rho") == "formula: \\theta, \\frac, \\nabla, \\rho"
+
+    # 3. un TAB fuori dalle formule resta TAB
+    assert repair_latex_escapes("colonna 1\tcolonna 2") == "colonna 1\tcolonna 2"
+
+    # 4. un testo senza formule non cambia
+    plain = "Testo accademico normale senza alcuna formula o comando."
+    assert repair_latex_escapes(plain) == plain

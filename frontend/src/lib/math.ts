@@ -6,7 +6,7 @@ export type Temml = typeof import('temml').default
  * così "costa 5$ e 10$" o "da $5 a $10" restano testo. Le stesse regole le applica l'API
  * (rt/core/markdown_render.py), che consegna le formule intatte in un solo nodo di testo.
  */
-export const DELIMITED = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<![\\$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))/g
+export const DELIMITED = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(?<![\\$\d])\$(?!\$)(?! )[^$\n]+?(?<![ \\])\$(?!\d))/g
 
 let loading: Promise<Temml> | null = null
 /** Temml una volta sola per sessione: pesa, e serve sia alla lettura sia all'editor. */
@@ -23,9 +23,16 @@ export function repairLatexEscapes(source: string): string {
   return source
     .replaceAll('\f', '\\f')
     .replaceAll('\b', '\\b')
-    .replace(/\t(?=(?:heta|au|imes|ext[a-z]*|anh?|ilde|riangle[a-z]*|frac)(?![A-Za-z]))/g, '\\t')
-    .replace(/\r(?=(?:ho|ight[a-z]*|angle|ceil|floor)(?![A-Za-z]))/g, '\\r')
-    .replace(/\n(?=(?:u|eq|abla|eg|otin|mid|leq|geq)(?![A-Za-z]))/g, '\\n')
+    .replace(/([\t\r\n\x08\x0c])(?=[a-zA-Z])/g, (_, ch) => {
+      if (ch === '\t') return '\\t'
+      if (ch === '\r') return '\\r'
+      if (ch === '\n') return '\\n'
+      if (ch === '\x08') return '\\b'
+      if (ch === '\x0c') return '\\f'
+      return ch
+    })
+    .replace(/\\(?:trm|rm|textrm)\s*\{/g, '\\mathrm{')
+    .replace(/[\x00-\x1f\x7f]/g, '')
 }
 
 export function mathElement(temml: Temml, rawSource: string, display: boolean, original: string): Node {

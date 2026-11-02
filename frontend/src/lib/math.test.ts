@@ -58,4 +58,8 @@ describe('repairLatexEscapes', () => {
     await renderDelimitedMath(root)
     expect(root.querySelector('mfrac')).not.toBeNull()
   })
+
+  it('ripara \\trm in \\mathrm dentro le formule', () => {
+    expect(repairLatexEscapes('\trm{RTPL}')).toBe('\\mathrm{RTPL}')
+  })
 })
