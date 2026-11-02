@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from unittest.mock import patch, MagicMock
 import pytest
@@ -55,11 +56,19 @@ def test_recall_parallel_generation_speedup(tmp_path, monkeypatch):
     monkeypatch.setattr("rt.pipeline.recall.load_config", lambda: cfg)
 
     call_count = 0
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
 
     def slow_call_structured(self, prompt, system_prompt, response_model, **kwargs):
-        nonlocal call_count
-        call_count += 1
+        nonlocal call_count, active, max_active
+        with lock:
+            call_count += 1
+            active += 1
+            max_active = max(max_active, active)
         time.sleep(0.15)
+        with lock:
+            active -= 1
         uid = kwargs.get("unit_id", "1.1")
         return response_model.model_validate({
             "questions": [{
@@ -69,16 +78,15 @@ def test_recall_parallel_generation_speedup(tmp_path, monkeypatch):
         })
 
     with patch.object(LLMClient, "call_structured", slow_call_structured):
-        start = time.monotonic()
         results = generate_recall_batch(
             lesson_dir, RecallQuestionType.MIRATA, count=None, few_shot_examples=[], force_mock=False
         )
-        elapsed = time.monotonic() - start
 
     assert len(results) == 4
     assert call_count == 4
-    # 4 calls with 0.15s sleep: in parallel should take ~0.15s - 0.35s. Sequential would take >= 0.6s.
-    assert elapsed < 0.45
+    # Le chiamate si sovrappongono: si misura la concorrenza, non il tempo, che sui runner
+    # macOS carichi supera qualsiasi soglia (0.49 s contro 0.45 il 2 novembre).
+    assert max_active >= 2
 
 
 def test_recall_parallel_unique_question_ids(tmp_path, monkeypatch):
@@ -151,22 +159,28 @@ def test_unit_relevance_parallel_speedup(tmp_path, monkeypatch):
     from rt.llm.jev_client import JevResponse, JevAnswer
 
     call_count = 0
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
 
     def slow_call_jev(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
+        nonlocal call_count, active, max_active
+        with lock:
+            call_count += 1
+            active += 1
+            max_active = max(max_active, active)
         time.sleep(0.15)
+        with lock:
+            active -= 1
         return JevResponse(answers={"relevance": JevAnswer(type="score", score=2, confidence=0.9)})
 
     with patch("rt.llm.jev_client.call_jev", slow_call_jev):
-        start = time.monotonic()
         result = unit_relevance.refresh(lesson_dir, force=True, force_mock=False)
-        elapsed = time.monotonic() - start
 
     assert len(result) == 4
     assert call_count == 4
-    # Sequential would be >= 0.6s. Parallel <= 0.4s.
-    assert elapsed < 0.45
+    # Le chiamate si sovrappongono (concorrenza, non tempo: i runner carichi sforano le soglie).
+    assert max_active >= 2
     # Order must match original units
     assert list(result.keys()) == ["1.1", "1.2", "1.3", "1.4"]
 
@@ -212,20 +226,26 @@ stato: rewrite
     from rt.llm.jev_client import JevResponse, JevAnswer
 
     call_count = 0
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
 
     def slow_call_jev(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
+        nonlocal call_count, active, max_active
+        with lock:
+            call_count += 1
+            active += 1
+            max_active = max(max_active, active)
         time.sleep(0.15)
+        with lock:
+            active -= 1
         return JevResponse(answers={"tipo": JevAnswer(type="choice", choice="tipo-test", confidence=0.8, probabilities={"tipo-test": 0.8, "nessuno": 0.2})})
 
     with patch("rt.llm.jev_client.call_jev", slow_call_jev):
-        start = time.monotonic()
         result = section_labels.refresh(lesson_dir, force=True, force_mock=False, explicit=True)
-        elapsed = time.monotonic() - start
 
     assert len(result) == 4
     assert call_count == 4
-    # Sequential would be >= 0.6s. Parallel <= 0.45s.
-    assert elapsed < 0.45
+    # Le chiamate si sovrappongono (concorrenza, non tempo: i runner carichi sforano le soglie).
+    assert max_active >= 2
     assert list(result.keys()) == ["1", "2", "3", "4"]
