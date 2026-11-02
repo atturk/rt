@@ -2,6 +2,7 @@
 
 Leggi `piani-agy-qa/piano-qa-agy.md` (sul branch `origin/claude/piani-agy-qa`) e implementa **tutte** le voci, dalla 1 alla 11, nell'ordine. Il piano è definitivo: le scelte sono già state prese. Se una voce non si può fare come scritto, fermati su quella voce e spiega perché nella PR. Non improvvisare un'alternativa.
 
+0. **Regole dell'ambiente.** Non creare né modificare file fuori dalla cartella del repo: niente in `~/.local/bin`, `/opt/homebrew` o altrove. Usa sempre `.venv/bin/python` in modo esplicito, mai `python` del sistema. Non scrivere attraverso collegamenti simbolici.
 1. Crea il branch dalla beta 4.3.6b1:
    `git fetch origin && git checkout -b agy/4.3.6b2 origin/claude/project-thread-tk54yz`.
    Se la PR #154 è già in main, porta anche quella: `git merge origin/main`.
