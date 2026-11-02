@@ -1,6 +1,6 @@
 """Fonti 4.3.4: tre modalità di estrazione, default dal file, Vision solo sulle pagine scelte,
 PDF del pannello nell'archivio e guida solo senza registrazione."""
-import fitz
+import pymupdf as fitz
 import pytest
 
 from rt.core import archive

@@ -19,11 +19,10 @@ class Health(BaseModel):
 
 
 @router.get("/health", response_model=Health, summary="Stato del servizio (senza autenticazione)")
-def health() -> Health:
-    from rt.core.config import _default_project_root
-    from rt.core.version import get_current_version
+def health(request: Request) -> Health:
+    # Versione letta all'avvio: durante un aggiornamento il file VERSION cambia prima che questo processo si fermi.
     from rt.db.engine import get_database
-    return Health(version=get_current_version(_default_project_root()), database=get_database() is not None)
+    return Health(version=request.app.version, database=get_database() is not None)
 
 
 @router.post("/system/quit", status_code=204, summary="Ferma RT e il worker (solo da questo computer)",

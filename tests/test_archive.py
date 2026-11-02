@@ -179,7 +179,7 @@ def test_archive_keeps_only_m4a_for_compressed_audio(tmp_path, monkeypatch):
 def test_pdf_pages_do_not_become_archive_images(tmp_path, monkeypatch):
     """Aggiungere un PDF a una lezione (fixture con 3 pagine, percorso material: e pdf:)
     non crea voci 'immagine' nell'archivio; il PDF c'è come slide/documento."""
-    import fitz
+    import pymupdf as fitz
     from rt.pipeline.add_images import run_add_images
 
     doc = fitz.open()

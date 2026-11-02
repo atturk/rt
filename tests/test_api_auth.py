@@ -131,3 +131,9 @@ def test_openapi_export_is_current():
     proc = subprocess.run([sys.executable, os.path.join(root, "scripts", "export_openapi.py"), "--check"],
                           capture_output=True, text=True, env={**os.environ, "RT_DATABASE_URL": "off"})
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_health_reports_running_version_not_file_on_disk(anon, monkeypatch):
+    # Durante un aggiornamento il file VERSION cambia prima che il vecchio processo si fermi.
+    monkeypatch.setattr("rt.core.version.get_current_version", lambda *_a, **_k: "99.0.0")
+    assert anon.get("/api/v1/health").json()["version"] == anon.app.version != "99.0.0"

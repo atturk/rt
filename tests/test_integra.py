@@ -3,7 +3,7 @@ import io
 import json
 from unittest.mock import Mock
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from rt.core import archive

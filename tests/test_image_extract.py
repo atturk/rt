@@ -1,6 +1,6 @@
 import os
 import pytest
-import fitz
+import pymupdf as fitz
 from rt.core.image_extract import (
     ExtractedImage,
     extract_images_from_pdf,

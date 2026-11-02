@@ -2,7 +2,7 @@ import io
 import os
 import wave
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from rt.core.sources import load_sources

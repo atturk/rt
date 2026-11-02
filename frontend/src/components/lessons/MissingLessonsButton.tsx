@@ -32,7 +32,7 @@ export function MissingLessonsButton({
     <div ref={ref} className="relative inline-flex items-center">
       <IconButton
         icon={TriangleAlert}
-        label={`${items.length} lezioni mancanti`}
+        label={items.length === 1 ? '1 lezione mancante' : `${items.length} lezioni mancanti`}
         aria-expanded={open}
         className="size-5 min-h-5 min-w-5 text-warning [&_svg]:size-3.5"
         onClick={() => setOpen((value) => !value)}

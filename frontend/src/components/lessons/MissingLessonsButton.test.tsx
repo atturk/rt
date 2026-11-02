@@ -41,7 +41,7 @@ it('mostra date e link al blocco della settimana cliccando sul triangolo', () =>
     },
   ]
   draw()
-  const btn = screen.getByRole('button', { name: '1 lezioni mancanti' })
+  const btn = screen.getByRole('button', { name: '1 lezione mancante' })
   act(() => {
     fireEvent.click(btn)
   })
@@ -110,7 +110,7 @@ it('supporta altri raggruppamenti (es. data)', () => {
     },
   ]
   draw({ grouping: 'data', groupKey: '2026-10-15' } as never)
-  expect(screen.getByRole('button', { name: '1 lezioni mancanti' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '1 lezione mancante' })).toBeInTheDocument()
 })
 
 it('nasconde l’avviso senza mancanti', () => {
