@@ -1,5 +1,25 @@
 # Novità di RT
 
+## 4.3.6 — 2026-11-02
+
+Raccoglie le beta 4.3.6b1 e 4.3.6b2 (dettagli sotto).
+
+### Novità
+
+- **La verifica controlla i materiali**: prima di segnalare un errore concettuale cerca nelle slide e nelle foto; se il dubbio è su quello che ha detto il docente, la segnalazione lo dice e mostra la prova.
+- **Contesto della rielaborazione** (Impostazioni): «solo la macro-unità», in parallelo e più veloce (predefinito), oppure «tutte le unità precedenti».
+- **Registrazione già caricata** e **materia nuova**: RT avvisa e chiede conferma prima di creare doppioni.
+- **Materiali non collocati**: le pagine che non corrispondono a nessuna unità sono indicate tra le fonti.
+- **Errori della web app in api.log**, con un messaggio in italiano e «Ricarica la pagina» se una pagina va in errore.
+
+### Correzioni
+
+- **Costi più bassi con i modelli OpenAI**: il prompt della lezione resta in cache tra un'unità e l'altra.
+- **Export** che non blocca l'app, **PDF** anche dall'iPhone con Tailscale, riavvio dal messaggio se «Importa tutto» non riesce.
+- **Importazione più robusta**: niente lezioni vuote dopo un errore, audio non leggibili rifiutati subito, lezioni fallite visibili nell'elenco.
+- **Formule** LaTeX rovinate dagli escape riparate; domande, classificatore ed etichette in parallelo.
+- **Aggiornamento dell'app**: la pagina non si ricarica più prima del riavvio; api.log senza le richieste ripetute ogni pochi secondi.
+
 ## 4.3.6b2 — 2026-11-02
 
 Beta con le correzioni dal controllo qualità del 2 novembre.
