@@ -145,10 +145,12 @@ MAX_CACHE_BREAKPOINTS = 4
 
 def _cache_lesson_prefix(messages, provider, model, enabled, parts=None):
     """Prefisso crescente in blocchi (fisso, poi una unità precedente per blocco): la cache
-    Anthropic legge solo ai confini di blocco. Marcatori sul blocco fisso e sull'ultimo."""
+    Anthropic legge solo ai confini di blocco. Marcatori sul blocco fisso e sull'ultimo.
+    Anche i modelli OpenAI via OpenRouter leggono la cache solo con questi marcatori: senza,
+    ogni chiamata la riscrive e la paga senza mai rileggerla (prova del 2 novembre 2026)."""
     clean_model = model.lower().strip().lstrip("~")
     if not enabled or provider != "openrouter" or not (
-        clean_model.startswith("anthropic/") or clean_model.startswith("google/gemini")):
+        clean_model.startswith(("anthropic/", "google/gemini", "openai/"))):
         return messages
     if len(messages) < 2:
         return messages
