@@ -287,7 +287,7 @@ def run_jev_task_a(unit: DraftUnit, jev_cfg: JevConfig, lesson_dir: str) -> Opti
 
 
 @cached("task_b")
-def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str) -> Optional[JevTaskBVerdict]:
+def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, lesson_dir: str, materials_context: Optional[str] = None) -> Optional[JevTaskBVerdict]:
     """
     Chiede a Jev se il testo rielaborato dell'unità introduce contenuto non supportato dai
     segmenti ASR grezzi corrispondenti (possibile invenzione/allucinazione), o si discosta
@@ -295,6 +295,8 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
     Ritorna None se la chiamata fallisce: nessuna issue verrà creata allora.
     """
     state = f"SEGMENTI GREZZI ASR:\n{source_context}\n\n---\n\nTESTO RIELABORATO:\n{unit.content}"
+    if materials_context and materials_context.strip():
+        state += f"\n\n---\n\nMATERIALI DEL DOCENTE (slide, foto):\n{materials_context.strip()}"
     try:
         resp = call_jev(
             state=state,
@@ -304,17 +306,19 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
                         "Ti vengono forniti (1) i segmenti grezzi della trascrizione automatica (ASR) "
                         "di un frammento di lezione universitaria, così come sono stati trascritti, e "
                         "(2) il testo finale rielaborato in prosa accademica a partire da quei "
-                        "segmenti. La rielaborazione in prosa fluida, con parafrasi e riformulazioni "
+                        "segmenti. Se presenti, ti vengono forniti anche (3) i materiali del docente (slide, foto). "
+                        "La rielaborazione in prosa fluida, con parafrasi e riformulazioni "
                         "per la leggibilità, è normale e attesa: NON giudicare la fedeltà lessicale o "
-                        "lo stile. Valuta invece se il testo rielaborato introduce contenuto "
+                        "lo stile. Il contenuto che ha riscontro nei materiali conta come supportato. "
+                        "Valuta invece se il testo rielaborato introduce contenuto "
                         "sostanziale che NON ha alcun riscontro, nemmeno approssimativo, nei segmenti "
-                        "grezzi forniti (possibile invenzione/allucinazione del modello che ha generato "
+                        "grezzi o nei materiali del docente (possibile invenzione/allucinazione del modello che ha generato "
                         "la rielaborazione, specialmente plausibile quando la trascrizione grezza è "
                         "essa stessa degradata o incomprensibile e il modello sembra aver 'riempito i "
                         "vuoti' con qualcosa di plausibile ma inventato), oppure se si allontana in "
                         "modo significativo dal senso di quanto effettivamente trasmesso nei segmenti "
-                        "grezzi. Valuta quanto è vera l'affermazione: 'Il testo rielaborato contiene "
-                        "contenuto sostanziale non supportato dai segmenti grezzi, o si discosta "
+                        "grezzi o nei materiali. Valuta quanto è vera l'affermazione: 'Il testo rielaborato contiene "
+                        "contenuto sostanziale non supportato dai segmenti grezzi o dai materiali, o si discosta "
                         "significativamente dal loro significato.'"
                     ),
                 )
@@ -403,7 +407,7 @@ def _review_unit(client: LLMClient, unit: DraftUnit, idx: int, total_units: int,
     drift = classifier_job(_cfg, "drift")
     if (not skip_prefilter and prefilter.mode in ("observe", "pipeline")) or drift.mode in ("observe", "pipeline"):
         verdict_a = run_jev_task_a(unit, classifier_jev(_cfg, "prefilter"), lesson_dir) if not skip_prefilter and prefilter.mode in ("observe", "pipeline") else None
-        verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir) if drift.mode in ("observe", "pipeline") else None
+        verdict_b = run_jev_task_b(unit, source_context, classifier_jev(_cfg, "drift"), lesson_dir, materials_context=materials_context) if drift.mode in ("observe", "pipeline") else None
         if verdict_a is not None:
             # Risposta completa (tutte le probabilità) nei log e nel risultato del job.
             if jev_log is not None:
