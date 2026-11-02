@@ -98,6 +98,54 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
     context = lesson_context(lesson_dir)
     other = _load(lesson_dir, "draft" if view == "resolved" else "resolved")
     errors = 0
+
+    units_to_call = []
+    if not force_mock:
+        for unit in units:
+            digest = _unit_hash(unit, lesson_dir)
+            old = previous.get(unit.unit_id, {})
+            if unit_ids is not None and unit.unit_id not in unit_ids:
+                continue
+            shared = other.get(unit.unit_id, {})
+            if shared.get("text_hash") == digest and shared.get("config_hash") == configuration:
+                if old.get("text_hash") != digest or old.get("config_hash") != configuration or old.get("prediction") not in CLASSES:
+                    old = dict(shared)
+            if not force and old.get("text_hash") == digest and old.get("config_hash") == configuration \
+                    and old.get("prediction") in CLASSES:
+                continue
+            if responses is not None and unit.unit_id in responses:
+                continue
+            units_to_call.append(unit)
+
+    call_answers = {}
+    if units_to_call:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        from rt.llm.cancel import raise_if_cancelled
+
+        def do_call(u):
+            raise_if_cancelled()
+            try:
+                ans = jev_client.call_jev(
+                    state=jev_mapping.state_for("relevance", u.title, u.content, context),
+                    questions={jev_mapping.QUESTION_NAMES["relevance"]: jev_mapping.build_question(decision)},
+                    job_name="relevance", unit_id=u.unit_id, lesson_dir=lesson_dir,
+                    model=cfg.relevance_model, credential=cfg.credential, base_url=cfg.base_url,
+                    timeout_seconds=cfg.timeout_seconds,
+                ).answers[jev_mapping.QUESTION_NAMES["relevance"]]
+                if ans.type != decision.type:
+                    raise ValueError("Risposta del classificatore di tipo inatteso")
+                return u.unit_id, ans, None
+            except Exception as exc:
+                return u.unit_id, None, exc
+
+        workers = min(4, len(units_to_call))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(copy_context().run, do_call, u) for u in units_to_call]
+            for fut in futures:
+                uid, ans, err = fut.result()
+                call_answers[uid] = (ans, err)
+
     for unit in units:
         digest = _unit_hash(unit, lesson_dir)
         old = previous.get(unit.unit_id, {})
@@ -126,16 +174,17 @@ def refresh(lesson_dir: str, *, force_mock: bool = False, ctx=None, force: bool 
             if force_mock:
                 mapped = jev_mapping.DecisionResult(label=decision.fallback_label, outcome="didactic", rule=None,
                                                     answer={"type": "mock"})
-            else:
-                answer = (responses[unit.unit_id] if responses is not None and unit.unit_id in responses else jev_client.call_jev(
-                    state=jev_mapping.state_for("relevance", unit.title, unit.content, context),
-                    questions={jev_mapping.QUESTION_NAMES["relevance"]: jev_mapping.build_question(decision)},
-                    job_name="relevance", unit_id=unit.unit_id, lesson_dir=lesson_dir,
-                    model=cfg.relevance_model, credential=cfg.credential, base_url=cfg.base_url,
-                    timeout_seconds=cfg.timeout_seconds,
-                )).answers[jev_mapping.QUESTION_NAMES["relevance"]]
+            elif responses is not None and unit.unit_id in responses:
+                answer = responses[unit.unit_id].answers[jev_mapping.QUESTION_NAMES["relevance"]]
                 if answer.type != decision.type:
                     raise ValueError("Risposta del classificatore di tipo inatteso")
+                mapped = jev_mapping.evaluate("relevance", decision, answer)
+            else:
+                answer, call_err = call_answers.get(unit.unit_id, (None, None))
+                if call_err is not None:
+                    raise call_err
+                if answer is None:
+                    raise ValueError("Risposta del classificatore mancante")
                 mapped = jev_mapping.evaluate("relevance", decision, answer)
         except Exception as exc:
             error = str(exc)

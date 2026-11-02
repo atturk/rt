@@ -152,7 +152,41 @@ def refresh(lesson_dir, *, force_mock=False, force=False, progress=None, unit_id
         return _load(lesson_dir)
     fingerprint = configuration(lesson_dir, force_mock=force_mock)
     previous, result = _load(lesson_dir), {}
-    for section in sections(lesson_dir):
+    secs = sections(lesson_dir)
+
+    sections_to_call = []
+    if mode(force_mock) != 'mock':
+        for section in secs:
+            digest = _section_hash(lesson_dir, section)
+            old = previous.get(section['id'], {})
+            if unit_ids is not None and section['id'] not in unit_ids and not any(u.unit_id in unit_ids for u in section['units']):
+                continue
+            if not force and old.get('text_hash') == digest and old.get('config_hash') == fingerprint and not old.get('error'):
+                continue
+            sections_to_call.append(section)
+
+    call_results = {}
+    if sections_to_call:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        from rt.llm.cancel import raise_if_cancelled
+
+        def do_classify(sec):
+            raise_if_cancelled()
+            try:
+                vals, probs = _classify(lesson_dir, sec, cfg, types)
+                return sec['id'], vals, probs, None
+            except Exception as exc:
+                return sec['id'], {}, {}, exc
+
+        workers = min(4, len(sections_to_call))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(copy_context().run, do_classify, s) for s in sections_to_call]
+            for fut in futures:
+                sid, vals, probs, err = fut.result()
+                call_results[sid] = (vals, probs, err)
+
+    for section in secs:
         digest = _section_hash(lesson_dir, section)
         old = previous.get(section['id'], {})
         if unit_ids is not None and section['id'] not in unit_ids and not any(u.unit_id in unit_ids for u in section['units']):
@@ -171,7 +205,9 @@ def refresh(lesson_dir, *, force_mock=False, force=False, progress=None, unit_id
                 values = _mock_labels(section, types)
                 probabilities = {key: float(value == 'presente') for key, value in values.items()}
             else:
-                values, probabilities = _classify(lesson_dir, section, cfg, types)
+                values, probabilities, err = call_results.get(section['id'], ({}, {}, ValueError("Risultato mancante")))
+                if err is not None:
+                    raise err
             row.update(labels=values, probabilities=probabilities)
         except Exception as exc:
             row.update(labels={}, probabilities={}, error=str(exc))
