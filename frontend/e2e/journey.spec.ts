@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf } from './support'
+import { test, apiGet, disableOutlineTimer, loginViaLink, openLessonDetails, scrollDocumentTo, tinyPdf, startNewLesson, uniqueAudio } from './support'
 
 // RT4-F7 (aggiornato in FA9): il percorso completo di una lezione nuova solo dalla SPA, come
 // 'rt run' da terminale: accesso con il link, Nuova lezione, scaletta nella pagina della lezione,
@@ -40,12 +40,12 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   await disableOutlineTimer(page.request)
   await page.getByRole('navigation', { name: 'Navigazione' }).getByRole('button', { name: 'Nuova lezione' }).click()
   const dialog = page.getByRole('dialog', { name: 'Nuova lezione' })
-  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles(AUDIO)
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles(uniqueAudio(AUDIO))
   await dialog.getByLabel(/^Data/).fill('2026-09-25')
   await dialog.getByLabel('Materia').fill('EMBRIOLOGIA')
   const review = dialog.getByRole('button', { name: 'Revisione' })
   if ((await review.getAttribute('aria-pressed')) !== 'true') await review.click()
-  await dialog.getByRole('button', { name: 'Avvia' }).click()
+  await startNewLesson(page, dialog)
   await expect(page).toHaveURL(/\/lezioni\/\d+$/, { timeout: LONG })
   const lessonId = Number(page.url().split('/lezioni/')[1])
   expect((await apiGet<Lesson>(page.request, `/lessons/${lessonId}`)).materia).toBe('EMBRIOLOGIA')

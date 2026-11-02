@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, tinyPdf } from './support'
+import { test, apiGet, authHeaders, loginViaLink, tinyPdf, startNewLesson, uniqueAudio } from './support'
 
 // Popup Nuova lezione dalla barra a icone (schermate 00 e 00b): con l'audio materia, docente,
 // data e Avvia, poi la pagina della lezione con l'avanzamento; con lo zip solo Importa.
@@ -23,7 +23,7 @@ test('audio: materia, docente, data di oggi, Avvia e si arriva alla lezione con 
   await expect(dialog.getByTestId('drop-zone')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Avvia' })).toBeVisible()
 
-  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles(AUDIO)
+  await dialog.getByLabel('Audio o pacchetto della lezione').setInputFiles(uniqueAudio(AUDIO))
   await expect(dialog.getByTestId('chosen-files')).toHaveAttribute('data-kind', 'audio')
   await expect(dialog.getByTestId('chosen-files')).toContainText('demo_lecture.wav')
   const today = await page.evaluate(() => {
@@ -34,7 +34,7 @@ test('audio: materia, docente, data di oggi, Avvia e si arriva alla lezione con 
   await expect(dialog.getByText('Data · oggi')).toBeVisible()
   await dialog.getByLabel('Materia').fill('EMBRIOLOGIA')
   await dialog.getByLabel('Docente').fill('Neri')
-  await dialog.getByRole('button', { name: 'Avvia' }).click()
+  await startNewLesson(page, dialog)
 
   // Prima la pagina d'attesa del job, poi (appena il setup crea la lezione) la lezione.
   await expect(page).toHaveURL(/\/lezioni\/(nuova\/[0-9a-f-]+|\d+)$/)
@@ -162,7 +162,7 @@ test('più audio uniti con un PDF: la lezione ha il player', async ({ page }) =>
     const res = await page.request.post('/api/v1/lessons', {
       headers: authHeaders(),
       multipart: {
-        audio: { name: 'parte1.wav', mimeType: 'audio/wav', buffer: readFileSync(AUDIO) },
+        audio: uniqueAudio(AUDIO, 'parte1.wav'),
         materiali: { name: 'slide.pdf', mimeType: 'application/pdf', buffer: tinyPdf() },
         date: '2026-10-14', materia, mock: 'true', unisci: 'true', run: 'false',
       },

@@ -154,6 +154,27 @@ export async function disableOutlineTimer(request: APIRequestContext) {
   expect(res.ok(), await res.text()).toBeTruthy()
 }
 
+let audioSerial = 0
+
+/** Copia dell'audio di prova con gli ultimi campioni cambiati. Dalla 4.3.6b2 una registrazione già
+ * caricata viene rifiutata (409 audio_duplicate) e i test condividono lo stesso server: ogni
+ * importazione usa quindi un file diverso. Il chunk data è l'ultimo del WAV. */
+export function uniqueAudio(path: string, name = 'demo_lecture.wav') {
+  const buffer = Buffer.from(readFileSync(path))
+  // Solo i due byte bassi dell'ultimo campione (float32): il suono non cambia.
+  buffer.writeUInt16LE(++audioSerial, buffer.length - 4)
+  return { name, mimeType: 'audio/wav', buffer }
+}
+
+/** Avvia nel popup Nuova lezione. Dalla 4.3.6b2 una materia mai usata chiede conferma: si crea
+ * quella scritta. Se la materia esiste già il popup non compare e si prosegue. */
+export async function startNewLesson(page: Page, dialog: Locator) {
+  await dialog.getByRole('button', { name: 'Avvia' }).click()
+  const confirm = page.getByTestId('subject-confirm-modal')
+  const shown = await confirm.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true, () => false)
+  if (shown) await confirm.getByRole('button', { name: /^Crea «/ }).click()
+}
+
 /** Importazione dell'audio dall'API, come il popup Nuova lezione; ritorna l'id del job. */
 export async function importAudioApi(
   request: APIRequestContext,
@@ -163,7 +184,7 @@ export async function importAudioApi(
   const res = await request.post('/api/v1/lessons', {
     headers: authHeaders(),
     multipart: {
-      audio: { name: 'demo_lecture.wav', mimeType: 'audio/wav', buffer: readFileSync(audio) },
+      audio: uniqueAudio(audio),
       date: fields.date,
       materia: fields.materia,
       docente: '',
