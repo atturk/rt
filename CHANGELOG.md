@@ -1,5 +1,27 @@
 # Novità di RT
 
+## 4.3.6b2 — 2026-11-02
+
+Beta con le correzioni dal controllo qualità del 2 novembre.
+
+### Novità
+
+- **La verifica controlla i materiali**: prima di segnalare un errore concettuale, la verifica cerca nelle slide e nelle foto della lezione. Se il docente ha usato quella definizione, la segnalazione sparisce. Se il dubbio è su quello che ha detto il docente, la segnalazione lo dice e mostra la prova.
+- **Contesto della rielaborazione** (Impostazioni): «solo la macro-unità», con le macro-unità rielaborate in parallelo (predefinito, più veloce), oppure «tutte le unità precedenti», una dopo l'altra.
+- **Registrazione già caricata**: se l'audio è già in un'altra lezione, RT te lo dice e ti chiede se vuoi crearla lo stesso.
+- **Materia nuova**: RT chiede conferma prima di crearne una, per evitare doppioni scritti in modo diverso.
+- **Materiali non collocati**: le pagine dei materiali che non corrispondono a nessuna unità sono indicate tra le fonti.
+
+### Correzioni
+
+- **Costi più bassi con i modelli OpenAI**: il prompt della lezione resta in cache tra un'unità e l'altra.
+- **Formule**: i comandi LaTeX rovinati dagli escape (come `\frac` o `\theta`) vengono riparati, senza toccare le formule su più righe.
+- Le domande e lo Studio saltano le unità con segnalazioni ancora aperte e lo dicono.
+- La verifica della deriva tiene conto anche dei materiali del docente.
+- Un file audio non leggibile viene rifiutato subito con un messaggio chiaro, e le lezioni fallite restano visibili nell'elenco.
+- Domande, classificatore ed etichette delle sezioni lavorano in parallelo: sono più veloci.
+- Correzioni minori nei testi e nei messaggi.
+
 ## 4.3.6b1 — 2026-11-02
 
 Beta con i risultati della revisione del codice e della revisione dell'entrata dei dati.
