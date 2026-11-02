@@ -230,7 +230,7 @@ def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> 
         mock_asr=options.mock,
         interactive=False,
         on_progress=lambda msg: ctx.emit(Notice(message=msg)),
-        on_lesson_created=lambda d: ctx.progress("setup", message="Lezione creata", lesson_dir=d),
+        on_lesson_created=lambda d: _lesson_created(ctx, d),
         # Percentuale di macparakeet: la barra del job avanza durante la trascrizione.
         on_transcription_progress=lambda pct: ctx.progress("setup", pct, 100, f"Trascrizione audio: {pct}%"),
         # I metadati mancanti non si inventano: la run aspetta che arrivino.
@@ -309,6 +309,12 @@ def transcription_unavailable_reason(mock: bool = False, skip_transcribe: bool =
         pass
     return ("La trascrizione con macparakeet funziona solo su macOS: in Impostazioni scegli "
             "Parakeet ONNX (locale) o un server di trascrizione compatibile.")
+
+
+def _lesson_created(ctx: RunContext, lesson_dir: str) -> None:
+    # Il job che fallisce dopo il setup sa ancora quale lezione ha creato (collegamento al calendario).
+    ctx.lesson_dir = lesson_dir
+    ctx.progress("setup", message="Lezione creata", lesson_dir=lesson_dir)
 
 
 def ingest_audio(inputs: Union[str, Sequence[str]], options: PipelineOptions, ctx: RunContext) -> PipelineResult:

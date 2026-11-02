@@ -255,7 +255,8 @@ def create_lesson(
                           for name, value in raw_options.items()}
     except (ValueError, TypeError):
         raise ApiError(422, 'validation_error', 'Opzioni delle fonti non valide.') from None
-    if materiali:
+    # Audio con appunti passa dalle fonti miste come con i materiali (prima era rifiutato).
+    if materiali or (audio and appunti.strip()):
         from rt.core.materials import MATERIAL_EXTENSIONS
         if len(appunti.encode("utf-8")) > _max_upload_bytes():
             raise ApiError(413, "payload_too_large", "Gli appunti superano la dimensione massima.")
@@ -291,8 +292,6 @@ def create_lesson(
                    "ora": ora, "dest_dir": lessons_root(), "mock": mock, "with_review": with_review,
                    "with_enrichment": with_enrichment, "auto_accept": auto_accept, "channel": "terminal"}
         return enqueue_job("ingest_notes", None, {"text": appunti, "run": run, "options": options, **calendar}, actor)
-    if appunti.strip():
-        raise ApiError(422, "validation_error", "Importa l'audio e aggiungi gli appunti dalle fonti della lezione.")
     target = _upload_dir()
 
     def _go():
