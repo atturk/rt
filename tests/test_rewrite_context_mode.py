@@ -129,21 +129,29 @@ def test_macro_context_mode_runs_in_parallel(two_macro_lesson, monkeypatch):
 
     original = LLMClient.call_structured
 
+    import threading
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+
     def slow_call(self, **kwargs):
-        time.sleep(0.2)
-        return original(self, **kwargs)
+        with lock:
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        try:
+            time.sleep(0.2)
+            return original(self, **kwargs)
+        finally:
+            with lock:
+                active[0] -= 1
 
     monkeypatch.setattr(LLMClient, "call_structured", slow_call)
 
-    start = time.monotonic()
     _run_rewrite(two_macro_lesson, force=True, force_mock=True)
-    elapsed = time.monotonic() - start
 
-    # 4 units in 2 macros of 2 units each:
-    # Macro 1: 2 * 0.2 = 0.4s
-    # Macro 2: 2 * 0.2 = 0.4s
-    # In parallel: ~0.4s - 0.55s. Sequential would be >= 0.8s.
-    assert elapsed < 0.7
+    # 2 macro in parallelo: almeno due chiamate contemporanee
+    # (si misura la concorrenza, non il tempo: i runner CI sono lenti).
+    assert max_active[0] >= 2
 
 
 def test_checkpoint_and_resume_halfway(two_macro_lesson, monkeypatch):
