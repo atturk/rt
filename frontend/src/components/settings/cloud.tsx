@@ -4,11 +4,13 @@ import { useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/client'
 import {
   useCloudCheckout, useCloudLoginStart, useCloudPlans, useCloudLoginVerify, useCloudLogout, useCloudPortal, useCloudStatus,
-  useCloudSync, useCloudTopup, type CloudStatus,
+  useCloudCatalog, useCloudModel, useCloudSync, useCloudTopup, type CatalogCapability, type CatalogModel, type CloudStatus,
 } from '@/api/cloud'
 import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Field, Section } from './common'
 
 /** Modalità facilitata: niente chiavi né modelli da configurare. Si accede con un codice via
@@ -103,6 +105,117 @@ function Subscribe({ onSynced }: { onSynced?: () => void }) {
   )
 }
 
+const cents = (usdPerLesson: number | null | undefined) =>
+  usdPerLesson == null ? null : `${(usdPerLesson * 100).toFixed(usdPerLesson < 0.1 ? 1 : 0).replace('.', ',')} ¢ a lezione`
+
+/** Quante lezioni restano col credito attuale a questo prezzo. */
+function lessonsLeft(remaining: number | null | undefined, lesson: number | null | undefined) {
+  if (remaining == null || !lesson || lesson <= 0) return null
+  return Math.floor(remaining / lesson)
+}
+
+function costLine(model: CatalogModel | undefined, remaining: number | null | undefined) {
+  if (!model) return null
+  const left = lessonsLeft(remaining, model.lesson_usd)
+  return [cents(model.lesson_usd), left != null ? `circa ${left} lezioni col credito rimasto` : null].filter(Boolean).join(' · ')
+}
+
+const CAPABILITIES: Array<{ id: CatalogCapability; label: string }> = [
+  { id: 'text', label: 'Testo' },
+  { id: 'vision', label: 'Leggono le immagini' },
+  { id: 'image', label: 'Generano immagini' },
+]
+
+/** Tutti gli altri modelli di OpenRouter, filtrati per capacità e ordinati dal più economico. */
+function Catalog({ remaining, current, onChoose, pending }: {
+  remaining: number | null | undefined; current: string | null | undefined; onChoose: (id: string) => void; pending: boolean
+}) {
+  const [capability, setCapability] = useState<CatalogCapability>('text')
+  const [query, setQuery] = useState('')
+  const catalog = useCloudCatalog(capability)
+  const q = query.trim().toLowerCase()
+  const items = (catalog.data ?? []).filter((m) => !q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)).slice(0, 40)
+  return (
+    <div className="flex flex-col gap-2" data-testid="cloud-catalog">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-body">
+          Capacità
+          <Select className="w-52" value={capability} onChange={(e) => setCapability(e.target.value as CatalogCapability)}>
+            {CAPABILITIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </Select>
+        </label>
+        <label className="flex min-w-40 flex-1 flex-col gap-1 text-body">
+          Cerca
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="es. claude, qwen…" />
+        </label>
+      </div>
+      {capability === 'image' && (
+        <p className="text-meta text-muted-foreground">I modelli che generano immagini non servono alle fasi di testo: qui li vedi con il prezzo.</p>
+      )}
+      {catalog.isPending && <p className="text-meta text-muted-foreground">Leggo il catalogo di OpenRouter…</p>}
+      {catalog.isError && <Alert tone="danger">{errorMessage(catalog.error)}</Alert>}
+      <ul className="flex max-h-80 flex-col divide-y overflow-y-auto rounded-md border">
+        {items.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-body">{m.name} {m.vision && <Badge>immagini</Badge>}</p>
+              <p className="truncate text-meta text-muted-foreground">{m.id}{costLine(m, remaining) ? ` · ${costLine(m, remaining)}` : ''}</p>
+            </div>
+            {m.text && (
+              current === m.id
+                ? <Badge tone="success">In uso</Badge>
+                : <Button size="sm" variant="outline" onClick={() => onChoose(m.id)} disabled={pending}>Usa</Button>
+            )}
+          </li>
+        ))}
+        {catalog.isSuccess && items.length === 0 && <li className="px-3 py-2 text-meta text-muted-foreground">Nessun modello trovato.</li>}
+      </ul>
+    </div>
+  )
+}
+
+/** Modello delle fasi di testo: i consigliati del pool, poi tutto il catalogo. */
+function ModelPicker({ status }: { status: CloudStatus }) {
+  const choose = useCloudModel()
+  const prices = useCloudCatalog('text')
+  const [showAll, setShowAll] = useState(false)
+  const pool = status.pool ?? []
+  const current = status.current_model
+  const remaining = status.balance?.remaining_usd
+  if (!pool.length) return null
+  const byId = new Map((prices.data ?? []).map((m) => [m.id, m]))
+  return (
+    <div className="flex flex-col gap-2" data-testid="cloud-models">
+      <p className="text-body font-medium">Modello per la rielaborazione</p>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="sr-only">Modello consigliato</legend>
+        {pool.map((m) => (
+          <label key={m.id} className="flex items-start gap-2 text-body">
+            <input type="radio" name="cloud-model" className="mt-1 size-4 accent-current" checked={current === m.id}
+              disabled={choose.isPending} onChange={() => choose.mutate(m.id)} />
+            <span className="min-w-0">
+              {m.label} {m.recommended && <Badge tone="success">Consigliato</Badge>}
+              <span className="block text-meta text-muted-foreground">
+                {[m.note, costLine(byId.get(m.id), remaining)].filter(Boolean).join(' · ')}
+              </span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      {current && !pool.some((m) => m.id === current) && (
+        <p className="text-meta text-muted-foreground">In uso: {current} (dal catalogo)</p>
+      )}
+      <div>
+        <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+          {showAll ? 'Nascondi gli altri modelli' : 'Altri modelli OpenRouter'}
+        </Button>
+      </div>
+      {showAll && <Catalog remaining={remaining} current={current} onChoose={(id) => choose.mutate(id)} pending={choose.isPending} />}
+      {choose.isError && <Alert tone="danger">{errorMessage(choose.error)}</Alert>}
+    </div>
+  )
+}
+
 /** Ricarica extra: si somma al credito del periodo, si usa dopo di esso e vale 12 mesi. */
 function Topup() {
   const plans = useCloudPlans()
@@ -189,6 +302,7 @@ function Account({ status, onSynced }: { status: CloudStatus; onSynced?: () => v
               active && <Button variant="outline" onClick={() => portal.mutate()} disabled={portal.isPending}>Gestisci abbonamento</Button>
             )}
           </div>
+          {status.connection && <ModelPicker status={status} />}
           {active && <Topup />}
         </>
       )}

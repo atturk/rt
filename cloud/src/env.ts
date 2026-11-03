@@ -46,11 +46,20 @@ export interface TopupConfig {
   validDays: number;
 }
 
+/** Un modello del pool consigliato. `note` è il testo breve mostrato nell'app. */
+export interface PoolModel {
+  id: string;
+  label: string;
+  note?: string;
+  recommended?: boolean;
+}
+
 export interface Config {
   polarApi: string;
   successUrl: string;
   plans: Plan[];
-  modelPool: string[];
+  /** Il primo è il predefinito per le fasi di testo. */
+  modelPool: PoolModel[];
   visionModel?: string;
   margin: number;
   topup?: TopupConfig;
@@ -80,8 +89,10 @@ export function loadConfig(env: Env): Config {
   }
   const plans = JSON.parse(env.PLANS) as Plan[];
   if (!Array.isArray(plans) || plans.length === 0) throw new Error("PLANS vuoto");
-  const modelPool = JSON.parse(env.MODEL_POOL) as string[];
-  if (!Array.isArray(modelPool) || modelPool.length === 0) throw new Error("MODEL_POOL vuoto");
+  const rawPool = JSON.parse(env.MODEL_POOL) as Array<string | PoolModel>;
+  if (!Array.isArray(rawPool) || rawPool.length === 0) throw new Error("MODEL_POOL vuoto");
+  const modelPool = rawPool.map((m) => (typeof m === "string" ? { id: m, label: m } : m));
+  if (modelPool.some((m) => !m.id || !m.label)) throw new Error("MODEL_POOL: ogni modello vuole id e label");
   return {
     polarApi: env.POLAR_ENV === "production" ? "https://api.polar.sh" : "https://sandbox-api.polar.sh",
     successUrl: env.CHECKOUT_SUCCESS_URL,

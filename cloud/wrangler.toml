@@ -21,10 +21,19 @@ CHECKOUT_SUCCESS_URL = "https://github.com/atturk/rt"
 # Piani: id interno, prodotto Polar (abbonamento mensile), etichetta.
 # Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo.
 PLANS = '''[{"id":"mese","polar_product_id":"SOSTITUIRE","label":"3,99 € al mese"},{"id":"semestre","polar_product_id":"SOSTITUIRE","label":"17,99 € ogni 6 mesi"},{"id":"anno","polar_product_id":"SOSTITUIRE","label":"29,99 € all'anno"}]'''
-# Modelli che l'app mostra in modalità facilitata (il primo è il predefinito per le fasi di testo).
-MODEL_POOL = '["deepseek/deepseek-v4-flash","google/gemini-3.5-flash-lite"]'
+# Pool consigliato della modalità facilitata (il primo è il predefinito per le fasi di testo).
+# Slug e prezzi da verificare sul listino OpenRouter prima di accendere il servizio.
+# Gli altri modelli restano sceglibili dal catalogo OpenRouter dentro l'app.
+MODEL_POOL = '''[
+  {"id":"openai/gpt-6-luna","label":"GPT-6 Luna","note":"Economico, legge le immagini","recommended":true},
+  {"id":"anthropic/claude-haiku-5.5","label":"Claude Haiku 5.5","note":"Economico, legge le immagini"},
+  {"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","note":"Open weight, legge le immagini; più caro di mattina"},
+  {"id":"z-ai/glm-5.3-flash","label":"GLM-5.3 Flash","note":"Open weight, economico"},
+  {"id":"google/gemini-3.5-flash-lite","label":"Gemini 3.5 Flash-Lite","note":"Circa 4 volte Luna"},
+  {"id":"deepseek/deepseek-v4-pro","label":"DeepSeek V4 Pro","note":"Più intelligente, circa 3 volte Luna"}
+]'''
 # Modello con visione per la descrizione delle immagini (deve stare anche nel pool).
-VISION_MODEL = "google/gemini-3.5-flash-lite"
+VISION_MODEL = "openai/gpt-6-luna"
 # Quota del progetto (0.20 = 20%) sul netto di IVA e commissioni.
 MARGIN = "0.20"
 # Ricariche extra: prodotto Polar una tantum con prezzo "a scelta del cliente" (minimo 5 €).

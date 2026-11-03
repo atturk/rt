@@ -78,3 +78,31 @@ it('con l\'abbonamento attivo si può ricaricare da 5 €', async () => {
   await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/topup', { body: { amount_cents: 2050 } }))
   expect(await screen.findByRole('link', { name: /Apri la pagina di pagamento/ })).toHaveAttribute('href', 'https://sandbox.polar.sh/checkout/t')
 })
+
+it('sceglie il modello dal pool o dal catalogo, con costo e lezioni stimate', async () => {
+  const pool = [
+    { id: 'openai/gpt-6-luna', label: 'GPT-6 Luna', note: 'Economico', recommended: true },
+    { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', note: null, recommended: false },
+  ]
+  const catalog = [
+    { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', input_usd_per_m: 0.1, output_usd_per_m: 0.5, lesson_usd: 0.055, text: true, vision: true, image_output: false },
+    { id: 'x/altro', name: 'Altro', input_usd_per_m: 1, output_usd_per_m: 2, lesson_usd: 0.37, text: true, vision: false, image_output: false },
+  ]
+  const status = { ...active, pool, vision_model: 'openai/gpt-6-luna', current_model: 'openai/gpt-6-luna' }
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) =>
+    Promise.resolve(ok(path.endsWith('/catalog') ? catalog : path.endsWith('/plans') ? plans : status))) as never)
+  const post = vi.spyOn(api, 'POST').mockImplementation(((_path: string, init: { body: { model: string } }) =>
+    Promise.resolve(ok({ ...status, current_model: init.body.model }))) as never)
+  wrap(<CloudPanel />)
+  const models = await screen.findByTestId('cloud-models')
+  expect(models).toHaveTextContent('Consigliato')
+  await waitFor(() => expect(models).toHaveTextContent('5,5 ¢ a lezione · circa 18 lezioni col credito rimasto'))
+  await userEvent.click(screen.getByLabelText(/DeepSeek V4 Pro/))
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/model', { body: { model: 'deepseek/deepseek-v4-pro' } }))
+  await userEvent.click(screen.getByRole('button', { name: 'Altri modelli OpenRouter' }))
+  const list = await screen.findByTestId('cloud-catalog')
+  await userEvent.type(screen.getByLabelText('Cerca'), 'altro')
+  await waitFor(() => expect(list).not.toHaveTextContent('GPT-6 Luna'))
+  await userEvent.click(screen.getByRole('button', { name: 'Usa' }))
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/model', { body: { model: 'x/altro' } }))
+})

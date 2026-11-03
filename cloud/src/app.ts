@@ -49,7 +49,8 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
   if (route === "GET /v1/plans") {
     return json({
       plans: cfg.plans.map(({ id, label }) => ({ id, label })),
-      models: cfg.modelPool,
+      models: cfg.modelPool.map((m) => m.id),
+      model_pool: cfg.modelPool,
       topup: cfg.topup ? { min_cents: cfg.topup.minCents, max_cents: cfg.topup.maxCents, valid_days: cfg.topup.validDays } : null,
     });
   }
@@ -128,7 +129,8 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
       topup,
       // Il saldo si legge direttamente da OpenRouter con questa chiave (GET /api/v1/key).
       openrouter_key: usable && user.or_key_enc ? await decryptSecret(user.or_key_enc, deps.encryptionSecret) : null,
-      models: cfg.modelPool,
+      models: cfg.modelPool.map((m) => m.id),
+      model_pool: cfg.modelPool,
       vision_model: cfg.visionModel ?? null,
     });
   }

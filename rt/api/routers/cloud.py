@@ -30,12 +30,37 @@ class CloudBalance(BaseModel):
     remaining_usd: Optional[float] = None
 
 
+class CloudPoolModel(BaseModel):
+    id: str
+    label: str
+    note: Optional[str] = None
+    recommended: bool = False
+
+
+class CloudCatalogModel(BaseModel):
+    id: str
+    name: str
+    input_usd_per_m: Optional[float] = Field(None, description="USD per milione di token in ingresso")
+    output_usd_per_m: Optional[float] = Field(None, description="USD per milione di token in uscita")
+    lesson_usd: Optional[float] = Field(None, description="Costo stimato di una lezione (250k token in, 60k out)")
+    text: bool
+    vision: bool = Field(description="Legge le immagini")
+    image_output: bool = Field(description="Genera immagini")
+
+
+class ModelIn(BaseModel):
+    model: str = Field(min_length=1, max_length=200)
+
+
 class CloudStatus(BaseModel):
     available: bool = Field(description="False finché RT Cloud non è pubblicato")
     logged_in: bool
     email: Optional[str] = None
     subscription: Optional[CloudSubscription] = None
     topup: Optional[CloudTopup] = None
+    pool: list[CloudPoolModel] = Field(default_factory=list, description="Modelli consigliati, il primo è il predefinito")
+    vision_model: Optional[str] = None
+    current_model: Optional[str] = Field(None, description="Modello delle fasi di testo, se su RT Cloud")
     balance: Optional[CloudBalance] = Field(None, description="Letto direttamente da OpenRouter")
     connection: bool = Field(description="La connessione 'RT Cloud' esiste")
 
@@ -136,6 +161,19 @@ def checkout(body: CheckoutIn, _actor: Actor):
 def topup(body: TopupIn, _actor: Actor):
     from rt.services import cloud_service
     return UrlOut(url=_call(cloud_service.topup, body.amount_cents))
+
+
+@router.post("/cloud/model", response_model=CloudStatus, summary="Sceglie il modello delle fasi di testo")
+def choose_model(body: ModelIn, _actor: Actor):
+    from rt.services import cloud_service
+    return _call(cloud_service.choose_model, _root(), body.model)
+
+
+@router.get("/cloud/catalog", response_model=list[CloudCatalogModel],
+            summary="Catalogo OpenRouter filtrato per capacità (text, vision, image)")
+def get_catalog(_actor: Actor, capability: str = "text"):
+    from rt.services import cloud_service
+    return _call(cloud_service.catalog, capability)
 
 
 @router.post("/cloud/portal", response_model=UrlOut, summary="Portale per disdire o cambiare carta")

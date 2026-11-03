@@ -15,6 +15,18 @@ TOKEN = "sessione-rt-cloud-segreta-abcdefghijklmnop"
 MODELS = ["deepseek/deepseek-v4-flash", "google/gemini-3.5-flash-lite"]
 
 
+def _or_model(mid, name, prompt, completion, inputs, outputs):
+    return {"id": mid, "name": name, "pricing": {"prompt": prompt, "completion": completion},
+            "architecture": {"input_modalities": inputs, "output_modalities": outputs}}
+
+
+CATALOG = [
+    _or_model("openai/gpt-6-luna", "GPT-6 Luna", "0.0000001", "0.0000005", ["text", "image"], ["text"]),
+    _or_model("x/solo-testo", "Solo testo", "0.000002", "0.00001", ["text"], ["text"]),
+    _or_model("meta/muse-image", "Muse Image", "0", "0.00004", ["text", "image"], ["image"]),
+]
+
+
 class FakeResponse:
     def __init__(self, status, data):
         self.status_code = status
@@ -77,6 +89,9 @@ class FakeCloud:
         return FakeResponse(404, {"error": {"code": "not_found", "message": "?"}})
 
     def get(self, url, headers=None, timeout=None):
+        if url == "https://openrouter.ai/api/v1/models":
+            self.catalog_calls = getattr(self, "catalog_calls", 0) + 1
+            return FakeResponse(200, {"data": CATALOG})
         assert url == "https://openrouter.ai/api/v1/key"
         assert headers["Authorization"] == f"Bearer {OR_KEY}"
         return FakeResponse(200, {"data": {"usage": 0.4, "limit": 1.44, "limit_remaining": 1.04}})
@@ -204,3 +219,35 @@ def test_topup_keeps_key_after_subscription_ends(api_client, cloud):
     assert data["topup"]["balance_usd"] == 13.33
     assert data["connection"] is True
     assert data["balance"]["remaining_usd"] == 1.04
+
+
+def test_status_lists_pool_and_choose_model(api_client, cloud):
+    _login(api_client)
+    cloud.subscription = "active"
+    data = api_client.post("/api/v1/cloud/sync", json={"assign_all": True}).json()
+    assert [m["id"] for m in data["pool"]] == MODELS
+    assert data["pool"][0]["recommended"] is True
+    assert data["current_model"] == MODELS[0]
+
+    data = _clean(api_client.post("/api/v1/cloud/model", json={"model": "x/solo-testo"})).json()
+    assert data["current_model"] == "x/solo-testo"
+    phases = {p["job"]: p for p in api_client.get("/api/v1/settings").json()["phases"]}
+    assert phases["outline"]["model"] == "x/solo-testo" and phases["outline"]["connection"] == "RT Cloud"
+    assert phases["image_description"]["model"] == MODELS[1]  # la visione resta com'era
+
+
+def test_choose_model_needs_connection(api_client, cloud):
+    _login(api_client)
+    assert api_client.post("/api/v1/cloud/model", json={"model": "x/solo-testo"}).status_code == 409
+
+
+def test_catalog_filtered_by_capability(api_client, cloud):
+    from rt.services import cloud_service
+    cloud_service._catalog_cache.update(at=0.0, models=None)
+    text = api_client.get("/api/v1/cloud/catalog").json()
+    assert [m["id"] for m in text] == ["openai/gpt-6-luna", "x/solo-testo"]  # dal più economico
+    assert text[0]["lesson_usd"] == 0.055
+    assert [m["id"] for m in api_client.get("/api/v1/cloud/catalog?capability=vision").json()] == ["openai/gpt-6-luna"]
+    assert [m["id"] for m in api_client.get("/api/v1/cloud/catalog?capability=image").json()] == ["meta/muse-image"]
+    assert api_client.get("/api/v1/cloud/catalog?capability=boh").status_code == 400
+    assert cloud.catalog_calls == 1  # in cache

@@ -20,6 +20,11 @@ DEFAULT_CLOUD_URL: Optional[str] = None
 TOKEN_SECRET = "RT_CLOUD_TOKEN"
 CONNECTION_NAME = "RT Cloud"
 OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+CATALOG_TTL = 600  # secondi
+# Stima di una lezione rielaborata, per il costo a lezione mostrato nell'app.
+LESSON_INPUT_TOKENS = 250_000
+LESSON_OUTPUT_TOKENS = 60_000
 TIMEOUT = 15
 # Fasi di testo, assegnate al primo modello del pool. La descrizione delle immagini va al
 # modello con visione, se il backend ne indica uno; le infografiche restano manuali.
@@ -203,13 +208,94 @@ def status(project_root: Path, me: Optional[dict] = None) -> dict:
             if exc.status == 401:
                 return out
             raise
-    out.update(logged_in=True, email=me.get("email"), subscription=me.get("subscription"), topup=me.get("topup"))
+    out.update(logged_in=True, email=me.get("email"), subscription=me.get("subscription"), topup=me.get("topup"),
+               pool=_pool(me), vision_model=me.get("vision_model"), current_model=_current_model(project_root))
     sub = me.get("subscription") or {}
     has_topup = ((me.get("topup") or {}).get("balance_usd") or 0) > 0
     if sub.get("status") in ("active", "canceled") or has_topup:
         key = _connection_key(project_root)
         out["balance"] = _balance(key) if key else None
     return out
+
+
+def _pool(me: dict) -> list[dict]:
+    """Modelli consigliati dal backend; con un backend vecchio solo gli id."""
+    pool = me.get("model_pool")
+    if isinstance(pool, list) and pool:
+        return [{"id": str(m["id"]), "label": str(m.get("label") or m["id"]), "note": m.get("note"),
+                 "recommended": bool(m.get("recommended"))} for m in pool if isinstance(m, dict) and m.get("id")]
+    return [{"id": m, "label": m, "note": None, "recommended": i == 0} for i, m in enumerate(me.get("models") or [])]
+
+
+def _current_model(project_root: Path) -> Optional[str]:
+    """Il modello che RT Cloud usa per la rielaborazione, se la fase è su RT Cloud."""
+    from rt.services.connections_service import phase_selection
+    connection, model = phase_selection(project_root, "rewrite")
+    return model if connection == CONNECTION_NAME else None
+
+
+def choose_model(project_root: Path, model: str) -> dict:
+    """Porta le fasi di testo su un modello (del pool o del catalogo) della connessione RT Cloud."""
+    from rt.services import connections_service as conn
+    if not _connection_exists(project_root):
+        raise CloudError(409, "cloud_not_connected", "Prima collega RT Cloud con Aggiorna.")
+    try:
+        model = conn.add_model(project_root, CONNECTION_NAME, model)
+        for job in AUTO_PHASES:
+            conn.assign_phase(project_root, job, CONNECTION_NAME, model)
+    except ValueError as exc:
+        raise CloudError(400, "invalid_model", str(exc))
+    return status(project_root)
+
+
+_catalog_cache: dict = {"at": 0.0, "models": None}
+
+
+def _per_million(value: Any) -> Optional[float]:
+    try:
+        return round(float(value) * 1_000_000, 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def catalog(capability: str = "text") -> list[dict]:
+    """Catalogo pubblico di OpenRouter, filtrato per capacità: text, vision o image."""
+    import time
+    if capability not in ("text", "vision", "image"):
+        raise CloudError(400, "invalid_capability", "Capacità non valida.")
+    now = time.time()
+    if _catalog_cache["models"] is None or now - _catalog_cache["at"] > CATALOG_TTL:
+        try:
+            resp = requests.get(OPENROUTER_MODELS_URL, timeout=TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json().get("data") or []
+        except (requests.RequestException, ValueError):
+            raise CloudError(502, "catalog_unreachable", "Non riesco a leggere il catalogo di OpenRouter.")
+        models = []
+        for item in data:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            arch = item.get("architecture") or {}
+            inputs = [str(x) for x in arch.get("input_modalities") or []]
+            outputs = [str(x) for x in arch.get("output_modalities") or []]
+            pricing = item.get("pricing") or {}
+            p_in, p_out = _per_million(pricing.get("prompt")), _per_million(pricing.get("completion"))
+            lesson = (round((p_in * LESSON_INPUT_TOKENS + p_out * LESSON_OUTPUT_TOKENS) / 1_000_000, 4)
+                      if p_in is not None and p_out is not None and p_in >= 0 and p_out >= 0 else None)
+            models.append({
+                "id": str(item["id"]), "name": str(item.get("name") or item["id"]),
+                "input_usd_per_m": p_in, "output_usd_per_m": p_out, "lesson_usd": lesson,
+                "text": "text" in outputs, "vision": "image" in inputs, "image_output": "image" in outputs,
+            })
+        _catalog_cache.update(at=now, models=models)
+    models = _catalog_cache["models"]
+    if capability == "vision":
+        selected = [m for m in models if m["vision"] and m["text"]]
+    elif capability == "image":
+        selected = [m for m in models if m["image_output"]]
+    else:
+        selected = [m for m in models if m["text"]]
+    return sorted(selected, key=lambda m: (m["lesson_usd"] is None, m["lesson_usd"] or 0, m["id"]))
 
 
 def plans() -> dict:

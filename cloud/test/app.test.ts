@@ -98,6 +98,15 @@ describe("login con codice email", () => {
   });
 });
 
+describe("piani e modelli", () => {
+  it("/v1/plans dà il pool consigliato con il predefinito per primo", async () => {
+    const t = makeDeps();
+    const body = await (await handleRequest(req("GET", "/v1/plans"), t.deps)).json() as any;
+    expect(body.models[0]).toBe("openai/gpt-6-luna");
+    expect(body.model_pool[0]).toMatchObject({ id: "openai/gpt-6-luna", recommended: true });
+  });
+});
+
 describe("abbonamento e chiave OpenRouter", () => {
   it("checkout porta a Polar con l'id dell'utente", async () => {
     const t = makeDeps();

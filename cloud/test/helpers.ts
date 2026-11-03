@@ -29,7 +29,7 @@ export const testConfig: Config = {
   polarApi: "https://sandbox-api.polar.sh",
   successUrl: "https://example.com/ok",
   plans: [{ id: "base", polar_product_id: "prod_base", label: "Base" }],
-  modelPool: ["deepseek/deepseek-v4-flash"],
+  modelPool: [{ id: "openai/gpt-6-luna", label: "GPT-6 Luna", recommended: true }, { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" }],
   margin: 0.2,
   topup: { productId: "prod_topup", margin: 0.1, minCents: 500, maxCents: 20000, validDays: 365 },
   paymentFeePercent: 0.05,

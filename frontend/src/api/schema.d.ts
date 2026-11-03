@@ -537,6 +537,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalogo OpenRouter filtrato per capacità (text, vision, image) */
+        get: operations["get_catalog_api_v1_cloud_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloud/checkout": {
         parameters: {
             query?: never;
@@ -599,6 +616,23 @@ export interface paths {
         put?: never;
         /** Scollega l'account (la connessione resta) */
         post: operations["logout_api_v1_cloud_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sceglie il modello delle fasi di testo */
+        post: operations["choose_model_api_v1_cloud_model_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4987,6 +5021,40 @@ export interface components {
              */
             usage_usd: number;
         };
+        /** CloudCatalogModel */
+        CloudCatalogModel: {
+            /** Id */
+            id: string;
+            /**
+             * Image Output
+             * @description Genera immagini
+             */
+            image_output: boolean;
+            /**
+             * Input Usd Per M
+             * @description USD per milione di token in ingresso
+             */
+            input_usd_per_m?: number | null;
+            /**
+             * Lesson Usd
+             * @description Costo stimato di una lezione (250k token in, 60k out)
+             */
+            lesson_usd?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Output Usd Per M
+             * @description USD per milione di token in uscita
+             */
+            output_usd_per_m?: number | null;
+            /** Text */
+            text: boolean;
+            /**
+             * Vision
+             * @description Legge le immagini
+             */
+            vision: boolean;
+        };
         /** CloudPlan */
         CloudPlan: {
             /** Id */
@@ -5006,6 +5074,20 @@ export interface components {
             /** @description Null se le ricariche extra sono spente */
             topup?: components["schemas"]["CloudTopupRules"] | null;
         };
+        /** CloudPoolModel */
+        CloudPoolModel: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
+        };
         /** CloudStatus */
         CloudStatus: {
             /**
@@ -5020,12 +5102,24 @@ export interface components {
              * @description La connessione 'RT Cloud' esiste
              */
             connection: boolean;
+            /**
+             * Current Model
+             * @description Modello delle fasi di testo, se su RT Cloud
+             */
+            current_model?: string | null;
             /** Email */
             email?: string | null;
             /** Logged In */
             logged_in: boolean;
+            /**
+             * Pool
+             * @description Modelli consigliati, il primo è il predefinito
+             */
+            pool?: components["schemas"]["CloudPoolModel"][];
             subscription?: components["schemas"]["CloudSubscription"] | null;
             topup?: components["schemas"]["CloudTopup"] | null;
+            /** Vision Model */
+            vision_model?: string | null;
         };
         /** CloudSubscription */
         CloudSubscription: {
@@ -7100,11 +7194,6 @@ export interface components {
         Message: {
             /** Message */
             message: string;
-        };
-        /** ModelIn */
-        ModelIn: {
-            /** Model */
-            model: string;
         };
         /** ModelTestIn */
         ModelTestIn: {
@@ -9331,6 +9420,16 @@ export interface components {
              */
             running: number;
         };
+        /** ModelIn */
+        rt__api__routers__cloud__ModelIn: {
+            /** Model */
+            model: string;
+        };
+        /** ModelIn */
+        rt__api__routers__settings__ModelIn: {
+            /** Model */
+            model: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -11499,6 +11598,73 @@ export interface operations {
             };
         };
     };
+    get_catalog_api_v1_cloud_catalog_get: {
+        parameters: {
+            query?: {
+                capability?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCatalogModel"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     checkout_api_v1_cloud_checkout_post: {
         parameters: {
             query?: never;
@@ -11712,6 +11878,75 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    choose_model_api_v1_cloud_model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["rt__api__routers__cloud__ModelIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -21605,7 +21840,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModelIn"];
+                "application/json": components["schemas"]["rt__api__routers__settings__ModelIn"];
             };
         };
         responses: {

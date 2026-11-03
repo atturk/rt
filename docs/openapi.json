@@ -3439,6 +3439,77 @@
         "title": "CloudBalance",
         "type": "object"
       },
+      "CloudCatalogModel": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_output": {
+            "description": "Genera immagini",
+            "title": "Image Output",
+            "type": "boolean"
+          },
+          "input_usd_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD per milione di token in ingresso",
+            "title": "Input Usd Per M"
+          },
+          "lesson_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Costo stimato di una lezione (250k token in, 60k out)",
+            "title": "Lesson Usd"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output_usd_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD per milione di token in uscita",
+            "title": "Output Usd Per M"
+          },
+          "text": {
+            "title": "Text",
+            "type": "boolean"
+          },
+          "vision": {
+            "description": "Legge le immagini",
+            "title": "Vision",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "text",
+          "vision",
+          "image_output"
+        ],
+        "title": "CloudCatalogModel",
+        "type": "object"
+      },
       "CloudPlan": {
         "properties": {
           "id": {
@@ -3493,6 +3564,40 @@
         "title": "CloudPlans",
         "type": "object"
       },
+      "CloudPoolModel": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recommended": {
+            "default": false,
+            "title": "Recommended",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "CloudPoolModel",
+        "type": "object"
+      },
       "CloudStatus": {
         "properties": {
           "available": {
@@ -3516,6 +3621,18 @@
             "title": "Connection",
             "type": "boolean"
           },
+          "current_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Modello delle fasi di testo, se su RT Cloud",
+            "title": "Current Model"
+          },
           "email": {
             "anyOf": [
               {
@@ -3530,6 +3647,14 @@
           "logged_in": {
             "title": "Logged In",
             "type": "boolean"
+          },
+          "pool": {
+            "description": "Modelli consigliati, il primo è il predefinito",
+            "items": {
+              "$ref": "#/components/schemas/CloudPoolModel"
+            },
+            "title": "Pool",
+            "type": "array"
           },
           "subscription": {
             "anyOf": [
@@ -3550,6 +3675,17 @@
                 "type": "null"
               }
             ]
+          },
+          "vision_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Model"
           }
         },
         "required": [
@@ -7859,19 +7995,6 @@
           "message"
         ],
         "title": "Message",
-        "type": "object"
-      },
-      "ModelIn": {
-        "properties": {
-          "model": {
-            "title": "Model",
-            "type": "string"
-          }
-        },
-        "required": [
-          "model"
-        ],
-        "title": "ModelIn",
         "type": "object"
       },
       "ModelTestIn": {
@@ -13258,6 +13381,34 @@
         },
         "title": "WorkerSettings",
         "type": "object"
+      },
+      "rt__api__routers__cloud__ModelIn": {
+        "properties": {
+          "model": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "ModelIn",
+        "type": "object"
+      },
+      "rt__api__routers__settings__ModelIn": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "ModelIn",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -16137,6 +16288,98 @@
         ]
       }
     },
+    "/api/v1/cloud/catalog": {
+      "get": {
+        "operationId": "get_catalog_api_v1_cloud_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "capability",
+            "required": false,
+            "schema": {
+              "default": "text",
+              "title": "Capability",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CloudCatalogModel"
+                  },
+                  "title": "Response Get Catalog Api V1 Cloud Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Catalogo OpenRouter filtrato per capacità (text, vision, image)",
+        "tags": [
+          "rt cloud"
+        ]
+      }
+    },
     "/api/v1/cloud/checkout": {
       "post": {
         "operationId": "checkout_api_v1_cloud_checkout_post",
@@ -16459,6 +16702,92 @@
           }
         ],
         "summary": "Scollega l'account (la connessione resta)",
+        "tags": [
+          "rt cloud"
+        ]
+      }
+    },
+    "/api/v1/cloud/model": {
+      "post": {
+        "operationId": "choose_model_api_v1_cloud_model_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/rt__api__routers__cloud__ModelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sceglie il modello delle fasi di testo",
         "tags": [
           "rt cloud"
         ]
@@ -30184,7 +30513,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModelIn"
+                "$ref": "#/components/schemas/rt__api__routers__settings__ModelIn"
               }
             }
           },
