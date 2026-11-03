@@ -237,6 +237,34 @@ describe('lettura veloce', () => {
     await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
   })
 
+  it('seleziono una parola a metà unità, premo L → la parola corrente è quella', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+    const text = screen.getByTestId('study-text')
+    const range = sourceRange(text, 26, 30)!
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+    expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Poi,')
+  })
+
+  it('seleziono a metà di una parola → parte da quella parola', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+    const text = screen.getByTestId('study-text')
+    const range = sourceRange(text, 10, 13)!
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+    expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('filtra')
+  })
+
   it('durante la riproduzione speed-reader-panel ha opacity-25 e in pausa no', async () => {
     await open()
     const panel = screen.getByTestId('speed-reader-panel')

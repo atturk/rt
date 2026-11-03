@@ -58,6 +58,20 @@ it('la parola verde ha data-hl="1"', async () => {
   expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-hl', '1')
 })
 
+it('startAt inizializza index con la parola che contiene il punto o che viene subito dopo', () => {
+  const source = document.createElement('div')
+  source.innerHTML = '<p>Prima seconda terza quarta.</p>'
+  const textNode = source.querySelector('p')!.firstChild!
+  // offset 7 è l'inizio di "seconda"
+  const { unmount } = render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} startAt={{ node: textNode, offset: 7 }} />)
+  expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('seconda')
+  unmount()
+
+  // offset 9 è a metà di "seconda" -> deve comunque partire da "seconda"
+  render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} startAt={{ node: textNode, offset: 9 }} />)
+  expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('seconda')
+})
+
 it('avviso Irlen: compare con evidenziazione rosa, non ricompare con "Non mostrare più", non compare con solo giallo', async () => {
   mockPrefs = { ...RSVP_DEFAULT, irlen: 'pesca', irlenHighlightWarning: true, sound: false }
   const sourceRosa = document.createElement('div')

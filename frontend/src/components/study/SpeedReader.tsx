@@ -12,7 +12,7 @@ import { SlideToggle } from '@/components/ui/slide-toggle'
 import { cn } from '@/lib/utils'
 import { createSound } from './rsvpSound'
 import {
-  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, fitFormula, type FitFormulaResult, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
+  MAX_WPM, MIN_WPM, adaptWord, type DisplayWord, findWordIndexAt, fitFormula, type FitFormulaResult, focusIndex, graveWord, formatRemaining, isFullStop, nextSentence, previousSentence, readUnitWords,
   remainingSeconds, surroundingEntries, wordDelay,
 } from './rsvp'
 
@@ -25,7 +25,7 @@ const STEPS = [1, 3, 5, 10]
 /** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
 export function SpeedReader({
   source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose,
-  onUnit, canPrevUnit, canNextUnit, autoStart, onStatus,
+  onUnit, canPrevUnit, canNextUnit, autoStart, onStatus, startAt,
 }: {
   source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
   settingsButton: RefObject<HTMLElement | null>; blocked: boolean
@@ -36,6 +36,7 @@ export function SpeedReader({
   canNextUnit: boolean
   autoStart?: boolean
   onStatus?: () => void
+  startAt?: { node: Node; offset: number }
 }) {
   const [saved, save] = useRsvpPrefs()
   const [prefs, setPrefs] = useState<RsvpPreference>(saved)
@@ -45,7 +46,7 @@ export function SpeedReader({
     observer.observe(source, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] })
     return () => observer.disconnect()
   }, [source])
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(() => findWordIndexAt(words, startAt))
   const [pieceIndex, setPieceIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [formulaScale, setFormulaScale] = useState(1)

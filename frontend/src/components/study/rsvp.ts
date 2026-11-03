@@ -5,7 +5,7 @@
 import type { RsvpPreference } from '@/lib/studyPrefs'
 
 export type Formula = { html: string; tex: string; complex: boolean }
-export type Word = { text: string; para: number; math?: Formula; hl?: number; lastPiece?: boolean }
+export type Word = { text: string; para: number; math?: Formula; hl?: number; lastPiece?: boolean; node?: Node; offset?: number }
 /** Pezzo del Contesto: una parola letta (index) o un elemento saltato (formula, immagine, tabella). */
 export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: number }
 
@@ -227,7 +227,7 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
       rendered.classList.remove('rt-math-raw')
       const math = { html: rendered.outerHTML, tex, complex: formulaMetrics(tex).complex }
       paragraphs[para].push({ text: tex, index: words.length, math, ...(hl !== undefined ? { hl } : {}) })
-      words.push({ text: tex, para, math, ...(hl !== undefined ? { hl } : {}) })
+      words.push({ text: tex, para, math, node: mark.node, offset: 0, ...(hl !== undefined ? { hl } : {}) })
     } else paragraphs[para].push({ text: mark.label, index: null })
   }
   let next = 0
@@ -245,22 +245,27 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     const hl = highlightColorOf(node.parentElement)
     const text = node.textContent ?? ''
     const para = paraOf(node)
-    const parts = splitWords(text)
+    const partsWithOffsets: { word: string; offset: number }[] = []
+    const wordRegex = /\S+/g
+    let m: RegExpExecArray | null
+    while ((m = wordRegex.exec(text)) !== null) {
+      partsWithOffsets.push({ word: m[0], offset: m.index })
+    }
     const last = words[words.length - 1]
-    if (last?.math && last.para === para && !/^\s/.test(text) && parts.length && /^[.,;:!?…]+$/.test(parts[0])) {
-      last.text += parts.shift()
+    if (last?.math && last.para === para && !/^\s/.test(text) && partsWithOffsets.length && /^[.,;:!?…]+$/.test(partsWithOffsets[0].word)) {
+      last.text += partsWithOffsets.shift()!.word
       const piece = paragraphs[para].findLast(p => p.index === words.length - 1)
       if (piece) piece.text = last.text
     }
-    if (!last?.math && glue && before === next && last?.para === para && parts.length && !/^\s/.test(text)) {
-      last.text += parts.shift()
+    if (!last?.math && glue && before === next && last?.para === para && partsWithOffsets.length && !/^\s/.test(text)) {
+      last.text += partsWithOffsets.shift()!.word
       const piece = paragraphs[para].findLast((p) => p.index === words.length - 1)
       if (hl !== undefined) last.hl = hl
       if (piece) { piece.text = last.text; if (last.hl !== undefined) piece.hl = last.hl }
     }
-    for (const word of parts) {
-      paragraphs[para].push({ text: word, index: words.length, ...(hl !== undefined ? { hl } : {}) })
-      words.push({ text: word, para, ...(hl !== undefined ? { hl } : {}) })
+    for (const item of partsWithOffsets) {
+      paragraphs[para].push({ text: item.word, index: words.length, ...(hl !== undefined ? { hl } : {}) })
+      words.push({ text: item.word, para, node, offset: item.offset, ...(hl !== undefined ? { hl } : {}) })
     }
     if (text) glue = !!text.trim() && !/\s$/.test(text)
   }
@@ -269,6 +274,30 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     next++
   }
   return { words, paragraphs }
+}
+
+/** Trova la prima parola che contiene il punto di partenza o che viene subito dopo. */
+export function findWordIndexAt(words: Word[], startAt?: { node: Node; offset: number }): number {
+  if (!startAt || !words.length) return 0
+  let targetNode = startAt.node
+  let targetOffset = startAt.offset
+  if (targetNode.nodeType === Node.ELEMENT_NODE && targetNode.childNodes[targetOffset]) {
+    targetNode = targetNode.childNodes[targetOffset]
+    targetOffset = 0
+  }
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    if (!w.node) continue
+    if (w.node === targetNode) {
+      const offset = w.offset ?? 0
+      if (targetOffset < offset + w.text.length) {
+        return i
+      }
+    } else if (targetNode.compareDocumentPosition(w.node) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return i
+    }
+  }
+  return 0
 }
 
 export type DisplayWord = Word & { sourceIndex: number; scale: number; lastPiece: boolean }

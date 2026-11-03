@@ -285,19 +285,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }, [notice])
   // Cambio d'unità durante la lettura veloce: il lettore della nuova unità riparte da solo.
   const resumeReader = useRef(false)
-  const closeReader = useCallback(() => { resumeReader.current = false; setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
-  const openReader = useCallback(() => {
-    if (!textRoot) return
-    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
-    window.scrollTo?.({ top: 0 })
-    setSpeedReading(true)
-    setReaderMounted(true)
-    setIndexOpen(false)
-    setDetailsOpen(false)
-  }, [textRoot, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
+  const [readerStartAt, setReaderStartAt] = useState<{ node: Node; offset: number } | undefined>(undefined)
+  const [readerOpenId, setReaderOpenId] = useState(0)
 
   const handleUnitChange = (direction: -1 | 1, playing = false) => {
     if (!units) return
+    setReaderStartAt(undefined)
     const nextIndex = unitIndex + direction
     if (nextIndex < 0 || nextIndex >= units.length) return
     resumeReader.current = playing
@@ -452,6 +445,35 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     if (zenActive) setNotice({ kind: 'eraser', off: false, label: 'Gomma' })
     return true
   }, [getSelectionRange, highlights, zenActive, setHlMode])
+
+  const closeReader = useCallback(() => {
+    resumeReader.current = false
+    setReaderStartAt(undefined)
+    setSpeedReading(false)
+    setReaderSettings(false)
+    setIndexOpen(false)
+  }, [setSpeedReading, setReaderSettings])
+
+  const openReader = useCallback(() => {
+    if (!textRoot) return
+    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    window.scrollTo?.({ top: 0 })
+
+    const range = getSelectionRange()
+    let startAt: { node: Node; offset: number } | undefined
+    if (range) {
+      startAt = { node: range.startContainer, offset: range.startOffset }
+    }
+    setReaderStartAt(startAt)
+    savedSelectionRange.current = null
+    window.getSelection()?.removeAllRanges()
+
+    setReaderOpenId((id) => id + 1)
+    setSpeedReading(true)
+    setReaderMounted(true)
+    setIndexOpen(false)
+    setDetailsOpen(false)
+  }, [textRoot, getSelectionRange, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
 
   const handleSendNote = async (request: string) => {
     if (!lesson || !popupState || !popupState.anchor) return
@@ -772,6 +794,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         label="Lettura veloce"
         icon={Gauge}
         onClick={openReader}
+        onPointerDown={saveSelection}
+        onMouseDown={(e) => e.preventDefault()}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
@@ -859,9 +883,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           edge={edge}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? (
             <SpeedReader
-              key={`${lesson!.id}-${unit.id}`}
+              key={`${lesson!.id}-${unit.id}-${readerOpenId}`}
               source={textRoot}
               active={speedReading}
+              startAt={readerStartAt}
               context={readerContext}
               settings={readerSettings}
               onSettingsChange={setReaderSettings}
