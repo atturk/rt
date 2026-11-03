@@ -83,6 +83,38 @@ it('sul telefono mostra testo, correzione ed elenco sempre visibile', () => {
   expect(screen.queryByRole('button', { name: /^Elenco/ })).not.toBeInTheDocument()
 })
 
+it('su telefono «Nel testo» contiene la quote e non tutto il paragrafo', () => {
+  state.phone = true
+  const wholeParagraph = 'Questo è un intero paragrafo molto lungo che spiega la fisiologia cellulare e molti altri concetti dettagliati.'
+  state.items = [
+    {
+      ...issue,
+      issue: {
+        ...issue.issue,
+        anchor: {
+          quote: 'pH è 6',
+          prefix: 'Nel sangue il ',
+          suffix: ' mentre normalmente è 7,4.',
+          start: 14,
+          end: 20,
+        },
+      },
+      context: {
+        timecode: '00:00',
+        start_s: 0,
+        unit_content: wholeParagraph,
+      },
+    },
+  ]
+  mount()
+  const inText = screen.getByTestId('review-in-text')
+  expect(inText).toHaveTextContent('pH è 6')
+  expect(inText).not.toHaveTextContent(wholeParagraph)
+  const mark = inText.querySelector('mark')
+  expect(mark).toBeInTheDocument()
+  expect(mark).toHaveTextContent('pH è 6')
+})
+
 it.each([
   ['MISSING', 'Mai verificata', ['never', 'never', 'never'], ['1.1', '1.2', '1.3']],
   ['PARTIAL', '2 unità da verificare', ['ok', 'changed', 'never'], ['1.2', '1.3']],

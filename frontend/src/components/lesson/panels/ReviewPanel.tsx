@@ -202,6 +202,27 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
   </div>
 }
 
+function renderInText(anchor?: { quote?: string; prefix?: string; suffix?: string } | null, fallback?: string) {
+  if (!anchor?.quote) {
+    return <MathText text={fallback ?? ''} />
+  }
+  const rawPrefix = anchor.prefix ?? ''
+  const rawSuffix = anchor.suffix ?? ''
+  const p = rawPrefix.slice(-80)
+  const s = rawSuffix.slice(0, 80)
+  const prefixText = rawPrefix.length > 0 ? (rawPrefix.length > 80 || !p.startsWith('…') ? `…${p}` : p) : ''
+  const suffixText = rawSuffix.length > 0 ? (rawSuffix.length > 80 || !s.endsWith('…') ? `${s}…` : s) : ''
+  return (
+    <span>
+      {prefixText}
+      <mark className="rounded-sm bg-warning/30 px-0.5 font-medium text-foreground">
+        <MathText text={anchor.quote} />
+      </mark>
+      {suffixText}
+    </span>
+  )
+}
+
 function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, phone, changed, onUndo, onReverify }: {
   failure?: string; phone: boolean; changed: boolean; onUndo: () => void; onReverify: () => void
   item: IssueItem; busy: boolean; editing: boolean; onEditing: (value: boolean) => void
@@ -241,7 +262,14 @@ function IssueCard({ item, failure, busy, editing, onEditing, onDecide, onSeek, 
   }, [editing, readOnly, modified, text, busy]) // oxlint-disable-line react-hooks/exhaustive-deps
   return <Card className="flex min-w-0 flex-col gap-3 p-3 [overflow-wrap:anywhere]" data-testid="issue-detail">
     <div className="flex flex-wrap items-center gap-2"><b>{issueLabels[issue.type] ?? issue.type}</b><Badge tone={issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'neutral'}>{({ high: 'alta', medium: 'media', low: 'bassa' } as Record<string, string>)[issue.severity] ?? issue.severity}</Badge>{issue.origine === 'docente' && <Badge tone="warning">Possibile errore del docente</Badge>}</div>
-    {phone && !paragraph && <div><h3 className="mb-1 text-meta font-semibold">Nel testo</h3><p className="min-w-0 rounded-lg border border-warning p-3 [overflow-wrap:anywhere]"><MathText text={item.context?.unit_content ?? issue.claim} /></p></div>}
+    {phone && !paragraph && (
+      <div>
+        <h3 className="mb-1 text-meta font-semibold">Nel testo</h3>
+        <p className="min-w-0 rounded-lg border border-warning p-3 [overflow-wrap:anywhere]" data-testid="review-in-text">
+          {renderInText(issue.anchor, issue.claim)}
+        </p>
+      </div>
+    )}
     {issue.type === 'ERR_ASR_ST' && <ASRSegments segments={item.context?.asr_segments ?? [{ segment_id: issue.segment_id ?? '', text_raw: issue.claim, start_s: item.context?.start_s, end_s: item.context?.end_s }]} onSeek={!readOnly ? onSeek : undefined} />}
     {!paragraph && issue.origine !== 'docente' && <div ref={box}>
       <div className="mb-1 flex items-center justify-between gap-2"><h3 className="text-meta font-semibold">{paragraph ? 'Testo del paragrafo' : 'Correzione proposta'}</h3>
