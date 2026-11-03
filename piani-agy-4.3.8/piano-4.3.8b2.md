@@ -1,4 +1,4 @@
-# Piano 4.3.8b2: affidabilità delle fonti ed estensioni di RT (agy)
+# Piano 4.3.8b2: affidabilità delle fonti, estensioni di RT, API per gli agenti (agy)
 
 Da fare **dopo** la b1, sullo stesso branch `agy/4.3.8`. Un commit per voce. Il perché delle scelte è nel Claude Doc «RT 4.3.8: analisi… e piano», voci 5 e 6.
 
@@ -45,6 +45,32 @@ Da fare **dopo** la b1, sullo stesso branch `agy/4.3.8`. Un commit per voce. Il 
 6. **Apertura a freddo** (RT chiusa): lo smistamento vale anche per `file_in_attesa`.
 
 **Test:** `useOpenedFiles.test.ts` per i quattro casi; `.rtcal` aperto non chiama `/calendar/import` senza il clic; un `.rtdb` passato al gestore Python chiama la conferma e, se annullata, non tocca niente (`tests/test_window_open_files.py`); `Info.plist` generato contiene i tre tipi (`tests/test_build_app.py`); `.zip` e `.json` vecchi funzionano ancora.
+
+## 11. API di sola lettura: chiave visibile e prompt per gli agenti
+
+**Oggi.** Impostazioni → Accesso da iPhone → «API di sola lettura (Open WebUI)» (`frontend/src/components/settings/device-access.tsx` ~riga 154). La chiave `rt_ro_…` si vede solo appena creata («mostrata solo ora»), perché `rt/api/readonly_auth.py` salva solo l'hash (`token_hash` + `salt` nell'impostazione `api.readonly_auth`). Rotte: `GET/POST/DELETE /settings/readonly-key` (`rt/api/routers/settings.py` ~riga 781). L'API risponde solo su 127.0.0.1.
+
+**Cosa fare.**
+1. **Chiave salvata in chiaro, ma tra i segreti:** `create_readonly_key` salva il token anche tra i segreti di RT (`rt/security/secrets.py`, nuovo nome `RT_READONLY_KEY` in `EXTRA_SECRET_NAMES`, come `RT_CLOUD_TOKEN`), non nel database. La verifica resta sull'hash. `revoke_readonly_key` cancella anche il segreto. Una chiave creata prima della 4.3.8 non ha il segreto: in quel caso la pagina mostra solo l'anteprima e «Rigenera chiave» come oggi.
+2. **`GET /settings/readonly-key`** (solo con il token principale, come oggi) aggiunge `key` (il token in chiaro, `null` se non c'è) e `base_url` (`http://127.0.0.1:<porta reale>/api/v1/readonly`, dalla configurazione del server, non scritto fisso). Il token di sola lettura non deve poter leggere questa rotta.
+3. **Interfaccia:** il titolo diventa «API di sola lettura (agenti e Open WebUI)». Con una chiave attiva:
+   - la chiave si vede sempre, in un campo in sola lettura con «Copia» (niente più «mostrata solo ora»);
+   - sotto, un riquadro «Prompt per un agente» con il testo qui sotto, la chiave e l'indirizzo già dentro, e il pulsante «Copia prompt»;
+   - «Rigenera chiave» e «Revoca» restano; dopo una rigenerazione chiave e prompt si aggiornano subito.
+   Senza chiave: nessuna chiave, nessun prompt, solo «Crea chiave».
+4. **Testo del prompt** (italiano, `{base}` e `{key}` sostituiti):
+
+```
+Puoi leggere le mie lezioni universitarie da RT, un'app che gira su questo computer.
+- API (solo lettura): {base}
+- Specifica OpenAPI: {base}/openapi.json
+- Ogni richiesta deve avere l'header: Authorization: Bearer {key}
+Prima scarica la specifica OpenAPI per sapere quali endpoint ci sono, poi usali per rispondere alle mie domande sulle lezioni.
+Esempio: curl -H "Authorization: Bearer {key}" {base}/openapi.json
+Regole: l'accesso è di sola lettura, non provare a modificare niente. Le lezioni sono mie e private: non mandarne il contenuto ad altri servizi se non te lo chiedo. L'API risponde solo da questo computer, quindi funziona con agenti che girano qui (per esempio Antigravity, Claude Code, Codex, pi), non con quelli nel cloud.
+```
+
+**Test:** `tests/test_readonly_key.py`: creata la chiave, `GET` restituisce `key` uguale al token e `base_url` con la porta configurata; dopo `DELETE` `key` è `null` e il segreto non c'è più; con il token di sola lettura `GET /settings/readonly-key` è rifiutato. `device-access.test.tsx`: con chiave attiva si vedono chiave e prompt con la chiave dentro; senza chiave nessuno dei due; «Copia prompt» copia il testo completo.
 
 ---
 
