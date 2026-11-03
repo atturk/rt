@@ -1,5 +1,9 @@
 # Novità di RT
 
+## 4.3.7 — 2026-11-03
+
+Le correzioni della beta 4.3.7b1 (dettagli sotto), dal test notturno del frontend 4.3.6: Verifica e Studio con le citazioni riparate, niente lezioni fantasma, domande in attesa della Verifica, «Continua» dopo «Solo trascrizione», molte sistemazioni per l'iPhone ed errori leggibili.
+
 ## 4.3.7b1 — 2026-11-03
 
 Beta con le correzioni dal test notturno del frontend 4.3.6, molte per l'iPhone.
