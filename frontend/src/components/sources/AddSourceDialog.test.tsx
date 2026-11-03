@@ -32,7 +32,7 @@ it('recognizes a stored file and continues at the next unused page', async () =>
   expect(screen.getByLabelText('A')).toHaveValue(64)
   fireEvent.click(screen.getByText('Aggiungi', { selector: 'button' }))
   await waitFor(() =>
-    expect(submit).toHaveBeenCalledWith({ pagine: '31-64', estrai: 'immagini', uso: 'contesto' }),
+    expect(submit).toHaveBeenCalledWith({ pagine: '31-64', estrai: 'immagini', uso: 'contesto', affidabilita: 'normale' }),
   )
 })
 it.each(['notes.txt', 'notes.docx'])('defaults %s to text and Guida for an empty lesson', async (name) => {

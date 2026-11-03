@@ -339,6 +339,17 @@ describe('Import nuovo: fonti con il layer delle opzioni', () => {
     expect(sent().opzioni).toEqual({ 'slide.pdf': { estrai: 'immagini', uso: 'contesto' } })
   })
 
+  it('il selettore cambia affidabilità nella richiesta', async () => {
+    renderDialog()
+    choose(pdf('slide.pdf'))
+    fireEvent.click(screen.getByRole('button', { name: 'Opzioni slide.pdf' }))
+    const layer = screen.getByTestId('source-layer')
+    const affidabilitaGroup = within(layer).getByRole('group', { name: 'Affidabilità' })
+    fireEvent.click(within(affidabilitaGroup).getByRole('button', { name: 'Alta' }))
+    await start()
+    expect(sent().opzioni).toEqual({ 'slide.pdf': { estrai: 'immagini', uso: 'guida', affidabilita: 'alta' } })
+  })
+
   it('senza audio c’è sempre una guida: la prima, poi quella scelta', async () => {
     renderDialog()
     choose(pdf('appunti.pdf'), pdf('slide.pdf'))

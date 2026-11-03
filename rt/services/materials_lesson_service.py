@@ -80,7 +80,8 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
                 shutil.rmtree(merged_dir, ignore_errors=True)
         else:
             audio_sources = [add_source(lesson_dir, 'audio', os.path.basename(path), None, source_path=path) for path in audio]
-        notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8')) if appunti.strip() else None
+        notes_opts = (opzioni or {}).get('appunti') or (opzioni or {}).get('appunti.txt') or (opzioni or {}).get('Appunti') or {}
+        notes = add_source(lesson_dir, 'appunti', 'appunti.txt', appunti.encode('utf-8'), **notes_opts) if appunti.strip() else None
         documents = [add_source(lesson_dir, 'materiale', os.path.basename(path), None, source_path=path, **(opzioni or {}).get(os.path.basename(path), {})) for path in materiali]
         if audio_sources:
             primary = audio_sources[0]

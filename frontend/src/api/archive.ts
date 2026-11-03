@@ -7,6 +7,7 @@ export type SourceOptions = {
   pagine?: string | number[] | null
   estrai?: Extraction
   uso?: 'guida' | 'contesto' | 'integra'
+  affidabilita?: 'alta' | 'normale' | 'bassa' | null
 }
 export type ArchiveUsage = {
   lezione_id: number | null

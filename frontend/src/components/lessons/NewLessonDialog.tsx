@@ -1,5 +1,5 @@
 import { KnownBadge } from '@/components/sources/ArchiveFileBadge'
-import { ExtractOptions, PagesOptions, SourceBadges, SourceFileIcon, UseOptions } from '@/components/sources/SourceControls'
+import { ExtractOptions, PagesOptions, ReliabilityOptions, SourceBadges, SourceFileIcon, UseOptions } from '@/components/sources/SourceControls'
 import { fileFacts, textOnly, type SourceOptions } from '@/api/archive'
 import { defaultOptions, hasPages, sourceReasons, useSourceDefaults } from '@/lib/sourceDefaults'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -886,6 +886,8 @@ export function NewLessonDialog({
                         onChange={(estrai) => updateMaterial(m, i, { estrai })} />
                       <UseOptions value={current.uso ?? 'contesto'} unavailable={reasons.use} off={reasons.off}
                         onChange={(uso) => updateMaterial(m, i, { uso })} />
+                      <ReliabilityOptions value={current.affidabilita}
+                        onChange={(affidabilita) => updateMaterial(m, i, { affidabilita })} />
                       {hasPages(m.name) && !textOnly(m.name) && total !== 1 && (
                         <PagesOptions value={current.pagine} total={total}
                           onChange={(pagine) => updateMaterial(m, i, { pagine })} />

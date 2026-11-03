@@ -768,6 +768,15 @@ def clear_material_context(lesson_dir: str) -> None:
         _write_json(lesson_dir, STATE_FILE, state)
 
 
+class MaterialContext(str):
+    by_reliability: Dict[str, str]
+
+    def __new__(cls, content: str, by_reliability: Optional[Dict[str, str]] = None):
+        obj = super().__new__(cls, content)
+        obj.by_reliability = by_reliability or {}
+        return obj
+
+
 def material_context_for_unit(lesson_dir: str, unit_id: str, macro_id: str) -> str:
     """
     Restituisce il testo dei materiali assegnati a una sottounità (MF1d):
@@ -788,13 +797,27 @@ def material_context_for_unit(lesson_dir: str, unit_id: str, macro_id: str) -> s
     if not items:
         return ""
 
+    from rt.core.sources import load_sources
+    try:
+        sources = load_sources(lesson_dir, readonly=True)
+        source_rel = {s.id: s.affidabilita or 'normale' for s in sources}
+    except Exception:
+        source_rel = {}
+
     seen = set()
     parts = []
+    by_rel: Dict[str, List[str]] = {"alta": [], "normale": [], "bassa": []}
     for item in items:
         key = (item.get("source_id"), item.get("page"))
         if key in seen:
             continue
         seen.add(key)
-        parts.append(f"[Fonte: {item.get('source_file')}, pag. {item.get('page')}]\n{item.get('text', '')}")
+        rel = source_rel.get(str(item.get("source_id")), "normale")
+        if rel not in ("alta", "normale", "bassa"):
+            rel = "normale"
+        entry_text = f"[Fonte: {item.get('source_file')}, pag. {item.get('page')}]\n{item.get('text', '')}"
+        parts.append(entry_text)
+        by_rel[rel].append(entry_text)
 
-    return "\n\n".join(parts)
+    rel_map = {k: "\n\n".join(v) for k, v in by_rel.items() if v}
+    return MaterialContext("\n\n".join(parts), by_reliability=rel_map)

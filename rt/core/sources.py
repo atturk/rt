@@ -43,6 +43,7 @@ class Source(BaseModel):
     pagine: list[int] | None = None
     estrai: Literal['testo', 'immagini', 'solo_immagini'] | None = None
     uso: Literal['contesto', 'integra'] | None = None
+    affidabilita: Literal['alta', 'normale', 'bassa'] | None = None
 
 
 def _save(lesson_dir: str, sources: list[Source]) -> None:
@@ -89,13 +90,15 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
                filename: str, content: bytes | None, ordine: int | None = None,
                source_path: str | None = None,
                parti: list[SourcePart] | list[dict] | None = None,
-               pagine=None, estrai=None, uso=None) -> Source:
+               pagine=None, estrai=None, uso=None, affidabilita=None) -> Source:
     """Aggiunge una copia privata: nessuna operazione sovrascrive una fonte.
     source_path (file locale, per i caricamenti grandi) si copia senza leggerlo in memoria."""
     if tipo not in ("audio", "appunti", "materiale"):
         raise ValueError("Tipo di fonte non valido")
     if tipo == 'materiale' and uso is None:
         uso = 'contesto'
+    if affidabilita not in (None, 'alta', 'normale', 'bassa'):
+        raise ValueError('Affidabilità della fonte non valida')
     from rt.core.source_options import parse_pages, default_extraction, text_only
     if estrai not in (None, 'testo', 'immagini', 'solo_immagini') or uso not in (None, 'guida', 'contesto', 'integra'):
         raise ValueError('Opzioni della fonte non valide')
@@ -166,7 +169,8 @@ def add_source(lesson_dir: str, tipo: Literal["audio", "appunti", "materiale"],
     source = Source(id=sid, tipo=tipo, file=relative,
                     impronta=compute_file_sha256(path),
                     aggiunta_il=datetime.now(timezone.utc).isoformat(), ordine=position,
-                    parti=parsed_parts, pagine=pagine, estrai=estrai, uso='contesto' if uso == 'guida' else uso)
+                    parti=parsed_parts, pagine=pagine, estrai=estrai, uso='contesto' if uso == 'guida' else uso,
+                    affidabilita=affidabilita)
     if tipo != 'appunti':
         register_file(path, nome=name, tipo=file_type(path, tipo), sha=source.impronta, alias=[upload_sha])
     sources.insert(position - 1, source)
@@ -227,6 +231,10 @@ def update_source(lesson_dir, source_id, **options):
         if options['uso'] not in (None, 'guida', 'contesto', 'integra'):
             raise ValueError('Uso non valido')
         source.uso = 'contesto' if options['uso'] == 'guida' else options['uso']
+    if 'affidabilita' in options:
+        if options['affidabilita'] not in (None, 'alta', 'normale', 'bassa'):
+            raise ValueError('Affidabilità non valida')
+        source.affidabilita = options['affidabilita']
     _save(lesson_dir, sources)
     state['used'] = [sid for sid in state.get('used', []) if sid != source_id]
     state.get('sources', {}).pop(source_id, None)
