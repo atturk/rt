@@ -832,7 +832,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             ) : undefined
           }
           zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
-            irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
+            irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })}
+            hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
             <div
               className={cn(

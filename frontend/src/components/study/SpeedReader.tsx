@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { isMacKeyboard } from '@/components/lesson/markdownShortcuts'
 import { useIsPhone } from '@/lib/phone'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import { IrlenWarningModal } from './IrlenWarningModal'
 import { Checkbox } from '@/components/settings/common'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -77,6 +78,10 @@ export function SpeedReader({
   const autoStarted = useRef(false)
   const persist = useRef<ReturnType<typeof setTimeout>>(undefined)
   useLayoutEffect(() => { prefsRef.current = prefs }, [prefs])
+
+  const [showIrlenWarning, setShowIrlenWarning] = useState(() =>
+    Boolean(active && prefs.irlen && prefs.irlenHighlightWarning && words.some((w) => w.hl !== undefined && w.hl !== 0)),
+  )
 
   /** Le preferenze si vedono subito e si salvano su RT poco dopo (gli slider cambiano spesso). */
   const update = useCallback((change: Partial<RsvpPreference>) => {
@@ -309,14 +314,14 @@ export function SpeedReader({
           <div data-testid="speed-reader-context" className="absolute left-1/2 top-0 z-[2] max-h-[45%] w-[min(680px,100%)] -translate-x-1/2 overflow-auto rounded-xl border border-border bg-card px-3.5 py-2.5 text-body leading-[1.7] text-muted-foreground">
             {para.map((piece, i) => (
               <span key={i} className={cn(piece.index !== null && piece.index < index && 'text-foreground',
-                piece.index === index && 'font-semibold text-(--rsvp-focus)', piece.hl && prefs.highlights && 'rt-rsvp-hl')} data-current={piece.index === index || undefined}>
+                piece.index === index && 'font-semibold text-(--rsvp-focus)', piece.hl !== undefined && prefs.highlights && cn('rt-rsvp-hl', `rt-rsvp-hl-${piece.hl}`))} data-current={piece.index === index || undefined}>
                 {piece.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: piece.math.html }} /> : piece.text}{' '}
               </span>
             ))}
           </div>
         )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-before">
-          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.before.map((entry, i) => <span key={i} className={entry.hl !== undefined && prefs.highlights ? cn('rt-rsvp-hl', `rt-rsvp-hl-${entry.hl}`) : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         {countdownValue !== null ? (
           <div
@@ -347,7 +352,7 @@ export function SpeedReader({
             data-source-index={index}
             data-piece={currentPieceIndex}
             data-scale={words[index]?.math ? formulaScale : (entry?.scale ?? 1)}
-            data-hl={words[index]?.hl && prefs.highlights || undefined}
+            data-hl={prefs.highlights && words[index]?.hl !== undefined ? words[index].hl : undefined}
             data-math={words[index]?.math ? true : undefined}
             data-kind={full ? 'fine' : 'normale'}
             aria-live="off"
@@ -356,7 +361,7 @@ export function SpeedReader({
           </div>
         )}
         <div className="min-h-[1.5em] max-w-[92%] text-center text-heading leading-normal text-muted-foreground max-md:text-body" data-testid="speed-reader-after">
-          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl && prefs.highlights ? 'rt-rsvp-hl' : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
+          {playing ? '' : around.after.map((entry, i) => <span key={i} className={entry.hl !== undefined && prefs.highlights ? cn('rt-rsvp-hl', `rt-rsvp-hl-${entry.hl}`) : undefined}>{entry.math ? <span className="rt-rsvp-math-context" dangerouslySetInnerHTML={{ __html: entry.math.html }} /> : entry.text}{' '}</span>)}
         </div>
         {!words.length && <p className="text-body text-muted-foreground">Questa unità non ha testo da leggere.</p>}
       </div>
@@ -431,9 +436,31 @@ export function SpeedReader({
         </div>
       </div>
       {settings && (
-        <SettingsPanel anchor={settingsButton} phone={phone} prefs={prefs} update={update} onDone={closeSettings}
-          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }} onPitch={(pitch) => sound.click(false, pitch, prefs.clickSound)} />
+        <SettingsPanel
+          anchor={settingsButton}
+          phone={phone}
+          prefs={prefs}
+          update={update}
+          onDone={closeSettings}
+          onPreviewNoise={(kind, volume) => { if (!kind) sound.stopNoise(); else if (!playing) sound.preview(kind, volume) }}
+          onPitch={(pitch) => sound.click(false, pitch, prefs.clickSound)}
+          hasNonYellowHighlight={words.some((w) => w.hl !== undefined && w.hl !== 0)}
+          onIrlenWarn={() => setShowIrlenWarning(true)}
+        />
       )}
+      <IrlenWarningModal
+        open={showIrlenWarning}
+        onClose={() => setShowIrlenWarning(false)}
+        onDismiss={(dontShowAgain) => {
+          if (dontShowAgain) {
+            setPrefs((old) => {
+              const next = { ...old, irlenHighlightWarning: false }
+              save(next)
+              return next
+            })
+          }
+        }}
+      />
     </div>
   )
 }
@@ -552,7 +579,7 @@ function Row({ children }: { children: ReactNode }) {
   return <div className="grid gap-[7px] border-b border-border px-3.5 py-2.5 last:border-b-0">{children}</div>
 }
 
-function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, onPitch }: {
+function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, onPitch, hasNonYellowHighlight, onIrlenWarn }: {
   anchor: RefObject<HTMLElement | null>
   phone: boolean
   prefs: RsvpPreference
@@ -560,6 +587,8 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
   onDone: () => void
   onPreviewNoise: (kind: RsvpPreference['noise'], volume: number) => void
   onPitch: (pitch: number) => void
+  hasNonYellowHighlight?: boolean
+  onIrlenWarn?: () => void
 }) {
   const ref = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -605,7 +634,12 @@ function SettingsPanel({ anchor, phone, prefs, update, onDone, onPreviewNoise, o
         </div>
       </div></Row>
       <Row><Toggle label="Font per dislessia" checked={prefs.dyslexic} onChange={(dyslexic) => update({ dyslexic })} /></Row>
-      <Row><Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => update({ irlen: on ? 'pesca' : null })} />
+      <Row><Toggle label="Modalità Irlen" checked={prefs.irlen !== null} onChange={(on) => {
+        if (on && prefs.irlenHighlightWarning && hasNonYellowHighlight) {
+          onIrlenWarn?.()
+        }
+        update({ irlen: on ? 'pesca' : null })
+      }} />
         {prefs.irlen && <Segments label="Sfondo" value={prefs.irlen} options={TINTS} onChange={(irlen) => update({ irlen })} />}
       </Row>
       <Row><Toggle label="Mostra le evidenziazioni" checked={prefs.highlights} onChange={highlights => update({ highlights })} /></Row>

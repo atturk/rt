@@ -5,9 +5,9 @@
 import type { RsvpPreference } from '@/lib/studyPrefs'
 
 export type Formula = { html: string; tex: string; complex: boolean }
-export type Word = { text: string; para: number; math?: Formula; hl?: boolean; lastPiece?: boolean }
+export type Word = { text: string; para: number; math?: Formula; hl?: number; lastPiece?: boolean }
 /** Pezzo del Contesto: una parola letta (index) o un elemento saltato (formula, immagine, tabella). */
-export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: boolean }
+export type ContextPiece = { text: string; index: number | null; math?: Formula; hl?: number }
 
 const SENTENCE_END = /[.!?…]["'»”’)\]]*$/
 const SOFT_END = /[,;:]["'»”’)\]]*$/
@@ -57,7 +57,7 @@ export function wordDelay(word: string | Word, prefs: Pick<RsvpPreference, 'wpm'
     if (count > 8) ms *= 1 + (count - 8) * 0.06
   }
   if (entry.lastPiece !== false && isFullStop(entry.text, prefs.comma)) ms += prefs.pauseMs
-  if (entry.hl && prefs.slowHighlights) ms *= 1.3
+  if (entry.hl !== undefined && prefs.slowHighlights) ms *= 1.3
   if (ramp > 0) ms *= 1 + ramp * 0.12
   return ms
 }
@@ -204,20 +204,30 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     acceptNode: (node) => node.nodeType === Node.ELEMENT_NODE && (node as Element).matches(SKIP)
       ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
   })
+  const highlightColorOf = (el: Element | null): number | undefined => {
+    if (!el) return undefined
+    const target = el.closest('.rt-hl, .rt-hl-math')
+    if (!target) return undefined
+    for (const cls of Array.from(target.classList)) {
+      const match = /^rt-hl-(\d+)$/.exec(cls)
+      if (match) return Number(match[1])
+    }
+    return undefined
+  }
   // Gli elementi saltati non si visitano: restano nel Contesto come segnaposto, al loro posto.
   const marks: { node: Node; label: string }[] = []
   root.querySelectorAll(SKIP).forEach((el) => { if (!el.matches('.rt-math-src') && !el.parentElement?.closest(SKIP)) marks.push({ node: el, label: skipLabel(el) }) })
   const emitMark = (mark: { node: Node; label: string }) => {
     const para = paraOf(mark.node)
     const el = mark.node as Element
-    const hl = !!el.closest('.rt-hl, .rt-hl-math')
+    const hl = highlightColorOf(el)
     if (el.matches('.katex, .katex-display, math')) {
       const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? el.getAttribute('aria-label') ?? el.textContent ?? ''
       const rendered = el.cloneNode(true) as Element
       rendered.classList.remove('rt-math-raw')
       const math = { html: rendered.outerHTML, tex, complex: formulaMetrics(tex).complex }
-      paragraphs[para].push({ text: tex, index: words.length, math, ...(hl ? { hl: true } : {}) })
-      words.push({ text: tex, para, math, ...(hl ? { hl: true } : {}) })
+      paragraphs[para].push({ text: tex, index: words.length, math, ...(hl !== undefined ? { hl } : {}) })
+      words.push({ text: tex, para, math, ...(hl !== undefined ? { hl } : {}) })
     } else paragraphs[para].push({ text: mark.label, index: null })
   }
   let next = 0
@@ -232,7 +242,7 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     if (node.nodeType !== Node.TEXT_NODE) continue
     const before = next
     flushMarksBefore(node)
-    const hl = !!node.parentElement?.closest('.rt-hl')
+    const hl = highlightColorOf(node.parentElement)
     const text = node.textContent ?? ''
     const para = paraOf(node)
     const parts = splitWords(text)
@@ -245,12 +255,12 @@ export function readUnitWords(root: Element): { words: Word[]; paragraphs: Conte
     if (!last?.math && glue && before === next && last?.para === para && parts.length && !/^\s/.test(text)) {
       last.text += parts.shift()
       const piece = paragraphs[para].findLast((p) => p.index === words.length - 1)
-      if (hl) last.hl = true
-      if (piece) { piece.text = last.text; if (last.hl) piece.hl = true }
+      if (hl !== undefined) last.hl = hl
+      if (piece) { piece.text = last.text; if (last.hl !== undefined) piece.hl = last.hl }
     }
     for (const word of parts) {
-      paragraphs[para].push({ text: word, index: words.length, ...(hl ? { hl: true } : {}) })
-      words.push({ text: word, para, ...(hl ? { hl: true } : {}) })
+      paragraphs[para].push({ text: word, index: words.length, ...(hl !== undefined ? { hl } : {}) })
+      words.push({ text: word, para, ...(hl !== undefined ? { hl } : {}) })
     }
     if (text) glue = !!text.trim() && !/\s$/.test(text)
   }
