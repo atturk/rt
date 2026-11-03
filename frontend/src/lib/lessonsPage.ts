@@ -363,12 +363,13 @@ export function filterMissingLessons(
     const match = missingData.subjects.find(
       (s) => (s.materia ?? '').trim().toUpperCase() === normKey.toUpperCase(),
     )
-    return match?.missing ?? []
+    const materia = match?.materia ?? ''
+    return (match?.missing ?? []).map((m) => ({ ...m, materia: m.materia || materia }))
   }
 
   // Le materie arrivano una dopo l'altra: fuori dal raggruppamento per materia si torna all'ordine del calendario.
   const allItems = missingData.subjects
-    .flatMap((s) => s.missing ?? [])
+    .flatMap((s) => (s.missing ?? []).map((m) => ({ ...m, materia: m.materia || s.materia })))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
 
   switch (grouping) {
