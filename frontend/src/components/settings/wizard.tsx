@@ -13,6 +13,8 @@ import { SettingsSelect as Select } from './common'
 import { cn } from '@/lib/utils'
 import { Field } from './common'
 import { ModelTest, NewConnectionForm, PhaseRows } from './models'
+import { CloudPanel } from './cloud'
+import { useCloudStatus } from '@/api/cloud'
 
 /** Configurazione guidata del primo avvio (RT4-F5): ogni passo salva subito sul backend e
  * il passo corrente sta nell'URL, così una ricarica riprende da dove si era. */
@@ -95,12 +97,7 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                 </details>
               </>
             ) : (
-              <>
-                <p className="text-body text-muted-foreground">
-                  Una connessione è un provider LLM (OpenRouter, Google AI Studio, DeepSeek o un server compatibile) con la tua chiave API.
-                </p>
-                <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
-              </>
+              <ConnectionChoice onByok={() => go(2)} onCloud={() => go(3)} />
             )}
           </div>
         )}
@@ -129,6 +126,39 @@ export function SetupWizard({ settings }: { settings: Settings }) {
         )}
       </Card>
     </section>
+  )
+}
+
+/** Primo avvio senza connessioni: modalità facilitata (abbonamento RT Cloud, niente chiavi né
+ * modelli) oppure BYOK con la propria chiave. Senza RT Cloud pubblicato resta solo il BYOK. */
+function ConnectionChoice({ onByok, onCloud }: { onByok: () => void; onCloud: () => void }) {
+  const cloud = useCloudStatus()
+  const [mode, setMode] = useState<'cloud' | 'byok' | null>(null)
+  const byok = (
+    <>
+      <p className="text-body text-muted-foreground">
+        Una connessione è un provider LLM (OpenRouter, Google AI Studio, DeepSeek o un server compatibile) con la tua chiave API.
+      </p>
+      <NewConnectionForm onCreated={onByok} submitLabel="Crea e continua" />
+    </>
+  )
+  if (!cloud.data?.available) return byok
+  return (
+    <div className="flex flex-col gap-3">
+      <fieldset className="flex flex-col gap-2">
+        <legend className="sr-only">Come usare l'IA</legend>
+        <label className="flex items-start gap-2 text-body">
+          <input type="radio" name="wizard-ai-mode" className="mt-1 size-4 accent-current" checked={mode === 'cloud'} onChange={() => setMode('cloud')} />
+          <span><strong>Facilitata</strong>: un abbonamento mensile, niente chiavi API né modelli da scegliere.</span>
+        </label>
+        <label className="flex items-start gap-2 text-body">
+          <input type="radio" name="wizard-ai-mode" className="mt-1 size-4 accent-current" checked={mode === 'byok'} onChange={() => setMode('byok')} />
+          <span><strong>Con la mia chiave</strong>: usi il tuo account OpenRouter o di un altro provider e scegli i modelli.</span>
+        </label>
+      </fieldset>
+      {mode === 'cloud' && <CloudPanel onSynced={onCloud} />}
+      {mode === 'byok' && byok}
+    </div>
   )
 }
 
