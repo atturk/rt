@@ -225,7 +225,7 @@ def zip_name(lesson_dir: str, scope: str = "all") -> str:
     base = os.path.basename(os.path.normpath(lesson_dir))
     if scope == "sources":
         return f"{base} - fonti.zip"
-    return f"{base}{PREVIEW_SUFFIX if is_preview(lesson_dir) else ''}.zip"
+    return f"{base}{PREVIEW_SUFFIX if is_preview(lesson_dir) else ''}.rt"
 
 
 def _write_source(out, src: Source) -> None:

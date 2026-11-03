@@ -149,7 +149,7 @@ def test_group_export_imports_each_lesson_and_distinguishes_duplicates(api_clien
     os.rename(second, second + "-outside")
     job = _run(api_client, worker, _post(api_client, ("Lezioni selezionate.zip", payload)))
     results = job["result"]["results"]
-    assert [r["file"] for r in results] == [os.path.basename(first) + ".zip", "altra lezione.zip", "danneggiata.zip"]
+    assert [r["file"] for r in results] == [os.path.basename(first) + ".rt", "altra lezione.rt", "danneggiata.zip"]
     assert [r["status"] for r in results] == ["conflict", "imported", "rejected"]
     assert results[0]["code"] == "lesson_already_present" and results[0]["member"] == results[0]["file"]
     assert results[0]["archive"] == "Lezioni selezionate.zip"  # per rimandare il gruppo con la scelta

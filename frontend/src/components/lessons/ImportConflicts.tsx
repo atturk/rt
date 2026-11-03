@@ -33,7 +33,7 @@ async function downloadLessonCopy(lessonId: number, fallbackName: string) {
   const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
   const link = document.createElement('a')
   link.href = URL.createObjectURL(await response.blob())
-  link.download = encoded ? decodeURIComponent(encoded) : `${fallbackName}.zip`
+  link.download = encoded ? decodeURIComponent(encoded) : `${fallbackName}.rt`
   link.click()
   URL.revokeObjectURL(link.href)
 }

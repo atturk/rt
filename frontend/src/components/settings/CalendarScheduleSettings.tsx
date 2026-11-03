@@ -1,5 +1,6 @@
+import { useContext, useEffect, useRef, useState } from 'react'
+import { UNSAFE_LocationContext } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
 import { AlertTriangle, Download, Upload } from 'lucide-react'
 import { calendarKeys, calendarTransferApi } from '@/api/calendar'
 import { subjectsKeys } from '@/api/subjects'
@@ -12,11 +13,21 @@ import { Modal } from '@/components/ui/modal'
 
 export function CalendarScheduleSettings({ onError }: { onError: (error: string | null) => void }) {
   const input = useRef<HTMLInputElement>(null)
-  const [file, setFile] = useState<{ name: string; data: Record<string, unknown> } | null>(null)
+  const locationContext = useContext(UNSAFE_LocationContext)
+  const location = locationContext?.location
+  const initialFile = (location?.state as { importCalendarFile?: { name: string; data: Record<string, unknown> } } | null)?.importCalendarFile ?? null
+  const [file, setFile] = useState<{ name: string; data: Record<string, unknown> } | null>(initialFile)
   const [period, setPeriod] = useState(false)
-  const [from, setFrom] = useState(''), [to, setTo] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [exporting, setExporting] = useState(false)
   const client = useQueryClient()
+
+  useEffect(() => {
+    if (initialFile) {
+      window.history.replaceState({}, '')
+    }
+  }, [initialFile])
   const valid = !period || !!from && !!to && from <= to
   const preview = useQuery({ queryKey: ['calendar-import-preview', file?.data, period, from, to],
     queryFn: () => calendarTransferApi.import(file!.data, true, period ? from : undefined, period ? to : undefined),

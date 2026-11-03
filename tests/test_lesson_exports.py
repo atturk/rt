@@ -54,7 +54,7 @@ def test_export_job_progress_download_and_compatibility(api_client, workspace, r
     assert download.status_code == 200 and "Oggi%200410" in download.headers["content-disposition"]
     with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
         assert len(archive.namelist()) == 2
-        assert all(n.endswith(".md" if fmt == "markdown" else ".zip") for n in archive.namelist())
+        assert all(n.endswith(".md" if fmt == "markdown" else (".rt", ".zip")) for n in archive.namelist())
         if fmt == "zip":
             with zipfile.ZipFile(io.BytesIO(archive.read(archive.namelist()[0]))) as inner:
                 assert any(n.endswith("/rt-export.json") for n in inner.namelist())

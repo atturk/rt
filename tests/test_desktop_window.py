@@ -634,7 +634,7 @@ def test_desktop_api_salva_copia_backup_starts_stream(data, monkeypatch, webview
     assert stream.call_count == 1
     args, kwargs = stream.call_args
     assert kwargs.get("tipo") == "copia"
-    assert "/chiavetta/copia.zip" in args[1]
+    assert "/chiavetta/copia.rtdb" in args[1]
 
 
 def test_desktop_api_apri_aggiornamento_creates_single_window(webview):

@@ -30,6 +30,9 @@ ACCEPTED_EXTENSIONS = {
     ".jpeg",
     ".webp",
     ".zip",
+    ".rt",
+    ".rtdb",
+    ".rtcal",
 }
 
 TOKEN_MAX_AGE_SECONDS = 10 * 60  # 10 minuti

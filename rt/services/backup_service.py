@@ -253,8 +253,8 @@ def export_backup(snapshot: str, target_zip: str,
         raise BackupError(f"Backup incompleto: {where} (es. {absent[0]}).")
 
     target_zip = os.path.abspath(os.path.expanduser(target_zip))
-    if not target_zip.lower().endswith(".zip"):
-        target_zip += ".zip"
+    if not (target_zip.lower().endswith(".rtdb") or target_zip.lower().endswith(".zip")):
+        target_zip += ".rtdb"
     os.makedirs(os.path.dirname(target_zip), exist_ok=True)
     part_file = target_zip + ".part"
 
@@ -374,9 +374,9 @@ def list_backups(dest: Optional[str] = None) -> List[Dict[str, object]]:
 # ---------------------------------------------------------------- ripristino
 
 def resolve_snapshot(path: str) -> str:
-    """Accetta una cartella rt-backup-*, un file .zip o la cartella dei backup (prende il più recente)."""
+    """Accetta una cartella rt-backup-*, un file .rtdb, .zip o la cartella dei backup (prende il più recente)."""
     path = os.path.abspath(os.path.expanduser(path))
-    if os.path.isfile(path) and path.lower().endswith(".zip"):
+    if os.path.isfile(path) and (path.lower().endswith((".rtdb", ".zip")) or zipfile.is_zipfile(path)):
         return path
     if os.path.isfile(os.path.join(path, MANIFEST)):
         return path
