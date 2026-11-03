@@ -420,9 +420,16 @@ def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
         types = types[start:] + types[:start]
     if include_asked:
         from rt.pipeline.recall import load_recall_bank, on_unit
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_issues = get_pending_issues(lesson_dir)
+        pending_issue_units = {
+            iss.unit_id for iss in pending_issues
+            if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+        }
         asked_types = {question_key(q) for q in load_recall_bank(lesson_dir).questions
                        if q.status == RecallQuestionStatus.ASKED and q.id != exclude_id
-                       and (unit_id is None or on_unit(q, unit_id))}
+                       and (unit_id is None or on_unit(q, unit_id))
+                       and not pending_issue_units.intersection(q.unit_ids)}
         types.sort(key=lambda t: t not in asked_types)
     question = None
     for candidate in types:

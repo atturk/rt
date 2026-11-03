@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
+import { useIssues } from '@/api/hooks'
 import { useJobs } from '@/api/jobs'
 import { useRelevance } from '@/api/relevance'
 import {
@@ -140,6 +141,14 @@ export function QuestionsPanel({
   const selectedIds = new Set((recallUnits.data?.units ?? []).filter(u => u.selected).map(u => u.unit_id))
   const advice = mostSuggested((study?.units ?? []).filter(u => selectedIds.has(u.id)), registry)
 
+  const issuesQuery = useIssues(id, Boolean(id))
+  const pendingUnitIds = useMemo(() => new Set(
+    (issuesQuery.data?.items ?? [])
+      .filter(item => !item.decision || item.needs_reconfirmation)
+      .map(item => String((item.issue as { unit_id?: string })?.unit_id || ''))
+      .filter(Boolean)
+  ), [issuesQuery.data])
+
   const [unitModalOpen, setUnitModalOpen] = useState(false)
 
   // Filtro tipo (solo vista normale)
@@ -179,11 +188,12 @@ export function QuestionsPanel({
       if (q.status !== 'discarded') {
         const key = registry.some(t => t.id === questionTypeId(q)) ? questionTypeId(q) : "_deleted"
         byType[key] = (byType[key] ?? 0) + 1
-        if (q.status === 'pending' || q.status === 'asked') daPorre++
+        const inPendingUnit = q.unit_ids.some(u => pendingUnitIds.has(u))
+        if ((q.status === 'pending' || q.status === 'asked') && !inPendingUnit) daPorre++
       }
     }
     return { byType, daPorre }
-  }, [questionsList, registry])
+  }, [questionsList, registry, pendingUnitIds])
 
   // Domande filtrate
   const filteredQuestions = useMemo(() => {
@@ -507,8 +517,15 @@ export function QuestionsPanel({
               <li key={q.id} className="flex items-start gap-2 py-2.5 first:pt-1">
                 <div className="min-w-0 flex-1">
                   {!registry.some(t => t.id === questionTypeId(q)) && (index === 0 || registry.some(t => t.id === questionTypeId(filteredQuestions[index - 1]))) && <p className="mb-2 text-body font-semibold">Tipo eliminato</p>}
-                  <p className="text-meta text-muted-foreground">
-                    {meta}
+                  <p className="text-meta text-muted-foreground flex items-center gap-1.5">
+                    {q.unit_ids.some(u => pendingUnitIds.has(u)) && (
+                      <span
+                        data-testid="unit-pending-marker"
+                        title="Punto da verificare"
+                        className="size-1.5 shrink-0 rounded-full bg-amber-500 ring-1 ring-background"
+                      />
+                    )}
+                    <span>{meta}</span>
                   </p>
                   <p className="mt-0.5 text-body flex items-start gap-1.5">
                     <MathText text={q.question_text} />
