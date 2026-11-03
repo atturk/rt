@@ -208,17 +208,23 @@ function renderInText(anchor?: { quote?: string; prefix?: string; suffix?: strin
   }
   const rawPrefix = anchor.prefix ?? ''
   const rawSuffix = anchor.suffix ?? ''
-  const p = rawPrefix.slice(-80)
-  const s = rawSuffix.slice(0, 80)
-  const prefixText = rawPrefix.length > 0 ? (rawPrefix.length > 80 || !p.startsWith('…') ? `…${p}` : p) : ''
-  const suffixText = rawSuffix.length > 0 ? (rawSuffix.length > 80 || !s.endsWith('…') ? `${s}…` : s) : ''
+  // Il taglio a 80 caratteri non deve spezzare una formula $...$: si allarga fino al suo confine.
+  const odd = (text: string) => (text.match(/(?<!\\)\$/g)?.length ?? 0) % 2 === 1
+  let cut = Math.max(0, rawPrefix.length - 80)
+  while (cut > 0 && odd(rawPrefix.slice(cut))) cut = rawPrefix.lastIndexOf('$', cut - 1)
+  let end = Math.min(rawSuffix.length, 80)
+  while (end < rawSuffix.length && odd(rawSuffix.slice(0, end))) end = rawSuffix.indexOf('$', end) + 1 || rawSuffix.length
+  const p = rawPrefix.slice(Math.max(0, cut))
+  const s = rawSuffix.slice(0, end)
+  const prefixText = rawPrefix.length > 0 ? (p.length < rawPrefix.length || !p.startsWith('…') ? `…${p}` : p) : ''
+  const suffixText = rawSuffix.length > 0 ? (s.length < rawSuffix.length || !s.endsWith('…') ? `${s}…` : s) : ''
   return (
     <span>
-      {prefixText}
+      <MathText text={prefixText} />
       <mark className="rounded-sm bg-warning/30 px-0.5 font-medium text-foreground">
         <MathText text={anchor.quote} />
       </mark>
-      {suffixText}
+      <MathText text={suffixText} />
     </span>
   )
 }
