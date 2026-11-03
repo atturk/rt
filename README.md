@@ -27,3 +27,10 @@ Oltre a rielaborare le lezioni, RT offre diverse feature tra cui
 RT offre diversi vantaggi rispetto a una rielaborazione "one shot" da parte di un LLM, tra cui
 1. il motore di trascrizione associa a ogni singola parola un timestamp e un punteggio di confidence (quanto è sicuro il modello che si stata detta quella parola)
 2. 
+
+## Licenza
+Copyright (C) 2026 Attilio Turco
+
+RT è software libero: puoi ridistribuirlo e/o modificarlo secondo i termini della [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`). Se modifichi RT e lo offri ad altri come servizio in rete, devi rendere disponibile il codice sorgente delle tue modifiche alle stesse condizioni.
+
+Il nome e il logo di RT non sono coperti dalla licenza del codice. Per usi non compatibili con la AGPL (per esempio integrare RT in un prodotto closed source) puoi chiedere una licenza commerciale scrivendo a [@atturk](https://github.com/atturk).
