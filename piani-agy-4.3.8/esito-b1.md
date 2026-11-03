@@ -1,0 +1,4 @@
+1. Prima la selezione, poi lo strumento: fatta, la selezione esistente viene applicata immediatamente quando si preme E/G/V/C o si clicca lo strumento, senza lasciare lo strumento attivo, con salvataggio del range su pointerdown.
+2. Colori delle evidenziazioni nella lettura veloce e avviso Irlen: fatta, hl numerico 0..4 con classi di colore corrispondenti in SpeedReader, e modale di avviso Irlen con opzione "Non mostrare più" persistita in studyPrefs.
+3. Lettura veloce dalla parola selezionata: fatta, readUnitWords memorizza nodo e offset di inizio parola, SpeedReader accetta startAt e si posiziona sulla parola selezionata.
+4. Stato dell'unità accanto al titolo, in lettura veloce e in zen: fatta, IconButton con icona e classe di STUDY_ICONS, tooltip «Stato: <etichetta> · S», aria-label e cambio stato su clic o tasto S sia in lettura veloce che in zen.
