@@ -20,6 +20,7 @@ import { CalendarSettingsSection } from '@/components/settings/calendar'
 import { SubjectsSettingsSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
+import { CloudSection } from '@/components/settings/cloud'
 import { PageBody, PageHeader } from '@/components/shell/PageHeader'
 import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
@@ -102,7 +103,7 @@ export function ProcessingSettingsPage() {
   return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><SourceDefaultsSection /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
 }
 export function ModelsSettingsPage() {
-  return page(s => <><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
+  return page(s => <><CloudSection /><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
     <details id="avanzate" className="py-4" open={undefined}><summary className="cursor-pointer text-body font-semibold">Avanzate</summary>
       <RoutesSection settings={s} />
       <details id="modelli-decisionali" className="py-3"><summary className="cursor-pointer text-body">Modelli decisionali</summary><ClassifierSettingsSection /><DecisionModelSection /></details>
