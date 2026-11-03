@@ -1,5 +1,20 @@
 # Novità di RT
 
+## 4.3.7b1 — 2026-11-03
+
+Beta con le correzioni dal test notturno del frontend 4.3.6, molte per l'iPhone.
+
+### Correzioni
+
+- **Verifica e Studio**: la riparazione del LaTeX non rompe più le citazioni delle segnalazioni salvate (regressione della 4.3.6, che poteva lasciare una lezione fuori dallo Studio). Una citazione rotta si ricalcola invece di far sparire tutte le decisioni.
+- **Lezioni fantasma**: le cartelle temporanee di un'importazione non compaiono più tra le lezioni e nelle materie.
+- **Domande in attesa della Verifica**: il ripasso salta anche le domande già fatte su unità con segnalazioni aperte; tornano quando le segnalazioni sono decise.
+- **Dopo «Solo trascrizione»** c'è un solo pulsante «Continua» per scaletta e rielaborazione, senza «fonti nuove» né avvisi di Ricostruisci.
+- **iPhone**: titolo intero e «Nuova lezione» nella pagina Lezioni, popup dello slot del calendario con tutti gli stati e la data leggibile, pannello Verifica leggibile, nomi delle fonti interi nei Dettagli.
+- **Errori leggibili**: «Connessione al modello interrotta.», «Non riesco a leggere l'audio…» al posto del testo tecnico, che resta nei Dettagli.
+- **«N lezioni mancanti»** dice di quale materia; l'aggiornamento dell'app mostra «Verifico il pacchetto…» invece di restare fermo al 99%.
+- Niente scroll orizzontale nella lezione con la finestra stretta; avviso del duplicato con titolo e data leggibili, file vuoti rifiutati subito, sigle delle materie in maiuscolo, meno errori in console.
+
 ## 4.3.6 — 2026-11-02
 
 Raccoglie le beta 4.3.6b1 e 4.3.6b2 (dettagli sotto).
