@@ -554,7 +554,7 @@ export function LightweightSession({
       />
 
       {/* Main content */}
-      <main className="flex flex-1 justify-center px-4 py-8">
+      <section className="flex flex-1 justify-center px-4 py-8">
         <div className="flex w-full max-w-(--reading-width) flex-col gap-5">
           {/* Selettore tipi (chips) */}
           <div
@@ -945,7 +945,7 @@ export function LightweightSession({
             </div>
           )}
         </div>
-      </main>
+      </section>
 
       {/* Modal Domanda Scartata (Telefono-Pollice-Giu.dc.html) */}
       <Modal

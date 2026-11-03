@@ -186,6 +186,21 @@ const repeatedNotice = (repeated: string[]) =>
     : repeated.length === 1 ? `${repeated[0]} è già nell'elenco: l'ho aggiunto una volta sola.`
       : `${repeated.join(', ')} sono già nell'elenco: li ho aggiunti una volta sola.`
 
+function formatReadableDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const months = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre']
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length === 3) {
+    const year = Number(parts[0])
+    const month = Number(parts[1])
+    const day = Number(parts[2])
+    if (month >= 1 && month <= 12 && !Number.isNaN(day) && !Number.isNaN(year)) {
+      return `${day} ${months[month - 1]} ${year}`
+    }
+  }
+  return dateStr
+}
+
 const field =
   'mt-1.5 block min-h-10 w-full rounded-md border bg-card p-2 text-body text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring'
 const labelText = 'min-w-0 flex-1 text-meta text-muted-foreground'
@@ -285,7 +300,13 @@ export function NewLessonDialog({
   const [conflict, setConflict] = useState<{ lesson_id?: number; titolo: string } | null>(() => (initialJob?.result as { details?: { lesson_id?: number; titolo: string } })?.details ?? null)
   const [audioDuplicate, setAudioDuplicate] = useState<{ lesson_id?: number; titolo: string; data: string } | null>(null)
   const [subjectConfirm, setSubjectConfirm] = useState<{ name: string; similar: string | null } | null>(null)
-  const clearConflict = () => { setConflict(null); setAudioDuplicate(null); setSubjectConfirm(null); setUploadError(null) }
+  const clearConflict = () => {
+    setConflict(null)
+    setAudioDuplicate(null)
+    setSubjectConfirm(null)
+    setUploadError(null)
+    setNotice(null)
+  }
   const [docente, setDocente] = useState(String(options?.docente ?? ''))
   const [date, setDate] = useState(() => initialDate ?? String(options?.date ?? today()))
   const [time, setTime] = useState(String(options?.ora ?? ''))
@@ -362,6 +383,11 @@ export function NewLessonDialog({
   const choose = useCallback(
     (chosen: File[]) => {
       if (busy || chosen.length === 0) return
+      const empty = chosen.find((f) => f.size === 0)
+      if (empty) {
+        setProblem(`File vuoto: ${empty.name}.`)
+        return
+      }
       const zipsFound = chosen.filter(isZip)
       if (zipsFound.length > 0) {
         if (zipsFound.length !== chosen.length) {
@@ -416,6 +442,11 @@ export function NewLessonDialog({
 
   const chooseAdditionalMaterials = (chosen: File[]) => {
     if (busy || chosen.length === 0) return
+    const empty = chosen.find((f) => f.size === 0)
+    if (empty) {
+      setProblem(`File vuoto: ${empty.name}.`)
+      return
+    }
     const { fresh, repeated } = withoutRepeated(chosen.filter(isMaterialFile), [...audioFiles, ...materialFiles])
     setMaterialFiles((prev) => [...prev, ...fresh])
     setNotice(repeatedNotice(repeated))
@@ -423,6 +454,7 @@ export function NewLessonDialog({
 
   // Togliendo la guida passa al primo documento con testo rimasto (primaryMaterialName).
   const removeMaterial = (index: number) => {
+    clearConflict()
     const name = materialFiles[index]?.name
     setMaterialFiles(materialFiles.filter((_, i) => i !== index))
     setMaterialOptions(({ [name]: _removed, ...rest }) => rest)
@@ -452,6 +484,7 @@ export function NewLessonDialog({
 
   const handleSelectSlot = (h: CalendarEventView) => {
     if (h.is_recorded || h.status === 'annullata') return
+    clearConflict()
     setSelectedKey(h.key)
     setMateria(h.materia)
     setDocente(h.docente ?? '')
@@ -760,7 +793,7 @@ export function NewLessonDialog({
             {/* Sezione Audio */}
             {audioFiles.length > 1 ? (
               <div>
-                <AudioOrder files={audioFiles} disabled={busy} onChange={setAudioFiles} />
+                <AudioOrder files={audioFiles} disabled={busy} onChange={(files) => { clearConflict(); setAudioFiles(files) }} />
                 <div className="-mt-2 mb-1 flex items-center justify-between gap-2 text-meta text-muted-foreground">
                   <span className="flex items-center gap-1.5 min-w-0 truncate">
                     <FileAudio className="size-4 shrink-0" aria-hidden />
@@ -772,12 +805,12 @@ export function NewLessonDialog({
                     </span>
                   </span>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <MergeAudioToggle merged={unisciAudio} disabled={busy} onChange={setUnisciAudio} />
+                    <MergeAudioToggle merged={unisciAudio} disabled={busy} onChange={(m) => { clearConflict(); setUnisciAudio(m) }} />
                     <IconButton
                       label="Rimuovi tutti gli audio"
                       icon={X}
                       disabled={busy}
-                      onClick={() => setAudioFiles([])}
+                      onClick={() => { clearConflict(); setAudioFiles([]) }}
                     />
                   </div>
                 </div>
@@ -793,7 +826,7 @@ export function NewLessonDialog({
                   label="Rimuovi audio"
                   icon={X}
                   disabled={busy}
-                  onClick={() => setAudioFiles([])}
+                  onClick={() => { clearConflict(); setAudioFiles([]) }}
                 />
               </div>
             ) : null}
@@ -960,12 +993,12 @@ export function NewLessonDialog({
             {/* Campi manuali */}
             <div
               className={cn(
-                'mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4',
+                'mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(200px,2fr)_minmax(130px,1.2fr)_minmax(120px,1.1fr)_minmax(90px,0.8fr)]',
                 showSlots && !allRecorded && 'hidden',
               )}
               data-testid="manual-fields"
             >
-              <label className={labelText}>
+              <label className={cn(labelText, 'col-span-2 sm:col-span-1')}>
                 Materia
                 <input
                   className={cn(field, conflict && 'border-danger')}
@@ -977,14 +1010,14 @@ export function NewLessonDialog({
                   onChange={(e) => { setMateria(e.target.value); clearConflict() }}
                 />
               </label>
-              <label className={labelText}>
+              <label className={cn(labelText, 'col-span-2 sm:col-span-1')}>
                 Docente
                 <input
                   className={field}
                   list={`${listId}-docenti`}
                   value={docente}
                   disabled={busy}
-                  onChange={(e) => setDocente(e.target.value)}
+                  onChange={(e) => { setDocente(e.target.value); clearConflict() }}
                 />
               </label>
               <label className={labelText}>
@@ -1173,7 +1206,9 @@ export function NewLessonDialog({
       >
         <div className="flex flex-col gap-4">
           <p>
-            Questa registrazione è già nella lezione «{audioDuplicate.titolo}» del {audioDuplicate.data}
+            {audioDuplicate.data
+              ? `Questa registrazione è già nella lezione «${audioDuplicate.titolo}» del ${formatReadableDate(audioDuplicate.data)}`
+              : `Questa registrazione è già nella lezione «${audioDuplicate.titolo}»`}
           </p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setAudioDuplicate(null)}>

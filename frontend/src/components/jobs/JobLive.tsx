@@ -25,7 +25,7 @@ const STREAM_LABELS: Record<StreamStatus, string> = {
   connecting: 'Collegamento agli eventi…',
   open: 'Eventi dal vivo',
   reconnecting: 'Connessione persa: riprendo dall\'ultimo evento…',
-  ended: 'Stream chiuso',
+  ended: '',
   error: 'Eventi non disponibili',
 }
 

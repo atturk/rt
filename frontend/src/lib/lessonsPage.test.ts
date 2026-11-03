@@ -117,6 +117,8 @@ describe('formati', () => {
   it('materia leggibile, durata in minuti', () => {
     expect(subjectName('FISIOLOGIA')).toBe('Fisiologia')
     expect(subjectName('Fisiologia generale')).toBe('Fisiologia generale')
+    expect(subjectName('PGSS')).toBe('PGSS')
+    expect(subjectName('QA PROVA NOTTE')).toBe('QA prova notte')
     expect(formatDuration(3120)).toBe('52 min')
     expect(formatDuration(3900)).toBe('1 h 05 min')
     expect(formatDuration(null)).toBe('—')

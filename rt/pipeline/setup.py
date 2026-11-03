@@ -699,10 +699,12 @@ def run_setup(
             from rt.core.onnx_stt import MODEL_LABEL
             model = MODEL_LABEL
 
-        if on_progress:
-            on_progress("\n[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
-                        else "\n[2/9] TRASCRIZIONE PARAKEET ONNX..." if use_onnx
-                        else "\n[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)...")
+        import logging
+        logging.getLogger(__name__).info(
+            "[2/9] TRASCRIZIONE STT CUSTOM..." if use_custom_stt
+            else "[2/9] TRASCRIZIONE PARAKEET ONNX..." if use_onnx
+            else "[2/9] MACPARAKEET TRANSCRIPTION (ASR Timecoded)..."
+        )
 
         # Se sono presenti file audio multipli, gestiamo la concatenazione deterministica con offset cumulativo
         all_segments_combined = []

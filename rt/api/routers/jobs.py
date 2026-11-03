@@ -113,16 +113,34 @@ def _check_audio_file(path: str) -> None:
         raise ApiError(422, "invalid_audio", f'"{os.path.basename(path)}" non è un file audio leggibile.')
 
 
+def _format_readable_date(d_str: str) -> str:
+    if not d_str:
+        return ""
+    months = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+    try:
+        parts = d_str.split("T")[0].split("-")
+        if len(parts) == 3:
+            year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+            if 1 <= month <= 12:
+                return f"{day} {months[month]} {year}"
+    except Exception:
+        pass
+    return d_str
+
+
 def _check_duplicate_audio(path: str, consenti_duplicato: bool) -> None:
     from rt.core.idempotency import compute_file_sha256
     from rt.services.lesson_conflicts import lesson_with_audio
     sha = compute_file_sha256(path)
     existing = lesson_with_audio(sha)
     if existing and not consenti_duplicato:
+        titolo = existing.get("titolo") or "Senza titolo"
+        data_fmt = _format_readable_date(str(existing.get("data") or ""))
+        msg = f"Questa registrazione è già nella lezione «{titolo}» del {data_fmt}" if data_fmt else f"Questa registrazione è già nella lezione «{titolo}»"
         raise ApiError(
             409,
             "audio_duplicate",
-            f"Questa registrazione è già nella lezione «{existing['titolo']}» del {existing['data']}",
+            msg,
             details=existing,
         )
 

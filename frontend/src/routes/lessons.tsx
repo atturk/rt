@@ -354,7 +354,7 @@ export function LessonPage() {
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const outline = useOutline(id, {
-    enabled: lesson.data?.phases?.outline !== 'MISSING',
+    enabled: !!lesson.data?.phases?.outline && lesson.data.phases.outline !== 'MISSING',
   })
   const jobs = useJobs({ lesson_id: id, limit: 20 })
   const latestJob = jobs.data?.[0]

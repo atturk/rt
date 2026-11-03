@@ -77,8 +77,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const classifier = useQuery({ queryKey: ['classifier-settings'], queryFn: () => unwrap(api.GET('/api/v1/settings/classifier')), staleTime: 60_000 })
   const decisionReader = classifier.data?.images_reader === 'decision' && (classifier.data.jobs?.images?.mode ?? 'manual') !== 'off'
   const lessonQuery = useLesson(id)
-  const hasOutline = lessonQuery.data?.phases?.outline !== 'MISSING'
-  const hasRewrite = lessonQuery.data?.phases?.rewrite !== undefined ? lessonQuery.data.phases.rewrite === 'VALID' : true
+  const hasOutline = lessonQuery.data ? (lessonQuery.data.phases ? lessonQuery.data.phases.outline !== 'MISSING' : true) : false
+  const hasRewrite = lessonQuery.data ? (lessonQuery.data.phases ? lessonQuery.data.phases.rewrite === 'VALID' : true) : false
   const addImages = useAddImages(id)
   const outline = useOutline(id, { enabled: hasOutline })
   const docQuery = useLessonDocument(id)

@@ -211,10 +211,9 @@ def test_run_setup_on_progress_callback(tmp_path):
                 on_progress=messages_real.append
             )
 
-    assert len(messages_real) == 2
+    assert len(messages_real) == 1
     assert "✔ Cartella lezione:" in messages_real[0]
     assert "ANATOMIA" in messages_real[0]
-    assert "[2/9] MACPARAKEET TRANSCRIPTION" in messages_real[1]
 
 
 def test_run_transcribe_with_spinner_polling():

@@ -297,6 +297,14 @@ describe('Import nuovo: fonti con il layer delle opzioni', () => {
     expect(screen.getAllByText('slide.pdf')).toHaveLength(1)
     expect(screen.getByText('altre.pdf')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent("Parte1.MP3, slide.pdf sono già nell'elenco")
+    fireEvent.change(screen.getByLabelText('Materia'), { target: { value: 'PATOLOGIA' } })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('un file di 0 byte si rifiuta subito alla scelta', () => {
+    renderDialog()
+    choose(new File([], 'vuoto.mp3', { type: 'audio/mp3' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('File vuoto: vuoto.mp3.')
   })
 
   it('un audio con estensione non supportata si rifiuta anche se il tipo è audio/*', () => {
@@ -657,7 +665,7 @@ it('audio_duplicate: mostra dialogo con titolo, data e 3 pulsanti funzionanti', 
 
   // Verifica comparsa del dialogo modale con testo e i 3 pulsanti
   expect(await screen.findByRole('dialog', { name: 'Registrazione già presente' })).toBeInTheDocument()
-  expect(screen.getByText(/Questa registrazione è già nella lezione.*Immunologia 1.*del.*2026-10-18/)).toBeInTheDocument()
+  expect(screen.getByText(/Questa registrazione è già nella lezione.*Immunologia 1.*del.*18 ottobre 2026/)).toBeInTheDocument()
   const openBtn = screen.getByRole('button', { name: 'Apri la lezione' })
   const forceBtn = screen.getByRole('button', { name: 'Crea comunque' })
   const cancelBtn = screen.getByRole('button', { name: 'Annulla' })
