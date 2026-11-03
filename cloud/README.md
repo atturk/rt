@@ -24,7 +24,8 @@ Per ogni pagamento la quota AI dell'utente (in USD, l'unità di OpenRouter) è:
 quota = (totale − IVA − commissione stimata) × (1 − MARGIN) ÷ (1 + OPENROUTER_FEE) × EUR_TO_USD
 ```
 
-Con 3 € e IVA italiana viene circa 1,44 USD. A ogni rinnovo il tetto della chiave diventa
+Con IVA italiana: 3,99 € al mese danno circa 2,05 $, 17,99 € ogni 6 mesi circa 10,9 $, 29,99 € all'anno
+circa 18 $. Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo. A ogni rinnovo il tetto della chiave diventa
 **speso finora + quota del mese**: il credito non usato del mese prima non si somma (use it or lose
 it). OpenRouter addebita solo i token consumati, quindi il credito non usato non va comprato: resta
 come incasso su Polar. Quando l'abbonamento finisce davvero (`subscription.revoked`) la chiave viene
@@ -58,7 +59,7 @@ pagamenti finti con la carta `4242 4242 4242 4242`, chiavi OpenRouter vere ma co
    keys). Lascia spento *Input & Output Logging*. Facoltativo ma consigliato: crea una **Guardrail**
    con la lista dei modelli del pool e Zero Data Retention, e annota il suo id.
 2. **Polar.** Su [sandbox.polar.sh](https://sandbox.polar.sh) crea l'organizzazione, un prodotto
-   con prezzo ricorrente mensile da 3 € e annota il suo id. Crea un access token. Aggiungi un
+   per ogni piano (3,99 € mensile, 17,99 € ogni 6 mesi, 29,99 € annuale) e annota gli id. Crea un access token. Aggiungi un
    webhook verso `https://<tuo-worker>/webhooks/polar` con gli eventi `order.paid` e
    `subscription.*`, e annota il segreto.
 3. **Resend.** Verifica un dominio (o usa quello di prova) e crea una API key.

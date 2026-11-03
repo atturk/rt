@@ -40,6 +40,9 @@ class FakeCloud:
         path = url.split("cloud.test", 1)[1]
         self.calls.append((method, path, json))
         auth = (headers or {}).get("Authorization")
+        if path == "/v1/plans":
+            return FakeResponse(200, {"plans": [{"id": "mese", "label": "3,99 € al mese"},
+                                                {"id": "anno", "label": "29,99 € all'anno"}], "models": MODELS})
         if path == "/v1/auth/start":
             return FakeResponse(200, {"ok": True})
         if path == "/v1/auth/verify":
@@ -167,3 +170,9 @@ def test_checkout_portal_logout(api_client, cloud):
     data = api_client.post("/api/v1/cloud/logout").json()
     assert data["logged_in"] is False
     assert ("POST", "/v1/auth/logout", None) in cloud.calls
+
+
+def test_plans(api_client, cloud):
+    data = api_client.get("/api/v1/cloud/plans").json()
+    assert [p["id"] for p in data["plans"]] == ["mese", "anno"]
+    assert data["models"] == MODELS

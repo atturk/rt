@@ -7,10 +7,14 @@ import { settingsKeys } from './settings'
 
 export type CloudStatus = Schemas['CloudStatus']
 
-export const cloudKeys = { status: ['cloud'] as const }
+export const cloudKeys = { status: ['cloud'] as const, plans: ['cloud', 'plans'] as const }
 
 export function useCloudStatus() {
   return useQuery({ queryKey: cloudKeys.status, queryFn: () => unwrap(api.GET('/api/v1/cloud')), staleTime: 60_000 })
+}
+
+export function useCloudPlans(enabled = true) {
+  return useQuery({ queryKey: cloudKeys.plans, queryFn: () => unwrap(api.GET('/api/v1/cloud/plans')), staleTime: 300_000, enabled })
 }
 
 /** Le operazioni che cambiano account o chiave rileggono stato e impostazioni (connessioni, fasi). */

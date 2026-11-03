@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 
 import { errorMessage } from '@/api/client'
 import {
-  useCloudCheckout, useCloudLoginStart, useCloudLoginVerify, useCloudLogout, useCloudPortal, useCloudStatus,
+  useCloudCheckout, useCloudLoginStart, useCloudPlans, useCloudLoginVerify, useCloudLogout, useCloudPortal, useCloudStatus,
   useCloudSync, type CloudStatus,
 } from '@/api/cloud'
 import { Alert } from '@/components/ui/alert'
@@ -58,21 +58,37 @@ function LoginForm() {
 function Subscribe({ onSynced }: { onSynced?: () => void }) {
   const checkout = useCloudCheckout()
   const sync = useCloudSync()
+  const plans = useCloudPlans()
+  const [plan, setPlan] = useState<string | null>(null)
+  const chosen = plan ?? plans.data?.plans[0]?.id ?? null
   const url = checkout.data?.url
   const active = sync.data?.subscription && ['active', 'canceled'].includes(sync.data.subscription.status)
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body">
-        Con l'abbonamento mensile RT usa modelli già scelti, senza chiavi da configurare. Il credito si rinnova ogni mese e
-        quello non usato non si accumula.
+        Con l'abbonamento RT usa modelli già scelti, senza chiavi da configurare. Il credito arriva a ogni pagamento e vale per
+        il periodo pagato: quello non usato non si accumula.
       </p>
+      {plans.data && plans.data.plans.length > 1 && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="sr-only">Piano</legend>
+          {plans.data.plans.map((p) => (
+            <label key={p.id} className="inline-flex items-center gap-2 text-body">
+              <input type="radio" name="cloud-plan" className="size-4 accent-current" checked={chosen === p.id}
+                onChange={() => { setPlan(p.id); checkout.reset() }} />
+              {p.label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {plans.isError && <Alert tone="danger">{errorMessage(plans.error)}</Alert>}
       <div className="flex flex-wrap gap-2">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-body font-medium text-primary-foreground">
             Apri la pagina di pagamento <ExternalLink className="size-4" aria-hidden />
           </a>
         ) : (
-          <Button onClick={() => checkout.mutate(undefined)} disabled={checkout.isPending}>Abbonati</Button>
+          <Button onClick={() => checkout.mutate(chosen ?? undefined)} disabled={checkout.isPending || !chosen}>Abbonati</Button>
         )}
         {url && (
           <Button variant="outline" onClick={() => sync.mutate(true, { onSuccess: (d) => { if (d.subscription?.status === 'active') onSynced?.() } })} disabled={sync.isPending}>

@@ -54,6 +54,16 @@ class UrlOut(BaseModel):
     url: str
 
 
+class CloudPlan(BaseModel):
+    id: str
+    label: str
+
+
+class CloudPlans(BaseModel):
+    plans: list[CloudPlan]
+    models: list[str] = Field(description="Modelli usati in modalità facilitata")
+
+
 def _root() -> Path:
     from rt.core.config import _default_project_root
     return Path(_default_project_root())
@@ -73,6 +83,12 @@ def _call(fn, *args, **kwargs):
 def get_status(_actor: Actor):
     from rt.services import cloud_service
     return _call(cloud_service.status, _root())
+
+
+@router.get("/cloud/plans", response_model=CloudPlans, summary="Piani di abbonamento disponibili")
+def get_plans(_actor: Actor):
+    from rt.services import cloud_service
+    return _call(cloud_service.plans)
 
 
 @router.post("/cloud/login/start", status_code=204, summary="Manda il codice di accesso all'email")

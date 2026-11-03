@@ -3439,6 +3439,49 @@
         "title": "CloudBalance",
         "type": "object"
       },
+      "CloudPlan": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "CloudPlan",
+        "type": "object"
+      },
+      "CloudPlans": {
+        "properties": {
+          "models": {
+            "description": "Modelli usati in modalità facilitata",
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/CloudPlan"
+            },
+            "title": "Plans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plans",
+          "models"
+        ],
+        "title": "CloudPlans",
+        "type": "object"
+      },
       "CloudStatus": {
         "properties": {
           "available": {
@@ -16332,6 +16375,82 @@
           }
         ],
         "summary": "Scollega l'account (la connessione resta)",
+        "tags": [
+          "rt cloud"
+        ]
+      }
+    },
+    "/api/v1/cloud/plans": {
+      "get": {
+        "operationId": "get_plans_api_v1_cloud_plans_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudPlans"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Piani di abbonamento disponibili",
         "tags": [
           "rt cloud"
         ]

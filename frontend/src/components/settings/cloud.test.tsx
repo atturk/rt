@@ -23,8 +23,10 @@ function wrap(ui: React.ReactNode) {
   return render(<QueryClientProvider client={client}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>)
 }
 
+const plans = { plans: [{ id: 'mese', label: '3,99 € al mese' }, { id: 'anno', label: "29,99 € all'anno" }], models: ['m'] }
+
 it('accesso con email e codice', async () => {
-  vi.spyOn(api, 'GET').mockResolvedValue(ok(base))
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path.endsWith('/plans') ? plans : base))) as never)
   const post = vi.spyOn(api, 'POST').mockImplementation(((path: string) =>
     Promise.resolve(ok(path.endsWith('/verify') ? { ...base, logged_in: true, email: 'studente@example.com', subscription: { status: 'none', monthly_quota_usd: 0 } } : null))) as never)
   wrap(<CloudPanel />)
@@ -34,6 +36,9 @@ it('accesso con email e codice', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Accedi' }))
   await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/login/verify', { body: { email: 'studente@example.com', code: '123456' } }))
   expect(await screen.findByRole('button', { name: 'Abbonati' })).toBeVisible()
+  await userEvent.click(await screen.findByLabelText("29,99 € all'anno"))
+  await userEvent.click(screen.getByRole('button', { name: 'Abbonati' }))
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/checkout', { body: { plan: 'anno' } }))
 })
 
 it('con l\'abbonamento attivo mostra il credito rimasto', async () => {

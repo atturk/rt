@@ -19,7 +19,8 @@ POLAR_ENV = "sandbox"
 # URL dove l'utente torna dopo il pagamento.
 CHECKOUT_SUCCESS_URL = "https://github.com/atturk/rt"
 # Piani: id interno, prodotto Polar (abbonamento mensile), etichetta.
-PLANS = '[{"id":"base","polar_product_id":"SOSTITUIRE","label":"RT facilitato 3 €/mese"}]'
+# Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo.
+PLANS = '''[{"id":"mese","polar_product_id":"SOSTITUIRE","label":"3,99 € al mese"},{"id":"semestre","polar_product_id":"SOSTITUIRE","label":"17,99 € ogni 6 mesi"},{"id":"anno","polar_product_id":"SOSTITUIRE","label":"29,99 € all'anno"}]'''
 # Modelli che l'app mostra in modalità facilitata (il primo è il predefinito).
 MODEL_POOL = '["deepseek/deepseek-v3.2","google/gemini-2.5-flash"]'
 # Quota del progetto (0.20 = 20%) sul netto di IVA e commissioni.

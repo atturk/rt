@@ -605,6 +605,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Piani di abbonamento disponibili */
+        get: operations["get_plans_api_v1_cloud_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloud/portal": {
         parameters: {
             query?: never;
@@ -4952,6 +4969,23 @@ export interface components {
              * @default 0
              */
             usage_usd: number;
+        };
+        /** CloudPlan */
+        CloudPlan: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /** CloudPlans */
+        CloudPlans: {
+            /**
+             * Models
+             * @description Modelli usati in modalità facilitata
+             */
+            models: string[];
+            /** Plans */
+            plans: components["schemas"]["CloudPlan"][];
         };
         /** CloudStatus */
         CloudStatus: {
@@ -11635,6 +11669,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CloudStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_plans_api_v1_cloud_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudPlans"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
