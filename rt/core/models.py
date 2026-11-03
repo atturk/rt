@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any, Literal
 from enum import Enum
 from datetime import datetime
 from uuid import uuid4
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, PrivateAttr
 from rt.core.timestamp import format_timestamp
 
 
@@ -133,11 +133,27 @@ class Anchor(BaseModel):
     suffix: str = ""
     start: int = Field(ge=0)
     end: int = Field(ge=0)
+    _needs_recalc: bool = PrivateAttr(default=False)
+
+    @property
+    def needs_recalc(self) -> bool:
+        return self._needs_recalc
+
+    @needs_recalc.setter
+    def needs_recalc(self, value: bool) -> None:
+        self._needs_recalc = value
 
     @model_validator(mode="after")
     def validate_span(self) -> "Anchor":
         if self.end < self.start or self.end - self.start != len(self.quote):
-            raise ValueError("Posizioni incoerenti con la citazione")
+            import logging
+            logging.getLogger("rt.api").warning(
+                "Ancora con quote incoerente (start=%s, end=%s, len(quote)=%s): marcata da ricalcolare",
+                self.start, self.end, len(self.quote)
+            )
+            self._needs_recalc = True
+            if self.end < self.start:
+                self.end = self.start + len(self.quote)
         return self
 
 

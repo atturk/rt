@@ -5998,6 +5998,8 @@ export interface components {
             } | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Finished At */
             finished_at?: string | null;
             /** Id */
@@ -6259,6 +6261,8 @@ export interface components {
             duration_seconds?: number | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Folder Name */
             folder_name: string;
             /**
@@ -6637,6 +6641,8 @@ export interface components {
             duration_seconds?: number | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Folder Name */
             folder_name: string;
             /** Id */
@@ -8889,7 +8895,7 @@ export interface components {
             error?: string | null;
             /**
              * Phase
-             * @description idle, downloading, ready, installing o error
+             * @description idle, downloading, verifying, ready, installing o error
              */
             phase: string;
             /**

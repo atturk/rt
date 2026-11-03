@@ -75,6 +75,7 @@ class LessonSummary(BaseModel):
     pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
     media_count: int = Field(0, description="Numero di media/immagini della lezione")
     error: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class PhaseWarning(BaseModel):
@@ -395,6 +396,7 @@ class Job(BaseModel):
     payload: Dict[str, Any] = {}
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    error_message: Optional[str] = None
     progress: Optional[Dict[str, Any]] = None
     decision: Optional[Dict[str, Any]] = Field(None, description="Decisione attesa (DecisionRequired) se waiting_for_decision")
     attempts: int = 0

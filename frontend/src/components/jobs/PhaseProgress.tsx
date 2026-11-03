@@ -50,7 +50,7 @@ function headline(job: Job, phase: string | null, detail: string | null): string
     case 'waiting_for_decision':
       return `In attesa · devi ${decisionLabel(job.decision)}`
     case 'failed':
-      return `Errore${job.error ? ` · ${job.error}` : ''}`
+      return `Errore${job.error_message || job.error ? ` · ${job.error_message || job.error}` : ''}`
     case 'cancelled':
       return 'Annullato'
     case 'succeeded':

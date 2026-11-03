@@ -39,9 +39,11 @@ import { MergeAudioToggle } from '@/components/lessons/MergeAudioToggle'
 import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
+import { useIsPhone } from '@/lib/phone'
 import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
+  const phone = useIsPhone()
   const [pendingMaterials, setPendingMaterials] = useState<File[]>([])
   const [editingSource, setEditingSource] = useState<SourceItem | null>(null)
   const sourcesQuery = useSources(lessonId)
@@ -457,14 +459,33 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
               {/* Nome ed eventuali parti */}
               <div className="flex flex-col min-w-0 flex-1">
-                {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
-                {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
-                <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}</span>
+                {phone ? (
+                  <>
+                    <div className="flex items-center gap-1 min-w-0">
+                      {s.uso === 'integra' && <GitMerge className="size-3 shrink-0 text-muted-foreground" aria-label="Integra" />}
+                      <span className="min-w-0 flex-1 line-clamp-2 font-medium [overflow-wrap:anywhere]">
+                        {isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}
+                      </span>
+                    </div>
+                    {((s.tipo === 'materiale' && s.pagine?.length) || sizeText) ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {s.tipo === 'materiale' && s.pagine?.length ? <span>pag. {compressPages(s.pagine)}</span> : null}
+                        {sizeText && <span className="tabular-nums">{sizeText}</span>}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
+                    {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
+                    <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}</span>
+                  </>
+                )}
               </div>
 
               {s.tipo === 'materiale' && <LinkMenuButton icon={MoreHorizontal} label={`Opzioni ${s.nome}`} items={[{ label: 'Modifica', icon: Pencil, onSelect: () => setEditingSource(s) }]} />}
               {/* Misura */}
-              {sizeText && (
+              {!phone && sizeText && (
                 <span className="shrink-0 whitespace-nowrap text-meta text-muted-foreground tabular-nums">{sizeText}</span>
               )}
 

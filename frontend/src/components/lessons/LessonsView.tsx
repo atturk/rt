@@ -1,6 +1,6 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
+import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Plus, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { LinkMenuButton, MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
+import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
   GROUPING_LABELS, GROUP_CYCLE, groupBackground, PHONE_GROUP_LABELS, PHONE_SORT_LABELS, SORT_CYCLE, SORT_OPTIONS,
@@ -78,6 +79,7 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
   }
 
   const phone = useIsPhone()
+  const openNewLesson = useOpenNewLesson()
   const input = useRef<HTMLInputElement>(null)
   const sortSection: MenuSection = {
     label: 'Ordina',
@@ -130,24 +132,18 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
         </>
       ) : (
         <>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground md:hidden"
-            aria-label={`Raggruppa: ${PHONE_GROUP_LABELS[prefs.group]} (tocca per cambiare)`}
+          <IconButton
+            label={`Raggruppa: ${PHONE_GROUP_LABELS[prefs.group]} (tocca per cambiare)`}
+            icon={GroupIcon}
+            className="md:hidden"
             onClick={cycleGroup}
-          >
-            <GroupIcon className="size-3.5 shrink-0" aria-hidden />
-            <span>{PHONE_GROUP_LABELS[prefs.group]}</span>
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-muted px-2.5 text-meta text-foreground md:hidden"
-            aria-label={`Ordina: ${PHONE_SORT_LABELS[prefs.sort]} (tocca per cambiare)`}
+          />
+          <IconButton
+            label={`Ordina: ${PHONE_SORT_LABELS[prefs.sort]} (tocca per cambiare)`}
+            icon={ListFilter}
+            className="md:hidden"
             onClick={cycleSort}
-          >
-            <ListFilter className="size-3.5 shrink-0" aria-hidden />
-            <span>{PHONE_SORT_LABELS[prefs.sort]}</span>
-          </button>
+          />
           <IconButton
             label="Mostra la ricerca"
             icon={Search}
@@ -161,14 +157,25 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           />
         </>
       )}
-      <IconButton
+      {/* Telefono: niente «Fissa questa vista», altrimenti il titolo Lezioni non ci sta. */}
+      {!phone && <IconButton
         label={fixed ? 'Vista fissata: tocca per non fissarla più' : 'Fissa questa vista'}
         icon={Pin}
         active={fixed}
         aria-pressed={fixed}
         className={cn(fixed && '[&_svg]:fill-current')}
         onClick={onToggleFixed}
-      />
+      />}
+      {phone && (
+        <IconButton
+          label="Nuova lezione"
+          icon={Plus}
+          variant="solid"
+          className="md:hidden"
+          onClick={() => openNewLesson()}
+          aria-haspopup="dialog"
+        />
+      )}
       {/* Un solo campo "Cerca": il landmark non ha un nome suo, che lo ripeterebbe. */}
       <form
         role="search"

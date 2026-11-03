@@ -221,7 +221,7 @@ export function DetailsPanel({
   // Fasi e Job
   const phases = usePhases(l.id)
   const outline = useOutline(l.id, {
-    enabled: l.phases?.outline !== 'MISSING',
+    enabled: !!l.phases?.outline && l.phases.outline !== 'MISSING',
   })
   const draftUnits = sections.map((unit) => ({ id: unit.unit_id, title: unit.title }))
   const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
@@ -427,10 +427,10 @@ export function DetailsPanel({
       <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-body" data-testid="lesson-details">
         {/* Generati dall'IA con la scaletta: non si scrivono, ma si cercano dalla lista. */}
         {l.argomenti && (
-          <>
+          <div className="col-span-2 flex flex-col gap-1 mb-1">
             <dt className="text-meta text-muted-foreground">Argomenti</dt>
             <dd data-testid="lesson-topics">{l.argomenti}</dd>
-          </>
+          </div>
         )}
 
         <dt className="self-center text-meta text-muted-foreground">Stato</dt>

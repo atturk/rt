@@ -25,7 +25,7 @@ const STREAM_LABELS: Record<StreamStatus, string> = {
   connecting: 'Collegamento agli eventi…',
   open: 'Eventi dal vivo',
   reconnecting: 'Connessione persa: riprendo dall\'ultimo evento…',
-  ended: 'Stream chiuso',
+  ended: '',
   error: 'Eventi non disponibili',
 }
 
@@ -116,9 +116,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           )}
         </Alert>
       )}
-      {j.state === 'failed' && j.error && (
+      {j.state === 'failed' && (j.error_message || j.error) && (
         <Alert tone="danger" data-testid="job-error">
-          {j.error}
+          {j.error_message || j.error}
         </Alert>
       )}
       {j.retried_by && (

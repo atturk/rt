@@ -10,7 +10,7 @@ def test_subject_contract(api_client, rt_db, tmp_path):
     client = api_client
     assert client.post('/api/v1/subjects', json={'nome': 'Biologia'}).json() == {'nome': 'Biologia', 'lezioni': 0, 'docenti': []}
     with session_scope(rt_db) as s:
-        s.add(Lesson(path=str(tmp_path / 'lesson'), folder_name='lesson', materia='BIOLOGIA'))
+        s.add(Lesson(path=str(tmp_path / 'lesson'), folder_name='lesson', materia='BIOLOGIA', storage='db'))
         s.add(CalendarTemplateEntry(day_of_week=0, start_time='09:00', end_time='10:00', materia='biologia'))
         s.add(CalendarTemplateEntry(day_of_week=0, start_time='10:00', end_time='11:00', materia='Anatomia'))
     assert client.get('/api/v1/subjects').json() == [

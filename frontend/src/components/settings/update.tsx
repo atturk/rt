@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -6,10 +7,21 @@ import { formatBytes } from '@/lib/jobs'
 import { Section } from './common'
 import { useAppUpdate, useReloadWhenUpdated, type AppUpdate } from './useAppUpdate'
 
-const BUSY = new Set(['downloading', 'installing'])
+const BUSY = new Set(['downloading', 'verifying', 'installing'])
 
 export function UpdateSection() {
   const { data, phase, percent, update, refresh, download, install, setChannel } = useAppUpdate()
+  const [stalledAt99, setStalledAt99] = useState(false)
+
+  const isAt99 = phase === 'downloading' && percent !== null && percent >= 99
+  useEffect(() => {
+    if (!isAt99) return
+    const timer = setTimeout(() => setStalledAt99(true), 2000)
+    return () => {
+      clearTimeout(timer)
+      setStalledAt99(false)
+    }
+  }, [isAt99])
 
   useReloadWhenUpdated(phase === 'installing' ? data?.progress?.target ?? null : null)
   if (update.isError && !update.data) {
@@ -37,7 +49,13 @@ export function UpdateSection() {
           />
         </div>
 
-        {phase === 'downloading' && <p role="status">Scarico RT {data.progress.target}{percent !== null ? ` (${percent}%)` : ''}…</p>}
+        {(phase === 'verifying' || stalledAt99) && <p role="status">Verifico il pacchetto…</p>}
+        {phase === 'downloading' && !stalledAt99 && (
+          <p role="status">
+            Scarico RT {data.progress.target}
+            {percent !== null ? ` (${percent}%)` : ''}…
+          </p>
+        )}
         {phase === 'installing' && (
           <div className="space-y-2">
             <p role="status">Installo RT {data.progress.target}: RT si riavvia e questa pagina si ricarica da sola.</p>

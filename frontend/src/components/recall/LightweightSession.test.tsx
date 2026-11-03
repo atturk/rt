@@ -29,6 +29,7 @@ let mockOverviewData: { questions: Record<string, { pending: number }> } = {
     mirata: { pending: 8 },
   },
 }
+let mockRecallQuestions: { questions: any[] } = { questions: [] }
 
 vi.mock('@/components/JobProgress', () => ({
   JobProgress: ({ label, onFinished }: { label: string; onFinished: (state: string) => void }) => (
@@ -42,6 +43,9 @@ vi.mock('@/api/hooks', () => ({
   })),
   useLessons: vi.fn(() => ({
     data: [],
+  })),
+  useIssues: vi.fn(() => ({
+    data: { items: [], pending: 0 },
   })),
 }))
 
@@ -57,6 +61,9 @@ vi.mock('@/api/recall', async (importOriginal) => {
   useGenerateRecall: () => ({ mutate: mockGenerateMutate, isPending: false }),
   useRecallOverview: vi.fn(() => ({
     data: mockOverviewData,
+  })),
+  useRecallQuestions: vi.fn(() => ({
+    data: mockRecallQuestions,
   })),
   useRecallHistory: vi.fn(() => ({
     data: { answers: [] },
@@ -408,6 +415,29 @@ describe('LightweightSession', () => {
     mockNextMutateAsync.mockResolvedValueOnce(sampleQuestion)
     onSuccess()
     expect(mockNextMutateAsync).toHaveBeenCalled()
+  })
+
+  it('pool vuoto con domande in attesa di verifica: mostra avviso con link ad Apri Verifica', async () => {
+    const hooksApi = await import('@/api/hooks')
+    vi.mocked(hooksApi.useIssues).mockReturnValue({
+      data: {
+        items: [{ issue: { unit_id: '1.2' }, decision: null }],
+        pending: 1,
+      },
+    } as never)
+    mockRecallQuestions = {
+      questions: [
+        { id: 'q1', type: 'quiz', status: 'pending', unit_ids: ['1.2'], question_text: 'Test question' },
+      ],
+    }
+    mockNextMutateAsync.mockRejectedValue(new ApiError(404, 'no_questions', 'Non ci sono domande da porre.'))
+    renderSession(1)
+
+    expect(await screen.findByTestId('recall-empty')).toBeInTheDocument()
+    const note = await screen.findByTestId('pending-review-note')
+    expect(note).toHaveTextContent('1 domanda in attesa della Verifica')
+    const link = screen.getByRole('link', { name: 'Apri Verifica' })
+    expect(link).toHaveAttribute('href', '/lezioni/1?panel=verifica')
   })
 
   it('selezione su più lezioni con pool vuoto: nessun pulsante genera né ripescaggio, solo testo (4.2.2b4 F3)', async () => {

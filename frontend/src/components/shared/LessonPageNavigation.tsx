@@ -81,7 +81,7 @@ export function LessonPageNavigation({ id, panel, title, children }: { id: numbe
       {title}
       {/* Con il pannello aperto sotto xl i margini laterali si stringono: le zone di salto restano solo da xl. */}
       {!floating && (['left', 'right'] as const).map(side => <div key={side}
-        className={`absolute top-0 hidden h-full min-h-24 w-[76px] ${panel ? 'xl:[@media(hover:hover)]:block' : '[@media(hover:hover)]:block'} ${side === 'left' ? 'right-full' : 'left-full'}`}
+        className={`absolute top-0 hidden h-full min-h-24 w-[76px] ${panel ? 'xl:[@media(hover:hover)]:block' : 'md:[@media(hover:hover)]:block'} ${side === 'left' ? 'right-full' : 'left-full'}`}
         data-testid={`lesson-jump-zone-${side}`} onMouseEnter={enter} onMouseLeave={leave}>
         <div className={hover || navigation.jump?.side === side ? '' : 'invisible'}>
           <LessonJumpButtons neighbors={neighbors} side={side} onJump={jump} dim={hover} sequence={navigation.jump?.side === side ? navigation.jump.sequence : undefined} paused={navigation.paused} />

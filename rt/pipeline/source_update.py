@@ -98,12 +98,40 @@ def _transcribe(path, mock=False, ctx=None):
         return segments
 
 
+def _transcribed_source_ids(lesson_dir, sources, state):
+    ids = set()
+    has_segments = fs.isfile(lesson_path(lesson_dir, "segments.json"))
+    has_raw = fs.isfile(lesson_path(lesson_dir, "trascritto grezzo.json"))
+    if has_segments or has_raw:
+        ids.add("src_000001")
+    if has_segments:
+        try:
+            from rt.core.segments import load_segments_json
+            for seg in load_segments_json(lesson_path(lesson_dir, "segments.json")).segments:
+                if seg.source_file:
+                    ids.add(seg.source_file)
+        except Exception:
+            pass
+    for sid in state.get("sources", {}):
+        ids.add(sid)
+    return ids
+
+
 def sources_pending(lesson_dir):
     sources = load_sources(lesson_dir)
     state = _read_state(lesson_dir)
+    has_outline = fs.isfile(lesson_path(lesson_dir, "outline.json"))
+    transcribed = _transcribed_source_ids(lesson_dir, sources, state) if not has_outline else set()
     used = state.get("used")
     if used is None:
-        used = [s.id for s in sources if s.id == "src_000001"] if fs.isfile(lesson_path(lesson_dir, "segments.json")) else []
+        if not has_outline:
+            used = [s.id for s in sources if s.id in transcribed]
+        elif fs.isfile(lesson_path(lesson_dir, "segments.json")):
+            used = [s.id for s in sources if s.id == "src_000001"]
+        else:
+            used = []
+    elif not has_outline:
+        used = list(set(used) | {s.id for s in sources if s.id in transcribed})
     return any(s.id not in used for s in sources)
 
 

@@ -121,6 +121,13 @@ vi.mock('@/api/jobs', () => ({
   })),
 }))
 
+let mockIssuesItems: any[] = []
+vi.mock('@/api/hooks', () => ({
+  useIssues: vi.fn(() => ({
+    data: { items: mockIssuesItems, pending: mockIssuesItems.length },
+  })),
+}))
+
 function renderPanel(props: React.ComponentProps<typeof QuestionsPanel> = { lessonId: 1 }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -134,12 +141,14 @@ function renderPanel(props: React.ComponentProps<typeof QuestionsPanel> = { less
   )
 }
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockSuggestions = false
+  mockDeletedType = false
+  mockIssuesItems = []
+})
+
 describe('QuestionsPanel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockSuggestions = false
-    mockDeletedType = false
-  })
 
   it('mostra il riepilogo con conteggi per tipo e link al ripasso', () => {
     renderPanel()
@@ -373,4 +382,14 @@ it('mostra il pulsante Risposte con almeno una risposta e non lo mostra senza', 
   } as never)
   renderPanel()
   expect(screen.queryByRole('button', { name: 'Risposte' })).not.toBeInTheDocument()
+})
+
+it('contrassegna le domande di unità con segnalazioni aperte e le esclude dal conteggio da porre', () => {
+  mockIssuesItems = [{ issue: { unit_id: '1.2' }, decision: null }]
+  renderPanel()
+  // Normal: 3 questions pending/asked (q1 in 1.2, q2 in 1.3, q3 in 2.1). q1 in 1.2 is excluded -> 2 da porre
+  expect(screen.getByText(/2 domande da porre/i)).toBeInTheDocument()
+  const markers = screen.getAllByTestId('unit-pending-marker')
+  expect(markers).toHaveLength(1)
+  expect(markers[0]).toHaveAttribute('title', 'Punto da verificare')
 })

@@ -129,9 +129,10 @@ def lesson_with_audio(sha: str) -> dict | None:
             for s in sources:
                 if s.tipo == "audio" and s.impronta in target_shas and not s.rimossa_il:
                     info = read_info_yaml(lesson_path(path, "info.yaml"))
+                    titolo = info.get("titolo") or info.get("materia") or ""
                     return {
                         "lesson_id": lesson_id,
-                        "titolo": info.get("titolo") or os.path.basename(path),
+                        "titolo": titolo,
                         "data": str(info.get("data") or ""),
                     }
         except Exception:

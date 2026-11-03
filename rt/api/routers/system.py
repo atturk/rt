@@ -124,7 +124,7 @@ def system_info(_actor: Actor) -> SystemInfo:
 
 
 class UpdateProgress(BaseModel):
-    phase: str = Field(description="idle, downloading, ready, installing o error")
+    phase: str = Field(description="idle, downloading, verifying, ready, installing o error")
     downloaded: int = Field(0, description="Byte già scaricati")
     total: Optional[int] = Field(None, description="Dimensione dell'installer in byte")
     error: Optional[str] = None

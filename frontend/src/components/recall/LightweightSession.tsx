@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ApiError, errorMessage, type Schemas } from '@/api/client'
-import { useLesson } from '@/api/hooks'
+import { useIssues, useLesson } from '@/api/hooks'
 import {
   BASE_RECALL_TYPES,
   useRecallTypes,
@@ -29,6 +29,7 @@ import {
   useNextQuestion,
   useRecallHistory,
   useRecallOverview,
+  useRecallQuestions,
   useRegenerateQuestion,
   useRestorable,
   useRestoreQuestions,
@@ -145,6 +146,23 @@ export function LightweightSession({
   const restore = useRestoreQuestions(lessonId ?? 0)
   const askedCount = restorable.data?.asked ?? 0
   const wrongCount = restorable.data?.wrong ?? 0
+
+  const issuesQuery = useIssues(lessonId ?? 0, Boolean(lessonId && !isSelection))
+  const recallQuestionsQuery = useRecallQuestions(lessonId ?? 0, Boolean(lessonId && !isSelection))
+  const pendingUnitIds = useMemo(() => new Set(
+    (issuesQuery.data?.items ?? [])
+      .filter(item => !item.decision || item.needs_reconfirmation)
+      .map(item => String((item.issue as { unit_id?: string })?.unit_id || ''))
+      .filter(Boolean)
+  ), [issuesQuery.data])
+
+  const questionsInPendingUnits = useMemo(() => {
+    if (!lessonId || pendingUnitIds.size === 0) return 0
+    const questions = recallQuestionsQuery.data?.questions ?? []
+    return questions.filter(
+      q => (q.status === 'pending' || q.status === 'asked') && q.unit_ids.some(u => pendingUnitIds.has(u))
+    ).length
+  }, [lessonId, pendingUnitIds, recallQuestionsQuery.data])
 
   // Tipo di recall (persiste l'ultimo usato)
   const [qtype, setQtype] = useState<SessionType>(() => {
@@ -536,7 +554,7 @@ export function LightweightSession({
       />
 
       {/* Main content */}
-      <main className="flex flex-1 justify-center px-4 py-8">
+      <section className="flex flex-1 justify-center px-4 py-8">
         <div className="flex w-full max-w-(--reading-width) flex-col gap-5">
           {/* Selettore tipi (chips) */}
           <div
@@ -586,6 +604,15 @@ export function LightweightSession({
                       ? 'Non ci sono domande da porre in questa lezione. Puoi generarne di nuove o riproporre quelle già poste.'
                       : 'Non ci sono domande da porre per il tipo selezionato. Scegli un altro tipo o prova mista.'}
               </p>
+              {questionsInPendingUnits > 0 && lessonId && (
+                <p className="mt-2 text-meta text-muted-foreground" data-testid="pending-review-note">
+                  {questionsInPendingUnits === 1 ? '1 domanda in attesa della Verifica' : `${questionsInPendingUnits} domande in attesa della Verifica`}
+                  {' · '}
+                  <Link to={`/lezioni/${lessonId}?panel=verifica`} className="font-semibold text-link hover:underline">
+                    Apri Verifica
+                  </Link>
+                </p>
+              )}
               {!isSelection && lessonId && <EmptyGeneration lessonId={lessonId} unit={unit} available={unit ? unitPending === 0 : daPorreCount === 0} onGenerated={() => {
                 setQtype('mista')
                 void askNext('mista')
@@ -918,7 +945,7 @@ export function LightweightSession({
             </div>
           )}
         </div>
-      </main>
+      </section>
 
       {/* Modal Domanda Scartata (Telefono-Pollice-Giu.dc.html) */}
       <Modal

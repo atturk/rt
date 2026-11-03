@@ -354,7 +354,7 @@ export function LessonPage() {
   const lesson = useLesson(id)
   const document = useLessonDocument(id)
   const outline = useOutline(id, {
-    enabled: lesson.data?.phases?.outline !== 'MISSING',
+    enabled: !!lesson.data?.phases?.outline && lesson.data.phases.outline !== 'MISSING',
   })
   const jobs = useJobs({ lesson_id: id, limit: 20 })
   const latestJob = jobs.data?.[0]
@@ -395,7 +395,7 @@ export function LessonPage() {
         </>}>
           {failedJob && (
             <Alert tone="danger" className="mt-5 flex flex-col gap-2" data-testid="failed-lesson-banner">
-              <p className="font-medium">{failedJob.error || 'Elaborazione della lezione fallita.'}</p>
+              <p className="font-medium">{failedJob.error_message || failedJob.error || 'Elaborazione della lezione fallita.'}</p>
               <div className="flex items-center gap-2">
                 <RetryButton jobId={failedJob.id} />
                 <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>

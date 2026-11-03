@@ -12,6 +12,14 @@ const mockPrimaryMutate = vi.fn()
 const mockStartJob = vi.fn()
 let mockJob = { running: false, percent: null as number | null, message: null as string | null, error: null as string | null }
 let mockUpdateError: Error | null = null
+let mockLessonData: any = {
+  phases: { prepare: 'VALID', outline: 'VALID' },
+  unit_count: 5,
+}
+
+vi.mock('@/api/hooks', () => ({
+  useLesson: () => ({ data: mockLessonData }),
+}))
 
 vi.mock('@/api/sources', () => ({
   useSources: () => ({ data: mockSourcesData }),
@@ -38,6 +46,10 @@ describe('LessonUpdateBar', () => {
     mockSourcesData = null
     mockJob = { running: false, percent: null, message: null, error: null }
     mockUpdateError = null
+    mockLessonData = {
+      phases: { prepare: 'VALID', outline: 'VALID' },
+      unit_count: 5,
+    }
   })
 
   it('non mostra nulla se non ci sono fonti non usate né ricostruzione necessaria', () => {
@@ -309,4 +321,68 @@ it('le fonti usate tolte offrono solo Ricostruisci e Rimetti come era', () => {
   expect(screen.queryByTestId('bar-extend-btn')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: "Rimetti com'era" }))
   expect(mockReorderMutate).toHaveBeenCalledWith(mockSourcesData)
+})
+
+it('con prepare VALID e outline MISSING si vede Continua e non Estendi, e il clic chiama update con rebuild', () => {
+  mockLessonData = {
+    phases: { prepare: 'VALID', outline: 'MISSING' },
+    unit_count: null,
+  }
+  mockSourcesData = {
+    sources: [
+      {
+        id: 's1',
+        tipo: 'audio',
+        file: 'lecture.m4a',
+        impronta: 'fp1',
+        aggiunta_il: '2026-10-10',
+        ordine: 1,
+        nome: 'lecture.m4a',
+        usata: true,
+      },
+    ],
+    has_unused_sources: false,
+    can_undo: false,
+    ultimo_aggiornamento: null,
+    principale: 's1',
+    ordine_usato: ['s1'],
+    principale_usato: 's1',
+    solo_ricostruzione: false,
+  }
+  renderBar()
+
+  expect(screen.getByTestId('bar-continue-btn')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Continua/ })).toBeInTheDocument()
+  expect(screen.queryByTestId('bar-extend-btn')).toBeNull()
+  expect(screen.queryByText(/Fonti nuove non ancora usate/)).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: /Continua/ }))
+  expect(mockUpdateMutate).toHaveBeenCalledWith('rebuild', expect.anything())
+})
+
+it('avviso di ricostruisci non cita perdita di decisioni e studio se la lezione non ha unità', () => {
+  mockLessonData = {
+    phases: { prepare: 'VALID', outline: 'VALID' },
+    unit_count: 0,
+  }
+  mockSourcesData = {
+    sources: [
+      { id: 's1', tipo: 'audio', file: 'p1.mp3', impronta: 'fp1', aggiunta_il: '2026-10-10', ordine: 1, nome: 'Parte 1', usata: false },
+    ],
+    has_unused_sources: true,
+    can_undo: false,
+    ultimo_aggiornamento: null,
+    principale: 's1',
+    ordine_usato: [],
+    principale_usato: 's1',
+    solo_ricostruzione: false,
+  }
+  renderBar()
+
+  fireEvent.click(screen.getByTestId('bar-update-main-btn'))
+  fireEvent.click(screen.getByTestId('bar-rebuild-btn'))
+
+  expect(screen.getByText('Ricostruire la lezione?')).toBeInTheDocument()
+  expect(screen.queryByText(/perdono decisioni e stato di studio/)).toBeNull()
+  expect(screen.getByText(/La scaletta si rifà da zero\./)).toBeInTheDocument()
 })

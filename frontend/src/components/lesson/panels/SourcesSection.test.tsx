@@ -377,6 +377,31 @@ describe('SourcesSection (Wireframe RT-fonti-materie scena 2)', () => {
     expect(unisciBtn).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('su telefono mostra il nome della fonte con line-clamp-2 e le misure sotto', async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+
+    try {
+      renderComponent()
+      const row = await screen.findByTestId('source-row-s_mat_1')
+      const nameSpan = row.querySelector('.line-clamp-2')
+      expect(nameSpan).toBeInTheDocument()
+      expect(nameSpan).toHaveTextContent('Slide_anemie.pdf')
+      expect(row).toHaveTextContent('34 pagine')
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+
   it('mostra materiali non collocati se presenti nella sourcesView', async () => {
     vi.spyOn(api, 'GET').mockImplementation(async (path) => ({
       data: String(path).endsWith('/versions')

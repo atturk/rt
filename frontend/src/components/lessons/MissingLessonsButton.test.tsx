@@ -46,7 +46,7 @@ it('mostra date e link al blocco della settimana cliccando sul triangolo', () =>
     fireEvent.click(btn)
   })
   expect(screen.getByTestId('missing-lessons-popup')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: /Lun 12\/10/ })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: /DATA MINING · lun 12\/10 · 09:00–11:00/ })).toHaveAttribute(
     'href',
     '/calendario?data=2026-10-12&evento=tpl_7',
   )

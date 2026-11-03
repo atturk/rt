@@ -5930,6 +5930,17 @@
             ],
             "title": "Error"
           },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -6514,6 +6525,17 @@
               }
             ],
             "title": "Error"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
           },
           "folder_name": {
             "title": "Folder Name",
@@ -7159,6 +7181,17 @@
               }
             ],
             "title": "Error"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
           },
           "folder_name": {
             "title": "Folder Name",
@@ -12569,7 +12602,7 @@
             "title": "Error"
           },
           "phase": {
-            "description": "idle, downloading, ready, installing o error",
+            "description": "idle, downloading, verifying, ready, installing o error",
             "title": "Phase",
             "type": "string"
           },
