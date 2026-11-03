@@ -32,6 +32,10 @@ Accanto si aggiunge una **modalità facilitata** a pagamento:
 | 2026-11-03 | **Ricariche extra** a importo libero da **5 €** (max 200 €), margine **10%**, solo con abbonamento in corso | Chi sceglie un modello caro o usa molto non deve aspettare il rinnovo |
 | 2026-11-03 | Credito in **due tasche**: quello del periodo si usa per primo e si perde al rinnovo; le ricariche si usano dopo, non si perdono al rinnovo né alla disdetta, scadono dopo **12 mesi** | Il breakage sul credito mensile resta; la ricarica non protegge il credito del mese |
 | 2026-11-03 | Pool modelli senza fascia alta. **GPT-6 Luna** (`openai/gpt-6-luna`) consigliato e usato anche per le immagini; **DeepSeek V4.1 Flash** (`deepseek/deepseek-v4.1-flash`, legge le immagini); DeepSeek V4 Pro unico modello «intelligente»; immagini generate con Meta Muse Image (GPT Image 2 alternativa) | Modelli economici: più lezioni per euro e più margine. Slug e prezzi da verificare su OpenRouter |
+| 2026-11-03 | **Niente licenza Enterprise**: OpenRouter ha risposto che per piccoli volumi non serve | Via libera alla rivendita con i termini attuali; da ricontrollare se i volumi crescono |
+| 2026-11-03 | Tabella di marcia: **4.3.8** modalità facilitata in prova (Polar sandbox, solo email invitate); **4.3.9** pagamenti veri | Provare tutto il giro con amici prima di incassare |
+| 2026-11-03 | In prova l'accesso è **solo su invito** (`ALLOWED_EMAILS` nel Worker) | In sandbox la carta di prova è finta ma il credito OpenRouter è vero: senza invito chiunque avrebbe credito gratis |
+| 2026-11-03 | Il backend resta in `cloud/` nel repo `rt`, **nessun repo separato** | Il codice non contiene segreti (stanno nei secret di Cloudflare) e con l'AGPL il sorgente di un servizio va comunque reso disponibile |
 | 2026-11-03 | Oltre al pool consigliato, l'utente può scegliere **qualunque modello OpenRouter** da un catalogo filtrato per capacità (visione, generazione immagini) | Libertà per chi vuole spendere di più, senza mantenere una lista a mano |
 
 ## Opzioni scartate
@@ -47,14 +51,13 @@ Accanto si aggiunge una **modalità facilitata** a pagamento:
 
 ## Domande aperte
 
-1. Risposta di OpenRouter sulla rivendita / accordo Enterprise (da chiedere dopo la prova sandbox).
-2. Partita IVA e regime fiscale: da sentire con un commercialista prima dei pagamenti veri.
+1. ~~Accordo Enterprise con OpenRouter~~: non serve per piccoli volumi (risposta del 2026-11-03).
+2. Partita IVA e regime fiscale: Attilio ha un commercialista, da chiudere prima della 4.3.9.
 3. Prezzi e slug esatti dei modelli del pool: la rete delle sessioni cloud non raggiunge
    openrouter.ai, vanno verificati.
 4. Polar: verificare in sandbox il prodotto con prezzo «a scelta del cliente» e il campo `amount` del
    checkout per le ricariche.
-5. Licenza (AGPL-3.0, PR #159) e backend pubblico: valutare se `cloud/` debba restare nel repo pubblico
-   o vivere in un repo privato.
+5. ~~Repo separato per il backend~~: deciso di no, resta in `cloud/`.
 6. URL pubblico del backend: finché `DEFAULT_CLOUD_URL` è vuoto la modalità facilitata resta nascosta.
 
 ## Parti di RT toccate
@@ -99,3 +102,4 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - 2026-11-03: creato questo documento.
 - 2026-11-03: PR #158 unita in `main`. Aperta la PR delle ricariche extra (migrazione D1 `0002_topups.sql`, rotta `/v1/topup`, pulsante Ricarica).
 - 2026-11-03: PR #162 in attesa: si unisce a `main` dopo la pubblicazione della 4.3.7.
+- 2026-11-03: OpenRouter: niente Enterprise per piccoli volumi. Piano: 4.3.8 in prova su invito (sandbox), 4.3.9 soldi veri. Backend resta in `cloud/`. Aggiunto `ALLOWED_EMAILS` al Worker (PR #162).

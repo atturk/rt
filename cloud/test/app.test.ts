@@ -82,6 +82,15 @@ describe("login con codice email", () => {
     expect((await handleRequest(req("POST", "/v1/auth/start", { email: "b@example.com" }), t.deps)).status).toBe(429);
   });
 
+  it("in prova su invito accetta solo le email ammesse", async () => {
+    const t = makeDeps({ cfg: { ...makeDeps().deps.cfg, allowedEmails: ["amico@example.com"] } });
+    const no = await handleRequest(req("POST", "/v1/auth/start", { email: "estraneo@example.com" }), t.deps);
+    expect(no.status).toBe(403);
+    expect(t.mails).toHaveLength(0);
+    const ok = await handleRequest(req("POST", "/v1/auth/start", { email: "Amico@example.com" }), t.deps);
+    expect(ok.status).toBe(200);
+  });
+
   it("senza sessione le rotte private rispondono 401", async () => {
     const t = makeDeps();
     expect((await handleRequest(req("GET", "/v1/me"), t.deps)).status).toBe(401);

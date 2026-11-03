@@ -58,6 +58,9 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
     const body = await readJson(request);
     const email = String(body?.email ?? "").trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return error(400, "invalid_email", "Indirizzo email non valido");
+    if (cfg.allowedEmails && !cfg.allowedEmails.includes(email)) {
+      return error(403, "not_invited", "RT Cloud è in prova solo su invito");
+    }
     const now = deps.now();
     if ((await store.recentCodeCount(email, now - 3600)) >= MAX_CODES_PER_HOUR) {
       return error(429, "too_many_codes", "Troppi codici richiesti: riprova tra un'ora");

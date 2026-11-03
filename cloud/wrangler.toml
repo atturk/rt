@@ -44,4 +44,7 @@ OPENROUTER_FEE = "0.055"
 EUR_TO_USD = "1.05"
 # Sotto questo saldo OpenRouter (USD) arriva un avviso.
 LOW_BALANCE_USD = "5"
+# Prova su invito: solo queste email possono accedere (separate da virgole). Vuota = aperto a tutti.
+# In sandbox va SEMPRE compilata: la carta di prova è finta ma il credito OpenRouter è vero.
+ALLOWED_EMAILS = ""
 MAIL_FROM = "RT <noreply@example.com>"

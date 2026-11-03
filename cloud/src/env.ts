@@ -8,6 +8,8 @@ export interface Env {
   KEY_ENCRYPTION_SECRET: string; // base64 di 32 byte casuali
   RESEND_API_KEY: string;
   ADMIN_EMAIL?: string;
+  // variabile: email ammesse durante la prova, separate da virgole (vuota = tutti)
+  ALLOWED_EMAILS?: string;
   OPENROUTER_GUARDRAIL_ID?: string;
   // variabili
   POLAR_ENV: string;
@@ -59,6 +61,8 @@ export interface Config {
   lowBalanceUsd: number;
   mailFrom: string;
   adminEmail?: string;
+  /** Se presente, solo queste email possono accedere (prova con amici in sandbox). */
+  allowedEmails?: string[];
   guardrailId?: string;
 }
 
@@ -101,6 +105,9 @@ export function loadConfig(env: Env): Config {
     lowBalanceUsd: num(env.LOW_BALANCE_USD, "LOW_BALANCE_USD", 0, 10000),
     mailFrom: env.MAIL_FROM,
     adminEmail: env.ADMIN_EMAIL || undefined,
+    allowedEmails: env.ALLOWED_EMAILS?.trim()
+      ? env.ALLOWED_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
+      : undefined,
     guardrailId: env.OPENROUTER_GUARDRAIL_ID || undefined,
   };
 }

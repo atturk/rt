@@ -98,7 +98,8 @@ pagamenti finti con la carta `4242 4242 4242 4242`, chiavi OpenRouter vere ma co
    npx wrangler secret put OPENROUTER_GUARDRAIL_ID   # facoltativo
    openssl rand -base64 32 | npx wrangler secret put KEY_ENCRYPTION_SECRET
    ```
-   Poi in `wrangler.toml` metti l'id del prodotto Polar in `PLANS`, i modelli in `MODEL_POOL`,
+   Poi in `wrangler.toml` metti in `ALLOWED_EMAILS` le email degli amici che provano (in sandbox
+   è obbligatorio: la carta di prova è finta ma il credito OpenRouter è vero), e l'id del prodotto Polar in `PLANS`, i modelli in `MODEL_POOL`,
    il mittente in `MAIL_FROM`, e pubblica con `npm run deploy`.
 
 **Il `KEY_ENCRYPTION_SECRET` non va mai cambiato né perso**: senza, le chiavi salvate non si
