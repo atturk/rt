@@ -21,7 +21,7 @@ import requests
 from pydantic import BaseModel
 
 from rt.core.config import load_config, RouteConfig, JobRoutingConfig
-from rt.core.encoding import fix_mojibake, sanitize_object_encoding
+from rt.core.encoding import fix_mojibake, sanitize_llm_output, sanitize_object_encoding
 from rt.llm.providers import get_provider
 from rt.llm.pricing import calculate_cost
 from rt.llm.usage import cached_prompt_tokens
@@ -903,7 +903,7 @@ class LLMClient:
                                 model=model_name
                             )
 
-                        parsed_data = sanitize_object_encoding(parsed_data)
+                        parsed_data = sanitize_llm_output(parsed_data)
 
                         try:
                             validated_obj = response_model.model_validate(parsed_data)
