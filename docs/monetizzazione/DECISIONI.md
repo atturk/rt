@@ -82,7 +82,7 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - **Branch `claude/rt-4.3.x`**: la 4.3.7 parte da `main` prima della PR #158, quindi non la contiene. Il
   piano agy 4.3.7 non tocca gli stessi file; l'unico conflitto atteso è nei file generati
   (`docs/openapi.json`, `schema.d.ts`), da risolvere rigenerandoli dopo il merge.
-- Ricariche extra (prossima PR): toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
+- Ricariche extra (PR successiva alla #158): toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
   `cloud.tsx`, `api/cloud.ts` e i file generati.
 
 ## Registro
@@ -93,3 +93,4 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - 2026-11-03: pool senza fascia alta, GPT-6 Luna consigliato, DeepSeek V4.1 Flash, catalogo OpenRouter filtrato per capacità.
 - 2026-11-03: ricariche extra da 5 € con margine 10%, due tasche di credito, scadenza 12 mesi. Implementazione pronta, in arrivo in una PR dopo la #158.
 - 2026-11-03: creato questo documento.
+- 2026-11-03: PR #158 unita in `main`. Aperta la PR delle ricariche extra (migrazione D1 `0002_topups.sql`, rotta `/v1/topup`, pulsante Ricarica).
