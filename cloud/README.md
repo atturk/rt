@@ -24,7 +24,7 @@ Per ogni pagamento la quota AI dell'utente (in USD, l'unità di OpenRouter) è:
 quota = (totale − IVA − commissione stimata) × (1 − MARGIN) ÷ (1 + OPENROUTER_FEE) × EUR_TO_USD
 ```
 
-Con IVA italiana: 3,99 € al mese danno circa 2,05 $, 17,99 € ogni 6 mesi circa 10,9 $, 29,99 € all'anno
+Con IVA italiana: 3,99 € al mese danno circa 2,05 $, 17,99 € ogni 6 mesi circa 10,6 $, 29,99 € all'anno
 circa 18 $. Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo. A ogni rinnovo il tetto della chiave diventa
 **speso finora + quota del mese**: il credito non usato del mese prima non si somma (use it or lose
 it). OpenRouter addebita solo i token consumati, quindi il credito non usato non va comprato: resta
