@@ -265,6 +265,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
         "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
+        "error_message": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
         "pipeline_at": None, "media_count": 0,
     }
@@ -286,6 +287,8 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         })
     except Exception as exc:  # una lezione illeggibile non blocca l'elenco
         out["error"] = str(exc)
+        from rt.services.human_error import human_error
+        out["error_message"] = human_error(str(exc))
     return out
 
 
@@ -473,6 +476,9 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     out["has_audio"] = lesson_audio_file(lesson_dir) is not None
     out["cost"] = compute_lesson_cost(lesson_dir)
     out["actions"] = lesson_actions(lesson_dir)
+    if out.get("error") and not out.get("error_message"):
+        from rt.services.human_error import human_error
+        out["error_message"] = human_error(out["error"])
     return out
 
 

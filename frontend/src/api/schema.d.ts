@@ -5482,6 +5482,8 @@ export interface components {
             edited: boolean;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Id */
             id: string;
             /** Job Id */
@@ -5998,6 +6000,8 @@ export interface components {
             } | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Finished At */
             finished_at?: string | null;
             /** Id */
@@ -6259,6 +6263,8 @@ export interface components {
             duration_seconds?: number | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Folder Name */
             folder_name: string;
             /**
@@ -6637,6 +6643,8 @@ export interface components {
             duration_seconds?: number | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /** Folder Name */
             folder_name: string;
             /** Id */
@@ -7744,6 +7752,8 @@ export interface components {
             confidence?: number | null;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /**
              * Level
              * @description Livello: 0 nessuna domanda, 1 una, 2 più domande
@@ -8018,6 +8028,8 @@ export interface components {
         SectionLabelRow: {
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /**
              * Fresh
              * @description Classificata sul testo attuale
@@ -8710,6 +8722,8 @@ export interface components {
             effective: "didactic" | "organizational" | "no_content";
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /**
              * Label
              * @description Etichetta RT assegnata dalla mappatura del classificatore
@@ -8887,6 +8901,8 @@ export interface components {
             downloaded: number;
             /** Error */
             error?: string | null;
+            /** Error Message */
+            error_message?: string | null;
             /**
              * Phase
              * @description idle, downloading, ready, installing o error

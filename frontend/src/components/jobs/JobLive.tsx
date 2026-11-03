@@ -116,9 +116,9 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
           )}
         </Alert>
       )}
-      {j.state === 'failed' && j.error && (
+      {j.state === 'failed' && (j.error_message || j.error) && (
         <Alert tone="danger" data-testid="job-error">
-          {j.error}
+          {j.error_message || j.error}
         </Alert>
       )}
       {j.retried_by && (

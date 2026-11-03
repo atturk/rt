@@ -28,6 +28,9 @@ def job_view(info) -> Dict[str, Any]:
         data["result"] = None
     lesson_path = data.get("lesson_path")
     data["lesson_id"] = lesson_id_for_dir(lesson_path) if lesson_path and fs.isdir(lesson_path) else None
+    if data.get("error") and not data.get("error_message"):
+        from rt.services.human_error import human_error
+        data["error_message"] = human_error(data.get("error"))
     return data
 
 

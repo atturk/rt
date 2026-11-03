@@ -289,7 +289,7 @@ export function useSourcesJob(lessonId: number) {
     error: job.isError
       ? errorMessage(job.error)
       : failed
-        ? (job.data?.error ?? 'Aggiornamento non riuscito.')
+        ? (job.data?.error_message || job.data?.error || 'Aggiornamento non riuscito.')
         : null,
   }
 }
