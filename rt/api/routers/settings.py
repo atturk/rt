@@ -3,7 +3,7 @@ Nessuna risposta contiene mai il valore di un segreto: solo "impostato sì/no"."
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from rt.api.deps import Actor
@@ -766,6 +766,8 @@ class ReadonlyKeyInfo(BaseModel):
     configured: bool
     created_at: Optional[str] = None
     key_preview: Optional[str] = None
+    key: Optional[str] = None
+    base_url: Optional[str] = None
 
 
 class ReadonlyKeyCreated(BaseModel):
@@ -779,9 +781,19 @@ class ReadonlyKeyRevoked(BaseModel):
 
 
 @router.get("/settings/readonly-key", response_model=ReadonlyKeyInfo, summary="Informazioni sulla chiave di sola lettura (AP1)")
-def get_readonly_key(_actor: Actor):
+def get_readonly_key(request: Request, _actor: Actor):
     from rt.api.readonly_auth import get_readonly_key_info
-    return get_readonly_key_info()
+    from rt.api.routers.lessons import _local_port
+    info = get_readonly_key_info()
+    port = _local_port(request)
+    base_url = f"http://127.0.0.1:{port}/api/v1/readonly"
+    return ReadonlyKeyInfo(
+        configured=info["configured"],
+        created_at=info.get("created_at"),
+        key_preview=info.get("key_preview"),
+        key=info.get("key"),
+        base_url=base_url,
+    )
 
 
 @router.post("/settings/readonly-key", response_model=ReadonlyKeyCreated, summary="Crea o rigenera la chiave di sola lettura (AP1)")

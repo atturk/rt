@@ -8691,6 +8691,17 @@
       },
       "ReadonlyKeyInfo": {
         "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
           "configured": {
             "title": "Configured",
             "type": "boolean"
@@ -8705,6 +8716,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
           },
           "key_preview": {
             "anyOf": [

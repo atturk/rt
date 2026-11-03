@@ -7429,10 +7429,14 @@ export interface components {
         };
         /** ReadonlyKeyInfo */
         ReadonlyKeyInfo: {
+            /** Base Url */
+            base_url?: string | null;
             /** Configured */
             configured: boolean;
             /** Created At */
             created_at?: string | null;
+            /** Key */
+            key?: string | null;
             /** Key Preview */
             key_preview?: string | null;
         };
