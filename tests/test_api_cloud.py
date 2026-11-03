@@ -12,7 +12,7 @@ from tests.api_support import workspace_with_example_config
 
 OR_KEY = "sk-or-v1-chiave-rt-cloud-0123456789abcdef"
 TOKEN = "sessione-rt-cloud-segreta-abcdefghijklmnop"
-MODELS = ["deepseek/deepseek-v3.2", "google/gemini-2.5-flash"]
+MODELS = ["deepseek/deepseek-v4-flash", "google/gemini-3.5-flash-lite"]
 
 
 class FakeResponse:
@@ -59,6 +59,7 @@ class FakeCloud:
                                  "current_period_end": None, "monthly_quota_usd": 1.44 if active else 0},
                 "openrouter_key": OR_KEY if active else None,
                 "models": MODELS,
+                "vision_model": MODELS[1],
             })
         if path == "/v1/checkout":
             return FakeResponse(200, {"url": "https://sandbox.polar.sh/checkout/x"})
@@ -138,6 +139,8 @@ def test_active_subscription_becomes_connection_with_phases(api_client, cloud):
     phases = {p["job"]: p for p in settings["phases"]}
     for job in ("outline", "rewrite", "review", "recall"):
         assert phases[job]["connection"] == "RT Cloud" and phases[job]["model"] == MODELS[0]
+    assert phases["image_description"]["connection"] == "RT Cloud"
+    assert phases["image_description"]["model"] == MODELS[1]
     # le infografiche richiedono modelli d'immagine: restano come sono
     assert phases["enrichment_image"]["connection"] != "RT Cloud"
 

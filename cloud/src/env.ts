@@ -14,6 +14,7 @@ export interface Env {
   CHECKOUT_SUCCESS_URL: string;
   PLANS: string;
   MODEL_POOL: string;
+  VISION_MODEL?: string;
   MARGIN: string;
   PAYMENT_FEE_PERCENT: string;
   PAYMENT_FEE_FIXED_CENTS: string;
@@ -34,6 +35,7 @@ export interface Config {
   successUrl: string;
   plans: Plan[];
   modelPool: string[];
+  visionModel?: string;
   margin: number;
   paymentFeePercent: number;
   paymentFeeFixedCents: number;
@@ -66,6 +68,7 @@ export function loadConfig(env: Env): Config {
     successUrl: env.CHECKOUT_SUCCESS_URL,
     plans,
     modelPool,
+    visionModel: env.VISION_MODEL || undefined,
     margin: num(env.MARGIN, "MARGIN", 0, 0.9),
     paymentFeePercent: num(env.PAYMENT_FEE_PERCENT, "PAYMENT_FEE_PERCENT", 0, 0.5),
     paymentFeeFixedCents: num(env.PAYMENT_FEE_FIXED_CENTS, "PAYMENT_FEE_FIXED_CENTS", 0, 500),

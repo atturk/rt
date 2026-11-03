@@ -21,9 +21,11 @@ TOKEN_SECRET = "RT_CLOUD_TOKEN"
 CONNECTION_NAME = "RT Cloud"
 OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
 TIMEOUT = 15
-# La generazione di infografiche richiede modelli d'immagine: non si assegna in automatico.
-AUTO_PHASES = ("outline", "rewrite", "review", "recall", "image_description",
+# Fasi di testo, assegnate al primo modello del pool. La descrizione delle immagini va al
+# modello con visione, se il backend ne indica uno; le infografiche restano manuali.
+AUTO_PHASES = ("outline", "rewrite", "review", "recall",
                "enrichment_writer", "enrichment_visualizer")
+VISION_PHASE = "image_description"
 
 
 class CloudError(Exception):
@@ -111,7 +113,8 @@ def _connection_exists(project_root: Path) -> bool:
     return CONNECTION_NAME in connection_names(project_root)
 
 
-def _install_key(project_root: Path, key: str, models: list[str], assign_all: bool) -> None:
+def _install_key(project_root: Path, key: str, models: list[str], assign_all: bool,
+                 vision_model: Optional[str] = None) -> None:
     """Crea o aggiorna la connessione "RT Cloud" e assegna le fasi.
 
     assign_all=True (l'utente ha scelto la modalità facilitata) porta tutte le fasi testuali su
@@ -134,10 +137,13 @@ def _install_key(project_root: Path, key: str, models: list[str], assign_all: bo
     if not models:
         return
     connections = conn.list_connections(project_root)
-    for job in AUTO_PHASES:
+    targets = [(job, models[0]) for job in AUTO_PHASES]
+    if vision_model:
+        targets.append((VISION_PHASE, vision_model))
+    for job, model in targets:
         current, _ = conn.phase_selection(project_root, job, connections)
         if assign_all or current is None:
-            conn.assign_phase(project_root, job, CONNECTION_NAME, models[0])
+            conn.assign_phase(project_root, job, CONNECTION_NAME, model)
 
 
 def _connection_key(project_root: Path) -> Optional[str]:
@@ -172,7 +178,7 @@ def sync(project_root: Path, assign_all: bool = False) -> dict:
     me = _request("GET", "/v1/me", token=token)
     key = me.get("openrouter_key")
     if key:
-        _install_key(project_root, key, list(me.get("models") or []), assign_all)
+        _install_key(project_root, key, list(me.get("models") or []), assign_all, me.get("vision_model"))
     return status(project_root, me=me)
 
 

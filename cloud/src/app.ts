@@ -118,6 +118,7 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
       // Il saldo si legge direttamente da OpenRouter con questa chiave (GET /api/v1/key).
       openrouter_key: usable && user.or_key_enc ? await decryptSecret(user.or_key_enc, deps.encryptionSecret) : null,
       models: cfg.modelPool,
+      vision_model: cfg.visionModel ?? null,
     });
   }
 

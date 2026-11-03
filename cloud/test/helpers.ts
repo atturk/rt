@@ -26,7 +26,7 @@ export const testConfig: Config = {
   polarApi: "https://sandbox-api.polar.sh",
   successUrl: "https://example.com/ok",
   plans: [{ id: "base", polar_product_id: "prod_base", label: "Base" }],
-  modelPool: ["deepseek/deepseek-v3.2"],
+  modelPool: ["deepseek/deepseek-v4-flash"],
   margin: 0.2,
   paymentFeePercent: 0.05,
   paymentFeeFixedCents: 50,

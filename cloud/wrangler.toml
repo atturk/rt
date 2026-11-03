@@ -21,8 +21,10 @@ CHECKOUT_SUCCESS_URL = "https://github.com/atturk/rt"
 # Piani: id interno, prodotto Polar (abbonamento mensile), etichetta.
 # Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo.
 PLANS = '''[{"id":"mese","polar_product_id":"SOSTITUIRE","label":"3,99 € al mese"},{"id":"semestre","polar_product_id":"SOSTITUIRE","label":"17,99 € ogni 6 mesi"},{"id":"anno","polar_product_id":"SOSTITUIRE","label":"29,99 € all'anno"}]'''
-# Modelli che l'app mostra in modalità facilitata (il primo è il predefinito).
-MODEL_POOL = '["deepseek/deepseek-v3.2","google/gemini-2.5-flash"]'
+# Modelli che l'app mostra in modalità facilitata (il primo è il predefinito per le fasi di testo).
+MODEL_POOL = '["deepseek/deepseek-v4-flash","google/gemini-3.5-flash-lite"]'
+# Modello con visione per la descrizione delle immagini (deve stare anche nel pool).
+VISION_MODEL = "google/gemini-3.5-flash-lite"
 # Quota del progetto (0.20 = 20%) sul netto di IVA e commissioni.
 MARGIN = "0.20"
 # Stima commissione Polar: percentuale + fisso in centesimi.
