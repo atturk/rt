@@ -37,7 +37,7 @@ Il nome e il logo di RT non sono coperti dalla licenza del codice. Per usi non c
 
 ## Firma del codice (Code signing policy)
 
-Gli installer per Windows sono firmati gratuitamente: *Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).*
+Gli installer per Windows sono firmati gratuitamente, a partire dalla prima release dopo l’approvazione di SignPath: *Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).*
 
 - **Chi firma:** solo gli installer prodotti dal workflow `release.yml` di questo repository, a partire dal codice in `main`, vengono inviati alla firma.
 - **Ruoli:** autore, revisore e approvatore delle release è [@atturk](https://github.com/atturk). Ogni firma va approvata a mano.
