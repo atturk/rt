@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { errorMessage } from '@/api/client'
 import { Alert } from '@/components/ui/alert'
@@ -9,6 +9,18 @@ import { useAppUpdate, useReloadWhenUpdated } from './useAppUpdate'
 
 export function UpdatePopup() {
   const { data, phase, percent, refresh, download, install } = useAppUpdate()
+  const [stalledAt99, setStalledAt99] = useState(false)
+
+  const isAt99 = phase === 'downloading' && percent !== null && percent >= 99
+  useEffect(() => {
+    if (!isAt99) return
+    const timer = setTimeout(() => setStalledAt99(true), 2000)
+    return () => {
+      clearTimeout(timer)
+      setStalledAt99(false)
+    }
+  }, [isAt99])
+
   // mutate è stabile, l'oggetto della mutation no: con [refresh] il controllo ripartiva a ogni
   // render e GitHub rispondeva 429.
   const { mutate: checkNow } = refresh
@@ -28,6 +40,7 @@ export function UpdatePopup() {
   const notesUrl = data.notes_url
   const isReady = data.ready || phase === 'ready'
   const isDownloading = phase === 'downloading'
+  const isVerifying = phase === 'verifying' || (isDownloading && stalledAt99)
   const isInstalling = phase === 'installing'
   const isError = phase === 'error' || download.isError || install.isError
   const errorMessageText =
@@ -63,6 +76,13 @@ export function UpdatePopup() {
               Installo RT {data.progress.target || version}…
             </p>
             <progress className="h-2 w-full accent-primary" aria-label="Installazione" />
+          </div>
+        ) : isVerifying ? (
+          <div className="space-y-2">
+            <p role="status" className="text-xs text-muted-foreground">
+              Verifico il pacchetto…
+            </p>
+            <progress className="h-2 w-full accent-primary" aria-label="Verifica pacchetto" />
           </div>
         ) : isDownloading ? (
           <div className="space-y-2">

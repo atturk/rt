@@ -7,7 +7,7 @@ import { isAppWindow } from '@/lib/zoom'
 export type AppUpdate = Schemas['AppUpdate']
 export const updateKey = ['system', 'update'] as const
 // L'installazione (montare il .dmg, copiare RT.app) dura minuti: la pagina la segue come il download.
-const BUSY_PHASES = new Set(['downloading', 'installing'])
+const BUSY_PHASES = new Set(['downloading', 'verifying', 'installing'])
 
 export function useAppUpdate() {
   const client = useQueryClient()
