@@ -79,10 +79,14 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - **PR #158** (verso `main`): aggiunge i file sopra. Il codice condiviso toccato è poco: `rt/api/app.py`
   (una riga di registrazione del router), `rt/security/secrets.py` (un nome in `EXTRA_SECRET_NAMES`),
   `wizard.tsx` e `routes/settings.tsx`. Nessun cambiamento visibile finché RT Cloud non è pubblicato.
-- **Branch `claude/rt-4.3.x`**: la 4.3.7 parte da `main` prima della PR #158, quindi non la contiene. Il
-  piano agy 4.3.7 non tocca gli stessi file; l'unico conflitto atteso è nei file generati
-  (`docs/openapi.json`, `schema.d.ts`), da risolvere rigenerandoli dopo il merge.
-- Ricariche extra (PR successiva alla #158): toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
+- **Branch `claude/rt-4.3.x`**: la #158 è già in `main` e il workflow di release pubblica solo commit
+  che discendono da `main`, quindi la 4.3.7 la conterrà quando unirà `main`. Verificato il
+  2026-11-03 su `claude/rt-4.3.7` (9cd6c9c): il merge di `main` non ha conflitti, `docs/openapi.json`
+  e `schema.d.ts` restano coerenti, typecheck e test cloud verdi. Per l'utente non cambia nulla:
+  senza URL di RT Cloud la modalità facilitata è nascosta.
+- **Regola durante una release**: niente nuove PR della monetizzazione in `main` mentre una release
+  è in revisione; si uniscono dopo la pubblicazione, così la release non deve riunire `main` né rifare i test.
+- Ricariche extra (PR #162, da unire dopo la 4.3.7): toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
   `cloud.tsx`, `api/cloud.ts` e i file generati.
 
 ## Registro
@@ -94,3 +98,4 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - 2026-11-03: ricariche extra da 5 € con margine 10%, due tasche di credito, scadenza 12 mesi. Implementazione pronta, in arrivo in una PR dopo la #158.
 - 2026-11-03: creato questo documento.
 - 2026-11-03: PR #158 unita in `main`. Aperta la PR delle ricariche extra (migrazione D1 `0002_topups.sql`, rotta `/v1/topup`, pulsante Ricarica).
+- 2026-11-03: PR #162 in attesa: si unisce a `main` dopo la pubblicazione della 4.3.7.
