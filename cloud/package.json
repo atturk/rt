@@ -1,0 +1,22 @@
+{
+  "name": "rt-cloud",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Backend della modalità facilitata di RT: login, abbonamenti Polar e chiavi OpenRouter con tetto",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply rt-cloud --remote",
+    "db:migrate:local": "wrangler d1 migrations apply rt-cloud --local",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261102.1",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.0",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.40.0"
+  }
+}
