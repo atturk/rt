@@ -108,7 +108,7 @@ const alignedMarkers = new WeakMap<HTMLElement, number>()
 const alignFoldMarkers = ViewPlugin.fromClass(class {
   constructor(view: EditorView) { this.measure(view) }
   update(update: ViewUpdate) {
-    if (update.viewportChanged || update.docChanged) this.measure(update.view)
+    if (update.geometryChanged || update.viewportChanged || update.docChanged) this.measure(update.view)
   }
   measure(view: EditorView) {
     view.requestMeasure({

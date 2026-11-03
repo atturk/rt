@@ -352,7 +352,7 @@ test('Avviso lezioni mancanti: suggerimento al passaggio del mouse, elenco al cl
   await expect(popup).toHaveCount(0)
   await warnBtn.click()
   await expect(popup).toBeVisible()
-  await expect(popup).toContainText('Lun 12/10')
+  await expect(popup).toContainText('STUDIO · lun 12/10')
   await expect(popup).toContainText('09:00–11:00')
 
   // Cliccando fuori si chiude subito

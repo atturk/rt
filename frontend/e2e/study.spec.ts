@@ -146,6 +146,17 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
   expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
 
+  // Dalla 4.3.7 le domande di un'unità con segnalazioni aperte aspettano la Verifica: si decidono
+  // quelle della prima unità (rifiutate, così il testo non cambia) prima del ripasso.
+  type Issues = { items: { issue: { id: string; unit_id?: string }; decision: unknown; needs_reconfirmation: boolean }[] }
+  const issues = await apiGet<Issues>(page.request, `/lessons/${l.id}/issues?status=all`)
+  for (const item of issues.items.filter((i) => i.issue.unit_id === first.id && (!i.decision || i.needs_reconfirmation))) {
+    const decided = await page.request.post(`/api/v1/lessons/${l.id}/issues/${encodeURIComponent(item.issue.id)}/decision`, {
+      headers: authHeaders(), data: { decision: 'rejected' },
+    })
+    expect(decided.ok(), await decided.text()).toBeTruthy()
+  }
+
   // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N" (4.2.2b4 F2).
   await page.goto(`/studio/lezione/${l.id}`)
   const quiz = page.getByTestId('study-quiz')
