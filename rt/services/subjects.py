@@ -1,10 +1,12 @@
 """Registro materie e vista unita con lezioni e calendario."""
+import os
 from sqlalchemy import select
 
 from rt.db.engine import get_database
 from rt.db.models import Subject, SubjectTeacher, Lesson, CalendarTemplateEntry, CalendarOverride
 from rt.db.session import read_scope, session_scope
 from rt.services.errors import Conflict, Invalid, NotFound, Unavailable
+from rt.storage import fs
 
 
 def _database(db=None):
@@ -19,15 +21,27 @@ def _view(session):
     counts = {}
     for name in session.scalars(select(Subject.nome).order_by(Subject.nome)):
         names[name.casefold()] = name
-    for model in (Lesson, CalendarTemplateEntry, CalendarOverride):
+    from rt.services.lesson_service import _is_temp_path
+    for lesson in session.scalars(select(Lesson)):
+        if lesson.storage != fs.STORAGE_DB:
+            if os.path.isdir(lesson.path):
+                if not os.path.isfile(os.path.join(lesson.path, "info.yaml")):
+                    continue
+            elif not _is_temp_path(lesson.path):
+                continue
+        name = (lesson.materia or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        names.setdefault(key, name)
+        counts[key] = counts.get(key, 0) + 1
+    for model in (CalendarTemplateEntry, CalendarOverride):
         for value in session.scalars(select(model.materia)):
             name = (value or "").strip()
             if not name:
                 continue
             key = name.casefold()
             names.setdefault(key, name)
-            if model is Lesson:
-                counts[key] = counts.get(key, 0) + 1
     teachers = {}
     for teacher in session.scalars(select(SubjectTeacher)):
         teachers.setdefault(teacher.materia.casefold(), []).append(teacher.nome)

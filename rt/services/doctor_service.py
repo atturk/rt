@@ -147,6 +147,32 @@ def check_folder_lessons() -> Check:
     return Check("Lezioni a cartelle", OK, "nessuna lezione da convertire")
 
 
+def check_missing_info_lessons() -> Check:
+    """Controlla se nel DB ci sono lezioni folder con cartella mancante o senza info.yaml."""
+    from sqlalchemy import select
+    from rt.db.engine import get_database
+    from rt.db.models import Lesson
+    from rt.db.session import read_scope
+    from rt.storage import fs
+    db = get_database()
+    if db is None:
+        return Check("Lezioni con cartella mancante o senza info.yaml", WARN, "database non disponibile: controllo saltato.")
+    broken = []
+    with read_scope(db) as session:
+        for lesson in session.scalars(select(Lesson)):
+            if lesson.storage != fs.STORAGE_DB:
+                if not os.path.isdir(lesson.path) or not os.path.isfile(os.path.join(lesson.path, "info.yaml")):
+                    broken.append(lesson.path)
+    if broken:
+        return Check(
+            "Lezioni con cartella mancante o senza info.yaml",
+            WARN,
+            f"{len(broken)} ({', '.join(broken)})",
+            fix="Verifica se le cartelle sono state eliminate o spostate.",
+        )
+    return Check("Lezioni con cartella mancante o senza info.yaml", OK, "0")
+
+
 def check_secrets() -> Check:
     from rt.security.secrets import EncryptedFileSecretStore, default_store_path, resolve_master_key
     from rt.services.secrets_service import env_needs_migration
@@ -229,6 +255,7 @@ def run_checks() -> List[Check]:
         _safe("Database", check_database),
         _safe("Media", check_media),
         _safe("Lezioni a cartelle", check_folder_lessons),
+        _safe("Lezioni con cartella mancante o senza info.yaml", check_missing_info_lessons),
         _safe("Segreti", check_secrets),
         _safe("Web app", check_spa),
     ]

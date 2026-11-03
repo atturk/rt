@@ -56,17 +56,38 @@ def _require_db():
     return db
 
 
+def _is_temp_path(p: str) -> bool:
+    import tempfile
+    real_p = os.path.realpath(p)
+    temp_dirs = [tempfile.gettempdir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"]
+    for td in temp_dirs:
+        real_td = os.path.realpath(td)
+        try:
+            if os.path.commonpath([real_p, real_td]) == real_td:
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 def ensure_indexed(lesson_dirs: List[str]) -> Dict[str, int]:
     """Porta nel DB le cartelle non ancora note e restituisce percorso reale -> Lesson.id."""
+    import logging
+    from rt.core import paths
     from rt.db.repositories import LessonRepository, normalize_lesson_path
     from rt.db.session import session_scope
     from rt.db.sync import sync_lesson
+    data_dir = paths.data_dir()
+    allow_temp = _is_temp_path(data_dir)
     db = _require_db()
     ids: Dict[str, int] = {}
     with session_scope(db) as session:
         repo = LessonRepository(session)
         for lesson_dir in lesson_dirs:
             path = normalize_lesson_path(lesson_dir)
+            if not allow_temp and _is_temp_path(path):
+                logging.getLogger("rt.api").warning("ensure_indexed: ignorato percorso temporaneo %s", path)
+                continue
             lesson = repo.get_by_path(path)
             if lesson is None:
                 # Solo una cartella reale può mancare dal DB: una lezione "db" ha sempre la sua
@@ -99,8 +120,13 @@ def indexed_lesson_ids() -> Dict[str, int]:
     with read_scope(_require_db()) as session:
         # Una lezione "folder" esiste solo come cartella reale: os.path, non fs, che potrebbe
         # vedere nel percorso una lezione "db" dal vecchio nome rimasto nella sua cache.
-        return {lesson.path: lesson.id for lesson in LessonRepository(session).list_all()
-                if lesson.storage == fs.STORAGE_DB or os.path.isdir(lesson.path)}
+        # Inoltre, le lezioni folder senza info.yaml non vengono mostrate.
+        return {
+            lesson.path: lesson.id
+            for lesson in LessonRepository(session).list_all()
+            if lesson.storage == fs.STORAGE_DB
+            or (os.path.isdir(lesson.path) and os.path.isfile(os.path.join(lesson.path, "info.yaml")))
+        }
 
 
 def resolve_lesson_dir(lesson_id: int) -> str:
