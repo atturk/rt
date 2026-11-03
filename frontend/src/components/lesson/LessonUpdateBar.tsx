@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { Check, Info, Plus, RotateCw, Star, Undo2, X } from 'lucide-react'
+import { Check, Info, Play, Plus, RotateCw, Star, Undo2, X } from 'lucide-react'
 import { errorMessage } from '@/api/client'
+import { useLesson } from '@/api/hooks'
 import {
   useResetSelection,
   useSources,
@@ -13,6 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { ConfirmDialog } from '@/components/ui/dialog'
+import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 
@@ -40,12 +42,18 @@ function saveDismissed(lessonId: number, il: string) {
 }
 
 export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
+  const lessonQuery = useLesson(lessonId)
   const sourcesQuery = useSources(lessonId)
   const updateMutation = useUpdateLesson(lessonId)
   const undoMutation = useUndoUpdate(lessonId)
   const resetMutation = useResetSelection(lessonId)
   const primaryMutation = useSetPrimarySource(lessonId)
   const job = useSourcesJob(lessonId)
+
+  const isTranscriptionOnly =
+    lessonQuery.data?.phases?.prepare === 'VALID' &&
+    lessonQuery.data?.phases?.outline === 'MISSING'
+  const hasUnits = Boolean(lessonQuery.data?.unit_count && lessonQuery.data.unit_count > 0)
 
   // La × vale per un solo aggiornamento: uno nuovo (altro `il`) fa tornare la riga. Resta chiusa
   // anche uscendo e rientrando nella lezione (prima tornava a ogni apertura della pagina).
@@ -119,6 +127,43 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
     )
   }
 
+  // 1b. Stato solo trascrizione: prepare VALID, outline MISSING
+  if (isTranscriptionOnly) {
+    return withError(
+      <div
+        className={cn(
+          'mb-4 flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-body',
+          className,
+        )}
+        data-testid="lesson-update-bar"
+        data-state="continue"
+      >
+        <div className="flex items-center gap-2 text-meta text-foreground">
+          <Info className="size-4 shrink-0 text-amber-500" aria-hidden />
+          <span>Trascrizione pronta</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Tooltip content="Scaletta e rielaborazione">
+            {(trigger) => (
+              <Button
+                {...trigger}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2.5 text-meta"
+                disabled={isRunning}
+                onClick={() => runUpdate('rebuild')}
+                data-testid="bar-continue-btn"
+              >
+                <Play className="size-3.5 fill-current" aria-hidden />
+                Continua
+              </Button>
+            )}
+          </Tooltip>
+        </div>
+      </div>,
+    )
+  }
+
   // 2. Stato solo ricostruzione (ordine o principale cambiati)
   if (data.solo_ricostruzione) {
     return withError(
@@ -169,9 +214,9 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           }}
         >
           <p>
-            La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi
-            Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce. Lo
-            studio resta, segnato come precedente dove l'unità cambia.
+            {hasUnits
+              ? "La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce. Lo studio resta, segnato come precedente dove l'unità cambia."
+              : "La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce."}
           </p>
         </ConfirmDialog>
       </>,
@@ -272,8 +317,9 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           }}
         >
           <p>
-            La scaletta si rifà da zero. Le unità cambiate perdono decisioni e stato di studio. Lo
-            studio resta, segnato come precedente dove l'unità cambia.
+            {hasUnits
+              ? "La scaletta si rifà da zero. Le unità cambiate perdono decisioni e stato di studio. Lo studio resta, segnato come precedente dove l'unità cambia."
+              : "La scaletta si rifà da zero."}
           </p>
         </ConfirmDialog>
 
@@ -290,9 +336,9 @@ export function LessonUpdateBar({ lessonId, className }: LessonUpdateBarProps) {
           }}
         >
           <p>
-            La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi
-            Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce. Lo
-            studio resta, segnato come precedente dove l'unità cambia.
+            {hasUnits
+              ? "La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce. Lo studio resta, segnato come precedente dove l'unità cambia."
+              : "La lezione dovrà essere ricostruita: la scaletta si rifà da zero. Finché non premi Ricostruisci puoi tornare indietro, e se rimetti tutto com'era la riga sparisce."}
           </p>
         </ConfirmDialog>
       </>,

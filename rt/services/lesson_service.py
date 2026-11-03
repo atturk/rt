@@ -540,6 +540,7 @@ def _read_rielaborato(lesson_dir: str) -> Optional[str]:
 NO_PREVIEW_MARKDOWN = (
     "Questa lezione non è ancora pronta. Avvia l'elaborazione o riprova se si è interrotta."
 )
+TRANSCRIPTION_READY_MARKDOWN = "Trascrizione pronta."
 
 
 def load_markdown_preview(lesson_dir: str) -> str:
@@ -568,6 +569,9 @@ def load_markdown_preview(lesson_dir: str) -> str:
         final = _read_rielaborato(lesson_dir)
         if final is not None:
             return final
+        if (check_phase_status(lesson_dir, "prepare")[0] == PhaseStatus.VALID
+                and check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.MISSING):
+            return TRANSCRIPTION_READY_MARKDOWN
         return NO_PREVIEW_MARKDOWN
 
 
@@ -639,7 +643,7 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     tokens = md.parse(strip_generated(markdown))
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
-    return {"final": final, "pending": markdown == NO_PREVIEW_MARKDOWN, "markdown": markdown,
+    return {"final": final, "pending": markdown in (NO_PREVIEW_MARKDOWN, TRANSCRIPTION_READY_MARKDOWN), "markdown": markdown,
             "html": html, "sections": sections}
 
 
