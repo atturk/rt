@@ -1,0 +1,36 @@
+# Backend RT Cloud su Cloudflare Workers. I segreti NON vanno qui: si impostano con
+# `wrangler secret put NOME` (vedi README.md).
+name = "rt-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rt-cloud"
+database_id = "SOSTITUIRE-con-l-id-di-wrangler-d1-create"
+
+# Controllo del saldo OpenRouter ogni ora.
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+# "sandbox" (pagamenti finti) oppure "production" (soldi veri).
+POLAR_ENV = "sandbox"
+# URL dove l'utente torna dopo il pagamento.
+CHECKOUT_SUCCESS_URL = "https://github.com/atturk/rt"
+# Piani: id interno, prodotto Polar (abbonamento mensile), etichetta.
+PLANS = '[{"id":"base","polar_product_id":"SOSTITUIRE","label":"RT facilitato 3 €/mese"}]'
+# Modelli che l'app mostra in modalità facilitata (il primo è il predefinito).
+MODEL_POOL = '["deepseek/deepseek-v3.2","google/gemini-2.5-flash"]'
+# Quota del progetto (0.20 = 20%) sul netto di IVA e commissioni.
+MARGIN = "0.20"
+# Stima commissione Polar: percentuale + fisso in centesimi.
+PAYMENT_FEE_PERCENT = "0.05"
+PAYMENT_FEE_FIXED_CENTS = "50"
+# Commissione OpenRouter sull'acquisto crediti.
+OPENROUTER_FEE = "0.055"
+# Cambio prudente da EUR a USD (i tetti OpenRouter sono in dollari).
+EUR_TO_USD = "1.05"
+# Sotto questo saldo OpenRouter (USD) arriva un avviso.
+LOW_BALANCE_USD = "5"
+MAIL_FROM = "RT <noreply@example.com>"
