@@ -69,7 +69,7 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 | Servizio locale | `rt/services/cloud_service.py` | accesso con codice, checkout, portale, sincronizzazione della chiave |
 | API locale | `rt/api/routers/cloud.py`, `rt/api/app.py` | rotte `/api/v1/cloud/*`, registrate prima di `readonly` |
 | Segreti | `rt/security/secrets.py` | nuovo segreto `RT_CLOUD_TOKEN` (token di sessione, mai la chiave) |
-| Flusso chiavi API | connessione OpenRouter «RT Cloud» creata da sola; le fasi `outline`, `rewrite`, `review`, `recall`, `enrichment_writer`, `enrichment_visualizer` passano su di essa solo se l'utente sceglie la modalità facilitata; `image_description` va al modello con visione |
+| Flusso chiavi API | `cloud_service._install_key` | connessione OpenRouter «RT Cloud» creata da sola; le fasi `outline`, `rewrite`, `review`, `recall`, `enrichment_writer`, `enrichment_visualizer` passano su di essa solo se l'utente sceglie la modalità facilitata; `image_description` va al modello con visione |
 | Onboarding | `frontend/src/components/settings/wizard.tsx` | scelta «Facilitata» o «Con la mia chiave», mostrata solo se RT Cloud esiste |
 | Impostazioni | `frontend/src/routes/settings.tsx`, `frontend/src/components/settings/cloud.tsx`, `frontend/src/api/cloud.ts` | sezione RT Cloud nella pagina Modelli: saldo, aggiorna, portale, ricarica |
 | Generati | `docs/openapi.json`, `frontend/src/api/schema.d.ts` | rigenerati con `scripts/export_openapi.py` e `npm run gen:api` |
