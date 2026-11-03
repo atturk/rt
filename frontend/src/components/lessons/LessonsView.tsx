@@ -157,14 +157,15 @@ export function LessonsHeaderActions({ prefs, onPrefs, query, onQuery, selecting
           />
         </>
       )}
-      <IconButton
+      {/* Telefono: niente «Fissa questa vista», altrimenti il titolo Lezioni non ci sta. */}
+      {!phone && <IconButton
         label={fixed ? 'Vista fissata: tocca per non fissarla più' : 'Fissa questa vista'}
         icon={Pin}
         active={fixed}
         aria-pressed={fixed}
         className={cn(fixed && '[&_svg]:fill-current')}
         onClick={onToggleFixed}
-      />
+      />}
       {phone && (
         <IconButton
           label="Nuova lezione"
