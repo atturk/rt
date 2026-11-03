@@ -21,14 +21,10 @@ def _view(session):
     counts = {}
     for name in session.scalars(select(Subject.nome).order_by(Subject.nome)):
         names[name.casefold()] = name
-    from rt.services.lesson_service import _is_temp_path
+    from rt.services.lesson_service import has_info_yaml
     for lesson in session.scalars(select(Lesson)):
-        if lesson.storage != fs.STORAGE_DB:
-            if os.path.isdir(lesson.path):
-                if not os.path.isfile(os.path.join(lesson.path, "info.yaml")):
-                    continue
-            elif not _is_temp_path(lesson.path):
-                continue
+        if lesson.storage != fs.STORAGE_DB and not has_info_yaml(lesson.path):
+            continue
         name = (lesson.materia or "").strip()
         if not name:
             continue

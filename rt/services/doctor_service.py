@@ -154,6 +154,7 @@ def check_missing_info_lessons() -> Check:
     from rt.db.models import Lesson
     from rt.db.session import read_scope
     from rt.storage import fs
+    from rt.services.lesson_service import has_info_yaml
     db = get_database()
     if db is None:
         return Check("Lezioni con cartella mancante o senza info.yaml", WARN, "database non disponibile: controllo saltato.")
@@ -161,7 +162,7 @@ def check_missing_info_lessons() -> Check:
     with read_scope(db) as session:
         for lesson in session.scalars(select(Lesson)):
             if lesson.storage != fs.STORAGE_DB:
-                if not os.path.isdir(lesson.path) or not os.path.isfile(os.path.join(lesson.path, "info.yaml")):
+                if not has_info_yaml(lesson.path):
                     broken.append(lesson.path)
     if broken:
         return Check(

@@ -56,6 +56,12 @@ def _require_db():
     return db
 
 
+def has_info_yaml(path: str) -> bool:
+    """Lezione a cartella con info.yaml, alla radice o in _state/ (layout nuovo)."""
+    from rt.core.lesson_paths import STATE_SUBDIR
+    return any(os.path.isfile(os.path.join(path, *parts)) for parts in (("info.yaml",), (STATE_SUBDIR, "info.yaml")))
+
+
 def _is_temp_path(p: str) -> bool:
     import tempfile
     real_p = os.path.realpath(p)
@@ -125,7 +131,7 @@ def indexed_lesson_ids() -> Dict[str, int]:
             lesson.path: lesson.id
             for lesson in LessonRepository(session).list_all()
             if lesson.storage == fs.STORAGE_DB
-            or (os.path.isdir(lesson.path) and os.path.isfile(os.path.join(lesson.path, "info.yaml")))
+            or has_info_yaml(lesson.path)
         }
 
 

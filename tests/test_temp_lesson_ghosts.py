@@ -82,3 +82,18 @@ def test_list_lessons_and_subjects_hide_folder_without_info_yaml(tmp_path, monke
     assert check.status == "warn"
     assert "1 (" in check.message
     assert os.path.realpath(broken_folder) in check.message
+
+
+def test_folder_lesson_with_info_in_state_dir_is_kept(tmp_path, monkeypatch, rt_db):
+    """Layout nuovo: info.yaml in _state/ non rende la lezione un fantasma (elenco, materie, doctor)."""
+    from rt.services.lesson_service import indexed_lesson_ids
+    isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = tmp_path / "nuova"
+    (lesson_dir / "_state").mkdir(parents=True)
+    (lesson_dir / "_state" / "info.yaml").write_text("materia: MATERIA STATE\n", encoding="utf-8")
+    with session_scope(get_database()) as session:
+        session.add(Lesson(path=os.path.realpath(lesson_dir), folder_name="nuova", storage="folder",
+                           materia="MATERIA STATE", titolo="Nuova"))
+    assert os.path.realpath(lesson_dir) in indexed_lesson_ids()
+    assert any(s["nome"] == "MATERIA STATE" for s in list_subjects())
+    assert check_missing_info_lessons().status == "ok"
