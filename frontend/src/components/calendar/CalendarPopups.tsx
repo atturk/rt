@@ -23,10 +23,12 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getSubjectColor } from './subjectColor'
 import { computePopupStyle } from './popupPosition'
-import { STATUS_LABELS } from './calendarUtils'
+import { STATUS_LABELS, formatEventDate } from './calendarUtils'
 import { useLessons } from '@/api/hooks'
 import { useSubjects, useTeacherSuggestions } from '@/api/subjects'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
+import { useIsPhone } from '@/lib/phone'
+import { cn } from '@/lib/utils'
 
 
 export type PopupAnchor = {
@@ -80,7 +82,8 @@ export function EventPopup({
     }
   }, [onClose])
 
-  const style = computePopupStyle(anchor, 280)
+  const phone = useIsPhone()
+  const style = computePopupStyle(anchor, 280, phone)
   const isRecorded = !!event.lesson
 
   return (
@@ -101,52 +104,111 @@ export function EventPopup({
         <span className="truncate">{event.materia}</span>
       </div>
 
-      <div className="text-xs text-muted-foreground font-mono">
-        {event.date} · {event.start_time}–{event.end_time}
+      <div className="text-xs text-muted-foreground">
+        {formatEventDate(event.date)} · {event.start_time}–{event.end_time}
         {event.docente ? ` · ${event.docente}` : ''}
       </div>
 
       {/* Riga con pulsanti di stato e nota */}
-      <div className="flex items-center gap-1 border-t pt-2">
-        {(['seguire', 'seguita', 'nonseguita', 'saltare', 'annullata'] as const).map(
-          (s) => {
-            const active = event.status === s
-            const disabled = isRecorded && s !== 'seguita'
-            const Icon =
-              s === 'seguita'
-                ? Check
-                : s === 'nonseguita'
-                  ? AlertCircle
-                  : s === 'saltare'
-                    ? SkipForward
-                    : s === 'annullata'
-                      ? Ban
-                      : Clock
-            return (
-              <IconButton
-                key={s}
-                label={STATUS_LABELS[s]}
-                icon={Icon}
-                side="top"
-                active={active}
-                unavailable={disabled ? 'Ora già registrata' : undefined}
-                className={active ? 'bg-primary text-primary-foreground' : undefined}
-                onClick={() => {
-                  if (!disabled) onStatusChange(s)
-                }}
-              />
-            )
-          },
-        )}
-        <div className="flex-1" />
-        <IconButton
-          label="Note"
-          icon={FileText}
-          side="top"
-          active={editingNote || !!event.note}
-          onClick={() => setEditingNote((prev) => !prev)}
-        />
-      </div>
+      {phone ? (
+        <div className="flex flex-wrap items-stretch justify-between gap-1 border-t pt-2">
+          {(['seguire', 'seguita', 'nonseguita', 'saltare', 'annullata'] as const).map(
+            (s) => {
+              const active = event.status === s
+              const disabled = isRecorded && s !== 'seguita'
+              const Icon =
+                s === 'seguita'
+                  ? Check
+                  : s === 'nonseguita'
+                    ? AlertCircle
+                    : s === 'saltare'
+                      ? SkipForward
+                      : s === 'annullata'
+                        ? Ban
+                        : Clock
+              const label = STATUS_LABELS[s]
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-label={label}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!disabled) onStatusChange(s)
+                  }}
+                  className={cn(
+                    'flex flex-1 min-w-[46px] flex-col items-center justify-center gap-0.5 rounded-md py-1.5 px-0.5 text-center transition-colors',
+                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted text-foreground',
+                    disabled && 'opacity-40 cursor-not-allowed hover:bg-transparent',
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" />
+                  <span className="text-[11px] leading-tight text-center">{label}</span>
+                </button>
+              )
+            },
+          )}
+          <button
+            type="button"
+            aria-label="Note"
+            onClick={() => setEditingNote((prev) => !prev)}
+            className={cn(
+              'flex flex-1 min-w-[46px] flex-col items-center justify-center gap-0.5 rounded-md py-1.5 px-0.5 text-center transition-colors',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+              editingNote || !!event.note
+                ? 'bg-accent text-accent-foreground'
+                : 'hover:bg-muted text-foreground',
+            )}
+          >
+            <FileText className="size-4 shrink-0" />
+            <span className="text-[11px] leading-tight text-center">Note</span>
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 border-t pt-2">
+          {(['seguire', 'seguita', 'nonseguita', 'saltare', 'annullata'] as const).map(
+            (s) => {
+              const active = event.status === s
+              const disabled = isRecorded && s !== 'seguita'
+              const Icon =
+                s === 'seguita'
+                  ? Check
+                  : s === 'nonseguita'
+                    ? AlertCircle
+                    : s === 'saltare'
+                      ? SkipForward
+                      : s === 'annullata'
+                        ? Ban
+                        : Clock
+              return (
+                <IconButton
+                  key={s}
+                  label={STATUS_LABELS[s]}
+                  icon={Icon}
+                  side="top"
+                  active={active}
+                  unavailable={disabled ? 'Ora già registrata' : undefined}
+                  className={active ? 'bg-primary text-primary-foreground' : undefined}
+                  onClick={() => {
+                    if (!disabled) onStatusChange(s)
+                  }}
+                />
+              )
+            },
+          )}
+          <div className="flex-1" />
+          <IconButton
+            label="Note"
+            icon={FileText}
+            side="top"
+            active={editingNote || !!event.note}
+            onClick={() => setEditingNote((prev) => !prev)}
+          />
+        </div>
+      )}
 
       {/* Editor della nota */}
       {editingNote && (

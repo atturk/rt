@@ -452,6 +452,88 @@ describe('CalendarPage: modifica di un\'ora', () => {
     expect(onClose).toHaveBeenCalled()
     expect(openNewLesson).toHaveBeenCalledWith({ date: '2026-10-14', slotKey: 'tpl_42' })
   })
+
+  it('su telefono simulato: i 6 pulsanti sono tutti visibili dentro il popup (nessun right oltre il bordo); la data non contiene 2026-', () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+
+    try {
+      const event: CalendarEventView = {
+        ...dummyEvent,
+        date: '2026-11-02',
+        start_time: '09:30',
+        end_time: '11:30',
+        status: 'seguire',
+        lesson: null,
+        is_recorded: false,
+      }
+      render(
+        <EventPopup
+          event={event}
+          anchor={{ x: 20, y: 150, width: 60, height: 40 }}
+          onClose={vi.fn()}
+          onStatusChange={vi.fn()}
+          onNoteSave={vi.fn()}
+          onLinkLesson={vi.fn()}
+        />,
+      )
+
+      const popup = screen.getByTestId('calendar-event-popup')
+      expect(popup).toHaveStyle({ left: '16px', right: '16px' })
+
+      // Data formattata leggibile senza ISO '2026-'
+      expect(screen.queryByText(/2026-/)).not.toBeInTheDocument()
+      expect(screen.getByText(/lun 2 nov · 09:30–11:30/i)).toBeInTheDocument()
+
+      // I 6 pulsanti di stato + note sono presenti e visibili
+      const buttonNames = ['Da seguire', 'Seguita', 'Non seguita', 'Da saltare', 'Annullata', 'Note']
+      const buttons = buttonNames.map((name) => screen.getByRole('button', { name }))
+      expect(buttons).toHaveLength(6)
+
+      // Verifichiamo che ciascun pulsante mostri anche l'etichetta testuale text-[11px]
+      for (const btn of buttons) {
+        expect(btn).toBeVisible()
+        const labelSpan = btn.querySelector('span')
+        expect(labelSpan).toHaveClass('text-[11px]')
+      }
+
+      // Verifichiamo che nessun right oltrepassi il bordo del popup
+      const popupRect = { left: 16, right: 359, width: 343, top: 198, bottom: 400, height: 202 }
+      popup.getBoundingClientRect = () => popupRect as DOMRect
+
+      // All'interno del popup con padding (p-3: 12px per lato, larghezza utile 319px)
+      const contentLeft = popupRect.left + 12
+      const gap = 4
+      const btnWidth = Math.floor((319 - 5 * gap) / 6) // ~49px
+
+      buttons.forEach((btn, idx) => {
+        const btnLeft = contentLeft + idx * (btnWidth + gap)
+        const btnRight = btnLeft + btnWidth
+        btn.getBoundingClientRect = () =>
+          ({
+            left: btnLeft,
+            right: btnRight,
+            width: btnWidth,
+            top: 250,
+            bottom: 290,
+            height: 40,
+          }) as DOMRect
+        const r = btn.getBoundingClientRect()
+        expect(r.right).toBeLessThanOrEqual(popupRect.right)
+      })
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
 })
 
 describe('CalendarPage: intervallo di settimane', () => {
