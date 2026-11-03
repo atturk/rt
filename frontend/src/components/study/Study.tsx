@@ -754,6 +754,21 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </button>}</Tooltip>
   )
 
+  const currentUnitStatus = live.status ?? 'da-imparare'
+  const rsvpTitle = (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <IconButton
+        label={`Stato: ${STATUS_LABELS[currentUnitStatus]} · S`}
+        aria-label={`Stato: ${STATUS_LABELS[currentUnitStatus].toLocaleLowerCase('it')}`}
+        icon={STUDY_ICONS[currentUnitStatus].icon}
+        className={cn(STUDY_ICONS[currentUnitStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+        onClick={handleStatusFromReader}
+        data-testid="rsvp-status"
+      />
+      <span className="truncate">{unit.id} {unit.title}</span>
+    </div>
+  )
+
   const headerActions = (
     <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
@@ -828,7 +843,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         onJump={(target, side) => navigate(`/studio/lezione/${target.id}`, { state: { enter: side === 'left' ? 'last' : 'first', zen: zenMode } })} />}
       <div hidden={!reading}>
         <StudyShell
-          title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
+          title={speedReading ? rsvpTitle : titleButton}
           back={speedReading ? undefined : studyBack}
           actions={speedReading ? rsvpActions : headerActions}
           rsvp={speedReading}
@@ -857,7 +872,13 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           }
           zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })}
-            hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))} /> : undefined}
+            hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))}
+            status={live.status ?? 'da-imparare'}
+            onStatus={() => {
+              changeStatus()
+              const next = nextStudyStatus(live?.status)
+              setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+            }} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
             <div
               className={cn(

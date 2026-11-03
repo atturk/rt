@@ -4,13 +4,20 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
+import type { StudyStatus } from '@/api/studyProgress'
+import { STATUS_LABELS, STUDY_ICONS } from './studyProgress'
+import { cn } from '@/lib/utils'
 import { IrlenWarningModal } from './IrlenWarningModal'
 
 /** La barra segue il mouse e il focus, mai lo scroll del testo. */
-export function ZenHeader({ title, settings, onSettings, onExit, irlen, onIrlen, hasNonYellowHighlight }: {
+export function ZenHeader({
+  title, settings, onSettings, onExit, irlen, onIrlen, hasNonYellowHighlight, status, onStatus,
+}: {
   title: string; settings: boolean; onSettings: (open: boolean) => void; onExit: () => void
   irlen: RsvpPreference['irlen']; onIrlen: (value: RsvpPreference['irlen']) => void
   hasNonYellowHighlight?: boolean
+  status?: StudyStatus
+  onStatus?: () => void
 }) {
   const [prefs, setPrefs] = useRsvpPrefs()
   const [showWarning, setShowWarning] = useState(false)
@@ -38,11 +45,22 @@ export function ZenHeader({ title, settings, onSettings, onExit, irlen, onIrlen,
     window.addEventListener('pointerdown', touch)
     return () => { cancel(); window.removeEventListener('pointermove', mouse); window.removeEventListener('pointerdown', touch) }
   }, [settings]) // oxlint-disable-line react-hooks/exhaustive-deps
+  const currentStatus = status ?? 'da-imparare'
   return <>
     <div className="rt-zen-hot" data-testid="zen-hot" aria-hidden />
     <div ref={bar} className="rt-zen-bar flex items-center gap-2 bg-background px-3" data-open={open || settings || undefined}
       data-testid="zen-bar" onPointerEnter={event => { if (event.pointerType === 'mouse') show() }} onPointerLeave={leave}
       onFocusCapture={show} onBlurCapture={leave}>
+      {onStatus && (
+        <IconButton
+          label={`Stato: ${STATUS_LABELS[currentStatus]} · S`}
+          aria-label={`Stato: ${STATUS_LABELS[currentStatus].toLocaleLowerCase('it')}`}
+          icon={STUDY_ICONS[currentStatus].icon}
+          className={cn(STUDY_ICONS[currentStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+          onClick={onStatus}
+          data-testid="zen-status"
+        />
+      )}
       <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{title}</span>
       <IconButton label="Impostazioni zen" icon={SlidersHorizontal} aria-expanded={settings} onClick={() => onSettings(!settings)} />
       <IconButton label="Esci dalla modalità zen · Z" icon={X} onClick={onExit} />
