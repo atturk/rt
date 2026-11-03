@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/client'
 import {
   useCloudCheckout, useCloudLoginStart, useCloudPlans, useCloudLoginVerify, useCloudLogout, useCloudPortal, useCloudStatus,
-  useCloudSync, type CloudStatus,
+  useCloudSync, useCloudTopup, type CloudStatus,
 } from '@/api/cloud'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -103,12 +103,50 @@ function Subscribe({ onSynced }: { onSynced?: () => void }) {
   )
 }
 
+/** Ricarica extra: si somma al credito del periodo, si usa dopo di esso e vale 12 mesi. */
+function Topup() {
+  const plans = useCloudPlans()
+  const topup = useCloudTopup()
+  const rules = plans.data?.topup
+  const [euro, setEuro] = useState('10')
+  if (!rules) return null
+  const cents = Math.round(Number(euro.replace(',', '.')) * 100)
+  const valid = Number.isFinite(cents) && cents >= rules.min_cents && cents <= rules.max_cents
+  const url = topup.data?.url
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3" data-testid="cloud-topup">
+      <p className="text-body">
+        Credito finito prima del rinnovo? Puoi ricaricare da {rules.min_cents / 100} €. La ricarica si usa dopo il credito del
+        periodo, non si perde al rinnovo e vale {Math.round(rules.valid_days / 30)} mesi.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-body">
+          Importo (€)
+          <Input inputMode="decimal" className="w-28" value={euro} onChange={(e) => { setEuro(e.target.value); topup.reset() }} />
+        </label>
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-body font-medium text-primary-foreground">
+            Apri la pagina di pagamento <ExternalLink className="size-4" aria-hidden />
+          </a>
+        ) : (
+          <Button variant="outline" onClick={() => topup.mutate(cents)} disabled={!valid || topup.isPending}>Ricarica</Button>
+        )}
+      </div>
+      {!valid && <p className="text-meta text-muted-foreground">Importo tra {rules.min_cents / 100} € e {rules.max_cents / 100} €.</p>}
+      {url && <p className="text-meta text-muted-foreground">Dopo il pagamento premi Aggiorna per vedere il nuovo credito.</p>}
+      {topup.isError && <Alert tone="danger">{errorMessage(topup.error)}</Alert>}
+    </div>
+  )
+}
+
 function Account({ status, onSynced }: { status: CloudStatus; onSynced?: () => void }) {
   const sync = useCloudSync()
   const portal = useCloudPortal()
   const logout = useCloudLogout()
   const sub = status.subscription
   const active = !!sub && ['active', 'canceled'].includes(sub.status)
+  const topupBalance = status.topup?.balance_usd ?? 0
+  const usable = active || topupBalance > 0
   const balance = status.balance
   const share = balance?.limit_usd ? Math.max(0, Math.min(1, (balance.remaining_usd ?? 0) / balance.limit_usd)) : 0
   return (
@@ -116,7 +154,7 @@ function Account({ status, onSynced }: { status: CloudStatus; onSynced?: () => v
       <p className="text-body">
         Account: <strong>{status.email}</strong>
       </p>
-      {active ? (
+      {usable && (
         <>
           <div className="flex flex-col gap-1" data-testid="cloud-balance">
             <p className="text-body">
@@ -126,6 +164,12 @@ function Account({ status, onSynced }: { status: CloudStatus; onSynced?: () => v
             <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Credito rimasto" aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100}>
               <div className="h-full bg-primary" style={{ width: `${share * 100}%` }} />
             </div>
+            {topupBalance > 0 && (
+              <p className="text-meta text-muted-foreground">
+                Di cui ricariche: {usd(topupBalance)}
+                {status.topup?.next_expiry && <> · la prima scade il {new Date(status.topup.next_expiry).toLocaleDateString('it-IT')}</>}
+              </p>
+            )}
             {sub?.status === 'canceled' && (
               <p className="text-meta text-muted-foreground">Abbonamento disdetto: resta attivo fino alla fine del periodo pagato.</p>
             )}
@@ -142,13 +186,13 @@ function Account({ status, onSynced }: { status: CloudStatus; onSynced?: () => v
                 Apri il portale <ExternalLink className="size-4" aria-hidden />
               </a>
             ) : (
-              <Button variant="outline" onClick={() => portal.mutate()} disabled={portal.isPending}>Gestisci abbonamento</Button>
+              active && <Button variant="outline" onClick={() => portal.mutate()} disabled={portal.isPending}>Gestisci abbonamento</Button>
             )}
           </div>
+          {active && <Topup />}
         </>
-      ) : (
-        <Subscribe onSynced={onSynced} />
       )}
+      {!active && <Subscribe onSynced={onSynced} />}
       {sync.isError && <Alert tone="danger">{errorMessage(sync.error)}</Alert>}
       {portal.isError && <Alert tone="danger">{errorMessage(portal.error)}</Alert>}
       <div>

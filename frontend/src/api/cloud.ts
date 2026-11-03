@@ -53,3 +53,8 @@ export function useCloudCheckout() {
 export function useCloudPortal() {
   return useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/cloud/portal')) })
 }
+
+/** Ricarica extra: importo in centesimi di euro, apre una pagina di pagamento Polar. */
+export function useCloudTopup() {
+  return useMutation({ mutationFn: (amount_cents: number) => unwrap(api.POST('/api/v1/cloud/topup', { body: { amount_cents } })) })
+}

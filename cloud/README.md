@@ -28,8 +28,25 @@ Con IVA italiana: 3,99 € al mese danno circa 2,05 $, 17,99 € ogni 6 mesi cir
 circa 18 $. Il credito di un piano lungo arriva tutto al pagamento e vale per l'intero periodo. A ogni rinnovo il tetto della chiave diventa
 **speso finora + quota del mese**: il credito non usato del mese prima non si somma (use it or lose
 it). OpenRouter addebita solo i token consumati, quindi il credito non usato non va comprato: resta
-come incasso su Polar. Quando l'abbonamento finisce davvero (`subscription.revoked`) la chiave viene
-disattivata.
+come incasso su Polar. Quando l'abbonamento finisce davvero (`subscription.revoked`) il credito del
+periodo si azzera e la chiave viene disattivata, a meno che restino ricariche.
+
+### Ricariche extra
+
+Chi ha un abbonamento in corso può comprare una ricarica a importo libero (da `TOPUP_MIN_CENTS`, 5 €,
+a `TOPUP_MAX_CENTS`, 200 €) con margine `TOPUP_MARGIN` (10%): 20 € danno circa 13,3 $. Il credito sta
+in due tasche separate:
+
+- **credito del periodo**: si usa per primo e a ogni rinnovo riparte dalla quota del piano, quello non
+  usato si perde;
+- **ricariche**: si usano solo quando il credito del periodo è finito, non si perdono al rinnovo né
+  alla disdetta, e scadono dopo `TOPUP_VALID_DAYS` (365 giorni; le azzera il cron).
+
+A ogni evento (rinnovo, ricarica, disdetta, scadenza) il Worker legge quanto ha speso la chiave
+dall'ultimo conteggio, lo scala prima dal periodo e poi dalle ricariche (la più vicina alla scadenza
+per prima) e porta il tetto a **speso finora + credito residuo**. Il saldo ricariche mostrato
+nell'app è quello dell'ultimo conteggio; il credito totale rimasto è sempre quello letto da
+OpenRouter.
 
 La tabella `orders` registra ogni pagamento con la quota data, per controllare i margini reali.
 
@@ -42,6 +59,7 @@ La tabella `orders` registra ogni pagamento con la quota data, per controllare i
 | `POST /v1/auth/verify` `{email, code}` | restituisce `{token}` di sessione |
 | `GET /v1/me` | stato dell'abbonamento, chiave OpenRouter (se attivo), modelli |
 | `POST /v1/checkout` `{plan}` | URL del checkout Polar |
+| `POST /v1/topup` `{amount_cents}` | URL del checkout Polar per una ricarica extra |
 | `POST /v1/portal` | URL del portale Polar (disdetta, carta, fatture) |
 | `POST /v1/auth/logout` | chiude la sessione |
 | `POST /webhooks/polar` | webhook firmati di Polar |
@@ -59,7 +77,9 @@ pagamenti finti con la carta `4242 4242 4242 4242`, chiavi OpenRouter vere ma co
    keys). Lascia spento *Input & Output Logging*. Facoltativo ma consigliato: crea una **Guardrail**
    con la lista dei modelli del pool e Zero Data Retention, e annota il suo id.
 2. **Polar.** Su [sandbox.polar.sh](https://sandbox.polar.sh) crea l'organizzazione, un prodotto
-   per ogni piano (3,99 € mensile, 17,99 € ogni 6 mesi, 29,99 € annuale) e annota gli id. Crea un access token. Aggiungi un
+   per ogni piano (3,99 € mensile, 17,99 € ogni 6 mesi, 29,99 € annuale) e annota gli id. Per le
+   ricariche crea un prodotto **una tantum** con prezzo **a scelta del cliente** (minimo 5 €) e mettine
+   l'id in `TOPUP_PRODUCT_ID`. Crea un access token. Aggiungi un
    webhook verso `https://<tuo-worker>/webhooks/polar` con gli eventi `order.paid` e
    `subscription.*`, e annota il segreto.
 3. **Resend.** Verifica un dominio (o usa quello di prova) e crea una API key.

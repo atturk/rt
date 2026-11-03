@@ -3473,6 +3473,17 @@
             },
             "title": "Plans",
             "type": "array"
+          },
+          "topup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloudTopupRules"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null se le ricariche extra sono spente"
           }
         },
         "required": [
@@ -3529,6 +3540,16 @@
                 "type": "null"
               }
             ]
+          },
+          "topup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloudTopup"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3578,6 +3599,53 @@
           "status"
         ],
         "title": "CloudSubscription",
+        "type": "object"
+      },
+      "CloudTopup": {
+        "properties": {
+          "balance_usd": {
+            "default": 0,
+            "description": "Credito delle ricariche extra all'ultimo conteggio",
+            "title": "Balance Usd",
+            "type": "number"
+          },
+          "next_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scadenza della ricarica più vecchia",
+            "title": "Next Expiry"
+          }
+        },
+        "title": "CloudTopup",
+        "type": "object"
+      },
+      "CloudTopupRules": {
+        "properties": {
+          "max_cents": {
+            "title": "Max Cents",
+            "type": "integer"
+          },
+          "min_cents": {
+            "title": "Min Cents",
+            "type": "integer"
+          },
+          "valid_days": {
+            "title": "Valid Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_cents",
+          "max_cents",
+          "valid_days"
+        ],
+        "title": "CloudTopupRules",
         "type": "object"
       },
       "CompactAudioPreview": {
@@ -12203,6 +12271,22 @@
         "title": "TelegramTestOut",
         "type": "object"
       },
+      "TopupIn": {
+        "properties": {
+          "amount_cents": {
+            "description": "Importo in centesimi di euro",
+            "maximum": 1000000.0,
+            "minimum": 100.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_cents"
+        ],
+        "title": "TopupIn",
+        "type": "object"
+      },
       "Transcription": {
         "properties": {
           "api_key_set": {
@@ -16613,6 +16697,92 @@
           }
         ],
         "summary": "Aggiorna abbonamento e chiave da RT Cloud",
+        "tags": [
+          "rt cloud"
+        ]
+      }
+    },
+    "/api/v1/cloud/topup": {
+      "post": {
+        "operationId": "topup_api_v1_cloud_topup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UrlOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pagina di pagamento di una ricarica extra",
         "tags": [
           "rt cloud"
         ]

@@ -19,6 +19,11 @@ class CloudSubscription(BaseModel):
     monthly_quota_usd: float = 0
 
 
+class CloudTopup(BaseModel):
+    balance_usd: float = Field(0, description="Credito delle ricariche extra all'ultimo conteggio")
+    next_expiry: Optional[str] = Field(None, description="Scadenza della ricarica più vecchia")
+
+
 class CloudBalance(BaseModel):
     limit_usd: Optional[float] = None
     usage_usd: float = 0
@@ -30,6 +35,7 @@ class CloudStatus(BaseModel):
     logged_in: bool
     email: Optional[str] = None
     subscription: Optional[CloudSubscription] = None
+    topup: Optional[CloudTopup] = None
     balance: Optional[CloudBalance] = Field(None, description="Letto direttamente da OpenRouter")
     connection: bool = Field(description="La connessione 'RT Cloud' esiste")
 
@@ -50,6 +56,10 @@ class CheckoutIn(BaseModel):
     plan: Optional[str] = None
 
 
+class TopupIn(BaseModel):
+    amount_cents: int = Field(ge=100, le=1_000_000, description="Importo in centesimi di euro")
+
+
 class UrlOut(BaseModel):
     url: str
 
@@ -59,9 +69,16 @@ class CloudPlan(BaseModel):
     label: str
 
 
+class CloudTopupRules(BaseModel):
+    min_cents: int
+    max_cents: int
+    valid_days: int
+
+
 class CloudPlans(BaseModel):
     plans: list[CloudPlan]
     models: list[str] = Field(description="Modelli usati in modalità facilitata")
+    topup: Optional[CloudTopupRules] = Field(None, description="Null se le ricariche extra sono spente")
 
 
 def _root() -> Path:
@@ -113,6 +130,12 @@ def sync(body: SyncIn, _actor: Actor):
 def checkout(body: CheckoutIn, _actor: Actor):
     from rt.services import cloud_service
     return UrlOut(url=_call(cloud_service.checkout, body.plan))
+
+
+@router.post("/cloud/topup", response_model=UrlOut, summary="Pagina di pagamento di una ricarica extra")
+def topup(body: TopupIn, _actor: Actor):
+    from rt.services import cloud_service
+    return UrlOut(url=_call(cloud_service.topup, body.amount_cents))
 
 
 @router.post("/cloud/portal", response_model=UrlOut, summary="Portale per disdire o cambiare carta")

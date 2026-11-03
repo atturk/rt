@@ -27,6 +27,14 @@ MODEL_POOL = '["deepseek/deepseek-v4-flash","google/gemini-3.5-flash-lite"]'
 VISION_MODEL = "google/gemini-3.5-flash-lite"
 # Quota del progetto (0.20 = 20%) sul netto di IVA e commissioni.
 MARGIN = "0.20"
+# Ricariche extra: prodotto Polar una tantum con prezzo "a scelta del cliente" (minimo 5 €).
+# Il credito si somma a quello dell'abbonamento, si usa dopo di esso e vale 12 mesi.
+# Lascia SOSTITUIRE per tenere le ricariche spente.
+TOPUP_PRODUCT_ID = "SOSTITUIRE"
+TOPUP_MARGIN = "0.10"
+TOPUP_MIN_CENTS = "500"
+TOPUP_MAX_CENTS = "20000"
+TOPUP_VALID_DAYS = "365"
 # Stima commissione Polar: percentuale + fisso in centesimi.
 PAYMENT_FEE_PERCENT = "0.05"
 PAYMENT_FEE_FIXED_CENTS = "50"

@@ -34,6 +34,7 @@ class FakeCloud:
 
     def __init__(self):
         self.subscription = "none"
+        self.topup_balance = 0
         self.calls = []
 
     def request(self, method, url, json=None, headers=None, timeout=None):
@@ -42,7 +43,8 @@ class FakeCloud:
         auth = (headers or {}).get("Authorization")
         if path == "/v1/plans":
             return FakeResponse(200, {"plans": [{"id": "mese", "label": "3,99 € al mese"},
-                                                {"id": "anno", "label": "29,99 € all'anno"}], "models": MODELS})
+                                                {"id": "anno", "label": "29,99 € all'anno"}], "models": MODELS,
+                                      "topup": {"min_cents": 500, "max_cents": 20000, "valid_days": 365}})
         if path == "/v1/auth/start":
             return FakeResponse(200, {"ok": True})
         if path == "/v1/auth/verify":
@@ -52,17 +54,22 @@ class FakeCloud:
         if auth != f"Bearer {TOKEN}":
             return FakeResponse(401, {"error": {"code": "unauthorized", "message": "Accesso richiesto"}})
         if path == "/v1/me":
-            active = self.subscription in ("active", "canceled")
+            active = self.subscription in ("active", "canceled") or self.topup_balance > 0
             return FakeResponse(200, {
                 "email": "studente@example.com",
                 "subscription": {"status": self.subscription, "plan": "base" if active else None,
                                  "current_period_end": None, "monthly_quota_usd": 1.44 if active else 0},
+                "topup": {"balance_usd": self.topup_balance, "next_expiry": None},
                 "openrouter_key": OR_KEY if active else None,
                 "models": MODELS,
                 "vision_model": MODELS[1],
             })
         if path == "/v1/checkout":
             return FakeResponse(200, {"url": "https://sandbox.polar.sh/checkout/x"})
+        if path == "/v1/topup":
+            if json["amount_cents"] < 500:
+                return FakeResponse(400, {"error": {"code": "invalid_amount", "message": "Importo tra 5 € e 200 €"}})
+            return FakeResponse(200, {"url": f"https://sandbox.polar.sh/checkout/topup?amount={json['amount_cents']}"})
         if path == "/v1/portal":
             return FakeResponse(200, {"url": "https://sandbox.polar.sh/portal"})
         if path == "/v1/auth/logout":
@@ -179,3 +186,21 @@ def test_plans(api_client, cloud):
     data = api_client.get("/api/v1/cloud/plans").json()
     assert [p["id"] for p in data["plans"]] == ["mese", "anno"]
     assert data["models"] == MODELS
+
+
+def test_topup(api_client, cloud):
+    _login(api_client)
+    assert api_client.post("/api/v1/cloud/topup", json={"amount_cents": 400}).status_code == 400
+    res = api_client.post("/api/v1/cloud/topup", json={"amount_cents": 2000})
+    assert res.json()["url"].endswith("amount=2000")
+    assert api_client.get("/api/v1/cloud/plans").json()["topup"]["min_cents"] == 500
+
+
+def test_topup_keeps_key_after_subscription_ends(api_client, cloud):
+    _login(api_client)
+    cloud.subscription = "revoked"
+    cloud.topup_balance = 13.33
+    data = _clean(api_client.post("/api/v1/cloud/sync", json={})).json()
+    assert data["topup"]["balance_usd"] == 13.33
+    assert data["connection"] is True
+    assert data["balance"]["remaining_usd"] == 1.04

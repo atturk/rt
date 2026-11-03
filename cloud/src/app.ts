@@ -5,7 +5,7 @@ import type { OpenRouterAdmin } from "./openrouter";
 import type { Payments } from "./polar";
 import { Store } from "./store";
 import { decryptSecret, randomCode, randomToken, sha256Hex, verifyStandardWebhook } from "./crypto";
-import { handlePolarEvent, type BillingDeps } from "./billing";
+import { handlePolarEvent, topupSummary, type BillingDeps } from "./billing";
 
 export interface AppDeps extends BillingDeps {
   payments: Payments;
@@ -47,7 +47,11 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
   if (route === "GET /v1/health") return json({ ok: true });
 
   if (route === "GET /v1/plans") {
-    return json({ plans: cfg.plans.map(({ id, label }) => ({ id, label })), models: cfg.modelPool });
+    return json({
+      plans: cfg.plans.map(({ id, label }) => ({ id, label })),
+      models: cfg.modelPool,
+      topup: cfg.topup ? { min_cents: cfg.topup.minCents, max_cents: cfg.topup.maxCents, valid_days: cfg.topup.validDays } : null,
+    });
   }
 
   if (route === "POST /v1/auth/start") {
@@ -106,7 +110,9 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
   if (!user) return error(401, "unauthorized", "Accesso richiesto");
 
   if (route === "GET /v1/me") {
-    const usable = user.subscription_status === "active" || user.subscription_status === "canceled";
+    const topup = await topupSummary(deps, user);
+    const usable = user.subscription_status === "active" || user.subscription_status === "canceled"
+      || topup.balance_usd > 0;
     return json({
       email: user.email,
       subscription: {
@@ -115,6 +121,8 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
         current_period_end: user.current_period_end,
         monthly_quota_usd: user.monthly_quota_usd,
       },
+      // Credito delle ricariche all'ultimo conteggio (si aggiorna a rinnovi, ricariche e scadenze).
+      topup,
       // Il saldo si legge direttamente da OpenRouter con questa chiave (GET /api/v1/key).
       openrouter_key: usable && user.or_key_enc ? await decryptSecret(user.or_key_enc, deps.encryptionSecret) : null,
       models: cfg.modelPool,
@@ -131,6 +139,23 @@ export async function handleRequest(request: Request, deps: AppDeps): Promise<Re
     }
     const url = await deps.payments.createCheckout({
       productId: plan.polar_product_id, userId: user.id, email: user.email, successUrl: cfg.successUrl,
+    });
+    return json({ url });
+  }
+
+  if (route === "POST /v1/topup") {
+    if (!cfg.topup) return error(404, "topup_disabled", "Ricariche non disponibili");
+    if (user.subscription_status !== "active" && user.subscription_status !== "canceled") {
+      return error(409, "no_subscription", "Le ricariche servono a chi ha un abbonamento in corso");
+    }
+    const body = await readJson(request);
+    const amount = Number(body?.amount_cents);
+    if (!Number.isInteger(amount) || amount < cfg.topup.minCents || amount > cfg.topup.maxCents) {
+      return error(400, "invalid_amount",
+        `Importo tra ${cfg.topup.minCents / 100} € e ${cfg.topup.maxCents / 100} €`);
+    }
+    const url = await deps.payments.createCheckout({
+      productId: cfg.topup.productId, userId: user.id, email: user.email, successUrl: cfg.successUrl, amountCents: amount,
     });
     return json({ url });
   }

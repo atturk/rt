@@ -1,5 +1,5 @@
 import { handleRequest, type AppDeps } from "./app";
-import { balanceCheck } from "./billing";
+import { balanceCheck, expireTopups } from "./billing";
 import { loadConfig, type Env } from "./env";
 import { resendMailer } from "./mail";
 import { openRouterAdmin } from "./openrouter";
@@ -34,6 +34,8 @@ export default {
 
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     const d = deps(env);
+    const expired = await expireTopups(d);
+    if (expired) console.log("ricariche scadute azzerate", expired);
     const report = await balanceCheck(d);
     console.log("controllo saldo", report);
     if (report.alerts.length && d.cfg.adminEmail) {

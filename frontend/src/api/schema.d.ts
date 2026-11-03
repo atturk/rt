@@ -656,6 +656,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/topup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pagina di pagamento di una ricarica extra */
+        post: operations["topup_api_v1_cloud_topup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/costs": {
         parameters: {
             query?: never;
@@ -4986,6 +5003,8 @@ export interface components {
             models: string[];
             /** Plans */
             plans: components["schemas"]["CloudPlan"][];
+            /** @description Null se le ricariche extra sono spente */
+            topup?: components["schemas"]["CloudTopupRules"] | null;
         };
         /** CloudStatus */
         CloudStatus: {
@@ -5006,6 +5025,7 @@ export interface components {
             /** Logged In */
             logged_in: boolean;
             subscription?: components["schemas"]["CloudSubscription"] | null;
+            topup?: components["schemas"]["CloudTopup"] | null;
         };
         /** CloudSubscription */
         CloudSubscription: {
@@ -5023,6 +5043,29 @@ export interface components {
              * @description none, active, canceled (attivo fino a fine periodo), revoked
              */
             status: string;
+        };
+        /** CloudTopup */
+        CloudTopup: {
+            /**
+             * Balance Usd
+             * @description Credito delle ricariche extra all'ultimo conteggio
+             * @default 0
+             */
+            balance_usd: number;
+            /**
+             * Next Expiry
+             * @description Scadenza della ricarica più vecchia
+             */
+            next_expiry?: string | null;
+        };
+        /** CloudTopupRules */
+        CloudTopupRules: {
+            /** Max Cents */
+            max_cents: number;
+            /** Min Cents */
+            min_cents: number;
+            /** Valid Days */
+            valid_days: number;
         };
         /** CompactAudioPreview */
         CompactAudioPreview: {
@@ -8834,6 +8877,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** TopupIn */
+        TopupIn: {
+            /**
+             * Amount Cents
+             * @description Importo in centesimi di euro
+             */
+            amount_cents: number;
+        };
         /** Transcription */
         Transcription: {
             /** Api Key Set */
@@ -11868,6 +11919,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CloudStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    topup_api_v1_cloud_topup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UrlOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

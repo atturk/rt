@@ -60,3 +60,21 @@ it('la configurazione guidata offre la modalità facilitata solo se RT Cloud esi
   await waitFor(() => expect(get).toHaveBeenCalled())
   expect(screen.queryByLabelText(/Facilitata/)).toBeNull()
 })
+
+it('con l\'abbonamento attivo si può ricaricare da 5 €', async () => {
+  const rules = { ...plans, topup: { min_cents: 500, max_cents: 20000, valid_days: 365 } }
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(ok(path.endsWith('/plans') ? rules
+    : { ...active, topup: { balance_usd: 13.33, next_expiry: '2027-11-03T00:00:00Z' } }))) as never)
+  const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'https://sandbox.polar.sh/checkout/t' }))
+  wrap(<CloudPanel />)
+  expect(await screen.findByTestId('cloud-balance')).toHaveTextContent('Di cui ricariche: 13.33 $')
+  const amount = await screen.findByLabelText('Importo (€)')
+  await userEvent.clear(amount)
+  await userEvent.type(amount, '4')
+  expect(screen.getByRole('button', { name: 'Ricarica' })).toBeDisabled()
+  await userEvent.clear(amount)
+  await userEvent.type(amount, '20,50')
+  await userEvent.click(screen.getByRole('button', { name: 'Ricarica' }))
+  await waitFor(() => expect(post).toHaveBeenCalledWith('/api/v1/cloud/topup', { body: { amount_cents: 2050 } }))
+  expect(await screen.findByRole('link', { name: /Apri la pagina di pagamento/ })).toHaveAttribute('href', 'https://sandbox.polar.sh/checkout/t')
+})

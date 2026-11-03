@@ -16,6 +16,11 @@ export interface Env {
   MODEL_POOL: string;
   VISION_MODEL?: string;
   MARGIN: string;
+  TOPUP_PRODUCT_ID?: string;
+  TOPUP_MARGIN?: string;
+  TOPUP_MIN_CENTS?: string;
+  TOPUP_MAX_CENTS?: string;
+  TOPUP_VALID_DAYS?: string;
   PAYMENT_FEE_PERCENT: string;
   PAYMENT_FEE_FIXED_CENTS: string;
   OPENROUTER_FEE: string;
@@ -30,6 +35,15 @@ export interface Plan {
   label: string;
 }
 
+/** Ricariche extra (prodotto Polar una tantum con prezzo a scelta del cliente). */
+export interface TopupConfig {
+  productId: string;
+  margin: number;
+  minCents: number;
+  maxCents: number;
+  validDays: number;
+}
+
 export interface Config {
   polarApi: string;
   successUrl: string;
@@ -37,6 +51,7 @@ export interface Config {
   modelPool: string[];
   visionModel?: string;
   margin: number;
+  topup?: TopupConfig;
   paymentFeePercent: number;
   paymentFeeFixedCents: number;
   openrouterFee: number;
@@ -70,6 +85,15 @@ export function loadConfig(env: Env): Config {
     modelPool,
     visionModel: env.VISION_MODEL || undefined,
     margin: num(env.MARGIN, "MARGIN", 0, 0.9),
+    topup: env.TOPUP_PRODUCT_ID && env.TOPUP_PRODUCT_ID !== "SOSTITUIRE"
+      ? {
+        productId: env.TOPUP_PRODUCT_ID,
+        margin: num(env.TOPUP_MARGIN ?? "0.10", "TOPUP_MARGIN", 0, 0.9),
+        minCents: num(env.TOPUP_MIN_CENTS ?? "500", "TOPUP_MIN_CENTS", 100, 100000),
+        maxCents: num(env.TOPUP_MAX_CENTS ?? "20000", "TOPUP_MAX_CENTS", 100, 1000000),
+        validDays: num(env.TOPUP_VALID_DAYS ?? "365", "TOPUP_VALID_DAYS", 1, 3650),
+      }
+      : undefined,
     paymentFeePercent: num(env.PAYMENT_FEE_PERCENT, "PAYMENT_FEE_PERCENT", 0, 0.5),
     paymentFeeFixedCents: num(env.PAYMENT_FEE_FIXED_CENTS, "PAYMENT_FEE_FIXED_CENTS", 0, 500),
     openrouterFee: num(env.OPENROUTER_FEE, "OPENROUTER_FEE", 0, 0.5),

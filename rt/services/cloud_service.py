@@ -97,6 +97,11 @@ def checkout(plan: Optional[str]) -> str:
     return _request("POST", "/v1/checkout", {"plan": plan} if plan else {}, token=_require_token())["url"]
 
 
+def topup(amount_cents: int) -> str:
+    """Pagina di pagamento di una ricarica extra (importo in centesimi di euro)."""
+    return _request("POST", "/v1/topup", {"amount_cents": amount_cents}, token=_require_token())["url"]
+
+
 def portal() -> str:
     return _request("POST", "/v1/portal", token=_require_token())["url"]
 
@@ -187,7 +192,8 @@ def status(project_root: Path, me: Optional[dict] = None) -> dict:
     available = base_url() is not None
     token = _token() if available else None
     out: dict = {"available": available, "logged_in": False, "email": None,
-                 "subscription": None, "balance": None, "connection": _connection_exists(project_root)}
+                 "subscription": None, "topup": None, "balance": None,
+                 "connection": _connection_exists(project_root)}
     if not token:
         return out
     if me is None:
@@ -197,9 +203,10 @@ def status(project_root: Path, me: Optional[dict] = None) -> dict:
             if exc.status == 401:
                 return out
             raise
-    out.update(logged_in=True, email=me.get("email"), subscription=me.get("subscription"))
+    out.update(logged_in=True, email=me.get("email"), subscription=me.get("subscription"), topup=me.get("topup"))
     sub = me.get("subscription") or {}
-    if sub.get("status") in ("active", "canceled"):
+    has_topup = ((me.get("topup") or {}).get("balance_usd") or 0) > 0
+    if sub.get("status") in ("active", "canceled") or has_topup:
         key = _connection_key(project_root)
         out["balance"] = _balance(key) if key else None
     return out
