@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StudyFlow } from './Study'
 import type { Lesson } from '@/lib/format'
 import { api as apiClient } from '@/api/client'
+import { sourceRange } from '@/lib/sourceText'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(async () => [] as unknown[]),
@@ -281,10 +282,101 @@ describe('lettura veloce', () => {
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo, dopo l’ultimo si spegne · E/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · E · seleziona il testo, prima o dopo/ })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
   expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+})
+
+it('selezione e poi V apre la verifica con la quote giusta e hlMode resta null', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'v' })
+
+  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
+  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-verifica')).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('selezione e poi E crea l’evidenziazione nel colore corrente', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'e' })
+
+  await waitFor(() => expect(api.add).toHaveBeenCalledWith(1, expect.objectContaining({
+    color: 0,
+    source: expect.objectContaining({ text: 'rene' }),
+  })))
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('selezione e poi clic sul pulsante Verifica fa lo stesso', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  const btnV = screen.getByTestId('highlight-verifica')
+  fireEvent.pointerDown(btnV)
+  fireEvent.click(btnV)
+
+  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
+  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('senza selezione V accende la modalità come oggi', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  window.getSelection()?.removeAllRanges()
+
+  const btnV = screen.getByTestId('highlight-verifica')
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+
+  fireEvent.keyDown(window, { key: 'v' })
+
+  expect(btnV).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
+  expect(screen.queryByTestId('study-note-popup')).not.toBeInTheDocument()
+})
+
+it('selezione e poi G toglie le evidenziazioni che toccano la selezione', async () => {
+  api.list.mockResolvedValueOnce([
+    { id: 3, unit_id: '1.1', color: 2, source: { startMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 3 }, endMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 7 }, text: 'rene', id: 'a' } },
+  ])
+  renderStudy()
+  const text = screen.getByTestId('study-text')
+  await waitFor(() => expect(text.querySelector('.rt-hl')).toBeInTheDocument())
+
+  const range = sourceRange(text, 0, 10)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'g' })
+
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith(1, 3))
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'false')
 })
 
 it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi', () => {
