@@ -107,6 +107,11 @@ class JobInfo:
         for key in ("created_at", "started_at", "finished_at"):
             if data[key] is not None:
                 data[key] = data[key].isoformat() + "Z"
+        if data.get("error"):
+            from rt.services.human_error import human_error
+            data["error_message"] = human_error(data["error"])
+        else:
+            data["error_message"] = None
         return data
 
     @classmethod

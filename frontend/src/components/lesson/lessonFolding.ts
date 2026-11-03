@@ -102,6 +102,8 @@ const headingClickUnfold = EditorView.domEventHandlers({
   },
 })
 
+const alignedMarkers = new WeakMap<HTMLElement, number>()
+
 /** La gutter non eredita il padding del titolo: centra la freccia sulla sua prima riga. */
 const alignFoldMarkers = ViewPlugin.fromClass(class {
   constructor(view: EditorView) { this.measure(view) }
@@ -123,9 +125,16 @@ const alignFoldMarkers = ViewPlugin.fromClass(class {
         const lineHeight = Number.parseFloat(style.lineHeight)
         if (!Number.isFinite(lineHeight)) return []
         const center = line.getBoundingClientRect().top + Number.parseFloat(style.paddingTop || '0') + lineHeight / 2
-        return [{ marker, offset: center - rowTop - marker.getBoundingClientRect().height / 2 }]
+        const offset = Math.round(center - rowTop - marker.getBoundingClientRect().height / 2)
+        if (alignedMarkers.get(marker) === offset) return []
+        return [{ marker, offset }]
       }),
-      write: positions => { for (const { marker, offset } of positions) marker.style.transform = `translateY(${offset}px)` },
+      write: positions => {
+        for (const { marker, offset } of positions) {
+          alignedMarkers.set(marker, offset)
+          marker.style.transform = `translateY(${offset}px)`
+        }
+      },
     })
   }
 })

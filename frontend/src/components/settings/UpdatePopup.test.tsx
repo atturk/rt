@@ -83,6 +83,34 @@ describe('UpdatePopup', () => {
     expect(screen.getByText(/Scarico RT 4.3.0/)).toBeVisible()
   })
 
+  it('stato verifica: mostra "Verifico il pacchetto…"', async () => {
+    renderPopup({
+      ...basePopupData,
+      progress: {
+        ...idle,
+        phase: 'verifying',
+        target: '4.3.0',
+      },
+    })
+    expect(await screen.findByText('Verifico il pacchetto…')).toBeVisible()
+  })
+
+  it('download fermo al 99%: dopo 2s mostra "Verifico il pacchetto…"', async () => {
+    renderPopup({
+      ...basePopupData,
+      progress: {
+        ...idle,
+        phase: 'downloading',
+        downloaded: 99,
+        total: 100,
+        target: '4.3.0',
+      },
+    })
+    expect(await screen.findByText(/Scarico RT 4.3.0/)).toBeVisible()
+    await new Promise((r) => setTimeout(r, 2100))
+    expect(screen.getByText('Verifico il pacchetto…')).toBeVisible()
+  }, 10000)
+
   it('stato pronto: mostra pulsante Installa e riavvia', async () => {
     const { post } = renderPopup({
       ...basePopupData,

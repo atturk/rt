@@ -18,7 +18,10 @@ def usage_index():
     index = {}
 
     for directory in lesson_directories():
-        info = read_info_yaml(lesson_path(directory, 'info.yaml'))
+        info_path = lesson_path(directory, 'info.yaml')
+        if not fs.isfile(info_path):
+            continue  # lezione registrata ma senza info.yaml: non blocca l'archivio
+        info = read_info_yaml(info_path)
         titolo = info.get('titolo') or info.get('argomenti') or os.path.basename(directory)
         data = str(info.get('data') or '')
         materia = info.get('materia') or ''

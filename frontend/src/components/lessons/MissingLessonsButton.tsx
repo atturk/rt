@@ -5,6 +5,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { usePreference } from '@/lib/preferences'
 import { useHoverExpand } from '@/lib/useHoverExpand'
 import { filterMissingLessons, type LessonsGrouping } from '@/lib/lessonsPage'
+import { getSubjectColor } from '@/components/calendar/subjectColor'
 
 export interface MissingLessonsButtonProps {
   grouping?: LessonsGrouping
@@ -43,25 +44,36 @@ export function MissingLessonsButton({
           role="region"
           aria-label="Lezioni mancanti"
           data-testid="missing-lessons-popup"
-          className="absolute left-0 top-full z-50 mt-1 w-[270px] rounded-lg border border-border bg-card p-2 shadow-panel normal-case tracking-normal"
+          className="absolute left-0 top-full z-50 mt-1 min-w-[280px] max-w-[360px] rounded-lg border border-border bg-card p-2 shadow-panel normal-case tracking-normal"
         >
           <ul className="flex max-h-64 flex-col gap-1.5 overflow-auto text-meta">
-            {items.map((item) => (
-              <li key={`${item.date}:${item.key}`}>
-                <Link
-                  className="flex items-center justify-between gap-3 rounded px-1 py-1 text-foreground hover:bg-muted"
-                  to={`/calendario?data=${item.date}&evento=${encodeURIComponent(item.key)}`}
-                  onClick={() => setOpen(false)}
-                >
-                  <span>
-                    {item.day_name} {item.day_number}/{item.month_number}
-                  </span>
-                  <span className="font-mono text-muted-foreground">
-                    {item.start_time}–{item.end_time}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {items.map((item) => {
+              const itemMateria = item.materia || (grouping === 'materia' ? effectiveKey : '')
+              const dayStr = (item.day_name || '').toLowerCase()
+              const color = getSubjectColor(itemMateria)
+              return (
+                <li key={`${item.date}:${item.key}`}>
+                  <Link
+                    className="flex items-center gap-2 rounded px-1.5 py-1 text-foreground hover:bg-muted"
+                    to={`/calendario?data=${item.date}&evento=${encodeURIComponent(item.key)}`}
+                    onClick={() => setOpen(false)}
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                      aria-hidden
+                    />
+                    <span className="truncate">
+                      {itemMateria ? `${itemMateria} · ` : ''}
+                      {dayStr} {item.day_number}/{item.month_number} ·{' '}
+                      <span className="font-mono text-muted-foreground">
+                        {item.start_time}–{item.end_time}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

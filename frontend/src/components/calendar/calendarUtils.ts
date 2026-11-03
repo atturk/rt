@@ -29,3 +29,18 @@ export function getEventTooltip(e: CalendarEventView): string {
   }
   return out
 }
+
+export function formatEventDate(iso: string): string {
+  try {
+    const d = new Date(`${iso}T00:00:00Z`)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleDateString('it-IT', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    }).replace(/\./g, '')
+  } catch {
+    return iso
+  }
+}

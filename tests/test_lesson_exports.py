@@ -104,7 +104,11 @@ def test_export_validation_failed_and_wrong_job(api_client, workspace, rt_db):
 def test_cancellation_between_lessons_cleans_temporary_exports(workspace, rt_db, monkeypatch, tmp_path):
     from rt.services.lesson_service import lesson_id_for_dir
     from rt.storage import export
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    # Una cartella a parte: con tempdir = tmp_path anche le lezioni (sotto tmp_path su Windows)
+    # finirebbero nella cartella temporanea, che dalla 4.3.7 non si indicizza.
+    exports_tmp = tmp_path / "export-tmp"
+    exports_tmp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(exports_tmp))
     first = make_lesson(workspace)
     second = make_lesson(workspace, name="seconda lezione")
     token = CancelToken()
@@ -122,6 +126,6 @@ def test_cancellation_between_lessons_cleans_temporary_exports(workspace, rt_db,
     with pytest.raises(RunCancelled):
         export_lessons_job(job, RunContext(cancel_token=token))
     assert processed == [first]
-    assert not list(tmp_path.glob("rt-export-*.zip"))
-    assert not list(tmp_path.glob("rt-export-many-*.zip"))
+    assert not list(exports_tmp.glob("rt-export-*.zip"))
+    assert not list(exports_tmp.glob("rt-export-many-*.zip"))
     assert not os.path.exists(os.path.dirname(job_export_path(job.id, "lezioni.zip")))

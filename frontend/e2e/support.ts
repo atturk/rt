@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test as base, type APIRequestContext, type Locator, type Page } from '@playwright/test'
@@ -154,15 +155,17 @@ export async function disableOutlineTimer(request: APIRequestContext) {
   expect(res.ok(), await res.text()).toBeTruthy()
 }
 
-let audioSerial = 0
-
 /** Copia dell'audio di prova con gli ultimi campioni cambiati. Dalla 4.3.6b2 una registrazione già
  * caricata viene rifiutata (409 audio_duplicate) e i test condividono lo stesso server: ogni
  * importazione usa quindi un file diverso. Il chunk data è l'ultimo del WAV. */
 export function uniqueAudio(path: string, name = 'demo_lecture.wav') {
   const buffer = Buffer.from(readFileSync(path))
-  // Solo i due byte bassi dell'ultimo campione (float32): il suono non cambia.
-  buffer.writeUInt16LE(++audioSerial, buffer.length - 4)
+  // Solo i due byte bassi degli ultimi due campioni (float32): il suono non cambia. Casuali e non
+  // un contatore: Playwright riavvia il worker dopo un test fallito, il contatore ripartirebbe da
+  // capo e ridarebbe ai test successivi un audio già importato.
+  const marker = randomBytes(4)
+  marker.copy(buffer, buffer.length - 8, 0, 2)
+  marker.copy(buffer, buffer.length - 4, 2, 4)
   return { name, mimeType: 'audio/wav', buffer }
 }
 

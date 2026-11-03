@@ -56,17 +56,44 @@ def _require_db():
     return db
 
 
+def has_info_yaml(path: str) -> bool:
+    """Lezione a cartella con info.yaml, alla radice o in _state/ (layout nuovo)."""
+    from rt.core.lesson_paths import STATE_SUBDIR
+    return any(os.path.isfile(os.path.join(path, *parts)) for parts in (("info.yaml",), (STATE_SUBDIR, "info.yaml")))
+
+
+def _is_temp_path(p: str) -> bool:
+    import tempfile
+    real_p = os.path.realpath(p)
+    temp_dirs = [tempfile.gettempdir(), "/tmp", "/private/tmp", "/var/folders", "/private/var/folders"]
+    for td in temp_dirs:
+        real_td = os.path.realpath(td)
+        try:
+            if os.path.commonpath([real_p, real_td]) == real_td:
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 def ensure_indexed(lesson_dirs: List[str]) -> Dict[str, int]:
     """Porta nel DB le cartelle non ancora note e restituisce percorso reale -> Lesson.id."""
+    import logging
+    from rt.core import paths
     from rt.db.repositories import LessonRepository, normalize_lesson_path
     from rt.db.session import session_scope
     from rt.db.sync import sync_lesson
+    data_dir = paths.data_dir()
+    allow_temp = _is_temp_path(data_dir)
     db = _require_db()
     ids: Dict[str, int] = {}
     with session_scope(db) as session:
         repo = LessonRepository(session)
         for lesson_dir in lesson_dirs:
             path = normalize_lesson_path(lesson_dir)
+            if not allow_temp and _is_temp_path(path):
+                logging.getLogger("rt.api").warning("ensure_indexed: ignorato percorso temporaneo %s", path)
+                continue
             lesson = repo.get_by_path(path)
             if lesson is None:
                 # Solo una cartella reale può mancare dal DB: una lezione "db" ha sempre la sua
@@ -99,8 +126,13 @@ def indexed_lesson_ids() -> Dict[str, int]:
     with read_scope(_require_db()) as session:
         # Una lezione "folder" esiste solo come cartella reale: os.path, non fs, che potrebbe
         # vedere nel percorso una lezione "db" dal vecchio nome rimasto nella sua cache.
-        return {lesson.path: lesson.id for lesson in LessonRepository(session).list_all()
-                if lesson.storage == fs.STORAGE_DB or os.path.isdir(lesson.path)}
+        # Inoltre, le lezioni folder senza info.yaml non vengono mostrate.
+        return {
+            lesson.path: lesson.id
+            for lesson in LessonRepository(session).list_all()
+            if lesson.storage == fs.STORAGE_DB
+            or has_info_yaml(lesson.path)
+        }
 
 
 def resolve_lesson_dir(lesson_id: int) -> str:
@@ -239,6 +271,7 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         "id": lesson_id, "folder_name": os.path.basename(lesson_dir), "path": lesson_dir,
         "data": "", "ora": "", "materia": "", "titolo": "", "argomenti": "", "docente": "", "state": None,
         "phases": {ph: "MISSING" for ph in PHASES}, "pending_issues": 0, "cost_usd": None, "error": None,
+        "error_message": None,
         "unit_count": None, "duration_seconds": None, "recall_questions": 0, "recall_pending": 0,
         "pipeline_at": None, "media_count": 0,
     }
@@ -260,6 +293,8 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         })
     except Exception as exc:  # una lezione illeggibile non blocca l'elenco
         out["error"] = str(exc)
+        from rt.services.human_error import human_error
+        out["error_message"] = human_error(str(exc))
     return out
 
 
@@ -447,6 +482,9 @@ def lesson_detail(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     out["has_audio"] = lesson_audio_file(lesson_dir) is not None
     out["cost"] = compute_lesson_cost(lesson_dir)
     out["actions"] = lesson_actions(lesson_dir)
+    if out.get("error") and not out.get("error_message"):
+        from rt.services.human_error import human_error
+        out["error_message"] = human_error(out["error"])
     return out
 
 
@@ -514,6 +552,7 @@ def _read_rielaborato(lesson_dir: str) -> Optional[str]:
 NO_PREVIEW_MARKDOWN = (
     "Questa lezione non è ancora pronta. Avvia l'elaborazione o riprova se si è interrotta."
 )
+TRANSCRIPTION_READY_MARKDOWN = "Trascrizione pronta."
 
 
 def load_markdown_preview(lesson_dir: str) -> str:
@@ -542,6 +581,9 @@ def load_markdown_preview(lesson_dir: str) -> str:
         final = _read_rielaborato(lesson_dir)
         if final is not None:
             return final
+        if (check_phase_status(lesson_dir, "prepare")[0] == PhaseStatus.VALID
+                and check_phase_status(lesson_dir, "outline")[0] == PhaseStatus.MISSING):
+            return TRANSCRIPTION_READY_MARKDOWN
         return NO_PREVIEW_MARKDOWN
 
 
@@ -613,7 +655,7 @@ def lesson_document(lesson_dir: str) -> Dict[str, Any]:
     tokens = md.parse(strip_generated(markdown))
     _mark_unit_blocks(tokens, sections)
     html = md.renderer.render(tokens, md.options, {})
-    return {"final": final, "pending": markdown == NO_PREVIEW_MARKDOWN, "markdown": markdown,
+    return {"final": final, "pending": markdown in (NO_PREVIEW_MARKDOWN, TRANSCRIPTION_READY_MARKDOWN), "markdown": markdown,
             "html": html, "sections": sections}
 
 

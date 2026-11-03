@@ -150,3 +150,32 @@ it('mostra il riquadro di errore se l’ultimo job è fallito, con Riprova ed El
   fireEvent.click(confirmDeleteBtn)
   expect(mockDeleteLesson).toHaveBeenCalled()
 })
+
+it('mostra il messaggio leggibile error_message invece del testo tecnico nel riquadro di errore', () => {
+  workflow.jobs = [
+    {
+      id: 'job-fail-2',
+      type: 'ingest_audio',
+      state: 'failed',
+      error: "SetupError: Trascrizione macparakeet-cli JSON fallita per 'finto-audio.mp3' (codice uscita: 1). Dettagli errore:",
+      error_message: "Non riesco a leggere l'audio «finto-audio.mp3».",
+      attempts: 1,
+      cancel_requested: false,
+      payload: {},
+    } as Schemas['Job'],
+  ]
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={['/lezioni/1']}>
+        <Routes>
+          <Route path="/lezioni/:lessonId" element={<LessonPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  const banner = screen.getByTestId('failed-lesson-banner')
+  expect(banner).toBeInTheDocument()
+  expect(banner).toHaveTextContent("Non riesco a leggere l'audio «finto-audio.mp3».")
+  expect(banner).not.toHaveTextContent('SetupError')
+})

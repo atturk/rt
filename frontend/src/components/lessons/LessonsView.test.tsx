@@ -4,11 +4,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { LessonsHeaderActions, LessonsList } from './LessonsView'
+import { PageHeader } from '@/components/shell/PageHeader'
+import { NewLessonContext } from '@/components/shell/newLesson'
 import type { Lesson } from '@/lib/format'
 import type { LessonsPrefs } from '@/lib/lessonsPage'
 
+let mockIsPhone = false
+vi.mock('@/lib/phone', () => ({ useIsPhone: () => mockIsPhone }))
+const mockOpenNewLesson = vi.fn()
+
 afterEach(() => {
   cleanup()
+  mockIsPhone = false
+  vi.clearAllMocks()
 })
 
 const sampleLesson = (id: number, titolo = `Lezione ${id}`): Lesson => ({
@@ -42,14 +50,16 @@ function renderHeader(prefs: LessonsPrefs, onPrefs = vi.fn()) {
     ...render(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <LessonsHeaderActions
-            prefs={prefs}
-            onPrefs={onPrefs}
-            query=""
-            onQuery={() => {}}
-            selecting={false}
-            onSelecting={() => {}}
-          />
+          <NewLessonContext value={mockOpenNewLesson}>
+            <LessonsHeaderActions
+              prefs={prefs}
+              onPrefs={onPrefs}
+              query=""
+              onQuery={() => {}}
+              selecting={false}
+              onSelecting={() => {}}
+            />
+          </NewLessonContext>
         </MemoryRouter>
       </QueryClientProvider>,
     ),
@@ -138,5 +148,44 @@ describe('LessonsView - raggruppamento', () => {
   it('con materia l\'elenco mostra l\'intestazione di gruppo', () => {
     renderList('materia', [{ key: 'FISIOLOGIA', label: 'FISIOLOGIA', lessons: [sampleLesson(1)] }])
     expect(screen.getByRole('heading', { level: 2, name: 'Fisiologia' })).toBeInTheDocument()
+  })
+
+  it('su telefono mostra Data e Recenti come pulsanti a sola icona e il pulsante Nuova lezione che apre il popup', () => {
+    mockIsPhone = true
+    const qc = new QueryClient()
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <NewLessonContext value={mockOpenNewLesson}>
+            <PageHeader
+              title="Lezioni"
+              actions={
+                <LessonsHeaderActions
+                  prefs={{ group: 'data', sort: 'recenti' }}
+                  onPrefs={() => {}}
+                  query=""
+                  onQuery={() => {}}
+                  selecting={false}
+                  onSelecting={() => {}}
+                />
+              }
+            />
+          </NewLessonContext>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const title = screen.getByRole('heading', { level: 1 })
+    expect(title).toHaveTextContent('Lezioni')
+    expect(title.textContent).not.toContain('…')
+
+    const newLessonBtn = screen.getByRole('button', { name: 'Nuova lezione' })
+    expect(newLessonBtn).toBeInTheDocument()
+    fireEvent.click(newLessonBtn)
+    expect(mockOpenNewLesson).toHaveBeenCalledTimes(1)
+
+    // Data e Recenti a sola icona con aria-label
+    expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
   })
 })

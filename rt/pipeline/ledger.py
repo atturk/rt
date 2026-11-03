@@ -40,8 +40,26 @@ def load_ledger(lesson_dir: str, strict: bool = False, *, _migrate: bool = True)
         with fs.open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         cleaned_data = sanitize_object_encoding(data)
+        if isinstance(cleaned_data, dict) and "decisions" in cleaned_data:
+            valid_decisions = []
+            for dec in cleaned_data.get("decisions", []):
+                try:
+                    valid_decisions.append(ReviewDecision.model_validate(dec))
+                except Exception as dec_exc:
+                    import logging
+                    logging.getLogger("rt.api").warning(
+                        "Decisione scartata perché non valida (%s): %s",
+                        dec.get("issue_id") if isinstance(dec, dict) else dec,
+                        dec_exc,
+                    )
+            return DecisionLedger(
+                schema_version=str(cleaned_data.get("schema_version", "1.0")),
+                decisions=valid_decisions,
+            )
         return DecisionLedger.model_validate(cleaned_data)
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger("rt.api").warning("Caricamento del ledger non riuscito: %s", exc)
         return DecisionLedger(schema_version="1.0", decisions=[])
 
 
@@ -212,6 +230,10 @@ def apply_decisions_to_draft(
             if decision.decision == 'edited' and decision.resolved_text:
                 unit.content = fix_mojibake(decision.resolved_text)
             continue
+        if decision.anchor:
+            if getattr(decision.anchor, "needs_recalc", False) or (decision.anchor.end - decision.anchor.start != len(decision.anchor.quote)):
+                from rt.pipeline.anchors import recalculate_anchor
+                recalculate_anchor(decision.anchor, unit.content)
         found = locate(decision.anchor, unit.content) if decision.anchor else None
         if found is None:
             if missing_decisions is not None:

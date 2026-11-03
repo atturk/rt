@@ -163,3 +163,65 @@ def test_decision_resolution_updates_recall_questions(lesson_dir):
     q1 = next(q for q in bank.questions if "1.1" in q.unit_ids)
     assert q1.status == RecallQuestionStatus.DISCARDED
     assert "stale" in q1.discard_reasons
+
+
+def test_existing_question_on_unit_with_pending_issue_is_not_picked_until_decided(lesson_dir):
+    from rt.core.models import RecallQuestion
+    from rt.services.recall_service import pick_pending_question
+
+    bank = load_recall_bank(lesson_dir)
+    q1 = RecallQuestion(
+        id="rec_000001",
+        lesson_id="test_lesson",
+        unit_ids=["1.1"],
+        type=RecallQuestionType.QUIZ,
+        question_text="Domanda su unità 1.1",
+        options=["A", "B"],
+        correct_index=0,
+        status=RecallQuestionStatus.PENDING,
+    )
+    q2 = RecallQuestion(
+        id="rec_000002",
+        lesson_id="test_lesson",
+        unit_ids=["1.2"],
+        type=RecallQuestionType.QUIZ,
+        question_text="Domanda su unità 1.2",
+        options=["C", "D"],
+        correct_index=0,
+        status=RecallQuestionStatus.PENDING,
+    )
+    bank.questions = [q1, q2]
+    save_recall_bank(bank, lesson_dir)
+
+    issue = ScienceIssue(
+        id="sci_000001",
+        type=ScienceType.ERR_CONCETTUALE,
+        severity=ScienceSeverity.HIGH,
+        unit_id="1.1",
+        claim="concetto errato",
+        reason="Errore concettuale",
+        anchor=Anchor(quote="concetto errato", start=46, end=61),
+    )
+    save_science_issues([issue], lesson_dir)
+
+    # 1. Con issue aperta su 1.1, la domanda su 1.1 viene saltata e viene scelta quella su 1.2
+    chosen = pick_pending_question(lesson_dir, RecallQuestionType.QUIZ)
+    assert chosen is not None
+    assert chosen.id == "rec_000002"
+
+    # Rispondiamo alla domanda su 1.2 in modo che non sia più da porre
+    from rt.pipeline.recall import record_recall_answer
+    record_recall_answer(lesson_dir, "rec_000002", "C", outcome="corretta")
+
+    # 2. Rimane solo la domanda su 1.1 (che ha issue aperta): non viene scelta
+    chosen_next = pick_pending_question(lesson_dir, RecallQuestionType.QUIZ)
+    assert chosen_next is None
+
+    # 3. Risolviamo la segnalazione
+    record_review_decision(lesson_dir, "sci_000001", "rejected", channel="web")
+
+    # 4. Ora la domanda su 1.1 torna disponibile e viene scelta
+    chosen_after = pick_pending_question(lesson_dir, RecallQuestionType.QUIZ)
+    assert chosen_after is not None
+    assert chosen_after.id == "rec_000001"
+

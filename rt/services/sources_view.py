@@ -32,13 +32,25 @@ def sources_view(lesson_dir):
     from rt.core.source_selection import selection
     sources = load_sources(lesson_dir)
     state = _read_state(lesson_dir)
-    used = state.get("used", [s.id for s in sources if s.id == "src_000001"]
-                     if fs.isfile(lesson_path(lesson_dir, "segments.json")) else [])
+    has_outline = fs.isfile(lesson_path(lesson_dir, "outline.json"))
+    from rt.pipeline.source_update import _transcribed_source_ids
+    transcribed = _transcribed_source_ids(lesson_dir, sources, state) if not has_outline else set()
+    used = state.get("used")
+    if used is None:
+        if not has_outline:
+            used = [s.id for s in sources if s.id in transcribed]
+        elif fs.isfile(lesson_path(lesson_dir, "segments.json")):
+            used = [s.id for s in sources if s.id == "src_000001"]
+        else:
+            used = []
+    elif not has_outline:
+        used = list(set(used) | {s.id for s in sources if s.id in transcribed})
+    used_set = set(used)
     views = []
     for source in sources:
         values = source.model_dump()
         values.update(nome="Appunti" if source.tipo == "appunti" else os.path.basename(source.file),
-                      usata=source.id in used)
+                      usata=source.id in used_set)
         path = os.path.join(lesson_dir, source.file)
         if source.tipo == "appunti" and fs.isfile(path):
             with fs.open(path, encoding="utf-8") as stream:

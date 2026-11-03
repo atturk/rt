@@ -166,15 +166,23 @@ def repair_latex_escapes(text: str) -> str:
     return "".join(parts)
 
 
-def sanitize_object_encoding(obj: Any) -> Any:
+def sanitize_object_encoding(obj: Any, *, repair_latex: bool = False) -> Any:
     """
     Sanitizza ricorsivamente stringhe in dizionari, liste o oggetti arbitrari.
-    Particolarmente utile prima o dopo il caricamento di JSON dall'LLM.
+    Particolarmente utile prima o dopo il caricamento di JSON.
     """
     if isinstance(obj, str):
-        return repair_latex_escapes(fix_mojibake(obj))
+        text = fix_mojibake(obj)
+        if repair_latex:
+            text = repair_latex_escapes(text)
+        return text
     elif isinstance(obj, list):
-        return [sanitize_object_encoding(x) for x in obj]
+        return [sanitize_object_encoding(x, repair_latex=repair_latex) for x in obj]
     elif isinstance(obj, dict):
-        return {k: sanitize_object_encoding(v) for k, v in obj.items()}
+        return {k: sanitize_object_encoding(v, repair_latex=repair_latex) for k, v in obj.items()}
     return obj
+
+
+def sanitize_llm_output(obj: Any) -> Any:
+    """Sanitizza l'output proveniente dal modello LLM (mojibake + repair_latex_escapes)."""
+    return sanitize_object_encoding(obj, repair_latex=True)

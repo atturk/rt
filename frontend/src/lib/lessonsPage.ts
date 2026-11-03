@@ -176,11 +176,23 @@ export function longDate(date: string, now = new Date()): string {
   return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
 }
 
-/** "FISIOLOGIA" → "Fisiologia": le materie arrivano in maiuscolo dall'API. */
+/** "FISIOLOGIA" → "Fisiologia", "PGSS" → "PGSS", "QA PROVA NOTTE" → "QA prova notte". */
 export function subjectName(materia: string): string {
   if (!materia || materia !== materia.toLocaleUpperCase('it')) return materia
-  const lower = materia.toLocaleLowerCase('it')
-  return lower.charAt(0).toLocaleUpperCase('it') + lower.slice(1)
+  const words = materia.split(/(\s+)/)
+  return words
+    .map((word, i) => {
+      if (/^\s+$/.test(word)) return word
+      if (word.length <= 4 && /^\p{Lu}+$/u.test(word)) {
+        return word
+      }
+      const lower = word.toLocaleLowerCase('it')
+      if (i === 0) {
+        return lower.charAt(0).toLocaleUpperCase('it') + lower.slice(1)
+      }
+      return lower
+    })
+    .join('')
 }
 
 export function unitsText(lesson: Pick<Lesson, 'unit_count'>): string | null {
@@ -363,12 +375,13 @@ export function filterMissingLessons(
     const match = missingData.subjects.find(
       (s) => (s.materia ?? '').trim().toUpperCase() === normKey.toUpperCase(),
     )
-    return match?.missing ?? []
+    const materia = match?.materia ?? ''
+    return (match?.missing ?? []).map((m) => ({ ...m, materia: m.materia || materia }))
   }
 
   // Le materie arrivano una dopo l'altra: fuori dal raggruppamento per materia si torna all'ordine del calendario.
   const allItems = missingData.subjects
-    .flatMap((s) => s.missing ?? [])
+    .flatMap((s) => (s.missing ?? []).map((m) => ({ ...m, materia: m.materia || s.materia })))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
 
   switch (grouping) {

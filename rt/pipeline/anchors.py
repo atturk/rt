@@ -23,6 +23,19 @@ def make_anchor(text: str, start: int, end: int) -> Anchor:
                   suffix=text[end:end+CONTEXT_SIZE], start=start, end=end)
 
 
+def recalculate_anchor(anchor: Anchor, text: str) -> bool:
+    """Ricalcola start ed end cercando la quote nel testo dell'unità."""
+    if not anchor.quote:
+        return False
+    found = find_quote(text, anchor.quote)
+    if found:
+        anchor.start = found.start
+        anchor.end = found.end
+        anchor.needs_recalc = False
+        return True
+    return False
+
+
 def _occurrences(text: str, quote: str):
     if quote:
         start = text.find(quote)

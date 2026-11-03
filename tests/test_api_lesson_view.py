@@ -220,3 +220,40 @@ def test_playable_audio_rejects_bad_output(tmp_path, rt_db, monkeypatch, raises)
     monkeypatch.setattr(subprocess, "run", empty)
     assert audio_service.playable_audio(str(source)) == str(source)
     assert os.listdir(audio_service._cache_dir("audio")) == []
+
+
+def test_transcription_only_sources_and_preview(tmp_path, rt_db):
+    from rt.core.segments import save_segments_json
+    from rt.core.models import Segment
+    from rt.services.lesson_service import load_markdown_preview, TRANSCRIPTION_READY_MARKDOWN
+    from rt.pipeline.source_update import sources_pending
+    from rt.services.sources_view import sources_view
+    import yaml
+
+    lesson_dir = str(tmp_path / "lesson_transcription_only")
+    os.makedirs(lesson_dir)
+    info = {
+        "materia": "Fisiologia",
+        "data": "2026-11-03",
+        "file_audio": "audio.m4a",
+        "fase_corrente": "setup_completato",
+    }
+    with open(os.path.join(lesson_dir, "info.yaml"), "w") as f:
+        yaml.safe_dump(info, f)
+
+    audio_path = os.path.join(lesson_dir, "audio.m4a")
+    with open(audio_path, "wb") as f:
+        f.write(b"fake audio data")
+
+    save_segments_json(
+        [Segment(id="seg_000001", index=1, start_seconds=0, end_seconds=5, start_formatted="00:00", end_formatted="00:05", text_raw="Test")],
+        os.path.join(lesson_dir, "segments.json")
+    )
+    with open(os.path.join(lesson_dir, "transcript_normalized.md"), "w") as f:
+        f.write("00:00 Test\n")
+
+    assert not sources_pending(lesson_dir)
+    view = sources_view(lesson_dir)
+    assert view["has_unused_sources"] is False
+    assert view["sources"][0].usata is True
+    assert load_markdown_preview(lesson_dir) == TRANSCRIPTION_READY_MARKDOWN

@@ -160,7 +160,19 @@ export function LinkMenuButton({ label, icon, items, className, buttonClassName,
                   item.onSelect?.()
                   if (item.checked === undefined) close(true)
                 }}>
-                {item.checked !== undefined && <Check aria-hidden className={cn('size-4 shrink-0', !item.checked && 'invisible')} />}
+                {item.checked !== undefined && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
+                      item.checked
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-muted-foreground/60 bg-transparent',
+                    )}
+                  >
+                    {item.checked && <Check className="size-3 stroke-[2.5]" />}
+                  </span>
+                )}
                 {item.icon && <item.icon aria-hidden className="size-4 shrink-0" />}
                 {item.label}
               </button>

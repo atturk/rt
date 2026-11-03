@@ -326,7 +326,10 @@ def migrate_review_anchors(lesson_dir):
         return
     if not fs.isfile(get_draft_path(lesson_dir)):
         return
-    ledger = load_ledger(lesson_dir, strict=True, _migrate=False)
+    try:
+        ledger = load_ledger(lesson_dir, strict=False, _migrate=False)
+    except Exception:
+        return
     if ledger.schema_version == '2.0':
         return
     if not fs.isfile(get_science_issues_path(lesson_dir)) and not ledger.decisions:

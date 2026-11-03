@@ -11,7 +11,9 @@ from rt.storage import fs
 def all_lessons_list(explicit_dirs=None):
     if explicit_dirs:
         return explicit_dirs
-    dirs = set(known_lesson_dirs())
+    # Una lezione nel DB la cui cartella non ha più info.yaml (es. resti di prove in /tmp)
+    # non deve mandare in errore l'anteprima di tutte le altre.
+    dirs = {d for d in known_lesson_dirs() if fs.isfile(lesson_path(d, "info.yaml"))}
     root = lessons_root()
     if fs.isdir(root):
         for entry in fs.listdir(root):

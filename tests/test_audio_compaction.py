@@ -187,3 +187,14 @@ def test_compact_audio_api_endpoints(api_client, tmp_path, monkeypatch):
     job_info = post_resp.json()
     assert job_info["type"] == "compact_audio"
     assert job_info["state"] in ("queued", "running", "done")
+
+
+def test_preview_skips_registered_lesson_without_info(tmp_path, monkeypatch):
+    """Una lezione nel DB senza info.yaml (resto di una prova in /tmp) non manda in 500 l'anteprima."""
+    lesson_dir = str(tmp_path / "lezione1")
+    _setup_mock_lesson(lesson_dir)
+    ghost = tmp_path / "fantasma"
+    (ghost / "_state").mkdir(parents=True)
+    monkeypatch.setattr("rt.services.audio_compaction.known_lesson_dirs", lambda: [lesson_dir, str(ghost)])
+    monkeypatch.setattr("rt.services.audio_compaction.lessons_root", lambda: str(tmp_path / "vuota"))
+    assert preview_compact_audio()["file_convertibili"] == 2

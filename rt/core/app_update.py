@@ -275,6 +275,8 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
                 digest.update(chunk)
                 done += len(chunk)
                 on_progress(done, total)
+        with STATE.lock:
+            STATE.phase = "verifying"
     except (urllib.error.URLError, OSError, http.client.HTTPException):
         _remove(partial)
         raise _interrupted(done, total) from None
@@ -294,6 +296,9 @@ def download(info: UpdateCheck, on_progress: Callable[[int, Optional[int]], None
     }
     with open(os.path.join(_updates_dir(), "ready.json"), "w", encoding="utf-8") as f:
         json.dump(ready_data, f)
+    with STATE.lock:
+        if STATE.phase == "verifying":
+            STATE.phase = "ready"
     return target
 
 
@@ -464,6 +469,10 @@ def install(installer: str, project_root: Optional[str] = None) -> None:
 
 def start_install(info: UpdateCheck) -> None:
     """Verifica di nuovo lo SHA256 del file su disco contro ready.json, poi phase = 'installing' e install(path)."""
+    with STATE.lock:
+        if STATE.phase == "installing":
+            raise AppUpdateError("Un aggiornamento è già in corso.")
+        STATE.phase = "verifying"
     path = ready_file(info)
     if not path:
         raise AppUpdateError("File di aggiornamento non pronto per l'installazione.")
@@ -525,7 +534,7 @@ def install_log(message: str) -> None:
 class _State:
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.phase = "idle"  # idle | downloading | ready | installing | error
+        self.phase = "idle"  # idle | downloading | verifying | ready | installing | error
         self.downloaded = 0
         self.total: Optional[int] = None
         self.error: Optional[str] = None
