@@ -1,5 +1,22 @@
 # Novità di RT
 
+## 4.3.8b1 — 2026-11-04
+
+Beta con le novità dello Studio, l'affidabilità delle fonti, i file di RT e l'accesso per gli agenti.
+
+### Novità
+
+- **Studio, prima la selezione**: seleziona il testo e poi premi E, G, V o C (o il pulsante): lo strumento si applica una volta sola alla selezione. Senza selezione funziona come prima.
+- **Lettura veloce**: mantiene i colori delle evidenziazioni, parte dalla parola selezionata e mostra lo stato dell'unità accanto al titolo (clic o S per cambiarlo), anche in zen. Avviso quando il filtro Irlen copre i colori, con «Non mostrare più».
+- **Affidabilità delle fonti** (alta, normale, bassa) in Dettagli → Fonti e in Nuova lezione: la verifica si fida di più delle slide del docente e meno degli appunti. Con tutte le fonti normali non cambia niente.
+- **File di RT**: le lezioni si esportano in `.rt`, la collezione in `.rtdb`, l'orario in `.rtcal`, con la loro icona. Un doppio clic li apre in RT; collezione e orario chiedono sempre conferma prima di sostituire qualcosa. I vecchi `.zip` funzionano ancora.
+- **API di sola lettura per gli agenti** (Impostazioni → Accesso da iPhone): la chiave resta visibile con «Copia» e c'è un prompt pronto per Antigravity, Claude, pi o Codex. Le chiavi create prima vanno rigenerate una volta.
+
+### Correzioni
+
+- **Mettimi alla prova · N** non conta più le domande bloccate da segnalazioni aperte.
+- Le formule nella Verifica si vedono anche nel testo intorno alla frase contestata.
+
 ## 4.3.7 — 2026-11-03
 
 Raccoglie la beta 4.3.7b1: le correzioni dal test notturno del frontend 4.3.6, molte per l'iPhone.
