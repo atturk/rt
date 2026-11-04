@@ -39,7 +39,10 @@ def cached(task):
             text_hash = digest([unit.title, unit.content, lesson_context(lesson_dir)])
             config_hash = configuration(cfg, task)
             # La deriva diventa vecchia anche se cambia soltanto il trascritto o i materiali.
-            source_hash = digest([args[0], materials_ctx or ""]) if task == "task_b" else None
+            # L'affidabilità entra nell'impronta solo se non è tutta normale: le cache di prima restano valide.
+            rel = getattr(materials_ctx, "by_reliability", None) or {}
+            rel_key = [rel] if set(rel) - {"normale"} else []
+            source_hash = digest([args[0], materials_ctx or ""] + rel_key) if task == "task_b" else None
             row = load(lesson_dir).get(unit.unit_id, {})
             entry = row.get(task) or {}
             if (not force and row.get("text_hash") == text_hash and entry.get("config_hash") == config_hash

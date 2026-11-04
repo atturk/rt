@@ -80,8 +80,16 @@ def get_readonly_key_info(db=None) -> Dict[str, Any]:
         "configured": True,
         "created_at": record.get("created_at"),
         "key_preview": record.get("key_preview"),
-        "key": get_readonly_key(),
+        "key": _matching_key(record),
     }
+
+
+def _matching_key(record: Dict[str, Any]) -> Optional[str]:
+    """Il segreto si mostra solo se è la chiave attuale (dopo un ripristino può essere di un'altra)."""
+    key = get_readonly_key()
+    if key and hmac.compare_digest(_hash(key, record.get("salt", "")), record["token_hash"]):
+        return key
+    return None
 
 
 def create_readonly_key(db=None) -> str:
