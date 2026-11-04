@@ -203,3 +203,91 @@ def calculate_cost(
 
     total_cost = cost_in + cost_out + cost_reason
     return round(total_cost, 6)
+
+
+# Token tipici stimati per una lezione di 90 minuti attraverso le fasi di elaborazione di RT
+# (rielaborazione per unità, verifica con fonti, generazione domande di ripasso):
+# circa 11.000-13.000 parole parlate (~16-18k token grezzi), più i passaggi delle unità con
+# contesto delle fonti, prompt e revisione incrociata:
+TYPICAL_LESSON_INPUT_TOKENS = 85_000
+TYPICAL_LESSON_OUTPUT_TOKENS = 23_000
+
+# Tasso di conversione indicativo da USD a EUR per gli utenti europei:
+USD_TO_EUR_RATE = 0.92
+
+
+def estimate_lesson_cost(
+    provider: str,
+    model: str,
+    custom_pricing: Optional[Dict[str, Any]] = None,
+) -> Optional[float]:
+    """
+    Stima il costo in Euro per elaborare una lezione di 90 minuti con il modello indicato.
+    Restituisce None se il prezzo del modello non è noto.
+    """
+    prov_clean = (provider or "").lower().strip()
+    mod_clean = (model or "").lower().strip()
+    if prov_clean in ("ollama", "local", "locale") or mod_clean.startswith("local"):
+        return 0.0
+
+    cost_usd = calculate_cost(
+        provider=prov_clean,
+        model=mod_clean,
+        input_tokens=TYPICAL_LESSON_INPUT_TOKENS,
+        output_tokens=TYPICAL_LESSON_OUTPUT_TOKENS,
+        custom_pricing=custom_pricing,
+    )
+    if cost_usd is None:
+        return None
+    return round(cost_usd * USD_TO_EUR_RATE, 2)
+
+
+def format_cost_estimate(cost_eur: Optional[float]) -> str:
+    """Restituisce «circa X € a lezione (stima)» oppure «stima non disponibile»."""
+    if cost_eur is None:
+        return "stima non disponibile"
+    val_str = f"{cost_eur:.2f}".replace(".", ",")
+    return f"circa {val_str} € a lezione (stima)"
+
+
+def estimate_configured_lesson_cost(
+    config: Optional[Any] = None,
+    custom_pricing: Optional[Dict[str, Any]] = None,
+) -> tuple[Optional[float], str]:
+    """
+    Stima il costo per una lezione di 90 minuti con i modelli attualmente configurati.
+    Restituisce (costo_in_euro, stringa_formattata).
+    """
+    if config is None:
+        try:
+            from rt.core.config import get_config
+            config = get_config()
+        except Exception:
+            config = None
+
+    provider = ""
+    model = ""
+
+    if config is not None:
+        custom_pricing = custom_pricing or getattr(config, "pricing", None)
+        # Cerca il modello per la rielaborazione o il modello predefinito
+        phases = getattr(config, "phases", None) or {}
+        rewrite_phase = phases.get("rewrite") or phases.get("rielaborato")
+        if rewrite_phase:
+            provider = getattr(rewrite_phase, "provider", "") or getattr(rewrite_phase, "connection", "")
+            model = getattr(rewrite_phase, "model", "")
+        if not model:
+            connections = getattr(config, "connections", None) or []
+            if connections:
+                provider = getattr(connections[0], "provider", getattr(connections[0], "name", ""))
+                models = getattr(connections[0], "models", [])
+                if models:
+                    model = models[0]
+
+    if not provider or not model:
+        # Se non c'è una configurazione esplicita, verifica se il default provider è DeepSeek / Gemini
+        return None, "stima non disponibile"
+
+    cost = estimate_lesson_cost(provider, model, custom_pricing=custom_pricing)
+    return cost, format_cost_estimate(cost)
+

@@ -28,6 +28,21 @@ class PromptOverrideOut(BaseModel):
     instruction: str
 
 
+class LessonCostEstimate(BaseModel):
+    cost_eur: Optional[float] = Field(None, description="Stima del costo in Euro per una lezione di 90 minuti")
+    formatted: str = Field(description="Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'")
+
+
+@router.get("/settings/estimate", response_model=LessonCostEstimate, summary="Stima dei costi per una lezione di 90 minuti")
+def get_cost_estimate(provider: Optional[str] = None, model: Optional[str] = None):
+    from rt.llm.pricing import estimate_lesson_cost, format_cost_estimate, estimate_configured_lesson_cost
+    if provider and model:
+        cost = estimate_lesson_cost(provider, model)
+        return LessonCostEstimate(cost_eur=cost, formatted=format_cost_estimate(cost))
+    cost, formatted = estimate_configured_lesson_cost()
+    return LessonCostEstimate(cost_eur=cost, formatted=formatted)
+
+
 @router.get("/settings/prompts", response_model=Dict[str, PromptOverrideOut], summary="Istruzioni personalizzabili e predefinite per fase")
 def list_prompt_overrides(actor: Actor):
     from rt.llm.prompts import (OUTLINE_SYSTEM_PROMPT, REWRITE_SYSTEM_PROMPT, SCIENCE_REVIEW_SYSTEM_PROMPT,
