@@ -140,3 +140,38 @@ def test_build_macos_signs_macho_then_bundle_and_runs_dmgbuild(tmp_path, monkeyp
     assert f"app={work / 'dmg' / 'RT.app'}" in dmgbuild_call
     assert dmgbuild_call[-2:] == ["RT", dmg]
 
+
+def test_info_plist_contains_rt_types():
+    """Info.plist generato contiene i tre tipi .rt, .rtdb, .rtcal con LSHandlerRank Owner."""
+    import scripts.build_app as build_app
+
+    plist = build_app.macos_info_plist("4.3.8")
+    exported = {t["UTTypeIdentifier"]: t for t in plist.get("UTExportedTypeDeclarations", [])}
+
+    assert "it.rt.lezioni" in exported
+    assert exported["it.rt.lezioni"]["UTTypeConformsTo"] == ["public.zip-archive"]
+    assert exported["it.rt.lezioni"]["UTTypeTagSpecification"]["public.filename-extension"] == ["rt"]
+
+    assert "it.rt.collezione" in exported
+    assert exported["it.rt.collezione"]["UTTypeConformsTo"] == ["public.zip-archive"]
+    assert exported["it.rt.collezione"]["UTTypeTagSpecification"]["public.filename-extension"] == ["rtdb"]
+
+    assert "it.rt.orario" in exported
+    assert exported["it.rt.orario"]["UTTypeConformsTo"] == ["public.json"]
+    assert exported["it.rt.orario"]["UTTypeTagSpecification"]["public.filename-extension"] == ["rtcal"]
+
+    doc_types = plist.get("CFBundleDocumentTypes", [])
+    doc_by_content = {}
+    for dt in doc_types:
+        for ct in dt.get("LSItemContentTypes", []):
+            doc_by_content[ct] = dt
+
+    assert doc_by_content["it.rt.lezioni"]["LSHandlerRank"] == "Owner"
+    assert doc_by_content["it.rt.collezione"]["LSHandlerRank"] == "Owner"
+    assert doc_by_content["it.rt.orario"]["LSHandlerRank"] == "Owner"
+
+    # Il tipo «File supportati da RT» resta com'è
+    supportati = next(dt for dt in doc_types if dt.get("CFBundleTypeName") == "File supportati da RT")
+    assert supportati["LSHandlerRank"] == "Alternate"
+
+

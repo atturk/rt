@@ -321,8 +321,21 @@ def build_science_review_user_prompt(
     if source_context and source_context.strip():
         transcript_block = f"\n\n---\nTRASCRITTO DEL DOCENTE:\n{source_context.strip()}\n---"
     materials_block = ""
-    if materials_context and materials_context.strip():
-        materials_block = f"\n\n---\nMATERIALI DEL DOCENTE:\n{materials_context.strip()}\n---"
+    if materials_context and str(materials_context).strip():
+        by_rel = getattr(materials_context, "by_reliability", None)
+        if isinstance(materials_context, dict):
+            by_rel = materials_context
+        if by_rel and (by_rel.get("alta") or by_rel.get("bassa")):
+            blocks = []
+            if by_rel.get("alta"):
+                blocks.append(f"\n\n---\nSLIDE E MATERIALI DEL DOCENTE (affidabilità alta):\n{by_rel['alta'].strip()}\n---")
+            if by_rel.get("normale"):
+                blocks.append(f"\n\n---\nMATERIALI DEL DOCENTE:\n{by_rel['normale'].strip()}\n---")
+            if by_rel.get("bassa"):
+                blocks.append(f"\n\n---\nAPPUNTI DELLO STUDENTE (affidabilità bassa: possono contenere errori):\n{by_rel['bassa'].strip()}\n---")
+            materials_block = "".join(blocks)
+        else:
+            materials_block = f"\n\n---\nMATERIALI DEL DOCENTE:\n{str(materials_context).strip()}\n---"
     return f"""Esamina criticamente la seguente unità rielaborata:
 
 UNITÀ: {unit_id}

@@ -27,6 +27,7 @@ export type SourceItem = {
   pagine_totali?: number | null
   estrai?: 'testo' | 'immagini' | null
   uso?: 'contesto' | 'integra' | null
+  affidabilita?: 'alta' | 'normale' | 'bassa' | null
   parole?: number | null
   usata: boolean
   parti?: SourcePartItem[] | null

@@ -146,6 +146,14 @@ class DesktopApi:
             _announced_tokens.add(it["token"])
         return items
 
+    def importa_collezione(self, token: str) -> dict:
+        from rt.core import opened_files
+        path = opened_files.consume_token(token)
+        if not path:
+            return {"errore": "File non trovato o token scaduto."}
+        _import_collection(self._window, self._base_url, chosen=path)
+        return {"ok": True}
+
     def apri_aggiornamento(self):
         import webview
         if self._update_window is not None:
@@ -211,14 +219,14 @@ class DesktopApi:
         if not (name.startswith(backup_service.BACKUP_PREFIX) and parent == dest_root and os.path.isdir(target_path)):
             return {"errore": "Percorso snapshot non valido."}
 
-        save_name = f"{name}.zip"
+        save_name = f"{name}.rtdb"
         try:
             import webview
             dialog_type = webview.FileDialog.SAVE
             chosen = self._window.create_file_dialog(
                 dialog_type,
                 save_filename=save_name,
-                file_types=("Archivio zip (*.zip)",),
+                file_types=("Collezione RT (*.rtdb)", "Archivio zip (*.zip)"),
             )
         except Exception as exc:
             _log(f"Errore create_file_dialog: {exc}")
@@ -231,8 +239,8 @@ class DesktopApi:
         if not chosen:
             return {"annullato": True}
 
-        if not chosen.lower().endswith(".zip"):
-            chosen += ".zip"
+        if not (chosen.lower().endswith(".rtdb") or chosen.lower().endswith(".zip")):
+            chosen += ".rtdb"
 
         if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
             return {"errore": "Un backup è già in corso."}
@@ -844,12 +852,12 @@ _import_ready = False
 def _chosen_file(window, *, save=False):
     import webview
     chosen = window.create_file_dialog(webview.FileDialog.SAVE if save else webview.FileDialog.OPEN,
-        **({'save_filename': f'RT-{time.strftime("%Y-%m-%d")}.zip'} if save else {}),
-        file_types=('Archivio zip (*.zip)',))
+        **({'save_filename': f'RT-{time.strftime("%Y-%m-%d")}.rtdb'} if save else {}),
+        file_types=('Collezione RT (*.rtdb)', 'Archivio zip (*.zip)') if save else ('Collezione RT (*.rtdb;*.zip)', 'Archivio zip (*.zip)'))
     if isinstance(chosen, (list, tuple)):
         chosen = chosen[0] if chosen else None
-    if chosen and save and not chosen.lower().endswith('.zip'):
-        chosen += '.zip'
+    if chosen and save and not (chosen.lower().endswith('.rtdb') or chosen.lower().endswith('.zip')):
+        chosen += '.rtdb'
     return chosen
 
 
@@ -898,21 +906,23 @@ def _restart_after_import(window):
     window.destroy()
 
 
-def _import_collection(window, base_url):
+def _import_collection(window, base_url, chosen=None):
     if _backup_running:
         _notice(window, "Un trasferimento è già in corso.")
         return
     from rt.services import backup_service as bs
     try:
-        chosen = _chosen_file(window)
+        if not chosen:
+            chosen = _chosen_file(window)
         if not chosen:
             return
         manifest = bs.inspect_backup_zip(chosen)
         if manifest.get('segreti') is not False:
-            raise bs.BackupError('Per importare una collezione usa uno ZIP creato con «Esporta tutto».')
+            raise bs.BackupError('Per importare una collezione usa un file creato con «Esporta tutto».')
         created = manifest.get('created', '').split('T')[0]
+        version = manifest.get('rt_version', '')
         if not window.create_confirmation_dialog('Importa',
-                f'Importare la collezione del {created} (RT {manifest.get("rt_version", "")})? Quella attuale viene messa da parte.'):
+                f'Sostituisce tutte le lezioni, il database e il calendario attuali. Quelli attuali vengono messi da parte. Collezione del {created} (RT {version}).'):
             return
         def stop():
             from rt.desktop import stop_background

@@ -24,6 +24,8 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
 }) {
   const highlighter = useRef<Highlighter | null>(null)
   const clearMath = useRef<() => void>(() => {})
+  const highlightRef = useRef<(range: Range, color?: number) => void>(() => {})
+  const eraseRangeRef = useRef<(range: Range) => void>(() => {})
   const saved = useRef(new Map<string, number>())
   const modeRef = useRef(mode)
   const colorRef = useRef(color)
@@ -222,7 +224,56 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
       }
     }).catch(() => {})
 
+    const highlight = (range: Range, color?: number) => {
+      if (!root || !alive) return
+      const chosen = color ?? colorRef.current
+      const prevColor = colorRef.current
+      colorRef.current = chosen
+      try {
+        selected = sourceOffsets(root, range)
+        const { text, start, end } = selected
+        if (end <= start) return
+        const plain = textRange(start, end)
+        if (plain) h.fromRange(plain)
+        else {
+          const id = globalThis.crypto?.randomUUID?.() ?? `rt-math-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+          const meta = { parentTagName: root.tagName, parentIndex: -2, textOffset: 0 }
+          paintMath(id, chosen, start, end)
+          persist({ id, text: text.slice(start, end), startMeta: meta, endMeta: meta, sourceStart: start, sourceEnd: end }, chosen)
+        }
+        window.getSelection()?.removeAllRanges()
+      } finally {
+        colorRef.current = prevColor
+      }
+    }
+
+    const eraseRange = (range: Range) => {
+      if (!root || !alive) return
+      const idsToRemove = new Set<string>()
+      const hlDoms = Array.from(root.querySelectorAll('.rt-hl'))
+      for (const dom of hlDoms) {
+        if (range.intersectsNode(dom)) {
+          const id = h.getIdByDom(dom as HTMLElement)
+          if (id) idsToRemove.add(id)
+        }
+      }
+      for (const [math, marks] of mathMarks) {
+        if (range.intersectsNode(math)) {
+          for (const id of marks.keys()) idsToRemove.add(id)
+        }
+      }
+      for (const id of idsToRemove) {
+        remove(id)
+      }
+      window.getSelection()?.removeAllRanges()
+    }
+
+    highlightRef.current = highlight
+    eraseRangeRef.current = eraseRange
+
     return () => {
+      highlightRef.current = () => {}
+      eraseRangeRef.current = () => {}
       alive = false
       root.removeEventListener('mousedown', onMouseDown, true)
       root.removeEventListener('mouseup', onMouseUp, true)
@@ -247,5 +298,13 @@ export function useStudyHighlighter({ root, lessonId, unitId, mode, color }: {
     await highlightsApi.clear(lessonId, unitId)
   }, [lessonId, unitId])
 
-  return { clear }
+  const highlight = useCallback((range: Range, color?: number) => {
+    highlightRef.current(range, color)
+  }, [])
+
+  const eraseRange = useCallback((range: Range) => {
+    eraseRangeRef.current(range)
+  }, [])
+
+  return { clear, highlight, eraseRange }
 }

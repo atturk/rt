@@ -73,7 +73,8 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 ordine: Optional[int] = Form(None, ge=1),
                 unisci: bool = Form(True), pagine: Optional[str] = Form(None),
                 estrai: Optional[Literal['testo', 'immagini', 'solo_immagini']] = Form(None),
-                uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None)):
+                uso: Optional[Literal['guida', 'contesto', 'integra']] = Form(None),
+                affidabilita: Optional[Literal['alta', 'normale', 'bassa']] = Form(None)):
     from rt.api.routers.jobs import _check_audio_file, _check_pages, _max_upload_bytes, _save_uploads, _upload_dir
     from rt.pipeline.setup import SUPPORTED_AUDIO_EXTENSIONS
     import os
@@ -93,7 +94,7 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
                 try:
                     added = [add_source(lesson_dir, tipo, os.path.basename(path), None,
                                         None if ordine is None else ordine + i, source_path=path,
-                                        pagine=pagine, estrai=estrai, uso=uso)
+                                        pagine=pagine, estrai=estrai, uso=uso, affidabilita=affidabilita)
                              for i, path in enumerate(saved)]
                 except ValueError as exc:
                     raise ApiError(422, "validation_error", str(exc)) from None
@@ -151,13 +152,13 @@ def post_source(lesson_id: int, lesson_dir: LessonDir, _actor: Actor,
     content = testo.encode("utf-8")
     if len(content) > _max_upload_bytes():
         raise ApiError(413, "payload_too_large", "La fonte supera la dimensione massima.")
-    return _add_source(lesson_id, lesson_dir, tipo, "appunti.txt", content, ordine)
+    return _add_source(lesson_id, lesson_dir, tipo, "appunti.txt", content, ordine, affidabilita=affidabilita)
 
 
-def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_path=None, parti=None):
+def _add_source(lesson_id, lesson_dir, tipo, filename, content, ordine, source_path=None, parti=None, affidabilita=None):
     with source_mutation(lesson_id, lesson_dir):
         try:
-            return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path, parti=parti)
+            return add_source(lesson_dir, tipo, filename, content, ordine, source_path=source_path, parti=parti, affidabilita=affidabilita)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc)) from None
 
@@ -166,6 +167,7 @@ class SourceOptions(BaseModel):
     pagine: str | list[int] | None = None
     estrai: Literal['testo', 'immagini', 'solo_immagini'] | None = None
     uso: Literal['guida', 'contesto', 'integra'] | None = None
+    affidabilita: Literal['alta', 'normale', 'bassa'] | None = None
 
 
 @router.patch('/lessons/{lesson_id}/sources/{sid}', response_model=Source)

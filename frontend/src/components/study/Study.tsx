@@ -285,19 +285,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }, [notice])
   // Cambio d'unità durante la lettura veloce: il lettore della nuova unità riparte da solo.
   const resumeReader = useRef(false)
-  const closeReader = useCallback(() => { resumeReader.current = false; setSpeedReading(false); setReaderSettings(false); setIndexOpen(false) }, [setSpeedReading, setReaderSettings])
-  const openReader = useCallback(() => {
-    if (!textRoot) return
-    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
-    window.scrollTo?.({ top: 0 })
-    setSpeedReading(true)
-    setReaderMounted(true)
-    setIndexOpen(false)
-    setDetailsOpen(false)
-  }, [textRoot, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
+  const [readerStartAt, setReaderStartAt] = useState<{ node: Node; offset: number } | undefined>(undefined)
+  const [readerOpenId, setReaderOpenId] = useState(0)
 
   const handleUnitChange = (direction: -1 | 1, playing = false) => {
     if (!units) return
+    setReaderStartAt(undefined)
     const nextIndex = unitIndex + direction
     if (nextIndex < 0 || nextIndex >= units.length) return
     resumeReader.current = playing
@@ -373,6 +366,114 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     note?: StudyNote | null
     isWaiting?: boolean
   } | null>(null)
+
+  const savedSelectionRange = useRef<Range | null>(null)
+  const saveSelection = useCallback(() => {
+    if (!textRoot) return
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+      const range = sel.getRangeAt(0)
+      if (textRoot.contains(range.commonAncestorContainer) && range.toString().trim()) {
+        savedSelectionRange.current = range.cloneRange()
+        return
+      }
+    }
+    savedSelectionRange.current = null
+  }, [textRoot])
+
+  const getSelectionRange = useCallback(() => {
+    if (!textRoot) return null
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+      const range = sel.getRangeAt(0)
+      if (textRoot.contains(range.commonAncestorContainer) && range.toString().trim()) {
+        return range
+      }
+    }
+    const saved = savedSelectionRange.current
+    if (saved && !saved.collapsed && textRoot.contains(saved.commonAncestorContainer) && saved.toString().trim()) {
+      return saved
+    }
+    return null
+  }, [textRoot])
+
+  const applyVerificaOrChiedi = useCallback((kind: 'verifica' | 'chiedi', range: Range) => {
+    if (!textRoot || !unit) return
+    const offsets = sourceOffsets(textRoot, range)
+    const selected = offsets.text.slice(offsets.start, offsets.end)
+    const quote = selected.trim()
+    if (!quote) return
+    const start = offsets.start + selected.length - selected.trimStart().length
+    const end = start + quote.length
+    const rect = range.getBoundingClientRect?.() ?? ({ x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0, toJSON: () => ({}) } as DOMRect)
+    window.getSelection()?.removeAllRanges()
+    setPopupState({
+      open: true,
+      kind,
+      unitId: unit.id,
+      quote,
+      anchor: {
+        quote,
+        prefix: offsets.text.slice(Math.max(0, start - 40), start),
+        suffix: offsets.text.slice(end, end + 40),
+        start,
+        end,
+      },
+      anchorRect: rect,
+      note: null,
+    })
+    setHlMode(null)
+    if (zenActive) setNotice({ kind, off: false, label: kind === 'verifica' ? 'Verifica' : 'Chiedi' })
+  }, [textRoot, unit, zenActive, setPopupState, setHlMode])
+
+  const applyPen = useCallback((color: number, range?: Range | null) => {
+    const targetRange = range ?? getSelectionRange()
+    if (!targetRange) return false
+    highlights.highlight(targetRange, color)
+    setHlMode(null)
+    savedSelectionRange.current = null
+    if (zenActive) setNotice({ kind: 'pen', off: false, color, label: `Evidenziatore ${HIGHLIGHT_COLORS[color]}` })
+    return true
+  }, [getSelectionRange, highlights, zenActive, setHlMode])
+
+  const applyEraser = useCallback((range?: Range | null) => {
+    const targetRange = range ?? getSelectionRange()
+    if (!targetRange) return false
+    highlights.eraseRange(targetRange)
+    setHlMode(null)
+    savedSelectionRange.current = null
+    if (zenActive) setNotice({ kind: 'eraser', off: false, label: 'Gomma' })
+    return true
+  }, [getSelectionRange, highlights, zenActive, setHlMode])
+
+  const closeReader = useCallback(() => {
+    resumeReader.current = false
+    setReaderStartAt(undefined)
+    setSpeedReading(false)
+    setReaderSettings(false)
+    setIndexOpen(false)
+  }, [setSpeedReading, setReaderSettings])
+
+  const openReader = useCallback(() => {
+    if (!textRoot) return
+    textRoot.closest('[data-testid=study]')?.querySelector('audio')?.pause()
+    window.scrollTo?.({ top: 0 })
+
+    const range = getSelectionRange()
+    let startAt: { node: Node; offset: number } | undefined
+    if (range) {
+      startAt = { node: range.startContainer, offset: range.startOffset }
+    }
+    setReaderStartAt(startAt)
+    savedSelectionRange.current = null
+    window.getSelection()?.removeAllRanges()
+
+    setReaderOpenId((id) => id + 1)
+    setSpeedReading(true)
+    setReaderMounted(true)
+    setIndexOpen(false)
+    setDetailsOpen(false)
+  }, [textRoot, getSelectionRange, setSpeedReading, setReaderMounted, setIndexOpen, setDetailsOpen])
 
   const handleSendNote = async (request: string) => {
     if (!lesson || !popupState || !popupState.anchor) return
@@ -489,6 +590,17 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       else if (key === 'd') { e.preventDefault(); review() }
       else if (key === 'e' || key === 'g') {
         e.preventDefault()
+        const range = getSelectionRange()
+        if (range) {
+          if (key === 'e') {
+            const color = e.shiftKey ? (highlighterPrefs.color + 1) % HIGHLIGHT_COLORS.length : highlighterPrefs.color
+            if (e.shiftKey) setHighlighterPrefs({ ...highlighterPrefs, color })
+            applyPen(color, range)
+          } else {
+            applyEraser(range)
+          }
+          return
+        }
         const mode = key === 'g' ? 'gomma' : 'evidenzia'
         const next = e.shiftKey ? 'evidenzia' : hlMode === mode ? null : mode
         const color = e.shiftKey ? (highlighterPrefs.color + 1) % HIGHLIGHT_COLORS.length : highlighterPrefs.color
@@ -498,6 +610,12 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           label: key === 'g' ? next ? 'Gomma attiva' : 'Gomma spenta' : next ? `Evidenziatore ${HIGHLIGHT_COLORS[color]}` : 'Evidenziatore spento' })
       } else if (key === 'v' || key === 'c') {
         e.preventDefault()
+        const range = getSelectionRange()
+        if (range) {
+          applyVerificaOrChiedi(key === 'v' ? 'verifica' : 'chiedi', range)
+          savedSelectionRange.current = null
+          return
+        }
         const mode = key === 'v' ? 'verifica' : 'chiedi'
         const next = hlMode === mode ? null : mode
         setHlMode(next)
@@ -636,6 +754,21 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </button>}</Tooltip>
   )
 
+  const currentUnitStatus = live.status ?? 'da-imparare'
+  const rsvpTitle = (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <IconButton
+        label={`Stato: ${STATUS_LABELS[currentUnitStatus]} · S`}
+        aria-label={`Stato: ${STATUS_LABELS[currentUnitStatus].toLocaleLowerCase('it')}`}
+        icon={STUDY_ICONS[currentUnitStatus].icon}
+        className={cn(STUDY_ICONS[currentUnitStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+        onClick={handleStatusFromReader}
+        data-testid="rsvp-status"
+      />
+      <span className="truncate">{unit.id} {unit.title}</span>
+    </div>
+  )
+
   const headerActions = (
     <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
@@ -645,6 +778,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         onMode={setHlMode}
         onColor={(color) => setHighlighterPrefs({ ...highlighterPrefs, color })}
         onClear={highlights.clear}
+        onApplyPen={(c) => applyPen(c)}
+        onApplyEraser={() => applyEraser()}
+        onApplyVerifica={() => {
+          const range = getSelectionRange()
+          if (!range) return false
+          applyVerificaOrChiedi('verifica', range)
+          savedSelectionRange.current = null
+          return true
+        }}
+        onApplyChiedi={() => {
+          const range = getSelectionRange()
+          if (!range) return false
+          applyVerificaOrChiedi('chiedi', range)
+          savedSelectionRange.current = null
+          return true
+        }}
+        onSaveSelection={saveSelection}
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
@@ -659,6 +809,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         label="Lettura veloce"
         icon={Gauge}
         onClick={openReader}
+        onPointerDown={saveSelection}
+        onMouseDown={(e) => e.preventDefault()}
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
@@ -691,7 +843,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         onJump={(target, side) => navigate(`/studio/lezione/${target.id}`, { state: { enter: side === 'left' ? 'last' : 'first', zen: zenMode } })} />}
       <div hidden={!reading}>
         <StudyShell
-          title={speedReading ? `${unit.id} ${unit.title}` : titleButton}
+          title={speedReading ? rsvpTitle : titleButton}
           back={speedReading ? undefined : studyBack}
           actions={speedReading ? rsvpActions : headerActions}
           rsvp={speedReading}
@@ -719,7 +871,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             ) : undefined
           }
           zenBar={zenActive ? <ZenHeader title={`${unit.id} ${unit.title}`} settings={zenSettings} onSettings={setZenSettings} onExit={toggleZen}
-            irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })} /> : undefined}
+            irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })}
+            hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))}
+            status={live.status ?? 'da-imparare'}
+            onStatus={() => {
+              changeStatus()
+              const next = nextStudyStatus(live?.status)
+              setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+            }} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
             <div
               className={cn(
@@ -745,9 +904,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           edge={edge}
           reader={readerMounted && textRoot && textRoot.dataset.unitId === unit.id ? (
             <SpeedReader
-              key={`${lesson!.id}-${unit.id}`}
+              key={`${lesson!.id}-${unit.id}-${readerOpenId}`}
               source={textRoot}
               active={speedReading}
+              startAt={readerStartAt}
               context={readerContext}
               settings={readerSettings}
               onSettingsChange={setReaderSettings}
@@ -1661,12 +1821,17 @@ function UnitIndexMenu({
  * Evidenziatore e gomma (4.2.2, H1): selettore a due posizioni come quello di Lezioni; un clic
  * sull'evidenziatore già attivo cambia colore, a giro. Il cestino toglie tutto, dopo una conferma.
  */
-function HighlightTools({ mode, color, onMode, onColor, onClear }: {
+function HighlightTools({ mode, color, onMode, onColor, onClear, onApplyPen, onApplyEraser, onApplyVerifica, onApplyChiedi, onSaveSelection }: {
   mode: HighlightMode
   color: number
   onMode: (mode: HighlightMode) => void
   onColor: (color: number) => void
   onClear: () => Promise<void>
+  onApplyPen?: (color: number) => boolean
+  onApplyEraser?: () => boolean
+  onApplyVerifica?: () => boolean
+  onApplyChiedi?: () => boolean
+  onSaveSelection?: () => void
 }) {
   const [confirm, setConfirm] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -1707,6 +1872,8 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
               <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
             ) : undefined
           }
+          onPointerDown={onSaveSelection}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setOpen(true)}
           data-testid="study-tools-toggle"
           className="max-md:size-7"
@@ -1718,7 +1885,7 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
         className={open ? 'inline-flex rounded-lg bg-muted p-0.5 max-md:p-0' : 'hidden'}
         data-testid="highlight-tools"
       >
-        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · clic: colore successivo, dopo l’ultimo si spegne · E`}>{(trigger) => <button
+        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · E · seleziona il testo, prima o dopo`}>{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'evidenzia'}
@@ -1726,7 +1893,10 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           data-color={color}
           data-testid="highlight-pen"
           className={segment}
+          onPointerDown={onSaveSelection}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
+            if (onApplyPen?.(color)) return
             if (mode !== 'evidenzia') onMode('evidenzia')
             // Dopo l'ultimo colore si spegne, e la prossima volta riparte dal primo.
             else if (color === HIGHLIGHT_COLORS.length - 1) { onColor(0); onMode(null) }
@@ -1736,30 +1906,52 @@ function HighlightTools({ mode, color, onMode, onColor, onClear }: {
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
         </button>}</Tooltip>
-        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · G">{(trigger) => <button {...trigger} type="button" aria-pressed={mode === 'gomma'} aria-label="Gomma"
-          data-testid="highlight-eraser" className={segment} onClick={() => onMode(mode === 'gomma' ? null : 'gomma')}>
+        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · G">{(trigger) => <button
+          {...trigger}
+          type="button"
+          aria-pressed={mode === 'gomma'}
+          aria-label="Gomma"
+          data-testid="highlight-eraser"
+          className={segment}
+          onPointerDown={onSaveSelection}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (onApplyEraser?.()) return
+            onMode(mode === 'gomma' ? null : 'gomma')
+          }}
+        >
           <Eraser className="size-4" aria-hidden />
         </button>}</Tooltip>
         <span className="my-1 w-px bg-border/60 mx-0.5 max-md:mx-0 max-md:my-0.5" aria-hidden="true" />
-        <Tooltip content="Verifica · V · seleziona il testo da verificare">{(trigger) => <button
+        <Tooltip content="Verifica · V · seleziona il testo, prima o dopo">{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'verifica'}
           aria-label="Verifica"
           data-testid="highlight-verifica"
           className={segment}
-          onClick={() => onMode(mode === 'verifica' ? null : 'verifica')}
+          onPointerDown={onSaveSelection}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (onApplyVerifica?.()) return
+            onMode(mode === 'verifica' ? null : 'verifica')
+          }}
         >
           <CheckCircle2 className="size-4" aria-hidden />
         </button>}</Tooltip>
-        <Tooltip content="Chiedi · C · seleziona il testo da farti spiegare">{(trigger) => <button
+        <Tooltip content="Chiedi · C · seleziona il testo, prima o dopo">{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'chiedi'}
           aria-label="Chiedi"
           data-testid="highlight-chiedi"
           className={segment}
-          onClick={() => onMode(mode === 'chiedi' ? null : 'chiedi')}
+          onPointerDown={onSaveSelection}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            if (onApplyChiedi?.()) return
+            onMode(mode === 'chiedi' ? null : 'chiedi')
+          }}
         >
           <HelpCircle className="size-4" aria-hidden />
         </button>}</Tooltip>

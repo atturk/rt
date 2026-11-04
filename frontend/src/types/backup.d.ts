@@ -23,6 +23,7 @@ declare global {
         badge?: (count: number) => Promise<void> | void
         notifica?: (titolo: string, testo: string, percorso?: string | null) => Promise<void> | void
         file_in_attesa?: () => Promise<OpenedFileItem[]> | OpenedFileItem[]
+        importa_collezione?: (token: string) => Promise<{ ok?: boolean; errore?: string }> | { ok?: boolean; errore?: string }
       }
     }
   }

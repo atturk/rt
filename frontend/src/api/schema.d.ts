@@ -3747,6 +3747,8 @@ export interface components {
         };
         /** AddToLessonRequest */
         AddToLessonRequest: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /**
              * Estrai
              * @default immagini
@@ -4154,6 +4156,8 @@ export interface components {
         };
         /** Body_post_source_api_v1_lessons__lesson_id__sources_post */
         Body_post_source_api_v1_lessons__lesson_id__sources_post: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Estrai */
             estrai?: ("testo" | "immagini" | "solo_immagini") | null;
             /** File */
@@ -7425,10 +7429,14 @@ export interface components {
         };
         /** ReadonlyKeyInfo */
         ReadonlyKeyInfo: {
+            /** Base Url */
+            base_url?: string | null;
             /** Configured */
             configured: boolean;
             /** Created At */
             created_at?: string | null;
+            /** Key */
+            key?: string | null;
             /** Key Preview */
             key_preview?: string | null;
         };
@@ -8338,6 +8346,8 @@ export interface components {
         };
         /** Source */
         Source: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Aggiunta Il */
             aggiunta_il: string;
             /** Estrai */
@@ -8366,6 +8376,8 @@ export interface components {
         };
         /** SourceOptions */
         SourceOptions: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Estrai */
             estrai?: ("testo" | "immagini" | "solo_immagini") | null;
             /** Pagine */
@@ -8394,6 +8406,8 @@ export interface components {
         };
         /** SourceView */
         SourceView: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Aggiunta Il */
             aggiunta_il: string;
             /** Durata S */

@@ -248,30 +248,68 @@ def sign_macos_app(app: str) -> None:
     subprocess.run(["codesign", "--verify", "--strict", "--verbose=2", app], check=True)
 
 
-def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
-    version = read_version()
-    app = os.path.join(work, "dmg", "RT.app")
-    shutil.rmtree(os.path.join(work, "dmg"), ignore_errors=True)
-    contents = os.path.join(app, "Contents")
-    for sub in ("MacOS", "Resources"):
-        os.makedirs(os.path.join(contents, sub))
-    build_payload("macos", os.path.join(contents, "Resources", "app"), archive, spa_dist)
-    launcher = os.path.join(contents, "MacOS", "RT")
-    with open(launcher, "w", encoding="utf-8") as f:
-        f.write(LAUNCHER)
-    os.chmod(launcher, 0o755)
-    shutil.copy2(os.path.join(ROOT, "packaging", "icons", "rt.icns"), os.path.join(contents, "Resources", "rt.icns"))
+def macos_info_plist(version: str) -> dict:
     short = re.match(r"^\d+(\.\d+){0,2}", version).group(0)
-    with open(os.path.join(contents, "Info.plist"), "wb") as f:
-        plistlib.dump({
-            "CFBundleName": "RT", "CFBundleDisplayName": "RT", "CFBundleIdentifier": BUNDLE_ID,
-            "CFBundleExecutable": "RT", "CFBundleIconFile": "rt", "CFBundlePackageType": "APPL",
-            "CFBundleShortVersionString": short, "CFBundleVersion": version,
-            "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
-            "LSApplicationCategoryType": "public.app-category.education",
-            "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
-            "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
-            "CFBundleDocumentTypes": [{
+    return {
+        "CFBundleName": "RT", "CFBundleDisplayName": "RT", "CFBundleIdentifier": BUNDLE_ID,
+        "CFBundleExecutable": "RT", "CFBundleIconFile": "rt", "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": short, "CFBundleVersion": version,
+        "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
+        "LSApplicationCategoryType": "public.app-category.education",
+        "NSMicrophoneUsageDescription": "RT usa il microfono per registrare note vocali.",
+        "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+        "UTExportedTypeDeclarations": [
+            {
+                "UTTypeIdentifier": "it.rt.lezioni",
+                "UTTypeDescription": "Lezione RT",
+                "UTTypeConformsTo": ["public.zip-archive"],
+                "UTTypeTagSpecification": {
+                    "public.filename-extension": ["rt"],
+                },
+                "UTTypeIconFile": "rt-lezioni",
+            },
+            {
+                "UTTypeIdentifier": "it.rt.collezione",
+                "UTTypeDescription": "Collezione RT",
+                "UTTypeConformsTo": ["public.zip-archive"],
+                "UTTypeTagSpecification": {
+                    "public.filename-extension": ["rtdb"],
+                },
+                "UTTypeIconFile": "rt-collezione",
+            },
+            {
+                "UTTypeIdentifier": "it.rt.orario",
+                "UTTypeDescription": "Orario RT",
+                "UTTypeConformsTo": ["public.json"],
+                "UTTypeTagSpecification": {
+                    "public.filename-extension": ["rtcal"],
+                },
+                "UTTypeIconFile": "rt-orario",
+            },
+        ],
+        "CFBundleDocumentTypes": [
+            {
+                "CFBundleTypeName": "Lezione RT",
+                "CFBundleTypeRole": "Editor",
+                "LSHandlerRank": "Owner",
+                "CFBundleTypeIconFile": "rt-lezioni",
+                "LSItemContentTypes": ["it.rt.lezioni"],
+            },
+            {
+                "CFBundleTypeName": "Collezione RT",
+                "CFBundleTypeRole": "Editor",
+                "LSHandlerRank": "Owner",
+                "CFBundleTypeIconFile": "rt-collezione",
+                "LSItemContentTypes": ["it.rt.collezione"],
+            },
+            {
+                "CFBundleTypeName": "Orario RT",
+                "CFBundleTypeRole": "Editor",
+                "LSHandlerRank": "Owner",
+                "CFBundleTypeIconFile": "rt-orario",
+                "LSItemContentTypes": ["it.rt.orario"],
+            },
+            {
                 "CFBundleTypeName": "File supportati da RT",
                 "CFBundleTypeRole": "Viewer",
                 "LSHandlerRank": "Alternate",
@@ -284,8 +322,29 @@ def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
                     "org.openxmlformats.presentationml.presentation",
                     "public.zip-archive",
                 ],
-            }],
-        }, f)
+            },
+        ],
+    }
+
+
+def build_macos(work: str, out: str, archive: str, spa_dist: str) -> str:
+    version = read_version()
+    app = os.path.join(work, "dmg", "RT.app")
+    shutil.rmtree(os.path.join(work, "dmg"), ignore_errors=True)
+    contents = os.path.join(app, "Contents")
+    for sub in ("MacOS", "Resources"):
+        os.makedirs(os.path.join(contents, sub))
+    build_payload("macos", os.path.join(contents, "Resources", "app"), archive, spa_dist)
+    launcher = os.path.join(contents, "MacOS", "RT")
+    with open(launcher, "w", encoding="utf-8") as f:
+        f.write(LAUNCHER)
+    os.chmod(launcher, 0o755)
+    for icon_name in ("rt.icns", "rt-lezioni.icns", "rt-collezione.icns", "rt-orario.icns"):
+        src = os.path.join(ROOT, "packaging", "icons", icon_name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(contents, "Resources", icon_name))
+    with open(os.path.join(contents, "Info.plist"), "wb") as f:
+        plistlib.dump(macos_info_plist(version), f)
     sign_macos_app(app)
     os.makedirs(out, exist_ok=True)
     dmg = os.path.join(out, ASSET_NAMES["macos"].format(version=version))

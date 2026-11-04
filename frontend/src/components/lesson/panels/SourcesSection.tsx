@@ -11,6 +11,7 @@ import {
   Paperclip,
   Plus,
   RotateCw,
+  Shield,
   Star,
   Undo2,
   X,
@@ -281,7 +282,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         file={editingSource ? undefined : pendingMaterials[0]}
         source={editingSource ?? undefined}
         initial={editingSource ? { pagine: editingSource.pagine, estrai: editingSource.estrai ?? undefined,
-          uso: sourcesView?.principale === editingSource.id ? 'guida' : editingSource.uso ?? 'contesto' } : undefined}
+          uso: sourcesView?.principale === editingSource.id ? 'guida' : editingSource.uso ?? 'contesto',
+          affidabilita: editingSource.affidabilita ?? 'normale' } : undefined}
         hasSources={sources.length > 0}
         hasAudio={audioSources.length > 0}
         isGuide={!!editingSource && audioSources.length === 0 && sourcesView?.principale === editingSource.id}
@@ -463,6 +465,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                   <>
                     <div className="flex items-center gap-1 min-w-0">
                       {s.uso === 'integra' && <GitMerge className="size-3 shrink-0 text-muted-foreground" aria-label="Integra" />}
+                      {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 shrink-0 fill-current text-muted-foreground" /></span>}
+                      {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 shrink-0 text-muted-foreground" /></span>}
                       <span className="min-w-0 flex-1 line-clamp-2 font-medium [overflow-wrap:anywhere]">
                         {isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}
                       </span>
@@ -478,6 +482,8 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
                   <>
                     {s.tipo === 'materiale' && s.pagine?.length ? <span className="text-meta text-muted-foreground">pag. {compressPages(s.pagine)}</span> : null}
                     {s.uso === 'integra' && <GitMerge className="size-3 text-muted-foreground" aria-label="Integra" />}
+                    {s.affidabilita === 'alta' && <span title="Affidabilità alta" aria-label="Affidabilità alta"><Shield className="size-3 fill-current text-muted-foreground" /></span>}
+                    {s.affidabilita === 'bassa' && <span title="Affidabilità bassa" aria-label="Affidabilità bassa"><Shield className="size-3 text-muted-foreground" /></span>}
                     <span className="truncate font-medium">{isAudio && (s.parti?.length ?? 0) > 1 ? `Registrazione unita da ${s.parti?.length} parti` : s.nome}</span>
                   </>
                 )}

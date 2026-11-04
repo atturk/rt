@@ -135,6 +135,22 @@
       },
       "AddToLessonRequest": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "default": "immagini",
             "enum": [
@@ -1133,6 +1149,22 @@
       },
       "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "anyOf": [
               {
@@ -8659,6 +8691,17 @@
       },
       "ReadonlyKeyInfo": {
         "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
           "configured": {
             "title": "Configured",
             "type": "boolean"
@@ -8673,6 +8716,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
           },
           "key_preview": {
             "anyOf": [
@@ -10892,6 +10946,22 @@
       },
       "Source": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "aggiunta_il": {
             "title": "Aggiunta Il",
             "type": "string"
@@ -11006,6 +11076,22 @@
       },
       "SourceOptions": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "anyOf": [
               {
@@ -11125,6 +11211,22 @@
       },
       "SourceView": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "aggiunta_il": {
             "title": "Aggiunta Il",
             "type": "string"
