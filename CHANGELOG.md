@@ -1,5 +1,20 @@
 # Novità di RT
 
+## 4.3.8b2 — 2026-11-04
+
+Beta con la guida, il primo avvio e la sicurezza degli aggiornamenti.
+
+### Novità
+
+- **Guida di RT**: dentro l'app anche senza rete, con ricerca. Si apre con «?» nell'intestazione, con F1 o ⌘?, dal menu «Guida di RT» e dai piccoli «?» nelle finestre più complesse. La stessa guida sarà pubblica sul sito di RT.
+- **Primo avvio**: con la libreria vuota, RT propone una lezione di esempio già pronta (non costa niente) e mostra una stima del costo per lezione con i modelli scelti, anche in Impostazioni → Modelli.
+- **Backup prima degli aggiornamenti**: prima di installare una nuova versione RT salva database e testi delle lezioni (senza audio e immagini) e tiene gli ultimi 5. Se il backup non riesce, l'aggiornamento non parte. Si ripristinano dal menu «Ripristina dati prima di un aggiornamento…».
+- **Privacy**: una pagina della guida spiega cosa resta sul computer e cosa esce, e verso chi.
+
+### Correzioni
+
+- Dopo «Genera le domande» su un'unità con segnalazioni aperte RT spiega che le domande compariranno quando avrai deciso le segnalazioni, con il link alla Verifica.
+
 ## 4.3.8b1 — 2026-11-04
 
 Beta con le novità dello Studio, l'affidabilità delle fonti, i file di RT e l'accesso per gli agenti.
