@@ -1,6 +1,6 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
 import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
@@ -98,11 +98,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const issuesQuery = useIssues(lesson?.id ?? 0, Boolean(lesson?.id))
   const pendingItems = (issuesQuery.data?.items ?? []).filter(item => !item.decision || item.needs_reconfirmation)
   const openIssuesCount = issuesQuery.data?.pending ?? (issuesQuery.data ? pendingItems.length : (lesson?.pending_issues ?? 0))
-  const pendingUnitIds = new Set(
+  const pendingUnitIds = useMemo(() => new Set(
     pendingItems
       .map(item => String((item.issue as { unit_id?: string })?.unit_id || ''))
       .filter(Boolean)
-  )
+  ), [pendingItems])
   const generateQuestions = useGenerateForUnits(lesson?.id ?? 0)
   const study = useStudyLesson(lesson?.id ?? null)
   // Le unità della lezione nell'ordine: con onlyUnits quelle della parte.
@@ -332,7 +332,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   const studyNotesQuery = useStudyNotes(lesson?.id)
   const applyNoteMutation = useApplyStudyNote(lesson?.id ?? 0)
   const undoNoteMutation = useUndoStudyNote(lesson?.id ?? 0)
-  const [toast, setToast] = useState<{ message: string; actionLabel?: string; onAction?: () => void } | null>(null)
+  const [toast, setToast] = useState<{ message: ReactNode; actionLabel?: string; onAction?: () => void } | null>(null)
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(null), 6000)
@@ -347,6 +347,23 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       const result = generationJobs[pendingJobs.indexOf(pending)].data!
       if (result.state === 'succeeded') {
         void queryClient.invalidateQueries({ queryKey: recallKeys.all(pending.lessonId) })
+        if (pendingUnitIds.has(pending.unitId)) {
+          // oxlint-disable-next-line react/set-state-in-effect
+          setToast({
+            message: (
+              <span>
+                Domande pronte: compariranno quando avrai deciso le segnalazioni della{' '}
+                <Link
+                  to={`/lezioni/${pending.lessonId}?panel=verifica&review_unit=${pending.unitId}`}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                  onClick={() => setToast(null)}
+                >
+                  Verifica
+                </Link>
+              </span>
+            ),
+          })
+        }
       } else {
         // Il risultato del job esterno viene annunciato anche a popup chiuso.
         // oxlint-disable-next-line react/set-state-in-effect
@@ -354,7 +371,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       }
     }
     setPendingJobs(current => current.filter(pending => !completed.includes(pending)))
-  }, [generationJobs, pendingJobs, queryClient])
+  }, [generationJobs, pendingJobs, queryClient, pendingUnitIds])
 
   const [popupState, setPopupState] = useState<{
     open: boolean
@@ -1559,15 +1576,40 @@ function NoQuestionsYet({ lessonId, units, onReady }: { lessonId: number; units:
   const job = useJobStatus(jobId)
   const client = useQueryClient()
   const done = jobFinished(job.data)
+  const issuesQuery = useIssues(lessonId)
+  const pendingItems = (issuesQuery.data?.items ?? []).filter(item => !item.decision || item.needs_reconfirmation)
+  const pendingUnitIds = new Set(
+    pendingItems.map(item => String((item.issue as { unit_id?: string })?.unit_id || '')).filter(Boolean)
+  )
+  const hasPending = units.some(u => pendingUnitIds.has(u))
+  const targetUnit = units.find(u => pendingUnitIds.has(u)) || units[0]
+  const [readyBlocked, setReadyBlocked] = useState(false)
+
   useEffect(() => {
     if (!done) return
+    if (job.data?.state === 'succeeded' && hasPending) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setReadyBlocked(true)
+    }
     void client.invalidateQueries({ queryKey: recallKeys.all(lessonId) }).then(onReady)
-  }, [done, client, lessonId, onReady])
+  }, [done, job.data?.state, hasPending, client, lessonId, onReady])
+
   return (
     <div className="flex flex-col items-start gap-4" data-testid="study-no-questions">
       <p className="text-body">Nessuna domanda su {units.length === 1 ? 'questa unità' : 'queste unità'} ({units.join(', ')}).</p>
       {jobId && !done ? (
         <p role="status" className="text-meta text-muted-foreground">Genero le domande…</p>
+      ) : readyBlocked ? (
+        <Alert tone="warning" data-testid="recall-blocked-by-review">
+          Domande pronte: compariranno quando avrai deciso le segnalazioni della{' '}
+          <Link
+            to={`/lezioni/${lessonId}?panel=verifica&review_unit=${targetUnit}`}
+            className="font-semibold underline underline-offset-2"
+          >
+            Verifica
+          </Link>
+          .
+        </Alert>
       ) : (
         <Button onClick={() => generate.mutate({ unitIds: units }, { onSuccess: (accepted) => setJobId(accepted.job_id) })} disabled={generate.isPending}>
           Genera le domande
