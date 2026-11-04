@@ -25,6 +25,7 @@ const jobs = () => import('./jobs')
 const recall = () => import('./recall')
 const settings = () => import('./settings')
 const calendar = () => import('./calendar')
+const guide = () => import('./guide')
 
 const bare = { bare: true }
 
@@ -155,7 +156,14 @@ const appArea: Area = {
   routes: [{ path: 'app/aggiornamento', Component: page(settings, (m) => m.UpdatePopup), handle: bare }],
 }
 
-export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea]
+const guideArea: Area = {
+  routes: [
+    { path: 'guida', Component: page(guide, (m) => m.GuidePage), handle: bare },
+    { path: 'guida/:pagina', Component: page(guide, (m) => m.GuidePage), handle: bare },
+  ],
+}
+
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea, guideArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

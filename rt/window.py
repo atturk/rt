@@ -15,6 +15,7 @@ import webbrowser
 from rt.core import bundle, paths
 
 INFO_PATH = "/impostazioni/info-aggiornamenti"
+GUIDA_PATH = "/guida"
 LOCALIZATION = {
     "global.ok": "OK", "global.cancel": "Annulla", "global.quit": "Esci",
     "global.saveFile": "Salva file", "global.quitConfirmation": "Uscire da RT?",
@@ -483,6 +484,7 @@ def _menu(window, base_url: str, api=None):
     if sys.platform == "win32":
         actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
     actions.extend([
+        MenuAction("Guida di RT", lambda: window.load_url(base_url + GUIDA_PATH)),
         MenuAction("Controlla aggiornamenti…", _open_update),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),

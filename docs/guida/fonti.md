@@ -11,7 +11,7 @@ Puoi aggiungere diverse tipologie di documenti dal pannello **Dettagli → Fonti
 
 Durante l'importazione di PDF, RT estrae il testo e, se richiesto, le immagini e gli schemi per inserirli direttamente nelle unità di studio pertinenti.
 
-## Affidabilità delle fonti
+## Affidabilità
 
 A ogni fonte viene assegnato un livello di affidabilità che guida l'algoritmo di verifica e conciliazione:
 - **Alta**: materiali ufficiali del docente, testi d'esame e slide. RT dà la precedenza assoluta a queste fonti in caso di discordanza con le parole pronunciate, a meno di errori palesi.

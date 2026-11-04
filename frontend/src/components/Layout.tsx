@@ -2,7 +2,7 @@ import { clearLastClosedLessonId } from '@/lib/lastClosedLesson'
 import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { Navigate, Outlet, useLocation, useMatches } from 'react-router'
+import { Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 
 import { ApiError } from '@/api/client'
 import { useMe } from '@/api/hooks'
@@ -114,6 +114,20 @@ export function Layout() {
   }, [])
   const closeNewLesson = useCallback(() => setNewLessonOptions(null), [])
   const phone = useIsPhone()
+  const navigate = useNavigate()
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === 'F1' ||
+        ((e.metaKey || e.ctrlKey) && (e.key === '?' || (e.shiftKey && e.key === '/')))
+      ) {
+        e.preventDefault()
+        navigate('/guida')
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigate])
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
   useUpdatePopup()

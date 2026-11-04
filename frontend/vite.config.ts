@@ -12,6 +12,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
+    fs: {
+      allow: ['..'],
+    },
     proxy: {
       '/api': { target: API, changeOrigin: false },
       '/login': {

@@ -44,6 +44,7 @@ import { ProgressBar } from '@/components/jobs/JobParts'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import { HelpLink } from '@/components/guide/HelpLink'
 import { Modal } from '@/components/ui/modal'
 import { AUDIO_EXTENSIONS, formatBytes } from '@/lib/jobs'
 import { cancelUpload, enqueueUpload, isUploadActive, useUpload, type UploadSend } from '@/lib/uploadQueue'
@@ -696,6 +697,7 @@ export function NewLessonDialog({
         open={open}
         onClose={onClose}
         title="Nuova lezione"
+        actions={<HelpLink to="/guida/nuova-lezione" label="Guida su Nuova lezione" />}
         testId="new-lesson"
         className="w-[min(680px,calc(100vw-32px))]"
       >

@@ -20,6 +20,7 @@ import {
   saveDeviceOrigin,
 } from '@/lib/deviceLogin'
 import { Field, Section } from './common'
+import { HelpLink } from '@/components/guide/HelpLink'
 
 /** Accesso da iPhone o da un altro computer: un QR con il link monouso (5 minuti, una volta).
  * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della tailnet
@@ -51,7 +52,12 @@ export function DeviceAccessSection() {
   return (
     <Section
       id="altro-dispositivo"
-      title="Accesso da un altro dispositivo"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          <span>Accesso da un altro dispositivo</span>
+          <HelpLink to="/guida/iphone-e-agenti#accesso-da-iphone" label="Guida sull'accesso da iPhone" />
+        </span>
+      }
       description="Apri RT da iPhone inquadrando un QR: il link entra una sola volta e vale 5 minuti."
     >
       <Field
