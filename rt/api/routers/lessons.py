@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from rt.api import schemas
@@ -21,6 +22,26 @@ def _lesson_id(lesson_dir: str) -> int:
     if lesson_id is None:
         raise ApiError(404, "lesson_not_found", "Lezione non trovata.")
     return lesson_id
+
+
+class SampleLessonOut(BaseModel):
+    lesson_id: int = Field(description="ID della lezione di esempio importata")
+    materia: str = Field(description="Materia (ESEMPIO)")
+    titolo: str = Field(description="Titolo della lezione di esempio")
+
+
+@router.post("/lessons/sample", response_model=SampleLessonOut, status_code=201, summary="Importa la lezione di esempio inclusa in RT")
+def import_sample_lesson(_actor: Actor):
+    from rt.core import paths
+    from rt.services.lesson_import_service import import_archive
+    sample_path = paths.sample_lesson_path()
+    if not os.path.isfile(sample_path):
+        from scripts.make_sample_lesson import build_sample_lesson
+        build_sample_lesson(sample_path)
+    lesson_id = import_archive(sample_path, on_existing="keep")
+    lesson_dir = lesson_service.resolve_lesson_dir(lesson_id)
+    detail = lesson_service.lesson_detail(lesson_id, lesson_dir)
+    return SampleLessonOut(lesson_id=lesson_id, materia=detail.get("materia", "ESEMPIO"), titolo=detail.get("titolo", "Introduzione a RT"))
 
 
 @router.get("/lessons", response_model=List[schemas.LessonSummary], summary="Elenco delle lezioni (come la dashboard)")

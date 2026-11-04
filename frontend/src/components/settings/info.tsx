@@ -45,6 +45,19 @@ export function InfoSection() {
             <Row label="Installazione"><Path value={info.data.install_dir} /></Row>
             <Row label="Python">{info.data.python_version}</Row>
             <Row label="Sistema">{info.data.platform}</Row>
+            {info.data.donazioni_url ? (
+              <Row label="Sostieni RT">
+                <a
+                  href={info.data.donazioni_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                  data-testid="link-sostieni-rt"
+                >
+                  Sostieni RT
+                </a>
+              </Row>
+            ) : null}
           </dl>
         )}
       </Section>

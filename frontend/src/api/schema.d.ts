@@ -955,6 +955,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Importa la lezione di esempio inclusa in RT */
+        post: operations["import_sample_lesson_api_v1_lessons_sample_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}": {
         parameters: {
             query?: never;
@@ -2851,6 +2868,23 @@ export interface paths {
         get: operations["settings_api_v1_settings_enrichment_get"];
         /** Save Settings */
         put: operations["save_settings_api_v1_settings_enrichment_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stima dei costi per una lezione di 90 minuti */
+        get: operations["get_cost_estimate_api_v1_settings_estimate_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -6442,6 +6476,19 @@ export interface components {
             /** Id */
             id: number;
         };
+        /** LessonCostEstimate */
+        LessonCostEstimate: {
+            /**
+             * Cost Eur
+             * @description Stima del costo in Euro per una lezione di 90 minuti
+             */
+            cost_eur?: number | null;
+            /**
+             * Formatted
+             * @description Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'
+             */
+            formatted: string;
+        };
         /** LessonDetail */
         LessonDetail: {
             /** @description Recall, immagini e download: disponibili dopo il rewrite, senza build */
@@ -8195,6 +8242,24 @@ export interface components {
             /** Round Robin */
             round_robin: boolean;
         };
+        /** SampleLessonOut */
+        SampleLessonOut: {
+            /**
+             * Lesson Id
+             * @description ID della lezione di esempio importata
+             */
+            lesson_id: number;
+            /**
+             * Materia
+             * @description Materia (ESEMPIO)
+             */
+            materia: string;
+            /**
+             * Titolo
+             * @description Titolo della lezione di esempio
+             */
+            titolo: string;
+        };
         /** SecretDeleted */
         SecretDeleted: {
             /** Name */
@@ -8738,6 +8803,12 @@ export interface components {
              * @description Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media
              */
             data_dir: string;
+            /**
+             * Donazioni Url
+             * @description URL per sostenere RT (donazioni)
+             * @default
+             */
+            donazioni_url: string;
             /**
              * Install Dir
              * @description Cartella del codice di RT
@@ -13151,6 +13222,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_sample_lesson_api_v1_lessons_sample_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SampleLessonOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -21922,6 +22058,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrichmentConfig"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_cost_estimate_api_v1_settings_estimate_get: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+                model?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonCostEstimate"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

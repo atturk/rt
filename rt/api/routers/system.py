@@ -59,6 +59,7 @@ class SystemInfo(BaseModel):
     config_dir: str = Field(description="Cartella config/ in uso")
     python_version: str
     platform: str
+    donazioni_url: str = Field(default="", description="URL per sostenere RT (donazioni)")
 
 
 class CacheUsage(BaseModel):
@@ -111,6 +112,7 @@ def system_info(_actor: Actor) -> SystemInfo:
     import platform
     from rt.core import bundle, paths
     from rt.core.config import _default_project_root
+    from rt.core.donazioni import DONAZIONI_URL
     from rt.core.version import get_current_version, get_update_channel, is_prerelease
     root = _default_project_root()
     version = get_current_version(root)
@@ -120,7 +122,8 @@ def system_info(_actor: Actor) -> SystemInfo:
                       update_channel=get_update_channel(),
                       install_dir=str(root), data_dir=str(paths.data_dir()), config_dir=str(paths.config_dir(root)),
                       python_version=platform.python_version(),
-                      platform=f"{platform.system()} {platform.release()} ({platform.machine()})")
+                      platform=f"{platform.system()} {platform.release()} ({platform.machine()})",
+                      donazioni_url=DONAZIONI_URL)
 
 
 class UpdateProgress(BaseModel):

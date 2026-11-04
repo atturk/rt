@@ -26,7 +26,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from rt.core import paths
 
@@ -728,3 +728,310 @@ def _relocate_imported_lessons(db):
                 lesson.path = new
                 relocate_path_keyed_rows(session, old, new)
     fs.reset_cache()
+
+
+# ------------------------------------------------------------------
+# BACKUP PRE-AGGIORNAMENTO E RIPRISTINO (Voce 5)
+# ------------------------------------------------------------------
+
+PRE_UPDATE_SUBDIR = os.path.join("backups", "prima-aggiornamento")
+MAX_PRE_UPDATE_BACKUPS = 5
+
+
+def pre_update_dir() -> str:
+    """Cartella contenente i backup leggeri creati prima di un aggiornamento."""
+    return os.path.join(paths.data_dir(), PRE_UPDATE_SUBDIR)
+
+
+def list_pre_update_backups() -> List[Dict[str, Any]]:
+    """
+    Elenco dei backup pre-aggiornamento ordinati dal più recente al più vecchio.
+    Ogni elemento contiene:
+    - path: percorso assoluto del file zip
+    - filename: nome file (es. rt-4.3.8-20261104-164500.zip)
+    - version: versione memorizzata nel manifest o ricavata dal nome file
+    - created: data di creazione ISO
+    - size: dimensione in byte
+    """
+    import zipfile
+    base = pre_update_dir()
+    if not os.path.isdir(base):
+        return []
+    result = []
+    for fname in os.listdir(base):
+        if not (fname.startswith("rt-") and fname.endswith(".zip")):
+            continue
+        full_path = os.path.join(base, fname)
+        if not os.path.isfile(full_path):
+            continue
+        version = "?"
+        created = ""
+        try:
+            with zipfile.ZipFile(full_path, "r") as zf:
+                if MANIFEST in zf.namelist():
+                    data = json.loads(zf.read(MANIFEST).decode("utf-8"))
+                    version = data.get("rt_version") or version
+                    created = data.get("created") or created
+        except Exception:
+            pass
+        if version == "?":
+            parts = fname[:-4].split("-")
+            if len(parts) >= 3:
+                version = parts[1]
+        if not created:
+            mtime = os.path.getmtime(full_path)
+            created = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(mtime))
+        result.append({
+            "path": full_path,
+            "filename": fname,
+            "version": version,
+            "created": created,
+            "size": os.path.getsize(full_path),
+            "mtime": os.path.getmtime(full_path),
+        })
+    result.sort(key=lambda x: (x["mtime"], x["filename"]), reverse=True)
+    return result
+
+
+def rotate_pre_update_backups(keep: int = MAX_PRE_UPDATE_BACKUPS) -> None:
+    """Mantiene solo gli ultimi `keep` backup pre-aggiornamento, eliminando i più vecchi."""
+    backups = list_pre_update_backups()
+    if len(backups) > keep:
+        for old in backups[keep:]:
+            try:
+                os.remove(old["path"])
+            except OSError:
+                pass
+
+
+def inspect_pre_update_backup(path: str) -> Dict[str, Any]:
+    """Ispeziona il manifest di un archivio pre-aggiornamento."""
+    import zipfile
+    if not os.path.isfile(path):
+        raise BackupError(f"File di backup non trovato: {path}")
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            if MANIFEST not in zf.namelist():
+                raise BackupError(f"Archivio non valido (manca {MANIFEST}): {os.path.basename(path)}")
+            return json.loads(zf.read(MANIFEST).decode("utf-8"))
+    except Exception as exc:
+        if isinstance(exc, BackupError):
+            raise
+        raise BackupError(f"Impossibile leggere il backup {os.path.basename(path)}: {exc}") from exc
+
+
+def create_pre_update_backup(version: Optional[str] = None) -> str:
+    """
+    Crea un backup leggero prima dell'aggiornamento:
+    - Copia coerente del database SQLite (rt.db)
+    - File di testo delle lezioni (.md, .json, .yaml, .yml, .txt)
+    - Esclude audio, immagini, PDF e qualsiasi file in media/
+    Salva in <cartella dati>/backups/prima-aggiornamento/rt-<versione>-<data-ora>.zip.
+    Mantiene solo gli ultimi 5.
+    Se fallisce, solleva BackupError.
+    """
+    import tempfile
+    import zipfile
+    from datetime import datetime
+    from rt.core.version import get_current_version
+    from rt.db.engine import current_database_url, sqlite_file
+    from rt.services.data_service import sqlite_copy
+    from rt.services.lesson_service import configured_lessons_root
+
+    curr_ver = version or get_current_version(paths.project_root())
+    dest_dir = pre_update_dir()
+    os.makedirs(dest_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    filename = f"rt-{curr_ver}-{stamp}.zip"
+    target_zip = os.path.join(dest_dir, filename)
+    temp_zip = target_zip + ".part"
+
+    temp_copy_dir = tempfile.mkdtemp(prefix="rt-pre-up-db-")
+    try:
+        # 1. Copia coerente SQLite se disponibile
+        db_file = None
+        url = current_database_url()
+        candidate = sqlite_file(url) if url else None
+        if candidate and os.path.isfile(candidate):
+            db_file = candidate
+        else:
+            for c in (os.path.join(paths.data_dir(), "rt.db"), os.path.join(paths.data_dir(), "db", "rt.db")):
+                if os.path.isfile(c):
+                    db_file = c
+                    break
+
+        db_copy_path = None
+        if db_file:
+            db_copy_path = os.path.join(temp_copy_dir, "rt.db")
+            sqlite_copy(db_file, db_copy_path)
+
+        # 2. Raccoglie cartelle lezioni
+        lesson_dirs = set()
+        default_lessons = configured_lessons_root() or os.path.join(paths.data_dir(), "lessons")
+        if os.path.isdir(default_lessons):
+            for entry in os.listdir(default_lessons):
+                sub = os.path.join(default_lessons, entry)
+                if os.path.isdir(sub) and not entry.startswith("."):
+                    lesson_dirs.add(sub)
+
+        try:
+            from sqlalchemy import select
+            from rt.db.engine import require_database
+            from rt.db.models import Lesson
+            from rt.db.session import read_scope
+            db = require_database()
+            with read_scope(db) as session:
+                for lpath in session.scalars(select(Lesson.path)):
+                    if lpath and os.path.isdir(lpath):
+                        lesson_dirs.add(os.path.abspath(lpath))
+        except Exception:
+            pass
+
+        # 3. Costruisce l'archivio ZIP leggero
+        text_extensions = {".md", ".json", ".yaml", ".yml", ".txt"}
+        files_archived = []
+
+        with zipfile.ZipFile(temp_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            if db_copy_path and os.path.isfile(db_copy_path):
+                zf.write(db_copy_path, "rt.db")
+                files_archived.append("rt.db")
+
+            for ldir in sorted(lesson_dirs):
+                folder_name = os.path.basename(ldir.rstrip("/\\"))
+                for root, dirs, files in os.walk(ldir):
+                    # Esclude esplicitamente media, git, cache
+                    dirs[:] = [d for d in dirs if d not in ("media", ".git", "__pycache__", "node_modules")]
+                    for f in files:
+                        ext = os.path.splitext(f)[1].lower()
+                        if ext in text_extensions:
+                            src_file = os.path.join(root, f)
+                            rel_inside_lesson = os.path.relpath(src_file, ldir).replace(os.sep, "/")
+                            arcname = f"lessons/{folder_name}/{rel_inside_lesson}"
+                            zf.write(src_file, arcname)
+                            files_archived.append(arcname)
+
+            # Manifest
+            manifest = {
+                "format": FORMAT,
+                "type": "pre_update",
+                "rt_version": curr_ver,
+                "created": datetime.now().isoformat(),
+                "database": "rt.db" if db_copy_path else None,
+                "files_count": len(files_archived),
+            }
+            zf.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=2))
+
+        os.replace(temp_zip, target_zip)
+        rotate_pre_update_backups(MAX_PRE_UPDATE_BACKUPS)
+        return target_zip
+    except Exception as exc:
+        if os.path.exists(temp_zip):
+            try:
+                os.remove(temp_zip)
+            except OSError:
+                pass
+        raise BackupError(f"Creazione del backup pre-aggiornamento non riuscita: {exc}") from exc
+    finally:
+        shutil.rmtree(temp_copy_dir, ignore_errors=True)
+
+
+def restore_pre_update_backup(
+    source: Optional[str] = None,
+    say: Callable[[str], None] = print,
+) -> str:
+    """
+    Ripristina un backup pre-aggiornamento:
+    1. Risolve il file zip (il più recente se None).
+    2. Verifica integrità e manifest.
+    3. Mette da parte lo stato attuale (database e testi) in <data_dir>/backups/prima-del-ripristino-<data>.
+    4. Ripristina il database e i file di testo delle lezioni.
+    5. I file media (audio e immagini) restano intatti.
+    Restituisce il percorso della cartella che contiene i dati messi da parte.
+    """
+    import zipfile
+    from rt.db.engine import current_database_url, reset_database_cache, sqlite_file
+    from rt.services.lesson_service import configured_lessons_root
+
+    if not source:
+        backups = list_pre_update_backups()
+        if not backups:
+            raise BackupError("Nessun backup pre-aggiornamento disponibile da ripristinare.")
+        target_zip = backups[0]["path"]
+    elif os.path.isfile(source):
+        target_zip = source
+    else:
+        candidate = os.path.join(pre_update_dir(), source)
+        if not candidate.endswith(".zip"):
+            candidate += ".zip"
+        if os.path.isfile(candidate):
+            target_zip = candidate
+        else:
+            backups = list_pre_update_backups()
+            matched = [b for b in backups if source in b["filename"] or source in b.get("version", "")]
+            if not matched:
+                raise BackupError(f"Backup pre-aggiornamento «{source}» non trovato.")
+            target_zip = matched[0]["path"]
+
+    manifest = inspect_pre_update_backup(target_zip)
+    if manifest.get("type") != "pre_update":
+        raise BackupError("Il file selezionato non è un backup pre-aggiornamento valido.")
+
+    # Mette da parte i dati attuali
+    data = paths.data_dir()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    aside = os.path.join(data, "backups", f"prima-del-ripristino-{stamp}")
+    if os.path.exists(aside):
+        import tempfile
+        aside = tempfile.mkdtemp(prefix=f"prima-del-ripristino-{stamp}-", dir=os.path.join(data, "backups"))
+    else:
+        os.makedirs(aside, exist_ok=True)
+
+    url = current_database_url()
+    db_file = sqlite_file(url) if url else None
+    if not db_file:
+        for c in (os.path.join(data, "rt.db"), os.path.join(data, "db", "rt.db")):
+            if os.path.isfile(c):
+                db_file = c
+                break
+        if not db_file:
+            db_file = os.path.join(data, "rt.db")
+
+    reset_database_cache()
+    if os.path.isfile(db_file):
+        for suffix in ("", "-wal", "-shm"):
+            src_db = db_file + suffix
+            if os.path.exists(src_db):
+                dest_aside = os.path.join(aside, os.path.basename(db_file) + suffix)
+                os.makedirs(os.path.dirname(dest_aside), exist_ok=True)
+                shutil.move(src_db, dest_aside)
+
+    lessons_root = configured_lessons_root() or os.path.join(data, "lessons")
+    os.makedirs(lessons_root, exist_ok=True)
+
+    with zipfile.ZipFile(target_zip, "r") as zf:
+        # Ripristina database
+        if "rt.db" in zf.namelist():
+            os.makedirs(os.path.dirname(db_file), exist_ok=True)
+            with zf.open("rt.db") as src, open(db_file, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            say("🗄  Database ripristinato.")
+
+        # Ripristina file di testo delle lezioni
+        for name in zf.namelist():
+            if name.startswith("lessons/") and not name.endswith("/"):
+                rel = name[len("lessons/"):]
+                if ".." in rel.split("/") or os.path.isabs(rel):
+                    continue  # mai fuori dalla cartella delle lezioni
+                target_file = os.path.join(lessons_root, *rel.split("/"))
+                if os.path.isfile(target_file):
+                    aside_file = os.path.join(aside, "lessons", *rel.split("/"))
+                    os.makedirs(os.path.dirname(aside_file), exist_ok=True)
+                    shutil.move(target_file, aside_file)
+                os.makedirs(os.path.dirname(target_file), exist_ok=True)
+                with zf.open(name) as src, open(target_file, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+    reset_database_cache()
+    say("📝 File di testo delle lezioni ripristinati.")
+    return aside
+

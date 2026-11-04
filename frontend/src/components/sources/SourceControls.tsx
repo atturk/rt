@@ -3,6 +3,7 @@ import type { ReactNode, SVGProps } from 'react'
 
 import { textOnly, type Extraction, type SourceOptions } from '@/api/archive'
 import { IconButton } from '@/components/ui/icon-button'
+import { HelpLink } from '@/components/guide/HelpLink'
 import { EXTRACTIONS, USES, isImageName, pageRange, type Reasons, type Uso } from '@/lib/sourceDefaults'
 import { cn } from '@/lib/utils'
 
@@ -125,6 +126,7 @@ export function ReliabilityOptions({
       <span className="min-w-16 text-meta text-muted-foreground">
         {current === 'alta' ? 'Alta' : current === 'normale' ? 'Normale' : 'Bassa'}
       </span>
+      <HelpLink to="/guida/fonti#affidabilita" label="Guida sull'affidabilità" />
     </div>
   )
 }

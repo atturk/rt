@@ -41,6 +41,7 @@ import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
 import { useIsPhone } from '@/lib/phone'
+import { HelpLink } from '@/components/guide/HelpLink'
 import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
@@ -291,8 +292,9 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
         onClose={() => { setPendingMaterials([]); setEditingSource(null) }} onSubmit={saveMaterial} />}
       {/* Intestazione Fonti */}
       <div className="relative flex items-center justify-between">
-        <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
-          Fonti
+        <span className="flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>Fonti</span>
+          <HelpLink to="/guida/fonti#affidabilita" label="Guida su fonti e affidabilità" />
         </span>
         {/* Menu in un portale: non resta tagliato dal pannello che scorre. */}
         <LinkMenuButton

@@ -156,10 +156,12 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         assert kwargs["storage_path"] == str(data / "webview")
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
-            "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
+            "Guida di RT", "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
+            "Ripristina dati prima di un aggiornamento…",
             "Diagnostica", "Autenticazione", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
-        items[0].function()
+        update_item = next(x for x in items if getattr(x, "title", None) == "Controlla aggiornamenti…")
+        update_item.function()
         webview.create_window.assert_called_with(
             "Aggiornamento di RT", "http://127.0.0.1:8765/app/aggiornamento",
             width=420, height=240, resizable=False, on_top=True)
@@ -501,6 +503,16 @@ def test_windows_menu_has_about(monkeypatch, webview):
     menu = window._menu(webview.create_window.return_value, "http://127.0.0.1:8765")
     items = menu[0].items
     assert items[0].title == "Informazioni su RT"
+
+
+def test_menu_has_guida_and_opens_route(monkeypatch, webview):
+    win = webview.create_window.return_value
+    menu = window._menu(win, "http://127.0.0.1:8765")
+    items = menu[0].items
+    guida_item = next(item for item in items if getattr(item, "title", None) == "Guida di RT")
+    assert guida_item is not None
+    guida_item.function()
+    win.load_url.assert_called_with("http://127.0.0.1:8765/guida")
 
 
 def test_backup_stream_events_in_order(monkeypatch):

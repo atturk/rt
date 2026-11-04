@@ -575,4 +575,41 @@ describe('Segnalazioni aperte nello Studio', () => {
       expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
     })
   })
+
+  it('mostra il messaggio e il link alla Verifica quando la generazione finisce su un’unità con segnalazioni aperte', async () => {
+    mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'gen-pending-1' }))
+    const client = renderStudy('/', [{ ...LESSON, pending_issues: 1 }])
+    act(() => {
+      client.setQueryData(reviewKeys.issues(1), {
+        pending: 1,
+        total: 1,
+        review_complete: false,
+        items: [
+          {
+            issue: { id: 'sci_1', unit_id: '2.1' },
+            decision: null,
+            needs_reconfirmation: false,
+          },
+        ],
+      })
+    })
+    client.setQueryDefaults(['job'], { staleTime: Infinity })
+    client.setQueryData(['job', 'gen-pending-1'], { state: 'running' })
+
+    // Vai all'unità 2.1 che non ha domande
+    fireEvent.click(screen.getByTestId('unit-index-toggle'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
+
+    fireEvent.click(screen.getByTestId('study-generate'))
+    fireEvent.click(screen.getByTestId('study-generate-start'))
+
+    // Il job termina con successo
+    act(() => client.setQueryData(['job', 'gen-pending-1'], { state: 'succeeded' }))
+
+    // Compare il messaggio con il link alla Verifica
+    const banner = await screen.findByText(/Domande pronte: compariranno quando avrai deciso le segnalazioni della/i)
+    expect(banner).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'Verifica' })
+    expect(link).toHaveAttribute('href', '/lezioni/1?panel=verifica&review_unit=2.1')
+  })
 })

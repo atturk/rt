@@ -6689,6 +6689,32 @@
         "title": "LessonCost",
         "type": "object"
       },
+      "LessonCostEstimate": {
+        "properties": {
+          "cost_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stima del costo in Euro per una lezione di 90 minuti",
+            "title": "Cost Eur"
+          },
+          "formatted": {
+            "description": "Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'",
+            "title": "Formatted",
+            "type": "string"
+          }
+        },
+        "required": [
+          "formatted"
+        ],
+        "title": "LessonCostEstimate",
+        "type": "object"
+      },
       "LessonDetail": {
         "properties": {
           "actions": {
@@ -10615,6 +10641,32 @@
         "title": "RouteOut",
         "type": "object"
       },
+      "SampleLessonOut": {
+        "properties": {
+          "lesson_id": {
+            "description": "ID della lezione di esempio importata",
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "materia": {
+            "description": "Materia (ESEMPIO)",
+            "title": "Materia",
+            "type": "string"
+          },
+          "titolo": {
+            "description": "Titolo della lezione di esempio",
+            "title": "Titolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "materia",
+          "titolo"
+        ],
+        "title": "SampleLessonOut",
+        "type": "object"
+      },
       "SecretDeleted": {
         "properties": {
           "name": {
@@ -12107,6 +12159,12 @@
           "data_dir": {
             "description": "Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media",
             "title": "Data Dir",
+            "type": "string"
+          },
+          "donazioni_url": {
+            "default": "",
+            "description": "URL per sostenere RT (donazioni)",
+            "title": "Donazioni Url",
             "type": "string"
           },
           "install_dir": {
@@ -18521,6 +18579,82 @@
         "summary": "Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/sample": {
+      "post": {
+        "operationId": "import_sample_lesson_api_v1_lessons_sample_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleLessonOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Importa la lezione di esempio inclusa in RT",
+        "tags": [
+          "lezioni"
         ]
       }
     },
@@ -30717,6 +30851,111 @@
         "summary": "Save Settings",
         "tags": [
           "arricchimento"
+        ]
+      }
+    },
+    "/api/v1/settings/estimate": {
+      "get": {
+        "operationId": "get_cost_estimate_api_v1_settings_estimate_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonCostEstimate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "summary": "Stima dei costi per una lezione di 90 minuti",
+        "tags": [
+          "impostazioni"
         ]
       }
     },

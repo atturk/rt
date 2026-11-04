@@ -16,6 +16,7 @@ import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { RetryButton } from '@/components/jobs/JobParts'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
+import { WelcomeBox } from '@/components/lessons/WelcomeBox'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { useJob, useJobs, useOutline } from '@/api/jobs'
@@ -46,6 +47,7 @@ export function DashboardPage() {
   const openNewLesson = useOpenNewLesson()
   const { filters, setFilter, resetFilters, applyFilters, filtered } = useFilteredLessons(all.data)
   const [prefs, setPrefs] = useLessonsPrefs()
+  const [welcomeDismissed, setWelcomeDismissed] = usePreference('welcome.dismissed', false)
   const { pinned, pin, unpin } = usePinnedLessonsView()
   const [searchParams] = useSearchParams()
   const mountedRef = useRef(false)
@@ -193,10 +195,18 @@ export function DashboardPage() {
           </p>
         )}
         {all.data?.length === 0 && (
-          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
-            Nessuna lezione.
-            <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
-          </p>
+          !welcomeDismissed ? (
+            <WelcomeBox
+              onNewLesson={openNewLesson}
+              onSampleImported={() => void all.refetch()}
+              onDismiss={() => setWelcomeDismissed(true)}
+            />
+          ) : (
+            <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
+              Nessuna lezione.
+              <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
+            </p>
+          )
         )}
         {all.data && all.data.length > 0 && filtered.length === 0 && (
           <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">

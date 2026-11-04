@@ -1,0 +1,154 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 'react-router'
+import { GuidePage } from './guide'
+import { searchGuide } from '@/lib/guideDocs'
+import { HelpLink } from '@/components/guide/HelpLink'
+import { PageHeader } from '@/components/shell/PageHeader'
+import { Layout } from '@/components/Layout'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+vi.mock('@/api/hooks', () => ({
+  useMe: () => ({ isSuccess: true, data: { username: 'test' } }),
+}))
+vi.mock('@/api/liveUpdates', () => ({
+  useLiveUpdates: () => {},
+}))
+vi.mock('@/components/settings/useAppUpdate', () => ({
+  useUpdatePopup: () => {},
+}))
+vi.mock('@/components/jobs/useDesktopJobSignals', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/jobs/useDesktopJobSignals')>()
+  return {
+    ...actual,
+    useDesktopJobSignals: () => {},
+  }
+})
+vi.mock('@/lib/useOpenedFiles', () => ({
+  useOpenedFiles: () => ({ error: null, clearError: () => {} }),
+}))
+vi.mock('@/lib/uploadQueue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/uploadQueue')>()
+  return {
+    ...actual,
+    useUploadGuard: () => {},
+  }
+})
+
+describe('Guide offline documentation & search', () => {
+  it('searchGuide trova contenuti senza distinzione tra maiuscole/minuscole e accenti', () => {
+    // Ricerca senza accenti per parola accentata "affidabilità"
+    const results = searchGuide('affidabilita')
+    expect(results.length).toBeGreaterThan(0)
+    expect(results.some((r) => r.pageSlug === 'fonti')).toBe(true)
+
+    // Ricerca per "zen"
+    const zenResults = searchGuide('zen')
+    expect(zenResults.some((r) => r.pageSlug === 'studio')).toBe(true)
+  })
+
+  it('renderizza la rotta /guida con la pagina iniziale', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+          <Route path="/guida/:pagina" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getAllByRole('heading', { level: 1, name: /Guida di RT/ }).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Benvenuto nella guida di RT/)).toBeInTheDocument()
+  })
+
+  it('renderizza la rotta /guida/:pagina per una pagina specifica', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida/installazione']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+          <Route path="/guida/:pagina" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { level: 1, name: /Installazione/ })).toBeInTheDocument()
+    expect(screen.getByText(/xattr -dr com\.apple\.quarantine/)).toBeInTheDocument()
+  })
+
+  it('ricerca dalla barra e mostra i risultati con ancore', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+          <Route path="/guida/:pagina" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const searchInput = screen.getByRole('searchbox', { name: 'Cerca nella guida' })
+    await user.type(searchInput, 'smartscreen')
+
+    expect(screen.getByTestId('guide-search-results')).toBeInTheDocument()
+    expect(screen.getByText(/Installazione/)).toBeInTheDocument()
+
+    // Cliccando sul pulsante di cancellazione torna all'articolo
+    const clearBtn = screen.getByRole('button', { name: 'Cancella ricerca' })
+    await user.click(clearBtn)
+    expect(screen.getByTestId('guide-article')).toBeInTheDocument()
+  })
+
+  it('PageHeader mostra il pulsante Guida · F1', () => {
+    render(
+      <MemoryRouter>
+        <PageHeader title="Lezioni" />
+      </MemoryRouter>,
+    )
+
+    const helpLink = screen.getByRole('link', { name: 'Guida · F1' })
+    expect(helpLink).toHaveAttribute('href', '/guida')
+  })
+
+  it('HelpLink genera il link contestuale all’ancora indicata', () => {
+    render(
+      <MemoryRouter>
+        <HelpLink to="/guida/fonti#affidabilita" label="Guida sull'affidabilità" />
+      </MemoryRouter>,
+    )
+
+    const link = screen.getByTestId('help-link')
+    expect(link).toHaveAttribute('href', '/guida/fonti#affidabilita')
+    expect(link).toHaveAttribute('aria-label', "Guida sull'affidabilità")
+  })
+
+  it('premere F1 e Cmd+? apre /guida', async () => {
+    const qc = new QueryClient()
+    const router = createMemoryRouter(
+      [
+        {
+          element: <Layout />,
+          children: [
+            { path: '/', element: <div>Home</div> },
+            { path: '/guida', element: <div data-testid="guida-route">Pagina Guida</div> },
+          ],
+        },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    render(
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Home')).toBeInTheDocument()
+
+    // Premi F1
+    fireEvent.keyDown(window, { key: 'F1' })
+    await waitFor(() => {
+      expect(screen.getByTestId('guida-route')).toBeInTheDocument()
+    })
+  })
+})
