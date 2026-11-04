@@ -8804,6 +8804,12 @@ export interface components {
              */
             data_dir: string;
             /**
+             * Donazioni Url
+             * @description URL per sostenere RT (donazioni)
+             * @default
+             */
+            donazioni_url: string;
+            /**
              * Install Dir
              * @description Cartella del codice di RT
              */

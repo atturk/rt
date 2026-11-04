@@ -12161,6 +12161,12 @@
             "title": "Data Dir",
             "type": "string"
           },
+          "donazioni_url": {
+            "default": "",
+            "description": "URL per sostenere RT (donazioni)",
+            "title": "Donazioni Url",
+            "type": "string"
+          },
           "install_dir": {
             "description": "Cartella del codice di RT",
             "title": "Install Dir",
