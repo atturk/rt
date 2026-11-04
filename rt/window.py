@@ -951,7 +951,7 @@ def _restore_pre_update(window, base_url):
     most_recent = backups[0]
     ver = most_recent.get("version", "?")
     created = most_recent.get("created", "").replace("T", " ")[:16]
-    msg = (f"Ripristinare i dati del backup creato prima dell'aggiornamento a RT {ver} ({created})?\n\n"
+    msg = (f"Ripristinare i dati salvati con RT {ver} il {created}, prima dell'aggiornamento?\n\n"
            f"Il database e i file di testo attuali verranno messi da parte. I file audio e le immagini resteranno intatti.")
     if not window.create_confirmation_dialog("Ripristina dati prima di un aggiornamento", msg):
         return
@@ -965,8 +965,8 @@ def _restore_pre_update(window, base_url):
     try:
         stop()
         aside = bs.restore_pre_update_backup(most_recent["path"])
-        _notice(window, f"Ripristino completato con successo.\nI dati precedenti sono stati salvati in:\n{aside}\n\nL'applicazione verrà ricaricata.")
-        window.load_url(base_url)
+        _notice(window, f"Ripristino completato.\nI dati precedenti sono stati messi da parte in:\n{aside}\n\nRT si riavvia.")
+        _restart_after_import(window)
     except Exception as exc:
         _notice(window, f"Ripristino non riuscito: {exc}")
 

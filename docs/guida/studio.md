@@ -5,8 +5,8 @@ La schermata **Studio** è l'ambiente centrale per apprendere e memorizzare i co
 ## Strumenti di evidenziazione (E, G, V, C)
 
 Sopra il testo dell'unità trovi la barra degli strumenti rapidi, attivabili anche via tastiera:
-- **E (Evidenziatore)**: seleziona una porzione di testo e premi **E** (o clicca sullo strumento) per evidenziarla. Premendo **E** ripetutamente puoi alternare i diversi colori di evidenziazione.
-- **G (Gomma)**: clicca su un'evidenziazione esistente con lo strumento gomma attivo per rimuoverla.
+- **E (Evidenziatore)**: seleziona una porzione di testo e premi **E** (o clicca sullo strumento) per evidenziarla. **Maiuscolo+E** passa al colore successivo. Senza selezione, **E** accende l'evidenziatore e lo usi trascinando sul testo.
+- **G (Gomma)**: seleziona il testo evidenziato e premi **G** per togliere l'evidenziazione. Senza selezione, **G** accende la gomma.
 - **V (Verifica)**: con del testo selezionato, premi **V** per collegare la porzione direttamente al pannello di verifica e confrontarla con le fonti.
 - **C (Chiedi)**: seleziona un passaggio non chiaro e premi **C** per aprire un dialogo con l'assistente ed ottenere chiarimenti o esempi immediati.
 

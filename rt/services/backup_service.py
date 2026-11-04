@@ -1020,6 +1020,8 @@ def restore_pre_update_backup(
         for name in zf.namelist():
             if name.startswith("lessons/") and not name.endswith("/"):
                 rel = name[len("lessons/"):]
+                if ".." in rel.split("/") or os.path.isabs(rel):
+                    continue  # mai fuori dalla cartella delle lezioni
                 target_file = os.path.join(lessons_root, *rel.split("/"))
                 if os.path.isfile(target_file):
                     aside_file = os.path.join(aside, "lessons", *rel.split("/"))
