@@ -537,6 +537,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalogo OpenRouter filtrato per capacità (text, vision, image) */
+        get: operations["get_catalog_api_v1_cloud_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloud/checkout": {
         parameters: {
             query?: never;
@@ -605,6 +622,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sceglie il modello delle fasi di testo */
+        post: operations["choose_model_api_v1_cloud_model_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloud/plans": {
         parameters: {
             query?: never;
@@ -650,6 +684,23 @@ export interface paths {
         put?: never;
         /** Aggiorna abbonamento e chiave da RT Cloud */
         post: operations["sync_api_v1_cloud_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud/topup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pagina di pagamento di una ricarica extra */
+        post: operations["topup_api_v1_cloud_topup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4970,6 +5021,40 @@ export interface components {
              */
             usage_usd: number;
         };
+        /** CloudCatalogModel */
+        CloudCatalogModel: {
+            /** Id */
+            id: string;
+            /**
+             * Image Output
+             * @description Genera immagini
+             */
+            image_output: boolean;
+            /**
+             * Input Usd Per M
+             * @description USD per milione di token in ingresso
+             */
+            input_usd_per_m?: number | null;
+            /**
+             * Lesson Usd
+             * @description Costo stimato di una lezione (250k token in, 60k out)
+             */
+            lesson_usd?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Output Usd Per M
+             * @description USD per milione di token in uscita
+             */
+            output_usd_per_m?: number | null;
+            /** Text */
+            text: boolean;
+            /**
+             * Vision
+             * @description Legge le immagini
+             */
+            vision: boolean;
+        };
         /** CloudPlan */
         CloudPlan: {
             /** Id */
@@ -4986,6 +5071,22 @@ export interface components {
             models: string[];
             /** Plans */
             plans: components["schemas"]["CloudPlan"][];
+            /** @description Null se le ricariche extra sono spente */
+            topup?: components["schemas"]["CloudTopupRules"] | null;
+        };
+        /** CloudPoolModel */
+        CloudPoolModel: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
         };
         /** CloudStatus */
         CloudStatus: {
@@ -5001,11 +5102,24 @@ export interface components {
              * @description La connessione 'RT Cloud' esiste
              */
             connection: boolean;
+            /**
+             * Current Model
+             * @description Modello delle fasi di testo, se su RT Cloud
+             */
+            current_model?: string | null;
             /** Email */
             email?: string | null;
             /** Logged In */
             logged_in: boolean;
+            /**
+             * Pool
+             * @description Modelli consigliati, il primo è il predefinito
+             */
+            pool?: components["schemas"]["CloudPoolModel"][];
             subscription?: components["schemas"]["CloudSubscription"] | null;
+            topup?: components["schemas"]["CloudTopup"] | null;
+            /** Vision Model */
+            vision_model?: string | null;
         };
         /** CloudSubscription */
         CloudSubscription: {
@@ -5023,6 +5137,29 @@ export interface components {
              * @description none, active, canceled (attivo fino a fine periodo), revoked
              */
             status: string;
+        };
+        /** CloudTopup */
+        CloudTopup: {
+            /**
+             * Balance Usd
+             * @description Credito delle ricariche extra all'ultimo conteggio
+             * @default 0
+             */
+            balance_usd: number;
+            /**
+             * Next Expiry
+             * @description Scadenza della ricarica più vecchia
+             */
+            next_expiry?: string | null;
+        };
+        /** CloudTopupRules */
+        CloudTopupRules: {
+            /** Max Cents */
+            max_cents: number;
+            /** Min Cents */
+            min_cents: number;
+            /** Valid Days */
+            valid_days: number;
         };
         /** CompactAudioPreview */
         CompactAudioPreview: {
@@ -7064,11 +7201,6 @@ export interface components {
             /** Message */
             message: string;
         };
-        /** ModelIn */
-        ModelIn: {
-            /** Model */
-            model: string;
-        };
         /** ModelTestIn */
         ModelTestIn: {
             /** Connection */
@@ -8840,6 +8972,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** TopupIn */
+        TopupIn: {
+            /**
+             * Amount Cents
+             * @description Importo in centesimi di euro
+             */
+            amount_cents: number;
+        };
         /** Transcription */
         Transcription: {
             /** Api Key Set */
@@ -9285,6 +9425,16 @@ export interface components {
              * @default 0
              */
             running: number;
+        };
+        /** ModelIn */
+        rt__api__routers__cloud__ModelIn: {
+            /** Model */
+            model: string;
+        };
+        /** ModelIn */
+        rt__api__routers__settings__ModelIn: {
+            /** Model */
+            model: string;
         };
     };
     responses: never;
@@ -11454,6 +11604,73 @@ export interface operations {
             };
         };
     };
+    get_catalog_api_v1_cloud_catalog_get: {
+        parameters: {
+            query?: {
+                capability?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCatalogModel"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     checkout_api_v1_cloud_checkout_post: {
         parameters: {
             query?: never;
@@ -11724,6 +11941,75 @@ export interface operations {
             };
         };
     };
+    choose_model_api_v1_cloud_model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["rt__api__routers__cloud__ModelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_plans_api_v1_cloud_plans_get: {
         parameters: {
             query?: never;
@@ -11874,6 +12160,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CloudStatus"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    topup_api_v1_cloud_topup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UrlOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -21491,7 +21846,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModelIn"];
+                "application/json": components["schemas"]["rt__api__routers__settings__ModelIn"];
             };
         };
         responses: {

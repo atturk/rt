@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { AppDeps } from "../src/app";
 import type { Config } from "../src/env";
@@ -8,7 +8,10 @@ import { Store } from "../src/store";
 /** D1 finto sopra node:sqlite, con lo schema vero delle migrazioni. */
 export function fakeD1(): D1Database {
   const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+  const dir = new URL("../migrations/", import.meta.url);
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+    db.exec(readFileSync(new URL(file, dir), "utf8"));
+  }
   const prepare = (sql: string) => {
     let args: unknown[] = [];
     const stmt: any = {
@@ -26,8 +29,9 @@ export const testConfig: Config = {
   polarApi: "https://sandbox-api.polar.sh",
   successUrl: "https://example.com/ok",
   plans: [{ id: "base", polar_product_id: "prod_base", label: "Base" }],
-  modelPool: ["deepseek/deepseek-v4-flash"],
+  modelPool: [{ id: "openai/gpt-6-luna", label: "GPT-6 Luna", recommended: true }, { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" }],
   margin: 0.2,
+  topup: { productId: "prod_topup", margin: 0.1, minCents: 500, maxCents: 20000, validDays: 365 },
   paymentFeePercent: 0.05,
   paymentFeeFixedCents: 50,
   openrouterFee: 0.055,
@@ -64,7 +68,9 @@ export function makeDeps(overrides: Partial<AppDeps> = {}) {
     store: new Store(fakeD1()),
     openrouter,
     payments: {
-      async createCheckout({ userId }) { return `https://sandbox.polar.sh/checkout/${userId}`; },
+      async createCheckout({ userId, amountCents }) {
+        return `https://sandbox.polar.sh/checkout/${userId}${amountCents ? `?amount=${amountCents}` : ""}`;
+      },
       async customerPortal() { return "https://sandbox.polar.sh/portal"; },
     },
     mailer: { async send(to, subject, text) { mails.push({ to, subject, text }); } },

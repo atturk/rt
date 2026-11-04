@@ -32,6 +32,12 @@ Accanto si aggiunge una **modalità facilitata** a pagamento:
 | 2026-11-03 | **Ricariche extra** a importo libero da **5 €** (max 200 €), margine **10%**, solo con abbonamento in corso | Chi sceglie un modello caro o usa molto non deve aspettare il rinnovo |
 | 2026-11-03 | Credito in **due tasche**: quello del periodo si usa per primo e si perde al rinnovo; le ricariche si usano dopo, non si perdono al rinnovo né alla disdetta, scadono dopo **12 mesi** | Il breakage sul credito mensile resta; la ricarica non protegge il credito del mese |
 | 2026-11-03 | Pool modelli senza fascia alta. **GPT-6 Luna** (`openai/gpt-6-luna`) consigliato e usato anche per le immagini; **DeepSeek V4.1 Flash** (`deepseek/deepseek-v4.1-flash`, legge le immagini); DeepSeek V4 Pro unico modello «intelligente»; immagini generate con Meta Muse Image (GPT Image 2 alternativa) | Modelli economici: più lezioni per euro e più margine. Slug e prezzi da verificare su OpenRouter |
+| 2026-11-03 | **Niente licenza Enterprise**: OpenRouter ha risposto che per piccoli volumi non serve | Via libera alla rivendita con i termini attuali; da ricontrollare se i volumi crescono |
+| 2026-11-03 | ~~Tabella di marcia: 4.3.8 in prova, 4.3.9 pagamenti veri~~ (sostituita dalla riga sotto) | |
+| 2026-11-03 | **RT esce solo in BYOK.** La modalità facilitata resta **fantasma**: codice pronto ma spento, nessuna data di attivazione. Eventuali donazioni per raccogliere capitale. Si attiva solo se c'è interesse reale | Consiglio del commercialista: prima verificare che l'app risolva un problema reale, senza obblighi fiscali di un servizio a pagamento |
+| 2026-11-03 | In prova l'accesso è **solo su invito** (`ALLOWED_EMAILS` nel Worker) | In sandbox la carta di prova è finta ma il credito OpenRouter è vero: senza invito chiunque avrebbe credito gratis |
+| 2026-11-03 | La **4.3.8** porta il resto della modalità facilitata, sempre fantasma: ricariche, accesso su invito, pool aggiornato, scelta del modello e catalogo OpenRouter. Account e deploy restano facoltativi e privati | Il lavoro grosso è fatto: quando si decide di accendere servono solo account, URL e release |
+| 2026-11-03 | Il backend resta in `cloud/` nel repo `rt`, **nessun repo separato** | Il codice non contiene segreti (stanno nei secret di Cloudflare) e con l'AGPL il sorgente di un servizio va comunque reso disponibile |
 | 2026-11-03 | Oltre al pool consigliato, l'utente può scegliere **qualunque modello OpenRouter** da un catalogo filtrato per capacità (visione, generazione immagini) | Libertà per chi vuole spendere di più, senza mantenere una lista a mano |
 
 ## Opzioni scartate
@@ -47,15 +53,15 @@ Accanto si aggiunge una **modalità facilitata** a pagamento:
 
 ## Domande aperte
 
-1. Risposta di OpenRouter sulla rivendita / accordo Enterprise (da chiedere dopo la prova sandbox).
-2. Partita IVA e regime fiscale: da sentire con un commercialista prima dei pagamenti veri.
+1. ~~Accordo Enterprise con OpenRouter~~: non serve per piccoli volumi (risposta del 2026-11-03).
+2. Partita IVA e regime fiscale: Attilio ha un commercialista, da chiudere prima della 4.3.9.
 3. Prezzi e slug esatti dei modelli del pool: la rete delle sessioni cloud non raggiunge
    openrouter.ai, vanno verificati.
 4. Polar: verificare in sandbox il prodotto con prezzo «a scelta del cliente» e il campo `amount` del
    checkout per le ricariche.
-5. Licenza (AGPL-3.0, PR #159) e backend pubblico: valutare se `cloud/` debba restare nel repo pubblico
-   o vivere in un repo privato.
-6. URL pubblico del backend: finché `DEFAULT_CLOUD_URL` è vuoto la modalità facilitata resta nascosta.
+5. ~~Repo separato per il backend~~: deciso di no, resta in `cloud/`.
+6. URL pubblico del backend: resta vuoto finché la modalità facilitata è fantasma.
+7. Donazioni: piattaforma da scegliere (es. GitHub Sponsors, Ko-fi, Liberapay) e dove mostrarle nell'app o nel README.
 
 ## Parti di RT toccate
 
@@ -71,18 +77,34 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 | Segreti | `rt/security/secrets.py` | nuovo segreto `RT_CLOUD_TOKEN` (token di sessione, mai la chiave) |
 | Flusso chiavi API | `cloud_service._install_key` | connessione OpenRouter «RT Cloud» creata da sola; le fasi `outline`, `rewrite`, `review`, `recall`, `enrichment_writer`, `enrichment_visualizer` passano su di essa solo se l'utente sceglie la modalità facilitata; `image_description` va al modello con visione |
 | Onboarding | `frontend/src/components/settings/wizard.tsx` | scelta «Facilitata» o «Con la mia chiave», mostrata solo se RT Cloud esiste |
-| Impostazioni | `frontend/src/routes/settings.tsx`, `frontend/src/components/settings/cloud.tsx`, `frontend/src/api/cloud.ts` | sezione RT Cloud nella pagina Modelli: saldo, aggiorna, portale, ricarica |
+| Impostazioni | `frontend/src/routes/settings.tsx`, `frontend/src/components/settings/cloud.tsx`, `frontend/src/api/cloud.ts` | sezione RT Cloud nella pagina Modelli: saldo, aggiorna, portale, ricarica, scelta del modello (pool consigliato e catalogo OpenRouter filtrato per capacità) |
+| API locale (4.3.8) | `rt/api/routers/cloud.py`, `rt/services/cloud_service.py` | `POST /api/v1/cloud/model` (modello delle fasi di testo su RT Cloud), `GET /api/v1/cloud/catalog?capability=text\|vision\|image` (legge il catalogo pubblico di OpenRouter, cache 10 minuti) |
 | Generati | `docs/openapi.json`, `frontend/src/api/schema.d.ts` | rigenerati con `scripts/export_openapi.py` e `npm run gen:api` |
 
 ## Impatto su RT
 
+**Stato attuale (2026-11-03): modalità facilitata fantasma.** Per le release 4.3.x:
+
+- **Non impostare** `DEFAULT_CLOUD_URL` in `rt/services/cloud_service.py`: deve restare `None`. Finché è
+  `None` la sezione RT Cloud, la scelta «Facilitata» nella configurazione guidata e le rotte
+  `/api/v1/cloud/*` (che rispondono 503) sono invisibili o inerti, e l'app è solo BYOK.
+- Nessuna modifica all'app è necessaria per questo: il codice in `main` è già spento.
+- Non pubblicare il Worker di `cloud/` e non creare account Polar o OpenRouter per il servizio.
+- Per attivarla in futuro bastano: account e deploy del Worker (vedi `cloud/README.md`), l'URL in
+  `DEFAULT_CLOUD_URL` e una release. Prima, una prova su invito con `ALLOWED_EMAILS` e Polar sandbox.
+
 - **PR #158** (verso `main`): aggiunge i file sopra. Il codice condiviso toccato è poco: `rt/api/app.py`
   (una riga di registrazione del router), `rt/security/secrets.py` (un nome in `EXTRA_SECRET_NAMES`),
   `wizard.tsx` e `routes/settings.tsx`. Nessun cambiamento visibile finché RT Cloud non è pubblicato.
-- **Branch `claude/rt-4.3.x`**: la 4.3.7 parte da `main` prima della PR #158, quindi non la contiene. Il
-  piano agy 4.3.7 non tocca gli stessi file; l'unico conflitto atteso è nei file generati
-  (`docs/openapi.json`, `schema.d.ts`), da risolvere rigenerandoli dopo il merge.
-- Ricariche extra (prossima PR): toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
+- **Branch `claude/rt-4.3.x`**: la #158 è già in `main` e il workflow di release pubblica solo commit
+  che discendono da `main`, quindi la 4.3.7 la conterrà quando unirà `main`. Verificato il
+  2026-11-03 su `claude/rt-4.3.7` (9cd6c9c): il merge di `main` non ha conflitti, `docs/openapi.json`
+  e `schema.d.ts` restano coerenti, typecheck e test cloud verdi. Per l'utente non cambia nulla:
+  senza URL di RT Cloud la modalità facilitata è nascosta.
+- **Regola durante una release**: niente nuove PR della monetizzazione in `main` mentre una release
+  è in revisione; si uniscono dopo la pubblicazione, così la release non deve riunire `main` né rifare i test.
+- PR #162 (da unire dopo la 4.3.7, per la 4.3.8): ricariche, invito, pool, scelta del modello e
+  catalogo. Toccano solo `cloud/`, `cloud_service.py`, `routers/cloud.py`,
   `cloud.tsx`, `api/cloud.ts` e i file generati.
 
 ## Registro
@@ -93,3 +115,8 @@ la variabile d'ambiente `RT_CLOUD_URL`). Senza URL l'app si comporta come oggi.
 - 2026-11-03: pool senza fascia alta, GPT-6 Luna consigliato, DeepSeek V4.1 Flash, catalogo OpenRouter filtrato per capacità.
 - 2026-11-03: ricariche extra da 5 € con margine 10%, due tasche di credito, scadenza 12 mesi. Implementazione pronta, in arrivo in una PR dopo la #158.
 - 2026-11-03: creato questo documento.
+- 2026-11-03: PR #158 unita in `main`. Aperta la PR delle ricariche extra (migrazione D1 `0002_topups.sql`, rotta `/v1/topup`, pulsante Ricarica).
+- 2026-11-03: PR #162 in attesa: si unisce a `main` dopo la pubblicazione della 4.3.7.
+- 2026-11-03: OpenRouter: niente Enterprise per piccoli volumi. Piano: 4.3.8 in prova su invito (sandbox), 4.3.9 soldi veri. Backend resta in `cloud/`. Aggiunto `ALLOWED_EMAILS` al Worker (PR #162).
+- 2026-11-03: **cambio di piano**: RT esce solo in BYOK, la modalità facilitata resta fantasma (codice pronto, `DEFAULT_CLOUD_URL = None`). Annullata la tabella 4.3.8 prova / 4.3.9 soldi veri. Valutare donazioni. La PR #162 si unisce comunque dopo la 4.3.7: è spenta come il resto.
+- 2026-11-03: nella PR #162 per la 4.3.8 (fantasma): pool aggiornato (GPT-6 Luna predefinito e visione, Haiku 5.5, DeepSeek V4.1 Flash, GLM-5.3 Flash, Gemini 3.5 Flash-Lite, DeepSeek V4 Pro), scelta del modello e catalogo OpenRouter con costo a lezione. Account e deploy facoltativi e privati.

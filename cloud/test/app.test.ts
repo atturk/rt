@@ -82,10 +82,28 @@ describe("login con codice email", () => {
     expect((await handleRequest(req("POST", "/v1/auth/start", { email: "b@example.com" }), t.deps)).status).toBe(429);
   });
 
+  it("in prova su invito accetta solo le email ammesse", async () => {
+    const t = makeDeps({ cfg: { ...makeDeps().deps.cfg, allowedEmails: ["amico@example.com"] } });
+    const no = await handleRequest(req("POST", "/v1/auth/start", { email: "estraneo@example.com" }), t.deps);
+    expect(no.status).toBe(403);
+    expect(t.mails).toHaveLength(0);
+    const ok = await handleRequest(req("POST", "/v1/auth/start", { email: "Amico@example.com" }), t.deps);
+    expect(ok.status).toBe(200);
+  });
+
   it("senza sessione le rotte private rispondono 401", async () => {
     const t = makeDeps();
     expect((await handleRequest(req("GET", "/v1/me"), t.deps)).status).toBe(401);
     expect((await handleRequest(req("GET", "/v1/me", undefined, "falso"), t.deps)).status).toBe(401);
+  });
+});
+
+describe("piani e modelli", () => {
+  it("/v1/plans dà il pool consigliato con il predefinito per primo", async () => {
+    const t = makeDeps();
+    const body = await (await handleRequest(req("GET", "/v1/plans"), t.deps)).json() as any;
+    expect(body.models[0]).toBe("openai/gpt-6-luna");
+    expect(body.model_pool[0]).toMatchObject({ id: "openai/gpt-6-luna", recommended: true });
   });
 });
 

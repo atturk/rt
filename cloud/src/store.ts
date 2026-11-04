@@ -11,6 +11,17 @@ export interface User {
   or_key_hash: string | null;
   or_key_enc: string | null;
   monthly_quota_usd: number;
+  sub_remaining_usd: number;
+  accounted_usage_usd: number;
+}
+
+export interface Topup {
+  order_id: string;
+  user_id: string;
+  created_at: number;
+  expires_at: number;
+  amount_usd: number;
+  remaining_usd: number;
 }
 
 export class Store {
@@ -41,10 +52,38 @@ export class Store {
       .bind(...keys.map((k) => (fields as Record<string, unknown>)[k] ?? null), id).run();
   }
 
-  async activeUsers(): Promise<User[]> {
+  /** Utenti con una chiave che può ancora spendere: abbonamento in corso o ricariche non finite. */
+  async activeUsers(now: number): Promise<User[]> {
     const res = await this.db.prepare(
-      "SELECT * FROM users WHERE subscription_status IN ('active', 'canceled') AND or_key_hash IS NOT NULL",
-    ).all<User>();
+      `SELECT * FROM users WHERE or_key_hash IS NOT NULL AND (subscription_status IN ('active', 'canceled')
+         OR EXISTS (SELECT 1 FROM topups t WHERE t.user_id = users.id AND t.remaining_usd > 0 AND t.expires_at > ?))`,
+    ).bind(now).all<User>();
+    return res.results;
+  }
+
+  /** Ricariche con credito residuo, la più vicina alla scadenza per prima. */
+  async openTopups(userId: string): Promise<Topup[]> {
+    const res = await this.db.prepare(
+      "SELECT * FROM topups WHERE user_id = ? AND remaining_usd > 0 ORDER BY expires_at, created_at",
+    ).bind(userId).all<Topup>();
+    return res.results;
+  }
+
+  async addTopup(t: Topup): Promise<void> {
+    await this.db.prepare(
+      "INSERT OR IGNORE INTO topups (order_id, user_id, created_at, expires_at, amount_usd, remaining_usd) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(t.order_id, t.user_id, t.created_at, t.expires_at, t.amount_usd, t.remaining_usd).run();
+  }
+
+  async setTopupRemaining(orderId: string, remaining: number): Promise<void> {
+    await this.db.prepare("UPDATE topups SET remaining_usd = ? WHERE order_id = ?").bind(remaining, orderId).run();
+  }
+
+  /** Utenti con almeno una ricarica scaduta ma non ancora azzerata. */
+  async usersWithExpiredTopups(now: number): Promise<User[]> {
+    const res = await this.db.prepare(
+      `SELECT * FROM users WHERE id IN (SELECT user_id FROM topups WHERE remaining_usd > 0 AND expires_at <= ?)`,
+    ).bind(now).all<User>();
     return res.results;
   }
 

@@ -1,6 +1,9 @@
 /** Client minimo dell'API Polar: checkout e portale cliente. */
 export interface Payments {
-  createCheckout(args: { productId: string; userId: string; email: string; successUrl: string }): Promise<string>;
+  /** amountCents serve solo per i prodotti con prezzo a scelta (le ricariche). */
+  createCheckout(args: {
+    productId: string; userId: string; email: string; successUrl: string; amountCents?: number;
+  }): Promise<string>;
   customerPortal(userId: string): Promise<string>;
 }
 
@@ -15,12 +18,13 @@ export function polarPayments(apiBase: string, token: string, fetchImpl: typeof 
     return resp.json();
   }
   return {
-    async createCheckout({ productId, userId, email, successUrl }) {
+    async createCheckout({ productId, userId, email, successUrl, amountCents }) {
       const res = await post("/v1/checkouts/", {
         products: [productId],
         external_customer_id: userId,
         customer_email: email,
         success_url: successUrl,
+        ...(amountCents ? { amount: amountCents } : {}),
       });
       return res.url;
     },

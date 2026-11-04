@@ -8,6 +8,8 @@ export interface Env {
   KEY_ENCRYPTION_SECRET: string; // base64 di 32 byte casuali
   RESEND_API_KEY: string;
   ADMIN_EMAIL?: string;
+  // variabile: email ammesse durante la prova, separate da virgole (vuota = tutti)
+  ALLOWED_EMAILS?: string;
   OPENROUTER_GUARDRAIL_ID?: string;
   // variabili
   POLAR_ENV: string;
@@ -16,6 +18,11 @@ export interface Env {
   MODEL_POOL: string;
   VISION_MODEL?: string;
   MARGIN: string;
+  TOPUP_PRODUCT_ID?: string;
+  TOPUP_MARGIN?: string;
+  TOPUP_MIN_CENTS?: string;
+  TOPUP_MAX_CENTS?: string;
+  TOPUP_VALID_DAYS?: string;
   PAYMENT_FEE_PERCENT: string;
   PAYMENT_FEE_FIXED_CENTS: string;
   OPENROUTER_FEE: string;
@@ -30,13 +37,32 @@ export interface Plan {
   label: string;
 }
 
+/** Ricariche extra (prodotto Polar una tantum con prezzo a scelta del cliente). */
+export interface TopupConfig {
+  productId: string;
+  margin: number;
+  minCents: number;
+  maxCents: number;
+  validDays: number;
+}
+
+/** Un modello del pool consigliato. `note` è il testo breve mostrato nell'app. */
+export interface PoolModel {
+  id: string;
+  label: string;
+  note?: string;
+  recommended?: boolean;
+}
+
 export interface Config {
   polarApi: string;
   successUrl: string;
   plans: Plan[];
-  modelPool: string[];
+  /** Il primo è il predefinito per le fasi di testo. */
+  modelPool: PoolModel[];
   visionModel?: string;
   margin: number;
+  topup?: TopupConfig;
   paymentFeePercent: number;
   paymentFeeFixedCents: number;
   openrouterFee: number;
@@ -44,6 +70,8 @@ export interface Config {
   lowBalanceUsd: number;
   mailFrom: string;
   adminEmail?: string;
+  /** Se presente, solo queste email possono accedere (prova con amici in sandbox). */
+  allowedEmails?: string[];
   guardrailId?: string;
 }
 
@@ -61,8 +89,10 @@ export function loadConfig(env: Env): Config {
   }
   const plans = JSON.parse(env.PLANS) as Plan[];
   if (!Array.isArray(plans) || plans.length === 0) throw new Error("PLANS vuoto");
-  const modelPool = JSON.parse(env.MODEL_POOL) as string[];
-  if (!Array.isArray(modelPool) || modelPool.length === 0) throw new Error("MODEL_POOL vuoto");
+  const rawPool = JSON.parse(env.MODEL_POOL) as Array<string | PoolModel>;
+  if (!Array.isArray(rawPool) || rawPool.length === 0) throw new Error("MODEL_POOL vuoto");
+  const modelPool = rawPool.map((m) => (typeof m === "string" ? { id: m, label: m } : m));
+  if (modelPool.some((m) => !m.id || !m.label)) throw new Error("MODEL_POOL: ogni modello vuole id e label");
   return {
     polarApi: env.POLAR_ENV === "production" ? "https://api.polar.sh" : "https://sandbox-api.polar.sh",
     successUrl: env.CHECKOUT_SUCCESS_URL,
@@ -70,6 +100,15 @@ export function loadConfig(env: Env): Config {
     modelPool,
     visionModel: env.VISION_MODEL || undefined,
     margin: num(env.MARGIN, "MARGIN", 0, 0.9),
+    topup: env.TOPUP_PRODUCT_ID && env.TOPUP_PRODUCT_ID !== "SOSTITUIRE"
+      ? {
+        productId: env.TOPUP_PRODUCT_ID,
+        margin: num(env.TOPUP_MARGIN ?? "0.10", "TOPUP_MARGIN", 0, 0.9),
+        minCents: num(env.TOPUP_MIN_CENTS ?? "500", "TOPUP_MIN_CENTS", 100, 100000),
+        maxCents: num(env.TOPUP_MAX_CENTS ?? "20000", "TOPUP_MAX_CENTS", 100, 1000000),
+        validDays: num(env.TOPUP_VALID_DAYS ?? "365", "TOPUP_VALID_DAYS", 1, 3650),
+      }
+      : undefined,
     paymentFeePercent: num(env.PAYMENT_FEE_PERCENT, "PAYMENT_FEE_PERCENT", 0, 0.5),
     paymentFeeFixedCents: num(env.PAYMENT_FEE_FIXED_CENTS, "PAYMENT_FEE_FIXED_CENTS", 0, 500),
     openrouterFee: num(env.OPENROUTER_FEE, "OPENROUTER_FEE", 0, 0.5),
@@ -77,6 +116,9 @@ export function loadConfig(env: Env): Config {
     lowBalanceUsd: num(env.LOW_BALANCE_USD, "LOW_BALANCE_USD", 0, 10000),
     mailFrom: env.MAIL_FROM,
     adminEmail: env.ADMIN_EMAIL || undefined,
+    allowedEmails: env.ALLOWED_EMAILS?.trim()
+      ? env.ALLOWED_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
+      : undefined,
     guardrailId: env.OPENROUTER_GUARDRAIL_ID || undefined,
   };
 }

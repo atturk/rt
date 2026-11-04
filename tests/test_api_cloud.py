@@ -15,6 +15,18 @@ TOKEN = "sessione-rt-cloud-segreta-abcdefghijklmnop"
 MODELS = ["deepseek/deepseek-v4-flash", "google/gemini-3.5-flash-lite"]
 
 
+def _or_model(mid, name, prompt, completion, inputs, outputs):
+    return {"id": mid, "name": name, "pricing": {"prompt": prompt, "completion": completion},
+            "architecture": {"input_modalities": inputs, "output_modalities": outputs}}
+
+
+CATALOG = [
+    _or_model("openai/gpt-6-luna", "GPT-6 Luna", "0.0000001", "0.0000005", ["text", "image"], ["text"]),
+    _or_model("x/solo-testo", "Solo testo", "0.000002", "0.00001", ["text"], ["text"]),
+    _or_model("meta/muse-image", "Muse Image", "0", "0.00004", ["text", "image"], ["image"]),
+]
+
+
 class FakeResponse:
     def __init__(self, status, data):
         self.status_code = status
@@ -34,6 +46,7 @@ class FakeCloud:
 
     def __init__(self):
         self.subscription = "none"
+        self.topup_balance = 0
         self.calls = []
 
     def request(self, method, url, json=None, headers=None, timeout=None):
@@ -42,7 +55,8 @@ class FakeCloud:
         auth = (headers or {}).get("Authorization")
         if path == "/v1/plans":
             return FakeResponse(200, {"plans": [{"id": "mese", "label": "3,99 € al mese"},
-                                                {"id": "anno", "label": "29,99 € all'anno"}], "models": MODELS})
+                                                {"id": "anno", "label": "29,99 € all'anno"}], "models": MODELS,
+                                      "topup": {"min_cents": 500, "max_cents": 20000, "valid_days": 365}})
         if path == "/v1/auth/start":
             return FakeResponse(200, {"ok": True})
         if path == "/v1/auth/verify":
@@ -52,17 +66,22 @@ class FakeCloud:
         if auth != f"Bearer {TOKEN}":
             return FakeResponse(401, {"error": {"code": "unauthorized", "message": "Accesso richiesto"}})
         if path == "/v1/me":
-            active = self.subscription in ("active", "canceled")
+            active = self.subscription in ("active", "canceled") or self.topup_balance > 0
             return FakeResponse(200, {
                 "email": "studente@example.com",
                 "subscription": {"status": self.subscription, "plan": "base" if active else None,
                                  "current_period_end": None, "monthly_quota_usd": 1.44 if active else 0},
+                "topup": {"balance_usd": self.topup_balance, "next_expiry": None},
                 "openrouter_key": OR_KEY if active else None,
                 "models": MODELS,
                 "vision_model": MODELS[1],
             })
         if path == "/v1/checkout":
             return FakeResponse(200, {"url": "https://sandbox.polar.sh/checkout/x"})
+        if path == "/v1/topup":
+            if json["amount_cents"] < 500:
+                return FakeResponse(400, {"error": {"code": "invalid_amount", "message": "Importo tra 5 € e 200 €"}})
+            return FakeResponse(200, {"url": f"https://sandbox.polar.sh/checkout/topup?amount={json['amount_cents']}"})
         if path == "/v1/portal":
             return FakeResponse(200, {"url": "https://sandbox.polar.sh/portal"})
         if path == "/v1/auth/logout":
@@ -70,6 +89,9 @@ class FakeCloud:
         return FakeResponse(404, {"error": {"code": "not_found", "message": "?"}})
 
     def get(self, url, headers=None, timeout=None):
+        if url == "https://openrouter.ai/api/v1/models":
+            self.catalog_calls = getattr(self, "catalog_calls", 0) + 1
+            return FakeResponse(200, {"data": CATALOG})
         assert url == "https://openrouter.ai/api/v1/key"
         assert headers["Authorization"] == f"Bearer {OR_KEY}"
         return FakeResponse(200, {"data": {"usage": 0.4, "limit": 1.44, "limit_remaining": 1.04}})
@@ -179,3 +201,53 @@ def test_plans(api_client, cloud):
     data = api_client.get("/api/v1/cloud/plans").json()
     assert [p["id"] for p in data["plans"]] == ["mese", "anno"]
     assert data["models"] == MODELS
+
+
+def test_topup(api_client, cloud):
+    _login(api_client)
+    assert api_client.post("/api/v1/cloud/topup", json={"amount_cents": 400}).status_code == 400
+    res = api_client.post("/api/v1/cloud/topup", json={"amount_cents": 2000})
+    assert res.json()["url"].endswith("amount=2000")
+    assert api_client.get("/api/v1/cloud/plans").json()["topup"]["min_cents"] == 500
+
+
+def test_topup_keeps_key_after_subscription_ends(api_client, cloud):
+    _login(api_client)
+    cloud.subscription = "revoked"
+    cloud.topup_balance = 13.33
+    data = _clean(api_client.post("/api/v1/cloud/sync", json={})).json()
+    assert data["topup"]["balance_usd"] == 13.33
+    assert data["connection"] is True
+    assert data["balance"]["remaining_usd"] == 1.04
+
+
+def test_status_lists_pool_and_choose_model(api_client, cloud):
+    _login(api_client)
+    cloud.subscription = "active"
+    data = api_client.post("/api/v1/cloud/sync", json={"assign_all": True}).json()
+    assert [m["id"] for m in data["pool"]] == MODELS
+    assert data["pool"][0]["recommended"] is True
+    assert data["current_model"] == MODELS[0]
+
+    data = _clean(api_client.post("/api/v1/cloud/model", json={"model": "x/solo-testo"})).json()
+    assert data["current_model"] == "x/solo-testo"
+    phases = {p["job"]: p for p in api_client.get("/api/v1/settings").json()["phases"]}
+    assert phases["outline"]["model"] == "x/solo-testo" and phases["outline"]["connection"] == "RT Cloud"
+    assert phases["image_description"]["model"] == MODELS[1]  # la visione resta com'era
+
+
+def test_choose_model_needs_connection(api_client, cloud):
+    _login(api_client)
+    assert api_client.post("/api/v1/cloud/model", json={"model": "x/solo-testo"}).status_code == 409
+
+
+def test_catalog_filtered_by_capability(api_client, cloud):
+    from rt.services import cloud_service
+    cloud_service._catalog_cache.update(at=0.0, models=None)
+    text = api_client.get("/api/v1/cloud/catalog").json()
+    assert [m["id"] for m in text] == ["openai/gpt-6-luna", "x/solo-testo"]  # dal più economico
+    assert text[0]["lesson_usd"] == 0.055
+    assert [m["id"] for m in api_client.get("/api/v1/cloud/catalog?capability=vision").json()] == ["openai/gpt-6-luna"]
+    assert [m["id"] for m in api_client.get("/api/v1/cloud/catalog?capability=image").json()] == ["meta/muse-image"]
+    assert api_client.get("/api/v1/cloud/catalog?capability=boh").status_code == 400
+    assert cloud.catalog_calls == 1  # in cache
