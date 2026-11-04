@@ -135,17 +135,6 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
     await expect(page.getByTestId('study-generate')).toContainText('Nessuna domanda · genera ora')
   }
 
-  // "Domande su questa parte": lo Studio della prima unità, con le domande da generare.
-  await page.goto(`/studio/lezione/${l.id}?parte=${first.id}`)
-  await expect(page.getByTestId('study-no-questions')).toContainText(first.id)
-  const generated = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
-  await page.getByRole('button', { name: 'Genera le domande' }).click()
-  expect((await generated).postDataJSON()).toMatchObject({ unit_ids: [first.id] })
-  // Generate le domande, la parte parte subito dal ripasso dell'unità.
-  await expect(page.getByTestId('recall-session-page')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
-  expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
-
   // Dalla 4.3.7 le domande di un'unità con segnalazioni aperte aspettano la Verifica: si decidono
   // quelle della prima unità (rifiutate, così il testo non cambia) prima del ripasso.
   type Issues = { items: { issue: { id: string; unit_id?: string }; decision: unknown; needs_reconfirmation: boolean }[] }
@@ -156,6 +145,17 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
     })
     expect(decided.ok(), await decided.text()).toBeTruthy()
   }
+
+  // "Domande su questa parte": lo Studio della prima unità, con le domande da generare.
+  await page.goto(`/studio/lezione/${l.id}?parte=${first.id}`)
+  await expect(page.getByTestId('study-no-questions')).toContainText(first.id)
+  const generated = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+  await page.getByRole('button', { name: 'Genera le domande' }).click()
+  expect((await generated).postDataJSON()).toMatchObject({ unit_ids: [first.id] })
+  // Generate le domande, la parte parte subito dal ripasso dell'unità.
+  await expect(page.getByTestId('recall-session-page')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
+  expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
 
   // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N" (4.2.2b4 F2).
   await page.goto(`/studio/lezione/${l.id}`)
@@ -610,7 +610,7 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
     await expect(text.locator('.rt-hl').first()).toBeVisible()
     await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
     const word = page.getByTestId('speed-reader-word')
-    await expect(word).toHaveAttribute('data-hl', 'true')
+    await expect(word).toHaveAttribute('data-hl', /^[0-4]$/)
     const bg = await word.locator('.orp').evaluate(el => getComputedStyle(el).backgroundColor)
     expect(bg).not.toBe('rgba(0, 0, 0, 0)')
     await expect(word.locator('.pre > span')).toHaveCSS('background-color', bg)

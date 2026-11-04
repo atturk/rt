@@ -122,7 +122,7 @@ test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', a
   download = page.waitForEvent('download')
   await (await exportItem(page, /^Tutti i dati/)).click()
   const zip = readFileSync((await (await download).path())!)
-  expect((await download).suggestedFilename()).toMatch(/\.zip$/)
+  expect((await download).suggestedFilename()).toMatch(/\.rt$/)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
   expect(zip.includes(Buffer.from('info.yaml'))).toBeTruthy()
 })
