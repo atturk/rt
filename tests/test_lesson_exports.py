@@ -77,7 +77,7 @@ def _contents(data: bytes) -> dict:
         out = {}
         for name in archive.namelist():
             payload = archive.read(name)
-            if name.endswith(".zip"):
+            if name.endswith((".rt", ".zip")):
                 with zipfile.ZipFile(io.BytesIO(payload)) as inner:
                     payload = {n: inner.read(n) for n in inner.namelist()}
             out[name] = payload
