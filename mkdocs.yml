@@ -1,0 +1,30 @@
+site_name: RT
+site_description: Assistente allo studio universitario e scolastico
+docs_dir: site_docs
+site_dir: site
+
+theme:
+  name: mkdocs
+  locale: it
+
+plugins:
+  - search:
+      lang: it
+
+nav:
+  - Home: index.md
+  - Guida:
+      - Cos'è RT: guida/index.md
+      - Installazione: guida/installazione.md
+      - Chiavi e costi: guida/chiavi-e-costi.md
+      - Nuova lezione: guida/nuova-lezione.md
+      - Fonti e materiali: guida/fonti.md
+      - Verifica delle lezioni: guida/verifica.md
+      - Studio e lettura: guida/studio.md
+      - Ripasso: guida/ripasso.md
+      - Calendario: guida/calendario.md
+      - File e formati: guida/file-di-rt.md
+      - iPhone e agenti: guida/iphone-e-agenti.md
+      - Backup e aggiornamenti: guida/backup-e-aggiornamenti.md
+      - Risoluzione problemi: guida/problemi.md
+      - Privacy: guida/privacy.md
