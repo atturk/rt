@@ -157,6 +157,7 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
             "Guida di RT", "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
+            "Ripristina dati prima di un aggiornamento…",
             "Diagnostica", "Autenticazione", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
         update_item = next(x for x in items if getattr(x, "title", None) == "Controlla aggiornamenti…")

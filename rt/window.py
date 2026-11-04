@@ -492,6 +492,7 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Backup…", lambda: _maintenance(window, "backup")),
         MenuAction("Esporta tutto…", lambda: _export_collection(window)),
         MenuAction("Importa…", lambda: _import_collection(window, base_url)),
+        MenuAction("Ripristina dati prima di un aggiornamento…", lambda: _restore_pre_update(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
         *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
           if sys.platform in ("darwin", "win32") else []),
@@ -939,3 +940,33 @@ def _import_collection(window, base_url, chosen=None):
                        before_start=stop, on_success=ready, on_failure=ready)
     except Exception as exc:
         _notice(window, str(exc))
+
+
+def _restore_pre_update(window, base_url):
+    from rt.services import backup_service as bs
+    backups = bs.list_pre_update_backups()
+    if not backups:
+        _notice(window, "Nessun backup trovato prima di un aggiornamento.")
+        return
+    most_recent = backups[0]
+    ver = most_recent.get("version", "?")
+    created = most_recent.get("created", "").replace("T", " ")[:16]
+    msg = (f"Ripristinare i dati del backup creato prima dell'aggiornamento a RT {ver} ({created})?\n\n"
+           f"Il database e i file di testo attuali verranno messi da parte. I file audio e le immagini resteranno intatti.")
+    if not window.create_confirmation_dialog("Ripristina dati prima di un aggiornamento", msg):
+        return
+
+    def stop():
+        from rt.desktop import stop_background
+        from rt.db.engine import reset_database_cache
+        stop_background(base_url)
+        reset_database_cache()
+
+    try:
+        stop()
+        aside = bs.restore_pre_update_backup(most_recent["path"])
+        _notice(window, f"Ripristino completato con successo.\nI dati precedenti sono stati salvati in:\n{aside}\n\nL'applicazione verrà ricaricata.")
+        window.load_url(base_url)
+    except Exception as exc:
+        _notice(window, f"Ripristino non riuscito: {exc}")
+

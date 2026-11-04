@@ -454,6 +454,12 @@ def _run_update(project_root: str, channel: str = STABLE) -> int:
     if is_prerelease(latest_ver):
         print(f"🧪 Versione beta {latest_ver}: è una versione di prova, può contenere errori.")
     _stop_services(project_root)
+    try:
+        from rt.services.backup_service import create_pre_update_backup
+        create_pre_update_backup(curr_ver)
+    except Exception as exc:
+        print(f"❌ Backup pre-aggiornamento non riuscito: {exc}. Aggiornamento annullato.", file=sys.stderr)
+        return 1
     if git_checkout:
         if not _update_git_checkout(project_root, latest_ver):
             return 1

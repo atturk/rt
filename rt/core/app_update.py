@@ -458,6 +458,11 @@ def _run(command) -> None:
 
 
 def install(installer: str, project_root: Optional[str] = None) -> None:
+    from rt.services.backup_service import create_pre_update_backup
+    try:
+        create_pre_update_backup(get_current_version(project_root or paths.project_root()))
+    except Exception as exc:
+        raise AppUpdateError(f"Backup pre-aggiornamento non riuscito: {exc}. Aggiornamento annullato.") from exc
     kind = bundle.kind(project_root)
     if kind == bundle.WINDOWS:
         install_windows(installer)
