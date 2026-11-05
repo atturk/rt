@@ -155,8 +155,11 @@ class PreferencesSettings(BaseModel):
     secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
-    stati_studio: Optional[List[CustomStudyStatusIn]] = Field(default=None, description="Stati di studio personalizzati")
-    ordine_stati_studio: Optional[List[str]] = Field(default=None, description="Ordine di tutti gli stati di studio")
+
+
+class StudyStatusesUpdate(BaseModel):
+    stati_studio: List[CustomStudyStatusIn] = Field(default_factory=list, description="Stati di studio personalizzati")
+    ordine_stati_studio: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
 
 
 class RewriteSettings(BaseModel):
@@ -175,6 +178,8 @@ class Settings(BaseModel):
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     web_search: WebSearchSettings
     preferences: PreferencesSettings = Field(default_factory=PreferencesSettings, description="Preferenze generali")
+    stati_studio: List[CustomStudyStatusIn] = Field(default_factory=list, description="Stati di studio personalizzati")
+    ordine_stati_studio: List[str] = Field(default_factory=lambda: ["da-imparare", "in-apprendimento", "appreso", "ignorata"], description="Ordine di tutti gli stati di studio")
     rewrite: RewriteSettings = Field(default_factory=RewriteSettings, description="Configurazione della rielaborazione")
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
@@ -337,6 +342,13 @@ def put_notice(body: NoticeIn, _actor: Actor):
 def put_preferences(body: PreferencesSettings, _actor: Actor):
     from rt.services.settings_service import save_preferences, snapshot
     _call(save_preferences, _project_root(), body.model_dump(exclude_unset=True))
+    return snapshot(_project_root())
+
+
+@router.put("/settings/study-statuses", response_model=Settings, summary="Salva stati di studio personalizzati")
+def put_study_statuses(body: StudyStatusesUpdate, _actor: Actor):
+    from rt.services.settings_service import save_study_statuses, snapshot
+    _call(save_study_statuses, _project_root(), body.model_dump())
     return snapshot(_project_root())
 
 

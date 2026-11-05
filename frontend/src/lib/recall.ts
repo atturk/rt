@@ -39,3 +39,9 @@ export function countStatus(questions: Record<string, Record<string, number>> | 
     .filter(([t]) => !type || t === type)
     .reduce((sum, [, byStatus]) => sum + (byStatus[status] ?? 0), 0)
 }
+
+export function cleanComment(text?: string, hasScores?: boolean): string {
+  if (!text) return ''
+  if (!hasScores) return text
+  return text.replace(/^(?:(?:Correttezza|Completezza|Attinenza):\s*\d+%\s*\n*)+/i, '').trim()
+}

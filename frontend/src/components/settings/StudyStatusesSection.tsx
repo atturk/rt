@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 
 import { api, unwrap } from '@/api/client'
-import { useSavePreferences, type Settings } from '@/api/settings'
+import { useSaveStudyStatuses, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
@@ -23,10 +23,10 @@ import {
 import { Section } from './common'
 
 export function StudyStatusesSection({ settings }: { settings: Settings }) {
-  const savePreferences = useSavePreferences()
+  const saveStudyStatuses = useSaveStudyStatuses()
 
-  const rawStatuses = (settings.preferences?.stati_studio as CustomStudyStatus[]) ?? []
-  const rawOrder = (settings.preferences?.ordine_stati_studio as string[]) ?? []
+  const rawStatuses = (settings.stati_studio as CustomStudyStatus[]) ?? []
+  const rawOrder = (settings.ordine_stati_studio as string[]) ?? []
 
   const statuses = rawStatuses
   const order = resolveStatusOrder(statuses, rawOrder)
@@ -35,11 +35,10 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
   const confirmTitleId = useId()
 
   const persist = (nextStatuses: CustomStudyStatus[], nextOrder: string[]) => {
-    savePreferences.mutate({
-      ...settings.preferences,
+    saveStudyStatuses.mutate({
       stati_studio: nextStatuses,
       ordine_stati_studio: nextOrder,
-    } as never)
+    })
   }
 
   const move = (index: number, direction: -1 | 1) => {
@@ -88,7 +87,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
         return
       }
     } catch {
-      // In caso di errore procedi direttamente
+      // Se la verifica fallisce procedi direttamente
     }
     executeDelete(status.id)
   }

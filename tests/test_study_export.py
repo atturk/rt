@@ -59,7 +59,7 @@ def test_invalid_study_rows_are_skipped_and_dates_are_normalized(api_client, rea
                     {"unit_id": uid, "status": "in-apprendimento", "status_at": "2026-10-06T12:00:00+02:00", "last_read_at": None},
                     {"unit_id": "99.9", "status": "appreso"},  # unità scomparsa: la riga si conserva
                     {"unit_id": "", "status": "appreso"}, {"unit_id": "x" * 65, "status": "appreso"},
-                    {"unit_id": "bad", "status": "letto"}, {"unit_id": "bad", "status": "appreso", "status_at": "ieri"},
+                    {"unit_id": "bad", "status": 123}, {"unit_id": "bad", "status": "appreso", "status_at": "ieri"},
                     {"unit_id": "bad", "status": "appreso", "last_read_at": 7}, "errore", None,
                 ]
                 content = json.dumps(description).encode()

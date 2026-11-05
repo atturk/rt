@@ -174,10 +174,18 @@ export function useGenerateForUnits(id: number) {
 
 /** Quiz: risultato subito. Risposta aperta: job di valutazione (202). */
 export function useAnswer(id: number) {
-  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string; dontKnow?: boolean }) => {
+  return useRecallMutation(id, async (vars: { questionId: string; choice?: number; answer?: string; dontKnow?: boolean; isFollowup?: boolean; skipFollowup?: boolean; mock?: boolean }) => {
     const res = await api.POST('/api/v1/lessons/{lesson_id}/recall/answer', {
       params: path(id),
-      body: { question_id: vars.questionId, dont_know: vars.dontKnow ?? false, choice: vars.choice ?? null, answer: vars.answer ?? null, mock: false },
+      body: {
+        question_id: vars.questionId,
+        dont_know: vars.dontKnow ?? false,
+        choice: vars.choice ?? null,
+        answer: vars.answer ?? null,
+        mock: vars.mock ?? false,
+        is_followup: vars.isFollowup ?? false,
+        skip_followup: vars.skipFollowup ?? false,
+      },
     })
     const data = await unwrap(Promise.resolve(res))
     return res.response.status === 202 ? { job: data as unknown as Schemas['JobAccepted'] } : { quiz: data }
@@ -185,12 +193,12 @@ export function useAnswer(id: number) {
 }
 
 export function useAnswerVoice(id: number) {
-  return useRecallMutation(id, (vars: { questionId: string; audio: Blob }) =>
+  return useRecallMutation(id, (vars: { questionId: string; audio: Blob; isFollowup?: boolean; mock?: boolean }) =>
     unwrap(
       api.POST('/api/v1/lessons/{lesson_id}/recall/answer-voice', {
         params: path(id),
-        body: { question_id: vars.questionId, audio: '', mock: false },
-        bodySerializer: () => formData({ question_id: vars.questionId, audio: vars.audio }),
+        body: { question_id: vars.questionId, audio: '', mock: vars.mock ?? false, is_followup: vars.isFollowup ?? false },
+        bodySerializer: () => formData({ question_id: vars.questionId, audio: vars.audio, is_followup: String(vars.isFollowup ?? false), mock: String(vars.mock ?? false) }),
       }),
     ),
   )

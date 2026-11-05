@@ -3204,6 +3204,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/study-statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva stati di studio personalizzati */
+        put: operations["put_study_statuses_api_v1_settings_study_statuses_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram": {
         parameters: {
             query?: never;
@@ -4117,6 +4134,11 @@ export interface components {
         Body_answer_voice_api_v1_lessons__lesson_id__recall_answer_voice_post: {
             /** Audio */
             audio: string;
+            /**
+             * Is Followup
+             * @default false
+             */
+            is_followup: boolean;
             /**
              * Mock
              * @default false
@@ -7433,11 +7455,6 @@ export interface components {
              */
             modalita_arricchimento: "manuale" | "automatica" | "disattivata";
             /**
-             * Ordine Stati Studio
-             * @description Ordine di tutti gli stati di studio
-             */
-            ordine_stati_studio?: string[] | null;
-            /**
              * Secondi Approvazione
              * @description Secondi per l'approvazione automatica della scaletta (0 = disattivata)
              * @default 10
@@ -7450,11 +7467,6 @@ export interface components {
              * @enum {string}
              */
             sfondo_gruppi: "colori" | "grigi" | "niente";
-            /**
-             * Stati Studio
-             * @description Stati di studio personalizzati
-             */
-            stati_studio?: components["schemas"]["CustomStudyStatusIn"][] | null;
         };
         /** PromptOverrideIn */
         PromptOverrideIn: {
@@ -7612,12 +7624,22 @@ export interface components {
              */
             dont_know: boolean;
             /**
+             * Is Followup
+             * @default false
+             */
+            is_followup: boolean;
+            /**
              * Mock
              * @default false
              */
             mock: boolean;
             /** Question Id */
             question_id: string;
+            /**
+             * Skip Followup
+             * @default false
+             */
+            skip_followup: boolean;
         };
         /** RecallAnswerRecord */
         RecallAnswerRecord: {
@@ -7627,6 +7649,14 @@ export interface components {
             answered_at: string;
             /** Attempt Id */
             attempt_id?: string | null;
+            /** Attinenza */
+            attinenza?: number | null;
+            /** Completezza */
+            completezza?: number | null;
+            /** Correttezza */
+            correttezza?: number | null;
+            /** Domanda Followup */
+            domanda_followup?: string | null;
             /**
              * Dont Know
              * @default false
@@ -7634,6 +7664,23 @@ export interface components {
             dont_know: boolean;
             /** Evaluation */
             evaluation?: string | null;
+            /** Followup Answer */
+            followup_answer?: string | null;
+            /** Followup Attinenza */
+            followup_attinenza?: number | null;
+            /** Followup Completezza */
+            followup_completezza?: number | null;
+            /** Followup Correttezza */
+            followup_correttezza?: number | null;
+            /** Followup Evaluation */
+            followup_evaluation?: string | null;
+            /**
+             * Followup Is Voice
+             * @default false
+             */
+            followup_is_voice: boolean;
+            /** Followup Question */
+            followup_question?: string | null;
             /**
              * Is Voice
              * @default false
@@ -7967,8 +8014,28 @@ export interface components {
         RecallSavedEvaluation: {
             /** Answer Text */
             answer_text: string;
+            /** Attinenza */
+            attinenza?: number | null;
+            /** Completezza */
+            completezza?: number | null;
+            /** Correttezza */
+            correttezza?: number | null;
+            /** Domanda Followup */
+            domanda_followup?: string | null;
             /** Evaluation */
             evaluation: string;
+            /** Followup Answer */
+            followup_answer?: string | null;
+            /** Followup Attinenza */
+            followup_attinenza?: number | null;
+            /** Followup Completezza */
+            followup_completezza?: number | null;
+            /** Followup Correttezza */
+            followup_correttezza?: number | null;
+            /** Followup Evaluation */
+            followup_evaluation?: string | null;
+            /** Followup Question */
+            followup_question?: string | null;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
         };
@@ -8443,6 +8510,11 @@ export interface components {
             data_dir?: string | null;
             notices: components["schemas"]["NoticeSettings"];
             /**
+             * Ordine Stati Studio
+             * @description Ordine di tutti gli stati di studio
+             */
+            ordine_stati_studio?: string[];
+            /**
              * Phases
              * @description Modello assegnato a ciascuna fase LLM
              */
@@ -8470,6 +8542,11 @@ export interface components {
              * @default false
              */
             setup_required: boolean;
+            /**
+             * Stati Studio
+             * @description Stati di studio personalizzati
+             */
+            stati_studio?: components["schemas"]["CustomStudyStatusIn"][];
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
@@ -8737,6 +8814,19 @@ export interface components {
         StudyStatusUpdate: {
             /** Status */
             status: string;
+        };
+        /** StudyStatusesUpdate */
+        StudyStatusesUpdate: {
+            /**
+             * Ordine Stati Studio
+             * @description Ordine di tutti gli stati di studio
+             */
+            ordine_stati_studio?: string[];
+            /**
+             * Stati Studio
+             * @description Stati di studio personalizzati
+             */
+            stati_studio?: components["schemas"]["CustomStudyStatusIn"][];
         };
         /** StudyUnit */
         StudyUnit: {
@@ -23834,6 +23924,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_study_statuses_api_v1_settings_study_statuses_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyStatusesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

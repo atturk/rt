@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
-from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer, RecallOutcome
+from rt.core.models import RecallBank, RecallQuestion, RecallQuestionStatus, RecallQuestionType, RecallAnswer, RecallOutcome, RecallEvaluation
 from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
@@ -269,6 +269,11 @@ def record_recall_answer(
     vote: Optional[str] = None,
     outcome: Optional[RecallOutcome] = None,
     mark_answered: bool = True,
+    correttezza: Optional[int] = None,
+    completezza: Optional[int] = None,
+    attinenza: Optional[int] = None,
+    domanda_followup: Optional[str] = None,
+    is_followup: bool = False,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
     with recall_bank_lock(lesson_dir):
@@ -286,6 +291,28 @@ def record_recall_answer(
                     and answer_text.strip():
                 outcome = 'corretta' if answer_text == question.options[question.correct_index] else 'sbagliata'
 
+        if correttezza is None: correttezza = getattr(evaluation, 'correttezza', None)
+        if completezza is None: completezza = getattr(evaluation, 'completezza', None)
+        if attinenza is None: attinenza = getattr(evaluation, 'attinenza', None)
+        if domanda_followup is None: domanda_followup = getattr(evaluation, 'domanda_followup', None)
+
+        if is_followup:
+            target = next((a for a in reversed(bank.answers) if a.question_id == question_id), None)
+            if target is not None:
+                target.followup_question = target.domanda_followup
+                target.followup_answer = answer_text
+                target.followup_evaluation = str(evaluation) if evaluation is not None else None
+                target.followup_is_voice = is_voice
+                target.followup_correttezza = correttezza
+                target.followup_completezza = completezza
+                target.followup_attinenza = attinenza
+                target.outcome = outcome or getattr(evaluation, 'outcome', target.outcome)
+                target.domanda_followup = None
+                if question and mark_answered:
+                    question.status = RecallQuestionStatus.ANSWERED
+                save_recall_bank(bank, lesson_dir)
+                return target
+
         # Cerca riga con solo voto creata durante questo giro
         existing_vote_only = None
         for a in reversed(bank.answers):
@@ -298,7 +325,11 @@ def record_recall_answer(
             existing_vote_only.outcome = outcome
             existing_vote_only.answer_text = answer_text
             existing_vote_only.is_voice = is_voice
-            existing_vote_only.evaluation = evaluation
+            existing_vote_only.evaluation = str(evaluation) if evaluation is not None else None
+            existing_vote_only.correttezza = correttezza
+            existing_vote_only.completezza = completezza
+            existing_vote_only.attinenza = attinenza
+            existing_vote_only.domanda_followup = domanda_followup
             if vote is not None:
                 existing_vote_only.vote = vote
             existing_vote_only.dont_know = answer_text.strip() == '[Non lo so]'
@@ -309,14 +340,32 @@ def record_recall_answer(
                 question_id=question_id,
                 answer_text=answer_text,
                 is_voice=is_voice,
-                evaluation=evaluation,
+                evaluation=str(evaluation) if evaluation is not None else None,
                 outcome=outcome,
                 vote=vote,
                 dont_know=answer_text.strip() == '[Non lo so]',
+                correttezza=correttezza,
+                completezza=completezza,
+                attinenza=attinenza,
+                domanda_followup=domanda_followup,
             )
             bank.answers.append(ans)
         save_recall_bank(bank, lesson_dir)
         return ans
+
+
+def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
+    """Termina l'approfondimento della domanda confermando la prima valutazione."""
+    with recall_bank_lock(lesson_dir):
+        bank = load_recall_bank(lesson_dir)
+        question = next((q for q in bank.questions if q.id == question_id), None)
+        if question and question.status != RecallQuestionStatus.DISCARDED:
+            question.status = RecallQuestionStatus.ANSWERED
+        for a in reversed(bank.answers):
+            if a.question_id == question_id:
+                a.domanda_followup = None
+                break
+        save_recall_bank(bank, lesson_dir)
 
 
 def skip_recall_question(lesson_dir: str, question_id: str) -> None:
@@ -837,16 +886,16 @@ def generate_recall_batch(
 # Valutazione LLM delle risposte a domande mirate/vaste (Fase D3)
 # -----------------------------------------------------------------------
 
-def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False) -> str:
+def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False, is_followup: bool = False) -> RecallEvaluation:
     """Valuta con l'LLM la risposta a una domanda mirata o vasta e ritorna il testo di valutazione pronto da mostrare.
 
-    Mirata: "Correttezza: X%\nCompletezza: Y%\n\n[commento]".
-    Vasta: solo il commento (valuta correttezza + aderenza alla scaletta ideale pregenerata).
+    Mirata/vasta: commento del docente con correttezza, completezza, attinenza e eventuale approfondimento.
     Le domande quiz non passano da qui: la valutazione è il pregenerated_material, già pronto in D1.
     """
     from rt.llm.prompts import (
         RECALL_EVAL_MIRATA_SYSTEM_PROMPT, build_recall_eval_mirata_user_prompt, RecallEvalMirataResult,
         RECALL_EVAL_VASTA_SYSTEM_PROMPT, build_recall_eval_vasta_user_prompt, RecallEvalVastaResult,
+        RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT, build_recall_eval_followup_user_prompt,
     )
 
     bank = load_recall_bank(lesson_dir)
@@ -864,16 +913,117 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
     from rt.core.models import RecallEvaluation
     is_dont_know = answer_text.strip() == "[Non lo so]"
 
-    # Mock deterministico gestito qui direttamente (stesso pattern di generate_recall_batch):
-    # _generate_mock_response() non conosce RecallEvalMirataResult/RecallEvalVastaResult.
+    if is_followup:
+        target_answer = next((a for a in reversed(bank.answers) if a.question_id == question_id), None)
+        ans_1 = target_answer.answer_text if target_answer else ""
+        eval_1_comment = target_answer.evaluation if target_answer else ""
+        c1 = getattr(target_answer, "correttezza", 70) if target_answer else 70
+        comp1 = getattr(target_answer, "completezza", 70) if target_answer else 70
+        att1 = getattr(target_answer, "attinenza", 80) if target_answer else 80
+        eval_1_scores = f"Correttezza: {c1}%, Completezza: {comp1}%, Attinenza: {att1}%"
+        followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
+
+        if force_mock:
+            if is_dont_know:
+                return RecallEvaluation(
+                    "[MOCK] L'approfondimento non è stato fornito; confermata la valutazione precedente.",
+                    outcome="parziale",
+                    correttezza=c1,
+                    completezza=comp1,
+                    attinenza=att1,
+                    domanda_followup=None,
+                )
+            return RecallEvaluation(
+                "[MOCK] Ottimo approfondimento, la risposta ora è completa e precisa.",
+                outcome="corretta",
+                correttezza=95,
+                completezza=90,
+                attinenza=90,
+                domanda_followup=None,
+            )
+
+        client = LLMClient(force_mock=force_mock)
+        from rt.pipeline.recall_checks import checked_evaluation
+
+        if question.type == RecallQuestionType.MIRATA:
+            draft = load_resolved_draft(lesson_dir)
+            unit = next((u for u in draft.units if u.unit_id == question.unit_ids[0]), None)
+            ref_text = unit.content if unit else ""
+            unit_id_str = question.unit_ids[0]
+        else:
+            ref_text = question.pregenerated_material or ""
+            unit_id_str = ", ".join(question.unit_ids)
+
+        user_prompt = build_recall_eval_followup_user_prompt(
+            question_text=question.question_text,
+            reference_text=ref_text,
+            answer_1=ans_1,
+            eval_1_comment=eval_1_comment,
+            eval_1_scores=eval_1_scores,
+            followup_question=followup_q,
+            answer_2=answer_text,
+            dont_know=is_dont_know,
+        )
+        result: "RecallEvalMirataResult" = checked_evaluation(
+            client,
+            dont_know=is_dont_know,
+            prompt=user_prompt,
+            system_prompt=effective_system("recall", RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT),
+            response_model=RecallEvalMirataResult,
+            job_name="recall",
+            unit_id=unit_id_str,
+            lesson_dir=lesson_dir,
+        )
+        if is_dont_know:
+            outcome = target_answer.outcome if target_answer and target_answer.outcome else "parziale"
+        else:
+            outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else "parziale")
+        return RecallEvaluation(
+            result.commento,
+            outcome,
+            correttezza=result.correttezza,
+            completezza=result.completezza,
+            attinenza=result.attinenza,
+            domanda_followup=None,
+        )
+
+    # Mock deterministico (prima risposta)
     if force_mock:
         if question.type == RecallQuestionType.MIRATA:
             if is_dont_know:
-                return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
-            return RecallEvaluation("Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.", "parziale")
+                return RecallEvaluation(
+                    "Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Spiegazione automatica per risposta non nota.",
+                    outcome="sbagliata",
+                    correttezza=0,
+                    completezza=0,
+                    attinenza=0,
+                    domanda_followup=None,
+                )
+            return RecallEvaluation(
+                "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.",
+                outcome="parziale",
+                correttezza=75,
+                completezza=70,
+                attinenza=80,
+                domanda_followup="Puoi chiarire in che modo questo concetto influisce sulla fase successiva?",
+            )
         if is_dont_know:
-            return RecallEvaluation("[MOCK] Spiegazione automatica per risposta non nota.", "sbagliata")
-        return RecallEvaluation("[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.", "parziale")
+            return RecallEvaluation(
+                "[MOCK] Spiegazione automatica per risposta non nota.",
+                outcome="sbagliata",
+                correttezza=0,
+                completezza=0,
+                attinenza=0,
+                domanda_followup=None,
+            )
+        return RecallEvaluation(
+            "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.",
+            outcome="parziale",
+            correttezza=75,
+            completezza=70,
+            attinenza=80,
+            domanda_followup="Quali sono gli ulteriori aspetti della scaletta che andrebbero integrati?",
+        )
 
     client = LLMClient(force_mock=force_mock)
     from rt.pipeline.recall_checks import checked_evaluation
@@ -890,7 +1040,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             answer_text=answer_text,
             dont_know=is_dont_know,
         )
-        result: "RecallEvalMirataResult" = checked_evaluation(client, dont_know=is_dont_know,
+        res_m: "RecallEvalMirataResult" = checked_evaluation(client, dont_know=is_dont_know,
             prompt=user_prompt,
             system_prompt=effective_system("recall", RECALL_EVAL_MIRATA_SYSTEM_PROMPT),
             response_model=RecallEvalMirataResult,
@@ -899,10 +1049,24 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             lesson_dir=lesson_dir,
         )
         if is_dont_know:
-            result.correttezza = 0
-            result.completezza = 0
-        return RecallEvaluation(f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}",
-                                "sbagliata" if is_dont_know else result.outcome)
+            res_m.correttezza = 0
+            res_m.completezza = 0
+            res_m.attinenza = 0
+            res_m.domanda_followup = None
+            outcome = "sbagliata"
+        else:
+            outcome = res_m.outcome or ("corretta" if res_m.correttezza >= 80 and res_m.completezza >= 75 else ("sbagliata" if res_m.correttezza < 40 else "parziale"))
+            if outcome == "sbagliata" or (res_m.correttezza >= 95 and res_m.completezza >= 95):
+                res_m.domanda_followup = None
+        text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{res_m.commento}"
+        return RecallEvaluation(
+            text,
+            outcome,
+            correttezza=res_m.correttezza,
+            completezza=res_m.completezza,
+            attinenza=res_m.attinenza,
+            domanda_followup=res_m.domanda_followup,
+        )
 
     elif question.type == RecallQuestionType.VASTA:
         user_prompt = build_recall_eval_vasta_user_prompt(
@@ -911,7 +1075,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             answer_text=answer_text,
             dont_know=is_dont_know,
         )
-        result_v: "RecallEvalVastaResult" = checked_evaluation(client, dont_know=is_dont_know,
+        res_v: "RecallEvalVastaResult" = checked_evaluation(client, dont_know=is_dont_know,
             prompt=user_prompt,
             system_prompt=effective_system("recall", RECALL_EVAL_VASTA_SYSTEM_PROMPT),
             response_model=RecallEvalVastaResult,
@@ -919,7 +1083,24 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             unit_id=", ".join(question.unit_ids),
             lesson_dir=lesson_dir,
         )
-        return RecallEvaluation(result_v.commento, "sbagliata" if is_dont_know else result_v.outcome)
+        if is_dont_know:
+            res_v.correttezza = 0
+            res_v.completezza = 0
+            res_v.attinenza = 0
+            res_v.domanda_followup = None
+            outcome = "sbagliata"
+        else:
+            outcome = res_v.outcome or ("corretta" if res_v.correttezza >= 80 and res_v.completezza >= 75 else ("sbagliata" if res_v.correttezza < 40 else "parziale"))
+            if outcome == "sbagliata" or (res_v.correttezza >= 95 and res_v.completezza >= 95):
+                res_v.domanda_followup = None
+        return RecallEvaluation(
+            res_v.commento,
+            outcome,
+            correttezza=res_v.correttezza,
+            completezza=res_v.completezza,
+            attinenza=res_v.attinenza,
+            domanda_followup=res_v.domanda_followup,
+        )
 
 
 def purge_recall_by_type(lesson_dir: str, qtype: Optional[RecallQuestionType] = None) -> int:

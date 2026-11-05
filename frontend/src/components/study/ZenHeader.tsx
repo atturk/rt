@@ -51,7 +51,7 @@ export function ZenHeader({
     return () => { cancel(); window.removeEventListener('pointermove', mouse); window.removeEventListener('pointerdown', touch) }
   }, [settings]) // oxlint-disable-line react-hooks/exhaustive-deps
   const settingsQuery = useSettings()
-  const customStatuses = settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[] | undefined
+  const customStatuses = settingsQuery.data?.stati_studio as CustomStudyStatus[] | undefined
   const currentStatus = status ?? 'da-imparare'
   const currentDef = resolveStudyStatus(currentStatus, customStatuses)
   return <>

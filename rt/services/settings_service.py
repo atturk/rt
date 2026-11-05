@@ -365,9 +365,9 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
             "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
-            "stati_studio": [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in getattr(cfg.ui, "study_statuses", [])],
-            "ordine_stati_studio": getattr(cfg.ui, "study_status_order", []) or ["da-imparare", "in-apprendimento", "appreso", "ignorata"],
         },
+        "stati_studio": [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in getattr(cfg.ui, "study_statuses", [])],
+        "ordine_stati_studio": getattr(cfg.ui, "study_status_order", []) or ["da-imparare", "in-apprendimento", "appreso", "ignorata"],
         "rewrite": {
             "context_mode": getattr(cfg.rewrite, "context_mode", "macro"),
             "parallel_macros": getattr(cfg.rewrite, "parallel_macros", 4),
@@ -478,17 +478,23 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
         classifier.jobs.setdefault("enrichment", ClassifierJobConfig()).mode = {"disattivata": "off", "manuale": "manual", "automatica": "pipeline", "disabled":"off", "automatic":"pipeline"}.get(enr_val, enr_val)
     write_classifier(data, classifier)
 
-    if "stati_studio" in preferences and preferences["stati_studio"] is not None:
-        ui_data["study_statuses"] = [s if isinstance(s, dict) else s.model_dump() for s in preferences["stati_studio"]]
-    if "ordine_stati_studio" in preferences and preferences["ordine_stati_studio"] is not None:
-        ui_data["study_status_order"] = preferences["ordine_stati_studio"]
-
     _atomic_yaml(path, data)
     return {
         "secondi_approvazione": secs,
         "sfondo_gruppi": bg_val,
         "modalita_arricchimento": enr_val,
     }
+
+
+def save_study_statuses(project_root: Path, payload: dict[str, Any]) -> None:
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    ui_data = data.setdefault("ui", {})
+    if "stati_studio" in payload and payload["stati_studio"] is not None:
+        ui_data["study_statuses"] = [s if isinstance(s, dict) else s.model_dump() for s in payload["stati_studio"]]
+    if "ordine_stati_studio" in payload and payload["ordine_stati_studio"] is not None:
+        ui_data["study_status_order"] = payload["ordine_stati_studio"]
+    _atomic_yaml(path, data)
 
 
 def save_rewrite(project_root: Path, context_mode: str, parallel_macros: int | None = None) -> None:

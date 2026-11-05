@@ -42,11 +42,8 @@ it('permette di aggiungere uno stato personalizzato e di eliminarlo', async () =
   const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
     data: {
       ...testSettings,
-      preferences: {
-        ...testSettings.preferences,
-        stati_studio: [{ id: 'c1', nome: 'Nuovo stato', colore: 'text-amber-500', icona: 'Star' }],
-        ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
-      },
+      stati_studio: [{ id: 'c1', nome: 'Nuovo stato', colore: 'text-amber-500', icona: 'Star' }],
+      ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
     },
     response: new Response('{}', { status: 200 }),
   } as never)
@@ -61,7 +58,7 @@ it('permette di aggiungere uno stato personalizzato e di eliminarlo', async () =
   await userEvent.click(addBtn)
 
   expect(putSpy).toHaveBeenCalledWith(
-    '/api/v1/settings/preferences',
+    '/api/v1/settings/study-statuses',
     expect.objectContaining({
       body: expect.objectContaining({
         stati_studio: [
@@ -78,11 +75,8 @@ it('permette di aggiungere uno stato personalizzato e di eliminarlo', async () =
 it('elimina uno stato personalizzato con richiesta di conferma se in uso', async () => {
   const settingsWithCustom = {
     ...testSettings,
-    preferences: {
-      ...testSettings.preferences,
-      stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
-      ordine_stati_studio: ['da-imparare', 'c1', 'in-apprendimento', 'appreso', 'ignorata'],
-    },
+    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
+    ordine_stati_studio: ['da-imparare', 'c1', 'in-apprendimento', 'appreso', 'ignorata'],
   }
 
   // Simula 3 unità in uso
@@ -146,7 +140,7 @@ it('permette di riordinare gli stati', async () => {
   await userEvent.click(downBtn!)
 
   expect(putSpy).toHaveBeenCalledWith(
-    '/api/v1/settings/preferences',
+    '/api/v1/settings/study-statuses',
     expect.objectContaining({
       body: expect.objectContaining({
         ordine_stati_studio: ['in-apprendimento', 'da-imparare', 'appreso', 'ignorata'],

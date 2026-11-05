@@ -177,8 +177,8 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
   }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
   const settingsQuery = useSettings()
-  const customStatuses = (settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[]) ?? []
-  const savedOrder = (settingsQuery.data?.preferences?.ordine_stati_studio as string[]) ?? []
+  const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
+  const savedOrder = (settingsQuery.data?.ordine_stati_studio as string[]) ?? []
   const statusOrder = resolveStatusOrder(customStatuses, savedOrder)
   const status = useStudyStatus(lesson?.id ?? 0)
   const read = useStudyRead(lesson?.id ?? 0)
@@ -1370,7 +1370,7 @@ function StudyShell({
 
 function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void; pendingUnitIds?: Set<string> }) {
   const settingsQuery = useSettings()
-  const customStatuses = (settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[]) ?? []
+  const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
   return (
     <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
       {units.map((u, i) => {

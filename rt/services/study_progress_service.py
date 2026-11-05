@@ -156,6 +156,8 @@ def restore_units(session, lesson_id: int, entries) -> None:
         status = entry.get("status")
         if not isinstance(unit_id, str) or not 1 <= len(unit_id) <= 64:
             continue
+        if not isinstance(status, str) or not status:
+            continue
         if status not in statuses:
             status = "in-apprendimento"
         try:

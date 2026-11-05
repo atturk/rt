@@ -36,6 +36,12 @@ export function useSavePreferences() {
   )
 }
 
+export function useSaveStudyStatuses() {
+  return useSettingsMutation((body: Schemas['StudyStatusesUpdate']) =>
+    unwrap(api.PUT('/api/v1/settings/study-statuses', { body })),
+  )
+}
+
 export function useSaveRewrite() {
   return useSettingsMutation((body: Schemas['RewriteIn']) => unwrap(api.PUT('/api/v1/settings/rewrite', { body })))
 }
