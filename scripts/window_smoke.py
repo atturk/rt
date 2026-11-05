@@ -78,7 +78,7 @@ def main():
             raise RuntimeError(f"Pagina non caricata o non autenticata: {result}")
         if result.get("downloads") != ["lezione.zip", "nota.md", "domande.json"]:
             raise RuntimeError(f"Download non riusciti nel motore nativo: {result}")
-        if sys.platform == "darwin" and result.get("menu") != ["Esci da RT", "Modifica"]:
+        if sys.platform == "darwin" and result.get("menu") != ["Esci da RT", "Modifica", "Aiuto"]:
             raise RuntimeError(f"Il menu nativo del Mac non è pronto: {result}")
         pid_deadline = min(deadline, time.monotonic() + 10)
         while (data / "run" / "window.pid").exists() and time.monotonic() < pid_deadline:
