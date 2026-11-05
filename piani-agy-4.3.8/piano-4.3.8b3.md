@@ -42,15 +42,15 @@ Una voce per commit. **Non modificare il testo delle pagine `docs/guida/*.md`**:
 
 Oggi gli stati sono fissi (`da-imparare`, `in-apprendimento`, `appreso`, `ignorata`: `rt/services/study_progress_service.py`, `frontend/src/components/study/studyProgress.ts`).
 
-- **Impostazioni**: nella sezione esistente più vicina allo studio (preferenze di studio; se non c'è, crea «Studio») aggiungi «Stati delle unità»: mostra i 4 stati di default (icona, colore, nome; non modificabili né eliminabili) e sotto gli stati personalizzati con «Aggiungi stato».
+- **Impostazioni**: nella sezione esistente più vicina allo studio (preferenze di studio; se non c'è, crea «Studio») aggiungi «Stati delle unità»: un unico elenco ordinabile (trascina o frecce su/giù) con i 4 stati di default e quelli personalizzati mescolati; i default non si possono eliminare né modificare (nome, colore, icona), ma si possono spostare; «Aggiungi stato» aggiunge in fondo.
 - Uno stato personalizzato ha: nome (max 24 caratteri), colore (6-8 colori predefiniti a scelta, compatibili con tema chiaro e scuro) e icona da un set base di ~10 icone lucide (es. Circle, Star, Flag, Bookmark, Flame, Eye, HelpCircle, Repeat, Clock, AlertTriangle). Si possono rinominare, cambiare, riordinare, eliminare.
-- **Ciclo** (tasto S, clic sull'icona dell'unità): `da-imparare → in-apprendimento → [personalizzati nell'ordine] → appreso → ignorata → da-imparare`.
-- **Dati**: impostazione salvata nei settings (lista `{id, nome, colore, icona}`; `id` tipo `c1`, `c2`… stabile, entra nella colonna `status` String(16)). Il backend accetta come stato i 4 di default più gli `id` presenti nei settings; `Literal` → validazione dinamica.
+- **Ciclo** (tasto S, clic sull'icona dell'unità): segue l'ordine dell'elenco nelle Impostazioni e ricomincia dal primo. Ordine di partenza: `da-imparare → in-apprendimento → appreso → ignorata`, i nuovi stati in fondo. Le unità nuove partono sempre da `da-imparare`, qualunque sia l'ordine.
+- **Dati**: impostazione salvata nei settings (lista `{id, nome, colore, icona}`; `id` tipo `c1`, `c2`… stabile, entra nella colonna `status` String(16)) più l'ordine completo (lista di id, default compresi; se manca un default lo si rimette nella posizione di partenza). Il backend accetta come stato i 4 di default più gli `id` presenti nei settings; `Literal` → validazione dinamica.
   - Uno stato personalizzato conta come «in apprendimento» per i progressi, il calendario e `initialStudyUnit` (non come appreso).
   - Eliminare uno stato in uso: le unità con quello stato tornano a `in-apprendimento` (chiedi conferma dicendo quante unità sono coinvolte).
   - Export/import di lezioni e collezione: uno stato sconosciuto all'arrivo diventa `in-apprendimento`.
 - Ovunque si mostrano icona/etichetta di stato (barra della lettura veloce, barra zen, elenco unità, tooltip come «Da imparare» dell'allegato) usa una sola funzione che risolve default + personalizzati.
-- Test: backend (stato valido/invalido, eliminazione con unità in uso, import con stato sconosciuto) e vitest (ciclo con 2 stati personalizzati, impostazioni aggiungi/elimina).
+- Test: backend (stato valido/invalido, eliminazione con unità in uso, import con stato sconosciuto) e vitest (ciclo con 2 stati personalizzati messi fra i default, riordino, impostazioni aggiungi/elimina, default non eliminabili).
 
 ## Prima della PR
 
