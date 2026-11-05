@@ -1,4 +1,4 @@
-import { SlidersHorizontal, X } from 'lucide-react'
+import { Headphones, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -13,12 +13,16 @@ import { IrlenWarningModal } from './IrlenWarningModal'
 /** La barra segue il mouse e il focus, mai lo scroll del testo. */
 export function ZenHeader({
   title, settings, onSettings, onExit, irlen, onIrlen, hasNonYellowHighlight, status, onStatus,
+  hasAudio, audioOpen, onToggleAudio,
 }: {
   title: string; settings: boolean; onSettings: (open: boolean) => void; onExit: () => void
   irlen: RsvpPreference['irlen']; onIrlen: (value: RsvpPreference['irlen']) => void
   hasNonYellowHighlight?: boolean
   status?: StudyStatus
   onStatus?: () => void
+  hasAudio?: boolean
+  audioOpen?: boolean
+  onToggleAudio?: () => void
 }) {
   const [prefs, setPrefs] = useRsvpPrefs()
   const [showWarning, setShowWarning] = useState(false)
@@ -63,6 +67,17 @@ export function ZenHeader({
           className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
           onClick={onStatus}
           data-testid="zen-status"
+        />
+      )}
+      {hasAudio && onToggleAudio && (
+        <IconButton
+          label={audioOpen ? 'Chiudi player audio' : 'Player audio'}
+          icon={Headphones}
+          active={audioOpen}
+          aria-expanded={audioOpen}
+          className="size-7 min-w-7 [&_svg]:size-4"
+          onClick={onToggleAudio}
+          data-testid="zen-audio-player-btn"
         />
       )}
       <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{title}</span>

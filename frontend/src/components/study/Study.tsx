@@ -1,8 +1,10 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
+import { AudioPlayer } from '@/components/lesson/AudioPlayer'
+import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
@@ -58,13 +60,42 @@ function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
  * si legge un'unità intera, poi le sue domande una alla volta, poi l'unità dopo;
  * l'indice "Unità N di M ▾" permette di saltare direttamente a qualsiasi unità.
  */
-export function StudyFlow({ lessons, onlyUnits = null, back }: {
+let sessionAudioPlayerOpen = false
+// oxlint-disable-next-line react/only-export-components
+export function resetSessionAudioPlayer() {
+  sessionAudioPlayerOpen = false
+}
+
+export function StudyFlow(props: {
   /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
   lessons: Lesson[]
   /** Solo queste unità, partendo dalle domande (Domande su questa parte). */
   onlyUnits?: string[] | null
   back: { to: string; label: string }
 }) {
+  return (
+    <AudioProvider>
+      <StudyFlowInner {...props} />
+    </AudioProvider>
+  )
+}
+
+function StudyFlowInner({ lessons, onlyUnits = null, back }: {
+  /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
+  lessons: Lesson[]
+  /** Solo queste unità, partendo dalle domande (Domande su questa parte). */
+  onlyUnits?: string[] | null
+  back: { to: string; label: string }
+}) {
+  const { audioRef, currentTime, seek } = useLessonAudio()
+  const [audioPlayerOpen, setAudioPlayerOpenState] = useState(sessionAudioPlayerOpen)
+  const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+    setAudioPlayerOpenState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value
+      sessionAudioPlayerOpen = next
+      return next
+    })
+  }
   const [zenMinHeight, setZenMinHeight] = useState(0)
   const readingScroll = useRef(0)
   const anchor = useRef<{ node: Element; top: number } | null>(null)
@@ -669,14 +700,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           e.preventDefault()
           toggleZen()
         }
-      } else if (arrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault()
-        navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (audioPlayerOpen) {
+          e.preventDefault()
+          const audio = audioRef.current
+          const curTime = audio ? audio.currentTime : currentTime
+          const isPlaying = audio ? !audio.paused : false
+          seek(curTime + (e.key === 'ArrowRight' ? 5 : -5), isPlaying)
+        } else if (arrows) {
+          e.preventDefault()
+          navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -765,7 +804,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       </StudyShell>
     )
   }
-  const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
+  const hasAudio = Boolean(loaded?.has_audio)
+  const audio = hasAudio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
   const titleButton = (
@@ -847,6 +887,16 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
+      {hasAudio && (
+        <IconButton
+          label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+          icon={Headphones}
+          active={audioPlayerOpen}
+          aria-expanded={audioPlayerOpen}
+          onClick={() => setAudioPlayerOpen((v) => !v)}
+          data-testid="study-audio-player-btn"
+        />
+      )}
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
@@ -864,6 +914,16 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const rsvpActions = <div className="flex items-center gap-1">
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    {hasAudio && (
+      <IconButton
+        label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+        icon={Headphones}
+        active={audioPlayerOpen}
+        aria-expanded={audioPlayerOpen}
+        onClick={() => setAudioPlayerOpen((v) => !v)}
+        data-testid="rsvp-audio-player-btn"
+      />
+    )}
     <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
     <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} pendingUnitIds={pendingUnitIds} />
@@ -907,6 +967,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })}
             hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))}
             status={live.status ?? 'da-imparare'}
+            hasAudio={hasAudio}
+            audioOpen={audioPlayerOpen}
+            onToggleAudio={() => setAudioPlayerOpen((v) => !v)}
             onStatus={() => {
               const next = changeStatus()
               if (next) {
@@ -1121,6 +1184,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             }}
           />
         </div>
+      )}
+      {audioPlayerOpen && lesson?.id && (
+        <AudioPlayer lessonId={lesson.id} className="z-30" />
       )}
     </>
   )
