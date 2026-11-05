@@ -1,5 +1,23 @@
 # Novità di RT
 
+## 4.3.8b3 — 2026-11-05
+
+Beta con le correzioni sulla beta 2, il ripasso «da professore» e gli stati di studio personalizzati.
+
+### Novità
+
+- **Menu Aiuto**: la guida si apre dal menu «Aiuto» nella barra dei menu, con tutte le pagine e le sezioni; su Mac il campo di ricerca del menu cerca anche nelle voci. Dentro l'app la guida si apre da Impostazioni → Guida o con F1.
+- **Guida con immagini**: le pagine della guida possono contenere immagini, e l'ordine delle pagine si decide in un solo file.
+- **Valutazione delle risposte**: per le domande mirate e vaste RT mostra correttezza, completezza e attinenza (quanto la risposta segue quello che dice l'unità). La valutazione considera la correttezza generale della risposta, non solo l'unità.
+- **Domanda di approfondimento**: se la risposta va nella direzione giusta ma è incompleta o poco attinente, RT fa una domanda in più per aiutarti a completarla e poi valuta tutto insieme. Si può saltare.
+- **Stati di studio personalizzati**: in Impostazioni puoi creare nuovi stati per le unità (nome, colore, icona) e decidere l'ordine in cui il tasto S li fa scorrere, insieme a quelli predefiniti.
+- **Audio in Studio**: un player a scomparsa (icona cuffie) con velocità e salti di 5 secondi; quando è aperto le frecce spostano l'audio invece di cambiare unità.
+
+### Correzioni
+
+- Il bottone «Indietro» della guida ora esce sempre dalla guida.
+- Tolti il «?» nelle pagine e il bottone «Genera domande» del ripasso vuoto, che portava alla lezione invece di generare.
+
 ## 4.3.8b2 — 2026-11-04
 
 Beta con la guida, il primo avvio e la sicurezza degli aggiornamenti.
