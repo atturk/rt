@@ -6,10 +6,12 @@ import ctypes
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import webbrowser
 
 from rt.core import bundle, paths
@@ -453,6 +455,76 @@ def _regenerate_token(window, base_url: str) -> None:
     window.load_url(f"{base_url}/login?code={auth.create_login_code()}")
 
 
+def _guide_slugify(text: str) -> str:
+    nfd = unicodedata.normalize("NFD", text)
+    no_accents = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    hyphenated = re.sub(r"[^a-z0-9]+", "-", no_accents.lower())
+    return hyphenated.strip("-")
+
+
+def _build_guide_menu(window, base_url: str):
+    from webview.menu import Menu, MenuAction
+    import yaml
+
+    items = [
+        MenuAction("Cerca nella guida…", lambda: window.load_url(f"{base_url}/guida?cerca=1"))
+    ]
+
+    guide_dir = os.path.join(paths.project_root(), "docs", "guida")
+    index_file = os.path.join(guide_dir, "indice.yml")
+    file_order = []
+    if os.path.isfile(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, list):
+                    for entry in data:
+                        if isinstance(entry, dict) and "file" in entry:
+                            file_order.append(str(entry["file"]))
+                        elif isinstance(entry, str):
+                            file_order.append(entry)
+        except Exception:
+            pass
+
+    if not file_order and os.path.isdir(guide_dir):
+        file_order = sorted([f[:-3] for f in os.listdir(guide_dir) if f.endswith(".md") and f != "COME-MODIFICARE.md"])
+
+    for slug in file_order:
+        md_path = os.path.join(guide_dir, f"{slug}.md")
+        if not os.path.isfile(md_path):
+            continue
+        page_title = slug
+        sections = []
+        try:
+            with open(md_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    trimmed = line.strip()
+                    if trimmed.startswith("# ") and page_title == slug:
+                        page_title = trimmed[2:].strip()
+                    elif trimmed.startswith("## "):
+                        sec_title = trimmed[3:].strip()
+                        if sec_title:
+                            anchor = _guide_slugify(sec_title)
+                            sections.append((sec_title, anchor))
+        except Exception:
+            continue
+
+        page_actions = []
+        for sec_title, anchor in sections:
+            route = f"/guida/{slug}#{anchor}" if slug != "index" else f"/guida#{anchor}"
+            def make_handler(target_url):
+                return lambda: window.load_url(target_url)
+            page_actions.append(MenuAction(sec_title, make_handler(f"{base_url}{route}")))
+
+        if page_actions:
+            items.append(Menu(page_title, page_actions))
+        else:
+            route = f"/guida/{slug}" if slug != "index" else "/guida"
+            items.append(MenuAction(page_title, lambda u=f"{base_url}{route}": window.load_url(u)))
+
+    return Menu("Aiuto", items)
+
+
 def _menu(window, base_url: str, api=None):
     from webview.menu import Menu, MenuAction, MenuSeparator
 
@@ -484,7 +556,6 @@ def _menu(window, base_url: str, api=None):
     if sys.platform == "win32":
         actions.append(MenuAction("Informazioni su RT", lambda: window.load_url(base_url + INFO_PATH)))
     actions.extend([
-        MenuAction("Guida di RT", lambda: window.load_url(base_url + GUIDA_PATH)),
         MenuAction("Controlla aggiornamenti…", _open_update),
         MenuSeparator(),
         MenuAction("Apri cartella dati", lambda: _open_path(paths.data_dir())),
@@ -510,7 +581,8 @@ def _menu(window, base_url: str, api=None):
         MenuSeparator(),
         MenuAction("Esci da RT", quit_rt),
     ])
-    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions)]
+    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions),
+            _build_guide_menu(window, base_url)]
 
 
 def about_options(info: dict, versions: dict | None = None) -> dict:
@@ -646,7 +718,8 @@ def _macos_menu() -> None:
                     NSApplication.sharedApplication().setApplicationIconImage_(img)
 
         about_target = _get_about_target()
-        menu = NSApplication.sharedApplication().mainMenu().itemAtIndex_(0).submenu()
+        main_menu = NSApplication.sharedApplication().mainMenu()
+        menu = main_menu.itemAtIndex_(0).submenu()
         for item in list(menu.itemArray()):
             title = item.title() if callable(item.title) else getattr(item, "title", "")
             if item.keyEquivalent() == "q" and item.target() is None:
@@ -658,6 +731,22 @@ def _macos_menu() -> None:
                     item.setTarget_(about_target)
                 if hasattr(item, "setAction_"):
                     item.setAction_("showAbout:")
+
+        if hasattr(main_menu, "itemArray"):
+            for item in list(main_menu.itemArray()):
+                submenu = item.submenu() if hasattr(item, "submenu") and callable(item.submenu) else getattr(item, "submenu", None)
+                sub_title = ""
+                if submenu:
+                    sub_title = submenu.title() if callable(submenu.title) else getattr(submenu, "title", "")
+                item_title = item.title() if callable(item.title) else getattr(item, "title", "")
+                if sub_title == "Aiuto" or item_title == "Aiuto":
+                    target_help = submenu if submenu else item
+                    if hasattr(NSApplication.sharedApplication(), "setHelpMenu_"):
+                        NSApplication.sharedApplication().setHelpMenu_(target_help)
+                    if hasattr(target_help, "setTitle_"):
+                        target_help.setTitle_("Aiuto")
+                    if hasattr(item, "setTitle_"):
+                        item.setTitle_("Aiuto")
     AppHelper.callAfter(configure)
 
 

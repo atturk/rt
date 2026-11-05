@@ -76,6 +76,20 @@ describe('Guide offline documentation & search', () => {
     expect(screen.getByText(/xattr -dr com\.apple\.quarantine/)).toBeInTheDocument()
   })
 
+  it('con parametro ?cerca=1 il campo di ricerca riceve il focus', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida?cerca=1']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+          <Route path="/guida/:pagina" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const searchInput = screen.getByRole('searchbox', { name: 'Cerca nella guida' })
+    expect(searchInput).toHaveFocus()
+  })
+
   it('ricerca dalla barra e mostra i risultati con ancore', async () => {
     const user = userEvent.setup()
     render(

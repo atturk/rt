@@ -50,6 +50,7 @@ Name: "startup"; Description: "Avvia RT all'accesso a Windows"; Flags: unchecked
 Type: filesandordirs; Name: "{app}\python"
 Type: filesandordirs; Name: "{app}\rt"
 Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\docs"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion

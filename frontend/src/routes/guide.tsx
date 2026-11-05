@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Search, X, BookOpen, ChevronRight } from 'lucide-react'
 
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -15,6 +15,14 @@ export function GuidePage() {
   const returnAddress = useReturnAddress()
 
   const [query, setQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (searchParams.get('cerca') === '1' && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [searchParams])
 
   // Pagina attiva (se non specificata, usa 'index')
   const activeSlug = pagina || 'index'
@@ -64,6 +72,7 @@ export function GuidePage() {
               aria-hidden
             />
             <input
+              ref={searchInputRef}
               type="search"
               role="searchbox"
               aria-label="Cerca nella guida"

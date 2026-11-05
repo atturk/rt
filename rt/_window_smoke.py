@@ -35,6 +35,8 @@ def macos_menu() -> list[str]:
                      for item in main.itemArray()]
             if "Modifica" not in names:
                 raise RuntimeError(f"Manca il menu Modifica: {names}")
+            if "Aiuto" not in names:
+                raise RuntimeError(f"Manca il menu Aiuto: {names}")
         except Exception as exc:
             errors.append(str(exc))
         finally:
@@ -44,7 +46,7 @@ def macos_menu() -> list[str]:
         raise RuntimeError("Il menu del Mac non ha risposto.")
     if errors:
         raise RuntimeError(errors[0])
-    return ["Esci da RT", "Modifica"]
+    return ["Esci da RT", "Modifica", "Aiuto"]
 
 
 def _lesson() -> int:
