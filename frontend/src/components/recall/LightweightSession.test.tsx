@@ -396,9 +396,8 @@ describe('LightweightSession', () => {
     // Nessun "Prova mista" perché zero da porre
     expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
 
-    // Pulsante "Genera domande"
-    const generaLink = screen.getByRole('link', { name: 'Genera domande' })
-    expect(generaLink).toHaveAttribute('href', '/lezioni/1?panel=domande')
+    // Nessun link/pulsante Genera domande
+    expect(screen.queryByRole('link', { name: 'Genera domande' })).not.toBeInTheDocument()
 
     // Pulsanti ripescaggio con conteggio
     const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })

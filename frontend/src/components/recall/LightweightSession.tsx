@@ -626,16 +626,6 @@ export function LightweightSession({
                   </Button>
                 )}
 
-                {/* Una lezione sola, zero da porre: Genera domande */}
-                {!unit && !isSelection && daPorreCount === 0 && lessonId && (
-                  <Link
-                    to={`/lezioni/${lessonId}?panel=domande`}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                  >
-                    Genera domande
-                  </Link>
-                )}
-
                 {/* Ripescaggio: solo se una lezione sola o modo unità, e conteggio > 0 */}
                 {!isSelection && lessonId && wrongCount > 0 && (
                   <Button
