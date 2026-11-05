@@ -16,11 +16,11 @@ async function choose(root: Page | Locator, label: string, option: string) {
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 test.describe.configure({ mode: 'serial' })
 
-test('dieci sezioni: desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
+test('undici sezioni (con Guida): desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const nav = page.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
-  await expect(nav.getByRole('link')).toHaveCount(10)
+  await expect(nav.getByRole('link')).toHaveCount(11)
   await expect(page.getByRole('radiogroup', { name: 'Tema' })).toBeVisible()
   const navBox = (await nav.boundingBox())!
   const themeBox = (await page.getByRole('radiogroup', { name: 'Tema' }).boundingBox())!
