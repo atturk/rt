@@ -16,6 +16,7 @@ import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { ZOOM_LEVELS, getZoom, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
+import { StudyStatusesSection } from './StudyStatusesSection'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
 function useGeneralPreference() {
@@ -87,6 +88,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
         </Select>
       </Field>
     </Section>
+    <StudyStatusesSection settings={settings} />
     <Section id="copia" title="Copia">
       <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
       <Checkbox id="copy-italic" label="Corsivo" checked={copy.italic} onChange={italic => setCopy({ ...copy, italic })} />

@@ -559,6 +559,14 @@ class StudyStatusUpdate(BaseModel):
     status: StudyStatus
 
 
+class StatusUsage(BaseModel):
+    count: int
+
+
+class DeleteStatusResult(BaseModel):
+    reassigned: int
+
+
 class StudyProgress(StudyStatusUpdate):
     unit_id: str
     status_at: Optional[datetime] = None

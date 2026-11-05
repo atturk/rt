@@ -3999,6 +3999,36 @@
         "title": "CustomQuestionType",
         "type": "object"
       },
+      "CustomStudyStatusIn": {
+        "properties": {
+          "colore": {
+            "default": "text-amber-500",
+            "title": "Colore",
+            "type": "string"
+          },
+          "icona": {
+            "default": "Star",
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 16,
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 24,
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "nome"
+        ],
+        "title": "CustomStudyStatusIn",
+        "type": "object"
+      },
       "Decision": {
         "properties": {
           "actor": {
@@ -4562,6 +4592,19 @@
           }
         },
         "title": "DeleteImagesRequest",
+        "type": "object"
+      },
+      "DeleteStatusResult": {
+        "properties": {
+          "reassigned": {
+            "title": "Reassigned",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reassigned"
+        ],
+        "title": "DeleteStatusResult",
         "type": "object"
       },
       "DescribeImagesRequest": {
@@ -8471,6 +8514,21 @@
             "title": "Modalita Arricchimento",
             "type": "string"
           },
+          "ordine_stati_studio": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ordine di tutti gli stati di studio",
+            "title": "Ordine Stati Studio"
+          },
           "secondi_approvazione": {
             "default": 10,
             "description": "Secondi per l'approvazione automatica della scaletta (0 = disattivata)",
@@ -8489,6 +8547,21 @@
             ],
             "title": "Sfondo Gruppi",
             "type": "string"
+          },
+          "stati_studio": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CustomStudyStatusIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stati di studio personalizzati",
+            "title": "Stati Studio"
           }
         },
         "title": "PreferencesSettings",
@@ -11532,6 +11605,19 @@
         "title": "SourcesView",
         "type": "object"
       },
+      "StatusUsage": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "StatusUsage",
+        "type": "object"
+      },
       "StudyLesson": {
         "properties": {
           "has_audio": {
@@ -11795,12 +11881,6 @@
             "title": "Last Read At"
           },
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -11831,12 +11911,6 @@
       "StudyStatusUpdate": {
         "properties": {
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           }
@@ -11927,12 +12001,6 @@
           },
           "status": {
             "default": "da-imparare",
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -33799,6 +33867,180 @@
         "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}": {
+      "delete": {
+        "operationId": "delete_status_api_v1_study_statuses__status_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteStatusResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina uno stato personalizzato e riporta le unità a in-apprendimento",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}/usage": {
+      "get": {
+        "operationId": "status_usage_api_v1_study_statuses__status_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Numero di unità con questo stato",
+        "tags": [
+          "studio"
         ]
       }
     },

@@ -144,10 +144,19 @@ class WebSearchSettings(BaseModel):
     contextual_verification: bool = Field(default=False, description="Cerca sul web durante la verifica contestuale")
 
 
+class CustomStudyStatusIn(BaseModel):
+    id: str = Field(max_length=16)
+    nome: str = Field(max_length=24)
+    colore: str = "text-amber-500"
+    icona: str = "Star"
+
+
 class PreferencesSettings(BaseModel):
     secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
+    stati_studio: Optional[List[CustomStudyStatusIn]] = Field(default=None, description="Stati di studio personalizzati")
+    ordine_stati_studio: Optional[List[str]] = Field(default=None, description="Ordine di tutti gli stati di studio")
 
 
 class RewriteSettings(BaseModel):

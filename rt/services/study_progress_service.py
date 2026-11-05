@@ -9,8 +9,44 @@ from rt.db.models import StudyUnit, utcnow
 from rt.db.session import read_scope, session_scope
 from rt.services.errors import NotFound
 
-StudyStatus = Literal["da-imparare", "in-apprendimento", "appreso", "ignorata"]
-STATUSES = ("da-imparare", "in-apprendimento", "appreso", "ignorata")
+StudyStatus = str
+DEFAULT_STATUSES = ("da-imparare", "in-apprendimento", "appreso", "ignorata")
+STATUSES = DEFAULT_STATUSES
+
+
+def custom_statuses() -> list[dict]:
+    try:
+        from rt.core.config import load_config
+        cfg = load_config()
+        return [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in getattr(cfg.ui, "study_statuses", [])]
+    except Exception:
+        return []
+
+
+def valid_statuses() -> set[str]:
+    return set(DEFAULT_STATUSES) | {s["id"] for s in custom_statuses() if isinstance(s, dict) and "id" in s}
+
+
+def delete_status_and_reassign(status_id: str) -> int:
+    """Riporta a in-apprendimento tutte le unità con lo stato eliminato."""
+    db = get_database()
+    if db is None:
+        return 0
+    with session_scope(db) as session:
+        units = list(session.scalars(select(StudyUnit).where(StudyUnit.status == status_id)))
+        count = len(units)
+        for u in units:
+            u.status = "in-apprendimento"
+            u.status_at = utcnow()
+        return count
+
+
+def count_units_with_status(status_id: str) -> int:
+    db = get_database()
+    if db is None:
+        return 0
+    with read_scope(db) as session:
+        return len(list(session.scalars(select(StudyUnit).where(StudyUnit.status == status_id))))
 
 
 def _at(value):
@@ -55,7 +91,7 @@ def _touch(lesson_id: int, lesson_dir: str, unit_id: str, values: dict) -> dict:
 
 
 def set_status(lesson_id: int, lesson_dir: str, unit_id: str, status: StudyStatus) -> dict:
-    if status not in STATUSES:
+    if status not in valid_statuses():
         raise ValueError("Stato di studio non valido.")
     return _touch(lesson_id, lesson_dir, unit_id, {"status": status, "status_at": utcnow()})
 
@@ -92,6 +128,8 @@ def summaries(lessons: dict[int, str]) -> dict[int, dict]:
             summary["study_learning"] += 1
         elif row.status == "ignorata":
             summary["study_ignored"] += 1
+        elif row.status != "da-imparare":
+            summary["study_learning"] += 1
         dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
         summary["study_last_at"] = max(dates) if dates else None
     return result
@@ -110,13 +148,16 @@ def restore_units(session, lesson_id: int, entries) -> None:
         at = datetime.fromisoformat(value)
         return at.astimezone(timezone.utc).replace(tzinfo=None) if at.tzinfo else at
 
+    statuses = valid_statuses()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         unit_id = entry.get("unit_id")
         status = entry.get("status")
-        if not isinstance(unit_id, str) or not 1 <= len(unit_id) <= 64 or status not in STATUSES:
+        if not isinstance(unit_id, str) or not 1 <= len(unit_id) <= 64:
             continue
+        if status not in statuses:
+            status = "in-apprendimento"
         try:
             status_at, last_read_at = date(entry.get("status_at")), date(entry.get("last_read_at"))
         except (ValueError, TypeError, OverflowError):

@@ -5,7 +5,8 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { StudyStatus } from '@/api/studyProgress'
-import { STATUS_LABELS, STUDY_ICONS } from './studyProgress'
+import { useSettings } from '@/api/settings'
+import { resolveStudyStatus, type CustomStudyStatus } from './studyProgress'
 import { cn } from '@/lib/utils'
 import { IrlenWarningModal } from './IrlenWarningModal'
 
@@ -45,7 +46,10 @@ export function ZenHeader({
     window.addEventListener('pointerdown', touch)
     return () => { cancel(); window.removeEventListener('pointermove', mouse); window.removeEventListener('pointerdown', touch) }
   }, [settings]) // oxlint-disable-line react-hooks/exhaustive-deps
+  const settingsQuery = useSettings()
+  const customStatuses = settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[] | undefined
   const currentStatus = status ?? 'da-imparare'
+  const currentDef = resolveStudyStatus(currentStatus, customStatuses)
   return <>
     <div className="rt-zen-hot" data-testid="zen-hot" aria-hidden />
     <div ref={bar} className="rt-zen-bar flex items-center gap-2 bg-background px-3" data-open={open || settings || undefined}
@@ -53,10 +57,10 @@ export function ZenHeader({
       onFocusCapture={show} onBlurCapture={leave}>
       {onStatus && (
         <IconButton
-          label={`Stato: ${STATUS_LABELS[currentStatus]} · S`}
-          aria-label={`Stato: ${STATUS_LABELS[currentStatus].toLocaleLowerCase('it')}`}
-          icon={STUDY_ICONS[currentStatus].icon}
-          className={cn(STUDY_ICONS[currentStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+          label={`Stato: ${currentDef.label} · S`}
+          aria-label={`Stato: ${currentDef.label.toLocaleLowerCase('it')}`}
+          icon={currentDef.icon}
+          className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
           onClick={onStatus}
           data-testid="zen-status"
         />

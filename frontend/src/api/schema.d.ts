@@ -3357,6 +3357,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/study/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina uno stato personalizzato e riporta le unità a in-apprendimento */
+        delete: operations["delete_status_api_v1_study_statuses__status_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/study/statuses/{status_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Numero di unità con questo stato */
+        get: operations["status_usage_api_v1_study_statuses__status_id__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subjects": {
         parameters: {
             query?: never;
@@ -5240,6 +5274,23 @@ export interface components {
              */
             varianti: boolean;
         };
+        /** CustomStudyStatusIn */
+        CustomStudyStatusIn: {
+            /**
+             * Colore
+             * @default text-amber-500
+             */
+            colore: string;
+            /**
+             * Icona
+             * @default Star
+             */
+            icona: string;
+            /** Id */
+            id: string;
+            /** Nome */
+            nome: string;
+        };
         /** Decision */
         Decision: {
             /** Actor */
@@ -5542,6 +5593,11 @@ export interface components {
              * @default true
              */
             update_document: boolean;
+        };
+        /** DeleteStatusResult */
+        DeleteStatusResult: {
+            /** Reassigned */
+            reassigned: number;
         };
         /** DescribeImagesRequest */
         DescribeImagesRequest: {
@@ -7377,6 +7433,11 @@ export interface components {
              */
             modalita_arricchimento: "manuale" | "automatica" | "disattivata";
             /**
+             * Ordine Stati Studio
+             * @description Ordine di tutti gli stati di studio
+             */
+            ordine_stati_studio?: string[] | null;
+            /**
              * Secondi Approvazione
              * @description Secondi per l'approvazione automatica della scaletta (0 = disattivata)
              * @default 10
@@ -7389,6 +7450,11 @@ export interface components {
              * @enum {string}
              */
             sfondo_gruppi: "colori" | "grigi" | "niente";
+            /**
+             * Stati Studio
+             * @description Stati di studio personalizzati
+             */
+            stati_studio?: components["schemas"]["CustomStudyStatusIn"][] | null;
         };
         /** PromptOverrideIn */
         PromptOverrideIn: {
@@ -8541,6 +8607,11 @@ export interface components {
              */
             unplaced: components["schemas"]["UnplacedMaterial"][];
         };
+        /** StatusUsage */
+        StatusUsage: {
+            /** Count */
+            count: number;
+        };
         /** StudyLesson */
         StudyLesson: {
             /** Has Audio */
@@ -8655,11 +8726,8 @@ export interface components {
         StudyProgress: {
             /** Last Read At */
             last_read_at?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            /** Status */
+            status: string;
             /** Status At */
             status_at?: string | null;
             /** Unit Id */
@@ -8667,11 +8735,8 @@ export interface components {
         };
         /** StudyStatusUpdate */
         StudyStatusUpdate: {
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            /** Status */
+            status: string;
         };
         /** StudyUnit */
         StudyUnit: {
@@ -8713,9 +8778,8 @@ export interface components {
             /**
              * Status
              * @default da-imparare
-             * @enum {string}
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            status: string;
             /** Status At */
             status_at?: string | null;
             /** Suggested Qtype */
@@ -24387,6 +24451,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebSearchTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_status_api_v1_study_statuses__status_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteStatusResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    status_usage_api_v1_study_statuses__status_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusUsage"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

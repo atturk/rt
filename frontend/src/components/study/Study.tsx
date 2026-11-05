@@ -43,7 +43,8 @@ import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './hig
 import { ZenHeader } from './ZenHeader'
 import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
-import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
+import { useSettings } from '@/api/settings'
+import { initialStudyUnit, nextStudyStatus, studyDate, resolveStudyStatus, resolveStatusOrder, type CustomStudyStatus } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
 
 function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
@@ -144,11 +145,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     params.delete('azione')
     navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
   }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
+  const settingsQuery = useSettings()
+  const customStatuses = (settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[]) ?? []
+  const savedOrder = (settingsQuery.data?.preferences?.ordine_stati_studio as string[]) ?? []
+  const statusOrder = resolveStatusOrder(customStatuses, savedOrder)
   const status = useStudyStatus(lesson?.id ?? 0)
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate
   const changeStatus = () => {
-    if (unit) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+    if (unit) {
+      const next = nextStudyStatus(live?.status, statusOrder)
+      status.mutate({ unitId: unit.id, status: next })
+      return next
+    }
   }
 
   useEffect(() => {
@@ -275,7 +284,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     label: string
     off?: boolean
     color?: number
-    status?: StudyUnit['status']
+    status?: string
     direction?: -1 | 1
   } | null>(null)
   useEffect(() => {
@@ -304,9 +313,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
 
   const handleStatusFromReader = () => {
-    changeStatus()
-    const next = nextStudyStatus(live?.status)
-    setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+    const next = changeStatus()
+    if (next) {
+      const def = resolveStudyStatus(next, customStatuses)
+      setNotice({ kind: 'status', status: next, label: def.label })
+    }
   }
 
   useEffect(() => {
@@ -640,8 +651,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
-        changeStatus()
-        if (zenActive) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
+        const next = changeStatus()
+        if (zenActive && next) {
+          const def = resolveStudyStatus(next, customStatuses)
+          setNotice({ kind: 'status', status: next, label: def.label })
+        }
       } else if (e.key === 'Escape') {
         if (popupState?.open) {
           e.preventDefault()
@@ -772,13 +786,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const currentUnitStatus = live.status ?? 'da-imparare'
+  const currentDef = resolveStudyStatus(currentUnitStatus, customStatuses)
   const rsvpTitle = (
     <div className="flex items-center gap-1.5 min-w-0">
       <IconButton
-        label={`Stato: ${STATUS_LABELS[currentUnitStatus]} · S`}
-        aria-label={`Stato: ${STATUS_LABELS[currentUnitStatus].toLocaleLowerCase('it')}`}
-        icon={STUDY_ICONS[currentUnitStatus].icon}
-        className={cn(STUDY_ICONS[currentUnitStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+        label={`Stato: ${currentDef.label} · S`}
+        aria-label={`Stato: ${currentDef.label.toLocaleLowerCase('it')}`}
+        icon={currentDef.icon}
+        className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
         onClick={handleStatusFromReader}
         data-testid="rsvp-status"
       />
@@ -786,6 +801,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </div>
   )
 
+  const liveDef = resolveStudyStatus(live.status ?? 'da-imparare', customStatuses)
   const headerActions = (
     <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
@@ -815,10 +831,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
-        label={STATUS_LABELS[live.status ?? 'da-imparare']}
-        aria-label={`Stato: ${STATUS_LABELS[live.status ?? 'da-imparare'].toLocaleLowerCase('it')}`}
-        icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
-        className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
+        label={liveDef.label}
+        aria-label={`Stato: ${liveDef.label.toLocaleLowerCase('it')}`}
+        icon={liveDef.icon}
+        className={liveDef.className}
         onClick={changeStatus}
         data-testid="study-status"
       />
@@ -892,9 +908,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))}
             status={live.status ?? 'da-imparare'}
             onStatus={() => {
-              changeStatus()
-              const next = nextStudyStatus(live?.status)
-              setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+              const next = changeStatus()
+              if (next) {
+                const def = resolveStudyStatus(next, customStatuses)
+                setNotice({ kind: 'status', status: next, label: def.label })
+              }
             }} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
             <div
@@ -1285,17 +1303,20 @@ function StudyShell({
 }
 
 function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void; pendingUnitIds?: Set<string> }) {
+  const settingsQuery = useSettings()
+  const customStatuses = (settingsQuery.data?.preferences?.stati_studio as CustomStudyStatus[]) ?? []
   return (
     <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
       {units.map((u, i) => {
         const hasPending = pendingUnitIds?.has(u.id)
-        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}${hasPending ? ' · Punto da verificare' : ''}`
+        const def = resolveStudyStatus(u.status ?? 'da-imparare', customStatuses)
+        const label = `${u.title}, ${def.label}${hasPending ? ' · Punto da verificare' : ''}`
         return <Tooltip key={u.id} content={label}>{(trigger) => <button {...trigger} type="button" aria-label={`Unità ${i + 1}: ${label}`}
           onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
           className="relative flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
+            u.status === 'appreso' ? 'bg-study-learned' : (u.status === 'in-apprendimento' || !def.isDefault) ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
           {hasPending && (
             <span
               data-testid="unit-pending-marker"
