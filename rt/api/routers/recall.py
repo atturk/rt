@@ -252,18 +252,24 @@ def answer(lesson_id: int, body: schemas.RecallAnswer, lesson_dir: LessonDir, ac
             return answer_quiz(lesson_dir, body.question_id, body.choice)
         except ValueError as exc:
             raise ApiError(422, "validation_error", str(exc))
+    if body.skip_followup:
+        from rt.services.recall_service import skip_recall_followup
+        skip_recall_followup(lesson_dir, body.question_id)
+        return JSONResponse(status_code=200, content={"message": "Approfondimento saltato."})
     answer_text = "[Non lo so]" if body.dont_know else (body.answer or "").strip()
     if not answer_text:
         raise ApiError(422, "validation_error", "Scrivi una risposta.")
     accepted = enqueue_job("recall_evaluate", lesson_dir,
-                           {"question_id": body.question_id, "answer": answer_text, "mock": body.mock}, actor)
+                           {"question_id": body.question_id, "answer": answer_text, "mock": body.mock,
+                            "is_followup": body.is_followup}, actor)
     return JSONResponse(status_code=202, content=accepted)
 
 
 @router.post("/lessons/{lesson_id}/recall/answer-voice", response_model=schemas.JobAccepted, status_code=202,
              summary="Risposta vocale a una domanda aperta: trascrizione e valutazione in un job")
 def answer_voice(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
-                 question_id: str = Form(...), audio: UploadFile = File(...), mock: bool = Form(False)):
+                 question_id: str = Form(...), audio: UploadFile = File(...), mock: bool = Form(False),
+                 is_followup: bool = Form(False)):
     from rt.api.routers.jobs import _save_uploads, _upload_dir, _with_upload_cleanup
     from rt.services.recall_service import find_question
     question = find_question(lesson_dir, question_id)
@@ -274,7 +280,8 @@ def answer_voice(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
     def _go():
         path = _save_uploads([audio], VOICE_SUFFIXES, target)[0]
         return enqueue_job("recall_evaluate", lesson_dir, {"question_id": question_id, "audio_path": path,
-                                                           "mock": mock, "upload_dir": target}, actor)
+                                                           "mock": mock, "upload_dir": target,
+                                                           "is_followup": is_followup}, actor)
     return _with_upload_cleanup(target, _go)
 
 

@@ -1,23 +1,28 @@
-import { SlidersHorizontal, X } from 'lucide-react'
+import { Headphones, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import type { StudyStatus } from '@/api/studyProgress'
-import { STATUS_LABELS, STUDY_ICONS } from './studyProgress'
+import { useSettings } from '@/api/settings'
+import { resolveStudyStatus, type CustomStudyStatus } from './studyProgress'
 import { cn } from '@/lib/utils'
 import { IrlenWarningModal } from './IrlenWarningModal'
 
 /** La barra segue il mouse e il focus, mai lo scroll del testo. */
 export function ZenHeader({
   title, settings, onSettings, onExit, irlen, onIrlen, hasNonYellowHighlight, status, onStatus,
+  hasAudio, audioOpen, onToggleAudio,
 }: {
   title: string; settings: boolean; onSettings: (open: boolean) => void; onExit: () => void
   irlen: RsvpPreference['irlen']; onIrlen: (value: RsvpPreference['irlen']) => void
   hasNonYellowHighlight?: boolean
   status?: StudyStatus
   onStatus?: () => void
+  hasAudio?: boolean
+  audioOpen?: boolean
+  onToggleAudio?: () => void
 }) {
   const [prefs, setPrefs] = useRsvpPrefs()
   const [showWarning, setShowWarning] = useState(false)
@@ -45,7 +50,10 @@ export function ZenHeader({
     window.addEventListener('pointerdown', touch)
     return () => { cancel(); window.removeEventListener('pointermove', mouse); window.removeEventListener('pointerdown', touch) }
   }, [settings]) // oxlint-disable-line react-hooks/exhaustive-deps
+  const settingsQuery = useSettings()
+  const customStatuses = settingsQuery.data?.stati_studio as CustomStudyStatus[] | undefined
   const currentStatus = status ?? 'da-imparare'
+  const currentDef = resolveStudyStatus(currentStatus, customStatuses)
   return <>
     <div className="rt-zen-hot" data-testid="zen-hot" aria-hidden />
     <div ref={bar} className="rt-zen-bar flex items-center gap-2 bg-background px-3" data-open={open || settings || undefined}
@@ -53,12 +61,23 @@ export function ZenHeader({
       onFocusCapture={show} onBlurCapture={leave}>
       {onStatus && (
         <IconButton
-          label={`Stato: ${STATUS_LABELS[currentStatus]} · S`}
-          aria-label={`Stato: ${STATUS_LABELS[currentStatus].toLocaleLowerCase('it')}`}
-          icon={STUDY_ICONS[currentStatus].icon}
-          className={cn(STUDY_ICONS[currentStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+          label={`Stato: ${currentDef.label} · S`}
+          aria-label={`Stato: ${currentDef.label.toLocaleLowerCase('it')}`}
+          icon={currentDef.icon}
+          className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
           onClick={onStatus}
           data-testid="zen-status"
+        />
+      )}
+      {hasAudio && onToggleAudio && (
+        <IconButton
+          label={audioOpen ? 'Chiudi player audio' : 'Player audio'}
+          icon={Headphones}
+          active={audioOpen}
+          aria-expanded={audioOpen}
+          className="size-7 min-w-7 [&_svg]:size-4"
+          onClick={onToggleAudio}
+          data-testid="zen-audio-player-btn"
         />
       )}
       <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{title}</span>

@@ -3,8 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 'react-router'
 import { GuidePage } from './guide'
-import { searchGuide } from '@/lib/guideDocs'
-import { HelpLink } from '@/components/guide/HelpLink'
+import { searchGuide, getGuidePage, GUIDE_PAGE_ORDER } from '@/lib/guideDocs'
+import { GuideMarkdown } from '@/components/guide/GuideMarkdown'
+import { ReturnAddressContext } from '@/lib/returnAddress'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Layout } from '@/components/Layout'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -76,6 +77,20 @@ describe('Guide offline documentation & search', () => {
     expect(screen.getByText(/xattr -dr com\.apple\.quarantine/)).toBeInTheDocument()
   })
 
+  it('con parametro ?cerca=1 il campo di ricerca riceve il focus', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida?cerca=1']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+          <Route path="/guida/:pagina" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const searchInput = screen.getByRole('searchbox', { name: 'Cerca nella guida' })
+    expect(searchInput).toHaveFocus()
+  })
+
   it('ricerca dalla barra e mostra i risultati con ancore', async () => {
     const user = userEvent.setup()
     render(
@@ -99,27 +114,15 @@ describe('Guide offline documentation & search', () => {
     expect(screen.getByTestId('guide-article')).toBeInTheDocument()
   })
 
-  it('PageHeader mostra il pulsante Guida · F1', () => {
+  it('PageHeader non mostra più il pulsante Guida · F1', () => {
     render(
       <MemoryRouter>
         <PageHeader title="Lezioni" />
       </MemoryRouter>,
     )
 
-    const helpLink = screen.getByRole('link', { name: 'Guida · F1' })
-    expect(helpLink).toHaveAttribute('href', '/guida')
-  })
-
-  it('HelpLink genera il link contestuale all’ancora indicata', () => {
-    render(
-      <MemoryRouter>
-        <HelpLink to="/guida/fonti#affidabilita" label="Guida sull'affidabilità" />
-      </MemoryRouter>,
-    )
-
-    const link = screen.getByTestId('help-link')
-    expect(link).toHaveAttribute('href', '/guida/fonti#affidabilita')
-    expect(link).toHaveAttribute('aria-label', "Guida sull'affidabilità")
+    const helpLink = screen.queryByRole('link', { name: 'Guida · F1' })
+    expect(helpLink).not.toBeInTheDocument()
   })
 
   it('premere F1 e Cmd+? apre /guida', async () => {
@@ -150,5 +153,74 @@ describe('Guide offline documentation & search', () => {
     await waitFor(() => {
       expect(screen.getByTestId('guida-route')).toBeInTheDocument()
     })
+  })
+
+  it('tutti i file in indice.yml esistono come pagine della guida', () => {
+    expect(GUIDE_PAGE_ORDER.length).toBeGreaterThan(0)
+    for (const slug of GUIDE_PAGE_ORDER) {
+      expect(getGuidePage(slug), `Il file ${slug}.md in indice.yml deve esistere`).toBeDefined()
+    }
+  })
+
+  it('GuideMarkdown renderizza correttamente le immagini e gestisce quelle mancanti', () => {
+    const markdown = [
+      '# Test immagini',
+      '![Immagine test](immagini/test-image.png)',
+      '![Immagine mancante](immagini/inesistente.png)',
+    ].join('\n')
+
+    render(<GuideMarkdown markdown={markdown} />)
+
+    const img = screen.getByRole('img', { name: 'Immagine test' })
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('loading', 'lazy')
+    expect(img).toHaveClass('max-w-full')
+
+    // Immagine mancante mostra testo alternativo in corsivo
+    expect(screen.getByText('Immagine mancante')).toHaveClass('italic')
+  })
+
+  it('bottone Indietro torna alla pagina di provenienza e non alle pagine precedenti della guida', () => {
+    // Senza pagina precedente (aperta direttamente), il link Indietro va a /
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/')
+  })
+
+  it('Indietro con ReturnAddressContext torna alla lezione ed esce dalla guida', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <ReturnAddressContext.Provider value="/lezioni/15">
+          <Routes>
+            <Route path="/guida" element={<GuidePage />} />
+          </Routes>
+        </ReturnAddressContext.Provider>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/lezioni/15')
+  })
+
+  it('Indietro da Impostazioni va a / e non a impostazioni', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <ReturnAddressContext.Provider value="/impostazioni/aspetto">
+          <Routes>
+            <Route path="/guida" element={<GuidePage />} />
+          </Routes>
+        </ReturnAddressContext.Provider>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/')
   })
 })

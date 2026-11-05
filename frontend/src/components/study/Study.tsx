@@ -1,8 +1,10 @@
 import { QuestionTypeChips } from '@/components/recall/QuestionTypeChips'
-import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
+import { Focus, Slash, BookOpen, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Sparkles, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
+import { AudioPlayer } from '@/components/lesson/AudioPlayer'
+import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
@@ -43,7 +45,8 @@ import { HIGHLIGHT_COLORS, useStudyHighlighter, type HighlightMode } from './hig
 import { ZenHeader } from './ZenHeader'
 import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
-import { initialStudyUnit, nextStudyStatus, STATUS_LABELS, STUDY_ICONS, studyDate } from './studyProgress'
+import { useSettings } from '@/api/settings'
+import { initialStudyUnit, nextStudyStatus, studyDate, resolveStudyStatus, resolveStatusOrder, type CustomStudyStatus } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
 
 function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
@@ -57,13 +60,42 @@ function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
  * si legge un'unità intera, poi le sue domande una alla volta, poi l'unità dopo;
  * l'indice "Unità N di M ▾" permette di saltare direttamente a qualsiasi unità.
  */
-export function StudyFlow({ lessons, onlyUnits = null, back }: {
+let sessionAudioPlayerOpen = false
+// oxlint-disable-next-line react/only-export-components
+export function resetSessionAudioPlayer() {
+  sessionAudioPlayerOpen = false
+}
+
+export function StudyFlow(props: {
   /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
   lessons: Lesson[]
   /** Solo queste unità, partendo dalle domande (Domande su questa parte). */
   onlyUnits?: string[] | null
   back: { to: string; label: string }
 }) {
+  return (
+    <AudioProvider>
+      <StudyFlowInner {...props} />
+    </AudioProvider>
+  )
+}
+
+function StudyFlowInner({ lessons, onlyUnits = null, back }: {
+  /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
+  lessons: Lesson[]
+  /** Solo queste unità, partendo dalle domande (Domande su questa parte). */
+  onlyUnits?: string[] | null
+  back: { to: string; label: string }
+}) {
+  const { audioRef, currentTime, seek } = useLessonAudio()
+  const [audioPlayerOpen, setAudioPlayerOpenState] = useState(sessionAudioPlayerOpen)
+  const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+    setAudioPlayerOpenState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value
+      sessionAudioPlayerOpen = next
+      return next
+    })
+  }
   const [zenMinHeight, setZenMinHeight] = useState(0)
   const readingScroll = useRef(0)
   const anchor = useRef<{ node: Element; top: number } | null>(null)
@@ -144,11 +176,19 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     params.delete('azione')
     navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
   }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
+  const settingsQuery = useSettings()
+  const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
+  const savedOrder = (settingsQuery.data?.ordine_stati_studio as string[]) ?? []
+  const statusOrder = resolveStatusOrder(customStatuses, savedOrder)
   const status = useStudyStatus(lesson?.id ?? 0)
   const read = useStudyRead(lesson?.id ?? 0)
   const markRead = read.mutate
   const changeStatus = () => {
-    if (unit) status.mutate({ unitId: unit.id, status: nextStudyStatus(live?.status) })
+    if (unit) {
+      const next = nextStudyStatus(live?.status, statusOrder)
+      status.mutate({ unitId: unit.id, status: next })
+      return next
+    }
   }
 
   useEffect(() => {
@@ -275,7 +315,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     label: string
     off?: boolean
     color?: number
-    status?: StudyUnit['status']
+    status?: string
     direction?: -1 | 1
   } | null>(null)
   useEffect(() => {
@@ -304,9 +344,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   }
 
   const handleStatusFromReader = () => {
-    changeStatus()
-    const next = nextStudyStatus(live?.status)
-    setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+    const next = changeStatus()
+    if (next) {
+      const def = resolveStudyStatus(next, customStatuses)
+      setNotice({ kind: 'status', status: next, label: def.label })
+    }
   }
 
   useEffect(() => {
@@ -640,8 +682,11 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           label: mode === 'verifica' ? (next ? 'Verifica attiva' : 'Verifica spenta') : (next ? 'Chiedi attivo' : 'Chiedi spento') })
       } else if (key === 's') {
         e.preventDefault()
-        changeStatus()
-        if (zenActive) { const next = nextStudyStatus(live?.status); setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] }) }
+        const next = changeStatus()
+        if (zenActive && next) {
+          const def = resolveStudyStatus(next, customStatuses)
+          setNotice({ kind: 'status', status: next, label: def.label })
+        }
       } else if (e.key === 'Escape') {
         if (popupState?.open) {
           e.preventDefault()
@@ -655,14 +700,22 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           e.preventDefault()
           toggleZen()
         }
-      } else if (arrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault()
-        navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (audioPlayerOpen) {
+          e.preventDefault()
+          const audio = audioRef.current
+          const curTime = audio ? audio.currentTime : currentTime
+          const isPlaying = audio ? !audio.paused : false
+          seek(curTime + (e.key === 'ArrowRight' ? 5 : -5), isPlaying)
+        } else if (arrows) {
+          e.preventDefault()
+          navigateReading(e.key === 'ArrowLeft' ? -1 : 1)
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, generateOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -751,7 +804,8 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       </StudyShell>
     )
   }
-  const audio = loaded.has_audio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
+  const hasAudio = Boolean(loaded?.has_audio)
+  const audio = hasAudio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
   const titleButton = (
@@ -772,13 +826,14 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
   )
 
   const currentUnitStatus = live.status ?? 'da-imparare'
+  const currentDef = resolveStudyStatus(currentUnitStatus, customStatuses)
   const rsvpTitle = (
     <div className="flex items-center gap-1.5 min-w-0">
       <IconButton
-        label={`Stato: ${STATUS_LABELS[currentUnitStatus]} · S`}
-        aria-label={`Stato: ${STATUS_LABELS[currentUnitStatus].toLocaleLowerCase('it')}`}
-        icon={STUDY_ICONS[currentUnitStatus].icon}
-        className={cn(STUDY_ICONS[currentUnitStatus].className, 'size-7 min-w-7 [&_svg]:size-4')}
+        label={`Stato: ${currentDef.label} · S`}
+        aria-label={`Stato: ${currentDef.label.toLocaleLowerCase('it')}`}
+        icon={currentDef.icon}
+        className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
         onClick={handleStatusFromReader}
         data-testid="rsvp-status"
       />
@@ -786,6 +841,7 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
     </div>
   )
 
+  const liveDef = resolveStudyStatus(live.status ?? 'da-imparare', customStatuses)
   const headerActions = (
     <div className="flex items-center gap-1.5 max-md:gap-0.5" data-testid="study-header-tools">
       <IconButton label="Modalità zen · Z" icon={Focus} onClick={toggleZen} data-testid="study-zen-btn" />
@@ -815,10 +871,10 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
       />
       <span className="mx-0.5 h-4 w-px bg-border max-md:hidden" aria-hidden />
       <IconButton
-        label={STATUS_LABELS[live.status ?? 'da-imparare']}
-        aria-label={`Stato: ${STATUS_LABELS[live.status ?? 'da-imparare'].toLocaleLowerCase('it')}`}
-        icon={STUDY_ICONS[live.status ?? 'da-imparare'].icon}
-        className={STUDY_ICONS[live.status ?? 'da-imparare'].className}
+        label={liveDef.label}
+        aria-label={`Stato: ${liveDef.label.toLocaleLowerCase('it')}`}
+        icon={liveDef.icon}
+        className={liveDef.className}
         onClick={changeStatus}
         data-testid="study-status"
       />
@@ -831,6 +887,16 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
         unavailable={textRoot ? null : 'attendi il testo'}
         data-testid="study-rsvp-btn"
       />
+      {hasAudio && (
+        <IconButton
+          label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+          icon={Headphones}
+          active={audioPlayerOpen}
+          aria-expanded={audioPlayerOpen}
+          onClick={() => setAudioPlayerOpen((v) => !v)}
+          data-testid="study-audio-player-btn"
+        />
+      )}
       <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
@@ -848,6 +914,16 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
 
   const rsvpActions = <div className="flex items-center gap-1">
     <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    {hasAudio && (
+      <IconButton
+        label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+        icon={Headphones}
+        active={audioPlayerOpen}
+        aria-expanded={audioPlayerOpen}
+        onClick={() => setAudioPlayerOpen((v) => !v)}
+        data-testid="rsvp-audio-player-btn"
+      />
+    )}
     <div ref={settingsButton}><IconButton label="Impostazioni della lettura veloce" icon={SlidersHorizontal} aria-expanded={readerSettings} active={readerSettings} onClick={() => setReaderSettings(!readerSettings)} /></div>
     <IconButton label="Contesto" icon={TextQuote} aria-pressed={readerContext} active={readerContext} onClick={() => setReaderContext(!readerContext)} />
     <UnitIndexMenu units={liveUnits} unitIndex={unitIndex} open={indexOpen} onOpenChange={setIndexOpen} onSelectUnit={goToUnit} pendingUnitIds={pendingUnitIds} />
@@ -891,10 +967,15 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
             irlen={rsvpPrefs.irlen} onIrlen={irlen => setRsvpPrefs({ ...rsvpPrefs, irlen })}
             hasNonYellowHighlight={Boolean(textRoot?.querySelector('.rt-hl-1, .rt-hl-2, .rt-hl-3, .rt-hl-4'))}
             status={live.status ?? 'da-imparare'}
+            hasAudio={hasAudio}
+            audioOpen={audioPlayerOpen}
+            onToggleAudio={() => setAudioPlayerOpen((v) => !v)}
             onStatus={() => {
-              changeStatus()
-              const next = nextStudyStatus(live?.status)
-              setNotice({ kind: 'status', status: next, label: STATUS_LABELS[next] })
+              const next = changeStatus()
+              if (next) {
+                const def = resolveStudyStatus(next, customStatuses)
+                setNotice({ kind: 'status', status: next, label: def.label })
+              }
             }} /> : undefined}
           notice={(zenActive || speedReading) && notice ? (
             <div
@@ -1104,6 +1185,9 @@ export function StudyFlow({ lessons, onlyUnits = null, back }: {
           />
         </div>
       )}
+      {audioPlayerOpen && lesson?.id && (
+        <AudioPlayer lessonId={lesson.id} className="z-30" />
+      )}
     </>
   )
 }
@@ -1285,17 +1369,20 @@ function StudyShell({
 }
 
 function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]; current: number; onSelect: (index: number) => void; pendingUnitIds?: Set<string> }) {
+  const settingsQuery = useSettings()
+  const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
   return (
     <div className="mb-6 mt-1 flex items-center gap-1" data-testid="study-dots">
       {units.map((u, i) => {
         const hasPending = pendingUnitIds?.has(u.id)
-        const label = `${u.title}, ${STATUS_LABELS[u.status ?? 'da-imparare']}${hasPending ? ' · Punto da verificare' : ''}`
+        const def = resolveStudyStatus(u.status ?? 'da-imparare', customStatuses)
+        const label = `${u.title}, ${def.label}${hasPending ? ' · Punto da verificare' : ''}`
         return <Tooltip key={u.id} content={label}>{(trigger) => <button {...trigger} type="button" aria-label={`Unità ${i + 1}: ${label}`}
           onClick={() => onSelect(i)} aria-current={i === current ? 'step' : undefined}
           className="relative flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
+            u.status === 'appreso' ? 'bg-study-learned' : (u.status === 'in-apprendimento' || !def.isDefault) ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
           {hasPending && (
             <span
               data-testid="unit-pending-marker"

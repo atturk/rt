@@ -140,6 +140,7 @@ const settingsArea: Area = {
         { path: 'telegram', Component: page(settings, (m) => m.TelegramSettingsPage) },
         { path: 'accesso', Component: page(settings, (m) => m.DeviceSettingsPage) },
         { path: 'info-aggiornamenti', Component: page(settings, (m) => m.InfoSettingsPage) },
+        { path: 'guida', element: <Navigate to="/guida" replace /> },
         ...Object.entries(SETTINGS_REDIRECTS).map(([path, section]) => ({ path, element: <SettingsLegacyRedirect section={section} /> })),
       ],
     },

@@ -2,6 +2,12 @@ import { type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { slugify } from '@/lib/guideDocs'
 
+const imageModules = import.meta.glob('../../../../docs/guida/immagini/*', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
 function renderInline(text: string): ReactNode[] {
   // Regex per catturare inline code, link, bold, italic
   const parts: ReactNode[] = []
@@ -178,6 +184,38 @@ export function GuideMarkdown({ markdown }: { markdown: string }) {
     // Blank line
     if (!trimmed) {
       flushList()
+      continue
+    }
+
+    // Image on a line of its own: ![alt](immagini/name.png)
+    const imgMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+    if (imgMatch) {
+      flushList()
+      flushBlockquote()
+      const altText = imgMatch[1]
+      const rawPath = imgMatch[2].trim()
+      const fileName = rawPath.replace(/^(\.\/)?immagini\//, '')
+      const matchKey = Object.keys(imageModules).find(
+        (k) => k.endsWith('/' + fileName) || k === fileName,
+      )
+      const url = matchKey ? imageModules[matchKey] : null
+      if (url) {
+        elements.push(
+          <img
+            key={key++}
+            src={url}
+            alt={altText}
+            loading="lazy"
+            className="my-4 max-w-full rounded border border-border/60"
+          />,
+        )
+      } else {
+        elements.push(
+          <p key={key++} className="my-3 italic text-muted-foreground">
+            {altText}
+          </p>,
+        )
+      }
       continue
     }
 

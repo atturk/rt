@@ -156,10 +156,11 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         assert kwargs["storage_path"] == str(data / "webview")
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
-            "Guida di RT", "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
+            "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
             "Ripristina dati prima di un aggiornamento…",
             "Diagnostica", "Autenticazione", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
+        assert kwargs["menu"][1].title == "Aiuto"
         update_item = next(x for x in items if getattr(x, "title", None) == "Controlla aggiornamenti…")
         update_item.function()
         webview.create_window.assert_called_with(
@@ -243,7 +244,7 @@ def test_window_smoke_does_not_hide_failure(data, monkeypatch, webview):
 
 def test_smoke_reads_the_native_page(data, monkeypatch):
     monkeypatch.setattr("rt._window_smoke.downloads", lambda window: ["lezione.zip", "nota.md", "domande.json"])
-    monkeypatch.setattr("rt._window_smoke.macos_menu", lambda: ["Esci da RT", "Modifica"])
+    monkeypatch.setattr("rt._window_smoke.macos_menu", lambda: ["Esci da RT", "Modifica", "Aiuto"])
     fake = Mock()
     fake.evaluate_js.side_effect = ["RT", True]
     fake.get_current_url.return_value = "http://127.0.0.1:8765/"
@@ -454,7 +455,8 @@ def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     exit_item = SimpleNamespace(title=lambda: 'Esci da RT', target=lambda: object(), keyEquivalent=lambda: 'q')
     app_menu = SimpleNamespace(title=lambda: 'RT', itemArray=lambda: [about_item, exit_item])
     roots = [SimpleNamespace(title=lambda: '', submenu=lambda: app_menu),
-             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica'))]
+             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica')),
+             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Aiuto'))]
     main = SimpleNamespace(itemArray=lambda: roots, itemAtIndex_=lambda index: roots[index])
     appkit = ModuleType('AppKit')
     appkit.NSApplication = SimpleNamespace(sharedApplication=lambda: SimpleNamespace(mainMenu=lambda: main))
@@ -462,7 +464,7 @@ def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     objc_tools.AppHelper = SimpleNamespace(callAfter=lambda callback: callback())
     monkeypatch.setitem(sys.modules, 'AppKit', appkit)
     monkeypatch.setitem(sys.modules, 'PyObjCTools', objc_tools)
-    assert macos_menu() == ['Esci da RT', 'Modifica']
+    assert macos_menu() == ['Esci da RT', 'Modifica', 'Aiuto']
 
 
 def test_about_options():
@@ -505,14 +507,35 @@ def test_windows_menu_has_about(monkeypatch, webview):
     assert items[0].title == "Informazioni su RT"
 
 
-def test_menu_has_guida_and_opens_route(monkeypatch, webview):
+def test_menu_has_aiuto_menu_with_search_and_pages(monkeypatch, webview):
     win = webview.create_window.return_value
     menu = window._menu(win, "http://127.0.0.1:8765")
-    items = menu[0].items
-    guida_item = next(item for item in items if getattr(item, "title", None) == "Guida di RT")
-    assert guida_item is not None
-    guida_item.function()
-    win.load_url.assert_called_with("http://127.0.0.1:8765/guida")
+    # "Guida di RT" non è più nel menu principale RT
+    rt_items = menu[0].items
+    assert not any(getattr(item, "title", None) == "Guida di RT" for item in rt_items)
+
+    # Menu "Aiuto"
+    aiuto = next(m for m in menu if m.title == "Aiuto")
+    assert aiuto is not None
+    assert len(aiuto.items) >= 2
+
+    # Prima voce: "Cerca nella guida…"
+    cerca_item = aiuto.items[0]
+    assert cerca_item.title == "Cerca nella guida…"
+    cerca_item.function()
+    win.load_url.assert_called_with("http://127.0.0.1:8765/guida?cerca=1")
+
+    # Pagine della guida come sottomenu
+    page_menus = [it for it in aiuto.items[1:] if hasattr(it, "items")]
+    assert len(page_menus) >= 1
+    # Verifica una pagina specifica, es. index o installazione
+    install_menu = next((m for m in page_menus if m.title == "Installazione"), None)
+    assert install_menu is not None
+    # Ha le sezioni della pagina
+    assert len(install_menu.items) >= 1
+    first_sec = install_menu.items[0]
+    first_sec.function()
+    assert win.load_url.call_args[0][0].startswith("http://127.0.0.1:8765/guida/installazione#")
 
 
 def test_backup_stream_events_in_order(monkeypatch):

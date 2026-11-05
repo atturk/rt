@@ -1,7 +1,7 @@
 import { useReturnAddress } from '@/lib/returnAddress'
 import { ChevronRight, LogOut, Wand2 } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
@@ -64,6 +64,12 @@ export function SettingsLayout() {
             <span>{s.label}{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}</span>
             {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
           </NavLink>)}
+          <Link to="/guida"
+            className={cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body hover:bg-muted',
+              phone ? 'border-b' : '')}>
+            <span>Guida{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}</span>
+            {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
+          </Link>
         </nav>}
         {(!phone || !index) && <div className="min-w-0 flex-1">
           {!phone && <h2 className="mb-4 text-heading font-semibold">{current.label}</h2>}<Outlet />

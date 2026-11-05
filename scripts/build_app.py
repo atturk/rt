@@ -33,7 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PBS_API = "https://api.github.com/repos/astral-sh/python-build-standalone/releases/{release}"
 TRIPLES = {"macos": "aarch64-apple-darwin", "windows": "x86_64-pc-windows-msvc"}
 ASSET_NAMES = {"macos": "RT-{version}-macos-arm64.dmg", "windows": "RT-{version}-windows-x64-setup.exe"}
-CODE = ("rt", "bin", "config.example", "VERSION", "CHANGELOG.md", "requirements.txt", "constraints.txt")
+CODE = ("rt", "bin", "config.example", "VERSION", "CHANGELOG.md", "requirements.txt", "constraints.txt", os.path.join("docs", "guida"))
 BUNDLE_ID = "com.atturk.rt"
 
 

@@ -418,10 +418,26 @@ RecallOutcome = Literal["corretta", "parziale", "sbagliata"]
 class RecallEvaluation(str):
     """Testo compatibile con CLI/bot, accompagnato dall'esito da salvare nella risposta."""
     outcome: Optional[RecallOutcome]
+    correttezza: Optional[int]
+    completezza: Optional[int]
+    attinenza: Optional[int]
+    domanda_followup: Optional[str]
 
-    def __new__(cls, text: str, outcome: Optional[RecallOutcome] = None):
+    def __new__(
+        cls,
+        text: str,
+        outcome: Optional[RecallOutcome] = None,
+        correttezza: Optional[int] = None,
+        completezza: Optional[int] = None,
+        attinenza: Optional[int] = None,
+        domanda_followup: Optional[str] = None,
+    ):
         result = super().__new__(cls, text)
         result.outcome = outcome
+        result.correttezza = correttezza
+        result.completezza = completezza
+        result.attinenza = attinenza
+        result.domanda_followup = domanda_followup
         return result
 
 
@@ -437,6 +453,17 @@ class RecallAnswer(BaseModel):
     vote_comment: Optional[str] = None
     dont_know: bool = False
     answered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    correttezza: Optional[int] = None
+    completezza: Optional[int] = None
+    attinenza: Optional[int] = None
+    domanda_followup: Optional[str] = None
+    followup_question: Optional[str] = None
+    followup_answer: Optional[str] = None
+    followup_evaluation: Optional[str] = None
+    followup_is_voice: bool = False
+    followup_correttezza: Optional[int] = None
+    followup_completezza: Optional[int] = None
+    followup_attinenza: Optional[int] = None
 
 class RecallBank(BaseModel):
     schema_version: str = "1.0"

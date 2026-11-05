@@ -940,6 +940,11 @@
             "title": "Audio",
             "type": "string"
           },
+          "is_followup": {
+            "default": false,
+            "title": "Is Followup",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -3999,6 +4004,36 @@
         "title": "CustomQuestionType",
         "type": "object"
       },
+      "CustomStudyStatusIn": {
+        "properties": {
+          "colore": {
+            "default": "text-amber-500",
+            "title": "Colore",
+            "type": "string"
+          },
+          "icona": {
+            "default": "Star",
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 16,
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 24,
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "nome"
+        ],
+        "title": "CustomStudyStatusIn",
+        "type": "object"
+      },
       "Decision": {
         "properties": {
           "actor": {
@@ -4562,6 +4597,19 @@
           }
         },
         "title": "DeleteImagesRequest",
+        "type": "object"
+      },
+      "DeleteStatusResult": {
+        "properties": {
+          "reassigned": {
+            "title": "Reassigned",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reassigned"
+        ],
+        "title": "DeleteStatusResult",
         "type": "object"
       },
       "DescribeImagesRequest": {
@@ -8864,6 +8912,11 @@
             "title": "Dont Know",
             "type": "boolean"
           },
+          "is_followup": {
+            "default": false,
+            "title": "Is Followup",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -8872,6 +8925,11 @@
           "question_id": {
             "title": "Question Id",
             "type": "string"
+          },
+          "skip_followup": {
+            "default": false,
+            "title": "Skip Followup",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8901,6 +8959,50 @@
             ],
             "title": "Attempt Id"
           },
+          "attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attinenza"
+          },
+          "completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completezza"
+          },
+          "correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correttezza"
+          },
+          "domanda_followup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domanda Followup"
+          },
           "dont_know": {
             "default": false,
             "title": "Dont Know",
@@ -8916,6 +9018,77 @@
               }
             ],
             "title": "Evaluation"
+          },
+          "followup_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Answer"
+          },
+          "followup_attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Attinenza"
+          },
+          "followup_completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Completezza"
+          },
+          "followup_correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Correttezza"
+          },
+          "followup_evaluation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Evaluation"
+          },
+          "followup_is_voice": {
+            "default": false,
+            "title": "Followup Is Voice",
+            "type": "boolean"
+          },
+          "followup_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Question"
           },
           "is_voice": {
             "default": false,
@@ -9838,9 +10011,119 @@
             "title": "Answer Text",
             "type": "string"
           },
+          "attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attinenza"
+          },
+          "completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completezza"
+          },
+          "correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correttezza"
+          },
+          "domanda_followup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domanda Followup"
+          },
           "evaluation": {
             "title": "Evaluation",
             "type": "string"
+          },
+          "followup_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Answer"
+          },
+          "followup_attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Attinenza"
+          },
+          "followup_completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Completezza"
+          },
+          "followup_correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Correttezza"
+          },
+          "followup_evaluation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Evaluation"
+          },
+          "followup_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Question"
           },
           "outcome": {
             "anyOf": [
@@ -10930,6 +11213,14 @@
           "notices": {
             "$ref": "#/components/schemas/NoticeSettings"
           },
+          "ordine_stati_studio": {
+            "description": "Ordine di tutti gli stati di studio",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordine Stati Studio",
+            "type": "array"
+          },
           "phases": {
             "description": "Modello assegnato a ciascuna fase LLM",
             "items": {
@@ -10967,6 +11258,14 @@
             "description": "True se manca un passo obbligatorio della configurazione e la SPA apre la configurazione guidata (oggi nessuno: le lezioni stanno nel database della cartella dati)",
             "title": "Setup Required",
             "type": "boolean"
+          },
+          "stati_studio": {
+            "description": "Stati di studio personalizzati",
+            "items": {
+              "$ref": "#/components/schemas/CustomStudyStatusIn"
+            },
+            "title": "Stati Studio",
+            "type": "array"
           },
           "telegram": {
             "$ref": "#/components/schemas/TelegramSettings"
@@ -11532,6 +11831,19 @@
         "title": "SourcesView",
         "type": "object"
       },
+      "StatusUsage": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "StatusUsage",
+        "type": "object"
+      },
       "StudyLesson": {
         "properties": {
           "has_audio": {
@@ -11795,12 +12107,6 @@
             "title": "Last Read At"
           },
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -11831,12 +12137,6 @@
       "StudyStatusUpdate": {
         "properties": {
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           }
@@ -11845,6 +12145,28 @@
           "status"
         ],
         "title": "StudyStatusUpdate",
+        "type": "object"
+      },
+      "StudyStatusesUpdate": {
+        "properties": {
+          "ordine_stati_studio": {
+            "description": "Ordine di tutti gli stati di studio",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordine Stati Studio",
+            "type": "array"
+          },
+          "stati_studio": {
+            "description": "Stati di studio personalizzati",
+            "items": {
+              "$ref": "#/components/schemas/CustomStudyStatusIn"
+            },
+            "title": "Stati Studio",
+            "type": "array"
+          }
+        },
+        "title": "StudyStatusesUpdate",
         "type": "object"
       },
       "StudyUnit": {
@@ -11927,12 +12249,6 @@
           },
           "status": {
             "default": "da-imparare",
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -33037,6 +33353,92 @@
         ]
       }
     },
+    "/api/v1/settings/study-statuses": {
+      "put": {
+        "operationId": "put_study_statuses_api_v1_settings_study_statuses_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyStatusesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salva stati di studio personalizzati",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/telegram": {
       "put": {
         "operationId": "put_telegram_api_v1_settings_telegram_put",
@@ -33799,6 +34201,180 @@
         "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}": {
+      "delete": {
+        "operationId": "delete_status_api_v1_study_statuses__status_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteStatusResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina uno stato personalizzato e riporta le unità a in-apprendimento",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}/usage": {
+      "get": {
+        "operationId": "status_usage_api_v1_study_statuses__status_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Numero di unità con questo stato",
+        "tags": [
+          "studio"
         ]
       }
     },
