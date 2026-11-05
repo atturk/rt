@@ -6,6 +6,7 @@ import { GuidePage } from './guide'
 import { searchGuide, getGuidePage, GUIDE_PAGE_ORDER } from '@/lib/guideDocs'
 import { GuideMarkdown } from '@/components/guide/GuideMarkdown'
 import { HelpLink } from '@/components/guide/HelpLink'
+import { ReturnAddressContext } from '@/lib/returnAddress'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Layout } from '@/components/Layout'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -190,5 +191,49 @@ describe('Guide offline documentation & search', () => {
 
     // Immagine mancante mostra testo alternativo in corsivo
     expect(screen.getByText('Immagine mancante')).toHaveClass('italic')
+  })
+
+  it('bottone Indietro torna alla pagina di provenienza e non alle pagine precedenti della guida', () => {
+    // Senza pagina precedente (aperta direttamente), il link Indietro va a /
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <Routes>
+          <Route path="/guida" element={<GuidePage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/')
+  })
+
+  it('Indietro con ReturnAddressContext torna alla lezione ed esce dalla guida', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <ReturnAddressContext.Provider value="/lezioni/15">
+          <Routes>
+            <Route path="/guida" element={<GuidePage />} />
+          </Routes>
+        </ReturnAddressContext.Provider>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/lezioni/15')
+  })
+
+  it('Indietro da Impostazioni va a / e non a impostazioni', () => {
+    render(
+      <MemoryRouter initialEntries={['/guida']}>
+        <ReturnAddressContext.Provider value="/impostazioni/aspetto">
+          <Routes>
+            <Route path="/guida" element={<GuidePage />} />
+          </Routes>
+        </ReturnAddressContext.Provider>
+      </MemoryRouter>,
+    )
+
+    const backBtn = screen.getByRole('link', { name: 'Indietro' })
+    expect(backBtn).toHaveAttribute('href', '/')
   })
 })

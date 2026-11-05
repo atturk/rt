@@ -55,11 +55,19 @@ export function GuidePage() {
     }
   }, [location.pathname, location.hash, query])
 
+  const backTarget =
+    !returnAddress ||
+    returnAddress === '/' ||
+    returnAddress.startsWith('/guida') ||
+    returnAddress.startsWith('/impostazioni')
+      ? '/'
+      : returnAddress
+
   return (
     <div className="flex min-h-dvh flex-col bg-background" data-testid="guide-page">
       <PageHeader
         title="Guida di RT"
-        back={{ to: returnAddress, label: 'Indietro' }}
+        back={{ to: backTarget, label: 'Indietro' }}
         help={false}
       />
 
