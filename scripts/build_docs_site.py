@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import yaml
 
 # Assicura che rt sia importabile
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,17 +15,65 @@ if ROOT_DIR not in sys.path:
 from rt.core.donazioni import DONAZIONI_URL
 
 
+def read_guide_index(guida_src: str) -> list[str]:
+    index_file = os.path.join(guida_src, "indice.yml")
+    if not os.path.isfile(index_file):
+        return []
+    with open(index_file, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or []
+    files = []
+    for item in data:
+        slug = item.get("file") if isinstance(item, dict) else item
+        if slug:
+            files.append(str(slug))
+    return files
+
+
 def prepare_site_docs(target_dir: str = "site_docs") -> None:
     os.makedirs(target_dir, exist_ok=True)
     guida_target = os.path.join(target_dir, "guida")
     os.makedirs(guida_target, exist_ok=True)
 
-    # Copia file della guida
     guida_src = os.path.join(ROOT_DIR, "docs", "guida")
+    guide_files = read_guide_index(guida_src)
+    nav_guida = []
+
+    # Copia solo i file della guida elencati nell'indice
     if os.path.isdir(guida_src):
-        for name in os.listdir(guida_src):
-            if name.endswith(".md"):
-                shutil.copy2(os.path.join(guida_src, name), os.path.join(guida_target, name))
+        for slug in guide_files:
+            src_md = os.path.join(guida_src, f"{slug}.md")
+            if os.path.isfile(src_md):
+                shutil.copy2(src_md, os.path.join(guida_target, f"{slug}.md"))
+                title = slug
+                with open(src_md, "r", encoding="utf-8") as f:
+                    for line in f:
+                        trimmed = line.strip()
+                        if trimmed.startswith("# "):
+                            title = trimmed[2:].strip()
+                            break
+                nav_guida.append({title: f"guida/{slug}.md"})
+
+    # Copia immagini della guida
+    immagini_src = os.path.join(guida_src, "immagini")
+    immagini_target = os.path.join(guida_target, "immagini")
+    if os.path.isdir(immagini_src):
+        os.makedirs(immagini_target, exist_ok=True)
+        for name in os.listdir(immagini_src):
+            src_file = os.path.join(immagini_src, name)
+            if os.path.isfile(src_file):
+                shutil.copy2(src_file, os.path.join(immagini_target, name))
+
+    # Aggiorna la nav in mkdocs.yml
+    mkdocs_file = os.path.join(ROOT_DIR, "mkdocs.yml")
+    if os.path.isfile(mkdocs_file):
+        with open(mkdocs_file, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+        config["nav"] = [
+            {"Home": "index.md"},
+            {"Guida": nav_guida}
+        ]
+        with open(mkdocs_file, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, allow_unicode=True, sort_keys=False)
 
     # Copia immagini del sito
     img_src = os.path.join(ROOT_DIR, "docs", "sito", "img")

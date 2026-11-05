@@ -40,28 +40,26 @@ export function normalizeSearchText(text: string): string {
     .toLowerCase()
 }
 
-// Inclusione a build time di tutti i file markdown della guida
+// Inclusione a build time di tutti i file markdown della guida e dell'indice
+import rawIndex from '../../../docs/guida/indice.yml?raw'
+
 const rawFiles = import.meta.glob('../../../docs/guida/*.md', {
   query: '?raw',
   eager: true,
 }) as Record<string, string | { default: string }>
 
-const PAGE_ORDER = [
-  'index',
-  'installazione',
-  'chiavi-e-costi',
-  'nuova-lezione',
-  'fonti',
-  'verifica',
-  'studio',
-  'ripasso',
-  'calendario',
-  'file-di-rt',
-  'iphone-e-agenti',
-  'backup-e-aggiornamenti',
-  'problemi',
-  'privacy',
-]
+export function parseGuideIndex(yamlText: string): string[] {
+  const files: string[] = []
+  for (const line of yamlText.split(/\r?\n/)) {
+    const match = line.match(/^\s*-\s*file:\s*([a-zA-Z0-9_-]+)/)
+    if (match) {
+      files.push(match[1])
+    }
+  }
+  return files
+}
+
+export const GUIDE_PAGE_ORDER = parseGuideIndex(rawIndex)
 
 function parseMarkdownDocument(slug: string, raw: string): GuidePage {
   const lines = raw.split(/\r?\n/)
@@ -126,15 +124,9 @@ for (const [path, mod] of Object.entries(rawFiles)) {
 
 export function getGuidePages(): GuidePage[] {
   const ordered: GuidePage[] = []
-  for (const slug of PAGE_ORDER) {
+  for (const slug of GUIDE_PAGE_ORDER) {
     const p = parsedPages.get(slug)
     if (p) ordered.push(p)
-  }
-  // Se ci sono altre pagine non elencate in PAGE_ORDER
-  for (const [slug, page] of parsedPages.entries()) {
-    if (!PAGE_ORDER.includes(slug)) {
-      ordered.push(page)
-    }
   }
   return ordered
 }

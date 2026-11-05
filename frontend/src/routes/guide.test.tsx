@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 'react-router'
 import { GuidePage } from './guide'
-import { searchGuide } from '@/lib/guideDocs'
+import { searchGuide, getGuidePage, GUIDE_PAGE_ORDER } from '@/lib/guideDocs'
+import { GuideMarkdown } from '@/components/guide/GuideMarkdown'
 import { HelpLink } from '@/components/guide/HelpLink'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Layout } from '@/components/Layout'
@@ -164,5 +165,30 @@ describe('Guide offline documentation & search', () => {
     await waitFor(() => {
       expect(screen.getByTestId('guida-route')).toBeInTheDocument()
     })
+  })
+
+  it('tutti i file in indice.yml esistono come pagine della guida', () => {
+    expect(GUIDE_PAGE_ORDER.length).toBeGreaterThan(0)
+    for (const slug of GUIDE_PAGE_ORDER) {
+      expect(getGuidePage(slug), `Il file ${slug}.md in indice.yml deve esistere`).toBeDefined()
+    }
+  })
+
+  it('GuideMarkdown renderizza correttamente le immagini e gestisce quelle mancanti', () => {
+    const markdown = [
+      '# Test immagini',
+      '![Immagine test](immagini/test-image.png)',
+      '![Immagine mancante](immagini/inesistente.png)',
+    ].join('\n')
+
+    render(<GuideMarkdown markdown={markdown} />)
+
+    const img = screen.getByRole('img', { name: 'Immagine test' })
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('loading', 'lazy')
+    expect(img).toHaveClass('max-w-full')
+
+    // Immagine mancante mostra testo alternativo in corsivo
+    expect(screen.getByText('Immagine mancante')).toHaveClass('italic')
   })
 })
