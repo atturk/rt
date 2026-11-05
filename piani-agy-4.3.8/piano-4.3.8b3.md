@@ -52,6 +52,26 @@ Oggi gli stati sono fissi (`da-imparare`, `in-apprendimento`, `appreso`, `ignora
 - Ovunque si mostrano icona/etichetta di stato (barra della lettura veloce, barra zen, elenco unità, tooltip come «Da imparare» dell'allegato) usa una sola funzione che risolve default + personalizzati.
 - Test: backend (stato valido/invalido, eliminazione con unità in uso, import con stato sconosciuto) e vitest (ciclo con 2 stati personalizzati messi fra i default, riordino, impostazioni aggiungi/elimina, default non eliminabili).
 
+## 7. Player audio a scomparsa in Studio
+
+- In Studio (anche nella barra della lettura veloce e in zen, se c'è spazio) un bottone con icona cuffie apre/chiude un player compatto: riusa `components/lesson/AudioPlayer.tsx` e `useLessonAudio` (stesso audio, stessa posizione, stessa velocità di `lib/playbackRate`, stessi skip ±5 s della pagina lezioni). Lezione senza audio: niente bottone.
+- Quando il player è aperto, ← e → spostano l'audio di 5 s e **non** cambiano unità; chiuso il player, le frecce tornano a cambiare unità come oggi. Lo spazio non cambia comportamento.
+- Aperto/chiuso si ricorda per sessione (non serve salvarlo).
+- Test vitest: frecce con player aperto → seek, nessun cambio unità; chiuso → cambio unità.
+
+## 8. Valutazione delle risposte (mirate e vaste): attinenza e domanda di approfondimento
+
+- **Tre parametri** per mirate e vaste, in percentuale: **Correttezza**, **Completezza**, **Attinenza**. Nell'interfaccia stanno in una riga a parte (tre etichette) sopra il commento, non più dentro il testo. Salvali come campi della risposta (`RecallAnswer`: `correttezza`, `completezza`, `attinenza`, opzionali), non solo nella stringa `evaluation`; le vecchie risposte senza campi si mostrano come oggi.
+- **Nuovo criterio** (prompt `RECALL_EVAL_MIRATA_SYSTEM_PROMPT` e `RECALL_EVAL_VASTA_SYSTEM_PROMPT` in `rt/llm/prompts.py`): l'LLM è un professore. Correttezza e completezza si valutano sulla correttezza generale della risposta (anche con conoscenze proprie, non solo l'unità). Attinenza = quanto la risposta corrisponde a ciò che c'è nell'unità (una risposta può essere corretta ma non attinente, perché l'unità tratta l'argomento da un'altra prospettiva o in modo diverso). L'esito (`outcome`) dipende da correttezza e completezza, non dall'attinenza. Per le vaste resta il confronto con la scaletta ideale dentro il commento.
+- **Domanda di approfondimento** (al massimo una): il risultato ha un campo opzionale `domanda_followup`. Il professore la propone solo se la risposta va nella direzione giusta ma serve chiarire o completare (parzialmente corretta, corretta ma non attinente, corretta e attinente ma incompleta); mai se è sbagliata o «Non lo so», mai se è già completa.
+  - Flusso: domanda → risposta → valutazione 1 (+ eventuale domanda di approfondimento) → risposta 2 (stessi controlli della risposta: testo, voce, «Non lo so») → valutazione 2 → fine. La valutazione 2 non può proporre un'altra domanda.
+  - Contesto della valutazione 2: domanda, risposta 1, valutazione 1 (parametri e commento), domanda di approfondimento, risposta 2, più lo stesso riferimento (unità o scaletta).
+  - L'esito che vale per il ripasso è quello della valutazione 2 (se c'è), altrimenti quello della 1. Salva tutto nella stessa `RecallAnswer` (`followup_question`, `followup_answer`, `followup_evaluation`, parametri della 2); voti 👍/👎 e ⚡ si applicano alla valutazione finale.
+  - L'utente può saltare l'approfondimento («Salta»): vale l'esito della valutazione 1.
+  - Le domande personalizzate (`recall_special`) e i quiz non cambiano.
+- Mock (`force_mock`): valutazione 1 con domanda di approfondimento fissa quando la risposta non è «Non lo so», così e2e e test possono provare il flusso.
+- Test: backend (parametri salvati, followup proposto/non proposto, contesto della 2 contiene domanda+risposta 1, esito finale = 2, «Salta»), vitest (riga dei tre parametri, flusso approfondimento), un e2e sul ripasso con mock.
+
 ## Prima della PR
 
 - `python -m pytest tests/ -q -n auto --dist loadfile -p no:cacheprovider`
