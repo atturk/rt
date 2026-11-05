@@ -36,6 +36,8 @@ def status_usage(status_id: str, _actor: Actor):
 @router.delete("/study/statuses/{status_id}", response_model=schemas.DeleteStatusResult,
                summary="Elimina uno stato personalizzato e riporta le unità a in-apprendimento")
 def delete_status(status_id: str, _actor: Actor):
+    if status_id in study_progress_service.DEFAULT_STATUSES:
+        raise HTTPException(status_code=422, detail="Gli stati predefiniti non si possono eliminare.")
     count = study_progress_service.delete_status_and_reassign(status_id)
     try:
         from pathlib import Path
