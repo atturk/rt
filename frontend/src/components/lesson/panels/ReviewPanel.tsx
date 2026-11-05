@@ -15,7 +15,6 @@ import { useCancelJob, useJobs } from '@/api/jobs'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { HelpLink } from '@/components/guide/HelpLink'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
@@ -178,7 +177,6 @@ export function ReviewPanel({ lesson: l, beforeAction = async () => undefined }:
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1.5">
         <p className="font-semibold" role="status">{verifying ? 'In corso · ' : ''}{status} · {reviewedCount}/{included.length} unità verificate</p>
-        <HelpLink to="/guida/verifica" label="Guida sulla verifica" />
       </div>
       <div className="flex items-center gap-1">
         <IconButton label="Verifica" icon={ShieldCheck} variant="solid" unavailable={verifyUnavailable} hint={`${needsReview.length} unità da verificare`} badge={needsReview.length ? <span className="absolute -right-1 -top-1 rounded-full bg-foreground px-1 text-meta text-background">{needsReview.length}</span> : undefined} onClick={() => verify()} />

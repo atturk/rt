@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes, createMemoryRouter, RouterProvider } from 
 import { GuidePage } from './guide'
 import { searchGuide, getGuidePage, GUIDE_PAGE_ORDER } from '@/lib/guideDocs'
 import { GuideMarkdown } from '@/components/guide/GuideMarkdown'
-import { HelpLink } from '@/components/guide/HelpLink'
 import { ReturnAddressContext } from '@/lib/returnAddress'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { Layout } from '@/components/Layout'
@@ -115,27 +114,15 @@ describe('Guide offline documentation & search', () => {
     expect(screen.getByTestId('guide-article')).toBeInTheDocument()
   })
 
-  it('PageHeader mostra il pulsante Guida · F1', () => {
+  it('PageHeader non mostra più il pulsante Guida · F1', () => {
     render(
       <MemoryRouter>
         <PageHeader title="Lezioni" />
       </MemoryRouter>,
     )
 
-    const helpLink = screen.getByRole('link', { name: 'Guida · F1' })
-    expect(helpLink).toHaveAttribute('href', '/guida')
-  })
-
-  it('HelpLink genera il link contestuale all’ancora indicata', () => {
-    render(
-      <MemoryRouter>
-        <HelpLink to="/guida/fonti#affidabilita" label="Guida sull'affidabilità" />
-      </MemoryRouter>,
-    )
-
-    const link = screen.getByTestId('help-link')
-    expect(link).toHaveAttribute('href', '/guida/fonti#affidabilita')
-    expect(link).toHaveAttribute('aria-label', "Guida sull'affidabilità")
+    const helpLink = screen.queryByRole('link', { name: 'Guida · F1' })
+    expect(helpLink).not.toBeInTheDocument()
   })
 
   it('premere F1 e Cmd+? apre /guida', async () => {

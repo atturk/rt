@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 
 import { IconButton, IconLink } from '@/components/ui/icon-button'
-import { HelpLink } from '@/components/guide/HelpLink'
 import { LinkMenuButton, MenuButton, type MenuSection } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
@@ -464,7 +463,6 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           onClick={() => setDeleting(true)}
         />
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
-        <HelpLink to="/guida/file-di-rt#esporta-e-importa" label="Guida su esportazione e importazione" />
       </div>
       {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
       {detailsOpen && <SelectionDetails lessons={lessons} open onClose={() => setDetailsOpen(false)} />}

@@ -68,7 +68,6 @@ export function GuidePage() {
       <PageHeader
         title="Guida di RT"
         back={{ to: backTarget, label: 'Indietro' }}
-        help={false}
       />
 
       {/* Barra di ricerca in cima */}

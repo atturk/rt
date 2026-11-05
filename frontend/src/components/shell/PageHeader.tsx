@@ -1,8 +1,7 @@
-import { ChevronLeft, HelpCircle } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useInRouterContext } from 'react-router'
 
-import { IconButton, IconLink, IconAnchor } from '@/components/ui/icon-button'
+import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { cn } from '@/lib/utils'
 
 /**
@@ -10,7 +9,7 @@ import { cn } from '@/lib/utils'
  * pagina come icone a destra, freccia per tornare indietro a sinistra del titolo. Sul telefono
  * il titolo è grande e le azioni vanno a capo se serve.
  */
-export function PageHeader({ title, back, actions, muted = false, titleAs: Title = 'h1', className, help = true }: {
+export function PageHeader({ title, back, actions, muted = false, titleAs: Title = 'h1', className }: {
   title: ReactNode
   /** p quando l'h1 è il titolo del documento sotto (pagina della lezione). */
   titleAs?: 'h1' | 'p'
@@ -20,10 +19,7 @@ export function PageHeader({ title, back, actions, muted = false, titleAs: Title
   /** Titolo grigio (il percorso sopra il titolo del documento, schermata 03). */
   muted?: boolean
   className?: string
-  /** Mostra il pulsante «?» per aprire la Guida (F1). */
-  help?: boolean
 }) {
-  const inRouter = useInRouterContext()
   return (
     <header
       className={cn(
@@ -44,7 +40,6 @@ export function PageHeader({ title, back, actions, muted = false, titleAs: Title
         {title}
       </Title>
       {actions}
-      {help && (inRouter ? <IconLink to="/guida" label="Guida · F1" icon={HelpCircle} /> : <IconAnchor href="/guida" label="Guida · F1" icon={HelpCircle} />)}
     </header>
   )
 }
