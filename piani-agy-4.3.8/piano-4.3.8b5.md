@@ -32,3 +32,25 @@ Oggi, se la stessa immagine è due volte negli allegati di un'unità, non si pu�
 
 ## Fuori piano
 Nessun cambio al backend, al formato Markdown delle immagini o alla guida (`docs/guida/*.md` non si tocca).
+
+## 4. Slide dei pptx disegnate davvero (Mac)
+Caso reale: un pptx di 28 slide fatte di caselle di testo e forme (non immagini). Sul Mac `_quicklook_slides` in `rt/core/materials.py`
+non ottiene 28 pagine da `qlmanage -p` (produce una cartella .qlpreview con Preview.html e allegati, non le slide) e RT ripiega sulle
+immagini incollate: loghi, spunte da 15×18 px, icone, più immagini per pagina, riquadri «?». Il testo invece è corretto.
+- Ordine di resa delle slide: LibreOffice se installato (come oggi su Windows/Linux) → su macOS Keynote se installato
+  (`osascript`: apri il pptx, esporta in PDF in una cartella temporanea, chiudi senza salvare; timeout come oggi) → Quick Look → niente.
+  Una resa vale solo se dà esattamente il numero di slide (regola di oggi).
+- Ripiego sulle immagini incollate: scarta le immagini piccole (lato minore < 64 px oppure area < 2% della slide) e quelle che non si
+  decodificano; al massimo una per slide, la più grande. Una slide senza immagini utili non ha immagine (niente «?»).
+- Nel log del worker una riga chiara quando la resa delle slide non riesce e con quale metodo ci si è provato.
+- Test pytest con `subprocess.run` simulato: ordine dei metodi, conteggio pagine, filtro delle immagini piccole. Claude prova Keynote/Quick Look sul MacBook Pro.
+
+## 5. PDF della lezione: elenchi puntati e numerati
+In `frontend/src/components/lesson/PrintLessonPage.tsx` mancano gli stili degli elenchi (il reset di Tailwind toglie pallini e numeri):
+aggiungi per `.print-page ul` `list-style: disc` e per `ol` `list-style: decimal`, con rientro (`padding-left: 1.4em`) e un piccolo
+spazio tra le voci; elenchi annidati con `circle`. Test vitest sullo stile o sul markup se esiste già un test della pagina.
+
+## 6. Formule: `\mathrm` mangiato dagli escape
+Caso reale nel testo rielaborato: `$athrm{Ca^{2+}}$` (doveva essere `$\mathrm{Ca^{2+}}$`). In `rt/core/encoding.py`, dentro le formule,
+rimetti `\m` davanti a `athrm{`, `athbf{`, `athit{`, `athcal{`, `athbb{`, `athsf{` quando non sono preceduti da una lettera o da `\`.
+Test pytest in quelli di `repair_latex_escapes`.
