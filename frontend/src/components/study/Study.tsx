@@ -1,4 +1,4 @@
-import { Focus, Slash, BookOpen, Brain, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, Pause, Play, SkipBack, SkipForward, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
+import { Focus, Slash, BookOpen, Brain, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, SkipBack, SkipForward, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
@@ -7,6 +7,7 @@ import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
+import { getStudyAudioOpen, setStudyAudioOpen, resetStudyAudioOpen } from '@/lib/studyAudio'
 
 import { studyNavigation } from './studyNavigation'
 import { detectSwipe, isElementScrollableX } from './swipe'
@@ -57,11 +58,8 @@ function findTopParagraph(root: HTMLElement | null): HTMLElement | null {
  * si legge un'unità intera, poi le sue domande una alla volta, poi l'unità dopo;
  * l'indice "Unità N di M ▾" permette di saltare direttamente a qualsiasi unità.
  */
-let sessionAudioPlayerOpen = false
 // oxlint-disable-next-line react/only-export-components
-export function resetSessionAudioPlayer() {
-  sessionAudioPlayerOpen = false
-}
+export const resetSessionAudioPlayer = resetStudyAudioOpen
 
 export function StudyFlow(props: {
   /** Lezioni nell'ordine dello studio (pronte: rielaborazione valida). */
@@ -85,11 +83,11 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   back: { to: string; label: string }
 }) {
   const { audioRef, currentTime, seek } = useLessonAudio()
-  const [audioPlayerOpen, setAudioPlayerOpenState] = useState(sessionAudioPlayerOpen)
+  const [audioPlayerOpen, setAudioPlayerOpenState] = useState(getStudyAudioOpen)
   const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setAudioPlayerOpenState((prev) => {
       const next = typeof value === 'function' ? value(prev) : value
-      sessionAudioPlayerOpen = next
+      setStudyAudioOpen(next)
       return next
     })
   }
@@ -758,7 +756,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     )
   }
   const hasAudio = Boolean(loaded?.has_audio)
-  const audio = hasAudio && live.start != null ? { lessonId: lesson!.id, start: live.start, end: live.end ?? null } : null
   const reading = phase === 'lettura' || rereading
 
   const titleButton = (
@@ -856,7 +853,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
           data-testid="study-audio-player-btn"
         />
       )}
-      <UnitAudio key={`${lesson!.id}-${unit.id}`} clip={audio} />
       {units.length > 1 && (
         <UnitIndexMenu
           compact
@@ -1116,7 +1112,11 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         </div>
       )}
       {audioPlayerOpen && lesson?.id && (
-        <AudioPlayer lessonId={lesson.id} className="z-30" />
+        <AudioPlayer
+          lessonId={lesson.id}
+          initialTime={live?.start != null ? live.start : undefined}
+          className="z-30"
+        />
       )}
     </>
   )
@@ -1531,57 +1531,6 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }}
       />
     </section>
-  )
-}
-
-/**
- * Audio della lezione per questa unità (dai timecode, non TTS): parte dall'inizio dell'unità e
- * si ferma alla fine. L'audio si scarica solo al primo ascolto.
- */
-function UnitAudio({ clip }: { clip: { lessonId: number; start: number; end: number | null } | null }) {
-  const ref = useRef<HTMLAudioElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [error, setError] = useState(false)
-  if (!clip) return <IconButton label="Audio della lezione per questa unità" icon={Play} unavailable="audio non disponibile" />
-  const toggle = () => {
-    const audio = ref.current
-    if (!audio) return
-    if (!audio.paused) {
-      audio.pause()
-      return
-    }
-    const start = () => {
-      if (audio.currentTime < clip.start || (clip.end != null && audio.currentTime >= clip.end - 0.25)) audio.currentTime = clip.start
-      audio.play().catch(() => setError(true))
-    }
-    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) start()
-    else {
-      audio.addEventListener('loadedmetadata', start, { once: true })
-      audio.load()
-    }
-  }
-  return (
-    <>
-      <audio
-        ref={ref}
-        src={`/api/v1/lessons/${clip.lessonId}/audio`}
-        preload="none"
-        data-testid="study-audio"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onError={() => setError(true)}
-        onTimeUpdate={(e) => {
-          if (clip.end != null && e.currentTarget.currentTime >= clip.end) e.currentTarget.pause()
-        }}
-      />
-      <IconButton
-        label={playing ? "Ferma l'audio dell'unità" : 'Audio della lezione per questa unità'}
-        icon={playing ? Pause : Play}
-        aria-pressed={playing}
-        unavailable={error ? 'il browser non riesce a riprodurre questo audio' : null}
-        onClick={toggle}
-      />
-    </>
   )
 }
 

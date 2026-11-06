@@ -121,14 +121,13 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page.getByRole('heading', { level: 1 })).not.toContainText('unità 1 di')
   await expect(page.getByTestId('study-dots').locator('> *')).toHaveCount(study.units.length)
   await expect(page.getByTestId('study-text')).toHaveText(/\S.{40,}/)
-  await expect(page.getByRole('button', { name: 'Audio della lezione per questa unità' })).toBeVisible()
-  await page.getByTestId('study-audio').evaluate((a: HTMLAudioElement) => (a.muted = true))
-  await page.getByRole('button', { name: 'Audio della lezione per questa unità' }).click()
-  await expect(page.getByRole('button', { name: "Ferma l'audio dell'unità" })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Audio della lezione per questa unità' })).not.toBeVisible()
+  await page.getByTestId('study-audio-player-btn').click()
+  await expect(page.getByTestId('audio-player')).toBeVisible()
+  const audioEl = page.getByTestId('audio-player').locator('audio')
   await expect
-    .poll(() => page.getByTestId('study-audio').evaluate((a: HTMLAudioElement) => a.currentTime))
+    .poll(() => audioEl.evaluate((a: HTMLAudioElement) => a.currentTime))
     .toBeGreaterThanOrEqual(first.start ?? 0)
-  await page.getByRole('button', { name: "Ferma l'audio dell'unità" }).click()
   // Senza domande sull'unità si generano sul posto (4.2.2b3).
   if (first.questions === 0) {
     await expect(page.getByTestId('study-unit-questions-btn')).toBeVisible()

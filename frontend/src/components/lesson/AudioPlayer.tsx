@@ -25,7 +25,7 @@ const SPEED_HINT = `Velocità: ${SPEEDS.map(formatSpeed).join(' · ')}`
  * Frecce sulla barra: ±5 secondi.
  */
 // `sections` resta nell'interfaccia: i timecode delle unità li gestisce il documento.
-export function AudioPlayer({ lessonId, inline = false, panelOpen = false, className }: {
+export function AudioPlayer({ lessonId, inline = false, panelOpen = false, className, initialTime }: {
   lessonId: number
   sections?: TimedSection[]
   /** Dentro la pagina (revisione) invece che fissa in basso. */
@@ -33,6 +33,8 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
   /** Pannello laterale aperto: da md in su la barra resta centrata nella colonna del testo, non sotto il pannello. */
   panelOpen?: boolean
   className?: string
+  /** Posizione iniziale all'apertura se non già in riproduzione. */
+  initialTime?: number
 }) {
   const { audioRef, currentTime, setCurrentTime, seek } = useLessonAudio()
   const [playing, setPlaying] = useState(false)
@@ -45,6 +47,26 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
   const recovery = useRef(false)
   const known = Number.isFinite(duration) && duration > 0
   const [hover, setHover] = useState(false)
+
+  const appliedInitialTime = useRef(false)
+  useEffect(() => {
+    if (appliedInitialTime.current) return
+    if (initialTime == null || !Number.isFinite(initialTime)) return
+    const el = audioRef.current
+    if (!el) return
+    if (!el.paused) {
+      appliedInitialTime.current = true
+      return
+    }
+    try {
+      el.currentTime = initialTime
+    } catch {
+      // ignore
+    }
+    setCurrentTime(initialTime)
+    seek(initialTime, false)
+    appliedInitialTime.current = true
+  }, [initialTime, audioRef, setCurrentTime, seek])
 
   const isPhone = useIsPhone()
   const [position, setPositionState] = useState<AudioPlayerPosition>(getAudioPosition)
