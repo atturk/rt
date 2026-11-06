@@ -139,7 +139,7 @@ export function ImportConflicts({
             Prima di rimpiazzare vuoi scaricare una copia {replacing.length === 1 ? 'della tua lezione' : 'delle tue lezioni'}?
           </p>
           <p className="mb-2 text-muted-foreground">
-            È lo ZIP completo, stato dello studio compreso: se poi cambi idea lo reimporti da qui.
+            È la lezione completa (.rt), stato dello studio compreso: se poi cambi idea la reimporti da qui.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" disabled={saving} onClick={() => void saveCopiesAndSend()}>

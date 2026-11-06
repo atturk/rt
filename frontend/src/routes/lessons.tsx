@@ -531,7 +531,7 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         items={[
           { label: 'Markdown', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=markdown`), { busyMessage: 'Preparo il Markdown…', doneLabel: 'Markdown pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
           { label: 'PDF', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=pdf`), { busyMessage: 'Preparo il PDF…', doneLabel: 'PDF pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), { busyMessage: 'Preparo la lezione…', doneLabel: 'Lezione pronta' }), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Lezione (.rt)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), { busyMessage: 'Preparo la lezione…', doneLabel: 'Lezione pronta' }), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
           { label: 'Solo le fonti (zip)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`), { busyMessage: 'Preparo le fonti…', doneLabel: 'Fonti pronte' }) },
           ...(canShare.pdf ? [{
             label: 'Condividi PDF',

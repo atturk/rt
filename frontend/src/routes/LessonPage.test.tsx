@@ -51,7 +51,7 @@ it('la preferenza sul server controlla lo stato di studio nell esportazione ZIP'
 
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
   fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
-  const zip = screen.getByRole('menuitem', { name: 'Tutti i dati (zip)' })
+  const zip = screen.getByRole('menuitem', { name: 'Lezione (.rt)' })
   fireEvent.click(zip)
   expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=zip&scope=all&study=1', expect.anything())
 
@@ -59,7 +59,7 @@ it('la preferenza sul server controlla lo stato di studio nell esportazione ZIP'
   fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' }))
   await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'export.study' } }, body: false }))
 
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Tutti i dati (zip)' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Lezione (.rt)' }))
   expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=zip&scope=all', expect.anything())
 })
 
