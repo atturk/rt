@@ -18,6 +18,7 @@ Beta con la condivisione da iPhone, il player audio spostabile e lo zoom che non
 - I download dalla web app su iPhone ora funzionano anche per Markdown, zip e fonti.
 - In Studio il player audio ricorda se era aperto o chiuso; tolto il bottone ▶ dell'unità.
 - Le barre laterali di Impostazioni e Guida scorrono quando lo zoom è alto.
+- Immagini e classificatore non si fermano più con «ValidationError … cost_details»: il servizio di classificazione ora manda dettagli di costo in più, che RT ignora.
 
 ## 4.3.8b3 — 2026-11-05
 
