@@ -51,3 +51,52 @@ export function saveFile(file: File): void {
     URL.revokeObjectURL(url)
   }, 60_000)
 }
+
+/** Verifica se il sistema o l'app supportano la condivisione di file. */
+export function canShareFiles(fileType = 'application/pdf'): boolean {
+  if (typeof window !== 'undefined' && (window as unknown as { pywebview?: { api?: { condividi?: unknown } } }).pywebview?.api?.condividi) {
+    return true
+  }
+  if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
+    try {
+      const dummy = new File([''], 'test', { type: fileType })
+      if (navigator.canShare({ files: [dummy] })) return true
+      if (fileType !== 'application/zip') {
+        const zipDummy = new File([''], 'test.rt', { type: 'application/zip' })
+        if (navigator.canShare({ files: [zipDummy] })) return true
+      }
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+/** Condivide un file tramite Web Share API di sistema. */
+export async function shareFile(file: File, options?: { title?: string }): Promise<void> {
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    let fileToShare = file
+    if (navigator.canShare && !navigator.canShare({ files: [fileToShare] })) {
+      if (file.name.endsWith('.rt')) {
+        const zipFile = new File([file], file.name, { type: 'application/zip' })
+        if (navigator.canShare({ files: [zipFile] })) {
+          fileToShare = zipFile
+        }
+      }
+    }
+    try {
+      await navigator.share({
+        files: [fileToShare],
+        title: options?.title,
+      })
+    } catch (err: unknown) {
+      const error = err as { name?: string; message?: string }
+      if (error?.name === 'AbortError') {
+        // L'utente chiude il menu di sistema: nessun messaggio d'errore
+        return
+      }
+      throw err
+    }
+  }
+}
+
