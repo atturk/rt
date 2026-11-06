@@ -15,6 +15,7 @@ import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newL
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
+import { FileStatusBar } from '@/components/ui/file-status'
 import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
@@ -204,6 +205,7 @@ export function Layout() {
       />
       <ImageViewer />
       <BackupDialog />
+      <FileStatusBar />
       {openedFileError && (
         <div className="fixed bottom-4 right-4 z-50 max-w-md">
           <Alert tone="danger" className="flex items-center justify-between gap-2">

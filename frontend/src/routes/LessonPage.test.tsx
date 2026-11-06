@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { waitFor } from '@testing-library/react'
 import type { Schemas } from '@/api/client'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { FileStatusBar } from '@/components/ui/file-status'
 import { LessonPage } from './lessons'
 
 const workflow = vi.hoisted(() => ({ outline: undefined as Schemas['Outline'] | undefined, document: undefined as Schemas['LessonDocument'] | undefined, jobs: [] as Schemas['Job'][], ready: false }))
@@ -64,7 +65,7 @@ it('la preferenza sul server controlla lo stato di studio nell esportazione ZIP'
 
 it('PDF: se il browser per la stampa manca mostra il motivo invece di scaricare un file', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: { code: 'pdf_browser_missing', message: 'Il browser per il PDF si sta ancora scaricando. Riprova tra poco.' } }), { status: 409 }))
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<><LessonPage /><FileStatusBar /></>} /></Routes></MemoryRouter></QueryClientProvider>)
   fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'PDF' }))
   expect(await screen.findByText('Il browser per il PDF si sta ancora scaricando. Riprova tra poco.')).toBeInTheDocument()

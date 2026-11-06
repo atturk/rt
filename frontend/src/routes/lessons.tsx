@@ -26,7 +26,8 @@ import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
 import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
-import { fetchExport, saveFile } from '@/lib/fileExport'
+import { fetchExport } from '@/lib/fileExport'
+import { trackFileExport } from '@/lib/fileStatus'
 import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
@@ -474,18 +475,6 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
-  // Il PDF e le esportazioni passano da fetchExport + saveFile
-  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
-  const exportFile = async (url: string, isPdf = false) => {
-    if (isPdf) setPdf({ busy: true, error: null })
-    try {
-      const file = await fetchExport(url)
-      saveFile(file)
-      if (isPdf) setPdf({ busy: false, error: null })
-    } catch (error) {
-      setPdf({ busy: false, error: errorMessage(error) })
-    }
-  }
   return (
     <div className="relative flex items-center gap-0.5" data-testid="lesson-actions">
       <IconButton label="Domande" icon={Brain} active={panel === 'domande'} aria-expanded={panel === 'domande'} aria-controls={PANEL_ID} onClick={() => onToggle('domande')} />
@@ -512,14 +501,13 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         label="Esporta"
         icon={Download}
         items={[
-          { label: 'Markdown', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=markdown`), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'PDF', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=pdf`, true), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
-          { label: 'Solo le fonti (zip)', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`) },
+          { label: 'Markdown', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=markdown`), { busyMessage: 'Preparo il Markdown…', doneLabel: 'Markdown pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=pdf`), { busyMessage: 'Preparo il PDF…', doneLabel: 'PDF pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'Tutti i dati (zip)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), { busyMessage: 'Preparo la lezione…', doneLabel: 'Lezione pronta' }), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Solo le fonti (zip)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`), { busyMessage: 'Preparo le fonti…', doneLabel: 'Fonti pronte' }) },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
-      {pdf.error && <Alert tone="danger" className="absolute right-0 top-full z-20 mt-2 w-72 cursor-pointer" onClick={() => setPdf({ busy: false, error: null })}>{pdf.error}</Alert>}
     </div>
   )
 }
