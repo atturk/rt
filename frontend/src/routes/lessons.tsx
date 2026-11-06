@@ -26,6 +26,7 @@ import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
 import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
+import { fetchExport, saveFile } from '@/lib/fileExport'
 import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
@@ -473,23 +474,14 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
-  // Il PDF si scarica con fetch: se il browser per la stampa non c'è ancora, si mostra il motivo invece di salvare l'errore come file.
+  // Il PDF e le esportazioni passano da fetchExport + saveFile
   const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
-  const exportPdf = async () => {
-    setPdf({ busy: true, error: null })
+  const exportFile = async (url: string, isPdf = false) => {
+    if (isPdf) setPdf({ busy: true, error: null })
     try {
-      const response = await fetch(`/api/v1/lessons/${l.id}/export?format=pdf`, { credentials: 'same-origin' })
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
-        throw new Error(body?.error?.message ?? `PDF non riuscito (${response.status})`)
-      }
-      const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(await response.blob())
-      link.download = encoded ? decodeURIComponent(encoded) : `${l.folder_name}.pdf`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      setPdf({ busy: false, error: null })
+      const file = await fetchExport(url)
+      saveFile(file)
+      if (isPdf) setPdf({ busy: false, error: null })
     } catch (error) {
       setPdf({ busy: false, error: errorMessage(error) })
     }
@@ -520,10 +512,10 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         label="Esporta"
         icon={Download}
         items={[
-          { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'PDF', onSelect: () => void exportPdf(), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
-          { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
+          { label: 'Markdown', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=markdown`), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=pdf`, true), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
+          { label: 'Tutti i dati (zip)', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Solo le fonti (zip)', onSelect: () => void exportFile(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`) },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />

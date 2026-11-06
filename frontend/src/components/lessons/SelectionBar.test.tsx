@@ -59,8 +59,18 @@ describe('export nella barra di selezione', () => {
     expect(post).toHaveBeenCalledTimes(1)
     expect(click).not.toHaveBeenCalled()
     state = 'succeeded'
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-disposition': 'attachment; filename="export.zip"' }),
+      blob: async () => new Blob(['']),
+    } as unknown as Response)
+    URL.createObjectURL = vi.fn(() => 'blob:test')
+    URL.revokeObjectURL = vi.fn()
+
     await client.invalidateQueries({ queryKey: ['job', 'exp-1'] })
-    expect(await screen.findByRole('link', { name: 'Scarica di nuovo' })).toHaveAttribute('href', '/api/v1/lesson-exports/exp-1/file')
+    const saveBtn = await screen.findByRole('button', { name: 'Salva' })
+    expect(click).not.toHaveBeenCalled()
+    fireEvent.click(saveBtn)
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     await client.invalidateQueries({ queryKey: ['job', 'exp-1'] })
     expect(click).toHaveBeenCalledTimes(1)

@@ -60,8 +60,11 @@ test('dall\'elenco si scaricano i Markdown finali senza aprire la lezione (barra
   await row(notBuilt.id).getByRole('checkbox').uncheck()
 
   await row(built.id).getByRole('checkbox').check()
-  const download = page.waitForEvent('download', { timeout: 50_000 })
   await bar.getByRole('button', { name: 'Scarica Markdown' }).click()
+  const saveBtn = bar.getByRole('button', { name: 'Salva' })
+  await expect(saveBtn).toBeVisible({ timeout: 50_000 })
+  const download = page.waitForEvent('download', { timeout: 50_000 })
+  await saveBtn.click()
   const file = await download
   // Uno ZIP con i documenti finali aggiornati (job export_lessons, download automatico a job finito).
   expect(file.suggestedFilename()).toBe('Lezioni selezionate.zip')

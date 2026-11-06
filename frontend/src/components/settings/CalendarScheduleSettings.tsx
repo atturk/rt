@@ -5,6 +5,7 @@ import { AlertTriangle, Download, Upload } from 'lucide-react'
 import { calendarKeys, calendarTransferApi } from '@/api/calendar'
 import { subjectsKeys } from '@/api/subjects'
 import { errorMessage } from '@/api/client'
+import { saveFile } from '@/lib/fileExport'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -44,13 +45,10 @@ export function CalendarScheduleSettings({ onError }: { onError: (error: string 
     setExporting(true); onError(null)
     try {
       const data = await calendarTransferApi.export()
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
       const now = new Date()
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-      link.href = url; link.download = `rt-orario-${date}.rtcal`; link.click()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      const file = new File([JSON.stringify(data, null, 2)], `rt-orario-${date}.rtcal`, { type: 'application/json' })
+      saveFile(file)
     } catch (error) { onError(errorMessage(error)) }
     finally { setExporting(false) }
   }
