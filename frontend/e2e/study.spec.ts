@@ -64,14 +64,13 @@ test('Scorciatoie nel documento: Studio sull’unità e ripasso senza domande, s
   await page.getByRole('link', { name: 'Esci', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/lezioni/${l.id}#unit-${unit.id}$`))
   await page.getByRole('link', { name: `Ripassa l'unità ${unit.id}`, exact: true }).click()
-  await expect(page.getByTestId('study-generate-modal')).toContainText(unit.title)
-  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', unit.id)
+  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(unit.title)
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('study-generate-modal')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Torna allo studio' }).first().click()
+  await expect(page.getByTestId('study-text')).toHaveAttribute('data-unit-id', unit.id)
   await page.reload()
   await expect(page.getByTestId('study-text')).toBeVisible()
-  await expect(page.getByTestId('study-generate-modal')).toHaveCount(0)
 })
 
 test.describe('Scorciatoie su telefono', () => {
@@ -132,7 +131,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await page.getByRole('button', { name: "Ferma l'audio dell'unità" }).click()
   // Senza domande sull'unità si generano sul posto (4.2.2b3).
   if (first.questions === 0) {
-    await expect(page.getByTestId('study-generate')).toContainText('Nessuna domanda · genera ora')
+    await expect(page.getByTestId('study-unit-questions-btn')).toBeVisible()
   }
 
   // Dalla 4.3.7 le domande di un'unità con segnalazioni aperte aspettano la Verifica: si decidono
@@ -157,32 +156,21 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   await expect(page.getByRole('heading', { level: 1 })).toContainText(first.title)
   expect((await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions).toBeGreaterThan(0)
 
-  // Lo Studio della lezione intera: lettura e poi "Mettimi alla prova · N" (4.2.2b4 F2).
+  // Lo Studio della lezione intera: lettura e poi "Domande su questa unità" nella barra in alto (4.3.8b4).
   await page.goto(`/studio/lezione/${l.id}`)
-  const quiz = page.getByTestId('study-quiz')
-  await expect(quiz).toHaveText(/^Mettimi alla prova · \d+$/)
-  await expect(page.getByTestId('study-generate')).toBeVisible()
-  await expect.poll(async () => {
-    const text = await quiz.textContent()
-    const current = Number(text?.match(/(\d+)/)?.[1] ?? -1)
-    const pending = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
-    if (current !== pending) {
-      await page.reload()
-      return -1
-    }
-    return current
-  }).toBeGreaterThan(0)
-  const total = Number((await quiz.textContent())!.match(/(\d+)/)![1])
+  const quiz = page.getByTestId('study-unit-questions-btn')
+  await expect(quiz).toBeVisible()
   await quiz.click()
   // La sessione dell'unità: chip per tipo, ritorno al testo dall'icona in alto a destra.
   await expect(page.getByTestId('recall-session-page')).toBeVisible()
   await expect(page.getByRole('group', { name: 'Tipo di domanda' }).getByRole('button', { name: 'Vasta', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Torna allo studio' }).first().click()
   await expect(page.getByTestId('study-text')).toBeVisible()
-  await page.getByTestId('study-quiz').click()
+  await page.getByTestId('study-unit-questions-btn').click()
   // Il caricamento attende anche le riletture del pool: sul server e2e possono superare 10 s.
   await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 45_000 })
   // Due risposte, poi "Termina" riporta al testo dell'unità con le domande rimaste.
+  const total = (await apiGet<Study>(page.request, `/lessons/${l.id}/study`)).units[0].questions
   const answers = Math.min(2, total)
   const answered: string[] = []
   for (let i = 0; i < answers; i++) {
@@ -199,7 +187,7 @@ test('Studio di una lezione dalla pagina della lezione: lettura, domande generat
   for (const id of answered) expect(history.answers.map((a) => a.question_id)).toContain(id)
   await page.getByRole('button', { name: 'Termina' }).click()
   await expect(page.getByTestId('study-text')).toBeVisible()
-  await expect(page.getByTestId('study-quiz')).toContainText('Mettimi alla prova')
+  await expect(page.getByTestId('study-unit-questions-btn')).toBeVisible()
 })
 
 test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
@@ -211,14 +199,11 @@ test('Studio dall\'intestazione della lezione; telefono', async ({ page }) => {
   await page.getByTestId('lesson-actions').getByRole('link', { name: 'Studio' }).click()
   await expect(page).toHaveURL(new RegExp(`/studio/lezione/${l.id}$`))
 
-  // Telefono: colonna a tutta larghezza e pulsante in basso sempre a portata.
+  // Telefono: colonna a tutta larghezza e pulsante in alto sempre a portata.
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('study-text')).toBeVisible()
-  const footer = page.getByTestId('study-quiz').or(page.getByTestId('study-generate')).first()
-  await expect(footer).toBeInViewport()
-  const box = (await footer.boundingBox())!
-  expect(box.height).toBeGreaterThanOrEqual(44)
-  expect(box.width).toBeGreaterThan(250)
+  const btn = page.getByTestId('study-unit-questions-btn')
+  await expect(btn).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
 
@@ -628,7 +613,7 @@ test('una parola evidenziata nello Studio ha la stessa fascia in zen e nel Conte
   }
 })
 
-test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande dell’unità', async ({ page }) => {
+test('tre pulsanti tondi uguali: Genera da schermo domande e apre le domande dell’unità', async ({ page }) => {
   test.setTimeout(150_000)
   await loginViaLink(page)
   const l = await lesson(page, 'STUDIO')
@@ -639,10 +624,10 @@ test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande de
   await page.getByTestId('study-dots').locator('button').first().click()
   await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
   const controls = page.getByTestId('speed-reader-controls')
-  // Quattro pulsanti tondi grandi più i due piccoli delle unità (Unità precedente/successiva).
-  await expect(controls.getByRole('button')).toHaveCount(6)
+  // Tre pulsanti tondi grandi più i due piccoli delle unità (Unità precedente/successiva).
+  await expect(controls.getByRole('button')).toHaveCount(5)
   const main = controls.locator('button:not([aria-label^="Unità"])')
-  await expect(main).toHaveCount(4)
+  await expect(main).toHaveCount(3)
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 })
     const size = width === 390 ? 48 : 56
@@ -653,18 +638,13 @@ test('quattro pulsanti tondi uguali: Genera diventa Ripassa e apre le domande de
     }
   }
   await page.setViewportSize({ width: 1280, height: 844 })
-  await page.getByRole('button', { name: 'Genera domande su questa unità' }).click()
-  const modal = page.getByTestId('study-generate-modal')
-  await expect(modal).toBeVisible()
-  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
-  await modal.getByRole('button', { name: 'Genera', exact: true }).click()
-  expect((await request).postDataJSON()).toMatchObject({ unit_ids: [unit.id] })
-  await expect(modal).toBeHidden({ timeout: 90_000 })
-  const review = page.getByRole('button', { name: /Ripassa l'unità · \d+ domande/ })
-  await expect(review).toBeVisible()
-  await review.click()
+  await page.getByTestId('rsvp-unit-questions-btn').click()
   await expect(page.getByTestId('speed-reader')).toBeHidden()
-  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await expect(page.getByTestId('recall-empty-generation')).toBeVisible()
+  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lessons/${l.id}/recall/generate`))
+  await page.getByTestId('recall-empty-generation').getByRole('button', { name: 'Genera', exact: true }).click()
+  expect((await request).postDataJSON()).toMatchObject({ unit_ids: [unit.id] })
+  await expect(page.getByTestId('recall-question')).toBeVisible({ timeout: 90_000 })
   await expect(page.getByRole('heading', { level: 1 })).toContainText(unit.title)
   await expect(page.getByTestId('recall-question')).toHaveAttribute('data-type', 'quiz')
   await expect(page.getByRole('navigation', { name: 'Navigazione' })).toBeVisible()
@@ -741,7 +721,7 @@ test('finite le domande dell’ultima unità: Genera consigliato con Fino a 2 ri
     await expect.poll(async () => (await apiGet<{ state: string }>(page.request, `/jobs/${jobId}`)).state).toBe('succeeded')
     await page.goto(`/studio/lezione/${l.id}`)
     await page.getByTestId('study-dots').locator('button').last().click()
-    await page.getByTestId('study-quiz').click()
+    await page.getByTestId('study-unit-questions-btn').click()
     await answer(page)
     await page.getByRole('button', { name: 'Fine', exact: true }).click()
     await expect(page.getByTestId('recall-empty')).toBeVisible()
@@ -893,14 +873,10 @@ test('zen: Z, barra col mouse, posizione e ritorno dal ripasso', async ({ page }
   await page.mouse.move(300, 250)
   await expect(page.getByTestId('zen-bar')).not.toHaveAttribute('data-open', { timeout: 4000 })
   await page.keyboard.press('d')
-  if (await page.getByTestId('recall-session-page').isVisible()) {
-    await page.getByRole('button', { name: 'Torna allo studio', exact: true }).first().click()
-    await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
-    await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
-  } else {
-    await expect(page.getByTestId('study-generate-modal')).toBeVisible()
-    await page.keyboard.press('Escape')
-  }
+  await expect(page.getByTestId('recall-session-page')).toBeVisible()
+  await page.getByRole('button', { name: 'Torna allo studio', exact: true }).first().click()
+  await expect(page.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  await expect.poll(() => text.evaluate(el => el.getBoundingClientRect().top)).toBe(top)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('study')).not.toHaveAttribute('data-zen')
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(position)
