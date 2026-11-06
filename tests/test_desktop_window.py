@@ -882,3 +882,109 @@ def test_auth_menu_copies_and_regenerates_token(monkeypatch, webview):
     assert copied[-1] == "nuovo" and notices[-1] == "Token nuovo copiato negli appunti."
     # La sessione della finestra è chiusa dal reset: si riapre con un link monouso.
     win.load_url.assert_called_with("http://127.0.0.1:8765/login?code=monouso")
+
+
+def test_condividi_native(monkeypatch):
+    import requests
+
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_view = Mock()
+    fake_view.bounds.return_value = SimpleNamespace(size=SimpleNamespace(width=1000, height=800))
+    fake_native.contentView.return_value = fake_view
+    fake_win.native = fake_native
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    # Percorso non ammesso rifiutato
+    assert "errore" in api.condividi("/api/v1/system/status")
+    assert "errore" in api.condividi("/api/v1/lessons/1/view")
+    assert "errore" in api.condividi("../secret")
+
+    # Mock requests response
+    class FakeResponse:
+        ok = True
+        status_code = 200
+        content = b"%PDF-1.4 dummy"
+        headers = {
+            "Content-Disposition": "attachment; filename*=UTF-8''lezione%20prova.pdf"
+        }
+
+    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: FakeResponse())
+
+    # Mock AppKit e PyObjCTools
+    picker_instance = Mock()
+    picker_class = Mock(return_value=picker_instance)
+    picker_alloc = SimpleNamespace(initWithItems_=picker_class)
+
+    appkit = ModuleType("AppKit")
+    appkit.NSSharingServicePicker = SimpleNamespace(alloc=lambda: picker_alloc)
+
+    foundation = ModuleType("Foundation")
+    foundation.NSURL = SimpleNamespace(fileURLWithPath_=lambda path: f"file://{path}")
+    foundation.NSMakeRect = lambda x, y, w, h: (x, y, w, h)
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "Foundation", foundation)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    res = api.condividi("/api/v1/lessons/1/export?format=pdf")
+    assert res == {"ok": True}
+
+    picker_class.assert_called_once()
+    file_arg = picker_class.call_args[0][0][0]
+    assert file_arg.endswith("lezione prova.pdf")
+    picker_instance.showRelativeToRect_ofView_preferredEdge_.assert_called_once()
+
+
+def test_set_zoom_macos(monkeypatch):
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_wv = Mock()
+    fake_native.webview = fake_wv
+    fake_win.native = fake_native
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    # Fattore valido
+    res = api.set_zoom(1.25)
+    assert res == {"ok": True, "factor": 1.25}
+    fake_wv.setPageZoom_.assert_called_once_with(1.25)
+
+    # Fattore clampato
+    res = api.set_zoom(4.5)
+    assert res == {"ok": True, "factor": 3.0}
+
+    res = api.set_zoom(0.1)
+    assert res == {"ok": True, "factor": 0.5}
+
+    # Fattore non valido
+    res = api.set_zoom("non-numero")
+    assert "errore" in res
+
+
+def test_set_zoom_windows(monkeypatch):
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_controller = Mock()
+    fake_native.controller = fake_controller
+    fake_win.native = fake_native
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    res = api.set_zoom(1.5)
+    assert res == {"ok": True, "factor": 1.5}
+    assert fake_controller.ZoomFactor == 1.5
+
+

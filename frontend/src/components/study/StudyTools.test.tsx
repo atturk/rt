@@ -528,13 +528,11 @@ it('stato dell’unità accanto al titolo in zen: icona, clic e S cambiano stato
   await waitFor(() => expect(zenStatusBtn).toHaveAttribute('aria-label', 'Stato: appresa'))
 })
 
-it('D senza domande apre Genera anche in zen e blocca le scorciatoie', () => {
+it('D apre le domande dell’unità anche in zen', () => {
   renderStudy()
   fireEvent.keyDown(window, { key: 'z' })
   fireEvent.keyDown(window, { key: 'd' })
-  expect(screen.getByTestId('study-generate-modal')).toHaveAttribute('open')
-  fireEvent.keyDown(window, { key: 'z' })
-  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
 })
 
 it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {

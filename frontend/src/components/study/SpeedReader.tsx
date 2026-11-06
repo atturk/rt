@@ -1,4 +1,4 @@
-import { MessageCircleQuestion, Pause, Play, Rewind, RotateCcw, SkipBack, SkipForward, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { Pause, Play, Rewind, RotateCcw, SkipBack, SkipForward, X, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 
 import { isMacKeyboard } from '@/components/lesson/markdownShortcuts'
@@ -24,12 +24,12 @@ const STEPS = [1, 3, 5, 10]
 
 /** Lettura veloce integrata nello Studio: conserva suoni, tasti e preferenze. */
 export function SpeedReader({
-  source, active, context, settings, onSettingsChange, settingsButton, blocked, questions, onReview, onGenerate, onTintChange, onClose,
+  source, active, context, settings, onSettingsChange, settingsButton, blocked, onTintChange, onClose,
   onUnit, canPrevUnit, canNextUnit, autoStart, onStatus, startAt,
 }: {
   source: Element; active: boolean; context: boolean; settings: boolean; onSettingsChange: (open: boolean) => void
   settingsButton: RefObject<HTMLElement | null>; blocked: boolean
-  questions: number; onReview: () => void; onGenerate: () => void
+  questions?: number; onReview?: () => void; onGenerate?: () => void
   onTintChange: (tint: RsvpPreference['irlen']) => void; onClose: () => void
   onUnit: (direction: -1 | 1, playing?: boolean) => void
   canPrevUnit: boolean
@@ -419,9 +419,6 @@ export function SpeedReader({
             </svg>
           } />
           <RoundButton label="Ricomincia l'unità" icon={RotateCcw} onClick={() => { cancelCountdown(); setPlaying(false); setIndex(0); setPieceIndex(0) }} note="Ricomincia" />
-          <RoundButton label={questions > 0 ? `Ripassa l'unità · ${questions} domande` : 'Genera domande su questa unità'}
-            icon={questions > 0 ? MessageCircleQuestion : Sparkles} note={questions > 0 ? 'Ripassa' : 'Genera'}
-            onClick={() => { cancelCountdown(); setPlaying(false); if (questions > 0) onReview(); else onGenerate() }} />
           {!phone && (
             <RoundButton
               label={nextLabel}

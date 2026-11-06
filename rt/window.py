@@ -2,16 +2,20 @@
 La finestra dell'app RT. API e worker continuano a lavorare quando si chiude.
 pywebview viene caricato solo nell'app installata, mai per 'rt web'.
 """
+import atexit
 import ctypes
 import importlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
+import urllib.parse
 import webbrowser
 
 from rt.core import bundle, paths
@@ -248,6 +252,195 @@ class DesktopApi:
         if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
             return {"errore": "Un backup è già in corso."}
         return {"avviato": True}
+
+    def condividi(self, percorso_api: str) -> dict:
+        """Scarica una risorsa di export dall'API e apre il menu di condivisione nativo (macOS)."""
+        import requests
+        from rt.api import auth
+        from rt.services import secrets_service
+
+        if not (isinstance(percorso_api, str) and percorso_api.startswith("/api/v1/lessons/") and "/export?" in percorso_api):
+            return {"errore": "Percorso non ammesso per la condivisione."}
+
+        url = f"{self._base_url.rstrip('/')}{percorso_api}"
+        headers = {}
+        try:
+            if secrets_service.is_ready():
+                token = secrets_service.store().get(auth.TOKEN_SECRET)
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+        except Exception:
+            pass
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=60)
+            if not resp.ok:
+                try:
+                    data = resp.json()
+                    err = data.get("error", {}).get("message") or f"Errore server ({resp.status_code})"
+                except Exception:
+                    err = f"Errore server ({resp.status_code})"
+                return {"errore": err}
+        except Exception as exc:
+            return {"errore": f"Download fallito: {exc}"}
+
+        disposition = getattr(resp, "headers", {}).get("Content-Disposition") or getattr(resp, "headers", {}).get("content-disposition") or ""
+        filename = ""
+        m = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.IGNORECASE)
+        if m:
+            try:
+                filename = urllib.parse.unquote(m.group(1))
+            except Exception:
+                filename = m.group(1)
+        if not filename:
+            m = re.search(r'filename="?([^";]+)"?', disposition, re.IGNORECASE)
+            if m:
+                filename = m.group(1)
+        if not filename:
+            filename = "lezione.rt"
+
+        temp_dir = tempfile.mkdtemp(prefix="rt-condividi-")
+        _condividi_temp_dirs.append(temp_dir)
+        file_path = os.path.join(temp_dir, filename)
+        try:
+            with open(file_path, "wb") as f:
+                f.write(resp.content)
+        except Exception as exc:
+            return {"errore": f"Impossibile salvare il file temporaneo: {exc}"}
+
+        if sys.platform != "darwin":
+            return {"errore": "Condivisione non supportata su questo sistema operativo."}
+
+        try:
+            from AppKit import NSSharingServicePicker
+            from Foundation import NSURL, NSMakeRect
+            from PyObjCTools import AppHelper
+        except ImportError:
+            return {"errore": "AppKit non disponibile per la condivisione."}
+
+        def _open_picker():
+            try:
+                file_url = NSURL.fileURLWithPath_(file_path)
+                picker = NSSharingServicePicker.alloc().initWithItems_([file_url])
+                native = getattr(self._window, "native", None)
+                content_view = getattr(native, "contentView", None)
+                view = content_view() if callable(content_view) else getattr(native, "contentView", None)
+                if view is not None:
+                    bounds = view.bounds() if callable(getattr(view, "bounds", None)) else getattr(view, "bounds", None)
+                    w = bounds.size.width if hasattr(bounds, "size") else 800
+                    h = bounds.size.height if hasattr(bounds, "size") else 600
+                    rect = NSMakeRect(w - 150, h - 40, 100, 30)
+                    picker.showRelativeToRect_ofView_preferredEdge_(rect, view, 3)
+            except Exception as exc:
+                _log(f"Errore apertura picker condivisione: {exc}")
+
+        AppHelper.callAfter(_open_picker)
+        return {"ok": True}
+
+    def set_zoom(self, factor: float) -> dict:
+        """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
+        try:
+            factor = float(factor)
+        except (TypeError, ValueError):
+            return {"errore": "Fattore di zoom non valido."}
+
+        factor = max(0.5, min(3.0, factor))
+
+        if not self._window:
+            return {"ok": False, "errore": "Finestra non disponibile."}
+
+        native = getattr(self._window, "native", None)
+
+        if sys.platform == "darwin":
+            wv = None
+            if native is not None:
+                if hasattr(native, "webview"):
+                    wv = native.webview
+                elif hasattr(native, "contentView"):
+                    cv = native.contentView
+                    view = cv() if callable(cv) else cv
+                    if hasattr(view, "setPageZoom_"):
+                        wv = view
+                    elif hasattr(view, "subviews"):
+                        subviews = view.subviews() if callable(view.subviews) else view.subviews
+                        for sv in subviews or []:
+                            if hasattr(sv, "setPageZoom_"):
+                                wv = sv
+                                break
+            if wv is None and hasattr(self._window, "webview"):
+                wv = self._window.webview
+
+            if wv is not None and hasattr(wv, "setPageZoom_"):
+                try:
+                    from PyObjCTools import AppHelper
+                    AppHelper.callAfter(lambda: wv.setPageZoom_(factor))
+                except Exception:
+                    wv.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+            elif native is not None and hasattr(native, "setPageZoom_"):
+                native.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+
+        if sys.platform == "win32":
+            target = None
+            if native is not None:
+                if hasattr(native, "controller"):
+                    target = native.controller
+                elif hasattr(native, "webview"):
+                    target = native.webview
+                elif hasattr(native, "browser"):
+                    target = native.browser
+                else:
+                    target = native
+            elif hasattr(self._window, "webview"):
+                target = self._window.webview
+
+            if target is not None:
+                if hasattr(target, "ZoomFactor"):
+                    target.ZoomFactor = factor
+                    return {"ok": True, "factor": factor}
+                core = getattr(target, "CoreWebView2", None)
+                if core is not None and hasattr(core, "ZoomFactor"):
+                    core.ZoomFactor = factor
+                    return {"ok": True, "factor": factor}
+
+        if hasattr(self._window, "set_zoom"):
+            self._window.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+        if hasattr(native, "set_zoom"):
+            native.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+
+        return {"ok": True, "factor": factor}
+
+
+_condividi_temp_dirs: list[str] = []
+
+
+def _cleanup_share_dirs():
+    for d in _condividi_temp_dirs:
+        shutil.rmtree(d, ignore_errors=True)
+    _condividi_temp_dirs.clear()
+
+
+def _cleanup_old_share_dirs():
+    now = time.time()
+    tmp = tempfile.gettempdir()
+    try:
+        for entry in os.listdir(tmp):
+            if entry.startswith("rt-condividi-"):
+                full = os.path.join(tmp, entry)
+                try:
+                    if os.path.isdir(full) and (now - os.path.getmtime(full) > 86400):
+                        shutil.rmtree(full, ignore_errors=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+atexit.register(_cleanup_share_dirs)
+_cleanup_old_share_dirs()
 
 
 _backup_lock = threading.Lock()

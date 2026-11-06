@@ -152,7 +152,7 @@ export function GuidePage() {
               aria-label="Argomenti della guida"
               className="hidden w-56 shrink-0 md:block"
             >
-              <div className="sticky top-[calc(var(--header-height)+60px)] flex flex-col gap-1 text-meta">
+              <div className="sticky top-[calc(var(--header-height)+60px)] flex max-h-[calc(100vh-var(--header-height)-96px)] flex-col gap-1 overflow-y-auto text-meta">
                 <div className="mb-2 flex items-center gap-2 font-semibold text-foreground">
                   <BookOpen className="size-4" />
                   <span>Argomenti</span>

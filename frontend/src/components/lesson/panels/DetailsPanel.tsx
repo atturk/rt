@@ -26,6 +26,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/dialog'
+import { fetchExport, saveFile } from '@/lib/fileExport'
 import { LinkMenuButton } from '@/components/ui/menu'
 import { Modal } from '@/components/ui/modal'
 import { useMenuPosition } from '@/lib/useMenuPosition'
@@ -303,14 +304,8 @@ export function DetailsPanel({
         ['format', 'markdown'],
         ['name', l.titolo || l.folder_name],
       ])}`
-      const response = await fetch(url, { credentials: 'same-origin' })
-      if (!response.ok) throw new Error(`Download non riuscito (${response.status})`)
-      const name = /filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? `${l.folder_name}.md`
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(await response.blob())
-      link.download = name
-      link.click()
-      URL.revokeObjectURL(link.href)
+      const file = await fetchExport(url, `${l.folder_name}.md`)
+      saveFile(file)
     } catch (error) {
       setDownloadError(errorMessage(error))
       return

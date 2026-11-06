@@ -14,7 +14,7 @@ import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudyTextScale, type StudyFont } from '@/lib/studyText'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
-import { ZOOM_LEVELS, getZoom, setZoom } from '@/lib/zoom'
+import { ZOOM_LEVELS, getZoom, isAppWindow, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
 import { StudyStatusesSection } from './StudyStatusesSection'
 
@@ -64,13 +64,13 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
           <option value="colori">Colori</option><option value="grigi">Grigi</option><option value="niente">Niente</option>
         </Select>
       </Field>
-      <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
+      {isAppWindow() && <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
         <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
           {ZOOM_LEVELS.map(level => (
             <option key={level} value={level}>{Math.round(level * 100)}%</option>
           ))}
         </Select>
-      </Field>
+      </Field>}
       <SaveFeedback mutation={save} />
     </Section>
     <Section id="testo-studio" title="Testo dello Studio">

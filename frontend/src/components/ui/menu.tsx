@@ -155,27 +155,30 @@ export function LinkMenuButton({ label, icon, items, className, buttonClassName,
                 <span className="sr-only">: {item.unavailable}</span>
               </span>}</Tooltip>
             ) : item.onSelect ? (
-              <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-                aria-checked={item.checked} tabIndex={-1} data-testid={item.testId} className={cn(itemClass, item.className)} onClick={() => {
-                  item.onSelect?.()
-                  if (item.checked === undefined) close(true)
-                }}>
-                {item.checked !== undefined && (
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
-                      item.checked
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-muted-foreground/60 bg-transparent',
-                    )}
-                  >
-                    {item.checked && <Check className="size-3 stroke-[2.5]" />}
-                  </span>
-                )}
-                {item.icon && <item.icon aria-hidden className="size-4 shrink-0" />}
-                {item.label}
-              </button>
+              <Tooltip key={item.label} content={item.title} disabled={!item.title}>{(trigger) => (
+                <button type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  {...trigger}
+                  aria-checked={item.checked} tabIndex={-1} data-testid={item.testId} className={cn(itemClass, item.className)} onClick={() => {
+                    item.onSelect?.()
+                    if (item.checked === undefined) close(true)
+                  }}>
+                  {item.checked !== undefined && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
+                        item.checked
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-muted-foreground/60 bg-transparent',
+                      )}
+                    >
+                      {item.checked && <Check className="size-3 stroke-[2.5]" />}
+                    </span>
+                  )}
+                  {item.icon && <item.icon aria-hidden className="size-4 shrink-0" />}
+                  {item.label}
+                </button>
+              )}</Tooltip>
             ) : (
               <Tooltip key={item.label} content={item.title} disabled={!item.title}>{(trigger) => <a {...trigger} role="menuitem" tabIndex={-1} href={item.href} download={item.download} className={itemClass} onClick={() => close(false)}>
                 {item.label}

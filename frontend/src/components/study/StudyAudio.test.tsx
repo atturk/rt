@@ -29,8 +29,8 @@ const LESSON: Lesson = {
 }
 
 const UNITS = [
-  { id: '1.1', title: 'Prima unità', html: '<p>Contenuto unità 1</p>', questions: 0, pending: {} },
-  { id: '1.2', title: 'Seconda unità', html: '<p>Contenuto unità 2</p>', questions: 0, pending: {} },
+  { id: '1.1', title: 'Prima unità', html: '<p>Contenuto unità 1</p>', questions: 0, pending: {}, start: 120, end: 240 },
+  { id: '1.2', title: 'Seconda unità', html: '<p>Contenuto unità 2</p>', questions: 0, pending: {}, start: 240, end: 360 },
 ]
 
 vi.mock('@/api/studyProgress', () => ({
@@ -131,5 +131,56 @@ describe('Study audio player and keyboard navigation', () => {
     // Ora le frecce tornano a cambiare unità
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.getByText('Contenuto unità 2')).toBeInTheDocument()
+  })
+
+  it('non mostra il bottone ▶ dell\'unità', () => {
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Audio della lezione per questa unità' })).not.toBeInTheDocument()
+  })
+
+  it('ricorda lo stato aperto/chiuso per dispositivo in rt-device:study-audio-open e parte da timecode unità', () => {
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const audioBtn = screen.getByTestId('study-audio-player-btn')
+    expect(localStorage.getItem('rt-device:study-audio-open')).toBeNull()
+
+    // Clic per aprire
+    fireEvent.click(audioBtn)
+    expect(localStorage.getItem('rt-device:study-audio-open')).toBe('true')
+    expect(screen.getByTestId('audio-player')).toBeInTheDocument()
+    // Si posiziona al timecode dell'unità (start = 120s => 2:00)
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
+
+    // Clic per chiudere
+    fireEvent.click(audioBtn)
+    expect(localStorage.getItem('rt-device:study-audio-open')).toBe('false')
+    expect(screen.queryByTestId('audio-player')).not.toBeInTheDocument()
+  })
+
+  it('all\'ingresso in Studio il player è già aperto se salvato aperto nel dispositivo', () => {
+    localStorage.setItem('rt-device:study-audio-open', 'true')
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId('audio-player')).toBeInTheDocument()
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
   })
 })

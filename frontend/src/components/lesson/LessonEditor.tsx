@@ -11,6 +11,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
 import { imageKeys, uploadEditorImage } from '@/api/images'
 import { Alert } from '@/components/ui/alert'
+import { saveFile } from '@/lib/fileExport'
 import { lessonImageUploads } from './lessonImages'
 import { useRelevance } from '@/api/relevance'
 import { lessonKeys, useIssues } from '@/api/hooks'
@@ -528,12 +529,8 @@ export function LessonEditor({
   }
   // Il Markdown com'è adesso, per continuare altrove; poi si ripristina.
   const downloadAndRestore = () => {
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
-    const link = window.document.createElement('a')
-    link.href = url
-    link.download = `lezione-${lessonId}-modifiche.md`
-    link.click()
-    URL.revokeObjectURL(url)
+    const file = new File([text], `lezione-${lessonId}-modifiche.md`, { type: 'text/markdown;charset=utf-8' })
+    saveFile(file)
     restore()
   }
 

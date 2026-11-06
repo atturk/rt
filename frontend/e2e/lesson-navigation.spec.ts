@@ -20,7 +20,7 @@ test('pagina lezione: editor protetto, quattro bottoni al passaggio, timer e lin
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('lesson-jump-buttons-right')).toBeHidden()
   await page.getByTestId('lesson-jump-zone-left').hover({ position: { x: 72, y: 5 } })
-  for (const side of ['left', 'right']) for (const group of ['sameDay', 'sameSubject']) {
+  for (const side of ['left', 'right']) for (const group of ['sameDay', 'sameSubject', 'sameTeacher']) {
     await expect(page.getByTestId(`lesson-jump-${side}-${group}`)).toBeVisible()
     await expect(page.getByTestId(`lesson-jump-${side}-${group}`)).toHaveCSS('opacity', '0.4')
   }

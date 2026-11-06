@@ -103,22 +103,20 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
   })
 
-  it('ripasso senza domande apre Genera una sola volta su quell’unità', () => {
+  it('ripasso senza domande porta alla schermata domande di quell’unità', () => {
     renderStudy('/studio/lezione/1?unita=2.1&azione=ripasso')
-    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
-    expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Prelievo arterioso')
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Prelievo arterioso')
     expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
-    fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Torna allo studio' })[0])
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
   })
 
   it('un’unità inesistente ignora anche l’azione e conserva l’ingresso precedente', () => {
     renderStudy({ pathname: '/studio/lezione/1', search: '?unita=assente&azione=ripasso', state: { enter: 'last' } })
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
     expect(screen.queryByTestId('recall-session-page')).not.toBeInTheDocument()
     expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
   })
@@ -271,47 +269,41 @@ describe('StudyFlow unit navigation', () => {
     localStorage.clear()
   })
 
-  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità, niente study-next (4.2.2b3, 4.2.2b4)', () => {
+  it('unità senza domande: il bottone cervello porta alla schermata domande dell’unità (4.3.8b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 2.1 non ha domande.
     fireEvent.click(screen.getByTestId('unit-index-toggle'))
     fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
-    const generate = screen.getByTestId('study-generate')
-    expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
-    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+    const questionsBtn = screen.getByTestId('study-unit-questions-btn')
+    expect(questionsBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-generate')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('study-quiz')).not.toBeInTheDocument()
 
-    fireEvent.click(generate)
-    fireEvent.click(screen.getByRole('button', { name: 'Query SQL' }))
-    fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
-    fireEvent.click(screen.getByTestId('study-generate-start'))
-
-    expect(mockGenerate).toHaveBeenCalledWith(
-      { unitIds: ['2.1'], qtype: 'query-sql', count: 2, instructions: 'solo sui valori soglia' },
-      expect.anything(),
-    )
+    fireEvent.click(questionsBtn)
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Prelievo arterioso')
   })
 
-  it('con domande mostra entrambi i pulsanti e il secondo apre il popup di generazione (4.2.2b4 F2)', () => {
+  it('con domande mostra il bottone cervello nella barra in alto (4.3.8b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 1.1 ha 2 domande
-    expect(screen.getByTestId('study-quiz')).toHaveTextContent('Mettimi alla prova · 2')
-    const generateBtn = screen.getByTestId('study-generate')
-    expect(generateBtn).toBeInTheDocument()
-    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+    const questionsBtn = screen.getByTestId('study-unit-questions-btn')
+    expect(questionsBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-generate')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('study-quiz')).not.toBeInTheDocument()
 
-    // Il secondo pulsante apre il popup di generazione
-    fireEvent.click(generateBtn)
-    expect(screen.getByTestId('study-generate-modal')).toBeInTheDocument()
+    // Il bottone apre la sessione di ripasso
+    fireEvent.click(questionsBtn)
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
   })
 
   it('nessun effetto delle frecce nella fase domande', () => {
     localStorage.clear()
     renderStudy()
     // Passa alla fase domande
-    const quizBtn = screen.getByTestId('study-quiz')
+    const quizBtn = screen.getByTestId('study-unit-questions-btn')
     fireEvent.click(quizBtn)
     expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
 
@@ -361,19 +353,6 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
     localStorage.clear()
   })
-})
-
-it.each([true, false])('popup Genera: consigliato presente e selezionato solo con Jev (%s)', suggestions => {
-  mockSuggestions = suggestions
-  renderStudy()
-  fireEvent.click(screen.getByTestId('study-generate'))
-  expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
-  if (suggestions) expect(screen.getByTestId('question-type-advice')).toHaveAttribute('aria-label', 'Consigliato da Jev')
-  if (suggestions) expect(screen.getByRole('button', { name: 'Mirata' })).toHaveAttribute('aria-pressed', 'true')
-  else expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'mirata' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })
 
 it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () => {
@@ -465,81 +444,6 @@ it('font del testo: con study.text-font = seravek la section dell’unità usa S
   localStorage.clear()
 })
 
-
-async function startGeneration() {
-  mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'generation-1' }))
-  const client = renderStudy()
-  // Lo stato arriva dalla stessa cache aggiornata dal canale live.
-  client.setQueryDefaults(['job'], { staleTime: Infinity })
-  client.setQueryData(['job', 'generation-1'], { state: 'running' })
-  fireEvent.click(screen.getByTestId('study-generate'))
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  await waitFor(() => expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument())
-  return client
-}
-
-it.each(['x', 'esc', 'outside'])('Genera: chiusura %s durante il job e riapertura senza duplicati', async method => {
-  const client = await startGeneration()
-  const popup = screen.getByTestId('study-generate-modal')
-  if (method === 'x') fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  else if (method === 'esc') fireEvent(popup, new Event('cancel', { bubbles: false, cancelable: true }))
-  else fireEvent.click(popup)
-  expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByTestId('study-generate'))
-  expect(screen.getByLabelText('Fino a')).toBeDisabled()
-  expect(screen.getByTestId('study-generate-start')).toBeDisabled()
-  expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument()
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
-  await waitFor(() => expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument())
-})
-
-it('ricarica le domande quando il job finisce a popup chiuso', async () => {
-  const client = await startGeneration()
-  const invalidate = vi.spyOn(client, 'invalidateQueries')
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  // Anche passando alle domande il monitoraggio resta nello Studio.
-  fireEvent.click(screen.getByTestId('study-quiz'))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
-  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
-})
-
-it('mostra l’errore del job a popup chiuso', async () => {
-  const client = await startGeneration()
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
-  expect(await screen.findByText('Generatore non disponibile')).toBeInTheDocument()
-})
-
-it('mantiene il popup aperto con l’errore se il job fallisce', async () => {
-  const client = await startGeneration()
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
-  await waitFor(() => expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Generatore non disponibile'))
-  expect(screen.getByTestId('study-generate-start')).toBeEnabled()
-})
-
-it('segue il job anche chiudendo il popup prima della risposta di avvio', async () => {
-  let accepted!: (result: { job_id: string }) => void
-  mockGenerate.mockImplementation((_input, options) => { accepted = options.onSuccess })
-  const client = renderStudy()
-  client.setQueryDefaults(['job'], { staleTime: Infinity })
-  client.setQueryData(['job', 'delayed'], { state: 'running' })
-  fireEvent.click(screen.getByTestId('study-generate'))
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  act(() => accepted({ job_id: 'delayed' }))
-  const invalidate = vi.spyOn(client, 'invalidateQueries')
-  act(() => client.setQueryData(['job', 'delayed'], { state: 'succeeded' }))
-  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
-})
-
-it('l’errore della generazione resta visibile passando alle domande', async () => {
-  const client = await startGeneration()
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  fireEvent.click(screen.getByTestId('study-quiz'))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generazione interrotta' }))
-  expect(await screen.findByText('Generazione interrotta')).toBeVisible()
-})
-
 describe('Segnalazioni aperte nello Studio', () => {
   it('la barra non compare quando ci sono 0 segnalazioni aperte', () => {
     renderStudy('/', [{ ...LESSON, pending_issues: 0 }])
@@ -574,42 +478,5 @@ describe('Segnalazioni aperte nello Studio', () => {
     await waitFor(() => {
       expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
     })
-  })
-
-  it('mostra il messaggio e il link alla Verifica quando la generazione finisce su un’unità con segnalazioni aperte', async () => {
-    mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'gen-pending-1' }))
-    const client = renderStudy('/', [{ ...LESSON, pending_issues: 1 }])
-    act(() => {
-      client.setQueryData(reviewKeys.issues(1), {
-        pending: 1,
-        total: 1,
-        review_complete: false,
-        items: [
-          {
-            issue: { id: 'sci_1', unit_id: '2.1' },
-            decision: null,
-            needs_reconfirmation: false,
-          },
-        ],
-      })
-    })
-    client.setQueryDefaults(['job'], { staleTime: Infinity })
-    client.setQueryData(['job', 'gen-pending-1'], { state: 'running' })
-
-    // Vai all'unità 2.1 che non ha domande
-    fireEvent.click(screen.getByTestId('unit-index-toggle'))
-    fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
-
-    fireEvent.click(screen.getByTestId('study-generate'))
-    fireEvent.click(screen.getByTestId('study-generate-start'))
-
-    // Il job termina con successo
-    act(() => client.setQueryData(['job', 'gen-pending-1'], { state: 'succeeded' }))
-
-    // Compare il messaggio con il link alla Verifica
-    const banner = await screen.findByText(/Domande pronte: compariranno quando avrai deciso le segnalazioni della/i)
-    expect(banner).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: 'Verifica' })
-    expect(link).toHaveAttribute('href', '/lezioni/1?panel=verifica&review_unit=2.1')
   })
 })

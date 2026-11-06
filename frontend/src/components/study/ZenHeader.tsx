@@ -1,4 +1,4 @@
-import { Headphones, SlidersHorizontal, X } from 'lucide-react'
+import { Brain, Headphones, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -13,7 +13,7 @@ import { IrlenWarningModal } from './IrlenWarningModal'
 /** La barra segue il mouse e il focus, mai lo scroll del testo. */
 export function ZenHeader({
   title, settings, onSettings, onExit, irlen, onIrlen, hasNonYellowHighlight, status, onStatus,
-  hasAudio, audioOpen, onToggleAudio,
+  hasAudio, audioOpen, onToggleAudio, onReview,
 }: {
   title: string; settings: boolean; onSettings: (open: boolean) => void; onExit: () => void
   irlen: RsvpPreference['irlen']; onIrlen: (value: RsvpPreference['irlen']) => void
@@ -23,6 +23,7 @@ export function ZenHeader({
   hasAudio?: boolean
   audioOpen?: boolean
   onToggleAudio?: () => void
+  onReview?: () => void
 }) {
   const [prefs, setPrefs] = useRsvpPrefs()
   const [showWarning, setShowWarning] = useState(false)
@@ -67,6 +68,15 @@ export function ZenHeader({
           className={cn(currentDef.className, 'size-7 min-w-7 [&_svg]:size-4')}
           onClick={onStatus}
           data-testid="zen-status"
+        />
+      )}
+      {onReview && (
+        <IconButton
+          label="Domande su questa unità · D"
+          icon={Brain}
+          className="size-7 min-w-7 [&_svg]:size-4"
+          onClick={onReview}
+          data-testid="zen-unit-questions-btn"
         />
       )}
       {hasAudio && onToggleAudio && (

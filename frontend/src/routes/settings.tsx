@@ -57,7 +57,7 @@ export function SettingsLayout() {
     <PageHeader title={phone && !index ? current.label : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
     <PageBody className="md:px-5">
       <div className="flex min-w-0 gap-8">
-        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit w-60')}>
+        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-60 overflow-y-auto')}>
           {SETTINGS_SECTIONS.map(s => <NavLink key={s.path} to={`/impostazioni/${s.path}`}
             className={({ isActive }) => cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body',
               phone ? 'border-b' : '', (isActive || (!phone && index && s.path === 'aspetto')) ? 'bg-muted font-semibold' : 'hover:bg-muted')}>

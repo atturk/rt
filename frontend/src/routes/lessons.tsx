@@ -26,6 +26,8 @@ import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
 import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
+import { canShareFiles, fetchExport, shareFile } from '@/lib/fileExport'
+import { clearFileStatus, setFileStatus, trackFileExport } from '@/lib/fileStatus'
 import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
@@ -473,26 +475,33 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
-  // Il PDF si scarica con fetch: se il browser per la stampa non c'è ancora, si mostra il motivo invece di salvare l'errore come file.
-  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
-  const exportPdf = async () => {
-    setPdf({ busy: true, error: null })
-    try {
-      const response = await fetch(`/api/v1/lessons/${l.id}/export?format=pdf`, { credentials: 'same-origin' })
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
-        throw new Error(body?.error?.message ?? `PDF non riuscito (${response.status})`)
+  const [canShare] = useState(() => ({
+    pdf: canShareFiles('application/pdf'),
+    lesson: canShareFiles('application/zip'),
+  }))
+  const shareItem = async (url: string, kind: 'pdf' | 'lezione') => {
+    const pywebview = (window as unknown as { pywebview?: { api?: { condividi?: (path: string) => Promise<{ ok?: boolean; errore?: string }> } } }).pywebview
+    const hasWebShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [new File([''], 'test', { type: kind === 'pdf' ? 'application/pdf' : 'application/zip' })] })
+
+    if (pywebview?.api?.condividi && !hasWebShare) {
+      setFileStatus({ kind: 'busy', message: kind === 'pdf' ? 'Preparo il PDF…' : 'Preparo la lezione…' })
+      try {
+        const res = await pywebview.api.condividi(url)
+        if (res?.errore) setFileStatus({ kind: 'error', message: res.errore })
+        else clearFileStatus()
+      } catch (err) {
+        setFileStatus({ kind: 'error', message: errorMessage(err) })
       }
-      const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(await response.blob())
-      link.download = encoded ? decodeURIComponent(encoded) : `${l.folder_name}.pdf`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      setPdf({ busy: false, error: null })
-    } catch (error) {
-      setPdf({ busy: false, error: errorMessage(error) })
+      return
     }
+
+    void trackFileExport(fetchExport(url), {
+      busyMessage: kind === 'pdf' ? 'Preparo il PDF…' : 'Preparo la lezione…',
+      doneLabel: kind === 'pdf' ? 'PDF pronto' : 'Lezione pronta',
+      isShare: true,
+      shareTitle: l.titolo || l.folder_name,
+      onShare: (file) => shareFile(file, { title: l.titolo || l.folder_name }),
+    })
   }
   return (
     <div className="relative flex items-center gap-0.5" data-testid="lesson-actions">
@@ -520,14 +529,23 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         label="Esporta"
         icon={Download}
         items={[
-          { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'PDF', onSelect: () => void exportPdf(), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
-          { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
+          { label: 'Markdown', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=markdown`), { busyMessage: 'Preparo il Markdown…', doneLabel: 'Markdown pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=pdf`), { busyMessage: 'Preparo il PDF…', doneLabel: 'PDF pronto' }), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'Lezione (.rt)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`), { busyMessage: 'Preparo la lezione…', doneLabel: 'Lezione pronta' }), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Solo le fonti (zip)', onSelect: () => void trackFileExport(fetchExport(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`), { busyMessage: 'Preparo le fonti…', doneLabel: 'Fonti pronte' }) },
+          ...(canShare.pdf ? [{
+            label: 'Condividi PDF',
+            onSelect: () => void shareItem(`/api/v1/lessons/${l.id}/export?format=pdf`, 'pdf'),
+            unavailable: reason(a.export_markdown),
+          }] : []),
+          ...(canShare.lesson ? [{
+            label: 'Condividi lezione',
+            onSelect: () => void shareItem(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, 'lezione'),
+            unavailable: reason(a.export_zip),
+          }] : []),
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
-      {pdf.error && <Alert tone="danger" className="absolute right-0 top-full z-20 mt-2 w-72 cursor-pointer" onClick={() => setPdf({ busy: false, error: null })}>{pdf.error}</Alert>}
     </div>
   )
 }

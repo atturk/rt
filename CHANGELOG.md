@@ -1,5 +1,24 @@
 # Novità di RT
 
+## 4.3.8b4 — 2026-11-06
+
+Beta con la condivisione da iPhone, il player audio spostabile e lo zoom che non rompe più la pagina.
+
+### Novità
+
+- **Condividi**: nel menu Esporta ci sono «Condividi PDF» e «Condividi lezione», che aprono il menu di condivisione del sistema (iPhone e Mac). Le voci si chiamano ora «Lezione (.rt)» e «Solo le fonti (zip)».
+- **Stato del file**: mentre RT prepara un file da salvare o condividere compare una barra in basso con l'avanzamento, poi il bottone «Salva» o l'errore.
+- **Domande dell'unità in Studio**: il blocco «Genera» in fondo all'unità non c'è più; il bottone con il cervello nella barra in alto (tasto D) apre le domande dell'unità che stai leggendo.
+- **Player audio spostabile**: trascinalo dai bordi e si aggancia in basso, a sinistra o a destra; RT ricorda la posizione su ogni dispositivo. Sugli schermi stretti resta in basso.
+- **Stesso docente**: nel salto tra lezioni (Studio e pagina della lezione) c'è una terza riga per la lezione prima o dopo dello stesso docente e della stessa materia.
+
+### Correzioni
+
+- Lo zoom dell'app (Cmd + e Cmd −, Impostazioni → Aspetto) usa lo zoom vero della finestra e non rompe più il disegno della pagina della lezione. Nel browser vale lo zoom del browser.
+- I download dalla web app su iPhone ora funzionano anche per Markdown, zip e fonti.
+- In Studio il player audio ricorda se era aperto o chiuso; tolto il bottone ▶ dell'unità.
+- Le barre laterali di Impostazioni e Guida scorrono quando lo zoom è alto.
+
 ## 4.3.8b3 — 2026-11-05
 
 Beta con le correzioni sulla beta 2, il ripasso «da professore» e gli stati di studio personalizzati.
