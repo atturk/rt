@@ -27,6 +27,26 @@ Base: `agy/4.3.8-condivisione` (= v4.3.8b3 + piano condivisione). Una voce per c
   - Aggiorna `zoomed(px)` e chi lo usa, se la scala cambia significato.
 - Test: vitest su `zoom.ts` (ponte desktop chiamato, nessuno stile `zoom` sull'html); test Python per `set_zoom` con webview finto. La verifica visiva sul Mac la fa Attilio sulla beta.
 
+## 8. Studio: via il bottone ▶ dell'unità, player che ricorda se era aperto
+
+- Togli dalla barra in alto di Studio il bottone ▶ «Audio della lezione per questa unità» (`Study.tsx`, componente che usa l'icona `Play` e i timecode dell'unità). Per ascoltare l'utente apre il player (cuffie) e preme play. Se il player, aprendolo, può partire dall'inizio dell'unità aperta (come faceva il ▶), tienilo: posizione iniziale = timecode dell'unità solo se l'audio non è già in riproduzione.
+- Il player di Studio aperto/chiuso si ricorda **in modo persistente per dispositivo** (non più solo per sessione, cambia la voce 7 della b3): entrando in Studio è aperto se l'utente l'aveva lasciato aperto, chiuso altrimenti. Predefinito: chiuso.
+- Aggiorna i test che cercano il bottone ▶ dell'unità.
+
+## 9. Salto alla lezione dopo/prima dello stesso docente
+
+- `components/shared/LessonJump.tsx` (blocco laterale con calendario → e etichetta →, usato in Studio e nella pagina lezione): aggiungi una terza riga con icona docente (es. `GraduationCap`) per la lezione **dello stesso docente** precedente/successiva in ordine cronologico (data della lezione, poi l'ordine già usato per lo stesso giorno). Stesso docente = stesso nome, senza distinguere maiuscole e spazi ai bordi, anche se la materia è diversa. Lezione senza docente: riga disattivata con «nessun docente per questa lezione».
+- Calcolo in `lib/lessonNeighbors` accanto a `sameDay` e `sameSubject` (`sameTeacher`). Il blocco deve esserci sia in Studio sia nella pagina lezione: se oggi manca in uno dei due, aggiungilo.
+- Test vitest per `sameTeacher` (ordine, docente vuoto, maiuscole) e aggiorna gli e2e del salto.
+
+## 10. Niente due docenti diversi con lo stesso nome
+
+- Oggi un docente si registra per materia (`rt/services/subjects.py`, `add_teacher`/`register_teacher`) e nella stessa materia il doppione è già rifiutato. Con la voce 9 il nome identifica la persona in tutte le materie, quindi:
+  - Aggiungendo un docente (Impostazioni → Materie, dialogo nuova lezione, modifica lezione) con un nome che **esiste già in un'altra materia** (stesso confronto della voce 9), RT non lo crea in silenzio: mostra «Esiste già un docente “Rossi” (Anatomia). Se è la stessa persona, scegli “Stessa persona”; se è un altro docente, usa il nome puntato, per esempio “Rossi M.” e “Rossi L.”». Due bottoni: «Stessa persona» (lo aggiunge anche a questa materia) e «Cambia nome» (torna al campo). Non c'è un modo di creare un secondo «Rossi» diverso.
+  - Stessa materia: resta il rifiuto di oggi, con il messaggio che suggerisce il nome puntato.
+  - Backend: `add_teacher` risponde `409 teacher_exists_elsewhere` con le materie in cui esiste, a meno che la richiesta dica `same_person: true`.
+- Test backend (stessa materia, altra materia senza e con `same_person`) e vitest del dialogo.
+
 ## Prima della PR
 
 Quella di `piano-condivisione.md` più:
