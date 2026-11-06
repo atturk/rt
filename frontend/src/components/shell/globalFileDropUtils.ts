@@ -17,6 +17,9 @@ const ACCEPTED_EXTENSIONS = new Set([
   '.jpeg',
   '.webp',
   '.zip',
+  '.rt',
+  '.rtdb',
+  '.rtcal',
 ])
 
 export const MEDIA_EXTENSIONS = new Set([

@@ -13,7 +13,7 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { defaultOptions, sourceReasons, useSourceDefaults, type Uso } from '@/lib/sourceDefaults'
-import { ExtractOptions, SourceFileIcon, UseOptions } from './SourceControls'
+import { ExtractOptions, ReliabilityOptions, SourceFileIcon, UseOptions, type Affidabilita } from './SourceControls'
 
 export { UseOptions } from './SourceControls'
 
@@ -49,6 +49,7 @@ export function AddSourceDialog({
   const [uso, setUso] = useState<Uso>(
     initial?.uso ?? (hasSources || hasAudio ? defaultOptions(name, defaults).uso ?? 'contesto' : 'guida'),
   )
+  const [affidabilita, setAffidabilita] = useState<Affidabilita>(initial?.affidabilita ?? 'normale')
   const reasons = sourceReasons({ name, options: { estrai }, hasAudio, isGuide })
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
@@ -95,7 +96,7 @@ export function AddSourceDialog({
       const pagine = pageText || (from && to ? `${from}-${to}` : null)
       if (hasPages && ((from && Number(from) < 1) || (to && Number(to) < Number(from))))
         throw new Error('Pagine fuori intervallo')
-      await onSubmit({ pagine: hasPages ? pagine : null, estrai, uso: estrai === 'solo_immagini' ? 'contesto' : uso })
+      await onSubmit({ pagine: hasPages ? pagine : null, estrai, uso: estrai === 'solo_immagini' ? 'contesto' : uso, affidabilita })
     } catch (error) {
       setProblem(errorMessage(error))
     } finally {
@@ -169,6 +170,7 @@ export function AddSourceDialog({
         <div className="flex flex-wrap items-center gap-3">
           <ExtractOptions value={estrai} onChange={setEstrai} unavailable={reasons.extract} />
           <UseOptions value={uso} onChange={setUso} unavailable={reasons.use} off={reasons.off} />
+          <ReliabilityOptions value={affidabilita} onChange={setAffidabilita} />
         </div>
         {problem && <Alert tone="danger">{problem}</Alert>}
         <div className="flex justify-end gap-2">

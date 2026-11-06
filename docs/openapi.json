@@ -135,6 +135,22 @@
       },
       "AddToLessonRequest": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "default": "immagini",
             "enum": [
@@ -924,6 +940,11 @@
             "title": "Audio",
             "type": "string"
           },
+          "is_followup": {
+            "default": false,
+            "title": "Is Followup",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -1133,6 +1154,22 @@
       },
       "Body_post_source_api_v1_lessons__lesson_id__sources_post": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "anyOf": [
               {
@@ -3967,6 +4004,36 @@
         "title": "CustomQuestionType",
         "type": "object"
       },
+      "CustomStudyStatusIn": {
+        "properties": {
+          "colore": {
+            "default": "text-amber-500",
+            "title": "Colore",
+            "type": "string"
+          },
+          "icona": {
+            "default": "Star",
+            "title": "Icona",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 16,
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 24,
+            "title": "Nome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "nome"
+        ],
+        "title": "CustomStudyStatusIn",
+        "type": "object"
+      },
       "Decision": {
         "properties": {
           "actor": {
@@ -4530,6 +4597,19 @@
           }
         },
         "title": "DeleteImagesRequest",
+        "type": "object"
+      },
+      "DeleteStatusResult": {
+        "properties": {
+          "reassigned": {
+            "title": "Reassigned",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reassigned"
+        ],
+        "title": "DeleteStatusResult",
         "type": "object"
       },
       "DescribeImagesRequest": {
@@ -6657,6 +6737,32 @@
         "title": "LessonCost",
         "type": "object"
       },
+      "LessonCostEstimate": {
+        "properties": {
+          "cost_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stima del costo in Euro per una lezione di 90 minuti",
+            "title": "Cost Eur"
+          },
+          "formatted": {
+            "description": "Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'",
+            "title": "Formatted",
+            "type": "string"
+          }
+        },
+        "required": [
+          "formatted"
+        ],
+        "title": "LessonCostEstimate",
+        "type": "object"
+      },
       "LessonDetail": {
         "properties": {
           "actions": {
@@ -8659,6 +8765,17 @@
       },
       "ReadonlyKeyInfo": {
         "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
           "configured": {
             "title": "Configured",
             "type": "boolean"
@@ -8673,6 +8790,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
           },
           "key_preview": {
             "anyOf": [
@@ -8784,6 +8912,11 @@
             "title": "Dont Know",
             "type": "boolean"
           },
+          "is_followup": {
+            "default": false,
+            "title": "Is Followup",
+            "type": "boolean"
+          },
           "mock": {
             "default": false,
             "title": "Mock",
@@ -8792,6 +8925,11 @@
           "question_id": {
             "title": "Question Id",
             "type": "string"
+          },
+          "skip_followup": {
+            "default": false,
+            "title": "Skip Followup",
+            "type": "boolean"
           }
         },
         "required": [
@@ -8821,6 +8959,50 @@
             ],
             "title": "Attempt Id"
           },
+          "attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attinenza"
+          },
+          "completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completezza"
+          },
+          "correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correttezza"
+          },
+          "domanda_followup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domanda Followup"
+          },
           "dont_know": {
             "default": false,
             "title": "Dont Know",
@@ -8836,6 +9018,77 @@
               }
             ],
             "title": "Evaluation"
+          },
+          "followup_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Answer"
+          },
+          "followup_attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Attinenza"
+          },
+          "followup_completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Completezza"
+          },
+          "followup_correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Correttezza"
+          },
+          "followup_evaluation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Evaluation"
+          },
+          "followup_is_voice": {
+            "default": false,
+            "title": "Followup Is Voice",
+            "type": "boolean"
+          },
+          "followup_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Question"
           },
           "is_voice": {
             "default": false,
@@ -9758,9 +10011,119 @@
             "title": "Answer Text",
             "type": "string"
           },
+          "attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attinenza"
+          },
+          "completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completezza"
+          },
+          "correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correttezza"
+          },
+          "domanda_followup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domanda Followup"
+          },
           "evaluation": {
             "title": "Evaluation",
             "type": "string"
+          },
+          "followup_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Answer"
+          },
+          "followup_attinenza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Attinenza"
+          },
+          "followup_completezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Completezza"
+          },
+          "followup_correttezza": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Correttezza"
+          },
+          "followup_evaluation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Evaluation"
+          },
+          "followup_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup Question"
           },
           "outcome": {
             "anyOf": [
@@ -10561,6 +10924,32 @@
         "title": "RouteOut",
         "type": "object"
       },
+      "SampleLessonOut": {
+        "properties": {
+          "lesson_id": {
+            "description": "ID della lezione di esempio importata",
+            "title": "Lesson Id",
+            "type": "integer"
+          },
+          "materia": {
+            "description": "Materia (ESEMPIO)",
+            "title": "Materia",
+            "type": "string"
+          },
+          "titolo": {
+            "description": "Titolo della lezione di esempio",
+            "title": "Titolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lesson_id",
+          "materia",
+          "titolo"
+        ],
+        "title": "SampleLessonOut",
+        "type": "object"
+      },
       "SecretDeleted": {
         "properties": {
           "name": {
@@ -10824,6 +11213,14 @@
           "notices": {
             "$ref": "#/components/schemas/NoticeSettings"
           },
+          "ordine_stati_studio": {
+            "description": "Ordine di tutti gli stati di studio",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordine Stati Studio",
+            "type": "array"
+          },
           "phases": {
             "description": "Modello assegnato a ciascuna fase LLM",
             "items": {
@@ -10862,6 +11259,14 @@
             "title": "Setup Required",
             "type": "boolean"
           },
+          "stati_studio": {
+            "description": "Stati di studio personalizzati",
+            "items": {
+              "$ref": "#/components/schemas/CustomStudyStatusIn"
+            },
+            "title": "Stati Studio",
+            "type": "array"
+          },
           "telegram": {
             "$ref": "#/components/schemas/TelegramSettings"
           },
@@ -10892,6 +11297,22 @@
       },
       "Source": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "aggiunta_il": {
             "title": "Aggiunta Il",
             "type": "string"
@@ -11006,6 +11427,22 @@
       },
       "SourceOptions": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "estrai": {
             "anyOf": [
               {
@@ -11125,6 +11562,22 @@
       },
       "SourceView": {
         "properties": {
+          "affidabilita": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alta",
+                  "normale",
+                  "bassa"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affidabilita"
+          },
           "aggiunta_il": {
             "title": "Aggiunta Il",
             "type": "string"
@@ -11376,6 +11829,19 @@
           "solo_ricostruzione"
         ],
         "title": "SourcesView",
+        "type": "object"
+      },
+      "StatusUsage": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "StatusUsage",
         "type": "object"
       },
       "StudyLesson": {
@@ -11641,12 +12107,6 @@
             "title": "Last Read At"
           },
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -11677,12 +12137,6 @@
       "StudyStatusUpdate": {
         "properties": {
           "status": {
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           }
@@ -11691,6 +12145,28 @@
           "status"
         ],
         "title": "StudyStatusUpdate",
+        "type": "object"
+      },
+      "StudyStatusesUpdate": {
+        "properties": {
+          "ordine_stati_studio": {
+            "description": "Ordine di tutti gli stati di studio",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordine Stati Studio",
+            "type": "array"
+          },
+          "stati_studio": {
+            "description": "Stati di studio personalizzati",
+            "items": {
+              "$ref": "#/components/schemas/CustomStudyStatusIn"
+            },
+            "title": "Stati Studio",
+            "type": "array"
+          }
+        },
+        "title": "StudyStatusesUpdate",
         "type": "object"
       },
       "StudyUnit": {
@@ -11773,12 +12249,6 @@
           },
           "status": {
             "default": "da-imparare",
-            "enum": [
-              "da-imparare",
-              "in-apprendimento",
-              "appreso",
-              "ignorata"
-            ],
             "title": "Status",
             "type": "string"
           },
@@ -12005,6 +12475,12 @@
           "data_dir": {
             "description": "Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media",
             "title": "Data Dir",
+            "type": "string"
+          },
+          "donazioni_url": {
+            "default": "",
+            "description": "URL per sostenere RT (donazioni)",
+            "title": "Donazioni Url",
             "type": "string"
           },
           "install_dir": {
@@ -18419,6 +18895,82 @@
         "summary": "Importa archivi completi di lezioni o ZIP di gruppo (job import_lesson_zips)",
         "tags": [
           "job"
+        ]
+      }
+    },
+    "/api/v1/lessons/sample": {
+      "post": {
+        "operationId": "import_sample_lesson_api_v1_lessons_sample_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleLessonOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Importa la lezione di esempio inclusa in RT",
+        "tags": [
+          "lezioni"
         ]
       }
     },
@@ -30618,6 +31170,111 @@
         ]
       }
     },
+    "/api/v1/settings/estimate": {
+      "get": {
+        "operationId": "get_cost_estimate_api_v1_settings_estimate_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonCostEstimate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "summary": "Stima dei costi per una lezione di 90 minuti",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/models/test": {
       "post": {
         "operationId": "post_model_test_api_v1_settings_models_test_post",
@@ -32696,6 +33353,92 @@
         ]
       }
     },
+    "/api/v1/settings/study-statuses": {
+      "put": {
+        "operationId": "put_study_statuses_api_v1_settings_study_statuses_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyStatusesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salva stati di studio personalizzati",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/telegram": {
       "put": {
         "operationId": "put_telegram_api_v1_settings_telegram_put",
@@ -33458,6 +34201,180 @@
         "summary": "Ricerca immagini di prova su SearXNG: quanti risultati tornano",
         "tags": [
           "impostazioni"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}": {
+      "delete": {
+        "operationId": "delete_status_api_v1_study_statuses__status_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteStatusResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Elimina uno stato personalizzato e riporta le unità a in-apprendimento",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/study/statuses/{status_id}/usage": {
+      "get": {
+        "operationId": "status_usage_api_v1_study_statuses__status_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status_id",
+            "required": true,
+            "schema": {
+              "title": "Status Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Numero di unità con questo stato",
+        "tags": [
+          "studio"
         ]
       }
     },

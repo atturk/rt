@@ -188,13 +188,13 @@ def import_lesson_zips(actor: Actor, archives: List[UploadFile] = File(...),
             if filename in chosen:
                 entry["decisions"] = chosen[filename]
             entries.append(entry)
-            if not filename.lower().endswith(".zip"):
+            if not filename.lower().endswith((".zip", ".rt")):
                 entry["reason"] = "Serve un archivio ZIP."
                 continue
             try:
                 # Ogni archivio è indipendente (limite di dimensione compreso): il prefisso
                 # evita che due archivi con lo stesso nome si sovrascrivano.
-                path = _save_uploads([archive], {".zip"}, target, prefix=f"{index:02d}-")[0]
+                path = _save_uploads([archive], {".zip", ".rt"}, target, prefix=f"{index:02d}-")[0]
             except ApiError as exc:
                 entry["reason"] = exc.message
                 _remove_partial(os.path.join(target, f"{index:02d}-{filename.strip()}"))

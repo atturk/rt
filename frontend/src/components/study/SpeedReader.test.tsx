@@ -45,10 +45,58 @@ it('rilegge le evidenziazioni modificate mentre il lettore è aperto', async () 
   render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} />)
   expect(screen.getByTestId('speed-reader-word')).not.toHaveAttribute('data-hl')
   await act(async () => { source.innerHTML = '<p><span class="rt-hl rt-hl-4">Prima</span> parola.</p>' })
-  await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-hl', 'true'))
+  await waitFor(() => expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-hl', '4'))
   expect(screen.getByTestId('speed-reader-context').querySelector('.rt-rsvp-hl')).toHaveTextContent('Prima')
   await act(async () => { source.querySelector('span')!.className = '' })
   await waitFor(() => expect(screen.getByTestId('speed-reader-word')).not.toHaveAttribute('data-hl'))
+})
+
+it('la parola verde ha data-hl="1"', async () => {
+  const source = document.createElement('div')
+  source.innerHTML = '<p><span class="rt-hl rt-hl-1">Verde</span> parola.</p>'
+  render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} />)
+  expect(screen.getByTestId('speed-reader-word')).toHaveAttribute('data-hl', '1')
+})
+
+it('startAt inizializza index con la parola che contiene il punto o che viene subito dopo', () => {
+  const source = document.createElement('div')
+  source.innerHTML = '<p>Prima seconda terza quarta.</p>'
+  const textNode = source.querySelector('p')!.firstChild!
+  // offset 7 è l'inizio di "seconda"
+  const { unmount } = render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} startAt={{ node: textNode, offset: 7 }} />)
+  expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('seconda')
+  unmount()
+
+  // offset 9 è a metà di "seconda" -> deve comunque partire da "seconda"
+  render(<SpeedReader source={source} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} startAt={{ node: textNode, offset: 9 }} />)
+  expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('seconda')
+})
+
+it('avviso Irlen: compare con evidenziazione rosa, non ricompare con "Non mostrare più", non compare con solo giallo', async () => {
+  mockPrefs = { ...RSVP_DEFAULT, irlen: 'pesca', irlenHighlightWarning: true, sound: false }
+  const sourceRosa = document.createElement('div')
+  sourceRosa.innerHTML = '<p><span class="rt-hl rt-hl-3">Rosa</span> testo.</p>'
+  const { unmount } = render(<SpeedReader source={sourceRosa} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} />)
+
+  expect(screen.getByText('Con la modalità Irlen alcuni colori delle evidenziazioni potrebbero vedersi poco.')).toBeInTheDocument()
+
+  const checkbox = screen.getByLabelText('Non mostrare più')
+  fireEvent.click(checkbox)
+  fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+
+  expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ irlenHighlightWarning: false }))
+  unmount()
+
+  mockPrefs = { ...RSVP_DEFAULT, irlen: 'pesca', irlenHighlightWarning: false, sound: false }
+  const view2 = render(<SpeedReader source={sourceRosa} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} />)
+  expect(screen.queryByText('Con la modalità Irlen alcuni colori delle evidenziazioni potrebbero vedersi poco.')).not.toBeInTheDocument()
+  view2.unmount()
+
+  mockPrefs = { ...RSVP_DEFAULT, irlen: 'pesca', irlenHighlightWarning: true, sound: false }
+  const sourceGiallo = document.createElement('div')
+  sourceGiallo.innerHTML = '<p><span class="rt-hl rt-hl-0">Giallo</span> testo.</p>'
+  render(<SpeedReader source={sourceGiallo} active context settings={false} onSettingsChange={vi.fn()} settingsButton={{ current: null }} blocked={false} questions={0} onReview={vi.fn()} onGenerate={vi.fn()} onTintChange={vi.fn()} onClose={vi.fn()} onUnit={vi.fn()} canPrevUnit={false} canNextUnit={true} />)
+  expect(screen.queryByText('Con la modalità Irlen alcuni colori delle evidenziazioni potrebbero vedersi poco.')).not.toBeInTheDocument()
 })
 
 it('con autoStart vero avvia la lettura e mostra il pannello attenuato', async () => {

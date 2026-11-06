@@ -77,12 +77,23 @@ const PHASE_HINTS: Record<string, string> = {
 // ------------------------------------------------------------------ modelli per fase
 
 export function PhasesSection({ settings }: { settings: Settings }) {
+  const estimate = useQuery({
+    queryKey: ['settings-estimate'],
+    queryFn: () => unwrap(api.GET('/api/v1/settings/estimate')),
+  })
+
   return (
     <Section
       id="fasi"
       title="Modelli per fase"
       description="Connessione e modello usati da ciascuna fase. Un modello nuovo viene aggiunto alla connessione. Prova fa una chiamata minima, anche prima di salvare."
     >
+      {estimate.data && (
+        <p className="mb-4 text-meta text-muted-foreground" data-testid="cost-estimate">
+          Costo stimato con i modelli attuali:{' '}
+          <strong className="font-semibold text-foreground">{estimate.data.formatted}</strong>
+        </p>
+      )}
       {settings.connections.length === 0 && <Alert tone="warning">Crea prima una connessione qui sotto.</Alert>}
       <PhaseRows settings={settings} />
     </Section>

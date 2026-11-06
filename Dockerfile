@@ -9,6 +9,8 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# La guida in-app si compila dentro la SPA (lib/guideDocs.ts legge ../docs/guida)
+COPY docs/guida/ /src/docs/guida/
 RUN npm run build
 
 # 2. Runtime Python

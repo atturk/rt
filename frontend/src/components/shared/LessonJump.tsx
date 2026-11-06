@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Calendar, Tag } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Calendar, Tag, User } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { IconButton } from '@/components/ui/icon-button'
 import { lessonTitle, type Lesson } from '@/lib/format'
@@ -24,12 +24,22 @@ export function LessonJumpButtons({ neighbors, side, onJump, sequence, paused = 
   }, [paused, sequence])
   const direction = side === 'left' ? 'prev' : 'next'
   const Arrow = side === 'left' ? ArrowLeft : ArrowRight
+  const rows = [
+    { key: 'sameDay' as const, Icon: Calendar, group: 'giorno' },
+    { key: 'sameSubject' as const, Icon: Tag, group: 'materia' },
+    { key: 'sameTeacher' as const, Icon: User, group: 'docente' },
+  ]
   return <div className="relative flex flex-col gap-1 p-1" data-testid={`lesson-jump-buttons-${side}`}>
-    {([{ key: 'sameDay', Icon: Calendar, group: 'giorno' }, { key: 'sameSubject', Icon: Tag, group: 'materia' }] as const).map(({ key, Icon, group }) => {
-      const target = neighbors[key][direction]
-      const label = `Lezione ${side === 'left' ? 'prima' : 'dopo'} ${group === 'giorno' ? 'dello stesso giorno' : 'della stessa materia'}`
+    {rows.map(({ key, Icon, group }) => {
+      const item = neighbors[key]
+      const target = item[direction]
+      const groupLabel = group === 'giorno' ? 'dello stesso giorno' : group === 'materia' ? 'della stessa materia' : 'dello stesso docente'
+      const label = `Lezione ${side === 'left' ? 'prima' : 'dopo'} ${groupLabel}`
+      const unavailable = (key === 'sameTeacher' && neighbors.sameTeacher.disabledReason)
+        ? neighbors.sameTeacher.disabledReason
+        : target ? null : `nessuna lezione ${side === 'left' ? 'prima' : 'dopo'} ${groupLabel}`
       return <IconButton key={key} icon={Icon} label={target ? `${label}: ${lessonTitle(target)}` : label}
-        unavailable={target ? null : `nessuna lezione ${side === 'left' ? 'prima' : 'dopo'} ${group === 'giorno' ? 'dello stesso giorno' : 'della stessa materia'}`}
+        unavailable={unavailable}
         onClick={() => { if (target) onJump(target, side) }} badge={<Arrow aria-hidden />}
         className={`w-16 gap-1 [&_svg]:size-4 ${side === 'left' ? 'flex-row-reverse' : ''} ${dim ? 'opacity-40 hover:opacity-100 focus-visible:opacity-100' : ''}`}
         data-testid={`lesson-jump-${side}-${key}`} />

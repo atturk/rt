@@ -55,6 +55,14 @@ def test_valid_response_is_parsed_and_costed():
     assert record.status == "success" and record.estimated_cost == 0.0004 and record.input_tokens == 120
 
 
+def test_nested_usage_details_are_ignored():
+    """L'endpoint ora manda anche usage.cost_details (un dizionario): non deve far fallire la chiamata."""
+    body = {**GOOD, "usage": {**GOOD["usage"], "cost_details": {"upstream_inference_cost": 0.0003}}}
+    result, store = _call(MagicMock(return_value=_response(body=body)))
+    assert result.usage == {"input_tokens": 120.0, "output_tokens": 3.0, "cost": 0.0004}
+    assert store.get_last().estimated_cost == 0.0004
+
+
 def test_missing_credential_does_not_call_the_network():
     post = MagicMock()
     with pytest.raises(jev.JevError, match="non configurata"):

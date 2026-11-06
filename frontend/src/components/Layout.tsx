@@ -2,7 +2,7 @@ import { clearLastClosedLessonId } from '@/lib/lastClosedLesson'
 import { ReturnAddressContext, rememberReturnAddress, useReturnAddress } from '@/lib/returnAddress'
 import { Activity, BookOpen, Calendar, Plus, Settings, type LucideIcon } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { Navigate, Outlet, useLocation, useMatches } from 'react-router'
+import { Navigate, Outlet, useLocation, useMatches, useNavigate } from 'react-router'
 
 import { ApiError } from '@/api/client'
 import { useMe } from '@/api/hooks'
@@ -15,6 +15,7 @@ import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newL
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
+import { FileStatusBar } from '@/components/ui/file-status'
 import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
@@ -114,6 +115,20 @@ export function Layout() {
   }, [])
   const closeNewLesson = useCallback(() => setNewLessonOptions(null), [])
   const phone = useIsPhone()
+  const navigate = useNavigate()
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === 'F1' ||
+        ((e.metaKey || e.ctrlKey) && (e.key === '?' || (e.shiftKey && e.key === '/')))
+      ) {
+        e.preventDefault()
+        navigate('/guida')
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigate])
   // Un solo canale live per tutta la pagina, aperto dopo l'accesso.
   useLiveUpdates(me.isSuccess)
   useUpdatePopup()
@@ -190,6 +205,7 @@ export function Layout() {
       />
       <ImageViewer />
       <BackupDialog />
+      <FileStatusBar />
       {openedFileError && (
         <div className="fixed bottom-4 right-4 z-50 max-w-md">
           <Alert tone="danger" className="flex items-center justify-between gap-2">

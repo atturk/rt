@@ -314,6 +314,7 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Valuta una risposta aperta (scritta o vocale) e la salva, come il recall da terminale."""
     from rt.services.recall_service import handle_recall_answer
     p = job.payload
+    is_followup = bool(p.get("is_followup", False))
     answer, is_voice = p.get("answer") or "", False
     if p.get("audio_path"):
         if p.get("mock"):
@@ -327,13 +328,28 @@ def recall_evaluate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
         if not answer.strip():
             # Registrazione muta (microfono spento, solo rumore): niente valutazione né risposta salvata.
             raise ValueError(NO_SPEECH)
-    evaluation = handle_recall_answer(job.lesson_path, p["question_id"], answer, is_voice=is_voice,
-                                      force_mock=bool(p.get("mock")), mark_answered=False)
+    evaluation = handle_recall_answer(
+        job.lesson_path,
+        p["question_id"],
+        answer,
+        is_voice=is_voice,
+        force_mock=bool(p.get("mock")),
+        mark_answered=is_followup,
+        is_followup=is_followup,
+    )
     if evaluation is None:
         raise ValueError("Domanda inesistente o a scelta multipla.")
-    return _done({"question_id": p["question_id"], "answer": answer, "evaluation": evaluation,
-                  "outcome": getattr(evaluation, "outcome", None)},
-                 lesson_path=job.lesson_path)
+    return _done({
+        "question_id": p["question_id"],
+        "answer": answer,
+        "evaluation": str(evaluation),
+        "outcome": getattr(evaluation, "outcome", None),
+        "correttezza": getattr(evaluation, "correttezza", None),
+        "completezza": getattr(evaluation, "completezza", None),
+        "attinenza": getattr(evaluation, "attinenza", None),
+        "domanda_followup": getattr(evaluation, "domanda_followup", None),
+        "is_followup": is_followup,
+    }, lesson_path=job.lesson_path)
 
 
 def recall_regenerate_job(job: JobInfo, ctx: RunContext) -> JobOutcome:

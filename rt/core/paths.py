@@ -38,6 +38,12 @@ def default_data_dir() -> str:
     return explicit_data_dir() or os.path.abspath(os.path.expanduser(DEFAULT_DATA_DIR))
 
 
+def sample_lesson_path() -> str:
+    """Percorso dell'archivio .rt della lezione di esempio inclusa in RT."""
+    import rt
+    return os.path.join(os.path.dirname(os.path.abspath(rt.__file__)), "assets", "esempio", "lezione-esempio.rt")
+
+
 def is_initialized(path: Optional[str] = None) -> bool:
     return os.path.isfile(os.path.join(path or default_data_dir(), DATA_MARKER))
 

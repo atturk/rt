@@ -131,4 +131,79 @@ describe('AudioPlayer', () => {
       window.matchMedia = original
     }
   })
+
+  describe('ancoraggio e spostamento (4.3.8b4 voce 6)', () => {
+    it('trascinamento con rilascio vicino a un lato → ancorato a quel lato', () => {
+      renderPlayer()
+      const player = screen.getByTestId('audio-player')
+      expect(player).toHaveAttribute('data-position', 'bottom')
+
+      // Inizia drag su player
+      fireEvent.pointerDown(player, { clientX: 600, clientY: 760 })
+      expect(player).toHaveAttribute('data-dragging', 'true')
+      expect(screen.getByTestId('audio-dock-bottom')).toBeInTheDocument()
+      expect(screen.getByTestId('audio-dock-left')).toBeInTheDocument()
+      expect(screen.getByTestId('audio-dock-right')).toBeInTheDocument()
+
+      // Sposta verso sinistra (vicino a dock left a x=40, y=400)
+      fireEvent.pointerMove(player, { clientX: 50, clientY: 400 })
+      expect(screen.getByTestId('audio-dock-left')).toHaveAttribute('data-active', 'true')
+
+      // Rilascia
+      fireEvent.pointerUp(player, { clientX: 50, clientY: 400 })
+      expect(player).not.toHaveAttribute('data-dragging')
+      expect(player).toHaveAttribute('data-position', 'left')
+      expect(screen.queryByTestId('audio-dock-left')).not.toBeInTheDocument()
+
+      // Nel layout laterale ci sono i bottoni ±5s
+      expect(screen.getByRole('button', { name: 'Indietro di 5 secondi' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Avanti di 5 secondi' })).toBeInTheDocument()
+    })
+
+    it('trascinare la barra del tempo non sposta il player', () => {
+      renderPlayer()
+      const player = screen.getByTestId('audio-player')
+      const seek = screen.getByRole('slider', { name: "Posizione nell'audio" })
+
+      // Pointer down sulla barra del tempo
+      fireEvent.pointerDown(seek, { clientX: 600, clientY: 760 })
+      expect(player).not.toHaveAttribute('data-dragging')
+      expect(screen.queryByTestId('audio-dock-bottom')).not.toBeInTheDocument()
+
+      fireEvent.pointerMove(seek, { clientX: 50, clientY: 400 })
+      fireEvent.pointerUp(seek, { clientX: 50, clientY: 400 })
+      expect(player).toHaveAttribute('data-position', 'bottom')
+    })
+
+    it('posizione ricordata per dispositivo', () => {
+      localStorage.setItem('rt-device:audio-pos', 'right')
+      renderPlayer()
+      const player = screen.getByTestId('audio-player')
+      expect(player).toHaveAttribute('data-position', 'right')
+      expect(screen.getByRole('button', { name: 'Indietro di 5 secondi' })).toBeInTheDocument()
+    })
+
+    it('su schermo stretto solo «in basso»', () => {
+      localStorage.setItem('rt-device:audio-pos', 'left')
+      const originalInnerWidth = window.innerWidth
+      window.innerWidth = 500
+      try {
+        renderPlayer()
+        const player = screen.getByTestId('audio-player')
+        // Anche con preferenza 'left', su schermo stretto resta 'bottom'
+        expect(player).toHaveAttribute('data-position', 'bottom')
+
+        // Provando a trascinare
+        fireEvent.pointerDown(player, { clientX: 250, clientY: 760 })
+        expect(screen.getByTestId('audio-dock-bottom')).toBeInTheDocument()
+        expect(screen.queryByTestId('audio-dock-left')).not.toBeInTheDocument()
+
+        fireEvent.pointerMove(player, { clientX: 20, clientY: 400 })
+        fireEvent.pointerUp(player, { clientX: 20, clientY: 400 })
+        expect(player).toHaveAttribute('data-position', 'bottom')
+      } finally {
+        window.innerWidth = originalInnerWidth
+      }
+    })
+  })
 })

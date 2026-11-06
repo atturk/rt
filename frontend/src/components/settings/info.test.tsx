@@ -193,6 +193,7 @@ it('Info mostra la riga Build quando l’API la fornisce e non la mostra quando 
     config_dir: '/config',
     python_version: '3.12.3',
     platform: 'Darwin 24.1.0 (arm64)',
+    donazioni_url: '',
     build: 'build 812 · a1b2c3d · 19/10/2026',
   }
 
@@ -234,4 +235,50 @@ it('Novità mostra in grassetto il testo tra ** senza gli asterischi', async () 
   expect(within(current).getByText('Token').tagName).toBe('STRONG')
   expect(current.textContent).not.toContain('**')
   expect(within(current).getByRole('checkbox', { name: 'Token: copia e rigenera.' })).toBeInTheDocument()
+})
+
+it('link Sostieni RT compare solo se donazioni_url non è vuoto', async () => {
+  const base = {
+    version: '4.3.8',
+    prerelease: false,
+    update_channel: 'stable',
+    install_dir: '/install',
+    data_dir: '/data',
+    config_dir: '/config',
+    python_version: '3.12.0',
+    platform: 'Darwin 24.1.0',
+    build: null,
+  }
+
+  // 1. Vuoto: nessun link
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
+    path === '/api/v1/system/info' ? { ...base, donazioni_url: '' } :
+    path === '/api/v1/settings' ? { data_dir: '/data' } :
+    path === '/api/v1/system/cache' ? empty :
+    path === '/api/v1/system/update' ? { supported: false, current: '4.3.8', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
+    path === '/api/v1/system/changelog' ? [] : {},
+  ))) as never)
+
+  const client1 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { unmount } = render(<QueryClientProvider client={client1}><InfoSection /></QueryClientProvider>)
+  expect(await screen.findByText('4.3.8')).toBeInTheDocument()
+  expect(screen.queryByTestId('link-sostieni-rt')).not.toBeInTheDocument()
+  expect(screen.queryByText('Sostieni RT')).not.toBeInTheDocument()
+  unmount()
+
+  // 2. Con URL: link presente
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve(result(
+    path === '/api/v1/system/info' ? { ...base, donazioni_url: 'https://example.com/donate' } :
+    path === '/api/v1/settings' ? { data_dir: '/data' } :
+    path === '/api/v1/system/cache' ? empty :
+    path === '/api/v1/system/update' ? { supported: false, current: '4.3.8', available: false, releases_url: '', progress: { phase: 'idle', downloaded: 0 } } :
+    path === '/api/v1/system/changelog' ? [] : {},
+  ))) as never)
+
+  const client2 = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client2}><InfoSection /></QueryClientProvider>)
+  const link = await screen.findByTestId('link-sostieni-rt')
+  expect(link).toBeInTheDocument()
+  expect(link).toHaveAttribute('href', 'https://example.com/donate')
+  expect(link).toHaveTextContent('Sostieni RT')
 })

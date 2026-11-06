@@ -22,6 +22,8 @@ docker-compose.yml export-ignore
 .dockerignore export-ignore
 docker/ export-ignore
 packaging/ export-ignore
+# Sito della guida (GitHub Pages): non serve nell'app
+mkdocs.yml export-ignore
 # Su Windows git converte i fine riga in CRLF: i golden e le fixture si confrontano byte per byte
 tests/golden/** text eol=lf
 tests/fixtures/** -text

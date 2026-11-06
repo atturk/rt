@@ -1,7 +1,7 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Plus, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
@@ -27,6 +27,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
+import { fetchExport, saveFile } from '@/lib/fileExport'
 import { MissingLessonsButton } from './MissingLessonsButton'
 import { SelectionDetails } from './SelectionDetails'
 
@@ -397,20 +398,12 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const start = useExportLessons()
   const [exportStudy, setExportStudy] = usePreference('export.study', true)
   const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
-  const download = useRef<HTMLAnchorElement>(null)
-  const downloaded = useRef<string | null>(null)
   const exporting = start.isPending || exportJob?.state === 'queued'
   const runExport = (format: 'markdown' | 'zip' | 'sources') => {
     start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate', study: format === 'zip' && exportStudy }, {
       onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
     })
   }
-  useEffect(() => {
-    if (exportJob?.state === 'succeeded' && download.current && downloaded.current !== exportJob.id) {
-      downloaded.current = exportJob.id
-      download.current.click()
-    }
-  }, [exportJob])
   return (
     <div
       role="region"
@@ -468,7 +461,18 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
       {detailsOpen && <SelectionDetails lessons={lessons} open onClose={() => setDetailsOpen(false)} />}
       {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
       {exportJob?.state === 'succeeded' && (
-        <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              const file = await fetchExport(lessonExportUrl(exportJob.id))
+              saveFile(file)
+            }}
+          >
+            Salva
+          </Button>
+        </div>
       )}
       {deleting && <DeleteSelection lessons={lessons} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
     </div>

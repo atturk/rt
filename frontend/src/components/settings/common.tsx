@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 
 const FieldLabel = createContext('Scelta')
 
-export function Section({ title, children, id }: { title: string; description?: ReactNode; children: ReactNode; id?: string }) {
+export function Section({ title, children, id }: { title: ReactNode; description?: ReactNode; children: ReactNode; id?: string }) {
   const headingId = id ? `${id}-titolo` : undefined
   return (
     <section className="py-3" role="region" aria-labelledby={headingId} id={id}>

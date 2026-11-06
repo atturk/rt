@@ -22,7 +22,12 @@ def study_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.recall import load_recall_bank
     from rt.services.lesson_service import document_sections, unit_section_images
-    pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value in ("pending", "asked")]
+    from rt.pipeline.ledger import get_pending_issues
+    # Come POST /recall/next: le domande delle unità con segnalazioni aperte non si propongono.
+    blocked = {iss.unit_id for iss in get_pending_issues(lesson_dir)[1]
+               if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")}
+    pending = [q for q in load_recall_bank(lesson_dir).questions
+               if q.status.value in ("pending", "asked") and not blocked.intersection(q.unit_ids)]
     draft = load_resolved_draft(lesson_dir)
     sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
     images = unit_section_images(lesson_dir)

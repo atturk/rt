@@ -44,8 +44,24 @@ export function setZoom(v: number): void {
     // Continua anche se localStorage fallisce
   }
 
+  // Non usare mai document.documentElement.style.zoom (rompe il render WKWebView)
   if (typeof document !== 'undefined' && document.documentElement) {
-    document.documentElement.style.zoom = String(clamped)
+    document.documentElement.style.zoom = ''
+  }
+
+  const pywebview = (typeof window !== 'undefined'
+    ? (window as unknown as { pywebview?: { api?: { set_zoom?: (f: number) => Promise<unknown> } } }).pywebview
+    : undefined)
+
+  if (pywebview?.api?.set_zoom) {
+    pywebview.api.set_zoom(clamped).catch(() => {})
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.fontSize = ''
+    }
+  } else if (typeof document !== 'undefined' && document.documentElement) {
+    // Browser (web app, iPhone): niente zoom di RT, vale quello del browser (Cmd +, pizzico).
+    // Scalare la font di base ingrandiva solo una parte dell'interfaccia.
+    document.documentElement.style.fontSize = ''
   }
 
   if (typeof window !== 'undefined') {
@@ -136,6 +152,18 @@ if (typeof window !== 'undefined') {
     else if (action === 'out') zoomOut()
     else if (action === 'reset') resetZoom()
   }
+
+  window.addEventListener('pywebviewready', () => {
+    const pywebview = (window as unknown as { pywebview?: { api?: { set_zoom?: (f: number) => Promise<unknown> } } }).pywebview
+    if (pywebview?.api?.set_zoom) {
+      const current = getZoom()
+      pywebview.api.set_zoom(current).catch(() => {})
+      if (document.documentElement) {
+        document.documentElement.style.zoom = ''
+        document.documentElement.style.fontSize = ''
+      }
+    }
+  })
 }
 
 export function initZoom(): void {
@@ -143,8 +171,9 @@ export function initZoom(): void {
   isAppWindow()
   const current = getZoom()
   if (document.documentElement) {
-    document.documentElement.style.zoom = String(current)
+    document.documentElement.style.zoom = ''
   }
+  setZoom(current)
   window.removeEventListener('keydown', handleZoomKeydown)
   window.addEventListener('keydown', handleZoomKeydown)
 }

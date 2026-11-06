@@ -2,19 +2,26 @@
 La finestra dell'app RT. API e worker continuano a lavorare quando si chiude.
 pywebview viene caricato solo nell'app installata, mai per 'rt web'.
 """
+import atexit
 import ctypes
 import importlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import unicodedata
+import urllib.parse
 import webbrowser
 
 from rt.core import bundle, paths
 
 INFO_PATH = "/impostazioni/info-aggiornamenti"
+GUIDA_PATH = "/guida"
 LOCALIZATION = {
     "global.ok": "OK", "global.cancel": "Annulla", "global.quit": "Esci",
     "global.saveFile": "Salva file", "global.quitConfirmation": "Uscire da RT?",
@@ -146,6 +153,14 @@ class DesktopApi:
             _announced_tokens.add(it["token"])
         return items
 
+    def importa_collezione(self, token: str) -> dict:
+        from rt.core import opened_files
+        path = opened_files.consume_token(token)
+        if not path:
+            return {"errore": "File non trovato o token scaduto."}
+        _import_collection(self._window, self._base_url, chosen=path)
+        return {"ok": True}
+
     def apri_aggiornamento(self):
         import webview
         if self._update_window is not None:
@@ -211,14 +226,14 @@ class DesktopApi:
         if not (name.startswith(backup_service.BACKUP_PREFIX) and parent == dest_root and os.path.isdir(target_path)):
             return {"errore": "Percorso snapshot non valido."}
 
-        save_name = f"{name}.zip"
+        save_name = f"{name}.rtdb"
         try:
             import webview
             dialog_type = webview.FileDialog.SAVE
             chosen = self._window.create_file_dialog(
                 dialog_type,
                 save_filename=save_name,
-                file_types=("Archivio zip (*.zip)",),
+                file_types=("Collezione RT (*.rtdb)", "Archivio zip (*.zip)"),
             )
         except Exception as exc:
             _log(f"Errore create_file_dialog: {exc}")
@@ -231,12 +246,198 @@ class DesktopApi:
         if not chosen:
             return {"annullato": True}
 
-        if not chosen.lower().endswith(".zip"):
-            chosen += ".zip"
+        if not (chosen.lower().endswith(".rtdb") or chosen.lower().endswith(".zip")):
+            chosen += ".rtdb"
 
         if not _stream_backup(self._window, ["backup", "--export", target_path, "--to", chosen, "--progress-json"], tipo="copia"):
             return {"errore": "Un backup è già in corso."}
         return {"avviato": True}
+
+    def condividi(self, percorso_api: str) -> dict:
+        """Scarica una risorsa di export dall'API e apre il menu di condivisione nativo (macOS)."""
+        import requests
+        from rt.api import auth
+        from rt.services import secrets_service
+
+        if not (isinstance(percorso_api, str) and percorso_api.startswith("/api/v1/lessons/") and "/export?" in percorso_api):
+            return {"errore": "Percorso non ammesso per la condivisione."}
+
+        url = f"{self._base_url.rstrip('/')}{percorso_api}"
+        headers = {}
+        try:
+            if secrets_service.is_ready():
+                token = secrets_service.store().get(auth.TOKEN_SECRET)
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+        except Exception:
+            pass
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=60)
+            if not resp.ok:
+                try:
+                    data = resp.json()
+                    err = data.get("error", {}).get("message") or f"Errore server ({resp.status_code})"
+                except Exception:
+                    err = f"Errore server ({resp.status_code})"
+                return {"errore": err}
+        except Exception as exc:
+            return {"errore": f"Download fallito: {exc}"}
+
+        disposition = getattr(resp, "headers", {}).get("Content-Disposition") or getattr(resp, "headers", {}).get("content-disposition") or ""
+        filename = ""
+        m = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.IGNORECASE)
+        if m:
+            try:
+                filename = urllib.parse.unquote(m.group(1))
+            except Exception:
+                filename = m.group(1)
+        if not filename:
+            m = re.search(r'filename="?([^";]+)"?', disposition, re.IGNORECASE)
+            if m:
+                filename = m.group(1)
+        if not filename:
+            filename = "lezione.rt"
+
+        temp_dir = tempfile.mkdtemp(prefix="rt-condividi-")
+        _condividi_temp_dirs.append(temp_dir)
+        file_path = os.path.join(temp_dir, filename)
+        try:
+            with open(file_path, "wb") as f:
+                f.write(resp.content)
+        except Exception as exc:
+            return {"errore": f"Impossibile salvare il file temporaneo: {exc}"}
+
+        if sys.platform != "darwin":
+            return {"errore": "Condivisione non supportata su questo sistema operativo."}
+
+        try:
+            from AppKit import NSSharingServicePicker
+            from Foundation import NSURL, NSMakeRect
+            from PyObjCTools import AppHelper
+        except ImportError:
+            return {"errore": "AppKit non disponibile per la condivisione."}
+
+        def _open_picker():
+            try:
+                file_url = NSURL.fileURLWithPath_(file_path)
+                picker = NSSharingServicePicker.alloc().initWithItems_([file_url])
+                native = getattr(self._window, "native", None)
+                content_view = getattr(native, "contentView", None)
+                view = content_view() if callable(content_view) else getattr(native, "contentView", None)
+                if view is not None:
+                    bounds = view.bounds() if callable(getattr(view, "bounds", None)) else getattr(view, "bounds", None)
+                    w = bounds.size.width if hasattr(bounds, "size") else 800
+                    h = bounds.size.height if hasattr(bounds, "size") else 600
+                    rect = NSMakeRect(w - 150, h - 40, 100, 30)
+                    picker.showRelativeToRect_ofView_preferredEdge_(rect, view, 3)
+            except Exception as exc:
+                _log(f"Errore apertura picker condivisione: {exc}")
+
+        AppHelper.callAfter(_open_picker)
+        return {"ok": True}
+
+    def set_zoom(self, factor: float) -> dict:
+        """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
+        try:
+            factor = float(factor)
+        except (TypeError, ValueError):
+            return {"errore": "Fattore di zoom non valido."}
+
+        factor = max(0.5, min(3.0, factor))
+
+        if not self._window:
+            return {"ok": False, "errore": "Finestra non disponibile."}
+
+        native = getattr(self._window, "native", None)
+
+        if sys.platform == "darwin":
+            wv = None
+            if native is not None:
+                if hasattr(native, "webview"):
+                    wv = native.webview
+                elif hasattr(native, "contentView"):
+                    cv = native.contentView
+                    view = cv() if callable(cv) else cv
+                    if hasattr(view, "setPageZoom_"):
+                        wv = view
+                    elif hasattr(view, "subviews"):
+                        subviews = view.subviews() if callable(view.subviews) else view.subviews
+                        for sv in subviews or []:
+                            if hasattr(sv, "setPageZoom_"):
+                                wv = sv
+                                break
+            if wv is None and hasattr(self._window, "webview"):
+                wv = self._window.webview
+
+            if wv is not None and hasattr(wv, "setPageZoom_"):
+                try:
+                    from PyObjCTools import AppHelper
+                    AppHelper.callAfter(lambda: wv.setPageZoom_(factor))
+                except Exception:
+                    wv.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+            elif native is not None and hasattr(native, "setPageZoom_"):
+                native.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+
+        if sys.platform == "win32":
+            # Il controllo WebView2 si tocca solo dal thread dell'interfaccia: le chiamate della
+            # js_api arrivano da un altro thread e un accesso diretto blocca la finestra.
+            webview = getattr(native, "webview", None) if native is not None else None
+            if webview is None:
+                return {"ok": False, "errore": "Zoom non disponibile."}
+
+            def apply():
+                try:
+                    webview.ZoomFactor = factor
+                except Exception as exc:
+                    _log(f"Zoom non applicato: {exc}")
+            try:
+                from System import Action
+                native.BeginInvoke(Action(apply))
+            except Exception as exc:
+                _log(f"Zoom non applicato: {exc}")
+                return {"ok": False, "errore": "Zoom non disponibile."}
+            return {"ok": True, "factor": factor}
+
+        if hasattr(self._window, "set_zoom"):
+            self._window.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+        if hasattr(native, "set_zoom"):
+            native.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+
+        return {"ok": True, "factor": factor}
+
+
+_condividi_temp_dirs: list[str] = []
+
+
+def _cleanup_share_dirs():
+    for d in _condividi_temp_dirs:
+        shutil.rmtree(d, ignore_errors=True)
+    _condividi_temp_dirs.clear()
+
+
+def _cleanup_old_share_dirs():
+    now = time.time()
+    tmp = tempfile.gettempdir()
+    try:
+        for entry in os.listdir(tmp):
+            if entry.startswith("rt-condividi-"):
+                full = os.path.join(tmp, entry)
+                try:
+                    if os.path.isdir(full) and (now - os.path.getmtime(full) > 86400):
+                        shutil.rmtree(full, ignore_errors=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+atexit.register(_cleanup_share_dirs)
+_cleanup_old_share_dirs()
 
 
 _backup_lock = threading.Lock()
@@ -444,6 +645,76 @@ def _regenerate_token(window, base_url: str) -> None:
     window.load_url(f"{base_url}/login?code={auth.create_login_code()}")
 
 
+def _guide_slugify(text: str) -> str:
+    nfd = unicodedata.normalize("NFD", text)
+    no_accents = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    hyphenated = re.sub(r"[^a-z0-9]+", "-", no_accents.lower())
+    return hyphenated.strip("-")
+
+
+def _build_guide_menu(window, base_url: str):
+    from webview.menu import Menu, MenuAction
+    import yaml
+
+    items = [
+        MenuAction("Cerca nella guida…", lambda: window.load_url(f"{base_url}/guida?cerca=1"))
+    ]
+
+    guide_dir = os.path.join(paths.project_root(), "docs", "guida")
+    index_file = os.path.join(guide_dir, "indice.yml")
+    file_order = []
+    if os.path.isfile(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, list):
+                    for entry in data:
+                        if isinstance(entry, dict) and "file" in entry:
+                            file_order.append(str(entry["file"]))
+                        elif isinstance(entry, str):
+                            file_order.append(entry)
+        except Exception:
+            pass
+
+    if not file_order and os.path.isdir(guide_dir):
+        file_order = sorted([f[:-3] for f in os.listdir(guide_dir) if f.endswith(".md") and f != "COME-MODIFICARE.md"])
+
+    for slug in file_order:
+        md_path = os.path.join(guide_dir, f"{slug}.md")
+        if not os.path.isfile(md_path):
+            continue
+        page_title = slug
+        sections = []
+        try:
+            with open(md_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    trimmed = line.strip()
+                    if trimmed.startswith("# ") and page_title == slug:
+                        page_title = trimmed[2:].strip()
+                    elif trimmed.startswith("## "):
+                        sec_title = trimmed[3:].strip()
+                        if sec_title:
+                            anchor = _guide_slugify(sec_title)
+                            sections.append((sec_title, anchor))
+        except Exception:
+            continue
+
+        page_actions = []
+        for sec_title, anchor in sections:
+            route = f"/guida/{slug}#{anchor}" if slug != "index" else f"/guida#{anchor}"
+            def make_handler(target_url):
+                return lambda: window.load_url(target_url)
+            page_actions.append(MenuAction(sec_title, make_handler(f"{base_url}{route}")))
+
+        if page_actions:
+            items.append(Menu(page_title, page_actions))
+        else:
+            route = f"/guida/{slug}" if slug != "index" else "/guida"
+            items.append(MenuAction(page_title, lambda u=f"{base_url}{route}": window.load_url(u)))
+
+    return Menu("Aiuto", items)
+
+
 def _menu(window, base_url: str, api=None):
     from webview.menu import Menu, MenuAction, MenuSeparator
 
@@ -482,6 +753,7 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Backup…", lambda: _maintenance(window, "backup")),
         MenuAction("Esporta tutto…", lambda: _export_collection(window)),
         MenuAction("Importa…", lambda: _import_collection(window, base_url)),
+        MenuAction("Ripristina dati prima di un aggiornamento…", lambda: _restore_pre_update(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
         *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
           if sys.platform in ("darwin", "win32") else []),
@@ -499,7 +771,8 @@ def _menu(window, base_url: str, api=None):
         MenuSeparator(),
         MenuAction("Esci da RT", quit_rt),
     ])
-    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions)]
+    return [Menu("__app__" if sys.platform == "darwin" else "RT", actions),
+            _build_guide_menu(window, base_url)]
 
 
 def about_options(info: dict, versions: dict | None = None) -> dict:
@@ -635,7 +908,8 @@ def _macos_menu() -> None:
                     NSApplication.sharedApplication().setApplicationIconImage_(img)
 
         about_target = _get_about_target()
-        menu = NSApplication.sharedApplication().mainMenu().itemAtIndex_(0).submenu()
+        main_menu = NSApplication.sharedApplication().mainMenu()
+        menu = main_menu.itemAtIndex_(0).submenu()
         for item in list(menu.itemArray()):
             title = item.title() if callable(item.title) else getattr(item, "title", "")
             if item.keyEquivalent() == "q" and item.target() is None:
@@ -647,6 +921,22 @@ def _macos_menu() -> None:
                     item.setTarget_(about_target)
                 if hasattr(item, "setAction_"):
                     item.setAction_("showAbout:")
+
+        if hasattr(main_menu, "itemArray"):
+            for item in list(main_menu.itemArray()):
+                submenu = item.submenu() if hasattr(item, "submenu") and callable(item.submenu) else getattr(item, "submenu", None)
+                sub_title = ""
+                if submenu:
+                    sub_title = submenu.title() if callable(submenu.title) else getattr(submenu, "title", "")
+                item_title = item.title() if callable(item.title) else getattr(item, "title", "")
+                if sub_title == "Aiuto" or item_title == "Aiuto":
+                    target_help = submenu if submenu else item
+                    if hasattr(NSApplication.sharedApplication(), "setHelpMenu_"):
+                        NSApplication.sharedApplication().setHelpMenu_(target_help)
+                    if hasattr(target_help, "setTitle_"):
+                        target_help.setTitle_("Aiuto")
+                    if hasattr(item, "setTitle_"):
+                        item.setTitle_("Aiuto")
     AppHelper.callAfter(configure)
 
 
@@ -844,12 +1134,12 @@ _import_ready = False
 def _chosen_file(window, *, save=False):
     import webview
     chosen = window.create_file_dialog(webview.FileDialog.SAVE if save else webview.FileDialog.OPEN,
-        **({'save_filename': f'RT-{time.strftime("%Y-%m-%d")}.zip'} if save else {}),
-        file_types=('Archivio zip (*.zip)',))
+        **({'save_filename': f'RT-{time.strftime("%Y-%m-%d")}.rtdb'} if save else {}),
+        file_types=('Collezione RT (*.rtdb)', 'Archivio zip (*.zip)') if save else ('Collezione RT (*.rtdb;*.zip)', 'Archivio zip (*.zip)'))
     if isinstance(chosen, (list, tuple)):
         chosen = chosen[0] if chosen else None
-    if chosen and save and not chosen.lower().endswith('.zip'):
-        chosen += '.zip'
+    if chosen and save and not (chosen.lower().endswith('.rtdb') or chosen.lower().endswith('.zip')):
+        chosen += '.rtdb'
     return chosen
 
 
@@ -898,21 +1188,23 @@ def _restart_after_import(window):
     window.destroy()
 
 
-def _import_collection(window, base_url):
+def _import_collection(window, base_url, chosen=None):
     if _backup_running:
         _notice(window, "Un trasferimento è già in corso.")
         return
     from rt.services import backup_service as bs
     try:
-        chosen = _chosen_file(window)
+        if not chosen:
+            chosen = _chosen_file(window)
         if not chosen:
             return
         manifest = bs.inspect_backup_zip(chosen)
         if manifest.get('segreti') is not False:
-            raise bs.BackupError('Per importare una collezione usa uno ZIP creato con «Esporta tutto».')
+            raise bs.BackupError('Per importare una collezione usa un file creato con «Esporta tutto».')
         created = manifest.get('created', '').split('T')[0]
+        version = manifest.get('rt_version', '')
         if not window.create_confirmation_dialog('Importa',
-                f'Importare la collezione del {created} (RT {manifest.get("rt_version", "")})? Quella attuale viene messa da parte.'):
+                f'Sostituisce tutte le lezioni, il database e il calendario attuali. Quelli attuali vengono messi da parte. Collezione del {created} (RT {version}).'):
             return
         def stop():
             from rt.desktop import stop_background
@@ -927,3 +1219,33 @@ def _import_collection(window, base_url):
                        before_start=stop, on_success=ready, on_failure=ready)
     except Exception as exc:
         _notice(window, str(exc))
+
+
+def _restore_pre_update(window, base_url):
+    from rt.services import backup_service as bs
+    backups = bs.list_pre_update_backups()
+    if not backups:
+        _notice(window, "Nessun backup trovato prima di un aggiornamento.")
+        return
+    most_recent = backups[0]
+    ver = most_recent.get("version", "?")
+    created = most_recent.get("created", "").replace("T", " ")[:16]
+    msg = (f"Ripristinare i dati salvati con RT {ver} il {created}, prima dell'aggiornamento?\n\n"
+           f"Il database e i file di testo attuali verranno messi da parte. I file audio e le immagini resteranno intatti.")
+    if not window.create_confirmation_dialog("Ripristina dati prima di un aggiornamento", msg):
+        return
+
+    def stop():
+        from rt.desktop import stop_background
+        from rt.db.engine import reset_database_cache
+        stop_background(base_url)
+        reset_database_cache()
+
+    try:
+        stop()
+        aside = bs.restore_pre_update_backup(most_recent["path"])
+        _notice(window, f"Ripristino completato.\nI dati precedenti sono stati messi da parte in:\n{aside}\n\nRT si riavvia.")
+        _restart_after_import(window)
+    except Exception as exc:
+        _notice(window, f"Ripristino non riuscito: {exc}")
+

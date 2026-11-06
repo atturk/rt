@@ -321,8 +321,21 @@ def build_science_review_user_prompt(
     if source_context and source_context.strip():
         transcript_block = f"\n\n---\nTRASCRITTO DEL DOCENTE:\n{source_context.strip()}\n---"
     materials_block = ""
-    if materials_context and materials_context.strip():
-        materials_block = f"\n\n---\nMATERIALI DEL DOCENTE:\n{materials_context.strip()}\n---"
+    if materials_context and str(materials_context).strip():
+        by_rel = getattr(materials_context, "by_reliability", None)
+        if isinstance(materials_context, dict):
+            by_rel = materials_context
+        if by_rel and (by_rel.get("alta") or by_rel.get("bassa")):
+            blocks = []
+            if by_rel.get("alta"):
+                blocks.append(f"\n\n---\nSLIDE E MATERIALI DEL DOCENTE (affidabilità alta):\n{by_rel['alta'].strip()}\n---")
+            if by_rel.get("normale"):
+                blocks.append(f"\n\n---\nMATERIALI DEL DOCENTE:\n{by_rel['normale'].strip()}\n---")
+            if by_rel.get("bassa"):
+                blocks.append(f"\n\n---\nAPPUNTI DELLO STUDENTE (affidabilità bassa: possono contenere errori):\n{by_rel['bassa'].strip()}\n---")
+            materials_block = "".join(blocks)
+        else:
+            materials_block = f"\n\n---\nMATERIALI DEL DOCENTE:\n{str(materials_context).strip()}\n---"
     return f"""Esamina criticamente la seguente unità rielaborata:
 
 UNITÀ: {unit_id}
@@ -554,20 +567,35 @@ def contextualize_recall_prompt(prompt: str, context: dict, assessment: dict, pr
 
 class RecallEvalMirataResult(BaseModel):
     outcome: Optional[RecallOutcome] = None
-    correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza complessiva della risposta")
-    completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza complessiva della risposta")
-    commento: str = Field(..., description="Breve spiegazione di cosa manca o è sbagliato nella risposta")
+    correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza concettuale generale della risposta (0-100)")
+    completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza della risposta (0-100)")
+    attinenza: int = Field(default=100, ge=0, le=100, description="Percentuale di attinenza rispetto al contenuto dell'unità (0-100)")
+    commento: str = Field(..., description="Breve commento del docente che evidenzia cosa è corretto, cosa manca o è errato")
+    domanda_followup: Optional[str] = Field(None, description="Domanda di approfondimento facoltativa per chiarire o completare")
 
 
-RECALL_EVAL_MIRATA_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda mirata di active recall (concetto atomico).
+RECALL_EVAL_MIRATA_SYSTEM_PROMPT = """Sei un professore universitario che valuta la risposta di uno studente a una domanda mirata di active recall.
 
-REGOLE CATEGORICHE:
-1. Valuta la risposta ESCLUSIVAMENTE rispetto al contenuto reale dell'unità didattica fornita come riferimento — non aggiungere nozioni esterne non presenti lì.
-2. "correttezza" (0-100): quanto ciò che lo studente ha detto è corretto rispetto al riferimento.
-3. "completezza" (0-100): quanto la risposta copre tutti gli aspetti rilevanti della domanda, anche se corretta solo parzialmente.
-4. "commento": breve (2-4 frasi), evidenzia specificamente cosa manca o cosa è sbagliato. Se la risposta è ottima, dillo brevemente e basta.
-5. Tono diretto ma non punitivo: lo studente sta studiando, l'obiettivo è farlo migliorare velocemente.
-6. "outcome": "corretta" per una risposta corretta e completa, "parziale" se contiene elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
+CRITERI DI VALUTAZIONE (tre percentuali 0-100):
+1. "correttezza" (0-100): correttezza scientifica e concettuale generale della risposta dello studente, anche in base a conoscenze proprie (non solo strettamente limitata all'unità).
+2. "completezza" (0-100): quanto la risposta copre gli elementi essenziali richiesti dalla domanda.
+3. "attinenza" (0-100): quanto la risposta corrisponde specificamente a ciò che è spiegato nell'unità di riferimento (una risposta può essere corretta e completa in generale, ma poco attinente se l'unità affronta l'argomento da un'altra prospettiva, con un altro metodo o con un altro livello di dettaglio).
+
+ESITO (outcome):
+- Dipende ESCLUSIVAMENTE da "correttezza" e "completezza" (NON dall'attinenza):
+  - "corretta": se la risposta è corretta e completa;
+  - "parziale": se contiene elementi corretti ma è incompleta o ha imprecisioni parziali;
+  - "sbagliata": se il ragionamento centrale è errato o lo studente dichiara di non sapere rispondere.
+
+COMMENTO:
+- Breve (2-4 frasi), costruttivo e diretto. Spiega cosa è corretto, cosa manca o cosa è errato.
+
+DOMANDA DI APPROFONDIMENTO (domanda_followup):
+- Campo facoltativo (stringa o null).
+- Proponila SOLO SE la risposta va nella direzione giusta ma serve chiarire o completare (risposta parzialmente corretta, corretta ma poco attinente, oppure corretta ma incompleta).
+- Non proporla MAI se la risposta è "sbagliata" o se lo studente ha detto "Non lo so".
+- Non proporla MAI se la risposta è già del tutto completa e corretta.
+- Deve essere una domanda breve e mirata per stimolare lo studente a chiarire il punto mancante.""" + "\n" + LATEX_WRITING_RULE
 
 
 DONT_KNOW_NOTE = (
@@ -591,7 +619,7 @@ RIFERIMENTO (unità didattica "{unit_title}"):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, attinenza, commento, outcome, eventuale domanda_followup)."""
 
 
 # ----------------------------------------------------------------------
@@ -600,17 +628,27 @@ Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResul
 
 class RecallEvalVastaResult(RecallEvalMirataResult):
     outcome: Optional[RecallOutcome] = None
-    commento: str = Field(..., description="Valutazione breve di correttezza concettuale e qualità organizzativa rispetto alla scaletta ideale")
+    commento: str = Field(..., description="Valutazione concettuale e confronto con la scaletta ideale")
 
 
-RECALL_EVAL_VASTA_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda vasta di active recall, stile esame orale.
+RECALL_EVAL_VASTA_SYSTEM_PROMPT = """Sei un professore universitario che valuta la risposta di uno studente a una domanda vasta di active recall, stile esame orale.
 
-REGOLE CATEGORICHE:
-1. Valuta DUE aspetti insieme, in un commento unico e breve (4-6 frasi): (a) la correttezza concettuale di ciò che lo studente ha detto rispetto al riferimento fornito, (b) quanto la risposta segue o manca rispetto alla SCALETTA IDEALE già preparata per questa domanda (non generarne una nuova, usa quella fornita).
-2. Sii specifico: cita quali punti della scaletta sono stati toccati e quali no, non restare generico.
-3. Non aggiungere nozioni esterne non presenti nel riferimento o nella scaletta.
-4. Tono diretto ma non punitivo, come un docente che vuole far migliorare velocemente lo studente.
-5. Riporta correttezza e completezza fra 0 e 100. "outcome": "corretta" se i concetti e tutti i punti essenziali sono corretti, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il nucleo della risposta è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
+CRITERI DI VALUTAZIONE (tre percentuali 0-100):
+1. "correttezza" (0-100): correttezza scientifica e concettuale generale di ciò che lo studente ha esposto.
+2. "completezza" (0-100): quanto la risposta copre i punti chiave attesi per una domanda di questo respiro.
+3. "attinenza" (0-100): quanto l'esposizione corrisponde alla prospettiva e agli argomenti specifici della lezione/scaletta ideale.
+
+ESITO (outcome):
+- Dipende ESCLUSIVAMENTE da "correttezza" e "completezza" (NON dall'attinenza): "corretta", "parziale", o "sbagliata".
+
+COMMENTO:
+- Commento sintetico (4-6 frasi) che confronta ciò che lo studente ha esposto con la SCALETTA IDEALE fornita, evidenziando quali punti sono stati toccati e quali tralasciati.
+
+DOMANDA DI APPROFONDIMENTO (domanda_followup):
+- Campo facoltativo (stringa o null).
+- Proponila SOLO SE la risposta va nella direzione giusta ma serve chiarire o completare (parzialmente corretta, corretta ma poco attinente, o incompleta).
+- Non proporla MAI se la risposta è "sbagliata", "Non lo so", o già completa.
+- Una domanda breve e puntuale su uno snodo cruciale della scaletta trascurato o poco chiaro.""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -626,7 +664,62 @@ SCALETTA IDEALE (punti essenziali attesi in una risposta completa):
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (correttezza, completezza, commento, outcome)."""
+Valuta la risposta rispetto alla scaletta e restituisci l'oggetto JSON conforme a RecallEvalVastaResult (correttezza, completezza, attinenza, commento, outcome, eventuale domanda_followup)."""
+
+
+# ----------------------------------------------------------------------
+# 9b. RECALL EVAL FOLLOWUP (Approfondimento - Fase D3)
+# ----------------------------------------------------------------------
+
+RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT = """Sei un professore universitario che valuta la seconda risposta (approfondimento) di uno studente a una domanda di active recall.
+
+Lo studente ha già risposto alla domanda iniziale e il docente gli ha posto una domanda di chiarimento o completamento. Ora lo studente ha risposto alla domanda di approfondimento.
+
+CRITERI DI VALUTAZIONE (tre percentuali 0-100 sul colloquio complessivo):
+1. "correttezza" (0-100): correttezza scientifica e concettuale finale complessiva.
+2. "completezza" (0-100): completezza finale complessiva dell'argomento.
+3. "attinenza" (0-100): attinenza rispetto al riferimento didattico fornito.
+
+ESITO FINALE (outcome):
+- Dipende ESCLUSIVAMENTE da "correttezza" e "completezza" (NON dall'attinenza): "corretta" | "parziale" | "sbagliata".
+
+COMMENTO:
+- Commento sintetico conclusivo (2-4 frasi) che valuta l'approfondimento e chiude la domanda.
+
+NON proporre ulteriori domande di approfondimento (domanda_followup deve essere null).""" + "\n" + LATEX_WRITING_RULE
+
+
+def build_recall_eval_followup_user_prompt(
+    question_text: str,
+    reference_text: str,
+    answer_1: str,
+    eval_1_comment: str,
+    eval_1_scores: str,
+    followup_question: str,
+    answer_2: str,
+    dont_know: bool = False,
+) -> str:
+    note = DONT_KNOW_NOTE if dont_know else ""
+    return f"""DOMANDA ORIGINALE:
+{question_text}
+
+RIFERIMENTO:
+{reference_text}
+
+PRIMA RISPOSTA DELLO STUDENTE:
+{answer_1}
+
+PRIMA VALUTAZIONE DEL DOCENTE:
+{eval_1_scores}
+{eval_1_comment}
+
+DOMANDA DI APPROFONDIMENTO DEL DOCENTE:
+{followup_question}
+
+SECONDA RISPOSTA DELLO STUDENTE (APPROFONDIMENTO):
+{answer_2}{note}
+
+Valuta complessivamente il colloquio finale e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (con domanda_followup=null)."""
 
 
 # ----------------------------------------------------------------------

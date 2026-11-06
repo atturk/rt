@@ -485,6 +485,16 @@ class RecallSavedEvaluation(BaseModel):
     answer_text: str
     evaluation: str
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
+    correttezza: Optional[int] = None
+    completezza: Optional[int] = None
+    attinenza: Optional[int] = None
+    domanda_followup: Optional[str] = None
+    followup_question: Optional[str] = None
+    followup_answer: Optional[str] = None
+    followup_evaluation: Optional[str] = None
+    followup_correttezza: Optional[int] = None
+    followup_completezza: Optional[int] = None
+    followup_attinenza: Optional[int] = None
 
 
 class RecallQuestion(BaseModel):
@@ -559,6 +569,14 @@ class StudyStatusUpdate(BaseModel):
     status: StudyStatus
 
 
+class StatusUsage(BaseModel):
+    count: int
+
+
+class DeleteStatusResult(BaseModel):
+    reassigned: int
+
+
 class StudyProgress(StudyStatusUpdate):
     unit_id: str
     status_at: Optional[datetime] = None
@@ -608,6 +626,17 @@ class RecallAnswerRecord(BaseModel):
     vote_comment: Optional[str] = None
     dont_know: bool = False
     answered_at: str
+    correttezza: Optional[int] = None
+    completezza: Optional[int] = None
+    attinenza: Optional[int] = None
+    domanda_followup: Optional[str] = None
+    followup_question: Optional[str] = None
+    followup_answer: Optional[str] = None
+    followup_evaluation: Optional[str] = None
+    followup_is_voice: bool = False
+    followup_correttezza: Optional[int] = None
+    followup_completezza: Optional[int] = None
+    followup_attinenza: Optional[int] = None
 
 
 class RecallHistory(BaseModel):
@@ -631,6 +660,8 @@ class RecallAnswer(BaseModel):
     choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
     answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
     mock: bool = False
+    is_followup: bool = False
+    skip_followup: bool = False
 
 
 class QuizResult(BaseModel):

@@ -141,8 +141,7 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   }
   await page.setViewportSize({ width: 1280, height: 800 })
 
-  // L'export è un job: avanzamento nella barra, poi il download parte da solo e resta "Scarica di nuovo".
-  const download = page.waitForEvent('download', { timeout: 50_000 })
+  // L'export è un job: avanzamento nella barra, poi a job finito compare il bottone Salva.
   await bar.getByRole('button', { name: 'Scarica zip' }).click()
   const check = page.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' })
   await expect(check).toHaveAttribute('aria-checked', 'true')
@@ -151,12 +150,12 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   const exportRequest = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/v1/lesson-exports'))
   await page.getByRole('menuitem', { name: 'Scarica zip', exact: true }).click()
   expect((await exportRequest).postDataJSON().study).toBe(false)
+  const saveBtn = bar.getByRole('button', { name: 'Salva' })
+  await expect(saveBtn).toBeVisible({ timeout: 50_000 })
+  const download = page.waitForEvent('download', { timeout: 50_000 })
+  await saveBtn.click()
   const file = await download
   expect(file.suggestedFilename()).toMatch(/\.zip$/)
-  const again = bar.getByRole('link', { name: 'Scarica di nuovo' })
-  const response = await page.request.get(await again.getAttribute('href') as string)
-  expect(response.status()).toBe(200)
-  expect((await response.body()).subarray(0, 2).toString()).toBe('PK')
 
   await bar.getByRole('button', { name: 'Annulla' }).click()
   await expect(bar).toBeHidden()

@@ -955,6 +955,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Importa la lezione di esempio inclusa in RT */
+        post: operations["import_sample_lesson_api_v1_lessons_sample_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons/{lesson_id}": {
         parameters: {
             query?: never;
@@ -2858,6 +2875,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stima dei costi per una lezione di 90 minuti */
+        get: operations["get_cost_estimate_api_v1_settings_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/models/test": {
         parameters: {
             query?: never;
@@ -3170,6 +3204,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/study-statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Salva stati di studio personalizzati */
+        put: operations["put_study_statuses_api_v1_settings_study_statuses_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram": {
         parameters: {
             query?: never;
@@ -3317,6 +3368,40 @@ export interface paths {
         put?: never;
         /** Ricerca immagini di prova su SearXNG: quanti risultati tornano */
         post: operations["post_web_search_test_api_v1_settings_web_search_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/study/statuses/{status_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Elimina uno stato personalizzato e riporta le unità a in-apprendimento */
+        delete: operations["delete_status_api_v1_study_statuses__status_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/study/statuses/{status_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Numero di unità con questo stato */
+        get: operations["status_usage_api_v1_study_statuses__status_id__usage_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3747,6 +3832,8 @@ export interface components {
         };
         /** AddToLessonRequest */
         AddToLessonRequest: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /**
              * Estrai
              * @default immagini
@@ -4048,6 +4135,11 @@ export interface components {
             /** Audio */
             audio: string;
             /**
+             * Is Followup
+             * @default false
+             */
+            is_followup: boolean;
+            /**
              * Mock
              * @default false
              */
@@ -4154,6 +4246,8 @@ export interface components {
         };
         /** Body_post_source_api_v1_lessons__lesson_id__sources_post */
         Body_post_source_api_v1_lessons__lesson_id__sources_post: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Estrai */
             estrai?: ("testo" | "immagini" | "solo_immagini") | null;
             /** File */
@@ -5202,6 +5296,23 @@ export interface components {
              */
             varianti: boolean;
         };
+        /** CustomStudyStatusIn */
+        CustomStudyStatusIn: {
+            /**
+             * Colore
+             * @default text-amber-500
+             */
+            colore: string;
+            /**
+             * Icona
+             * @default Star
+             */
+            icona: string;
+            /** Id */
+            id: string;
+            /** Nome */
+            nome: string;
+        };
         /** Decision */
         Decision: {
             /** Actor */
@@ -5504,6 +5615,11 @@ export interface components {
              * @default true
              */
             update_document: boolean;
+        };
+        /** DeleteStatusResult */
+        DeleteStatusResult: {
+            /** Reassigned */
+            reassigned: number;
         };
         /** DescribeImagesRequest */
         DescribeImagesRequest: {
@@ -6437,6 +6553,19 @@ export interface components {
             has_unknown_cost: boolean;
             /** Id */
             id: number;
+        };
+        /** LessonCostEstimate */
+        LessonCostEstimate: {
+            /**
+             * Cost Eur
+             * @description Stima del costo in Euro per una lezione di 90 minuti
+             */
+            cost_eur?: number | null;
+            /**
+             * Formatted
+             * @description Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'
+             */
+            formatted: string;
         };
         /** LessonDetail */
         LessonDetail: {
@@ -7425,10 +7554,14 @@ export interface components {
         };
         /** ReadonlyKeyInfo */
         ReadonlyKeyInfo: {
+            /** Base Url */
+            base_url?: string | null;
             /** Configured */
             configured: boolean;
             /** Created At */
             created_at?: string | null;
+            /** Key */
+            key?: string | null;
             /** Key Preview */
             key_preview?: string | null;
         };
@@ -7491,12 +7624,22 @@ export interface components {
              */
             dont_know: boolean;
             /**
+             * Is Followup
+             * @default false
+             */
+            is_followup: boolean;
+            /**
              * Mock
              * @default false
              */
             mock: boolean;
             /** Question Id */
             question_id: string;
+            /**
+             * Skip Followup
+             * @default false
+             */
+            skip_followup: boolean;
         };
         /** RecallAnswerRecord */
         RecallAnswerRecord: {
@@ -7506,6 +7649,14 @@ export interface components {
             answered_at: string;
             /** Attempt Id */
             attempt_id?: string | null;
+            /** Attinenza */
+            attinenza?: number | null;
+            /** Completezza */
+            completezza?: number | null;
+            /** Correttezza */
+            correttezza?: number | null;
+            /** Domanda Followup */
+            domanda_followup?: string | null;
             /**
              * Dont Know
              * @default false
@@ -7513,6 +7664,23 @@ export interface components {
             dont_know: boolean;
             /** Evaluation */
             evaluation?: string | null;
+            /** Followup Answer */
+            followup_answer?: string | null;
+            /** Followup Attinenza */
+            followup_attinenza?: number | null;
+            /** Followup Completezza */
+            followup_completezza?: number | null;
+            /** Followup Correttezza */
+            followup_correttezza?: number | null;
+            /** Followup Evaluation */
+            followup_evaluation?: string | null;
+            /**
+             * Followup Is Voice
+             * @default false
+             */
+            followup_is_voice: boolean;
+            /** Followup Question */
+            followup_question?: string | null;
             /**
              * Is Voice
              * @default false
@@ -7846,8 +8014,28 @@ export interface components {
         RecallSavedEvaluation: {
             /** Answer Text */
             answer_text: string;
+            /** Attinenza */
+            attinenza?: number | null;
+            /** Completezza */
+            completezza?: number | null;
+            /** Correttezza */
+            correttezza?: number | null;
+            /** Domanda Followup */
+            domanda_followup?: string | null;
             /** Evaluation */
             evaluation: string;
+            /** Followup Answer */
+            followup_answer?: string | null;
+            /** Followup Attinenza */
+            followup_attinenza?: number | null;
+            /** Followup Completezza */
+            followup_completezza?: number | null;
+            /** Followup Correttezza */
+            followup_correttezza?: number | null;
+            /** Followup Evaluation */
+            followup_evaluation?: string | null;
+            /** Followup Question */
+            followup_question?: string | null;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
         };
@@ -8187,6 +8375,24 @@ export interface components {
             /** Round Robin */
             round_robin: boolean;
         };
+        /** SampleLessonOut */
+        SampleLessonOut: {
+            /**
+             * Lesson Id
+             * @description ID della lezione di esempio importata
+             */
+            lesson_id: number;
+            /**
+             * Materia
+             * @description Materia (ESEMPIO)
+             */
+            materia: string;
+            /**
+             * Titolo
+             * @description Titolo della lezione di esempio
+             */
+            titolo: string;
+        };
         /** SecretDeleted */
         SecretDeleted: {
             /** Name */
@@ -8304,6 +8510,11 @@ export interface components {
             data_dir?: string | null;
             notices: components["schemas"]["NoticeSettings"];
             /**
+             * Ordine Stati Studio
+             * @description Ordine di tutti gli stati di studio
+             */
+            ordine_stati_studio?: string[];
+            /**
              * Phases
              * @description Modello assegnato a ciascuna fase LLM
              */
@@ -8331,6 +8542,11 @@ export interface components {
              * @default false
              */
             setup_required: boolean;
+            /**
+             * Stati Studio
+             * @description Stati di studio personalizzati
+             */
+            stati_studio?: components["schemas"]["CustomStudyStatusIn"][];
             telegram: components["schemas"]["TelegramSettings"];
             transcription: components["schemas"]["Transcription"];
             web_search: components["schemas"]["WebSearchSettings"];
@@ -8338,6 +8554,8 @@ export interface components {
         };
         /** Source */
         Source: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Aggiunta Il */
             aggiunta_il: string;
             /** Estrai */
@@ -8366,6 +8584,8 @@ export interface components {
         };
         /** SourceOptions */
         SourceOptions: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Estrai */
             estrai?: ("testo" | "immagini" | "solo_immagini") | null;
             /** Pagine */
@@ -8394,6 +8614,8 @@ export interface components {
         };
         /** SourceView */
         SourceView: {
+            /** Affidabilita */
+            affidabilita?: ("alta" | "normale" | "bassa") | null;
             /** Aggiunta Il */
             aggiunta_il: string;
             /** Durata S */
@@ -8461,6 +8683,11 @@ export interface components {
              * @default []
              */
             unplaced: components["schemas"]["UnplacedMaterial"][];
+        };
+        /** StatusUsage */
+        StatusUsage: {
+            /** Count */
+            count: number;
         };
         /** StudyLesson */
         StudyLesson: {
@@ -8576,11 +8803,8 @@ export interface components {
         StudyProgress: {
             /** Last Read At */
             last_read_at?: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            /** Status */
+            status: string;
             /** Status At */
             status_at?: string | null;
             /** Unit Id */
@@ -8588,11 +8812,21 @@ export interface components {
         };
         /** StudyStatusUpdate */
         StudyStatusUpdate: {
+            /** Status */
+            status: string;
+        };
+        /** StudyStatusesUpdate */
+        StudyStatusesUpdate: {
             /**
-             * Status
-             * @enum {string}
+             * Ordine Stati Studio
+             * @description Ordine di tutti gli stati di studio
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            ordine_stati_studio?: string[];
+            /**
+             * Stati Studio
+             * @description Stati di studio personalizzati
+             */
+            stati_studio?: components["schemas"]["CustomStudyStatusIn"][];
         };
         /** StudyUnit */
         StudyUnit: {
@@ -8634,9 +8868,8 @@ export interface components {
             /**
              * Status
              * @default da-imparare
-             * @enum {string}
              */
-            status: "da-imparare" | "in-apprendimento" | "appreso" | "ignorata";
+            status: string;
             /** Status At */
             status_at?: string | null;
             /** Suggested Qtype */
@@ -8724,6 +8957,12 @@ export interface components {
              * @description Cartella dati (~/.rt o RT_DATA_DIR): canale, rt.db, media
              */
             data_dir: string;
+            /**
+             * Donazioni Url
+             * @description URL per sostenere RT (donazioni)
+             * @default
+             */
+            donazioni_url: string;
             /**
              * Install Dir
              * @description Cartella del codice di RT
@@ -13137,6 +13376,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    import_sample_lesson_api_v1_lessons_sample_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SampleLessonOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */
@@ -21957,6 +22261,74 @@ export interface operations {
             };
         };
     };
+    get_cost_estimate_api_v1_settings_estimate_get: {
+        parameters: {
+            query?: {
+                provider?: string | null;
+                model?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonCostEstimate"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     post_model_test_api_v1_settings_models_test_post: {
         parameters: {
             query?: never;
@@ -23601,6 +23973,75 @@ export interface operations {
             };
         };
     };
+    put_study_statuses_api_v1_settings_study_statuses_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyStatusesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     put_telegram_api_v1_settings_telegram_put: {
         parameters: {
             query?: never;
@@ -24169,6 +24610,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebSearchTestOut"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_status_api_v1_study_statuses__status_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteStatusResult"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    status_usage_api_v1_study_statuses__status_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                status_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusUsage"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

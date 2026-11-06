@@ -3,7 +3,7 @@ Nessuna risposta contiene mai il valore di un segreto: solo "impostato sì/no"."
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from rt.api.deps import Actor
@@ -26,6 +26,21 @@ class PromptOverrideIn(BaseModel):
 class PromptOverrideOut(BaseModel):
     default: str
     instruction: str
+
+
+class LessonCostEstimate(BaseModel):
+    cost_eur: Optional[float] = Field(None, description="Stima del costo in Euro per una lezione di 90 minuti")
+    formatted: str = Field(description="Testo della stima: 'circa X € a lezione (stima)' o 'stima non disponibile'")
+
+
+@router.get("/settings/estimate", response_model=LessonCostEstimate, summary="Stima dei costi per una lezione di 90 minuti")
+def get_cost_estimate(provider: Optional[str] = None, model: Optional[str] = None):
+    from rt.llm.pricing import estimate_lesson_cost, format_cost_estimate, estimate_configured_lesson_cost
+    if provider and model:
+        cost = estimate_lesson_cost(provider, model)
+        return LessonCostEstimate(cost_eur=cost, formatted=format_cost_estimate(cost))
+    cost, formatted = estimate_configured_lesson_cost()
+    return LessonCostEstimate(cost_eur=cost, formatted=formatted)
 
 
 @router.get("/settings/prompts", response_model=Dict[str, PromptOverrideOut], summary="Istruzioni personalizzabili e predefinite per fase")
@@ -129,10 +144,22 @@ class WebSearchSettings(BaseModel):
     contextual_verification: bool = Field(default=False, description="Cerca sul web durante la verifica contestuale")
 
 
+class CustomStudyStatusIn(BaseModel):
+    id: str = Field(max_length=16)
+    nome: str = Field(max_length=24)
+    colore: str = "text-amber-500"
+    icona: str = "Star"
+
+
 class PreferencesSettings(BaseModel):
     secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
+
+
+class StudyStatusesUpdate(BaseModel):
+    stati_studio: List[CustomStudyStatusIn] = Field(default_factory=list, description="Stati di studio personalizzati")
+    ordine_stati_studio: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
 
 
 class RewriteSettings(BaseModel):
@@ -151,6 +178,8 @@ class Settings(BaseModel):
     pricing: Dict[str, Dict[str, Dict[str, Any]]]
     web_search: WebSearchSettings
     preferences: PreferencesSettings = Field(default_factory=PreferencesSettings, description="Preferenze generali")
+    stati_studio: List[CustomStudyStatusIn] = Field(default_factory=list, description="Stati di studio personalizzati")
+    ordine_stati_studio: List[str] = Field(default_factory=lambda: ["da-imparare", "in-apprendimento", "appreso", "ignorata"], description="Ordine di tutti gli stati di studio")
     rewrite: RewriteSettings = Field(default_factory=RewriteSettings, description="Configurazione della rielaborazione")
     secrets_encrypted: bool = Field(description="True se i segreti sono nell'archivio cifrato (rt secrets init)")
     data_dir: Optional[str] = Field(None, description="Cartella dati in uso da questo processo: rt.db e media/")
@@ -313,6 +342,13 @@ def put_notice(body: NoticeIn, _actor: Actor):
 def put_preferences(body: PreferencesSettings, _actor: Actor):
     from rt.services.settings_service import save_preferences, snapshot
     _call(save_preferences, _project_root(), body.model_dump(exclude_unset=True))
+    return snapshot(_project_root())
+
+
+@router.put("/settings/study-statuses", response_model=Settings, summary="Salva stati di studio personalizzati")
+def put_study_statuses(body: StudyStatusesUpdate, _actor: Actor):
+    from rt.services.settings_service import save_study_statuses, snapshot
+    _call(save_study_statuses, _project_root(), body.model_dump())
     return snapshot(_project_root())
 
 
@@ -766,6 +802,8 @@ class ReadonlyKeyInfo(BaseModel):
     configured: bool
     created_at: Optional[str] = None
     key_preview: Optional[str] = None
+    key: Optional[str] = None
+    base_url: Optional[str] = None
 
 
 class ReadonlyKeyCreated(BaseModel):
@@ -779,9 +817,19 @@ class ReadonlyKeyRevoked(BaseModel):
 
 
 @router.get("/settings/readonly-key", response_model=ReadonlyKeyInfo, summary="Informazioni sulla chiave di sola lettura (AP1)")
-def get_readonly_key(_actor: Actor):
+def get_readonly_key(request: Request, _actor: Actor):
     from rt.api.readonly_auth import get_readonly_key_info
-    return get_readonly_key_info()
+    from rt.api.routers.lessons import _local_port
+    info = get_readonly_key_info()
+    port = _local_port(request)
+    base_url = f"http://127.0.0.1:{port}/api/v1/readonly"
+    return ReadonlyKeyInfo(
+        configured=info["configured"],
+        created_at=info.get("created_at"),
+        key_preview=info.get("key_preview"),
+        key=info.get("key"),
+        base_url=base_url,
+    )
 
 
 @router.post("/settings/readonly-key", response_model=ReadonlyKeyCreated, summary="Crea o rigenera la chiave di sola lettura (AP1)")

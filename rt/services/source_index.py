@@ -80,6 +80,7 @@ class IndexedPage:
     tokens: List[str]
     attached_unit_ids: Set[str] = field(default_factory=set)
     attached_macro_ids: Set[str] = field(default_factory=set)
+    affidabilita: str = "normale"
 
 
 @dataclass
@@ -90,6 +91,7 @@ class SourcePageMatch:
     da_descrizione: bool
     score: float = 0.0
     source_id: str = ""
+    affidabilita: str = "normale"
 
 
 class SourceIndex:
@@ -179,6 +181,7 @@ class SourceIndex:
                         tokens=tokens,
                         attached_unit_ids=attached_u,
                         attached_macro_ids=attached_m,
+                        affidabilita=source.affidabilita or "normale",
                     )
                 )
 
@@ -273,6 +276,7 @@ class SourceIndex:
                         da_descrizione=da_desc,
                         score=score,
                         source_id=page.source_id,
+                        affidabilita=page.affidabilita,
                     )
                     for score, page, da_desc in attached_scored[:3]
                 ]
@@ -287,6 +291,7 @@ class SourceIndex:
                 da_descrizione=da_desc,
                 score=score,
                 source_id=page.source_id,
+                affidabilita=page.affidabilita,
             )
             for score, page, da_desc in all_scored[:3]
         ]

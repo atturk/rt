@@ -114,19 +114,26 @@ it('riconosce evidenziazioni annidate e parole divise, senza dipendere dal color
   const root = document.createElement('div')
   root.innerHTML = '<p>Il <span class="rt-hl rt-hl-0">rene <b>filtra</b></span> <span class="rt-hl rt-hl-4">san</span>gue ogni giorno.</p>'
   const { words, paragraphs } = readUnitWords(root)
-  expect(words.map(w => [w.text, !!w.hl])).toEqual([
-    ['Il', false], ['rene', true], ['filtra', true], ['sangue', true], ['ogni', false], ['giorno.', false],
+  expect(words.map(w => [w.text, w.hl])).toEqual([
+    ['Il', undefined], ['rene', 0], ['filtra', 0], ['sangue', 4], ['ogni', undefined], ['giorno.', undefined],
   ])
-  expect(paragraphs[0].filter(p => p.hl).map(p => p.text)).toEqual(['rene', 'filtra', 'sangue'])
+  expect(paragraphs[0].filter(p => p.hl !== undefined).map(p => p.text)).toEqual(['rene', 'filtra', 'sangue'])
   expect(wordDelay(words[1], { ...formulaPrefs, slowHighlights: true })).toBe(260)
   expect(wordDelay(words[1], { ...formulaPrefs, slowHighlights: false })).toBe(200)
   expect(wordDelay(words[0], { ...formulaPrefs, slowHighlights: true })).toBe(200)
 })
 
+it('una parola in rt-hl-2 ha hl === 2, una in rt-hl-0 ha hl === 0', () => {
+  const root = document.createElement('div')
+  root.innerHTML = '<p><span class="rt-hl rt-hl-2">azzurro</span> e <span class="rt-hl rt-hl-0">giallo</span></p>'
+  const { words } = readUnitWords(root)
+  expect(words.find(w => w.text === 'azzurro')?.hl).toBe(2)
+  expect(words.find(w => w.text === 'giallo')?.hl).toBe(0)
+})
 
 describe('adattamento delle parole allo spazio disponibile', () => {
   const measure = (text: string) => text.length * 10
-  const adapt = (text: string, width = 200) => adaptWord({ text, para: 2, hl: true }, 12, width, measure, 'bilanciata')
+  const adapt = (text: string, width = 200) => adaptWord({ text, para: 2, hl: 1 }, 12, width, measure, 'bilanciata')
   it('conserva le parole corte e scala quelle che stanno almeno a 0,7', () => {
     expect(adapt('rene')[0].scale).toBe(1)
     const scaled = adapt('fisiopatologia')
@@ -137,7 +144,7 @@ describe('adattamento delle parole allo spazio disponibile', () => {
   it('divide un’impostazione senza perdere indice ed evidenziazione', () => {
     const pieces = adapt("un'impostazione")
     expect(pieces.map(p => p.text)).toEqual(["un'imposta-", 'zione'])
-    expect(pieces.every(p => p.scale >= .7 && p.sourceIndex === 12 && p.hl && p.para === 2)).toBe(true)
+    expect(pieces.every(p => p.scale >= .7 && p.sourceIndex === 12 && p.hl !== undefined && p.para === 2)).toBe(true)
     expect(pieces.map(p => p.lastPiece)).toEqual([false, true])
   })
   it('il taglio dopo l’apostrofo non aggiunge un trattino', () => {

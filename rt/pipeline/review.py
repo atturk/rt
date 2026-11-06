@@ -295,8 +295,19 @@ def run_jev_task_b(unit: DraftUnit, source_context: str, jev_cfg: JevConfig, les
     Ritorna None se la chiamata fallisce: nessuna issue verrà creata allora.
     """
     state = f"SEGMENTI GREZZI ASR:\n{source_context}\n\n---\n\nTESTO RIELABORATO:\n{unit.content}"
-    if materials_context and materials_context.strip():
-        state += f"\n\n---\n\nMATERIALI DEL DOCENTE (slide, foto):\n{materials_context.strip()}"
+    if materials_context and str(materials_context).strip():
+        by_rel = getattr(materials_context, "by_reliability", None)
+        if isinstance(materials_context, dict):
+            by_rel = materials_context
+        if by_rel and (by_rel.get("alta") or by_rel.get("bassa")):
+            if by_rel.get("alta"):
+                state += f"\n\n---\n\nSLIDE E MATERIALI DEL DOCENTE (affidabilità alta):\n{by_rel['alta'].strip()}"
+            if by_rel.get("normale"):
+                state += f"\n\n---\n\nMATERIALI DEL DOCENTE (slide, foto):\n{by_rel['normale'].strip()}"
+            if by_rel.get("bassa"):
+                state += f"\n\n---\n\nAPPUNTI DELLO STUDENTE (affidabilità bassa: possono contenere errori):\n{by_rel['bassa'].strip()}"
+        else:
+            state += f"\n\n---\n\nMATERIALI DEL DOCENTE (slide, foto):\n{str(materials_context).strip()}"
     try:
         resp = call_jev(
             state=state,
@@ -517,8 +528,14 @@ def _apply_second_pass_review(
                     b64 = base64.b64encode(png).decode("ascii")
                     images_data_urls.append(f"data:image/png;base64,{b64}")
 
+        def _match_label(m) -> str:
+            rel = getattr(m, "affidabilita", "normale") or "normale"
+            if rel in ("alta", "bassa"):
+                return f"[Fonte: {m.fonte}, pag. {m.pagina}, affidabilità {rel}]"
+            return f"[Fonte: {m.fonte}, pag. {m.pagina}]"
+
         matched_pages_text = "\n\n".join(
-            f"[Fonte: {m.fonte}, pag. {m.pagina}]\n{m.testo}" for m in matches
+            f"{_match_label(m)}\n{m.testo}" for m in matches
         )
         second_prompt = build_second_pass_review_prompt(
             claim=issue.claim,
@@ -528,12 +545,26 @@ def _apply_second_pass_review(
             source_context=source_context,
         )
 
+        has_non_normal = any(getattr(m, "affidabilita", "normale") in ("alta", "bassa") for m in matches)
+        base_system = effective_system("review_second_pass", SECOND_PASS_REVIEW_SYSTEM_PROMPT)
+        if has_non_normal:
+            second_pass_system = base_system + (
+                "\n\nREGOLE SULL'AFFIDABILITÀ DELLE FONTI:\n"
+                "- fonte ad affidabilità alta: attieniti alla fonte, salvo errori gravi e inconfutabili; "
+                "se il docente a voce contraddice una fonte alta (es. «atri» invece di «ventricoli»), "
+                "è «possibile_errore_del_docente», non «definizione_del_corso»;\n"
+                "- fonte ad affidabilità bassa: consultala, ma da sola non basta per «definizione_del_corso»; "
+                "se è l'unica prova, la segnalazione resta e la nota dice che la conferma viene solo dagli appunti."
+            )
+        else:
+            second_pass_system = base_system
+
         resp: Optional[SecondPassReviewResponse] = None
         if images_data_urls:
             try:
                 resp = client.call_structured(
                     prompt=second_prompt,
-                    system_prompt=effective_system("review_second_pass", SECOND_PASS_REVIEW_SYSTEM_PROMPT),
+                    system_prompt=second_pass_system,
                     response_model=SecondPassReviewResponse,
                     job_name="review",
                     unit_id=unit_label,
@@ -547,7 +578,7 @@ def _apply_second_pass_review(
             try:
                 resp = client.call_structured(
                     prompt=second_prompt,
-                    system_prompt=effective_system("review_second_pass", SECOND_PASS_REVIEW_SYSTEM_PROMPT),
+                    system_prompt=second_pass_system,
                     response_model=SecondPassReviewResponse,
                     job_name="review",
                     unit_id=unit_label,
@@ -558,6 +589,10 @@ def _apply_second_pass_review(
                 continue
 
         if resp.classificazione == "definizione_del_corso":
+            if matches and all(getattr(m, "affidabilita", "normale") == "bassa" for m in matches):
+                issue.nota = "La conferma viene solo dagli appunti."
+                final_issues.append(issue)
+                continue
             # Viene scartata
             continue
         elif resp.classificazione == "possibile_errore_del_docente":

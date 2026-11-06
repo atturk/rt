@@ -21,6 +21,7 @@ let client: QueryClient
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.setItem('rt-app', '1') // lo zoom di RT c'è solo nella finestra dell'app
   resetZoom()
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(PREFERENCES_KEY, {})
@@ -33,6 +34,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   resetZoom()
   localStorage.clear()
+  sessionStorage.clear()
 })
 
 it('cambiare la Select aggiorna lo zoom', async () => {

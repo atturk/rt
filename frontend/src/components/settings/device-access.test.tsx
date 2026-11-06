@@ -71,38 +71,70 @@ describe("Accesso da un altro dispositivo", () => {
     expect(screen.getByText(/raggiunge solo il Mac stesso/)).toBeInTheDocument()
   })
 
-  it("gestisce la generazione e la revoca della chiave di sola lettura (AP1)", async () => {
-    let hasKey = false
+  it("gestisce la chiave di sola lettura, il prompt per gli agenti e la revoca", async () => {
+    let keyInfo: { configured: boolean; key?: string | null; key_preview?: string | null; base_url?: string | null; created_at?: string | null } = {
+      configured: false,
+      key: null,
+      base_url: 'http://127.0.0.1:8765/api/v1/readonly',
+    }
+
     vi.spyOn(api, 'GET').mockImplementation((path: string) => {
       if (path === '/api/v1/settings/readonly-key') {
-        return Promise.resolve(ok(hasKey ? { configured: true, key_preview: 'rt_ro_se…c123', created_at: '2026-10-12T22:00:00Z' } : { configured: false }))
+        return Promise.resolve(ok(keyInfo))
       }
       return Promise.resolve(ok({}))
     })
     const post = vi.spyOn(api, 'POST').mockImplementation((path: string) => {
       if (path === '/api/v1/settings/readonly-key') {
-        hasKey = true
+        keyInfo = {
+          configured: true,
+          key: 'rt_ro_secret123',
+          key_preview: 'rt_ro_se…c123',
+          base_url: 'http://127.0.0.1:8765/api/v1/readonly',
+          created_at: '2026-10-12T22:00:00Z',
+        }
         return Promise.resolve(ok({ key: 'rt_ro_secret123', created_at: '2026-10-12T22:00:00Z', key_preview: 'rt_ro_se…c123' }))
       }
       return Promise.resolve(ok({}))
     })
     const del = vi.spyOn(api, 'DELETE').mockImplementation((path: string) => {
       if (path === '/api/v1/settings/readonly-key') {
-        hasKey = false
+        keyInfo = { configured: false, key: null, base_url: 'http://127.0.0.1:8765/api/v1/readonly' }
         return Promise.resolve(ok({ ok: true }))
       }
       return Promise.resolve(ok({}))
     })
 
-    renderSection()
     const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
 
+    renderSection()
+
+    // Senza chiave: nessuna chiave visibile, nessun prompt, solo "Crea chiave"
     expect(await screen.findByTestId('readonly-key-status')).toHaveTextContent('Non configurata')
+    expect(screen.queryByTestId('readonly-key-value')).toBeNull()
+    expect(screen.queryByTestId('readonly-agent-prompt-box')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Crea chiave' })).toBeInTheDocument()
 
-    // Clicca Genera chiave
-    await user.click(screen.getByTestId('btn-create-readonly-key'))
+    // Clicca Crea chiave
+    await user.click(screen.getByRole('button', { name: 'Crea chiave' }))
     expect(post).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
-    expect(await screen.findByTestId('readonly-key-created-box')).toHaveTextContent('rt_ro_secret123')
+
+    // Con chiave attiva: la chiave si vede e il prompt contiene base e chiave
+    const keyInput = await screen.findByTestId('readonly-key-value')
+    expect(keyInput).toHaveValue('rt_ro_secret123')
+
+    const promptBox = await screen.findByTestId('readonly-agent-prompt-box')
+    expect(promptBox).toBeInTheDocument()
+    const promptText = screen.getByTestId('agent-prompt-text').textContent ?? ''
+    expect(promptText).toContain('http://127.0.0.1:8765/api/v1/readonly')
+    expect(promptText).toContain('Authorization: Bearer rt_ro_secret123')
+    expect(promptText).toContain('Puoi leggere le mie lezioni universitarie da RT')
+
+    // Copia prompt copia il testo completo
+    const copyPromptBtn = screen.getByTestId('copy-agent-prompt')
+    await user.click(copyPromptBtn)
+    expect(writeText).toHaveBeenCalledWith(promptText)
 
     // Clicca Revoca
     const revokeBtn = await screen.findByTestId('btn-revoke-readonly-key')
@@ -111,5 +143,12 @@ describe("Accesso da un altro dispositivo", () => {
     const dialogConfirm = screen.getAllByRole('button', { name: 'Revoca' }).slice(-1)[0]
     await user.click(dialogConfirm)
     expect(del).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
+
+    // Dopo la revoca, chiave e prompt scompaiono e torna "Crea chiave"
+    await waitFor(() => {
+      expect(screen.queryByTestId('readonly-key-value')).toBeNull()
+      expect(screen.queryByTestId('readonly-agent-prompt-box')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Crea chiave' })).toBeInTheDocument()
+    })
   })
 })

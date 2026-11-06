@@ -1,5 +1,75 @@
 # Novità di RT
 
+## 4.3.8b4 — 2026-11-06
+
+Beta con la condivisione da iPhone, il player audio spostabile e lo zoom che non rompe più la pagina.
+
+### Novità
+
+- **Condividi**: nel menu Esporta ci sono «Condividi PDF» e «Condividi lezione», che aprono il menu di condivisione del sistema (iPhone e Mac). Le voci si chiamano ora «Lezione (.rt)» e «Solo le fonti (zip)».
+- **Stato del file**: mentre RT prepara un file da salvare o condividere compare una barra in basso con l'avanzamento, poi il bottone «Salva» o l'errore.
+- **Domande dell'unità in Studio**: il blocco «Genera» in fondo all'unità non c'è più; il bottone con il cervello nella barra in alto (tasto D) apre le domande dell'unità che stai leggendo.
+- **Player audio spostabile**: trascinalo dai bordi e si aggancia in basso, a sinistra o a destra; RT ricorda la posizione su ogni dispositivo. Sugli schermi stretti resta in basso.
+- **Stesso docente**: nel salto tra lezioni (Studio e pagina della lezione) c'è una terza riga per la lezione prima o dopo dello stesso docente e della stessa materia.
+
+### Correzioni
+
+- Lo zoom dell'app (Cmd + e Cmd −, Impostazioni → Aspetto) usa lo zoom vero della finestra e non rompe più il disegno della pagina della lezione. Nel browser vale lo zoom del browser.
+- I download dalla web app su iPhone ora funzionano anche per Markdown, zip e fonti.
+- In Studio il player audio ricorda se era aperto o chiuso; tolto il bottone ▶ dell'unità.
+- Le barre laterali di Impostazioni e Guida scorrono quando lo zoom è alto.
+- Immagini e classificatore non si fermano più con «ValidationError … cost_details»: il servizio di classificazione ora manda dettagli di costo in più, che RT ignora.
+
+## 4.3.8b3 — 2026-11-05
+
+Beta con le correzioni sulla beta 2, il ripasso «da professore» e gli stati di studio personalizzati.
+
+### Novità
+
+- **Menu Aiuto**: la guida si apre dal menu «Aiuto» nella barra dei menu, con tutte le pagine e le sezioni; su Mac il campo di ricerca del menu cerca anche nelle voci. Dentro l'app la guida si apre da Impostazioni → Guida o con F1.
+- **Guida con immagini**: le pagine della guida possono contenere immagini, e l'ordine delle pagine si decide in un solo file.
+- **Valutazione delle risposte**: per le domande mirate e vaste RT mostra correttezza, completezza e attinenza (quanto la risposta segue quello che dice l'unità). La valutazione considera la correttezza generale della risposta, non solo l'unità.
+- **Domanda di approfondimento**: se la risposta va nella direzione giusta ma è incompleta o poco attinente, RT fa una domanda in più per aiutarti a completarla e poi valuta tutto insieme. Si può saltare.
+- **Stati di studio personalizzati**: in Impostazioni puoi creare nuovi stati per le unità (nome, colore, icona) e decidere l'ordine in cui il tasto S li fa scorrere, insieme a quelli predefiniti.
+- **Audio in Studio**: un player a scomparsa (icona cuffie) con velocità e salti di 5 secondi; quando è aperto le frecce spostano l'audio invece di cambiare unità.
+
+### Correzioni
+
+- Il bottone «Indietro» della guida ora esce sempre dalla guida.
+- Tolti il «?» nelle pagine e il bottone «Genera domande» del ripasso vuoto, che portava alla lezione invece di generare.
+
+## 4.3.8b2 — 2026-11-04
+
+Beta con la guida, il primo avvio e la sicurezza degli aggiornamenti.
+
+### Novità
+
+- **Guida di RT**: dentro l'app anche senza rete, con ricerca. Si apre con «?» nell'intestazione, con F1 o ⌘?, dal menu «Guida di RT» e dai piccoli «?» nelle finestre più complesse. La stessa guida sarà pubblica sul sito di RT.
+- **Primo avvio**: con la libreria vuota, RT propone una lezione di esempio già pronta (non costa niente) e mostra una stima del costo per lezione con i modelli scelti, anche in Impostazioni → Modelli.
+- **Backup prima degli aggiornamenti**: prima di installare una nuova versione RT salva database e testi delle lezioni (senza audio e immagini) e tiene gli ultimi 5. Se il backup non riesce, l'aggiornamento non parte. Si ripristinano dal menu «Ripristina dati prima di un aggiornamento…».
+- **Privacy**: una pagina della guida spiega cosa resta sul computer e cosa esce, e verso chi.
+
+### Correzioni
+
+- Dopo «Genera le domande» su un'unità con segnalazioni aperte RT spiega che le domande compariranno quando avrai deciso le segnalazioni, con il link alla Verifica.
+
+## 4.3.8b1 — 2026-11-04
+
+Beta con le novità dello Studio, l'affidabilità delle fonti, i file di RT e l'accesso per gli agenti.
+
+### Novità
+
+- **Studio, prima la selezione**: seleziona il testo e poi premi E, G, V o C (o il pulsante): lo strumento si applica una volta sola alla selezione. Senza selezione funziona come prima.
+- **Lettura veloce**: mantiene i colori delle evidenziazioni, parte dalla parola selezionata e mostra lo stato dell'unità accanto al titolo (clic o S per cambiarlo), anche in zen. Avviso quando il filtro Irlen copre i colori, con «Non mostrare più».
+- **Affidabilità delle fonti** (alta, normale, bassa) in Dettagli → Fonti e in Nuova lezione: la verifica si fida di più delle slide del docente e meno degli appunti. Con tutte le fonti normali non cambia niente.
+- **File di RT**: le lezioni si esportano in `.rt`, la collezione in `.rtdb`, l'orario in `.rtcal`, con la loro icona. Un doppio clic li apre in RT; collezione e orario chiedono sempre conferma prima di sostituire qualcosa. I vecchi `.zip` funzionano ancora.
+- **API di sola lettura per gli agenti** (Impostazioni → Accesso da iPhone): la chiave resta visibile con «Copia» e c'è un prompt pronto per Antigravity, Claude, pi o Codex. Le chiavi create prima vanno rigenerate una volta.
+
+### Correzioni
+
+- **Mettimi alla prova · N** non conta più le domande bloccate da segnalazioni aperte.
+- Le formule nella Verifica si vedono anche nel testo intorno alla frase contestata.
+
 ## 4.3.7 — 2026-11-03
 
 Raccoglie la beta 4.3.7b1: le correzioni dal test notturno del frontend 4.3.6, molte per l'iPhone.

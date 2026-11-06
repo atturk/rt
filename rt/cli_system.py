@@ -240,13 +240,67 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
 
 def configure_restore_parser(p: argparse.ArgumentParser) -> None:
-    p.add_argument("source", help="Cartella rt-backup-<data>, file .zip (da «Salva una copia»), o la cartella dei backup (usa il più recente)")
+    p.add_argument("source", nargs="?", default=None, help="Cartella rt-backup-<data>, file .zip (da «Salva una copia»), o nome del backup pre-aggiornamento")
+    p.add_argument("--pre-update", action="store_true", help="Ripristina da un backup creato prima di un aggiornamento")
     p.add_argument("--yes", action="store_true", help="Non chiedere conferma")
     p.add_argument("--json", action="store_true", help="Avanzamento JSON riga per riga")
 
 
 def cmd_restore(args: argparse.Namespace) -> None:
     from rt.services import backup_service as bs
+    if getattr(args, "pre_update", False):
+        backups = bs.list_pre_update_backups()
+        if not backups:
+            _fail("Nessun backup trovato prima di un aggiornamento.")
+        chosen_zip = None
+        if args.source:
+            for b in backups:
+                if args.source == b["filename"] or args.source == b["path"] or args.source in b["filename"]:
+                    chosen_zip = b["path"]
+                    break
+            if not chosen_zip:
+                _fail(f"Backup pre-aggiornamento «{args.source}» non trovato.")
+        else:
+            print("Backup disponibili prima di un aggiornamento:")
+            for idx, b in enumerate(backups, 1):
+                created_str = b.get("created", "").replace("T", " ")[:19]
+                print(f"  {idx}. RT {b.get('version', '?')} - {created_str} ({b['filename']})")
+            if not args.yes:
+                if not sys.stdin.isatty():
+                    _fail("Seleziona un backup indicandone il nome oppure usa --yes.")
+                ans = input(f"Scegli un backup [1-{len(backups)}, predefinito 1, Annulla con Invio vuoto]: ").strip()
+                if not ans:
+                    print("Annullato.")
+                    return
+                try:
+                    choice = int(ans)
+                    if choice < 1 or choice > len(backups):
+                        _fail("Scelta non valida.")
+                    chosen_zip = backups[choice - 1]["path"]
+                except ValueError:
+                    _fail("Numero non valido.")
+            else:
+                chosen_zip = backups[0]["path"]
+
+        if not args.yes:
+            manifest_info = bs.inspect_pre_update_backup(chosen_zip)
+            ver = manifest_info.get("rt_version", "?")
+            created_str = manifest_info.get("created", "").replace("T", " ")[:19]
+            answer = input(f"Ripristinare il backup di RT {ver} del {created_str}? I dati attuali verranno messi da parte. [s/N] ").strip().lower()
+            if answer not in ("s", "si", "sì", "y", "yes"):
+                print("Annullato.")
+                return
+
+        try:
+            aside = bs.restore_pre_update_backup(chosen_zip)
+            print(f"✅ Ripristino completato con successo. I dati precedenti sono stati salvati in {aside}.")
+            print("I file multimediali (audio/immagini) sono rimasti intatti.")
+        except Exception as exc:
+            _fail(f"Errore durante il ripristino: {exc}")
+        return
+
+    if not args.source:
+        _fail("Specificare il percorso del backup da ripristinare oppure --pre-update.")
     try:
         snap = bs.resolve_snapshot(args.source)
     except bs.BackupError as exc:

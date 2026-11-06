@@ -362,7 +362,7 @@ def delete_entry(sha, index=None):
             archive.write_json(index_path, {k: v for k, v in aliases.items() if v != sha})
 
 
-def add_to_lesson(sha, lesson_id, uso, pages, estrai):
+def add_to_lesson(sha, lesson_id, uso, pages, estrai, affidabilita=None):
     from rt.services.source_mutation import source_mutation
     from rt.core.sources import add_source
     meta = require_entry(sha)
@@ -371,7 +371,7 @@ def add_to_lesson(sha, lesson_id, uso, pages, estrai):
         if pages is not None:
             validate_pages(sha, pages)
         return add_source(directory, 'audio' if meta['tipo'] == 'audio' else 'materiale',
-            meta['nome'], None, source_path=archive.original_path(sha), pagine=pages, estrai=estrai, uso=uso)
+            meta['nome'], None, source_path=archive.original_path(sha), pagine=pages, estrai=estrai, uso=uso, affidabilita=affidabilita)
 
 
 def add_to_media(sha, lesson_id, pages):
