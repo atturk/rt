@@ -13,10 +13,10 @@ Base: `agy/4.3.8-condivisione` (= v4.3.8b3 + piano condivisione). Una voce per c
 ## 6. Player audio spostabile (in basso, a sinistra, a destra)
 
 - Il player di Studio si può **ancorare in tre posizioni**: in basso al centro (come ora), sul **lato sinistro** o sul **lato destro**, a metà altezza della pagina. Nei lati il player è verticale/compatto (play, tempo, velocità, ±5 s) e non copre il testo (il testo resta centrato; se lo spazio laterale è troppo poco, es. finestra stretta o telefono, resta solo «in basso»).
-- Si sposta **trascinandolo** (maniglia): al rilascio va all'ancoraggio più vicino (non posizioni libere). In alternativa un piccolo menu sul player «Sposta a sinistra / in basso / a destra» per chi non trascina (anche per accessibilità).
+- Si sposta **solo trascinandolo**: si afferra dai bordi/dallo sfondo del blocco (non dalla barra del tempo, che deve continuare a trascinarsi per cercare nell'audio, né dai bottoni). Durante il trascinamento compaiono i tre punti di aggancio (sagome tratteggiate in basso, a sinistra, a destra); al rilascio il player va all'aggancio più vicino con una breve animazione. **Nessun menu «Sposta».** Con la tastiera: nessun comando dedicato (resta in basso, va bene così).
 - La posizione si ricorda per dispositivo (impostazione locale, come lo zoom).
 - Vale anche per il player della pagina lezioni se usa lo stesso componente; se no, solo Studio.
-- Test vitest: cambio ancoraggio dal menu, posizione ricordata, su schermo stretto solo «in basso».
+- Test vitest: trascinamento con rilascio vicino a un lato → ancorato a quel lato; trascinare la barra del tempo non sposta il player; posizione ricordata; su schermo stretto solo «in basso».
 
 ## 7. Zoom (Ingrandisci/Riduci) che rompe il disegno della pagina
 
@@ -25,7 +25,8 @@ Base: `agy/4.3.8-condivisione` (= v4.3.8b3 + piano condivisione). Una voce per c
   - **App desktop**: usa lo zoom nativo della finestra invece del CSS. macOS: `WKWebView.setPageZoom_` (macOS 11+) via pyobjc in `rt/window.py`; Windows: `ZoomFactor` del controllo WebView2. Esponi in `DesktopApi` un metodo `set_zoom(fattore)` e fai chiamare quello da `zoom.ts` quando c'è il ponte desktop. Fattore e limiti come oggi; persistenza come oggi.
   - **Browser** (web app, iPhone): niente `zoom` sull'`<html>`; scala la dimensione del testo di base (`font-size` della radice, l'interfaccia è in rem) oppure lascia lo zoom del browser (⌘+/⌘−) e nascondi i comandi interni. Scegli la via che non rompe i layout esistenti e dillo nell'esito.
   - Aggiorna `zoomed(px)` e chi lo usa, se la scala cambia significato.
-- Test: vitest su `zoom.ts` (ponte desktop chiamato, nessuno stile `zoom` sull'html); test Python per `set_zoom` con webview finto. La verifica visiva sul Mac la fa Attilio sulla beta.
+- **Non deve sparire niente**: con lo zoom nativo la finestra «diventa» più piccola in px CSS, quindi bottoni e barre fissate in basso (player, barra della lettura veloce, bottoni del ripasso, barra di selezione in Lezioni) devono restare visibili e cliccabili. Verifica con Playwright simulando lo zoom nativo (viewport ridotto di 1/fattore, `deviceScaleFactor` = fattore) a 80 %, 125 %, 150 % e 200 % su: Lezioni, pagina lezione (scorrendo fino in fondo), Studio (anche zen e lettura veloce), Ripasso, Impostazioni, Guida; desktop e 390 px. Se una pagina non regge, correggi il layout di quella pagina (non tornare al CSS `zoom`). Salva le schermate in `frontend/test-results/zoom/` (non committarle) e scrivi nell'esito cosa hai controllato.
+- Test: vitest su `zoom.ts` (ponte desktop chiamato, nessuno stile `zoom` sull'html); test Python per `set_zoom` con webview finto; un e2e `zoom.spec.ts` che a 150 % e 200 % (simulati come sopra) controlla che i bottoni in basso di Studio e Ripasso siano nel viewport e cliccabili. La verifica sul Mac vero la fa Attilio sulla beta.
 
 ## 8. Studio: via il bottone ▶ dell'unità, player che ricorda se era aperto
 
@@ -35,17 +36,13 @@ Base: `agy/4.3.8-condivisione` (= v4.3.8b3 + piano condivisione). Una voce per c
 
 ## 9. Salto alla lezione dopo/prima dello stesso docente
 
-- `components/shared/LessonJump.tsx` (blocco laterale con calendario → e etichetta →, usato in Studio e nella pagina lezione): aggiungi una terza riga con icona docente (es. `GraduationCap`) per la lezione **dello stesso docente** precedente/successiva in ordine cronologico (data della lezione, poi l'ordine già usato per lo stesso giorno). Stesso docente = stesso nome, senza distinguere maiuscole e spazi ai bordi, anche se la materia è diversa. Lezione senza docente: riga disattivata con «nessun docente per questa lezione».
+- `components/shared/LessonJump.tsx` (blocco laterale con calendario → e etichetta →, usato in Studio e nella pagina lezione): aggiungi una terza riga con **la stessa icona docente già usata in Lezioni** (`User` di lucide, vedi `GROUP_ICONS.docente` in `LessonsView.tsx`; niente icone nuove per il docente) per la lezione **dello stesso docente** precedente/successiva in ordine cronologico (data della lezione, poi l'ordine già usato per lo stesso giorno). Stesso docente = **stesso nome e stessa materia** (nomi confrontati senza maiuscole e spazi ai bordi): due «Rossi» di materie diverse sono due docenti diversi, quindi dalla lezione di Fisiologia del prof. Rossi si va alla lezione successiva di Rossi in Fisiologia, mai a quella di un Rossi di un'altra materia. Lezione senza docente: riga disattivata con «nessun docente per questa lezione».
 - Calcolo in `lib/lessonNeighbors` accanto a `sameDay` e `sameSubject` (`sameTeacher`). Il blocco deve esserci sia in Studio sia nella pagina lezione: se oggi manca in uno dei due, aggiungilo.
-- Test vitest per `sameTeacher` (ordine, docente vuoto, maiuscole) e aggiorna gli e2e del salto.
+- Test vitest per `sameTeacher` (ordine, docente vuoto, maiuscole, due «Rossi» in materie diverse con lezioni alternate) e aggiorna gli e2e del salto.
 
-## 10. Niente due docenti diversi con lo stesso nome
+## 10. (annullata) Docenti con lo stesso nome
 
-- Oggi un docente si registra per materia (`rt/services/subjects.py`, `add_teacher`/`register_teacher`) e nella stessa materia il doppione è già rifiutato. Con la voce 9 il nome identifica la persona in tutte le materie, quindi:
-  - Aggiungendo un docente (Impostazioni → Materie, dialogo nuova lezione, modifica lezione) con un nome che **esiste già in un'altra materia** (stesso confronto della voce 9), RT non lo crea in silenzio: mostra «Esiste già un docente “Rossi” (Anatomia). Se è la stessa persona, scegli “Stessa persona”; se è un altro docente, usa il nome puntato, per esempio “Rossi M.” e “Rossi L.”». Due bottoni: «Stessa persona» (lo aggiunge anche a questa materia) e «Cambia nome» (torna al campo). Non c'è un modo di creare un secondo «Rossi» diverso.
-  - Stessa materia: resta il rifiuto di oggi, con il messaggio che suggerisce il nome puntato.
-  - Backend: `add_teacher` risponde `409 teacher_exists_elsewhere` con le materie in cui esiste, a meno che la richiesta dica `same_person: true`.
-- Test backend (stessa materia, altra materia senza e con `same_person`) e vitest del dialogo.
+- Nessun controllo nuovo: due docenti con lo stesso nome in materie diverse sono ammessi (nella stessa materia resta il rifiuto di oggi). Il caso dei nomi uguali è risolto dalla regola «stesso nome e stessa materia» della voce 9.
 
 ## Prima della PR
 
