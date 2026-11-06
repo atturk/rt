@@ -1,6 +1,10 @@
 import { lessonTitle, type Lesson } from './format'
 
-export type LessonNeighbors = { sameDay: { prev: Lesson | null; next: Lesson | null }; sameSubject: { prev: Lesson | null; next: Lesson | null } }
+export type LessonNeighbors = {
+  sameDay: { prev: Lesson | null; next: Lesson | null }
+  sameSubject: { prev: Lesson | null; next: Lesson | null }
+  sameTeacher: { prev: Lesson | null; next: Lesson | null; disabledReason?: string }
+}
 const collator = new Intl.Collator('it', { sensitivity: 'base', numeric: true })
 
 /** Ordine cronologico, con titolo come spareggio e senza data in fondo. */
@@ -15,8 +19,24 @@ export function lessonNeighbors(lessons: Lesson[], id: number, { readyOnly }: { 
     const index = group.findIndex(lesson => lesson.id === id)
     return { prev: index > 0 ? group[index - 1] : null, next: index >= 0 ? group[index + 1] ?? null : null }
   }
+
+  const currentDocente = current?.docente?.trim().toLowerCase() ?? ''
+  const currentMateria = current?.materia?.trim().toLowerCase() ?? ''
+
+  const sameTeacher = () => {
+    if (!currentDocente) {
+      return { prev: null, next: null, disabledReason: 'nessun docente per questa lezione' }
+    }
+    return neighbors(lesson => {
+      const d = lesson.docente?.trim().toLowerCase() ?? ''
+      const m = lesson.materia?.trim().toLowerCase() ?? ''
+      return Boolean(d && m && d === currentDocente && m === currentMateria)
+    })
+  }
+
   return {
     sameDay: neighbors(lesson => !!current?.data && lesson.data === current.data),
     sameSubject: neighbors(lesson => !!current?.materia && lesson.materia === current.materia),
+    sameTeacher: sameTeacher(),
   }
 }
