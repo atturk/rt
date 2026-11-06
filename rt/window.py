@@ -337,6 +337,82 @@ class DesktopApi:
         AppHelper.callAfter(_open_picker)
         return {"ok": True}
 
+    def set_zoom(self, factor: float) -> dict:
+        """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
+        try:
+            factor = float(factor)
+        except (TypeError, ValueError):
+            return {"errore": "Fattore di zoom non valido."}
+
+        factor = max(0.5, min(3.0, factor))
+
+        if not self._window:
+            return {"ok": False, "errore": "Finestra non disponibile."}
+
+        native = getattr(self._window, "native", None)
+
+        if sys.platform == "darwin":
+            wv = None
+            if native is not None:
+                if hasattr(native, "webview"):
+                    wv = native.webview
+                elif hasattr(native, "contentView"):
+                    cv = native.contentView
+                    view = cv() if callable(cv) else cv
+                    if hasattr(view, "setPageZoom_"):
+                        wv = view
+                    elif hasattr(view, "subviews"):
+                        subviews = view.subviews() if callable(view.subviews) else view.subviews
+                        for sv in subviews or []:
+                            if hasattr(sv, "setPageZoom_"):
+                                wv = sv
+                                break
+            if wv is None and hasattr(self._window, "webview"):
+                wv = self._window.webview
+
+            if wv is not None and hasattr(wv, "setPageZoom_"):
+                try:
+                    from PyObjCTools import AppHelper
+                    AppHelper.callAfter(lambda: wv.setPageZoom_(factor))
+                except Exception:
+                    wv.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+            elif native is not None and hasattr(native, "setPageZoom_"):
+                native.setPageZoom_(factor)
+                return {"ok": True, "factor": factor}
+
+        if sys.platform == "win32":
+            target = None
+            if native is not None:
+                if hasattr(native, "controller"):
+                    target = native.controller
+                elif hasattr(native, "webview"):
+                    target = native.webview
+                elif hasattr(native, "browser"):
+                    target = native.browser
+                else:
+                    target = native
+            elif hasattr(self._window, "webview"):
+                target = self._window.webview
+
+            if target is not None:
+                if hasattr(target, "ZoomFactor"):
+                    target.ZoomFactor = factor
+                    return {"ok": True, "factor": factor}
+                core = getattr(target, "CoreWebView2", None)
+                if core is not None and hasattr(core, "ZoomFactor"):
+                    core.ZoomFactor = factor
+                    return {"ok": True, "factor": factor}
+
+        if hasattr(self._window, "set_zoom"):
+            self._window.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+        if hasattr(native, "set_zoom"):
+            native.set_zoom(factor)
+            return {"ok": True, "factor": factor}
+
+        return {"ok": True, "factor": factor}
+
 
 _condividi_temp_dirs: list[str] = []
 

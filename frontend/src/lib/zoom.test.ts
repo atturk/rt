@@ -6,6 +6,8 @@ describe('zoom', () => {
     localStorage.clear()
     sessionStorage.clear()
     document.documentElement.style.zoom = ''
+    document.documentElement.style.fontSize = ''
+    delete (window as unknown as { pywebview?: unknown }).pywebview
   })
 
   afterEach(() => {
@@ -13,6 +15,8 @@ describe('zoom', () => {
     localStorage.clear()
     sessionStorage.clear()
     document.documentElement.style.zoom = ''
+    document.documentElement.style.fontSize = ''
+    delete (window as unknown as { pywebview?: unknown }).pywebview
   })
 
   it('valore iniziale 1 e resetZoom', () => {
@@ -21,14 +25,16 @@ describe('zoom', () => {
     expect(getZoom()).toBe(1.5)
     resetZoom()
     expect(getZoom()).toBe(1)
-    expect(document.documentElement.style.zoom).toBe('1')
+    expect(document.documentElement.style.zoom).toBe('')
+    expect(document.documentElement.style.fontSize).toBe('')
   })
 
   it('zoomIn da 1 va a 1.1 e si ferma a 2', () => {
     resetZoom()
     zoomIn()
     expect(getZoom()).toBe(1.1)
-    expect(document.documentElement.style.zoom).toBe('1.1')
+    expect(document.documentElement.style.zoom).toBe('')
+    expect(document.documentElement.style.fontSize).toBe('110%')
     expect(localStorage.getItem('rt-device:zoom')).toBe('1.1')
 
     // Raggiungi il massimo
@@ -74,7 +80,20 @@ describe('zoom', () => {
 
     expect(getZoom()).toBe(1)
     expect(() => setZoom(1.25)).not.toThrow()
-    expect(document.documentElement.style.zoom).toBe('1.25')
+    expect(document.documentElement.style.zoom).toBe('')
+    expect(document.documentElement.style.fontSize).toBe('125%')
+  })
+
+  it('ponte desktop chiamato, nessuno stile zoom sull\'html', () => {
+    const set_zoom = vi.fn().mockResolvedValue({ ok: true, factor: 1.25 })
+    ;(window as unknown as { pywebview: { api: { set_zoom: typeof set_zoom } } }).pywebview = {
+      api: { set_zoom },
+    }
+
+    setZoom(1.25)
+    expect(set_zoom).toHaveBeenCalledWith(1.25)
+    expect(document.documentElement.style.zoom).toBe('')
+    expect(document.documentElement.style.fontSize).toBe('')
   })
 
   it('zoomed(px) scala le coordinate per il livello di zoom', () => {

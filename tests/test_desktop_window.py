@@ -940,3 +940,51 @@ def test_condividi_native(monkeypatch):
     assert file_arg.endswith("lezione prova.pdf")
     picker_instance.showRelativeToRect_ofView_preferredEdge_.assert_called_once()
 
+
+def test_set_zoom_macos(monkeypatch):
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_wv = Mock()
+    fake_native.webview = fake_wv
+    fake_win.native = fake_native
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    # Fattore valido
+    res = api.set_zoom(1.25)
+    assert res == {"ok": True, "factor": 1.25}
+    fake_wv.setPageZoom_.assert_called_once_with(1.25)
+
+    # Fattore clampato
+    res = api.set_zoom(4.5)
+    assert res == {"ok": True, "factor": 3.0}
+
+    res = api.set_zoom(0.1)
+    assert res == {"ok": True, "factor": 0.5}
+
+    # Fattore non valido
+    res = api.set_zoom("non-numero")
+    assert "errore" in res
+
+
+def test_set_zoom_windows(monkeypatch):
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_controller = Mock()
+    fake_native.controller = fake_controller
+    fake_win.native = fake_native
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    res = api.set_zoom(1.5)
+    assert res == {"ok": True, "factor": 1.5}
+    assert fake_controller.ZoomFactor == 1.5
+
+
