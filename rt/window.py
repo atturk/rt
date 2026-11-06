@@ -382,27 +382,24 @@ class DesktopApi:
                 return {"ok": True, "factor": factor}
 
         if sys.platform == "win32":
-            target = None
-            if native is not None:
-                if hasattr(native, "controller"):
-                    target = native.controller
-                elif hasattr(native, "webview"):
-                    target = native.webview
-                elif hasattr(native, "browser"):
-                    target = native.browser
-                else:
-                    target = native
-            elif hasattr(self._window, "webview"):
-                target = self._window.webview
+            # Il controllo WebView2 si tocca solo dal thread dell'interfaccia: le chiamate della
+            # js_api arrivano da un altro thread e un accesso diretto blocca la finestra.
+            webview = getattr(native, "webview", None) if native is not None else None
+            if webview is None:
+                return {"ok": False, "errore": "Zoom non disponibile."}
 
-            if target is not None:
-                if hasattr(target, "ZoomFactor"):
-                    target.ZoomFactor = factor
-                    return {"ok": True, "factor": factor}
-                core = getattr(target, "CoreWebView2", None)
-                if core is not None and hasattr(core, "ZoomFactor"):
-                    core.ZoomFactor = factor
-                    return {"ok": True, "factor": factor}
+            def apply():
+                try:
+                    webview.ZoomFactor = factor
+                except Exception as exc:
+                    _log(f"Zoom non applicato: {exc}")
+            try:
+                from System import Action
+                native.BeginInvoke(Action(apply))
+            except Exception as exc:
+                _log(f"Zoom non applicato: {exc}")
+                return {"ok": False, "errore": "Zoom non disponibile."}
+            return {"ok": True, "factor": factor}
 
         if hasattr(self._window, "set_zoom"):
             self._window.set_zoom(factor)

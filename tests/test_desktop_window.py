@@ -973,18 +973,22 @@ def test_set_zoom_macos(monkeypatch):
 
 
 def test_set_zoom_windows(monkeypatch):
+    """Su Windows lo zoom passa dal thread dell'interfaccia (BeginInvoke), mai dalla js_api."""
     fake_win = Mock()
     fake_native = Mock()
-    fake_controller = Mock()
-    fake_native.controller = fake_controller
+    fake_webview = SimpleNamespace(ZoomFactor=1.0)
+    fake_native.webview = fake_webview
+    fake_native.BeginInvoke = lambda action: action()
     fake_win.native = fake_native
-
+    system = ModuleType("System")
+    system.Action = lambda fn: fn
+    monkeypatch.setitem(sys.modules, "System", system)
     monkeypatch.setattr(sys, "platform", "win32")
 
     api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
 
     res = api.set_zoom(1.5)
     assert res == {"ok": True, "factor": 1.5}
-    assert fake_controller.ZoomFactor == 1.5
+    assert fake_webview.ZoomFactor == 1.5
 
 
