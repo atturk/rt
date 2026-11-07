@@ -4,7 +4,7 @@ import type { Schemas } from '@/api/client'
 import { history, undo } from '@codemirror/commands'
 import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
 import { lessonImageStrips } from './lessonImageStrips'
-import { dropTarget, sectionDropTarget, moveDocumentImage, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument } from './lessonImages'
+import { dropTarget, sectionDropTarget, moveDocumentImage, lessonImageUploads, removeImagesFromDocument, replaceImageInDocument, removeImageOccurrence, EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT } from './lessonImages'
 import { timecodeLock } from './timecodeLock'
 const markdown = '## 1. Sezione\n### 1.1 Unità\n00:00\nTesto.'
 const image: Schemas['EditorImage'] = { path: 'assets/images/a.png', name: 'a.png', url: '/api/v1/lessons/1/assets/images/a.png', alt_text: 'Figura' }
@@ -357,4 +357,76 @@ it('durante il drag mostra i bersagli vuoti e li ripulisce alla fine', () => {
   view.contentDOM.dispatchEvent(new Event('dragend', { bubbles: true }))
   expect(view.dom).not.toHaveClass('rt-dragging-images')
   view.destroy(); parent.remove()
+})
+
+it('due occorrenze uguali nella stessa unità più una in un’altra unità: removeImageOccurrence ne toglie una sola e ne restano due', () => {
+  const source =
+    '### 1.1 Prima\n00:00\n![A1](assets/images/foto.png)\n![A2](assets/images/foto.png)\nTesto 1.\n\n### 1.2 Seconda\n01:00\n![A3](assets/images/foto.png)\nTesto 2.'
+  const { view, parent } = mount(async () => image, false, source)
+
+  const line1From = source.indexOf('![A1]')
+
+  // Rimuove solo la prima occorrenza (in fromText line1From)
+  const ok = removeImageOccurrence(view, { name: 'foto.png', fromText: line1From })
+  expect(ok).toBe(true)
+
+  const docText = view.state.doc.toString()
+  // Rimangono esattamente 2 occorrenze di foto.png nel documento
+  const matches = docText.match(/assets\/images\/foto\.png/g)
+  expect(matches).toHaveLength(2)
+
+  // A1 è stata rimossa, A2 e A3 sono rimaste
+  expect(docText).not.toContain('![A1]')
+  expect(docText).toContain('![A2](assets/images/foto.png)')
+  expect(docText).toContain('![A3](assets/images/foto.png)')
+
+  // Annullabile con Cmd+Z / undo
+  expect(undo(view)).toBe(true)
+  expect(view.state.doc.toString()).toBe(source)
+
+  view.destroy()
+  parent.remove()
+})
+
+it('removeImageOccurrence non fa nulla se la posizione fromText non contiene quell’immagine o se readOnly', () => {
+  const source = '### 1.1 Prima\n00:00\n![A1](assets/images/foto.png)\nTesto 1.'
+  const { view, parent } = mount(async () => image, false, source)
+
+  // fromText inesistente
+  expect(removeImageOccurrence(view, { name: 'foto.png', fromText: 9999 })).toBe(false)
+  // Nome non corrispondente
+  expect(removeImageOccurrence(view, { name: 'altra.png', fromText: source.indexOf('![A1]') })).toBe(false)
+  // Posizione interna alla riga ma non a inizio riga
+  expect(removeImageOccurrence(view, { name: 'foto.png', fromText: source.indexOf('![A1]') + 2 })).toBe(false)
+
+  expect(view.state.doc.toString()).toBe(source)
+
+  view.destroy()
+  parent.remove()
+
+  // Con readOnly
+  const { view: roView, parent: roParent } = mount(async () => image, true, source)
+  expect(removeImageOccurrence(roView, { name: 'foto.png', fromText: source.indexOf('![A1]') })).toBe(false)
+  roView.destroy()
+  roParent.remove()
+})
+
+it('EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT rimuove la specifica occorrenza via evento', () => {
+  const source = '### 1.1 Prima\n00:00\n![A1](assets/images/foto.png)\n![A2](assets/images/foto.png)\nTesto 1.'
+  const { view, parent } = mount(async () => image, false, source)
+  const lineFrom = source.indexOf('![A1]')
+
+  window.dispatchEvent(
+    new CustomEvent(EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT, {
+      detail: { name: 'foto.png', fromText: lineFrom },
+    }),
+  )
+
+  const docText = view.state.doc.toString()
+  expect(docText.match(/assets\/images\/foto\.png/g)).toHaveLength(1)
+  expect(docText).not.toContain('![A1]')
+  expect(docText).toContain('![A2]')
+
+  view.destroy()
+  parent.remove()
 })

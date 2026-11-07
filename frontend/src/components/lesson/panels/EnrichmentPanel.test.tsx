@@ -477,4 +477,36 @@ it('nessun pulsante forbici Scissors sulle miniature della galleria', async () =
   expect(within(gallery).queryByLabelText(/Ritaglia/i)).not.toBeInTheDocument()
 })
 
+it('trascinamento di una miniatura di unità sul pannello mostra il velo di rimozione e al drop notifica l’editor', async () => {
+  mockApi()
+  renderPanel()
+  const panel = screen.getByTestId('enrichment-panel')
+
+  expect(screen.queryByTestId('enrichment-remove-veil')).not.toBeInTheDocument()
+
+  // Drag over con RT_SECTION_IMAGE_DRAG_TYPE
+  const dataTransfer = {
+    types: ['application/x-rt-section-image'],
+    getData: (t: string) =>
+      t === 'application/x-rt-section-image'
+        ? JSON.stringify({ name: 'foto.png', fromText: 42 })
+        : '',
+  }
+
+  fireEvent.dragOver(panel, { dataTransfer })
+  expect(screen.getByTestId('enrichment-remove-veil')).toBeInTheDocument()
+  expect(screen.getByText("Rilascia per togliere dall'unità")).toBeInTheDocument()
+
+  // Listener sull'evento editor
+  const occurrenceListener = vi.fn()
+  window.addEventListener('rt-editor-remove-image-occurrence', occurrenceListener)
+
+  fireEvent.drop(panel, { dataTransfer })
+  expect(screen.queryByTestId('enrichment-remove-veil')).not.toBeInTheDocument()
+  expect(occurrenceListener).toHaveBeenCalledTimes(1)
+  expect(occurrenceListener.mock.calls[0][0].detail).toEqual({ name: 'foto.png', fromText: 42 })
+
+  window.removeEventListener('rt-editor-remove-image-occurrence', occurrenceListener)
+})
+
 

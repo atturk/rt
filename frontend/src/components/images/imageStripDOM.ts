@@ -46,7 +46,15 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
       thumb.ondragstart = event => {
         event.stopPropagation()
         thumb.closest('.cm-editor')?.classList.add('rt-dragging-images')
-        event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromUnit: options.fromUnit, width: thumb.querySelector('img')?.naturalWidth || 480 }))
+        event.dataTransfer?.setData(
+          RT_SECTION_IMAGE_DRAG_TYPE,
+          JSON.stringify({
+            name,
+            fromUnit: options.fromUnit,
+            fromText: img.from,
+            width: thumb.querySelector('img')?.naturalWidth || 480,
+          }),
+        )
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
         startDragPreview(event, { urls: [img.src] })
       }
