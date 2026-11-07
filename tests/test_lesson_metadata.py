@@ -98,3 +98,16 @@ def test_order_by_hour_and_custom_title_after_build(api_client, lesson):
     update_info_yaml(lesson_path(other, 'info.yaml'), {'data': info['data'], 'ora': '15:00'})
     rows = api_client.get('/api/v1/lessons').json()
     assert [r['ora'] for r in rows] == ['15:00', '09:00']
+
+
+def test_metadata_change_keeps_outline_valid(api_client, lesson):
+    """Scambiare le date di due lezioni non deve rendere obsolete scaletta e rielaborazione."""
+    from rt.core.idempotency import PhaseStatus, check_phase_status
+    run_mock_pipeline(lesson)
+    assert check_phase_status(lesson, 'outline')[0] == PhaseStatus.VALID
+    res = api_client.patch(f'/api/v1/lessons/{ident(api_client)}/metadata',
+                           json={'data': '2026-10-09', 'materia': 'fisiologia'})
+    assert res.status_code == 200, res.text
+    moved = res.json()['path']
+    for phase in ('prepare', 'outline', 'rewrite'):
+        assert check_phase_status(moved, phase)[0] == PhaseStatus.VALID, phase

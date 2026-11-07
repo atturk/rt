@@ -37,6 +37,8 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
+import { RT_SECTION_IMAGE_DRAG_TYPE } from '../imageSections'
+import { EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT } from '../lessonImages'
 import { MediaGallery } from './MediaGallery'
 import { MediaSelectionBar } from './MediaSelectionBar'
 import { ImageInfoModal, type ImageInfoTarget } from '@/components/images/ImageInfoModal'
@@ -97,6 +99,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [showIgnored, setShowIgnored] = useState(false)
   const [mediaDragActive, setMediaDragActive] = useState(false)
+  const [sectionDragActive, setSectionDragActive] = useState(false)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const navigate = useNavigate()
@@ -192,12 +195,15 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       const clean = name.split('#')[0]
       setSelectedNames(new Set([clean]))
     }
+    const onDragEnd = () => setSectionDragActive(false)
+    window.addEventListener('dragend', onDragEnd)
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
     window.addEventListener('rt-editor-cursor-state', onCursorState)
     window.addEventListener('rt-media-select', onMediaSelect)
     window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
     return () => {
+      window.removeEventListener('dragend', onDragEnd)
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
       window.removeEventListener('rt-editor-cursor-state', onCursorState)
@@ -497,7 +503,50 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   return (
-    <div className="relative flex flex-col gap-4 text-body" data-testid="enrichment-panel">
+    <div
+      className="relative flex flex-col gap-4 text-body"
+      data-testid="enrichment-panel"
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types.includes(RT_SECTION_IMAGE_DRAG_TYPE)) {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (!sectionDragActive) setSectionDragActive(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return
+        setSectionDragActive(false)
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer?.types.includes(RT_SECTION_IMAGE_DRAG_TYPE)) {
+          e.preventDefault()
+          e.stopPropagation()
+          const raw = e.dataTransfer.getData(RT_SECTION_IMAGE_DRAG_TYPE)
+          if (raw) {
+            try {
+              const item = JSON.parse(raw)
+              window.dispatchEvent(
+                new CustomEvent(EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT, { detail: item }),
+              )
+            } catch {
+              // Ignore
+            }
+          }
+          setSectionDragActive(false)
+        }
+      }}
+    >
+      {sectionDragActive && (
+        <div
+          className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-primary/10 p-5 text-center font-semibold text-foreground pointer-events-none select-none animate-in fade-in duration-150"
+          data-testid="enrichment-remove-veil"
+          role="status"
+          aria-live="polite"
+        >
+          <X className="size-8 text-primary" aria-hidden />
+          <p>Rilascia per togliere dall'unità</p>
+        </div>
+      )}
       {mediaDragActive && (
         <div
           className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-primary/10 p-5 text-center font-semibold text-foreground pointer-events-none select-none animate-in fade-in duration-150"

@@ -12,10 +12,13 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from contextvars import copy_context
 from contextlib import contextmanager
+import logging
 
 from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_lock import lesson_lock
 from rt.storage import fs
+
+logger = logging.getLogger(__name__)
 
 MATERIAL_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.heic', '.pptx', '.docx', '.txt', '.md'}
 
@@ -66,57 +69,105 @@ def _describe(data, lesson_dir, mock):
 
 
 def _soffice():
-    """LibreOffice, se installato: nel PATH o nella cartella standard di Windows."""
+    """LibreOffice, se installato: nel PATH o nella cartella standard di Windows/macOS."""
     found = shutil.which('soffice') or shutil.which('libreoffice')
-    if found or os.name != 'nt':
+    if found:
         return found
-    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
-        candidate = os.path.join(base or '', 'LibreOffice', 'program', 'soffice.exe')
-        if base and os.path.isfile(candidate):
-            return candidate
+    if os.name == 'nt':
+        for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
+            candidate = os.path.join(base or '', 'LibreOffice', 'program', 'soffice.exe')
+            if base and os.path.isfile(candidate):
+                return candidate
+    elif sys.platform == 'darwin':
+        mac_app = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+        if os.path.isfile(mac_app):
+            return mac_app
     return None
 
 
-def _slide_command(real, target):
-    """Quick Look su macOS, altrimenti LibreOffice; None se nessuno dei due c'è."""
-    quicklook = shutil.which('qlmanage') if sys.platform == 'darwin' else None
-    if quicklook:
-        return [quicklook, '-p', '-o', target, real]
+def _has_keynote():
+    """Keynote su macOS, se presente l'applicazione e osascript."""
+    if sys.platform != 'darwin' or not shutil.which('osascript'):
+        return False
+    for path in ('/Applications/Keynote.app', '/System/Applications/Keynote.app'):
+        if os.path.isdir(path):
+            return True
+    return False
+
+
+def _slide_render_methods(real, target):
+    """Genera i metodi di resa disponibili in ordine di priorità:
+    1. LibreOffice (se installato)
+    2. Keynote (su macOS se installato)
+    3. Quick Look (su macOS se disponibile qlmanage)
+    """
+    methods = []
     soffice = _soffice()
     if soffice:
-        return [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]
-    return None
+        methods.append(('LibreOffice', [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]))
+    if _has_keynote():
+        pdf_out = os.path.join(target, 'keynote_export.pdf')
+        # Percorsi passati come argomenti: niente problemi con virgolette nei nomi
+        script = (
+            'on run argv\n'
+            '  tell application "Keynote"\n'
+            '    set doc to open POSIX file (item 1 of argv)\n'
+            '    try\n'
+            '      export doc to POSIX file (item 2 of argv) as PDF\n'
+            '    end try\n'
+            '    close doc saving no\n'
+            '  end tell\n'
+            'end run'
+        )
+        methods.append(('Keynote', ['osascript', '-e', script, real, pdf_out]))
+    if sys.platform == 'darwin' and shutil.which('qlmanage'):
+        methods.append(('Quick Look', [shutil.which('qlmanage'), '-p', '-o', target, real]))
+    return methods
 
 
 @contextmanager
 def _quicklook_slides(real, count):
-    """La resa delle slide (Quick Look o LibreOffice) è facoltativa; si usa solo se copre tutte
-    le slide. Restituisce una funzione che rende una slide alla volta, così non tiene in
-    memoria tutte le immagini."""
+    """La resa delle slide (LibreOffice -> Keynote -> Quick Look) è facoltativa; si usa solo se copre
+    esattamente tutte le slide (count). Altrimenti registra nel log del worker e cede il passo al ripiego."""
     with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
-        command = _slide_command(real, target)
-        if not command:
-            yield None
-            return
+        methods = _slide_render_methods(real, target)
+        tried_methods = []
         render = None
         document = None
-        try:
-            subprocess.run(command, capture_output=True, check=True, timeout=120)
-            from pathlib import Path
-            import pymupdf as fitz
-            for path in Path(target).rglob('*.pdf'):
-                candidate = fitz.open(path)
-                if len(candidate) == count:
-                    document = candidate
-                    render = lambda i: document[i].get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')
+
+        from pathlib import Path
+        import pymupdf as fitz
+
+        for name, command in methods:
+            tried_methods.append(name)
+            try:
+                subprocess.run(command, capture_output=True, check=True, timeout=120)
+                for path in Path(target).rglob('*.pdf'):
+                    candidate = fitz.open(path)
+                    if len(candidate) == count:
+                        document = candidate
+                        render = lambda i, doc=document: doc[i].get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')
+                        break
+                    candidate.close()
+                if render is not None:
                     break
-                candidate.close()
-            if render is None:
                 images = sorted(Path(target).rglob('*.png'))
                 if len(images) == count:
-                    render = lambda i: images[i].read_bytes()
-        except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
-            render = None
+                    render = lambda i, imgs=images: imgs[i].read_bytes()
+                    break
+                # Pulisce i file del metodo fallito prima del successivo
+                for p in Path(target).iterdir():
+                    if p.is_file():
+                        p.unlink()
+                    elif p.is_dir():
+                        shutil.rmtree(p, ignore_errors=True)
+            except (OSError, subprocess.SubprocessError, ValueError, RuntimeError):
+                continue
+
+        if render is None:
+            methods_str = ', '.join(tried_methods) if tried_methods else 'nessun metodo disponibile'
+            logger.warning("Resa delle slide per '%s' non riuscita (metodi tentati: %s)", os.path.basename(real), methods_str)
+
         try:
             yield render
         finally:
@@ -138,6 +189,50 @@ def _slide_content(slide):
                 visit(shape.shapes)
     visit(slide.shapes)
     return '\n'.join(texts).strip(), images
+
+
+def _filter_slide_images(slide, slide_width=None, slide_height=None):
+    """Ripiego per le slide PPTX: scarta immagini con lato minore < 64 px,
+    oppure area < 2% della slide, o che non si decodificano.
+    Al massimo una per slide, la più grande."""
+    from PIL import Image
+    candidates = []
+    slide_area = (slide_width or 0) * (slide_height or 0)
+
+    def visit(shapes):
+        for shape in shapes:
+            if hasattr(shape, 'image'):
+                try:
+                    blob = shape.image.blob
+                    with Image.open(io.BytesIO(blob)) as img:
+                        w_px, h_px = img.size
+                        # 1. Scarta se lato minore < 64 px
+                        if min(w_px, h_px) < 64:
+                            continue
+                        # 2. Scarta se area < 2% della slide
+                        shape_w = getattr(shape, 'width', None) or 0
+                        shape_h = getattr(shape, 'height', None) or 0
+                        shape_area = shape_w * shape_h
+                        if slide_area > 0 and shape_area < 0.02 * slide_area:
+                            continue
+                        area = shape_area if shape_area > 0 else (w_px * h_px)
+                        candidates.append((area, blob))
+                except Exception:
+                    continue
+            if hasattr(shape, 'shapes'):
+                visit(shape.shapes)
+
+    visit(slide.shapes)
+    if not candidates:
+        return []
+
+    # Al massimo una per slide, la più grande
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    best_blob = candidates[0][1]
+    try:
+        return [_png_image(best_blob)]
+    except Exception:
+        return []
 
 
 def _document_pages(real, images=False):
@@ -204,10 +299,16 @@ def _extract(real):
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)
+        sw = getattr(presentation, 'slide_width', None)
+        sh = getattr(presentation, 'slide_height', None)
         with _quicklook_slides(real, len(presentation.slides)) as render:
             for i, slide in enumerate(presentation.slides):
-                text, pictures = _slide_content(slide)
-                yield text, [render(i)] if render else [_png_image(data) for data in pictures], bool(pictures)
+                text, _ = _slide_content(slide)
+                if render:
+                    pictures = [render(i)]
+                else:
+                    pictures = _filter_slide_images(slide, sw, sh)
+                yield text, pictures, bool(pictures)
     else:
         with open(real, 'rb') as stream:
             yield '', [_png_image(stream.read())], True

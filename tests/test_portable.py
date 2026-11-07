@@ -34,8 +34,8 @@ def test_filename_part_is_valid_on_windows():
 def test_slides_use_libreoffice_without_quick_look(monkeypatch):
     monkeypatch.setattr(materials.sys, "platform", "win32")
     monkeypatch.setattr(materials.shutil, "which", lambda name: "/opt/lo/soffice" if name == "soffice" else None)
-    assert materials._slide_command("a.pptx", "out") == ["/opt/lo/soffice", "--headless", "--convert-to", "pdf",
-                                                         "--outdir", "out", "a.pptx"]
+    assert materials._slide_render_methods("a.pptx", "out") == [
+        ("LibreOffice", ["/opt/lo/soffice", "--headless", "--convert-to", "pdf", "--outdir", "out", "a.pptx"])]
     monkeypatch.setattr(materials.shutil, "which", lambda name: None)
     monkeypatch.setattr(materials.os, "name", "posix")
-    assert materials._slide_command("a.pptx", "out") is None
+    assert materials._slide_render_methods("a.pptx", "out") == []

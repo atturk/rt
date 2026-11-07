@@ -18,7 +18,7 @@ const LESSON: Lesson = {
   docente: 'Rossi',
   path: '',
   duration_seconds: 3600,
-  unit_count: 2,
+  unit_count: 3,
   pending_issues: 0,
   recall_pending: 0,
   study_learned: 0,
@@ -31,6 +31,7 @@ const LESSON: Lesson = {
 const UNITS = [
   { id: '1.1', title: 'Prima unità', html: '<p>Contenuto unità 1</p>', questions: 0, pending: {}, start: 120, end: 240 },
   { id: '1.2', title: 'Seconda unità', html: '<p>Contenuto unità 2</p>', questions: 0, pending: {}, start: 240, end: 360 },
+  { id: '1.3', title: 'Terza unità', html: '<p>Contenuto unità 3</p>', questions: 0, pending: {} },
 ]
 
 vi.mock('@/api/studyProgress', () => ({
@@ -65,6 +66,7 @@ describe('Study audio player and keyboard navigation', () => {
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined)
     window.HTMLMediaElement.prototype.pause = vi.fn()
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'readyState', { value: 4, configurable: true })
   })
 
   afterEach(() => {
@@ -133,6 +135,22 @@ describe('Study audio player and keyboard navigation', () => {
     expect(screen.getByText('Contenuto unità 2')).toBeInTheDocument()
   })
 
+  it('il tasto P apre e chiude il player, indicato nel tooltip', () => {
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(screen.getByRole('button', { name: 'Player audio · P' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'p' })
+    expect(screen.getByTestId('audio-player')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chiudi player audio · P' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'P' })
+    expect(screen.queryByTestId('audio-player')).not.toBeInTheDocument()
+  })
+
   it('non mostra il bottone ▶ dell\'unità', () => {
     render(
       <QueryClientProvider client={client}>
@@ -181,6 +199,51 @@ describe('Study audio player and keyboard navigation', () => {
     )
 
     expect(screen.getByTestId('audio-player')).toBeInTheDocument()
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
+  })
+
+  it('il player segue l\'unità se la preferenza è attiva e non si sposta se l\'unità non ha timestamp', () => {
+    localStorage.setItem('rt-device:study-audio-open', 'true')
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
+
+    // Cambio a unità 2 (ha start: 240)
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByText('Contenuto unità 2')).toBeInTheDocument()
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('4:00')
+
+    // Cambio a unità 3 (senza timestamp)
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByText('Contenuto unità 3')).toBeInTheDocument()
+    // Non si sposta: resta a 4:00
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('4:00')
+  })
+
+  it('il player NON segue l\'unità se study.player-follows-unit è false', () => {
+    localStorage.setItem('rt-device:study-audio-open', 'true')
+    localStorage.setItem('rt-pref:study.player-follows-unit', 'false')
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
+
+    // Cambio unità con Alt+ArrowRight
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByText('Contenuto unità 2')).toBeInTheDocument()
+
+    // Con preferenza disattivata, resta a 2:00
     expect(screen.getByTestId('audio-current')).toHaveTextContent('2:00')
   })
 })

@@ -209,8 +209,10 @@ export function AudioPlayer({ lessonId, inline = false, panelOpen = false, class
 
   const dragStyle: CSSProperties | undefined = dragging
     ? effectivePosition === 'bottom'
-      ? { transform: `translate(calc(-50% + ${dragOffset.x}px), ${dragOffset.y}px)`, transition: 'none' }
-      : { transform: `translate(${dragOffset.x}px, calc(-50% + ${dragOffset.y}px))`, transition: 'none' }
+      // Le classi -translate-*-1/2 di Tailwind usano la proprietà `translate`: qui la si sostituisce,
+      // altrimenti il -50% si somma due volte e il player salta a lato del puntatore.
+      ? { translate: `calc(-50% + ${dragOffset.x}px) ${dragOffset.y}px`, transition: 'none' }
+      : { translate: `${dragOffset.x}px calc(-50% + ${dragOffset.y}px)`, transition: 'none' }
     : undefined
 
   return (

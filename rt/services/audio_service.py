@@ -93,6 +93,23 @@ def _is_mp4(path: str) -> bool:
         return handle.read(8)[4:8] == b"ftyp"
 
 
+def _moov_after_mdat(path: str) -> bool:
+    """MP4 con l'indice in fondo (es. registratori Android: un solo chunk da decine di MB, WebKit si ferma)."""
+    with open(path, "rb") as handle:
+        while header := handle.read(8):
+            if len(header) < 8:
+                return False
+            size, kind = int.from_bytes(header[:4], "big"), header[4:]
+            if kind in (b"moov", b"mdat"):
+                return kind == b"mdat"
+            if size == 1:
+                size = int.from_bytes(handle.read(8), "big") - 8
+            if size < 8:
+                return False
+            handle.seek(size - 8, os.SEEK_CUR)
+    return False
+
+
 def _valid_remux(target: str, original_size: int) -> bool:
     try:
         return (os.path.isfile(target) and _is_mp4(target)
@@ -114,8 +131,8 @@ def _probe_ok(path: str) -> bool:
 
 
 def playable_audio(path: str) -> str:
-    """Il file da inviare al browser: l'originale, o un remux MP4 per un .m4a in AAC ADTS."""
-    if os.path.splitext(path)[1].lower() != ".m4a" or _is_mp4(path):
+    """Il file da inviare al browser: l'originale, o un remux MP4 faststart per un .m4a in AAC ADTS o con moov in fondo."""
+    if os.path.splitext(path)[1].lower() != ".m4a" or (_is_mp4(path) and not _moov_after_mdat(path)):
         return path
     key = _key(path)
     target = os.path.join(_cache_dir("audio"), key + REMUX_SUFFIX)

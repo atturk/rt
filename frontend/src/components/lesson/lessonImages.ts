@@ -3,10 +3,12 @@ import { Prec, StateEffect, StateField, type EditorState, type Range } from '@co
 import { Decoration, type DecorationSet, dropCursor, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { copyMaterialPage, materialSourceId } from '@/api/images'
+import { stopDragPreview } from './dragPreview'
 import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE, type SectionImageDrag } from './imageSections'
 
 export const EDITOR_INSERT_IMAGES_EVENT = 'rt-editor-insert-images'
 export const EDITOR_REMOVE_IMAGES_EVENT = 'rt-editor-remove-images'
+export const EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT = 'rt-editor-remove-image-occurrence'
 export const EDITOR_REPLACE_IMAGE_EVENT = 'rt-editor-replace-image'
 export const EDITOR_CURSOR_STATE_EVENT = 'rt-editor-cursor-state'
 export const EDITOR_REQUEST_CURSOR_STATE_EVENT = 'rt-editor-request-cursor-state'
@@ -91,9 +93,11 @@ export function findInsertPosition(state: EditorState, position: number): number
 /** Togli e inserisci in un'unica transazione (e un unico annulla). */
 export function moveDocumentImage(view: EditorView, item: SectionImageDrag, target: DropTargetResult, section: boolean): boolean {
   if (view.state.readOnly) return false
-  const source = item.fromUnit
-    ? imageSections(view.state).find(unit => unit.id === item.fromUnit)?.images.find(image => image.name === item.name)
-    : item.fromText != null ? view.state.doc.lineAt(item.fromText) : null
+  const source = item.fromText != null
+    ? view.state.doc.lineAt(item.fromText)
+    : item.fromUnit
+      ? imageSections(view.state).find(unit => unit.id === item.fromUnit)?.images.find(image => image.name === item.name)
+      : null
   if (!source) return false
   const line = view.state.doc.lineAt(source.from)
   const match = /^!\[(.*)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#w=(\d+))?\)\s*$/.exec(line.text)
@@ -106,6 +110,31 @@ export function moveDocumentImage(view: EditorView, item: SectionImageDrag, targ
     return true
   }
   view.dispatch({ changes: [{ from: line.from, to, insert: '' }, { from: at, insert }].sort((a, b) => a.from - b.from), annotations: isolateHistory.of('full') })
+  return true
+}
+
+/** Rimuove la sola riga che inizia in fromText, verificando prima che contenga esattamente l'immagine richiesta. */
+export function removeImageOccurrence(
+  view: EditorView,
+  item: { name: string; fromText?: number },
+): boolean {
+  if (view.state.readOnly || item.fromText == null) return false
+  if (item.fromText < 0 || item.fromText >= view.state.doc.length) return false
+  const line = view.state.doc.lineAt(item.fromText)
+  if (line.from !== item.fromText) return false
+  const match = /^!\[(.*?)\]\((?:\.\/)?assets\/images\/([A-Za-z0-9_.-]+)(?:#[^)]*)?\)\s*$/.exec(line.text.trim())
+  if (!match) return false
+  const cleanName = item.name.split('/').pop()!.split('#')[0]
+  if (match[2] !== cleanName) return false
+
+  const doc = view.state.doc
+  const to = line.to < doc.length && doc.sliceString(line.to, line.to + 1) === '\n' ? line.to + 1 : line.to
+  const from = to === line.to && line.from > 0 && doc.sliceString(line.from - 1, line.from) === '\n' ? line.from - 1 : line.from
+
+  view.dispatch({
+    changes: { from, to, insert: '' },
+    annotations: isolateHistory.of('full'),
+  })
   return true
 }
 
@@ -259,34 +288,58 @@ export function lessonImageUploads(options: Options) {
     return true
   }
 
-  const insertMediaItem = (
+  type MediaDragItem = {
+    path?: string
+    alt_text?: string
+    in_assets?: boolean
+    source_name?: string
+    source?: string
+    page?: number
+    lessonId?: number
+    width?: number
+  }
+
+  const insertMediaItems = (
     view: EditorView,
-    item: { path?: string; alt_text?: string; in_assets?: boolean; source_name?: string; source?: string; page?: number; lessonId?: number },
+    items: MediaDragItem[],
     position: number,
     section = false,
   ) => {
-    if (view.state.readOnly) return false
+    if (view.state.readOnly || items.length === 0) return false
     const id = Symbol('media-insert')
     view.dispatch({ effects: addAnchor.of({ id, position }) })
 
     const task = (async () => {
       try {
-        let finalPath = item.path || ''
-        let finalAlt = item.alt_text || ''
+        const resolved: Array<{ path: string; alt_text: string; width?: number }> = []
+        for (const item of items) {
+          let finalPath = item.path || ''
+          let finalAlt = item.alt_text || ''
 
-        if (!item.in_assets) {
-          const sourceId = materialSourceId(item.source)
-          if (!sourceId || item.page == null || item.lessonId == null) return
-          const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
-          finalPath = copied.path
-          finalAlt = copied.alt_text
+          if (!item.in_assets) {
+            const sourceId = materialSourceId(item.source)
+            if (!sourceId || item.page == null || item.lessonId == null) continue
+            const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
+            finalPath = copied.path
+            finalAlt = copied.alt_text
+          }
+
+          resolved.push({
+            path: finalPath,
+            alt_text: finalAlt,
+            width: knownImageWidth(finalPath),
+          })
         }
 
+        if (resolved.length === 0) return
         if (!view.plugin(alive)?.active || view.state.readOnly) return
         const at = view.state.field(anchors).get(id)
         if (at === undefined) return
-        const textToInsert = formatImagesMarkdown([{ path: finalPath, alt_text: finalAlt, width: knownImageWidth(finalPath) }], section)
-        view.dispatch({ changes: { from: at, insert: textToInsert } })
+        const textToInsert = formatImagesMarkdown(resolved, section)
+        view.dispatch({
+          changes: { from: at, insert: textToInsert },
+          annotations: isolateHistory.of('full'),
+        })
       } finally {
         if (view.plugin(alive)?.active) view.dispatch({ effects: removeAnchor.of(id) })
       }
@@ -300,6 +353,7 @@ export function lessonImageUploads(options: Options) {
       private view: EditorView
       private onInsert: (e: Event) => void
       private onRemove: (e: Event) => void
+      private onRemoveOccurrence: (e: Event) => void
       private onReplace: (e: Event) => void
       private onRequestCursor: () => void
 
@@ -323,6 +377,12 @@ export function lessonImageUploads(options: Options) {
           if (!names || names.length === 0 || this.view.state.readOnly) return
           removeImagesFromDocument(this.view, names)
         }
+        this.onRemoveOccurrence = (e: Event) => {
+          const custom = e as CustomEvent<{ name: string; fromText?: number }>
+          const detail = custom.detail
+          if (!detail || this.view.state.readOnly) return
+          removeImageOccurrence(this.view, detail)
+        }
         this.onReplace = (e: Event) => {
           const custom = e as CustomEvent<{ originalName: string; newName: string; newAltText?: string }>
           const { originalName, newName, newAltText } = custom.detail || {}
@@ -335,6 +395,7 @@ export function lessonImageUploads(options: Options) {
 
         window.addEventListener(EDITOR_INSERT_IMAGES_EVENT, this.onInsert)
         window.addEventListener(EDITOR_REMOVE_IMAGES_EVENT, this.onRemove)
+        window.addEventListener(EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT, this.onRemoveOccurrence)
         window.addEventListener(EDITOR_REPLACE_IMAGE_EVENT, this.onReplace)
         window.addEventListener(EDITOR_REQUEST_CURSOR_STATE_EVENT, this.onRequestCursor)
         this.notifyCursorState()
@@ -349,6 +410,7 @@ export function lessonImageUploads(options: Options) {
       destroy() {
         window.removeEventListener(EDITOR_INSERT_IMAGES_EVENT, this.onInsert)
         window.removeEventListener(EDITOR_REMOVE_IMAGES_EVENT, this.onRemove)
+        window.removeEventListener(EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT, this.onRemoveOccurrence)
         window.removeEventListener(EDITOR_REPLACE_IMAGE_EVENT, this.onReplace)
         window.removeEventListener(EDITOR_REQUEST_CURSOR_STATE_EVENT, this.onRequestCursor)
         window.dispatchEvent(
@@ -385,6 +447,7 @@ export function lessonImageUploads(options: Options) {
       view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head) }
   }
   function clearDrag(view: EditorView) {
+    stopDragPreview()
     view.dom.classList.remove('rt-dragging-images')
     view.dom.querySelectorAll('.rt-image-drop-hover').forEach(element => element.classList.remove('rt-image-drop-hover'))
     if (currentHighlight !== null) {
@@ -428,7 +491,11 @@ export function lessonImageUploads(options: Options) {
           const mediaData = event.dataTransfer?.getData(RT_MEDIA_DRAG_TYPE)
           if (mediaData) {
             event.preventDefault()
-            try { return insertMediaItem(view, JSON.parse(mediaData), target.position.insertAt, target.section) }
+            try {
+              const parsed = JSON.parse(mediaData)
+              const items: MediaDragItem[] = Array.isArray(parsed) ? parsed : [parsed]
+              return insertMediaItems(view, items, target.position.insertAt, target.section)
+            }
             catch { return false }
           }
           const files = Array.from(event.dataTransfer?.files ?? []).filter(supported)

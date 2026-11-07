@@ -1,7 +1,6 @@
-import { useState, useId } from 'react'
+import { useState, useId, type DragEvent, type KeyboardEvent } from 'react'
 import {
-  ArrowDown,
-  ArrowUp,
+  GripVertical,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -12,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { Tooltip } from '@/components/ui/tooltip'
 import {
   DEFAULT_STATUS_IDS,
   PRESET_COLORS,
@@ -20,7 +20,11 @@ import {
   resolveStudyStatus,
   type CustomStudyStatus,
 } from '@/components/study/studyProgress'
+import { moveItem } from '@/lib/order'
+import { cn } from '@/lib/utils'
 import { Section } from './common'
+
+const DRAG_TYPE = 'application/x-rt-study-status-index'
 
 export function StudyStatusesSection({ settings }: { settings: Settings }) {
   const saveStudyStatuses = useSaveStudyStatuses()
@@ -31,6 +35,8 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
   const statuses = rawStatuses
   const order = resolveStatusOrder(statuses, rawOrder)
 
+  const [dragged, setDragged] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
   const [deletePending, setDeletePending] = useState<{ id: string; name: string; count: number } | null>(null)
   const confirmTitleId = useId()
 
@@ -41,14 +47,29 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
     })
   }
 
-  const move = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction
-    if (nextIndex < 0 || nextIndex >= order.length) return
-    const newOrder = [...order]
-    const temp = newOrder[index]
-    newOrder[index] = newOrder[nextIndex]
-    newOrder[nextIndex] = temp
-    persist(statuses, newOrder)
+  function drop(event: DragEvent, index: number) {
+    if (!event.dataTransfer.types.includes(DRAG_TYPE)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const from = Number(event.dataTransfer.getData(DRAG_TYPE))
+    if (Number.isInteger(from) && from >= 0 && from < order.length && from !== index) {
+      persist(statuses, moveItem(order, from, index))
+    }
+    setDragged(null)
+    setOver(null)
+  }
+
+  function keyMove(event: KeyboardEvent, index: number) {
+    if (!event.altKey) return
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    const to = event.key === 'ArrowUp' ? index - 1 : index + 1
+    if (to < 0 || to >= order.length) return
+    event.preventDefault()
+    const nextOrder = moveItem(order, index, to)
+    persist(statuses, nextOrder)
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-status-handle="${order[index]}"]`)?.focus()
+    })
   }
 
   const addStatus = () => {
@@ -125,22 +146,46 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
             <div
               key={id}
               data-testid={`status-row-${id}`}
-              className="flex items-center gap-3 rounded-lg border bg-card p-2.5 text-body"
+              draggable
+              onDragStart={(event) => {
+                const target = event.target as HTMLElement
+                if (target.closest('input, select, button:not([data-status-handle])')) {
+                  event.preventDefault()
+                  return
+                }
+                event.dataTransfer.setData(DRAG_TYPE, String(index))
+                event.dataTransfer.effectAllowed = 'move'
+                setDragged(index)
+              }}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(DRAG_TYPE)) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                setOver(index)
+              }}
+              onDragLeave={() => setOver((current) => (current === index ? null : current))}
+              onDrop={(event) => drop(event, index)}
+              onDragEnd={() => { setDragged(null); setOver(null) }}
+              className={cn(
+                'flex items-center gap-3 rounded-lg border bg-card p-2.5 text-body transition-colors',
+                dragged === index && 'opacity-50',
+                over === index && dragged !== null && dragged !== index && (
+                  index < dragged ? 'border-t-2 border-t-primary' : 'border-b-2 border-b-primary'
+                ),
+              )}
             >
-              <div className="flex items-center gap-1">
-                <IconButton
-                  label="Sposta su"
-                  icon={ArrowUp}
-                  disabled={index === 0}
-                  onClick={() => move(index, -1)}
-                />
-                <IconButton
-                  label="Sposta giù"
-                  icon={ArrowDown}
-                  disabled={index === order.length - 1}
-                  onClick={() => move(index, 1)}
-                />
-              </div>
+              <Tooltip content="Trascina per riordinare (o usa Alt+frecce)">{(trigger) => (
+                <button
+                  {...trigger}
+                  type="button"
+                  data-status-handle={id}
+                  aria-label={`Riordina stato ${def.label}: posizione ${index + 1} di ${order.length}, usa Alt e le frecce su e giù`}
+                  onKeyDown={(event) => keyMove(event, index)}
+                  className="cursor-grab active:cursor-grabbing shrink-0 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                >
+                  <GripVertical className="size-4" aria-hidden />
+                </button>
+              )}</Tooltip>
 
               <div className="flex items-center gap-2">
                 <Icon aria-hidden className={`size-5 shrink-0 ${def.className}`} />
@@ -150,13 +195,10 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
                 <div className="flex-1 font-medium">{def.label}</div>
               ) : (
                 <div className="flex flex-1 flex-wrap items-center gap-2">
-                  <Input
-                    value={custom?.nome ?? ''}
-                    maxLength={24}
-                    onChange={(e) => updateStatus(id, { nome: e.target.value })}
-                    className="h-8 max-w-[200px] text-body"
-                    placeholder="Nome stato"
-                    aria-label={`Nome per stato ${custom?.nome}`}
+                  <StatusNameInput
+                    key={custom?.nome}
+                    name={custom?.nome ?? ''}
+                    onSave={(nome) => updateStatus(id, { nome })}
                   />
 
                   {/* Selettore colore tra i preset */}
@@ -243,5 +285,30 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
         </Modal>
       )}
     </Section>
+  )
+}
+
+/** Nome dello stato: si salva all'uscita dal campo o con Invio, non a ogni tasto. */
+function StatusNameInput({ name, onSave }: { name: string; onSave: (name: string) => void }) {
+  const [draft, setDraft] = useState(name)
+  const commit = () => {
+    const next = draft.trim()
+    if (next && next !== name) onSave(next)
+    else setDraft(name)
+  }
+  return (
+    <Input
+      value={draft}
+      maxLength={24}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        else if (e.key === 'Escape') setDraft(name)
+      }}
+      className="h-8 max-w-[200px] text-body"
+      placeholder="Nome stato"
+      aria-label={`Nome per stato ${name}`}
+    />
   )
 }
