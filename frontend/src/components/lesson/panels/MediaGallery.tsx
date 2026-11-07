@@ -91,7 +91,7 @@ function MediaCell({
       <button
         type="button"
         data-image-name={img.name}
-        draggable
+        draggable={img.source !== 'enrichment'}
         onDragStart={(e) => onDragStart(e, img)}
         onDragEnd={() => {
           stopDragPreview()
@@ -328,9 +328,15 @@ export function MediaGallery({
         return
       }
       const isSelected = selectedNames.has(img.name)
-      const dragged = isSelected
+      // I media dell'arricchimento stanno in assets/enrichment e arrivano nel testo col loro
+      // blocco: trascinati come immagini normali diventerebbero un link rotto in assets/images.
+      const dragged = (isSelected
         ? flatImages.filter((i) => selectedNames.has(i.name))
-        : [img]
+        : [img]).filter((i) => i.source !== 'enrichment')
+      if (dragged.length === 0) {
+        e.preventDefault()
+        return
+      }
 
       const payload = dragged.map((item) => ({
         path: item.in_assets ? `assets/images/${item.name}` : item.url,
