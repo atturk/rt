@@ -54,3 +54,25 @@ spazio tra le voci; elenchi annidati con `circle`. Test vitest sullo stile o sul
 Caso reale nel testo rielaborato: `$athrm{Ca^{2+}}$` (doveva essere `$\mathrm{Ca^{2+}}$`). In `rt/core/encoding.py`, dentro le formule,
 rimetti `\m` davanti a `athrm{`, `athbf{`, `athit{`, `athcal{`, `athbb{`, `athsf{` quando non sono preceduti da una lettera o da `\`.
 Test pytest in quelli di `repair_latex_escapes`.
+
+# Seconda tornata (dopo l'esito delle voci 1-6)
+Già fatti da Claude su questo branch: il player che saltava a lato del puntatore all'inizio del trascinamento
+(doppio -50% tra classe Tailwind `-translate-*` e `transform` inline) e «Rileggi l'unità» del ripasso che ora apre lo Studio
+(`/studio/lezione/:id?unita=…`). Non toccarli.
+
+## 7. Studio: cambiare unità con il player aperto
+In `frontend/src/components/study/Study.tsx` (`onKeyDown`, ramo `ArrowLeft`/`ArrowRight`): con il player aperto le frecce restano
+±5 s; **Option+frecce** (Alt+frecce su Windows) cambiano unità come le frecce a player chiuso (`navigateReading(±1)`), anche a player chiuso.
+- La scorciatoia è personalizzabile in Impostazioni → Editor e scorciatoie, con lo stesso meccanismo delle altre (registrazione del tasto,
+  conflitti, ripristino): due comandi «Unità precedente» / «Unità successiva» del gruppo Studio, predefiniti `Alt-ArrowLeft` / `Alt-ArrowRight`.
+  Se il meccanismo di `editorCommands` è legato all'editor, aggiungi il gruppo Studio nella stessa sezione senza duplicare il codice di registrazione.
+- Non attivarla mentre si scrive in un campo di testo o in un menu (stessa guardia delle frecce di oggi).
+- Test vitest: con player aperto Alt+→ cambia unità e → sposta l'audio di 5 s; scorciatoia personalizzata rispettata.
+
+## 8. Studio: il player segue l'unità
+Quando l'unità cambia (frecce, scorciatoia, puntini, indice) e il player è aperto, l'audio va al timestamp d'inizio della nuova unità
+(lo stesso usato all'apertura del player). Se stava suonando continua a suonare, se era in pausa resta in pausa.
+- Impostazione «Il player segue l'unità» (attiva di predefinito) in Impostazioni → Aspetto e lettura, sezione dello Studio, salvata con
+  `usePreference` come le altre preferenze dello Studio. Spenta: il player non si sposta cambiando unità.
+- Unità senza timestamp: non spostare l'audio.
+- Test vitest: cambio unità con preferenza attiva (seek all'inizio) e spenta (nessun seek).

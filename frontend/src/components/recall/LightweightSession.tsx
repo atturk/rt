@@ -986,7 +986,7 @@ export function LightweightSession({
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">
                       <Link
-                        to={`/lezioni/${activeLessonId}#unit-${currentQuestion.unit_ids[0]}`}
+                        to={`/studio/lezione/${activeLessonId}?unita=${encodeURIComponent(currentQuestion.unit_ids[0])}`}
                         className="font-medium text-link underline underline-offset-2 hover:opacity-80"
                       >
                         Rileggi l'unità {currentQuestion.unit_ids.join(', ')}
