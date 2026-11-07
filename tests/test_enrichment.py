@@ -265,3 +265,22 @@ def test_visualization_validation_clean_html_publishes(lesson, monkeypatch):
     assert "1.1" in es.document_blocks(path)
 
 
+def test_utility_questions_passed_to_decision(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    from rt.llm.jev_client import JevNoulAnswer
+    decide = Mock(return_value=SimpleNamespace(answers={k: JevNoulAnswer(noul=0.1) for k in es.UTILITY}))
+    monkeypatch.setattr(es, "decision", decide)
+    es.analyze(path)
+
+    assert decide.call_count > 0
+    questions = decide.call_args_list[0].args[1]
+    assert "infographic" in questions and "visualization" in questions
+    vis_inst = questions["visualization"].instructions
+    info_inst = questions["infographic"].instructions
+
+    assert "processo a passaggi" in vis_inst
+    assert "formula con variabili o dati numerici" in vis_inst
+    assert "relazioni, sequenze o confronti riassumibili in poche etichette" in info_inst
+
+
+

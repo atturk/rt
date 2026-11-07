@@ -166,8 +166,8 @@ def decision(state, questions, *, lesson_dir, job_name, unit_id=None):
 
 
 UTILITY = {
-    "infographic": "Un'infografica facilita davvero la comprensione di relazioni, processi o strutture di questa singola subunità. Non è decorativa e non ripete semplicemente il testo.",
-    "visualization": "Una rappresentazione precisa HTML/SVG/JavaScript (matrice, diagramma, grafico, mappa o simulazione) migliora davvero la comprensione di questa singola subunità. Dati sufficienti, nessuna invenzione necessaria; l'interattività può essere utile ma non è obbligatoria.",
+    "infographic": "Il testo descrive relazioni, sequenze o confronti riassumibili in poche etichette senza aggiungere informazioni?",
+    "visualization": "Il testo descrive un processo a passaggi, un confronto tra due o più elementi, una struttura con parti, una formula con variabili o dati numerici che si possono rappresentare senza aggiungere informazioni?",
 }
 WRITER_SYSTEM = """Sei l'arricchitore didattico. Ricevi UNA sola subunità e un tipo già valutato utile.
 Restituisci JSON con title breve, description breve rivolta allo studente, prompt completo per
