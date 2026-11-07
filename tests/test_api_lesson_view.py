@@ -125,6 +125,19 @@ def test_playable_audio_remuxes_adts_once(tmp_path, rt_db, monkeypatch):
     assert audio_service.playable_audio(str(adts)) == first and len(calls) == 2
 
 
+def test_playable_audio_remuxes_mp4_with_moov_at_end(tmp_path, rt_db, monkeypatch):
+    from rt.services import audio_service
+    box = lambda kind, body=b"": (8 + len(body)).to_bytes(4, "big") + kind + body
+    late = tmp_path / "android.m4a"
+    late.write_bytes(box(b"ftyp", b"mp42") + box(b"free") + box(b"mdat", b"\x00" * 32) + box(b"moov"))
+    early = tmp_path / "faststart.m4a"
+    early.write_bytes(box(b"ftyp", b"mp42") + box(b"moov") + box(b"mdat", b"\x00" * 32))
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: open(cmd[-1], "wb").write(early.read_bytes() * 2))
+    monkeypatch.setattr(audio_service, "_probe_ok", lambda path: True)
+    assert audio_service.playable_audio(str(early)) == str(early)
+    assert audio_service.playable_audio(str(late)) != str(late)
+
+
 @pytest.mark.parametrize("reviewed", [None, 1, 2])
 def test_review_progress_from_manifest(api_client, lesson, reviewed):
     from rt.core.manifest import load_manifest, save_manifest
