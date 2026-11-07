@@ -142,6 +142,14 @@ function MediaCell({
             <Scissors className="size-3" aria-hidden />
           </span>
         )}
+        {img.interactive && (
+          <span
+            className="absolute left-1.5 bottom-1.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white shadow-sm pointer-events-none"
+            data-testid="interactive-badge"
+          >
+            Interattiva
+          </span>
+        )}
         {!img.descritta && (
           <span
             className="absolute right-1.5 top-1.5 size-2 rounded-full bg-warning pointer-events-none"

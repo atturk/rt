@@ -673,5 +673,40 @@ describe('MediaSelectionBar', () => {
     fireEvent.click(gallery)
     expect(onClearSelection).toHaveBeenCalled()
   })
+
+  it('mostra il badge Interattiva solo sulle miniature con interactive=true', () => {
+    const imagesWithInteractive: LessonImage[] = [
+      {
+        ...mockImages[0],
+        name: 'interactive-vis.png',
+        interactive: true,
+      },
+      {
+        ...mockImages[1],
+        name: 'static-img.png',
+        interactive: false,
+      },
+    ]
+
+    render(
+      <MediaGallery
+        images={imagesWithInteractive}
+        selectedNames={new Set()}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    const cellInteractive = screen.getByTestId('media-cell-interactive-vis.png')
+    expect(cellInteractive.querySelector('[data-testid="interactive-badge"]')).toBeInTheDocument()
+    expect(cellInteractive.querySelector('[data-testid="interactive-badge"]')).toHaveTextContent('Interattiva')
+
+    const cellStatic = screen.getByTestId('media-cell-static-img.png')
+    expect(cellStatic.querySelector('[data-testid="interactive-badge"]')).toBeNull()
+  })
 })
 

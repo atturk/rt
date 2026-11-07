@@ -169,6 +169,58 @@ describe('EnrichmentPanel', () => {
     expect(calledMediaInfo).toBe(false)
   })
 
+  it('doppio clic su un elemento interattivo dell\'arricchimento apre il viewer con interactiveUrl', async () => {
+    const interactiveElements = [
+      {
+        id: 'el-interactive',
+        kind: 'visualization',
+        unit_id: '1.1',
+        title: 'Visualizzazione Vie apoptosi',
+        description: 'Vie intrinseca ed estrinseca',
+        mode: 'interactive',
+        prompt: 'Simulatore vie apoptosi',
+        status: 'ready',
+        asset_image: 'assets/enrichment/apoptosi.png',
+        asset_html: 'assets/enrichment/apoptosi.html',
+      },
+    ]
+
+    vi.spyOn(api, 'GET').mockImplementation(((path: string) => {
+      if (path === '/api/v1/lessons/{lesson_id}') return Promise.resolve(ok({ id: 5, materia: 'FISIOLOGIA' }))
+      if (path === '/api/v1/archive/summary') return Promise.resolve(ok({ file: 124, da_continuare: 2 }))
+      if (path === '/api/v1/lessons/{lesson_id}/sources') return Promise.resolve(ok({ sources: [] }))
+      if (path === '/api/v1/lessons/{lesson_id}/images') return Promise.resolve(ok({ images: [] }))
+      if (path === '/api/v1/lessons/{lesson_id}/enrichment')
+        return Promise.resolve(ok({ elements: interactiveElements, units: [{ id: '1.1', title: 'Apoptosi' }] }))
+      if (path === '/api/v1/lessons/{lesson_id}/outline')
+        return Promise.resolve(ok({ macro_sections: [{ id: '1', title: 'M1', units: [{ id: '1.1', title: 'Apoptosi' }] }] }))
+      if (path === '/api/v1/lessons/{lesson_id}/document')
+        return Promise.resolve(ok({ markdown: '# Doc\n\n### 1.1 Apoptosi\n' }))
+      return Promise.resolve(ok({}))
+    }) as unknown as typeof api.GET)
+
+    const viewerListener = vi.fn()
+    window.addEventListener('rt-image-viewer-open', viewerListener)
+
+    renderPanel()
+
+    expect(await screen.findByText(/Media della lezione · 1/)).toBeInTheDocument()
+
+    // C'è il badge «Interattiva»
+    expect(screen.getByTestId('interactive-badge')).toBeInTheDocument()
+    expect(screen.getByTestId('interactive-badge')).toHaveTextContent('Interattiva')
+
+    // Doppio clic sulla cella della visualizzazione
+    const btn = screen.getByRole('button', { name: /Visualizzazione Vie apoptosi/i })
+    fireEvent.doubleClick(btn)
+
+    expect(viewerListener).toHaveBeenCalledTimes(1)
+    const customEvent = viewerListener.mock.calls[0][0] as CustomEvent
+    expect(customEvent.detail.images[0].interactiveUrl).toBe('/api/v1/lessons/5/assets/enrichment/apoptosi.html')
+
+    window.removeEventListener('rt-image-viewer-open', viewerListener)
+  })
+
   it('la ricerca web si apre in un popup: l’elenco delle unità non esce dal pannello', async () => {
     mockApi()
     renderPanel()

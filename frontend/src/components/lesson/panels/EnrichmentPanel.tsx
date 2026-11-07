@@ -224,6 +224,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     .map((el) => {
       const kindText = kindLabel(el.kind)
       const assetFileName = el.asset_image ? el.asset_image.split('/').pop()! : el.id
+      const isInteractive = Boolean(el.asset_html && (el.asset_mode ?? el.mode) === 'interactive')
+      const interactiveUrl = isInteractive && el.asset_html ? assetUrl(id, el.asset_html) : undefined
       return {
         name: assetFileName,
         url: el.asset_image ? assetUrl(id, el.asset_image) : '',
@@ -236,6 +238,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         in_assets: true,
         page: null,
         descritta: true,
+        interactive: isInteractive,
+        interactiveUrl,
       }
     })
 
@@ -332,12 +336,24 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   const handleOpenViewer = (flatIndex: number) => {
-    const viewerImages = imageList.map((img) => ({
-      src: img.url,
-      alt: img.alt_text || img.name,
-      docName: img.source_name || img.source || 'Media',
-      pageNumber: img.page ?? undefined,
-    }))
+    const viewerImages = imageList.map((img) => {
+      const enrichmentEl = enrichmentByName.get(img.name)
+      const isInteractive = img.interactive || Boolean(
+        enrichmentEl &&
+        enrichmentEl.asset_html &&
+        (enrichmentEl.asset_mode ?? enrichmentEl.mode) === 'interactive'
+      )
+      const interactiveUrl =
+        img.interactiveUrl ||
+        (isInteractive && enrichmentEl?.asset_html ? assetUrl(id, enrichmentEl.asset_html) : undefined)
+      return {
+        src: img.url,
+        alt: img.alt_text || img.name,
+        docName: img.source_name || img.source || 'Media',
+        pageNumber: img.page ?? undefined,
+        interactiveUrl,
+      }
+    })
     window.dispatchEvent(
       new CustomEvent('rt-image-viewer-open', {
         detail: { images: viewerImages, index: flatIndex },
