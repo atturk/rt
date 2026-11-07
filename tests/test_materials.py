@@ -139,10 +139,7 @@ def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog
             doc = fitz.open()
             for _ in range(28):
                 doc.new_page(width=842, height=595)
-            for line in cmd[2].splitlines():
-                if 'export doc to POSIX file' in line:
-                    p = line.split('"')[1]
-                    Path(p).write_bytes(doc.tobytes())
+            Path(cmd[4]).write_bytes(doc.tobytes())
             doc.close()
         elif 'qlmanage' in prog:
             called_methods.append('Quick Look')
