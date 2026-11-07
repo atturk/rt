@@ -31,6 +31,9 @@ const sampleElements = [
     kind: 'infographic',
     unit_id: '1.1',
     title: 'Infografica 1.1',
+    description: 'Rappresentazione del gap anionico',
+    mode: 'static',
+    prompt: 'Genera un diagramma del gap anionico',
     status: 'ready',
     asset_image: 'assets/enrichment/gap.png',
   },
@@ -132,6 +135,38 @@ describe('EnrichmentPanel', () => {
     // Clicca Cerca
     fireEvent.click(screen.getByRole('button', { name: /Cerca immagini sul web/i }))
     expect(screen.getByLabelText(/Immagini per unità/i)).toBeInTheDocument()
+  })
+
+  it('la "i" su un elemento dell\'arricchimento mostra i campi e non chiama /media/info', async () => {
+    mockApi()
+    renderPanel()
+
+    expect(await screen.findByText(/Media della lezione · 3/)).toBeInTheDocument()
+
+    // Seleziona l'infografica dell'arricchimento
+    const item = screen.getByRole('button', { name: /Infografica 1\.1/i })
+    fireEvent.click(item)
+
+    // Clicca sul pulsante informazioni nella selection bar
+    const infoBtn = screen.getByTestId('info-media-button')
+    fireEvent.click(infoBtn)
+
+    // Si apre la modale delle informazioni
+    const modal = await screen.findByTestId('image-info-modal')
+    expect(within(modal).getByTestId('enrichment-info')).toBeInTheDocument()
+
+    // Mostra tipo, unità, titolo, descrizione, modalità e prompt
+    expect(within(modal).getByText('Infografica')).toBeInTheDocument()
+    expect(within(modal).getByText('Unità 1.1')).toBeInTheDocument()
+    expect(within(modal).getByText('Statica')).toBeInTheDocument()
+    expect(within(modal).getByText('Infografica 1.1')).toBeInTheDocument()
+    expect(within(modal).getByText('Rappresentazione del gap anionico')).toBeInTheDocument()
+    expect(within(modal).getByText('Genera un diagramma del gap anionico')).toBeInTheDocument()
+
+    // Verifica che api.GET non sia mai stato chiamato con /media/info
+    const getCalls = vi.mocked(api.GET).mock.calls as unknown[][]
+    const calledMediaInfo = getCalls.some((args) => String(args[0]).includes('media/info'))
+    expect(calledMediaInfo).toBe(false)
   })
 
   it('la ricerca web si apre in un popup: l’elenco delle unità non esce dal pannello', async () => {

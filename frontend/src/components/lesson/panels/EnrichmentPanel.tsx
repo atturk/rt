@@ -281,6 +281,10 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const handleInfo = () => {
     const selected = imageList.find((i) => selectedNames.has(i.name))
     if (!selected) return
+    if (selected.source === 'enrichment') {
+      const el = enrichmentByName.get(selected.name)
+      if (el) return setInfoTarget({ enrichment: el })
+    }
     if (selected.source?.startsWith('material:') && !selected.in_assets) {
       const [, sourceId, page] = selected.source.split(':')
       const sha = sourcesQuery.data?.sources.find((s) => s.id === sourceId)?.impronta
