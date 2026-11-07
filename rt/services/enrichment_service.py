@@ -400,7 +400,7 @@ def generate(lesson_dir, element_id, *, mock=False, ctx=None):
             state = load(lesson_dir)
             current = get_element(state, element_id)
             current.asset_image, current.asset_html = image, html
-            current.asset_mode = element.mode
+            current.asset_mode = "static" if current.kind == "infographic" else element.mode
             current.source_hash, current.stale = source_hash(unit), False
             current.status, current.error = "ready", None
             save(lesson_dir, state)

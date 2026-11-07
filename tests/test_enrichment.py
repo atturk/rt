@@ -190,3 +190,32 @@ def test_dismissing_a_generated_element_takes_it_out_of_the_text_and_restore_put
     assert es.get_element(es.load(path), item.id).asset_image  # resta nei media
     es.mutate(path, item.id, "restore")
     assert "1.1" in es.document_blocks(path)
+
+
+def test_infographic_generates_via_visualizer_and_snapshot_not_image_model(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "infographic", es.IdeaText(title="Infografica", description="Diagramma", prompt="Gap anionico"))
+
+    from rt.llm.enrichment_media import Visualization
+    structured = Mock(return_value=Visualization(body='<svg><text>Gap</text></svg>'))
+    snap = Mock(return_value=b"\x89PNG\r\n\x1a\nfake-png")
+    gen_img = Mock(side_effect=AssertionError("generate_image must not be called for infographic"))
+
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", structured)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", snap)
+    monkeypatch.setattr("rt.llm.enrichment_media.generate_image", gen_img)
+
+    es.generate(path, item.id)
+
+    assert structured.call_count == 1
+    call_kwargs = structured.call_args.kwargs
+    assert call_kwargs["job_name"] == "enrichment_visualizer"
+    assert "Modalità: static" in call_kwargs["prompt"]
+    assert "infografica" in call_kwargs["system_prompt"].lower()
+    assert snap.call_count == 1
+    gen_img.assert_not_called()
+
+    el = es.get_element(es.load(path), item.id)
+    assert el.asset_image and el.asset_html
+    assert el.asset_mode == "static"
+

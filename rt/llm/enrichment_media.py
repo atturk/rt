@@ -150,9 +150,9 @@ def generate_image(prompt, lesson_dir):
     job = cfg.jobs.get("enrichment_image")
     route = job.primary if job else None
     if not route or not route.is_configured:
-        raise ValueError("Configura il modello Generazione infografiche in Impostazioni → Modelli")
+        raise ValueError("Configura il modello Generazione immagini IA in Impostazioni → Modelli")
     if route.provider not in ("openrouter", "openai_compatible"):
-        raise ValueError("Le infografiche richiedono una connessione OpenRouter oppure OpenAI-compatible (Images API)")
+        raise ValueError("La generazione di immagini IA richiede una connessione OpenRouter oppure OpenAI-compatible (Images API)")
     key = GLOBAL_CREDENTIALS.get_api_key(route.credential or route.provider)
     if not key:
         raise ValueError("Credenziale del generatore immagini non configurata")
@@ -206,7 +206,8 @@ def generate_image(prompt, lesson_dir):
 def generate_media(lesson_dir, element, unit, *, mock=False):
     from rt.llm.client import LLMClient
     source = f"Subunità {unit['id']} — {unit['title']}\n\n{unit['content']}"
-    prompt = f"Richiesta: {element.prompt}\nModalità: {element.mode}\nUnica fonte:\n{source}"
+    mode = "static" if element.kind == "infographic" else element.mode
+    prompt = f"Richiesta: {element.prompt}\nModalità: {mode}\nUnica fonte:\n{source}"
     html = None
     if mock:
         from PIL import Image, ImageDraw
@@ -217,12 +218,13 @@ def generate_media(lesson_dir, element, unit, *, mock=False):
         png = buf.getvalue()
         if element.kind == "visualization":
             html = standalone('<h2>Visualizzazione di prova</h2><label>Parametro <input type="range" aria-label="Parametro"></label>')
-    elif element.kind == "infographic":
-        png = generate_image(INFOGRAPHIC_INSTRUCTIONS + "\n" + prompt, lesson_dir)
+        elif element.kind == "infographic":
+            html = standalone('<h2>Infografica di prova</h2><p>Contenuto</p>')
     elif element.kind == "image":
         png = generate_image(IMAGE_INSTRUCTIONS + "\n" + prompt, lesson_dir)
     else:
-        visual = LLMClient().call_structured(prompt=prompt, system_prompt=VISUALIZER_SYSTEM,
+        sys_prompt = f"{VISUALIZER_SYSTEM}\n\n{INFOGRAPHIC_INSTRUCTIONS}" if element.kind == "infographic" else VISUALIZER_SYSTEM
+        visual = LLMClient().call_structured(prompt=prompt, system_prompt=sys_prompt,
                             response_model=Visualization, job_name="enrichment_visualizer",
                             unit_id=unit["id"], lesson_dir=lesson_dir)
         html = standalone(visual.body)
