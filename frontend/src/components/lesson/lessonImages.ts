@@ -288,34 +288,58 @@ export function lessonImageUploads(options: Options) {
     return true
   }
 
-  const insertMediaItem = (
+  type MediaDragItem = {
+    path?: string
+    alt_text?: string
+    in_assets?: boolean
+    source_name?: string
+    source?: string
+    page?: number
+    lessonId?: number
+    width?: number
+  }
+
+  const insertMediaItems = (
     view: EditorView,
-    item: { path?: string; alt_text?: string; in_assets?: boolean; source_name?: string; source?: string; page?: number; lessonId?: number },
+    items: MediaDragItem[],
     position: number,
     section = false,
   ) => {
-    if (view.state.readOnly) return false
+    if (view.state.readOnly || items.length === 0) return false
     const id = Symbol('media-insert')
     view.dispatch({ effects: addAnchor.of({ id, position }) })
 
     const task = (async () => {
       try {
-        let finalPath = item.path || ''
-        let finalAlt = item.alt_text || ''
+        const resolved: Array<{ path: string; alt_text: string; width?: number }> = []
+        for (const item of items) {
+          let finalPath = item.path || ''
+          let finalAlt = item.alt_text || ''
 
-        if (!item.in_assets) {
-          const sourceId = materialSourceId(item.source)
-          if (!sourceId || item.page == null || item.lessonId == null) return
-          const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
-          finalPath = copied.path
-          finalAlt = copied.alt_text
+          if (!item.in_assets) {
+            const sourceId = materialSourceId(item.source)
+            if (!sourceId || item.page == null || item.lessonId == null) continue
+            const copied = await copyMaterialPage(item.lessonId, sourceId, item.page)
+            finalPath = copied.path
+            finalAlt = copied.alt_text
+          }
+
+          resolved.push({
+            path: finalPath,
+            alt_text: finalAlt,
+            width: knownImageWidth(finalPath),
+          })
         }
 
+        if (resolved.length === 0) return
         if (!view.plugin(alive)?.active || view.state.readOnly) return
         const at = view.state.field(anchors).get(id)
         if (at === undefined) return
-        const textToInsert = formatImagesMarkdown([{ path: finalPath, alt_text: finalAlt, width: knownImageWidth(finalPath) }], section)
-        view.dispatch({ changes: { from: at, insert: textToInsert } })
+        const textToInsert = formatImagesMarkdown(resolved, section)
+        view.dispatch({
+          changes: { from: at, insert: textToInsert },
+          annotations: isolateHistory.of('full'),
+        })
       } finally {
         if (view.plugin(alive)?.active) view.dispatch({ effects: removeAnchor.of(id) })
       }
@@ -467,7 +491,11 @@ export function lessonImageUploads(options: Options) {
           const mediaData = event.dataTransfer?.getData(RT_MEDIA_DRAG_TYPE)
           if (mediaData) {
             event.preventDefault()
-            try { return insertMediaItem(view, JSON.parse(mediaData), target.position.insertAt, target.section) }
+            try {
+              const parsed = JSON.parse(mediaData)
+              const items: MediaDragItem[] = Array.isArray(parsed) ? parsed : [parsed]
+              return insertMediaItems(view, items, target.position.insertAt, target.section)
+            }
             catch { return false }
           }
           const files = Array.from(event.dataTransfer?.files ?? []).filter(supported)

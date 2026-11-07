@@ -430,3 +430,68 @@ it('EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT rimuove la specifica occorrenza via eve
   view.destroy()
   parent.remove()
 })
+
+it('drop con payload multiplo: inserisce tutte le immagini nello stesso punto, in ordine, in una sola transazione (un solo undo le toglie tutte)', () => {
+  const { view, parent } = mount(async () => image)
+  const at = markdown.indexOf('Testo.')
+  vi.spyOn(view, 'posAtCoords').mockReturnValue(at)
+
+  const items = [
+    { path: 'assets/images/img1.png', alt_text: 'Prima', in_assets: true },
+    { path: 'assets/images/img2.png', alt_text: 'Seconda', in_assets: true },
+    { path: 'assets/images/img3.png', alt_text: 'Terza', in_assets: true },
+  ]
+
+  const event = new Event('drop', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      files: [],
+      getData: (type: string) => (type === 'application/x-rt-media-image' ? JSON.stringify(items) : ''),
+    },
+  })
+
+  view.contentDOM.dispatchEvent(event)
+
+  const docText = view.state.doc.toString()
+  expect(docText).toContain('![Prima](assets/images/img1.png#w=480)')
+  expect(docText).toContain('![Seconda](assets/images/img2.png#w=480)')
+  expect(docText).toContain('![Terza](assets/images/img3.png#w=480)')
+  // Verifica ordine
+  const p1 = docText.indexOf('img1.png')
+  const p2 = docText.indexOf('img2.png')
+  const p3 = docText.indexOf('img3.png')
+  expect(p1).toBeLessThan(p2)
+  expect(p2).toBeLessThan(p3)
+
+  // Un solo undo le toglie tutte (una sola transazione)
+  expect(undo(view)).toBe(true)
+  expect(view.state.doc.toString()).toBe(markdown)
+
+  view.destroy()
+  parent.remove()
+})
+
+it('compatibilità con il payload singolo: drop accetta ancora un singolo oggetto', () => {
+  const { view, parent } = mount(async () => image)
+  const at = markdown.indexOf('Testo.')
+  vi.spyOn(view, 'posAtCoords').mockReturnValue(at)
+
+  const singleItem = { path: 'assets/images/single.png', alt_text: 'Singola', in_assets: true }
+
+  const event = new Event('drop', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      files: [],
+      getData: (type: string) => (type === 'application/x-rt-media-image' ? JSON.stringify(singleItem) : ''),
+    },
+  })
+
+  view.contentDOM.dispatchEvent(event)
+
+  expect(view.state.doc.toString()).toContain('![Singola](assets/images/single.png#w=480)')
+  expect(undo(view)).toBe(true)
+  expect(view.state.doc.toString()).toBe(markdown)
+
+  view.destroy()
+  parent.remove()
+})
