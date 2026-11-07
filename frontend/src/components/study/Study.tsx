@@ -540,6 +540,22 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
   }
 
+  // Tasto P: apre e chiude il player audio, sia nello Studio sia nella lettura veloce.
+  const studyHasAudio = Boolean(loaded?.has_audio)
+  useEffect(() => {
+    if (phase !== 'lettura' || !studyHasAudio) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'p') return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      e.preventDefault()
+      setAudioPlayerOpen((v) => !v)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setAudioPlayerOpen usa solo setState
+  }, [phase, studyHasAudio])
+
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
     if (phase !== 'lettura' || speedReading) return
@@ -829,7 +845,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         data-testid="study-status"
       />
       <IconButton
-        label="Lettura veloce"
+        label="Lettura veloce · L"
         icon={Gauge}
         onClick={openReader}
         onPointerDown={saveSelection}
@@ -845,7 +861,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
       />
       {hasAudio && (
         <IconButton
-          label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+          label={audioPlayerOpen ? 'Chiudi player audio · P' : 'Player audio · P'}
           icon={Headphones}
           active={audioPlayerOpen}
           aria-expanded={audioPlayerOpen}
@@ -868,7 +884,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   )
 
   const rsvpActions = <div className="flex items-center gap-1">
-    <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    <IconButton label="Torna allo Studio · L" icon={BookOpen} onClick={closeReader} />
     <IconButton
       label="Domande su questa unità · D"
       icon={Brain}
@@ -877,7 +893,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     />
     {hasAudio && (
       <IconButton
-        label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+        label={audioPlayerOpen ? 'Chiudi player audio · P' : 'Player audio · P'}
         icon={Headphones}
         active={audioPlayerOpen}
         aria-expanded={audioPlayerOpen}

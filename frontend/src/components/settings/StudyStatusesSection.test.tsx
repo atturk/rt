@@ -148,3 +148,28 @@ it('permette di riordinare gli stati', async () => {
     }),
   )
 })
+
+it('il nome dello stato si salva con Invio, non a ogni tasto', async () => {
+  const settingsWithCustom = {
+    ...testSettings,
+    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
+    ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
+  }
+  const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
+    data: settingsWithCustom, response: new Response('{}', { status: 200 }),
+  } as never)
+  render(
+    <QueryClientProvider client={client}>
+      <StudyStatusesSection settings={settingsWithCustom} />
+    </QueryClientProvider>,
+  )
+  const input = screen.getByLabelText('Nome per stato Da ripassare')
+  await userEvent.clear(input)
+  await userEvent.type(input, 'Carte Anki')
+  expect(putSpy).not.toHaveBeenCalled()
+  await userEvent.keyboard('{Enter}')
+  expect(putSpy).toHaveBeenCalledTimes(1)
+  expect(putSpy).toHaveBeenCalledWith('/api/v1/settings/study-statuses', expect.objectContaining({
+    body: expect.objectContaining({ stati_studio: [expect.objectContaining({ nome: 'Carte Anki' })] }),
+  }))
+})

@@ -150,13 +150,10 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
                 <div className="flex-1 font-medium">{def.label}</div>
               ) : (
                 <div className="flex flex-1 flex-wrap items-center gap-2">
-                  <Input
-                    value={custom?.nome ?? ''}
-                    maxLength={24}
-                    onChange={(e) => updateStatus(id, { nome: e.target.value })}
-                    className="h-8 max-w-[200px] text-body"
-                    placeholder="Nome stato"
-                    aria-label={`Nome per stato ${custom?.nome}`}
+                  <StatusNameInput
+                    key={custom?.nome}
+                    name={custom?.nome ?? ''}
+                    onSave={(nome) => updateStatus(id, { nome })}
                   />
 
                   {/* Selettore colore tra i preset */}
@@ -243,5 +240,30 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
         </Modal>
       )}
     </Section>
+  )
+}
+
+/** Nome dello stato: si salva all'uscita dal campo o con Invio, non a ogni tasto. */
+function StatusNameInput({ name, onSave }: { name: string; onSave: (name: string) => void }) {
+  const [draft, setDraft] = useState(name)
+  const commit = () => {
+    const next = draft.trim()
+    if (next && next !== name) onSave(next)
+    else setDraft(name)
+  }
+  return (
+    <Input
+      value={draft}
+      maxLength={24}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        else if (e.key === 'Escape') setDraft(name)
+      }}
+      className="h-8 max-w-[200px] text-body"
+      placeholder="Nome stato"
+      aria-label={`Nome per stato ${name}`}
+    />
   )
 }

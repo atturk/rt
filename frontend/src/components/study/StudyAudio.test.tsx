@@ -133,6 +133,22 @@ describe('Study audio player and keyboard navigation', () => {
     expect(screen.getByText('Contenuto unità 2')).toBeInTheDocument()
   })
 
+  it('il tasto P apre e chiude il player, indicato nel tooltip', () => {
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StudyFlow lessons={[LESSON]} back={{ to: '/', label: 'Esci' }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(screen.getByRole('button', { name: 'Player audio · P' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'p' })
+    expect(screen.getByTestId('audio-player')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chiudi player audio · P' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'P' })
+    expect(screen.queryByTestId('audio-player')).not.toBeInTheDocument()
+  })
+
   it('non mostra il bottone ▶ dell\'unità', () => {
     render(
       <QueryClientProvider client={client}>
