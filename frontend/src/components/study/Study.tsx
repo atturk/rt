@@ -1,5 +1,5 @@
 import { Focus, Slash, BookOpen, Brain, SlidersHorizontal, TextQuote, ChevronDown, CheckCircle2, Eraser, Gauge, Headphones, HelpCircle, Highlighter as HighlighterIcon, Info, List, SkipBack, SkipForward, Trash2, X, PencilRuler, AlertTriangle } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
@@ -18,7 +18,7 @@ import {
   recallKeys, useGenerateForUnits, useStudyLesson,
   type StudyUnit,
 } from '@/api/recall'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, QueryClientContext } from '@tanstack/react-query'
 import { useStudyNotes, useApplyStudyNote, useUndoStudyNote, studyNotesApi, studyNotesKeys, type StudyNote } from '@/api/studyNotes'
 import { StudyNotePopup } from './StudyNotePopup'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -44,6 +44,8 @@ import { ZenHeader } from './ZenHeader'
 import { SpeedReader } from './SpeedReader'
 import { useStudyRead, useStudyStatus } from '@/api/studyProgress'
 import { useSettings } from '@/api/settings'
+import { useEnrichment } from '@/api/enrichment'
+import { GeneratedElement } from '@/components/lesson/Enrichment'
 import { initialStudyUnit, nextStudyStatus, studyDate, resolveStudyStatus, resolveStatusOrder, type CustomStudyStatus } from './studyProgress'
 import { StudyStatusIcon } from './StudyStatusIcon'
 
@@ -1530,7 +1532,32 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
         } as React.CSSProperties}
         dangerouslySetInnerHTML={{ __html: withImageUrls(unit.html, lessonId) }}
       />
+      <UnitEnrichmentElements lessonId={lessonId} unitId={unit.id} />
     </section>
+  )
+}
+
+function UnitEnrichmentElements({ lessonId, unitId }: { lessonId: number; unitId: string }) {
+  const client = useContext(QueryClientContext)
+  if (!client) return null
+  return <UnitEnrichmentList lessonId={lessonId} unitId={unitId} />
+}
+
+function UnitEnrichmentList({ lessonId, unitId }: { lessonId: number; unitId: string }) {
+  const enrichment = useEnrichment(lessonId)
+  const unitElements = (enrichment.data?.elements ?? []).filter(
+    (el) => el.unit_id === unitId && Boolean(el.asset_image) && el.status !== 'dismissed' && el.status !== 'deleted',
+  )
+  if (!unitElements.length) return null
+  return (
+    <div className="mt-8 flex flex-col gap-6" data-testid="study-enrichment-elements">
+      {unitElements.map((el) => (
+        <div key={el.id} className="flex flex-col gap-2" data-testid={`study-enrichment-${el.id}`}>
+          <h3 className="text-body font-semibold text-foreground">{el.title}</h3>
+          <GeneratedElement element={el} lessonId={lessonId} />
+        </div>
+      ))}
+    </div>
   )
 }
 
