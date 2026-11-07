@@ -141,7 +141,8 @@ export function startDragPreview(
 
   const container = createDragPreviewDOM(options)
 
-  const offsetX = 18
+  // In basso a sinistra del cursore (larghezza 68 px + 18 px di distacco)
+  const offsetX = -86
   const offsetY = 18
 
   if (event.clientX || event.clientY) {

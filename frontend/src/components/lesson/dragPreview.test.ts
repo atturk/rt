@@ -25,7 +25,7 @@ describe('dragPreview', () => {
     expect(img?.src).toContain('img1.png')
   })
 
-  it('startDragPreview aggiunge l\'anteprima al body spostata di circa 18px dal cursore', () => {
+  it('startDragPreview aggiunge l\'anteprima al body in basso a sinistra del cursore', () => {
     const setDragImage = vi.fn()
     const mockEvent = {
       clientX: 100,
@@ -38,7 +38,7 @@ describe('dragPreview', () => {
     const preview = startDragPreview(mockEvent, { urls: ['/test.png'] })
     expect(preview).not.toBeNull()
     expect(document.querySelector('.rt-drag-preview')).toBe(preview)
-    expect(preview?.style.left).toBe('118px')
+    expect(preview?.style.left).toBe('14px')
     expect(preview?.style.top).toBe('218px')
     expect(setDragImage).toHaveBeenCalled()
   })
@@ -50,7 +50,7 @@ describe('dragPreview', () => {
     } as unknown as DragEvent
 
     const preview = startDragPreview(mockEvent, { urls: ['/test.png'] })
-    expect(preview?.style.left).toBe('68px')
+    expect(preview?.style.left).toBe('-36px')
     expect(preview?.style.top).toBe('78px')
 
     // Dispatcia dragover
@@ -61,7 +61,7 @@ describe('dragPreview', () => {
     } as any)
     window.dispatchEvent(dragOverEvt)
 
-    expect(preview?.style.left).toBe('168px')
+    expect(preview?.style.left).toBe('64px')
     expect(preview?.style.top).toBe('268px')
 
     // Dispatcia dragend
