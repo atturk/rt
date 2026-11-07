@@ -87,3 +87,7 @@ In `frontend/src/components/settings/StudyStatusesSection.tsx` togli le frecce �
 in `frontend/src/components/lessons/AudioOrder.tsx`, niente librerie nuove. Linea d'inserimento visibile durante il trascinamento,
 salvataggio con `persist(statuses, newOrder)` solo al rilascio. Da tastiera: maniglia focalizzabile, Alt+↑/↓ sposta la riga (accessibilità).
 - Test vitest: trascinamento di una riga (dragStart/dragOver/drop) salva il nuovo ordine; Alt+↓ sulla maniglia sposta di una posizione.
+
+# In coda per la prossima beta (non per questa tornata)
+Dal thread dei metadati: `cartella` di info.yaml non aggiornata dopo la rinomina; azione «scambia date»; spiegare il 409 intermedio
+quando si modificano i metadati di fila.
