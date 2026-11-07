@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { LessonImage } from '@/api/images'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { startDragPreview, stopDragPreview } from '../dragPreview'
 import { flashAndScroll, groupMediaImages } from './mediaGalleryUtils'
 
 interface MediaGalleryProps {
@@ -110,6 +111,10 @@ function MediaCell({
             }),
           )
           e.dataTransfer.effectAllowed = 'copy'
+          startDragPreview(e, { urls: [img.url] })
+        }}
+        onDragEnd={() => {
+          stopDragPreview()
         }}
         aria-label={ariaLabel}
         aria-pressed={isSelected}

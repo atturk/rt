@@ -3,6 +3,7 @@ import { Prec, StateEffect, StateField, type EditorState, type Range } from '@co
 import { Decoration, type DecorationSet, dropCursor, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
 import type { Schemas } from '@/api/client'
 import { copyMaterialPage, materialSourceId } from '@/api/images'
+import { stopDragPreview } from './dragPreview'
 import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE, type SectionImageDrag } from './imageSections'
 
 export const EDITOR_INSERT_IMAGES_EVENT = 'rt-editor-insert-images'
@@ -385,6 +386,7 @@ export function lessonImageUploads(options: Options) {
       view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.head) }
   }
   function clearDrag(view: EditorView) {
+    stopDragPreview()
     view.dom.classList.remove('rt-dragging-images')
     view.dom.querySelectorAll('.rt-image-drop-hover').forEach(element => element.classList.remove('rt-image-drop-hover'))
     if (currentHighlight !== null) {
