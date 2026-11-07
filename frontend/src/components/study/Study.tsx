@@ -1312,7 +1312,8 @@ function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]
           className="relative flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-study-learned' : (u.status === 'in-apprendimento' || !def.isDefault) ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
+            // Stato personalizzato: il segmento prende il suo colore (classe text-*, sfondo currentColor)
+            !def.isDefault ? `bg-current ${def.className}` : u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
           {hasPending && (
             <span
               data-testid="unit-pending-marker"
