@@ -219,3 +219,49 @@ def test_infographic_generates_via_visualizer_and_snapshot_not_image_model(lesso
     assert el.asset_image and el.asset_html
     assert el.asset_mode == "static"
 
+
+def test_visualization_validation_retries_on_undefined_then_fails(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="Visual", description="D", prompt="Simula"))
+
+    from rt.llm.enrichment_media import Visualization
+    bad_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: undefined</p>')
+    mock_llm = Mock(return_value=bad_visual)
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+
+    with pytest.raises(Exception, match='undefined'):
+        es.generate(path, item.id)
+
+    # Riprova esattamente una volta: 2 chiamate in tutto
+    assert mock_llm.call_count == 2
+    first_call_prompt = mock_llm.call_args_list[0].kwargs["prompt"]
+    second_call_prompt = mock_llm.call_args_list[1].kwargs["prompt"]
+    assert 'Nel tentativo precedente: etichette "undefined", correggi.' in second_call_prompt
+
+    # L'elemento va in errore e non viene pubblicato
+    el = es.get_element(es.load(path), item.id)
+    assert el.status == "error"
+    assert 'undefined' in (el.error or "")
+    assert not el.asset_image
+    assert es.document_blocks(path) == {}
+
+
+def test_visualization_validation_clean_html_publishes(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="Visual", description="D", prompt="Simula"))
+
+    from rt.llm.enrichment_media import Visualization
+    clean_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: 42</p>')
+    mock_llm = Mock(return_value=clean_visual)
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+
+    es.generate(path, item.id)
+
+    # Una sola chiamata (nessun retry necessario)
+    assert mock_llm.call_count == 1
+    el = es.get_element(es.load(path), item.id)
+    assert el.status == "ready"
+    assert el.asset_image and el.asset_html
+    assert "1.1" in es.document_blocks(path)
+
+
