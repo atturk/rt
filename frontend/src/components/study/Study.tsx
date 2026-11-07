@@ -86,6 +86,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
 }) {
   const { audioRef, currentTime, seek } = useLessonAudio()
   const [shortcutPrefs] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
+  const [playerFollowsUnit] = usePreference('study.player-follows-unit', true)
   const [audioPlayerOpen, setAudioPlayerOpenState] = useState(getStudyAudioOpen)
   const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setAudioPlayerOpenState((prev) => {
@@ -164,6 +165,23 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     params.delete('azione')
     navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
   }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
+
+  // Quando l'unità cambia e il player è aperto, l'audio segue l'inizio della nuova unità.
+  const lastActiveUnitId = useRef<string | null>(null)
+  useEffect(() => {
+    if (!unit) return
+    if (lastActiveUnitId.current === null) {
+      lastActiveUnitId.current = unit.id
+      return
+    }
+    if (lastActiveUnitId.current !== unit.id) {
+      lastActiveUnitId.current = unit.id
+      if (audioPlayerOpen && playerFollowsUnit && live?.start != null && Number.isFinite(live.start)) {
+        const isPlaying = audioRef.current ? !audioRef.current.paused : false
+        seek(live.start, isPlaying)
+      }
+    }
+  }, [unit, live?.start, audioPlayerOpen, playerFollowsUnit, seek, audioRef])
   const settingsQuery = useSettings()
   const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
   const savedOrder = (settingsQuery.data?.ordine_stati_studio as string[]) ?? []
