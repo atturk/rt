@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   editorCommands, editorKeymap, shortcutLabel, normalizeShortcut, isReservedShortcut,
+  matchesShortcut,
   deleteLineOrParagraph,
   indentLessLines,
   indentMoreLines,
@@ -312,6 +313,7 @@ describe('registro dei comandi e keymap personale', () => {
       bold: 'Mod-b', italic: 'Mod-i', strike: 'Mod-Shift-x', code: 'Mod-Shift-c', highlight: 'Mod-Shift-h', link: 'Mod-k',
       checkbox: 'Mod-Enter', indent: 'Mod-]', unindent: 'Mod-[', 'delete-paragraph': 'Mod-d',
       fold: 'Mod-Alt-[', unfold: 'Mod-Alt-]', 'fold-all': 'Ctrl-Alt-[', 'unfold-all': 'Ctrl-Alt-]',
+      'study-prev-unit': 'Alt-ArrowLeft', 'study-next-unit': 'Alt-ArrowRight',
     })
     expect(new Set(editorCommands.map(c => c.id)).size).toBe(editorCommands.length)
   })
@@ -332,7 +334,17 @@ describe('registro dei comandi e keymap personale', () => {
   it('mostra i simboli Mac e riconosce le riservate anche con Ctrl e ordine diverso', () => {
     expect(shortcutLabel('Mod-Alt-Shift-b', true)).toBe('⌘⌥⇧B')
     expect(shortcutLabel('Mod-Alt-b', false)).toBe('Ctrl+Alt+B')
+    expect(shortcutLabel('Alt-ArrowLeft', true)).toBe('⌥←')
+    expect(shortcutLabel('Alt-ArrowRight', false)).toBe('Alt+→')
     expect(normalizeShortcut('Shift-Mod-Z', false)).toBe(normalizeShortcut('Ctrl-Shift-z', false))
     for (const key of ['Mod-z', 'Mod-Shift-z', 'Mod-c', 'Mod-v', 'Mod-x', 'Mod-a', 'Mod-f']) expect(isReservedShortcut(key)).toBe(true)
+  })
+  it('matchesShortcut confronta modificatori e tasto in modo accurato', () => {
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }), 'Alt-ArrowLeft')).toBe(true)
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowLeft' }), 'Alt-ArrowLeft')).toBe(false)
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, ctrlKey: true }), 'Alt-ArrowLeft')).toBe(false)
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true }), 'Alt-ArrowRight')).toBe(true)
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowRight' }), 'Alt-ArrowRight')).toBe(false)
+    expect(matchesShortcut(new KeyboardEvent('keydown', { key: 'ArrowLeft' }), null)).toBe(false)
   })
 })

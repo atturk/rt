@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
@@ -266,6 +266,49 @@ describe('StudyFlow unit navigation', () => {
 
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    localStorage.clear()
+  })
+
+  it('con il player aperto Alt+→ cambia unità e → sposta l’audio; rispetta scorciatoia personalizzata', () => {
+    localStorage.setItem('rt-device:study-audio-open', 'true')
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con player aperto, freccia destra da sola non cambia unità (sposta l'audio)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con player aperto, Alt+ArrowRight cambia unità
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Alt+ArrowLeft torna a 1.1
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Fuori dallo studio o con focus in un input non si muove
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    document.body.removeChild(input)
+
+    // Con scorciatoia personalizzata
+    cleanup()
+    localStorage.setItem('rt-pref:editor.shortcuts', JSON.stringify({ 'study-next-unit': 'Mod-Shift-ArrowRight' }))
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Alt+ArrowRight ora non è più la scorciatoia attiva
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // La nuova scorciatoia Mod+Shift+ArrowRight cambia unità
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    fireEvent.keyDown(window, { key: 'ArrowRight', [isMac ? 'metaKey' : 'ctrlKey']: true, shiftKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
     localStorage.clear()
   })
 

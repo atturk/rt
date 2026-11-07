@@ -4,6 +4,8 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
+import { commandShortcut, editorCommands, matchesShortcut, DEFAULT_SHORTCUTS, type ShortcutPreferences } from '@/components/lesson/markdownShortcuts'
+import { usePreference } from '@/lib/preferences'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
@@ -83,6 +85,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   back: { to: string; label: string }
 }) {
   const { audioRef, currentTime, seek } = useLessonAudio()
+  const [shortcutPrefs] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
   const [audioPlayerOpen, setAudioPlayerOpenState] = useState(getStudyAudioOpen)
   const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setAudioPlayerOpenState((prev) => {
@@ -559,10 +562,13 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
     if (phase !== 'lettura' || speedReading) return
+    const prevCmd = editorCommands.find(c => c.id === 'study-prev-unit')
+    const nextCmd = editorCommands.find(c => c.id === 'study-next-unit')
+    const prevShortcut = prevCmd ? commandShortcut(prevCmd, shortcutPrefs) : 'Alt-ArrowLeft'
+    const nextShortcut = nextCmd ? commandShortcut(nextCmd, shortcutPrefs) : 'Alt-ArrowRight'
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      const key = e.key.toLowerCase()
       const target = e.target as HTMLElement | null
       // Il riquadro di Chiedi/Verifica non è modale: fuori dai suoi campi le scorciatoie restano attive.
       if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]:not([data-testid="study-note-popup"])')) return
@@ -571,6 +577,20 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         return
       }
       if (indexOpen || detailsOpen || document.querySelector('dialog[open], [role="dialog"]:not([data-testid="study-note-popup"]), [role="menu"]')) return
+
+      if (matchesShortcut(e, prevShortcut)) {
+        e.preventDefault()
+        navigateReading(-1)
+        return
+      }
+      if (matchesShortcut(e, nextShortcut)) {
+        e.preventDefault()
+        navigateReading(1)
+        return
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const key = e.key.toLowerCase()
 
       const isZoomIn = e.key === '+' || (!e.shiftKey && e.key === '=') || e.code === 'NumpadAdd'
       const isZoomOut = !e.shiftKey && (e.key === '-' || e.code === 'NumpadSubtract')
@@ -682,7 +702,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek, shortcutPrefs]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
