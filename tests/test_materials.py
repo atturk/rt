@@ -25,9 +25,9 @@ def pdf_bytes(text='Testo della pagina'):
     return data
 
 
-def png_bytes():
+def png_bytes(width=100, height=100):
     stream = io.BytesIO()
-    Image.new('RGB', (30, 20), 'red').save(stream, format='PNG')
+    Image.new('RGB', (width, height), 'red').save(stream, format='PNG')
     return stream.getvalue()
 
 
@@ -61,7 +61,7 @@ def test_image_and_pptx_extract_text_and_embedded_images_without_quicklook(tmp_p
     presentation = Presentation()
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
     slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1)).text = 'Slide native text'
-    slide.shapes.add_picture(io.BytesIO(png_bytes()), Inches(1), Inches(2))
+    slide.shapes.add_picture(io.BytesIO(png_bytes(100, 100)), Inches(1), Inches(2), width=Inches(3), height=Inches(3))
     stream = io.BytesIO()
     presentation.save(stream)
     lesson = str(tmp_path)
@@ -79,6 +79,8 @@ def test_image_and_pptx_extract_text_and_embedded_images_without_quicklook(tmp_p
 def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):
     from rt.core.materials import _quicklook_slides
     monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
+    monkeypatch.setattr('rt.core.materials._has_keynote', lambda: False)
     monkeypatch.setattr('rt.core.materials.shutil.which', lambda _: None)
     with _quicklook_slides('unused.pptx', 1) as render:
         assert render is None
@@ -90,6 +92,129 @@ def test_quicklook_attempt_and_missing_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr('rt.core.materials.subprocess.run', render)
     with _quicklook_slides('unused.pptx', 1) as render:
         assert render(0).startswith(b'\x89PNG')
+
+
+def test_slide_render_methods_order(monkeypatch):
+    from rt.core.materials import _slide_render_methods
+    monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: '/usr/local/bin/soffice')
+    monkeypatch.setattr('rt.core.materials._has_keynote', lambda: True)
+    monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: f'/bin/{cmd}')
+
+    methods = _slide_render_methods('slides.pptx', '/tmp/target')
+    assert [name for name, _ in methods] == ['LibreOffice', 'Keynote', 'Quick Look']
+
+    # Senza LibreOffice: Keynote -> Quick Look
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
+    methods = _slide_render_methods('slides.pptx', '/tmp/target')
+    assert [name for name, _ in methods] == ['Keynote', 'Quick Look']
+
+    # Senza Keynote: Quick Look
+    monkeypatch.setattr('rt.core.materials._has_keynote', lambda: False)
+    methods = _slide_render_methods('slides.pptx', '/tmp/target')
+    assert [name for name, _ in methods] == ['Quick Look']
+
+
+def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog):
+    import logging
+    from rt.core.materials import _quicklook_slides
+    from pathlib import Path
+
+    monkeypatch.setattr('rt.core.materials.sys.platform', 'darwin')
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: '/bin/soffice')
+    monkeypatch.setattr('rt.core.materials._has_keynote', lambda: True)
+    monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: f'/bin/{cmd}')
+
+    called_methods = []
+    def fake_subprocess_run(cmd, **kwargs):
+        prog = cmd[0]
+        if 'soffice' in prog:
+            called_methods.append('LibreOffice')
+            outdir = cmd[5]
+            # 1 pagina solo (fallisce il conteggio di 28)
+            Path(outdir, 'soffice.pdf').write_bytes(pdf_bytes())
+        elif prog == 'osascript':
+            called_methods.append('Keynote')
+            # 28 pagine (soddisfa il conteggio di 28)
+            doc = fitz.open()
+            for _ in range(28):
+                doc.new_page(width=842, height=595)
+            for line in cmd[2].splitlines():
+                if 'export doc to POSIX file' in line:
+                    p = line.split('"')[1]
+                    Path(p).write_bytes(doc.tobytes())
+            doc.close()
+        elif 'qlmanage' in prog:
+            called_methods.append('Quick Look')
+
+    monkeypatch.setattr('rt.core.materials.subprocess.run', fake_subprocess_run)
+
+    with _quicklook_slides('sample.pptx', 28) as render:
+        assert render is not None
+        assert 'LibreOffice' in called_methods
+        assert 'Keynote' in called_methods
+        assert 'Quick Look' not in called_methods
+
+    # Se tutti i metodi falliscono: riga chiara nel log del worker
+    def all_fail(cmd, **kwargs):
+        pass
+    monkeypatch.setattr('rt.core.materials.subprocess.run', all_fail)
+
+    with caplog.at_level(logging.WARNING):
+        with _quicklook_slides('sample.pptx', 28) as render:
+            assert render is None
+        assert "Resa delle slide per 'sample.pptx' non riuscita" in caplog.text
+        assert "LibreOffice, Keynote, Quick Look" in caplog.text
+
+
+def test_filter_slide_images_small_and_corrupt():
+    from pptx import Presentation
+    from pptx.util import Inches
+    from rt.core.materials import _filter_slide_images
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    # 1. Piccola lato minore < 64 px (15x18)
+    stream_small = io.BytesIO()
+    Image.new('RGB', (15, 18), 'blue').save(stream_small, format='PNG')
+    slide.shapes.add_picture(stream_small, Inches(0), Inches(0), Inches(1), Inches(1))
+
+    # 2. Piccola area < 2% slide (0.5x0.5 in = 0.25 in^2 su 75 in^2 = 0.3% < 2%)
+    stream_tiny_area = io.BytesIO()
+    Image.new('RGB', (100, 100), 'yellow').save(stream_tiny_area, format='PNG')
+    slide.shapes.add_picture(stream_tiny_area, Inches(1), Inches(1), Inches(0.5), Inches(0.5))
+
+    # 3. Utile media: 200x200 px, 2x2 inches (4 in^2 = 5.3% > 2%)
+    stream_mid = io.BytesIO()
+    Image.new('RGB', (200, 200), 'green').save(stream_mid, format='PNG')
+    slide.shapes.add_picture(stream_mid, Inches(3), Inches(3), Inches(2), Inches(2))
+
+    # 4. Utile grande (la più grande): 300x300 px, 3x3 inches (9 in^2 = 12% > 2%)
+    stream_large = io.BytesIO()
+    Image.new('RGB', (300, 300), 'white').save(stream_large, format='PNG')
+    slide.shapes.add_picture(stream_large, Inches(4), Inches(4), Inches(3), Inches(3))
+
+    # 5. Immagine corrotta/non decodificabile
+    fake_corrupted = type('FakeCorrupted', (), {
+        'image': type('Image', (), {'blob': b'corrupted bytes not an image'})(),
+        'width': Inches(4),
+        'height': Inches(4),
+    })()
+    real_shapes = list(slide.shapes)
+    real_shapes.append(fake_corrupted)
+    slide.shapes.__iter__ = lambda self: iter(real_shapes)
+
+    res = _filter_slide_images(slide, prs.slide_width, prs.slide_height)
+    assert len(res) == 1
+    with Image.open(io.BytesIO(res[0])) as im:
+        assert im.size == (300, 300)
+
+    # Slide senza immagini utili -> ritorna lista vuota (niente "?")
+    prs_empty = Presentation()
+    slide_empty = prs_empty.slides.add_slide(prs_empty.slide_layouts[6])
+    slide_empty.shapes.add_picture(io.BytesIO(stream_small.getvalue()), Inches(0), Inches(0), Inches(1), Inches(1))
+    assert _filter_slide_images(slide_empty, prs_empty.slide_width, prs_empty.slide_height) == []
 
 
 def test_materials_upload_multiple_and_source_view(api_client, rt_db, tmp_path, monkeypatch):
