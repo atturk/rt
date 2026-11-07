@@ -5,6 +5,7 @@ import { findMarkdownImageStrips } from './lessonImageStrips'
 import { parseImageAlt, type ImageItem } from '@/components/images/imageUtils'
 import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
 import { imageSections, RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
+import { generatedRanges } from './lessonEnrichmentBlocks'
 
 /**
  * Le unità nel Markdown dell'editor della lezione: dal titolo `### 1.1 Titolo` fino al titolo
@@ -80,6 +81,7 @@ type UnitsState = { slots: Record<string, HTMLElement>; tasks: Record<string, { 
 
 function build(state: EditorState, slots: UnitsState['slots'], tasks: UnitsState['tasks'], linked: string | null): UnitsState {
   const ranges: Range<Decoration>[] = []
+  const generated = generatedRanges(state)
   for (const unit of unitRanges(state)) {
     // come le intestazioni della lettura: ci si arriva con [data-unit-id]
     const task = tasks[unit.id]
@@ -90,7 +92,10 @@ function build(state: EditorState, slots: UnitsState['slots'], tasks: UnitsState
       if (task.state === 'working') ranges.push(Decoration.widget({ widget: new PendingUnit(), block: true, side: 1 }).range(unit.to))
     }
     const slot = slots[unit.id]
-    if (slot) ranges.push(Decoration.widget({ widget: new SlotWidget(slot), block: true, side: 1 }).range(unit.to))
+    // Se l'unità finisce con un blocco generato (nascosto), il riquadro va prima del blocco:
+    // dentro un intervallo sostituito CodeMirror non disegna i widget e la scheda sparirebbe.
+    const hidden = generated.find((r) => r.from <= unit.to && unit.to < r.to)
+    if (slot) ranges.push(Decoration.widget({ widget: new SlotWidget(slot), block: true, side: hidden ? -1 : 1 }).range(hidden ? hidden.from : unit.to))
   }
   return { slots, tasks, linked, decorations: Decoration.set(ranges, true) }
 }

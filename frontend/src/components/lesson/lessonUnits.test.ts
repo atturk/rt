@@ -2,7 +2,8 @@ import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { lessonImageStrips } from './lessonImageStrips'
 import { RT_SECTION_IMAGE_DRAG_TYPE } from './imageSections'
-import { IMAGE_CLICK_DELAY_MS, cancelPendingImageClick, lessonImages, lessonUnits, setLinkedUnit, setUnitTasks, unitRanges } from './lessonUnits'
+import { IMAGE_CLICK_DELAY_MS, cancelPendingImageClick, lessonImages, lessonUnits, setLinkedUnit, setSlots, setUnitTasks, unitRanges } from './lessonUnits'
+import { lessonEnrichmentBlocks } from './lessonEnrichmentBlocks'
 import { timecodeLock } from './timecodeLock'
 
 describe('lessonUnits e gesti immagini nel testo', () => {
@@ -233,4 +234,14 @@ it('mousedown sull’immagine arresta la propagazione evitando lo spostamento im
   view.destroy()
   parent.remove()
 })
+})
+
+it('il riquadro dell\'arricchimento resta visibile quando l\'unità finisce con il blocco generato', () => {
+  const block = '<!-- rt-enrichment:start:abc -->\n![Elemento grafico](assets/enrichment/a.png)\n\n[Apri](assets/enrichment/a.html)\n<!-- rt-enrichment:end -->\n'
+  const parent = document.createElement('div')
+  const view = new EditorView({ parent, state: EditorState.create({ doc: `### 4.3 Vie\n\nTesto.\n\n${block}\n### 4.4 Altro\n\nX.`, extensions: [lessonUnits, lessonEnrichmentBlocks] }) })
+  const slot = document.createElement('div'); slot.className = 'card'
+  view.dispatch({ effects: setSlots.of({ '4.3': slot }) })
+  expect(parent.querySelector('.card')).not.toBeNull()
+  view.destroy()
 })
