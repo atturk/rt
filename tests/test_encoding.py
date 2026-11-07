@@ -138,6 +138,16 @@ def test_latex_formula_repairs_and_invalid_commands():
     plain = "Testo accademico normale senza alcuna formula o comando."
     assert repair_latex_escapes(plain) == plain
 
+    # 5. Comandi \m mangiati: athrm{, athbf{, athit{, athcal{, athbb{, athsf{
+    assert repair_latex_escapes("$athrm{Ca^{2+}}$") == "$\\mathrm{Ca^{2+}}$"
+    assert repair_latex_escapes("$athbf{v} + athit{x} + athcal{O} + athbb{R} + athsf{S}$") == "$\\mathbf{v} + \\mathit{x} + \\mathcal{O} + \\mathbb{R} + \\mathsf{S}$"
+    # Se già preceduti da \ o da lettera non vengono toccati
+    assert repair_latex_escapes("$\\mathrm{Ca^{2+}}$") == "$\\mathrm{Ca^{2+}}$"
+    assert repair_latex_escapes("$pathrm{test}$") == "$pathrm{test}$"
+    assert repair_latex_escapes("$\\athrm{test}$") == "$\\athrm{test}$"
+    # Fuori dalle formule non vengono toccati
+    assert repair_latex_escapes("athrm{Ca^{2+}} fuori formula") == "athrm{Ca^{2+}} fuori formula"
+
 
 def test_multiline_display_formulas_and_known_commands():
     from rt.core.encoding import repair_latex_escapes

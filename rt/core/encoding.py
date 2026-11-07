@@ -111,6 +111,7 @@ _REPAIR_R_IN_MATH = re.compile(
 )
 
 _INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
+_MATH_PREFIX_REPAIR = re.compile(r"(?<![a-zA-Z\\])ath(rm|bf|it|cal|bb|sf)\{")
 
 
 def _repair_inside_math(content: str, is_display: bool) -> str:
@@ -120,7 +121,9 @@ def _repair_inside_math(content: str, is_display: bool) -> str:
     content = _REPAIR_R_IN_MATH.sub(r"\\r", content)
     # 2. Comandi non validi più comuni: \trm{, \rm{ e \textrm{ dentro una formula diventano \mathrm{
     content = _INVALID_MATH_COMMANDS.sub(r"\\mathrm{", content)
-    # 3. Ultimo controllo: togli eventuali caratteri di controllo rimasti dentro la formula
+    # 3. Rimette \m davanti a athrm{, athbf{, athit{, athcal{, athbb{, athsf{ non preceduti da lettera o barra
+    content = _MATH_PREFIX_REPAIR.sub(r"\\m\g<0>", content)
+    # 4. Ultimo controllo: togli eventuali caratteri di controllo rimasti dentro la formula
     if is_display:
         content = re.sub(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]", "", content)
     else:
