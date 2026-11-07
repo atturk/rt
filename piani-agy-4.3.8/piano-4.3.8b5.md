@@ -76,3 +76,14 @@ Quando l'unità cambia (frecce, scorciatoia, puntini, indice) e il player è ape
   `usePreference` come le altre preferenze dello Studio. Spenta: il player non si sposta cambiando unità.
 - Unità senza timestamp: non spostare l'audio.
 - Test vitest: cambio unità con preferenza attiva (seek all'inizio) e spenta (nessun seek).
+
+# Terza tornata (dopo l'esito delle voci 7-8)
+Già fatti da Claude su questo branch, non toccarli: colore degli stati personalizzati nei puntini dello Studio, tasti P (player) e L
+(lettura veloce) indicati nei tooltip, nome dello stato personalizzato salvato con Invio o all'uscita dal campo (prima salvava a ogni tasto).
+
+## 9. Impostazioni: ordine degli stati con il trascinamento
+In `frontend/src/components/settings/StudyStatusesSection.tsx` togli le frecce «Sposta su/giù» e ordina le righe trascinandole
+(maniglia `GripVertical` a sinistra; tutta la riga si trascina dalla maniglia, non dai campi). Stesso stile di trascinamento HTML5 già usato
+in `frontend/src/components/lessons/AudioOrder.tsx`, niente librerie nuove. Linea d'inserimento visibile durante il trascinamento,
+salvataggio con `persist(statuses, newOrder)` solo al rilascio. Da tastiera: maniglia focalizzabile, Alt+↑/↓ sposta la riga (accessibilità).
+- Test vitest: trascinamento di una riga (dragStart/dragOver/drop) salva il nuovo ordine; Alt+↓ sulla maniglia sposta di una posizione.
