@@ -1,0 +1,8 @@
+# Esito Piano Arricchimento generato (4.3.8)
+
+- Voce 1: Fatta — la «i» per gli elementi con `source === 'enrichment'` non chiama `/media/info` e mostra nella modale tipo (`kindLabel`), unità, titolo, descrizione, modalità e prompt comprimibile.
+- Voce 2: Fatta — le visualizzazioni con `asset_html` e modalità interattiva si aprono in lightbox con `InteractiveElement` (iframe sandbox) al posto del PNG e mostrano il badge «Interattiva» sulla miniatura.
+- Voce 3: Fatta — nello Studio (`Study.tsx`), per gli elementi con `asset_image` non ignorati/eliminati della subunità corrente, viene mostrato `GeneratedElement` con titolo sopra dopo il testo dell'unità, fuori dal contenitore usato da lettura veloce, evidenziazioni e note.
+- Voce 4: Fatta — le infografiche sono generate con HTML/SVG (`VISUALIZER_SYSTEM` + `INFOGRAPHIC_INSTRUCTIONS`, modalità statica) e catturate con `snapshot()`, salvando anche l'HTML; `enrichment_image` è riservato alle sole illustrazioni (`kind == "image"`), con etichetta «Generazione immagini IA» e messaggi d'errore aggiornati.
+- Voce 5: Fatta — `snapshot()` ispeziona il frame prima della cattura e solleva `VisualizationValidationError` se il testo contiene `undefined`, `NaN`, `null`, `[object Object]` o se un testo esce dai bordi di `#rt-visualization-root`; `generate_media` effettua un retry con feedback correttivo prima di marcare l'elemento in errore senza pubblicare.
+- Voce 6: Fatta — riscritte le domande `UTILITY` chiedendo elementi concreti e verificabili nel testo della subunità (processi a passaggi, confronti, strutture, formule con variabili/numeri o relazioni/sequenze riassumibili in poche etichette senza aggiungere informazioni) con soglia invariata.
