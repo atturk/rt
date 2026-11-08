@@ -6745,7 +6745,7 @@ export interface components {
              * @default markdown
              * @enum {string}
              */
-            format: "markdown" | "zip" | "sources";
+            format: "markdown" | "zip" | "sources" | "pdf";
             /**
              * Ids
              * @description Id delle lezioni
