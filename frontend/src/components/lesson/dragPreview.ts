@@ -1,6 +1,8 @@
 let activeCleanupFn: (() => void) | null = null
 let transparentImg: HTMLImageElement | null = null
 
+export const BAN_CLASS = 'rt-drag-preview-ban'
+
 function getTransparentDragImage(): HTMLImageElement {
   if (!transparentImg && typeof Image !== 'undefined') {
     transparentImg = new Image()
@@ -8,6 +10,32 @@ function getTransparentDragImage(): HTMLImageElement {
       'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
   }
   return transparentImg as HTMLImageElement
+}
+
+function createBanIconDOM(stack: boolean): HTMLElement {
+  const badge = document.createElement('div')
+  badge.className = `${BAN_CLASS} flex items-center justify-center`
+  badge.setAttribute('data-testid', 'drag-preview-ban')
+  badge.style.position = 'absolute'
+  badge.style.top = '-6px'
+  if (stack) {
+    badge.style.left = '-6px'
+  } else {
+    badge.style.right = '-6px'
+  }
+  badge.style.width = '20px'
+  badge.style.height = '20px'
+  badge.style.borderRadius = '50%'
+  badge.style.backgroundColor = '#ef4444' // red-500
+  badge.style.color = '#ffffff'
+  badge.style.display = 'flex'
+  badge.style.alignItems = 'center'
+  badge.style.justifyContent = 'center'
+  badge.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.25)'
+  badge.style.zIndex = '10'
+  badge.innerHTML =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ban"><circle cx="12" cy="12" r="10"/><path d="M4.929 4.929 19.07 19.071"/></svg>'
+  return badge
 }
 
 export interface DragPreviewOptions {
@@ -105,7 +133,6 @@ export function createDragPreviewDOM(options: DragPreviewOptions): HTMLElement {
     wrapper.style.borderRadius = '8px'
     wrapper.style.border = '1px solid rgba(0, 0, 0, 0.15)'
     wrapper.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.16)'
-    wrapper.style.overflow = 'hidden'
     wrapper.style.background = '#ffffff'
 
     const img = document.createElement('img')
@@ -113,6 +140,7 @@ export function createDragPreviewDOM(options: DragPreviewOptions): HTMLElement {
     img.alt = ''
     img.style.width = '100%'
     img.style.height = '100%'
+    img.style.borderRadius = '7px'
     img.style.objectFit = 'cover'
     img.style.display = 'block'
     wrapper.appendChild(img)
@@ -140,10 +168,14 @@ export function startDragPreview(
   }
 
   const container = createDragPreviewDOM(options)
+  const isStack = (options.count ?? options.urls.length) > 1
 
   // In basso a destra del cursore: si trascina da destra (pannello Media) verso sinistra (testo)
   const offsetX = 18
   const offsetY = 18
+
+  let lastX = event.clientX || 0
+  let lastY = event.clientY || 0
 
   if (event.clientX || event.clientY) {
     container.style.left = `${event.clientX + offsetX}px`
@@ -154,35 +186,100 @@ export function startDragPreview(
 
   document.body.appendChild(container)
 
+  const setBan = (banned: boolean) => {
+    const existing = container.querySelector(`.${BAN_CLASS}`)
+    if (banned) {
+      if (!existing) {
+        container.appendChild(createBanIconDOM(isStack))
+      }
+    } else {
+      if (existing) {
+        existing.remove()
+      }
+    }
+  }
+
+  // All'inizio dell'azione di trascinamento siamo sopra l'elemento di origine (zona non di rilascio)
+  setBan(true)
+
   const updatePosition = (clientX: number, clientY: number) => {
-    if (clientX === 0 && clientY === 0) return
+    // In WebKit su elementi non di rilascio le coordinate possono arrivare a (0, 0).
+    // In tal caso preserviamo l'ultima posizione valida nota.
+    if (clientX === 0 && clientY === 0) {
+      if (lastX !== 0 || lastY !== 0) {
+        container.style.display = 'block'
+        container.style.left = `${lastX + offsetX}px`
+        container.style.top = `${lastY + offsetY}px`
+      }
+      return
+    }
+    lastX = clientX
+    lastY = clientY
     container.style.display = 'block'
     container.style.left = `${clientX + offsetX}px`
     container.style.top = `${clientY + offsetY}px`
   }
 
-  const onDragOver = (e: DragEvent) => {
+  const onDragOverCapture = (e: DragEvent) => {
     updatePosition(e.clientX, e.clientY)
+    // preventDefault permette a WebKit di continuare a inviare eventi dragover con coordinate corrette su tutta la finestra
+    e.preventDefault()
+  }
+
+  const onDragOverBubble = (e: DragEvent) => {
+    const effect = e.dataTransfer?.dropEffect
+    const isAllowed = effect === 'copy' || effect === 'move'
+    if (isAllowed) {
+      setBan(false)
+    } else {
+      try {
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'none'
+        }
+      } catch {
+        // Ignora se non scrivibile
+      }
+      setBan(true)
+    }
   }
 
   const onDrag = (e: DragEvent) => {
     updatePosition(e.clientX, e.clientY)
   }
 
+  const onDrop = (e: DragEvent) => {
+    const effect = e.dataTransfer?.dropEffect
+    const isAllowed = effect === 'copy' || effect === 'move'
+    if (!isAllowed) {
+      e.preventDefault()
+    }
+    stopDragPreview()
+  }
+
   const cleanup = () => {
     stopDragPreview()
   }
 
-  window.addEventListener('dragover', onDragOver, { capture: true })
+  window.addEventListener('dragover', onDragOverCapture, { capture: true })
+  window.addEventListener('dragover', onDragOverBubble, { capture: false })
+  document.addEventListener('dragover', onDragOverCapture, { capture: true })
+  document.addEventListener('dragover', onDragOverBubble, { capture: false })
   window.addEventListener('drag', onDrag, { capture: true })
   window.addEventListener('dragend', cleanup, { capture: true })
-  window.addEventListener('drop', cleanup, { capture: true })
+  document.addEventListener('dragend', cleanup, { capture: true })
+  window.addEventListener('drop', onDrop, { capture: true })
+  document.addEventListener('drop', onDrop, { capture: true })
 
   activeCleanupFn = () => {
-    window.removeEventListener('dragover', onDragOver, { capture: true })
+    window.removeEventListener('dragover', onDragOverCapture, { capture: true })
+    window.removeEventListener('dragover', onDragOverBubble, { capture: false })
+    document.removeEventListener('dragover', onDragOverCapture, { capture: true })
+    document.removeEventListener('dragover', onDragOverBubble, { capture: false })
     window.removeEventListener('drag', onDrag, { capture: true })
     window.removeEventListener('dragend', cleanup, { capture: true })
-    window.removeEventListener('drop', cleanup, { capture: true })
+    document.removeEventListener('dragend', cleanup, { capture: true })
+    window.removeEventListener('drop', onDrop, { capture: true })
+    document.removeEventListener('drop', onDrop, { capture: true })
     if (container.parentElement) {
       container.parentElement.removeChild(container)
     }
