@@ -21,10 +21,10 @@ import {
 } from '@/lib/deviceLogin'
 import { Field, Section } from './common'
 
-/** Accesso da iPhone o da un altro computer: un QR con il link monouso (5 minuti, una volta).
+/** Accesso da un altro dispositivo (telefono, tablet, computer): un QR con il link monouso (5 minuti, una volta).
  * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della tailnet
- * che il Mac stesso rileva (https://nome-mac.tailnet.ts.net, l'unico per cui vale il certificato
- * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-mac.local:8765). */
+ * che il Mac stesso rileva (https://nome-computer.tailnet.ts.net, l'unico per cui vale il certificato
+ * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-computer.local:8765). */
 export function DeviceAccessSection() {
   const here = window.location.origin
   const tailnet = useTailnet().data
@@ -52,15 +52,15 @@ export function DeviceAccessSection() {
     <Section
       id="altro-dispositivo"
       title="Accesso da un altro dispositivo"
-      description="Apri RT da iPhone inquadrando un QR: il link entra una sola volta e vale 5 minuti."
+      description="Apri RT da un telefono, un tablet o un altro computer inquadrando un QR: il link entra una sola volta e vale 5 minuti."
     >
       <Field
         label="Indirizzo di RT per l'altro dispositivo"
         htmlFor="device-origin"
         hint={
           <>
-            Con Tailscale Serve è <code>https://nome-mac.tailnet.ts.net</code>; in rete locale{' '}
-            <code>http://nome-mac.local:8765</code>. 127.0.0.1 funziona solo su questo Mac.
+            Con Tailscale Serve è <code>https://nome-computer.tailnet.ts.net</code>; in rete locale{' '}
+            <code>http://nome-computer.local:8765</code>. 127.0.0.1 funziona solo su questo computer.
           </>
         }
       >
@@ -69,7 +69,7 @@ export function DeviceAccessSection() {
           inputMode="url"
           autoComplete="off"
           value={address}
-          placeholder="https://nome-mac.tailnet.ts.net"
+          placeholder="https://nome-computer.tailnet.ts.net"
           onChange={(e) => {
             setTyped(e.target.value)
             setLink(null)
@@ -77,24 +77,24 @@ export function DeviceAccessSection() {
         />
       </Field>
       {origin && isLoopback(origin) && (
-        <Alert tone="warning">Questo indirizzo raggiunge solo il Mac stesso: da iPhone non si apre.</Alert>
+        <Alert tone="warning">Questo indirizzo raggiunge solo questo computer: dagli altri dispositivi non si apre.</Alert>
       )}
       {origin && isHttpsIp(origin) && (
         <Alert tone="warning">
-          Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del Mac
+          Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del computer
           {detected ? (
             <>
               , cioè <code>{detected}</code>
             </>
           ) : (
-            ' (https://nome-mac.tailnet.ts.net)'
+            ' (https://nome-computer.tailnet.ts.net)'
           )}
           .
         </Alert>
       )}
       {tailnet && detected && origin === detected && !tailnet.serve && (
         <Alert tone="warning">
-          Tailscale Serve non è attivo su questo Mac: nel Terminale esegui <code>tailscale serve --bg 8765</code>, poi
+          Tailscale Serve non è attivo su questo computer: nel Terminale (su Windows nel Prompt dei comandi) esegui <code>tailscale serve --bg 8765</code>, poi
           crea il QR.
         </Alert>
       )}
@@ -294,7 +294,7 @@ function LinkQr({ url, expiresAt }: { url: string; expiresAt: number }) {
     <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
       <QrCode value={url} />
       <div className="flex min-w-0 flex-col gap-1 text-body">
-        <p>Inquadralo con la fotocamera dell'iPhone. Scade tra {formatSeconds(secondsLeft)}.</p>
+        <p>Inquadralo con la fotocamera del telefono o del tablet. Scade tra {formatSeconds(secondsLeft)}.</p>
         <code className="break-all text-meta text-muted-foreground" data-testid="device-login-url">{url}</code>
       </div>
     </div>

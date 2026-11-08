@@ -61,14 +61,14 @@ describe("Accesso da un altro dispositivo", () => {
     expect(screen.getByText(/Tailscale Serve non è attivo/)).toBeInTheDocument()
     await user.clear(input)
     await user.type(input, '100.72.84.124')
-    expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del Mac/)).toBeInTheDocument()
+    expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del computer/)).toBeInTheDocument()
   })
 
   it("avvisa se l'indirizzo è quello locale del Mac", async () => {
     renderSection()
     const user = userEvent.setup()
     await user.type(screen.getByLabelText("Indirizzo di RT per l'altro dispositivo"), 'http://127.0.0.1:8765')
-    expect(screen.getByText(/raggiunge solo il Mac stesso/)).toBeInTheDocument()
+    expect(screen.getByText(/raggiunge solo questo computer/)).toBeInTheDocument()
   })
 
   it("gestisce la chiave di sola lettura, il prompt per gli agenti e la revoca", async () => {
