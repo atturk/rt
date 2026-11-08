@@ -57,6 +57,14 @@ dialoghi; non nella lettura veloce) Cmd/Ctrl+A seleziona solo l'unità aperta: i
   `selectionHtml` di `frontend/src/lib/copyFormat.ts` (rispetta il formato scelto in Impostazioni → Copia, formule comprese), e in
   `text/plain` «1.2 Titolo», una riga vuota e il testo sorgente (`sourceOffsets`, come oggi). Evidenziazioni e colori seguono le spunte di Impostazioni → Aspetto e lettura → Copia, come la copia di oggi.
 - Se l'utente seleziona a mano solo una parte, la copia resta quella di oggi.
+- **Copia in Markdown grezzo**: nuova scorciatoia «Copia l'unità in Markdown» (gruppo Studio di Impostazioni → Editor e scorciatoie,
+  predefinita `Mod-Alt-c`, cioè Cmd+Option+C / Ctrl+Alt+C, personalizzabile come le voci 7 della b5). Copia negli appunti, come
+  `text/plain`, il titolo come intestazione Markdown (`## 4.2 Titolo`, stesso livello del documento) e il Markdown dell'unità così
+  com'è nel documento: grassetto `**…**`, corsivo `*…*`, elenchi, formule `$…$`. Togli le righe delle immagini e degli allegati e i
+  commenti interni di RT. Serve un campo nuovo `markdown` in `StudyUnit` (backend dello Studio, stesso testo da cui nasce `html`).
+  Funziona anche senza selezione e conferma con un avviso breve («Unità copiata in Markdown»). Nel browser Cmd+Option+C può essere
+  già usato dagli strumenti per sviluppatori: va bene, la scorciatoia si può cambiare.
+- Test anche per la copia in Markdown: contenuto esatto (titolo `##`, grassetto, formule, niente immagini) e scorciatoia personalizzata.
 - Test vitest: Cmd+A seleziona titolo e testo e non la barra; la copia contiene titolo e testo in HTML e testo semplice, senza il timestamp;
   Cmd+A dentro un campo di testo resta quello del campo.
 
