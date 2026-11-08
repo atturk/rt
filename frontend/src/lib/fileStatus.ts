@@ -1,6 +1,18 @@
 import { useSyncExternalStore } from 'react'
-import { api } from '@/api/client'
+import { api, CSRF_COOKIE, CSRF_HEADER, readCookie } from '@/api/client'
 import { canShareFiles, fetchExport, saveFile, shareFile } from '@/lib/fileExport'
+
+/** Toglie dal server i file di un'esportazione multipla (con il token CSRF come le altre scritture). */
+async function deleteExport(jobId: string): Promise<void> {
+  const csrf = readCookie(CSRF_COOKIE)
+  try {
+    await fetch(`/api/v1/lesson-exports/${encodeURIComponent(jobId)}`, {
+      method: 'DELETE', credentials: 'same-origin', headers: csrf ? { [CSRF_HEADER]: csrf } : {},
+    })
+  } catch {
+    // I file restano fino alla pulizia automatica delle esportazioni vecchie
+  }
+}
 
 export type ExportFileInfo = {
   name: string
@@ -137,7 +149,8 @@ export async function trackFileExport(
             } else {
               await shareFile(file, { title: options.shareTitle })
             }
-            pywebview?.api?.pulisci_condivisione?.()
+            // Niente pulizia qui: il menu di condivisione del Mac legge il file dopo; la cartella temporanea
+            // si toglie alla condivisione successiva o all'uscita.
             setFileStatus({ kind: 'done', label: options.doneLabel, filename: file.name })
           } catch (err: unknown) {
             const error = err as { name?: string; message?: string }
@@ -193,7 +206,7 @@ export async function exportLessonsMultiple(params: {
         await api.POST('/api/v1/jobs/{job_id}/cancel', { params: { path: { job_id: jobId } } })
       } catch {}
       try {
-        await fetch(`/api/v1/lesson-exports/${jobId}`, { method: 'DELETE' })
+        await deleteExport(jobId)
       } catch {}
     }
     const pywebview = (window as unknown as { pywebview?: { api?: { pulisci_condivisione?: () => void } } }).pywebview
@@ -296,7 +309,7 @@ export async function exportLessonsMultiple(params: {
         const file = await fetchExport(`/api/v1/lesson-exports/${currentJobId}/file`)
         saveFile(file)
         clearFileStatus()
-        fetch(`/api/v1/lesson-exports/${currentJobId}`, { method: 'DELETE' }).catch(() => {})
+        void deleteExport(currentJobId)
       }
     }
 
@@ -308,6 +321,8 @@ export async function exportLessonsMultiple(params: {
               setFileStatus({ kind: 'error', message: result.errore })
               return
             }
+            // I file sono già copiati nella cartella temporanea della condivisione: quelli del job si tolgono.
+            void deleteExport(currentJobId)
             clearFileStatus()
           } else {
             try {
@@ -316,7 +331,7 @@ export async function exportLessonsMultiple(params: {
               )
               await navigator.share({ files: fileObjects })
               clearFileStatus()
-              fetch(`/api/v1/lesson-exports/${currentJobId}`, { method: 'DELETE' }).catch(() => {})
+              void deleteExport(currentJobId)
             } catch (err: unknown) {
               const error = err as { name?: string; message?: string }
               if (error?.name === 'AbortError') return
