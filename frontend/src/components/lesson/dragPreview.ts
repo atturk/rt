@@ -141,8 +141,8 @@ export function startDragPreview(
 
   const container = createDragPreviewDOM(options)
 
-  // In basso a sinistra del cursore (larghezza 68 px + 18 px di distacco)
-  const offsetX = -86
+  // In basso a destra del cursore: si trascina da destra (pannello Media) verso sinistra (testo)
+  const offsetX = 18
   const offsetY = 18
 
   if (event.clientX || event.clientY) {

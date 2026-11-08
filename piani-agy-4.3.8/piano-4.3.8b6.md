@@ -60,6 +60,21 @@ dialoghi; non nella lettura veloce) Cmd/Ctrl+A seleziona solo l'unità aperta: i
 - Test vitest: Cmd+A seleziona titolo e testo e non la barra; la copia contiene titolo e testo in HTML e testo semplice, senza il timestamp;
   Cmd+A dentro un campo di testo resta quello del campo.
 
+## 3. Trascinamento delle immagini nelle zone dove non si può rilasciare
+L'anteprima personalizzata (`frontend/src/components/lesson/dragPreview.ts`, in basso a destra del cursore: già sistemata da Claude,
+non cambiare la posizione) sparisce quando il puntatore passa su intestazione, barra laterale o altre zone dove non si può rilasciare,
+e ricompare solo tornando sul testo. Va sistemato così:
+- L'anteprima segue sempre il puntatore, su tutta la finestra. Trova perché si perde: per esempio `drag`/`dragover` con coordinate 0,0
+  in WebKit fuori dalle zone di rilascio, o elementi che fermano la propagazione. Se serve, aggiorna la posizione da `dragover` a livello
+  di `document` in cattura e tieni l'ultima posizione valida.
+- Nelle zone dove non si può rilasciare: `dataTransfer.dropEffect = 'none'` (niente «+» sul cursore; il cursore di divieto se il sistema
+  lo mostra) e, sull'anteprima, un piccolo segno di divieto (icona `Ban` di lucide in un cerchio rosso nell'angolo) finché resta lì.
+  Tornando su una zona valida il segno sparisce.
+- Rilasciare in una zona non valida non fa nulla: nessuna modifica al documento, nessun annulla da registrare, anteprima tolta.
+- Valgono le stesse regole per il trascinamento dal pannello Media (anche multiplo) e per le miniature delle unità.
+- Test vitest: posizione aggiornata anche con `dragover` su un elemento non di rilascio; segno di divieto presente e poi tolto;
+  `drop` fuori zona senza effetti.
+
 # In coda (dalla beta 5, dopo le voci sopra)
 Dal thread dei metadati: `cartella` di info.yaml non aggiornata dopo la rinomina; azione «scambia date»; spiegare il 409 intermedio
 quando si modificano i metadati di fila. Da dettagliare prima di darli ad agy.
