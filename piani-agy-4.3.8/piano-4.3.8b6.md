@@ -55,7 +55,7 @@ dialoghi; non nella lettura veloce) Cmd/Ctrl+A seleziona solo l'unità aperta: i
 - Copia ben formattata: `handleCopy` di `UnitText` oggi taglia la selezione al solo testo (`clipToRoot`) e lascia il titolo fuori.
   Con la selezione dell'unità intera la copia mette in `text/html` il titolo come `<h2>` seguito dall'HTML del testo passato da
   `selectionHtml` di `frontend/src/lib/copyFormat.ts` (rispetta il formato scelto in Impostazioni → Copia, formule comprese), e in
-  `text/plain` «1.2 Titolo», una riga vuota e il testo sorgente (`sourceOffsets`, come oggi). Niente sfondi degli evidenziatori nell'HTML copiato.
+  `text/plain` «1.2 Titolo», una riga vuota e il testo sorgente (`sourceOffsets`, come oggi). Evidenziazioni e colori seguono le spunte di Impostazioni → Aspetto e lettura → Copia, come la copia di oggi.
 - Se l'utente seleziona a mano solo una parte, la copia resta quella di oggi.
 - Test vitest: Cmd+A seleziona titolo e testo e non la barra; la copia contiene titolo e testo in HTML e testo semplice, senza il timestamp;
   Cmd+A dentro un campo di testo resta quello del campo.
