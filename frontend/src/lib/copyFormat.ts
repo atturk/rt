@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react'
 
 import { delimiters } from './math'
-import { usePreference } from './preferences'
+import { readPreference, usePreference } from './preferences'
 
 /** Cosa tiene la copia del testo (pref `copy.format`, Impostazioni › Copia): per Anki e simili. */
 export type CopyFormat = { bold: boolean; italic: boolean; highlights: boolean; color: boolean }
 export const COPY_FORMAT_DEFAULT: CopyFormat = { bold: true, italic: true, highlights: true, color: false }
+
+export function readCopyFormat(): CopyFormat {
+  const value = readPreference<Partial<CopyFormat>>('copy.format', COPY_FORMAT_DEFAULT)
+  return { ...COPY_FORMAT_DEFAULT, ...value }
+}
 
 export function useCopyFormat(): [CopyFormat, (value: CopyFormat) => void] {
   const [value, set] = usePreference<Partial<CopyFormat>>('copy.format', COPY_FORMAT_DEFAULT)
@@ -18,7 +23,7 @@ const KEEP = new Set(['P', 'BR', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5',
   'SUB', 'SUP', 'U', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'A', 'IMG', 'HR'])
 const BOLD = new Set(['B', 'STRONG'])
 const ITALIC = new Set(['I', 'EM'])
-const SKIP = 'script, style, button, [aria-hidden="true"], .rt-math-src'
+const SKIP = 'script, style, button, [aria-hidden="true"], .rt-math-src, .rt-unit-meta, .rt-timecode, .rt-image-strip-slot, .rt-unit-images-section'
 
 function highlight(el: Element): string | null {
   if (!el.classList.contains('rt-hl')) return null

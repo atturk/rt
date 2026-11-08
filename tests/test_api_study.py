@@ -34,6 +34,7 @@ def test_study_units_have_text_audio_span_and_pending_questions(api_client, read
     assert [u["id"] for u in units] == [u.unit_id for u in load_resolved_draft(path).units]
     first = units[0]
     assert first["html"].startswith("<") and first["title"]
+    assert first["markdown"] is not None and isinstance(first["markdown"], str)
     assert first["start"] is not None and first["end"] is not None and first["end"] >= first["start"]
     assert all(u["questions"] == sum(u["pending"].values()) for u in units)
 

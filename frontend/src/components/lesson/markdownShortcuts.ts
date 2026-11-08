@@ -471,6 +471,7 @@ export const editorCommands: readonly EditorCommand[] = [
   { id: 'unfold-all', etichetta: 'Riapri tutto', gruppo: 'Sezioni', predefinita: 'Ctrl-Alt-]', run: unfoldAll },
   { id: 'study-prev-unit', etichetta: 'Unità precedente', gruppo: 'Studio', predefinita: 'Alt-ArrowLeft', run: () => false },
   { id: 'study-next-unit', etichetta: 'Unità successiva', gruppo: 'Studio', predefinita: 'Alt-ArrowRight', run: () => false },
+  { id: 'study-copy-unit-markdown', etichetta: "Copia l'unità in Markdown", gruppo: 'Studio', predefinita: 'Mod-Alt-c', run: () => false },
 ]
 
 export function isMacKeyboard(): boolean { return /Mac|iPhone|iPad/.test(navigator.platform) }

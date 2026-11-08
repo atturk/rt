@@ -8840,6 +8840,8 @@ export interface components {
              * @description Testo dell'unità in HTML sanificato (come il documento)
              */
             html: string;
+            /** Markdown */
+            markdown?: string | null;
             /** Id */
             id: string;
             /** Immagini Sezione */
