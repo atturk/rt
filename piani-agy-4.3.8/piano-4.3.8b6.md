@@ -45,6 +45,21 @@ Voci: Markdown, PDF, Lezione (.rt), Solo le fonti (zip), più la spunta «Includ
   pulsanti nuovi); pytest del job `pdf`/`zip` a file separati, dei nuovi endpoint e della cancellazione; test di `rt/window.py` per
   condivisione multipla e pulizia delle cartelle temporanee con oggetti finti, come i test esistenti.
 
-# In coda (dalla beta 5, dopo la voce 1)
+## 2. Studio: Cmd+A seleziona e copia solo l'unità
+Oggi Cmd+A (Ctrl+A su Windows) in Studio seleziona tutta la pagina, barra e intestazione comprese. Nella fase di lettura
+(`frontend/src/components/study/Study.tsx`, stesso `onKeyDown` delle altre scorciatoie, stessa guardia per campi di testo, menu e
+dialoghi; non nella lettura veloce) Cmd/Ctrl+A seleziona solo l'unità aperta: il titolo `h2#study-unit-title` e il testo
+`[data-testid=study-text]` (`selection.setBaseAndExtent` dal titolo alla fine del testo).
+- Fuori dalla selezione e dalla copia: il chip del timestamp, i pulsanti e le strisce delle immagini, i marcatori delle note
+  (`user-select: none` dove non c'è già, oppure esclusi nella copia).
+- Copia ben formattata: `handleCopy` di `UnitText` oggi taglia la selezione al solo testo (`clipToRoot`) e lascia il titolo fuori.
+  Con la selezione dell'unità intera la copia mette in `text/html` il titolo come `<h2>` seguito dall'HTML del testo passato da
+  `selectionHtml` di `frontend/src/lib/copyFormat.ts` (rispetta il formato scelto in Impostazioni → Copia, formule comprese), e in
+  `text/plain` «1.2 Titolo», una riga vuota e il testo sorgente (`sourceOffsets`, come oggi). Niente sfondi degli evidenziatori nell'HTML copiato.
+- Se l'utente seleziona a mano solo una parte, la copia resta quella di oggi.
+- Test vitest: Cmd+A seleziona titolo e testo e non la barra; la copia contiene titolo e testo in HTML e testo semplice, senza il timestamp;
+  Cmd+A dentro un campo di testo resta quello del campo.
+
+# In coda (dalla beta 5, dopo le voci sopra)
 Dal thread dei metadati: `cartella` di info.yaml non aggiornata dopo la rinomina; azione «scambia date»; spiegare il 409 intermedio
 quando si modificano i metadati di fila. Da dettagliare prima di darli ad agy.
