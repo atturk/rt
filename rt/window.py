@@ -257,23 +257,26 @@ class DesktopApi:
         """Scarica una risorsa di export dall'API e apre il menu di condivisione nativo (macOS)."""
         import requests
         from rt.api import auth
-        from rt.services import secrets_service
 
         if not (isinstance(percorso_api, str) and percorso_api.startswith("/api/v1/lessons/") and "/export?" in percorso_api):
             return {"errore": "Percorso non ammesso per la condivisione."}
 
-        url = f"{self._base_url.rstrip('/')}{percorso_api}"
-        headers = {}
+        base = self._base_url.rstrip('/')
+        url = f"{base}{percorso_api}"
+        http = requests.Session()
         try:
-            if secrets_service.is_ready():
-                token = secrets_service.store().get(auth.TOKEN_SECRET)
-                if token:
-                    headers["Authorization"] = f"Bearer {token}"
+            # Il token salvato può mancare (es. archivio dei segreti di un altro Mac dopo un ripristino):
+            # allora si apre una sessione con un codice monouso, come il link di accesso del browser.
+            token = auth.saved_token()
+            if token:
+                http.headers["Authorization"] = f"Bearer {token}"
+            else:
+                http.get(f"{base}/login", params={"code": auth.create_login_code()}, allow_redirects=False, timeout=15)
         except Exception:
             pass
 
         try:
-            resp = requests.get(url, headers=headers, timeout=60)
+            resp = http.get(url, timeout=60)
             if not resp.ok:
                 try:
                     data = resp.json()

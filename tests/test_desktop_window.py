@@ -910,7 +910,21 @@ def test_condividi_native(monkeypatch):
             "Content-Disposition": "attachment; filename*=UTF-8''lezione%20prova.pdf"
         }
 
-    monkeypatch.setattr(requests, "get", lambda *args, **kwargs: FakeResponse())
+    calls = []
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, url, **kwargs):
+            calls.append((url, dict(self.headers), kwargs))
+            return FakeResponse()
+
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    from rt.api import auth
+    # Senza token salvato (archivio dei segreti di un altro Mac): sessione con codice monouso.
+    monkeypatch.setattr(auth, "saved_token", lambda: None)
+    monkeypatch.setattr(auth, "create_login_code", lambda: "codice")
 
     # Mock AppKit e PyObjCTools
     picker_instance = Mock()
@@ -934,11 +948,19 @@ def test_condividi_native(monkeypatch):
 
     res = api.condividi("/api/v1/lessons/1/export?format=pdf")
     assert res == {"ok": True}
+    assert calls[0][0] == "http://127.0.0.1:8765/login" and calls[0][2]["params"] == {"code": "codice"}
+    assert calls[1][0] == "http://127.0.0.1:8765/api/v1/lessons/1/export?format=pdf"
+    assert "Authorization" not in calls[1][1]
+    # Con il token salvato e valido basta l'header
+    calls.clear()
+    monkeypatch.setattr(auth, "saved_token", lambda: "tok")
+    assert api.condividi("/api/v1/lessons/1/export?format=pdf") == {"ok": True}
+    assert len(calls) == 1 and calls[0][1]["Authorization"] == "Bearer tok"
 
-    picker_class.assert_called_once()
+    assert picker_class.call_count == 2
     file_arg = picker_class.call_args[0][0][0]
     assert file_arg.endswith("lezione prova.pdf")
-    picker_instance.showRelativeToRect_ofView_preferredEdge_.assert_called_once()
+    assert picker_instance.showRelativeToRect_ofView_preferredEdge_.call_count == 2
 
 
 def test_set_zoom_macos(monkeypatch):
