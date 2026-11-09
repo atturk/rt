@@ -174,7 +174,9 @@ describe('dragPreview', () => {
     expect(preview?.querySelector('.rt-drag-preview-ban')).toBeNull()
 
     // Ritorno sull'header: il divieto ricompare
-    header.dispatchEvent(dragOverHeader)
+    const backOnHeader = new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 100, clientY: 100 }) as any
+    Object.defineProperty(backOnHeader, 'dataTransfer', { value: { dropEffect: 'copy' }, writable: true })
+    header.dispatchEvent(backOnHeader)
     expect(preview?.querySelector('.rt-drag-preview-ban')).not.toBeNull()
 
     document.body.removeChild(header)
@@ -256,5 +258,20 @@ describe('dragPreview', () => {
     expect(document.querySelector('.rt-drag-preview')).toBeNull()
 
     document.body.removeChild(header)
+  })
+
+  it("l'editor riceve dragover e drop non ancora prevenuti (CodeMirror ignora gli eventi prevenuti)", () => {
+    const editor = document.createElement('div')
+    const seen: boolean[] = []
+    editor.addEventListener('dragover', (e) => { seen.push(e.defaultPrevented); e.preventDefault() })
+    editor.addEventListener('drop', (e) => { seen.push(e.defaultPrevented); e.preventDefault() })
+    document.body.appendChild(editor)
+    const preview = startDragPreview({ clientX: 10, clientY: 10 } as unknown as DragEvent, { urls: ['/t.png'] })
+    editor.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }))
+    expect(preview?.querySelector('.rt-drag-preview-ban')).toBeNull()
+    editor.dispatchEvent(new MouseEvent('drop', { bubbles: true, cancelable: true }))
+    expect(seen).toEqual([false, false])
+    expect(document.querySelector('.rt-drag-preview')).toBeNull()
+    document.body.removeChild(editor)
   })
 })

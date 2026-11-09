@@ -220,26 +220,25 @@ export function startDragPreview(
     container.style.top = `${clientY + offsetY}px`
   }
 
+  // Capture: solo la posizione. Niente preventDefault qui: CodeMirror ignora gli eventi
+  // già "prevenuti" e il testo non accetterebbe più il rilascio.
   const onDragOverCapture = (e: DragEvent) => {
     updatePosition(e.clientX, e.clientY)
-    // preventDefault permette a WebKit di continuare a inviare eventi dragover con coordinate corrette su tutta la finestra
-    e.preventDefault()
   }
 
+  // Bubble su window, dopo i bersagli: chi accetta il rilascio ha già chiamato preventDefault.
   const onDragOverBubble = (e: DragEvent) => {
-    const effect = e.dataTransfer?.dropEffect
-    const isAllowed = effect === 'copy' || effect === 'move'
-    if (isAllowed) {
+    if (e.defaultPrevented) {
       setBan(false)
-    } else {
-      try {
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = 'none'
-        }
-      } catch {
-        // Ignora se non scrivibile
-      }
-      setBan(true)
+      return
+    }
+    setBan(true)
+    // preventDefault tiene vivi i dragover con coordinate corrette in WebKit; dropEffect none vieta il rilascio.
+    e.preventDefault()
+    try {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    } catch {
+      // Ignora se non scrivibile
     }
   }
 
@@ -247,12 +246,9 @@ export function startDragPreview(
     updatePosition(e.clientX, e.clientY)
   }
 
+  // Bubble: un rilascio che nessuno ha gestito non deve far aprire il file al browser.
   const onDrop = (e: DragEvent) => {
-    const effect = e.dataTransfer?.dropEffect
-    const isAllowed = effect === 'copy' || effect === 'move'
-    if (!isAllowed) {
-      e.preventDefault()
-    }
+    if (!e.defaultPrevented) e.preventDefault()
     stopDragPreview()
   }
 
@@ -262,24 +258,16 @@ export function startDragPreview(
 
   window.addEventListener('dragover', onDragOverCapture, { capture: true })
   window.addEventListener('dragover', onDragOverBubble, { capture: false })
-  document.addEventListener('dragover', onDragOverCapture, { capture: true })
-  document.addEventListener('dragover', onDragOverBubble, { capture: false })
   window.addEventListener('drag', onDrag, { capture: true })
   window.addEventListener('dragend', cleanup, { capture: true })
-  document.addEventListener('dragend', cleanup, { capture: true })
-  window.addEventListener('drop', onDrop, { capture: true })
-  document.addEventListener('drop', onDrop, { capture: true })
+  window.addEventListener('drop', onDrop, { capture: false })
 
   activeCleanupFn = () => {
     window.removeEventListener('dragover', onDragOverCapture, { capture: true })
     window.removeEventListener('dragover', onDragOverBubble, { capture: false })
-    document.removeEventListener('dragover', onDragOverCapture, { capture: true })
-    document.removeEventListener('dragover', onDragOverBubble, { capture: false })
     window.removeEventListener('drag', onDrag, { capture: true })
     window.removeEventListener('dragend', cleanup, { capture: true })
-    document.removeEventListener('dragend', cleanup, { capture: true })
-    window.removeEventListener('drop', onDrop, { capture: true })
-    document.removeEventListener('drop', onDrop, { capture: true })
+    window.removeEventListener('drop', onDrop, { capture: false })
     if (container.parentElement) {
       container.parentElement.removeChild(container)
     }
