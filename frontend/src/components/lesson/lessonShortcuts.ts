@@ -5,7 +5,7 @@ import { unitRanges } from './lessonUnits'
 import { timecodeSeconds } from './timecodeLock'
 import { createUnitShortcuts } from './unitShortcuts'
 
-type Options = { lessonId: number; units: string[]; navigate: (href: string) => void }
+type Options = { lessonId: number; units: string[]; keywords?: Record<string, string[]>; navigate: (href: string) => void }
 export const setUnitShortcuts = StateEffect.define<Options>()
 
 class Shortcuts extends WidgetType {
@@ -19,13 +19,14 @@ class Shortcuts extends WidgetType {
   eq(other: Shortcuts) {
     return other.unit === this.unit && other.options.lessonId === this.options.lessonId
       && other.options.navigate === this.options.navigate
+      && (other.options.keywords?.[other.unit] ?? []).join('\n') === (this.options.keywords?.[this.unit] ?? []).join('\n')
   }
   toDOM() {
-    const node = createUnitShortcuts(this.options.lessonId, this.unit, this.options.navigate)
+    const node = createUnitShortcuts(this.options.lessonId, this.unit, this.options.navigate, this.options.keywords?.[this.unit])
     node.classList.add('rt-editor-shortcuts')
     return node
   }
-  destroy(node: HTMLElement) { node.querySelectorAll<HTMLElement>('a').forEach(link => unmountDomTooltip(link)) }
+  destroy(node: HTMLElement) { node.querySelectorAll<HTMLElement>('a, button').forEach(link => unmountDomTooltip(link)) }
   ignoreEvent() { return true }
 }
 

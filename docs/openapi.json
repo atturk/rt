@@ -4924,6 +4924,14 @@
             "title": "Immagini Sezione",
             "type": "array"
           },
+          "key_concepts": {
+            "description": "Keywords dell'unità dalla scaletta (vuoto se mancano)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Concepts",
+            "type": "array"
+          },
           "relevance": {
             "anyOf": [
               {

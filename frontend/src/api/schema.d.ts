@@ -5811,6 +5811,11 @@ export interface components {
             end_segment_id: string;
             /** Immagini Sezione */
             immagini_sezione?: string[];
+            /**
+             * Key Concepts
+             * @description Keywords dell'unità dalla scaletta (vuoto se mancano)
+             */
+            key_concepts?: string[];
             /** Relevance */
             relevance?: ("organizational" | "no_content") | null;
             /**

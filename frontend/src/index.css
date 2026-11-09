@@ -311,7 +311,7 @@
 }
 :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts:hover,
 :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts:focus-within { opacity: 1; }
-:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a {
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts :is(a, button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -320,8 +320,8 @@
   border-radius: 8px;
   color: var(--mute);
 }
-:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a:hover { color: var(--fg); }
-:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts :is(a, button):hover { color: var(--fg); }
+:is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts :is(a, button):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts svg { width: 13px; height: 13px; }
 @media (hover: none) { :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts { opacity: 1; } }
 @media print { :is(.rt-document, .rt-lesson-editor) .rt-unit-shortcuts { display: none; } }
