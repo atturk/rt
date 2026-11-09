@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { expect, type APIRequestContext } from '@playwright/test'
 
-import { test, apiGet, authHeaders, loginViaLink, uniqueAudio } from './support'
+import { test, apiGet, authHeaders, loginViaLink, saveFromPopup, uniqueAudio } from './support'
 
 // Pagina Lezioni del design 4.2 (schermate 01, 01b, 01c): gruppi per data, materia o docente,
 // ordinamento, popup Info, selezione con lo scaricamento. Le scelte restano nel browser.
@@ -142,19 +142,15 @@ test('selezione per gruppo: recall sulle lezioni scelte e scaricamento zip', asy
   await page.setViewportSize({ width: 1280, height: 800 })
 
   // L'export è un job: avanzamento nella barra, poi a job finito compare il bottone Salva.
-  await bar.getByRole('button', { name: 'Scarica zip' }).click()
+  await bar.getByRole('button', { name: 'Esporta lezioni (.rt)' }).click()
   const check = page.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' })
   await expect(check).toHaveAttribute('aria-checked', 'true')
   await check.click()
   await expect.poll(async () => (await apiGet<Record<string, unknown>>(page.request, '/preferences'))['export.study']).toBe(false)
   const exportRequest = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/v1/lesson-exports'))
-  await page.getByRole('menuitem', { name: 'Scarica zip', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Esporta lezioni (.rt)', exact: true }).click()
   expect((await exportRequest).postDataJSON().study).toBe(false)
-  const saveBtn = bar.getByRole('button', { name: 'Salva' })
-  await expect(saveBtn).toBeVisible({ timeout: 50_000 })
-  const download = page.waitForEvent('download', { timeout: 50_000 })
-  await saveBtn.click()
-  const file = await download
+  const file = await saveFromPopup(page)
   expect(file.suggestedFilename()).toMatch(/\.zip$/)
 
   await bar.getByRole('button', { name: 'Annulla' }).click()
@@ -214,8 +210,8 @@ test('selezione: Elimina le lezioni selezionate con la conferma scritta; il Mark
   await row(second).getByRole('checkbox').check()
   const bar = page.getByTestId('selection-bar')
 
-  // Senza documento finale il Markdown in blocco non c'è: il suggerimento dice perché.
-  const markdown = bar.getByRole('button', { name: 'Scarica Markdown' })
+  // Senza documento finale il PDF in blocco non c'è: il suggerimento dice perché.
+  const markdown = bar.getByRole('button', { name: 'Esporta PDF' })
   await expect(markdown).toHaveAttribute('aria-disabled', 'true')
   await markdown.hover()
   await expect(page.getByRole('tooltip').filter({ hasText: 'documento finale' })).toBeVisible()
