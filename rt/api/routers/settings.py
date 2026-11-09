@@ -149,6 +149,7 @@ class CustomStudyStatusIn(BaseModel):
     nome: str = Field(max_length=24)
     colore: str = "text-amber-500"
     icona: str = "Star"
+    salta: bool = Field(default=False, description="Aprendo lo Studio si salta l'unità, come Appresa e Ignorata")
 
 
 class PreferencesSettings(BaseModel):

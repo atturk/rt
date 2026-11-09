@@ -4025,6 +4025,12 @@
             "maxLength": 24,
             "title": "Nome",
             "type": "string"
+          },
+          "salta": {
+            "default": false,
+            "description": "Aprendo lo Studio si salta l'unità, come Appresa e Ignorata",
+            "title": "Salta",
+            "type": "boolean"
           }
         },
         "required": [

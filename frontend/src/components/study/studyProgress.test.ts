@@ -15,6 +15,10 @@ it('apre la prima unità non appresa, oppure la prima quando sono tutte apprese'
   expect(initialStudyUnit([])).toBe(0)
   // Uno stato personalizzato conta come non appreso
   expect(initialStudyUnit([{ status: 'appreso' }, { status: 'c1' as never }])).toBe(1)
+  // …a meno che sia segnato «Salta in Studio»
+  const custom = [{ id: 'c1', nome: 'Anki', colore: 'text-indigo-500', icona: 'Star', salta: true }]
+  expect(initialStudyUnit([{ status: 'appreso' }, { status: 'c1' as never }, {}], custom)).toBe(2)
+  expect(initialStudyUnit([{ status: 'c2' as never }, { status: 'c1' as never }], custom)).toBe(0)
 })
 
 it('cicla i quattro stati senza promozioni automatiche', () => {

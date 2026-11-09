@@ -23,6 +23,8 @@ export interface CustomStudyStatus {
   nome: string
   colore: string
   icona: string
+  /** Aprendo lo Studio le unità con questo stato si saltano, come Appresa e Ignorata. */
+  salta?: boolean
 }
 
 export const PRESET_ICONS: Record<string, LucideIcon> = {
@@ -145,8 +147,11 @@ export const STATUS_LABELS = new Proxy(
   }
 )
 
-export function initialStudyUnit(units: { status?: StudyStatus }[]): number {
-  const index = units.findIndex((unit) => unit.status !== 'appreso' && unit.status !== 'ignorata')
+export const SKIPPED_DEFAULT_STATUSES = ['appreso', 'ignorata']
+
+export function initialStudyUnit(units: { status?: StudyStatus }[], customStatuses: CustomStudyStatus[] = []): number {
+  const skipped = new Set([...SKIPPED_DEFAULT_STATUSES, ...customStatuses.filter((s) => s.salta).map((s) => s.id)])
+  const index = units.findIndex((unit) => !skipped.has(unit.status ?? 'da-imparare'))
   return index < 0 ? 0 : index
 }
 

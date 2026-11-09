@@ -5363,6 +5363,12 @@ export interface components {
             id: string;
             /** Nome */
             nome: string;
+            /**
+             * Salta
+             * @description Aprendo lo Studio si salta l'unità, come Appresa e Ignorata
+             * @default false
+             */
+            salta: boolean;
         };
         /** Decision */
         Decision: {

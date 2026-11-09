@@ -135,17 +135,27 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   // Le unità della lezione nell'ordine: con onlyUnits quelle della parte.
   const [units, setUnits] = useState<StudyUnit[] | null>(null)
   const loaded = study.data && study.data.id === lesson?.id ? study.data : null
+  const settingsQuery = useSettings()
+  const customStatuses = useMemo(() => (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? [], [settingsQuery.data])
+  // Prima unità scelta in automatico: se le impostazioni arrivano dopo, gli stati «Salta in Studio» la correggono.
+  const autoStart = useRef(false)
   useEffect(() => {
     // La lista si fissa all'ingresso nella lezione: dopo ogni risposta il conteggio cambia, l'ordine no.
     if (loaded && units === null) {
       // oxlint-disable-next-line react/set-state-in-effect
       setUnits(onlyUnits ? loaded.units.filter((u) => onlyUnits.includes(u.id)) : loaded.units)
       const requested = onlyUnits ? -1 : loaded.units.findIndex(u => u.id === new URLSearchParams(location.search).get('unita'))
-      setUnitIndex(requested >= 0 ? requested : enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units))
+      autoStart.current = !(requested >= 0 || enterLast.current || onlyUnits || enterFirst.current)
+      setUnitIndex(requested >= 0 ? requested : enterLast.current ? Math.max(0, loaded.units.length - 1) : onlyUnits || enterFirst.current ? 0 : initialStudyUnit(loaded.units, customStatuses))
       enterLast.current = false
       enterFirst.current = false
     }
-  }, [loaded, units, onlyUnits, location.search])
+  }, [loaded, units, onlyUnits, location.search, customStatuses])
+  useEffect(() => {
+    if (!settingsQuery.data || !units) return
+    if (autoStart.current) setUnitIndex(initialStudyUnit(units, customStatuses))
+    autoStart.current = false
+  }, [settingsQuery.data, units, customStatuses])
   const unit = units?.[unitIndex] ?? null
   const lessonUrl = lesson ? `/lezioni/${lesson.id}${unit ? `#unit-${encodeURIComponent(unit.id)}` : ''}` : back.to
   const studyBack = { to: lessonUrl, label: back.label, state: { fromStudy: true } }
@@ -186,8 +196,6 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
       }
     }
   }, [unit, live?.start, audioPlayerOpen, playerFollowsUnit, seek, audioRef])
-  const settingsQuery = useSettings()
-  const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
   const savedOrder = (settingsQuery.data?.ordine_stati_studio as string[]) ?? []
   const statusOrder = resolveStatusOrder(customStatuses, savedOrder)
   const status = useStudyStatus(lesson?.id ?? 0)

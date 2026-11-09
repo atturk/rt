@@ -8,6 +8,7 @@ import {
 import { api, unwrap } from '@/api/client'
 import { useSaveStudyStatuses, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
@@ -18,6 +19,7 @@ import {
   PRESET_ICONS,
   resolveStatusOrder,
   resolveStudyStatus,
+  SKIPPED_DEFAULT_STATUSES,
   type CustomStudyStatus,
 } from '@/components/study/studyProgress'
 import { moveItem } from '@/lib/order'
@@ -42,7 +44,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
 
   const persist = (nextStatuses: CustomStudyStatus[], nextOrder: string[]) => {
     saveStudyStatuses.mutate({
-      stati_studio: nextStatuses,
+      stati_studio: nextStatuses.map((status) => ({ ...status, salta: Boolean(status.salta) })),
       ordine_stati_studio: nextOrder,
     })
   }
@@ -228,7 +230,22 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
                       </option>
                     ))}
                   </select>
+
+                  <Tooltip content="Aprendo lo Studio le unità con questo stato si saltano, come Appresa e Ignorata">{(trigger) => (
+                    <label {...trigger} className="flex items-center gap-2 text-meta text-muted-foreground">
+                      <Checkbox
+                        label={`Salta in Studio le unità «${custom?.nome ?? ''}»`}
+                        checked={Boolean(custom?.salta)}
+                        onChange={(salta) => updateStatus(id, { salta })}
+                      />
+                      Salta in Studio
+                    </label>
+                  )}</Tooltip>
                 </div>
+              )}
+
+              {isDefault && SKIPPED_DEFAULT_STATUSES.includes(id) && (
+                <span className="text-meta text-muted-foreground">Saltata in Studio</span>
               )}
 
               {!isDefault && custom && (

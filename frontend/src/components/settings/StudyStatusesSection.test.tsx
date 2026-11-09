@@ -42,7 +42,7 @@ it('permette di aggiungere uno stato personalizzato e di eliminarlo', async () =
   const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
     data: {
       ...testSettings,
-      stati_studio: [{ id: 'c1', nome: 'Nuovo stato', colore: 'text-amber-500', icona: 'Star' }],
+      stati_studio: [{ id: 'c1', nome: 'Nuovo stato', colore: 'text-amber-500', icona: 'Star', salta: false }],
       ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
     },
     response: new Response('{}', { status: 200 }),
@@ -75,7 +75,7 @@ it('permette di aggiungere uno stato personalizzato e di eliminarlo', async () =
 it('elimina uno stato personalizzato con richiesta di conferma se in uso', async () => {
   const settingsWithCustom = {
     ...testSettings,
-    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
+    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star', salta: false }],
     ordine_stati_studio: ['da-imparare', 'c1', 'in-apprendimento', 'appreso', 'ignorata'],
   }
 
@@ -194,7 +194,7 @@ it('Alt+↓ sulla maniglia sposta di una posizione', async () => {
 it('il nome dello stato si salva con Invio, non a ogni tasto', async () => {
   const settingsWithCustom = {
     ...testSettings,
-    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
+    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star', salta: false }],
     ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
   }
   const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
@@ -214,4 +214,27 @@ it('il nome dello stato si salva con Invio, non a ogni tasto', async () => {
   expect(putSpy).toHaveBeenCalledWith('/api/v1/settings/study-statuses', expect.objectContaining({
     body: expect.objectContaining({ stati_studio: [expect.objectContaining({ nome: 'Carte Anki' })] }),
   }))
+})
+
+it('«Salta in Studio» si salva con lo stato personalizzato', async () => {
+  const client = new QueryClient()
+  const settingsWithCustom = {
+    ...testSettings,
+    stati_studio: [{ id: 'c1', nome: 'Anki', colore: 'text-indigo-500', icona: 'Star', salta: false }],
+    ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
+  }
+  const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
+    data: settingsWithCustom, response: new Response('{}', { status: 200 }),
+  } as never)
+  render(
+    <QueryClientProvider client={client}>
+      <StudyStatusesSection settings={settingsWithCustom} />
+    </QueryClientProvider>,
+  )
+  expect(screen.getAllByText('Saltata in Studio')).toHaveLength(2)
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Salta in Studio le unità «Anki»' }))
+  await waitFor(() => expect(putSpy).toHaveBeenCalled())
+  const body = (putSpy.mock.calls[0][1] as { body: { stati_studio: { salta: boolean }[] } }).body
+  expect(body.stati_studio[0].salta).toBe(true)
+  putSpy.mockRestore()
 })
