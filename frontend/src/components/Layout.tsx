@@ -15,7 +15,6 @@ import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newL
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
-import { FileStatusBar } from '@/components/ui/file-status'
 import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
@@ -23,6 +22,9 @@ import { useUploadGuard } from '@/lib/uploadQueue'
 import { StudyZenContext, ZenContext, RsvpLayoutContext, IRLEN_COLORS, type RsvpLayoutState } from '@/lib/zen'
 import { useUpdatePopup } from '@/components/settings/useAppUpdate'
 import { cn } from '@/lib/utils'
+
+// Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
+const FileStatusBar = lazy(() => import('@/components/ui/file-status').then((m) => ({ default: m.FileStatusBar })))
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
 const NewLessonDialog = lazy(() => import('@/components/lessons/NewLessonDialog').then((m) => ({ default: m.NewLessonDialog })))
@@ -205,7 +207,7 @@ export function Layout() {
       />
       <ImageViewer />
       <BackupDialog />
-      <FileStatusBar />
+      <Suspense fallback={null}><FileStatusBar /></Suspense>
       {openedFileError && (
         <div className="fixed bottom-4 right-4 z-50 max-w-md">
           <Alert tone="danger" className="flex items-center justify-between gap-2">
