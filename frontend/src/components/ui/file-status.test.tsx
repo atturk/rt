@@ -20,19 +20,29 @@ describe('FileStatusBar & trackFileExport', () => {
     clearFileStatus()
   })
 
-  it('busy: mostra lo spinner e il messaggio durante la preparazione', () => {
+  it('busy: mostra lo spinner, messaggio e pulsante Annulla', () => {
+    const onCancel = vi.fn()
     render(<FileStatusBar />)
     act(() => {
-      setFileStatus({ kind: 'busy', message: 'Preparo il PDF…' })
+      setFileStatus({ kind: 'busy', message: 'Preparo il PDF…', onCancel })
     })
 
     const bar = screen.getByRole('status')
     expect(bar).toBeInTheDocument()
     expect(bar).toHaveTextContent('Preparo il PDF…')
+
+    const cancelBtn = screen.getByRole('button', { name: 'Annulla' })
+    expect(cancelBtn).toBeInTheDocument()
+    act(() => {
+      fireEvent.click(cancelBtn)
+    })
+    expect(onCancel).toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('preparazione veloce (< 1.5s, non-iOS): salva da solo e si chiude dopo 4s', async () => {
+  it('nessun salvataggio automatico: anche con file veloce mostra Salva, Condividi e Annulla', async () => {
     const saveSpy = vi.spyOn(fileExport, 'saveFile').mockImplementation(() => {})
+    vi.spyOn(fileExport, 'canShareFiles').mockReturnValue(true)
     render(<FileStatusBar />)
 
     const file = new File(['pdf-data'], 'lezione.pdf', { type: 'application/pdf' })
@@ -45,63 +55,86 @@ describe('FileStatusBar & trackFileExport', () => {
       })
     })
 
-    expect(saveSpy).toHaveBeenCalledWith(file)
+    // Non salva in automatico!
+    expect(saveSpy).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('PDF pronto: lezione.pdf')
+    expect(screen.getByRole('button', { name: 'Salva' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Condividi' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Annulla' })).toBeInTheDocument()
 
-    // Dopo 4s si chiude
+    // Clic su Salva
     act(() => {
-      vi.advanceTimersByTime(3999)
+      fireEvent.click(screen.getByRole('button', { name: 'Salva' }))
     })
-    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(saveSpy).toHaveBeenCalledWith(file)
+
+    // Dopo done si chiude dopo 4s
     act(() => {
-      vi.advanceTimersByTime(2)
+      vi.advanceTimersByTime(4000)
     })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('preparazione lenta (> 1.5s): non salva da solo, mostra il pulsante Salva', async () => {
-    const saveSpy = vi.spyOn(fileExport, 'saveFile').mockImplementation(() => {})
+  it('file multipli: mostra etichetta, elenco espandibile, Salva e Condividi', () => {
+    const onSave = vi.fn()
+    const onShare = vi.fn()
+    const onCancel = vi.fn()
     render(<FileStatusBar />)
 
-    const file = new File(['pdf-data'], 'lungo.pdf', { type: 'application/pdf' })
-    let resolvePromise!: (f: File) => void
-    const promise = new Promise<File>((resolve) => {
-      resolvePromise = resolve
-    })
-
-    let trackingPromise: Promise<File | null>
     act(() => {
-      trackingPromise = trackFileExport(promise, {
-        busyMessage: 'Preparo il PDF…',
-        doneLabel: 'PDF pronto',
+      setFileStatus({
+        kind: 'ready',
+        label: '3 PDF pronti',
+        files: [{ name: 'Lezione 1.pdf' }, { name: 'Lezione 2.pdf' }, { name: 'Lezione 3.pdf' }],
+        skippedMessage: '(1 senza documento finale saltata)',
+        canShare: true,
+        onSave,
+        onShare,
+        onCancel,
       })
     })
 
-    expect(screen.getByRole('status')).toHaveTextContent('Preparo il PDF…')
+    const bar = screen.getByRole('status')
+    expect(bar).toHaveTextContent('3 PDF pronti (1 senza documento finale saltata)')
 
-    // Avanza di 2 secondi prima che il file sia pronto
-    await act(async () => {
-      vi.advanceTimersByTime(2000)
-      resolvePromise(file)
-      await trackingPromise
-    })
+    const listBtn = screen.getByRole('button', { name: 'Elenco' })
+    expect(screen.queryByTestId('file-status-list')).not.toBeInTheDocument()
 
-    expect(saveSpy).not.toHaveBeenCalled()
-    expect(screen.getByRole('status')).toHaveTextContent('PDF pronto: lungo.pdf')
-    const salvaBtn = screen.getByRole('button', { name: 'Salva' })
-    expect(salvaBtn).toBeInTheDocument()
-
-    // Clic su Salva
+    // Mostra l'elenco dei nomi
     act(() => {
-      fireEvent.click(salvaBtn)
+      fireEvent.click(listBtn)
     })
-    expect(saveSpy).toHaveBeenCalledWith(file)
-    expect(screen.getByRole('status')).toHaveTextContent('PDF pronto: lungo.pdf')
+    expect(screen.getByTestId('file-status-list')).toBeInTheDocument()
+    expect(screen.getByText('Lezione 1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Lezione 2.pdf')).toBeInTheDocument()
 
-    // Si chiude dopo 4s
+    // Salva
     act(() => {
-      vi.advanceTimersByTime(4000)
+      fireEvent.click(screen.getByRole('button', { name: 'Salva' }))
     })
+    expect(onSave).toHaveBeenCalled()
+  })
+
+  it('Esc chiude il popup e chiama onCancel', () => {
+    const onCancel = vi.fn()
+    render(<FileStatusBar />)
+
+    act(() => {
+      setFileStatus({
+        kind: 'ready',
+        label: 'PDF pronto',
+        filename: 'lezione.pdf',
+        canShare: false,
+        onSave: vi.fn(),
+        onCancel,
+      })
+    })
+
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' })
+    })
+    expect(onCancel).toHaveBeenCalled()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 

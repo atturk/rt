@@ -107,16 +107,19 @@ def _slide_render_methods(real, target):
         methods.append(('LibreOffice', [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]))
     if _has_keynote():
         pdf_out = os.path.join(target, 'keynote_export.pdf')
+        # Percorsi passati come argomenti: niente problemi con virgolette nei nomi
         script = (
-            'tell application "Keynote"\n'
-            f'  set doc to open POSIX file "{real}"\n'
-            '  try\n'
-            f'    export doc to POSIX file "{pdf_out}" as PDF\n'
-            '  end try\n'
-            '  close doc saving no\n'
-            'end tell'
+            'on run argv\n'
+            '  tell application "Keynote"\n'
+            '    set doc to open POSIX file (item 1 of argv)\n'
+            '    try\n'
+            '      export doc to POSIX file (item 2 of argv) as PDF\n'
+            '    end try\n'
+            '    close doc saving no\n'
+            '  end tell\n'
+            'end run'
         )
-        methods.append(('Keynote', ['osascript', '-e', script]))
+        methods.append(('Keynote', ['osascript', '-e', script, real, pdf_out]))
     if sys.platform == 'darwin' and shutil.which('qlmanage'):
         methods.append(('Quick Look', [shutil.which('qlmanage'), '-p', '-o', target, real]))
     return methods

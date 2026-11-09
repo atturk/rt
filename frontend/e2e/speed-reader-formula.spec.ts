@@ -30,7 +30,7 @@ test('formule nella lettura veloce: formula corta scala 1, formula lunga adattat
     })
 
     // Apri lettura veloce
-    await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+    await page.getByRole('button', { name: 'Lettura veloce · L', exact: true }).click()
     const reader = page.getByTestId('speed-reader')
     await expect(reader).toBeVisible()
 

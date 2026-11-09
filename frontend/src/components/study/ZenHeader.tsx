@@ -81,7 +81,7 @@ export function ZenHeader({
       )}
       {hasAudio && onToggleAudio && (
         <IconButton
-          label={audioOpen ? 'Chiudi player audio' : 'Player audio'}
+          label={audioOpen ? 'Chiudi player audio · P' : 'Player audio · P'}
           icon={Headphones}
           active={audioOpen}
           aria-expanded={audioOpen}

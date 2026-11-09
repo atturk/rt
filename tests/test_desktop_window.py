@@ -992,3 +992,108 @@ def test_set_zoom_windows(monkeypatch):
     assert fake_webview.ZoomFactor == 1.5
 
 
+def test_salva_esportazione_and_cleanup(tmp_path, monkeypatch, webview):
+    from rt.services.api_jobs import exports_root
+    from rt.api import jobs as api_jobs
+
+    fake_win = Mock()
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    job_id = "job123"
+    job_dir = os.path.join(exports_root(), job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "l1.pdf"), "w") as f:
+        f.write("pdf1")
+    with open(os.path.join(job_dir, "l2.pdf"), "w") as f:
+        f.write("pdf2")
+    with open(os.path.join(job_dir, "lezioni.zip"), "w") as f:
+        f.write("zip")
+
+    class FakeQueue:
+        def get(self, jid):
+            return SimpleNamespace(id=jid, result={"files": ["l1.pdf", "l2.pdf"], "file": "lezioni.zip"})
+
+    monkeypatch.setattr(api_jobs, "queue", lambda: FakeQueue())
+
+    dest = tmp_path / "target_folder"
+    dest.mkdir()
+    fake_win.create_file_dialog = Mock(return_value=[str(dest)])
+
+    # Aggiungi una finta cartella condivisione temporanea
+    fake_temp = tmp_path / "temp_condividi"
+    fake_temp.mkdir()
+    window._condividi_temp_dirs.append(str(fake_temp))
+
+    res = api.salva_esportazione(job_id)
+    assert res == {"ok": True, "count": 2}
+    assert (dest / "l1.pdf").is_file()
+    assert (dest / "l2.pdf").is_file()
+    assert not (dest / "lezioni.zip").exists()
+    assert not os.path.exists(job_dir)
+    assert len(window._condividi_temp_dirs) == 0
+    assert not fake_temp.exists()
+
+
+def test_condividi_esportazione_multiple(tmp_path, monkeypatch):
+    from rt.services.api_jobs import exports_root
+    from rt.api import jobs as api_jobs
+
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_view = Mock()
+    fake_view.bounds.return_value = SimpleNamespace(size=SimpleNamespace(width=1000, height=800))
+    fake_native.contentView.return_value = fake_view
+    fake_win.native = fake_native
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    job_id = "job456"
+    job_dir = os.path.join(exports_root(), job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "l1.pdf"), "w") as f:
+        f.write("pdf1")
+    with open(os.path.join(job_dir, "l2.pdf"), "w") as f:
+        f.write("pdf2")
+
+    class FakeQueue:
+        def get(self, jid):
+            return SimpleNamespace(id=jid, result={"files": ["l1.pdf", "l2.pdf"]})
+
+    monkeypatch.setattr(api_jobs, "queue", lambda: FakeQueue())
+
+    picker_instance = Mock()
+    picker_class = Mock(return_value=picker_instance)
+    picker_alloc = SimpleNamespace(initWithItems_=picker_class)
+
+    appkit = ModuleType("AppKit")
+    appkit.NSSharingServicePicker = SimpleNamespace(alloc=lambda: picker_alloc)
+
+    foundation = ModuleType("Foundation")
+    foundation.NSURL = SimpleNamespace(fileURLWithPath_=lambda path: f"file://{path}")
+    foundation.NSMakeRect = lambda x, y, w, h: (x, y, w, h)
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "Foundation", foundation)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    res = api.condividi_esportazione(job_id)
+    assert res == {"ok": True}
+    picker_class.assert_called_once()
+    items = picker_class.call_args[0][0]
+    assert len(items) == 2
+    assert len(window._condividi_temp_dirs) == 1
+    temp_dir = window._condividi_temp_dirs[0]
+    assert os.path.isdir(temp_dir)
+
+    # Pulizia
+    p_res = api.pulisci_condivisione()
+    assert p_res == {"ok": True}
+    assert len(window._condividi_temp_dirs) == 0
+    assert not os.path.exists(temp_dir)
+
+
+

@@ -446,6 +446,7 @@ export function commandActive(state: EditorState, id: string): boolean {
 }
 
 export type ShortcutPreferences = Record<string, string | null>
+export const DEFAULT_SHORTCUTS: ShortcutPreferences = {}
 export type EditorCommand = { id: string; etichetta: string; gruppo: string; predefinita: string | null; run: (view: EditorView) => boolean; personalizzabile?: boolean }
 
 export const editorCommands: readonly EditorCommand[] = [
@@ -468,6 +469,9 @@ export const editorCommands: readonly EditorCommand[] = [
   { id: 'unfold', etichetta: 'Riapri sezione', gruppo: 'Sezioni', predefinita: 'Mod-Alt-]', run: unfoldCode },
   { id: 'fold-all', etichetta: 'Chiudi tutto', gruppo: 'Sezioni', predefinita: 'Ctrl-Alt-[', run: foldAll },
   { id: 'unfold-all', etichetta: 'Riapri tutto', gruppo: 'Sezioni', predefinita: 'Ctrl-Alt-]', run: unfoldAll },
+  { id: 'study-prev-unit', etichetta: 'Unità precedente', gruppo: 'Studio', predefinita: 'Alt-ArrowLeft', run: () => false },
+  { id: 'study-next-unit', etichetta: 'Unità successiva', gruppo: 'Studio', predefinita: 'Alt-ArrowRight', run: () => false },
+  { id: 'study-copy-unit-markdown', etichetta: "Copia l'unità in Markdown", gruppo: 'Studio', predefinita: 'Mod-Alt-c', run: () => false },
 ]
 
 export function isMacKeyboard(): boolean { return /Mac|iPhone|iPad/.test(navigator.platform) }
@@ -488,13 +492,47 @@ export function commandShortcut(command: EditorCommand, preferences: ShortcutPre
   const custom = preferences[command.id]
   return custom === null ? null : typeof custom === 'string' ? custom : command.predefinita
 }
+
+const KEY_SYMBOLS: Record<string, string> = {
+  Enter: '↵',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+}
+
 export function shortcutLabel(key: string | null, mac = isMacKeyboard()): string {
   if (!key) return 'Nessuna'
   const parts = key.split(/-(?!$)/)
   const name = parts.pop() ?? ''
   const symbols: Record<string, string> = mac ? { Mod: '⌘', Meta: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧' }
     : { Mod: 'Ctrl', Meta: 'Meta', Ctrl: 'Ctrl', Alt: 'Alt', Shift: 'Shift' }
-  return [...parts.map(p => symbols[p] ?? p), name === 'Enter' ? '↵' : name.toUpperCase()].join(mac ? '' : '+')
+  const display = KEY_SYMBOLS[name] ?? name.toUpperCase()
+  return [...parts.map(p => symbols[p] ?? p), display].join(mac ? '' : '+')
+}
+
+export function matchesShortcut(event: KeyboardEvent | React.KeyboardEvent, shortcut: string | null): boolean {
+  if (!shortcut) return false
+  const mac = isMacKeyboard()
+  const normalized = normalizeShortcut(shortcut, mac)
+  const parts = normalized.split(/-(?!$)/)
+  const expectedKey = parts.pop() ?? ''
+  const expectedMeta = parts.includes('Meta')
+  const expectedCtrl = parts.includes('Ctrl')
+  const expectedAlt = parts.includes('Alt')
+  const expectedShift = parts.includes('Shift')
+
+  if (Boolean(event.metaKey) !== expectedMeta) return false
+  if (Boolean(event.ctrlKey) !== expectedCtrl) return false
+  if (Boolean(event.altKey) !== expectedAlt) return false
+  if (Boolean(event.shiftKey) !== expectedShift) return false
+
+  if (expectedKey.length === 1) {
+    if (event.key.toLowerCase() === expectedKey.toLowerCase()) return true
+    if (event.code && /^Key[A-Z]$/.test(event.code) && event.code.slice(3).toLowerCase() === expectedKey.toLowerCase()) return true
+    return false
+  }
+  return event.key === expectedKey || event.code === expectedKey
 }
 
 export function withShortcut(preferences: ShortcutPreferences, command: EditorCommand, key: string | null): ShortcutPreferences {
@@ -506,6 +544,7 @@ export function withShortcut(preferences: ShortcutPreferences, command: EditorCo
 
 export function editorKeymap(preferences: ShortcutPreferences): Extension {
   return Prec.high(keymap.of(editorCommands.flatMap(command => {
+    if (command.gruppo === 'Studio') return []
     const key = commandShortcut(command, preferences)
     // Le preferenze arrivano da JSON: una combinazione riservata o malformata non blocca l'editor.
     if (command.personalizzabile === false || !key || isReservedShortcut(key) || !/^(?:(?:Mod|Meta|Ctrl|Alt|Shift)-)*(?:-|[^-]+)$/.test(key)) return []

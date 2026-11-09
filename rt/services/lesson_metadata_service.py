@@ -56,6 +56,12 @@ def _update_locked(lesson_id: int, lesson_dir: str, updates: Dict[str, Any]) -> 
             changed = {k: v for k, v in updates.items() if info.get(k, "") != v}
             if not changed:
                 return lesson_dir
+            # Data, materia e argomenti entrano nell'impronta di prepare e outline, ma cambiarli
+            # dal modulo dei metadati non cambia i contenuti: le fasi valide restano valide
+            # (il documento si ricostruisce comunque, vedi metadati_modificati nel build).
+            from rt.core.idempotency import PhaseStatus, check_phase_status, compute_source_fingerprint
+            still_valid = [p for p in ("prepare", "outline")
+                           if check_phase_status(lesson_dir, p)[0] == PhaseStatus.VALID]
             info.update(changed)
             safe = lambda value: re.sub(r'\s+', ' ', re.sub(r'[/\\:*?"<>|]', ' ', value)).strip().rstrip('.')
             name = f"[{info.get('data') or '0000-00-00'}] {safe(info.get('materia') or 'MATERIA')} - {safe(info.get('titolo') or 'Lezione')}"
@@ -84,6 +90,10 @@ def _update_locked(lesson_id: int, lesson_dir: str, updates: Dict[str, Any]) -> 
             manifest = load_manifest(current)
             if manifest:
                 manifest.date, manifest.subject = info.get('data', ''), info.get('materia', '')
+                for phase in still_valid:
+                    record = (manifest.phase_records or {}).get(phase)
+                    if record and record.get("source_fingerprint"):
+                        record["source_fingerprint"] = compute_source_fingerprint(current, phase)
                 save_manifest(manifest, current)
             sync_lesson(session, current)
     except BaseException:

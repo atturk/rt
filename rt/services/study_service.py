@@ -59,6 +59,6 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
         for unit in study_units(lesson_dir):
             units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending", "immagini_sezione", "start_formatted")},
                           "suggested_qtype": suggested.get(unit["id"]),
-                          "html": md.render(unit["content"]), "questions": sum(unit["pending"].values()),
+                          "html": md.render(unit["content"]), "markdown": unit["content"], "questions": sum(unit["pending"].values()),
                           **{k: v for k, v in progress.get(unit["id"], {}).items() if k != "unit_id"}})
     return {"id": lesson_id, "suggestions": question_types.enabled(), "ready": ready, "has_audio": lesson_audio_file(lesson_dir) is not None, "units": units}

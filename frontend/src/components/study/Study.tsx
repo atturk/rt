@@ -4,6 +4,10 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { useLessons, useIssues } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
+import { commandShortcut, editorCommands, matchesShortcut, DEFAULT_SHORTCUTS, type ShortcutPreferences } from '@/components/lesson/markdownShortcuts'
+import { formatUnitAsMarkdown } from '@/lib/studyMarkdown'
+import { readCopyFormat, selectionHtml } from '@/lib/copyFormat'
+import { usePreference } from '@/lib/preferences'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
 import { useLessonJump } from '@/lib/useLessonJump'
@@ -85,6 +89,8 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   back: { to: string; label: string }
 }) {
   const { audioRef, currentTime, seek } = useLessonAudio()
+  const [shortcutPrefs] = usePreference<ShortcutPreferences>('editor.shortcuts', DEFAULT_SHORTCUTS)
+  const [playerFollowsUnit] = usePreference('study.player-follows-unit', true)
   const [audioPlayerOpen, setAudioPlayerOpenState] = useState(getStudyAudioOpen)
   const setAudioPlayerOpen = (value: boolean | ((prev: boolean) => boolean)) => {
     setAudioPlayerOpenState((prev) => {
@@ -163,6 +169,23 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     params.delete('azione')
     navigate({ pathname: location.pathname, search: params.toString(), hash: location.hash }, { replace: true, state: location.state })
   }, [units, loaded, onlyUnits, unitIndex, location.pathname, location.search, location.hash, location.state, navigate])
+
+  // Quando l'unità cambia e il player è aperto, l'audio segue l'inizio della nuova unità.
+  const lastActiveUnitId = useRef<string | null>(null)
+  useEffect(() => {
+    if (!unit) return
+    if (lastActiveUnitId.current === null) {
+      lastActiveUnitId.current = unit.id
+      return
+    }
+    if (lastActiveUnitId.current !== unit.id) {
+      lastActiveUnitId.current = unit.id
+      if (audioPlayerOpen && playerFollowsUnit && live?.start != null && Number.isFinite(live.start)) {
+        const isPlaying = audioRef.current ? !audioRef.current.paused : false
+        seek(live.start, isPlaying)
+      }
+    }
+  }, [unit, live?.start, audioPlayerOpen, playerFollowsUnit, seek, audioRef])
   const settingsQuery = useSettings()
   const customStatuses = (settingsQuery.data?.stati_studio as CustomStudyStatus[]) ?? []
   const savedOrder = (settingsQuery.data?.ordine_stati_studio as string[]) ?? []
@@ -542,13 +565,34 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
   }
 
+  // Tasto P: apre e chiude il player audio, sia nello Studio sia nella lettura veloce.
+  const studyHasAudio = Boolean(loaded?.has_audio)
+  useEffect(() => {
+    if (phase !== 'lettura' || !studyHasAudio) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'p') return
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('input, textarea, select, [contenteditable], [role="menu"], [role="listbox"], [role="dialog"]')) return
+      e.preventDefault()
+      setAudioPlayerOpen((v) => !v)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setAudioPlayerOpen usa solo setState
+  }, [phase, studyHasAudio])
+
   // Tasti ← / → per cambiare unità nella sola fase di lettura (disattivabili da study.highlighter.arrows)
   useEffect(() => {
     if (phase !== 'lettura' || speedReading) return
+    const prevCmd = editorCommands.find(c => c.id === 'study-prev-unit')
+    const nextCmd = editorCommands.find(c => c.id === 'study-next-unit')
+    const copyMdCmd = editorCommands.find(c => c.id === 'study-copy-unit-markdown')
+    const prevShortcut = prevCmd ? commandShortcut(prevCmd, shortcutPrefs) : 'Alt-ArrowLeft'
+    const nextShortcut = nextCmd ? commandShortcut(nextCmd, shortcutPrefs) : 'Alt-ArrowRight'
+    const copyMdShortcut = copyMdCmd ? commandShortcut(copyMdCmd, shortcutPrefs) : 'Mod-Alt-c'
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      const key = e.key.toLowerCase()
       const target = e.target as HTMLElement | null
       // Il riquadro di Chiedi/Verifica non è modale: fuori dai suoi campi le scorciatoie restano attive.
       if (target?.closest?.('input, textarea, select, [contenteditable], [role="slider"], [role="menu"], [role="listbox"], [role="dialog"]:not([data-testid="study-note-popup"])')) return
@@ -557,6 +601,50 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         return
       }
       if (indexOpen || detailsOpen || document.querySelector('dialog[open], [role="dialog"]:not([data-testid="study-note-popup"]), [role="menu"]')) return
+
+      if (matchesShortcut(e, prevShortcut)) {
+        e.preventDefault()
+        navigateReading(-1)
+        return
+      }
+      if (matchesShortcut(e, nextShortcut)) {
+        e.preventDefault()
+        navigateReading(1)
+        return
+      }
+      if (copyMdShortcut && matchesShortcut(e, copyMdShortcut)) {
+        e.preventDefault()
+        const currentUnit = units?.[unitIndex]
+        if (currentUnit) {
+          const text = formatUnitAsMarkdown(currentUnit)
+          navigator.clipboard.writeText(text).catch(() => {})
+          setToast({ message: 'Unità copiata in Markdown' })
+        }
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        const titleEl = document.getElementById('study-unit-title')
+        const textEl = document.querySelector('[data-testid="study-text"]')
+        if (titleEl && textEl) {
+          e.preventDefault()
+          const sel = window.getSelection()
+          if (sel) {
+            if (typeof sel.setBaseAndExtent === 'function') {
+              sel.setBaseAndExtent(titleEl, 0, textEl, textEl.childNodes.length)
+            } else {
+              const range = document.createRange()
+              range.setStart(titleEl, 0)
+              range.setEnd(textEl, textEl.childNodes.length)
+              sel.removeAllRanges()
+              sel.addRange(range)
+            }
+          }
+        }
+        return
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const key = e.key.toLowerCase()
 
       const isZoomIn = e.key === '+' || (!e.shiftKey && e.key === '=') || e.code === 'NumpadAdd'
       const isZoomOut = !e.shiftKey && (e.key === '-' || e.code === 'NumpadSubtract')
@@ -668,7 +756,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek]) // oxlint-disable-line react-hooks/exhaustive-deps
+  }, [phase, unitIndex, units, lessonIndex, lessons.length, speedReading, arrows, live?.status, hlMode, highlighterPrefs, zenActive, zenSettings, indexOpen, detailsOpen, textRoot, openReader, textScale, showScaleNotice, audioPlayerOpen, audioRef, currentTime, seek, shortcutPrefs]) // oxlint-disable-line react-hooks/exhaustive-deps
 
   // Gestione swipe touch fra le unità nella fase di lettura (F1)
   const swipeStartRef = useRef<{ x: number; y: number; time: number; id: number } | null>(null)
@@ -831,7 +919,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
         data-testid="study-status"
       />
       <IconButton
-        label="Lettura veloce"
+        label="Lettura veloce · L"
         icon={Gauge}
         onClick={openReader}
         onPointerDown={saveSelection}
@@ -847,7 +935,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
       />
       {hasAudio && (
         <IconButton
-          label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+          label={audioPlayerOpen ? 'Chiudi player audio · P' : 'Player audio · P'}
           icon={Headphones}
           active={audioPlayerOpen}
           aria-expanded={audioPlayerOpen}
@@ -870,7 +958,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
   )
 
   const rsvpActions = <div className="flex items-center gap-1">
-    <IconButton label="Torna allo Studio" icon={BookOpen} onClick={closeReader} />
+    <IconButton label="Torna allo Studio · L" icon={BookOpen} onClick={closeReader} />
     <IconButton
       label="Domande su questa unità · D"
       icon={Brain}
@@ -879,7 +967,7 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     />
     {hasAudio && (
       <IconButton
-        label={audioPlayerOpen ? 'Chiudi player audio' : 'Player audio'}
+        label={audioPlayerOpen ? 'Chiudi player audio · P' : 'Player audio · P'}
         icon={Headphones}
         active={audioPlayerOpen}
         aria-expanded={audioPlayerOpen}
@@ -1314,7 +1402,8 @@ function Dots({ units, current, onSelect, pendingUnitIds }: { units: StudyUnit[]
           className="relative flex h-4 min-w-0 flex-1 cursor-pointer items-center rounded-md focus-visible:outline-2 focus-visible:outline-ring">
           <span data-status={u.status ?? 'da-imparare'} className={cn('w-full rounded-md',
             i === current ? 'h-[7px]' : 'h-[3px]',
-            u.status === 'appreso' ? 'bg-study-learned' : (u.status === 'in-apprendimento' || !def.isDefault) ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
+            // Stato personalizzato: il segmento prende il suo colore (classe text-*, sfondo currentColor)
+            !def.isDefault ? `bg-current ${def.className}` : u.status === 'appreso' ? 'bg-study-learned' : u.status === 'in-apprendimento' ? 'bg-study-learning' : u.status === 'ignorata' ? 'bg-study-ignored' : 'bg-study-track')} />
           {hasPending && (
             <span
               data-testid="unit-pending-marker"
@@ -1464,9 +1553,29 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   }, [unit.html])
 
   const handleCopy = (event: React.ClipboardEvent) => {
+    if (event.defaultPrevented) return
     const sel = window.getSelection(), root = ref.current
     if (!root || !sel?.rangeCount || sel.isCollapsed) return
-    const range = clipToRoot(sel.getRangeAt(0), root)
+    const rawRange = sel.getRangeAt(0)
+    const titleEl = document.getElementById('study-unit-title')
+    const includesTitle = Boolean(rawRange && titleEl && rawRange.intersectsNode(titleEl))
+
+    if (includesTitle) {
+      event.preventDefault()
+      const titleText = titleEl ? (titleEl.textContent?.trim() || `${unit.id} ${unit.title}`) : `${unit.id} ${unit.title}`
+      const fullRange = document.createRange()
+      fullRange.selectNodeContents(root)
+      const { text } = sourceOffsets(root, fullRange)
+      const copyFormat = readCopyFormat()
+      const bodyHtml = selectionHtml(fullRange, copyFormat)
+      const escape = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const titleHtml = `<h2>${escape(titleText)}</h2>`
+      event.clipboardData.setData('text/plain', `${titleText}\n\n${text}`)
+      event.clipboardData.setData('text/html', `${titleHtml}${bodyHtml}`)
+      return
+    }
+
+    const range = clipToRoot(rawRange, root)
     if (!range) return
     // Senza formule la copia del browser va bene e tiene paragrafi e formattazione.
     if (!sourceParts(root).some(p => p.node.nodeType === Node.ELEMENT_NODE && range.intersectsNode(p.node))) return
@@ -1514,7 +1623,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   }
 
   return (
-    <section aria-labelledby="study-unit-title" data-testid="study-unit" style={fontFamily ? { fontFamily } : undefined}>
+    <section aria-labelledby="study-unit-title" data-testid="study-unit" onCopy={handleCopy} style={fontFamily ? { fontFamily } : undefined}>
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
       <div
         ref={ref}

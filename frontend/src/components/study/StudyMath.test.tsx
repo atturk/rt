@@ -75,7 +75,7 @@ it('lascia la copia al browser quando la selezione non tocca formule e converte 
   fireEvent(document, new Event('selectionchange'))
   await waitFor(() => expect(root.querySelectorAll('math.rt-math-raw')).toHaveLength(3))
   fireEvent.copy(root, { clipboardData: { setData } })
-  expect(setData).toHaveBeenCalledWith('text/plain', source)
+  expect(setData).toHaveBeenCalledWith('text/plain', `1.1 Formule\n\n${source}`)
 })
 
 it('Studio: graffetta, immagini della sezione e immagini nel testo separate', () => {

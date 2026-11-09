@@ -38,6 +38,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [rsvp, setRsvp] = useRsvpPrefs()
   const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
+  const [playerFollowsUnit, setPlayerFollowsUnit] = usePreference('study.player-follows-unit', true)
   const [zoom, setZoomState] = useState(getZoom)
   const [textFont, setTextFont] = useStudyFont()
   const [textScale, setTextScale] = useStudyTextScale()
@@ -87,6 +88,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
           {Array.from({ length: 13 }, (_, i) => (8 + i) / 10).map(n => <option key={n} value={n.toFixed(1)}>{Math.round(n * 100)}%</option>)}
         </Select>
       </Field>
+      <Checkbox id="pref-study-player-follows-unit" label="Il player segue l'unità" checked={playerFollowsUnit} onChange={setPlayerFollowsUnit} />
     </Section>
     <StudyStatusesSection settings={settings} />
     <Section id="copia" title="Copia">

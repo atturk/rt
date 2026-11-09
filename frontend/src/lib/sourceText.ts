@@ -1,6 +1,6 @@
 /** Testo dello Studio: ogni formula vale il suo sorgente, senza annotazioni MathML o copie visive. */
 export type SourcePart = { node: Text | Element; text: string; start: number; end: number }
-const OMIT = '.rt-image-strip-slot, .rt-math-src, script, style'
+const OMIT = '.rt-image-strip-slot, .rt-unit-images-section, .rt-unit-meta, .rt-timecode, .rt-math-src, script, style, button'
 
 export function sourceParts(root: Node): SourcePart[] {
   const parts: SourcePart[] = []

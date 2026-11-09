@@ -537,33 +537,114 @@ def sweep_stale_exports(max_age_hours: float = EXPORT_MAX_AGE_HOURS) -> int:
 def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Lo stesso export multiplo del GET, con avanzamento e file riscaricabile per 24 ore."""
     import shutil
+    import zipfile
     from rt.services.lesson_service import resolve_lesson_dir
     from rt.services.errors import NotFound
-    from rt.storage.export import ExportError, export_many_to_tempfile, many_export_filename
+    from rt.storage.export import (
+        ExportError, export_many_to_tempfile, many_export_filename,
+        export_zip_to_tempfile, zip_name, lesson_file_names, export_mode, final_markdown_name
+    )
     sweep_stale_exports()
-    dirs = [resolve_lesson_dir(i) for i in dict.fromkeys(job.payload["ids"])]
+    raw_ids = list(dict.fromkeys(job.payload["ids"]))
+    id_to_dir = {i: resolve_lesson_dir(i) for i in raw_ids}
+    total = len(id_to_dir)
+    fmt = job.payload.get("format", "markdown")
+    study = job.payload.get("study", False)
 
-    def progress(current: int, total: int, lesson_dir: str) -> None:
+    job_dir = os.path.join(exports_root(), os.path.basename(job.id))
+    os.makedirs(job_dir, mode=0o700, exist_ok=True)
+
+    def progress(current: int, total_count: int, lesson_dir: str) -> None:
         ctx.check_cancelled()
-        ctx.progress(EXPORT_LESSONS, current, total,
-                     message=f"Esporto {current + 1} su {total}: {os.path.basename(lesson_dir)}")
+        ctx.progress(EXPORT_LESSONS, current, total_count,
+                     message=f"Esporto {current + 1} su {total_count}: {os.path.basename(lesson_dir)}")
+
+    used_names: set = set()
+
+    def unique(name: str) -> str:
+        stem, ext = os.path.splitext(name)
+        candidate, n = name, 2
+        while candidate in used_names:
+            candidate, n = f"{stem} ({n}){ext}", n + 1
+        used_names.add(candidate)
+        return candidate
+
+    separate_files: list[str] = []
+    included = 0
 
     try:
-        path, included = export_many_to_tempfile(dirs, job.payload["format"], progress=progress,
-                                               study=job.payload.get("study", False))
-    except ExportError as exc:
-        raise NotFound("export_not_available", str(exc)) from exc
-    filename = many_export_filename(job.payload.get("name", "lezioni"), job.payload["format"])
-    target = job_export_path(job.id, filename)
-    try:
-        ctx.check_cancelled()
-        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
-        shutil.move(path, target)
-    finally:
-        if os.path.isfile(path):
-            os.unlink(path)
-    ctx.progress(EXPORT_LESSONS, len(dirs), len(dirs), message=f"Archivio pronto: {included} lezioni")
-    return _done({"file": filename, "size": os.path.getsize(target), "included": included})
+        if fmt == "pdf":
+            from rt.api.routers.lessons import _render_pdf
+            from rt.services.service_manager import api_port
+            port = job.payload.get("port") or api_port()
+            for index, (lesson_id, lesson_dir) in enumerate(id_to_dir.items()):
+                ctx.check_cancelled()
+                progress(index, total, lesson_dir)
+                names = lesson_file_names(lesson_dir)
+                if export_mode(lesson_dir, names) != "final":
+                    continue
+                final_md = final_markdown_name(names)
+                if not final_md:
+                    continue
+                pdf_stem = final_md[:-3] if final_md.endswith(".md") else final_md
+                pdf_filename = unique(f"{pdf_stem}.pdf")
+                content = _render_pdf(lesson_id, port)
+                target_path = os.path.join(job_dir, pdf_filename)
+                with open(target_path, "wb") as f:
+                    f.write(content)
+                separate_files.append(pdf_filename)
+                included += 1
+
+        elif fmt == "zip":
+            for index, (lesson_id, lesson_dir) in enumerate(id_to_dir.items()):
+                ctx.check_cancelled()
+                progress(index, total, lesson_dir)
+                single = export_zip_to_tempfile(lesson_dir, "all", study=study)
+                try:
+                    rt_filename = unique(zip_name(lesson_dir, "all"))
+                    target_path = os.path.join(job_dir, rt_filename)
+                    shutil.move(single, target_path)
+                    separate_files.append(rt_filename)
+                    included += 1
+                finally:
+                    if os.path.isfile(single):
+                        os.unlink(single)
+
+        elif fmt in ("markdown", "sources"):
+            try:
+                path, included = export_many_to_tempfile(list(id_to_dir.values()), fmt, progress=progress, study=study)
+            except ExportError as exc:
+                raise NotFound("export_not_available", str(exc)) from exc
+            zip_filename = many_export_filename(job.payload.get("name", "lezioni"), fmt)
+            target = job_export_path(job.id, zip_filename)
+            shutil.move(path, target)
+            ctx.progress(EXPORT_LESSONS, total, total, message=f"Archivio pronto: {included} lezioni")
+            return _done({"file": zip_filename, "size": os.path.getsize(target), "included": included, "skipped": total - included})
+
+        else:
+            raise NotFound("export_not_available", f"Formato non supportato: {fmt}")
+
+        if not included:
+            raise NotFound("export_not_available", "Nessuna lezione del gruppo ha un documento finale aggiornato."
+                           if fmt == "pdf" else "Nessuna lezione da esportare.")
+
+        zip_filename = many_export_filename(job.payload.get("name", "lezioni"), fmt)
+        zip_target = os.path.join(job_dir, zip_filename)
+        with zipfile.ZipFile(zip_target, "w", zipfile.ZIP_DEFLATED if fmt == "pdf" else zipfile.ZIP_STORED) as zf:
+            for fname in separate_files:
+                zf.write(os.path.join(job_dir, fname), fname)
+
+        ctx.progress(EXPORT_LESSONS, total, total, message=f"Archivio pronto: {included} lezioni")
+        return _done({
+            "file": zip_filename,
+            "files": separate_files,
+            "size": os.path.getsize(zip_target),
+            "included": included,
+            "skipped": total - included,
+        })
+    except BaseException:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
 
 
 for _type, _handler in (

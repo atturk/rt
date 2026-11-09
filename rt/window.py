@@ -337,6 +337,115 @@ class DesktopApi:
         AppHelper.callAfter(_open_picker)
         return {"ok": True}
 
+    def salva_esportazione(self, job_id: str) -> dict:
+        """Salva tutti i singoli file di un job di esportazione in una cartella scelta dall'utente."""
+        if not self._window:
+            return {"errore": "Finestra non disponibile."}
+        from rt.services.api_jobs import exports_root
+        from rt.api.jobs import queue
+        info = queue().get(job_id)
+        job_dir = os.path.join(exports_root(), os.path.basename(job_id))
+        if not os.path.isdir(job_dir):
+            return {"errore": "Esportazione non trovata."}
+
+        main_zip = (info.result or {}).get("file") if info else None
+        files = (info.result or {}).get("files") if info else None
+        if not files:
+            files = [f for f in sorted(os.listdir(job_dir)) if f != main_zip and not f.startswith(".")]
+
+        if not files:
+            return {"errore": "Nessun file da salvare."}
+
+        try:
+            import webview
+            dialog_type = getattr(getattr(webview, "FileDialog", None), "FOLDER", getattr(webview, "FOLDER_DIALOG", 20))
+            chosen = self._window.create_file_dialog(dialog_type)
+        except Exception as exc:
+            _log(f"Errore create_file_dialog: {exc}")
+            return {"errore": str(exc)}
+
+        if not chosen:
+            return {"annullato": True}
+        if isinstance(chosen, (list, tuple)):
+            chosen = chosen[0] if chosen else None
+        if not chosen or not os.path.isdir(chosen):
+            return {"annullato": True}
+
+        for fname in files:
+            src = os.path.join(job_dir, fname)
+            if os.path.isfile(src):
+                shutil.copy2(src, os.path.join(chosen, fname))
+
+        _cleanup_share_dirs()
+        shutil.rmtree(job_dir, ignore_errors=True)
+        return {"ok": True, "count": len(files)}
+
+    def condividi_esportazione(self, job_id: str) -> dict:
+        """Condivide tutti i singoli file di un job di esportazione aprendo il picker nativo (macOS)."""
+        if sys.platform != "darwin":
+            return {"errore": "Condivisione non supportata su questo sistema operativo."}
+
+        from rt.services.api_jobs import exports_root
+        from rt.api.jobs import queue
+        info = queue().get(job_id)
+        job_dir = os.path.join(exports_root(), os.path.basename(job_id))
+        if not os.path.isdir(job_dir):
+            return {"errore": "Esportazione non trovata."}
+
+        main_zip = (info.result or {}).get("file") if info else None
+        files = (info.result or {}).get("files") if info else None
+        if not files:
+            files = [f for f in sorted(os.listdir(job_dir)) if f != main_zip and not f.startswith(".")]
+
+        if not files:
+            return {"errore": "Nessun file da condividere."}
+
+        _cleanup_share_dirs()
+        temp_dir = tempfile.mkdtemp(prefix="rt-condividi-")
+        _condividi_temp_dirs.append(temp_dir)
+
+        copied = []
+        for fname in files:
+            src = os.path.join(job_dir, fname)
+            if os.path.isfile(src):
+                dst = os.path.join(temp_dir, fname)
+                shutil.copy2(src, dst)
+                copied.append(dst)
+
+        if not copied:
+            return {"errore": "Nessun file da condividere."}
+
+        try:
+            from AppKit import NSSharingServicePicker
+            from Foundation import NSURL, NSMakeRect
+            from PyObjCTools import AppHelper
+        except ImportError:
+            return {"errore": "AppKit non disponibile per la condivisione."}
+
+        def _open_picker():
+            try:
+                file_urls = [NSURL.fileURLWithPath_(p) for p in copied]
+                picker = NSSharingServicePicker.alloc().initWithItems_(file_urls)
+                native = getattr(self._window, "native", None)
+                content_view = getattr(native, "contentView", None)
+                view = content_view() if callable(content_view) else getattr(native, "contentView", None)
+                if view is not None:
+                    bounds = view.bounds() if callable(getattr(view, "bounds", None)) else getattr(view, "bounds", None)
+                    w = bounds.size.width if hasattr(bounds, "size") else 800
+                    h = bounds.size.height if hasattr(bounds, "size") else 600
+                    rect = NSMakeRect(w - 150, h - 40, 100, 30)
+                    picker.showRelativeToRect_ofView_preferredEdge_(rect, view, 3)
+            except Exception as exc:
+                _log(f"Errore apertura picker condivisione: {exc}")
+
+        AppHelper.callAfter(_open_picker)
+        return {"ok": True}
+
+    def pulisci_condivisione(self) -> dict:
+        """Pulisce le cartelle temporanee create per la condivisione."""
+        _cleanup_share_dirs()
+        return {"ok": True}
+
     def set_zoom(self, factor: float) -> dict:
         """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
         try:

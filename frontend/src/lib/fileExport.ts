@@ -3,8 +3,13 @@
  */
 
 /** Scarica un file esportato dall'API usando fetch autenticato (stessa sessione). */
-export async function fetchExport(url: string, fallbackName?: string): Promise<File> {
-  const response = await fetch(url, { credentials: 'same-origin' })
+export async function fetchExport(
+  url: string,
+  options?: string | { fallbackName?: string; signal?: AbortSignal },
+): Promise<File> {
+  const fallbackName = typeof options === 'string' ? options : options?.fallbackName
+  const signal = typeof options === 'object' ? options?.signal : undefined
+  const response = await fetch(url, { credentials: 'same-origin', signal })
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
     throw new Error(body?.error?.message ?? `Export non riuscito (${response.status})`)
@@ -54,8 +59,11 @@ export function saveFile(file: File): void {
 
 /** Verifica se il sistema o l'app supportano la condivisione di file. */
 export function canShareFiles(fileType = 'application/pdf'): boolean {
-  if (typeof window !== 'undefined' && (window as unknown as { pywebview?: { api?: { condividi?: unknown } } }).pywebview?.api?.condividi) {
-    return true
+  if (typeof window !== 'undefined') {
+    const pywebview = (window as unknown as { pywebview?: { api?: { condividi?: unknown } } }).pywebview
+    if (pywebview?.api?.condividi) {
+      return true
+    }
   }
   if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
     try {

@@ -17,9 +17,14 @@ from pydantic import BaseModel, Field, field_validator
 
 class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
-    format: Literal["markdown", "zip", "sources"] = "markdown"
+    format: Literal["markdown", "zip", "sources", "pdf"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
     study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
+
+
+class LessonExportFileItem(BaseModel):
+    name: str
+    size: int
 
 
 class LessonMetadataUpdate(BaseModel):
@@ -593,6 +598,7 @@ class StudyUnit(BaseModel):
     id: str
     title: str
     html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
+    markdown: Optional[str] = Field(None, description="Testo sorgente Markdown dell'unità")
     start: Optional[float] = Field(None, description="Inizio dell'unità nell'audio della lezione (secondi)")
     end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
     pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")

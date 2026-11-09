@@ -1,5 +1,30 @@
 # Novità di RT
 
+## 4.3.8b5 — 2026-11-07
+
+Beta con il trascinamento delle immagini rifatto, le slide dei pptx, lo Studio più comodo con il player e diverse correzioni.
+
+### Novità
+
+- **Trascinare le immagini**: l'anteprima è piccola e sta in basso a sinistra del cursore, così vedi dove la lasci.
+- **Togliere una sola immagine**: trascina la miniatura di un'unità sul pannello Media per togliere solo quella occorrenza; le altre restano. Si annulla con Cmd+Z.
+- **Più immagini insieme**: nel pannello Media selezioni più immagini con Cmd/Ctrl+clic o Shift+clic e le trascini tutte in una volta.
+- **Slide dei pptx**: RT disegna le slide con LibreOffice o Keynote, se installati, al posto delle icone di Quick Look.
+- **Cambiare unità col player aperto**: Option+frecce (Alt+frecce su Windows) cambiano unità anche quando le frecce spostano l'audio. La scorciatoia si cambia in Impostazioni → Editor e scorciatoie.
+- **Il player segue l'unità**: cambiando unità l'audio va all'inizio della nuova unità, senza cambiare play o pausa. Si spegne in Impostazioni → Aspetto e lettura.
+- **Tasti P e L**: P apre e chiude il player in Studio e nella lettura veloce; i tooltip mostrano P e L.
+- **Stati personalizzati**: nella barra dello Studio ogni stato ha il suo colore; in Impostazioni l'ordine si cambia trascinando le righe, e scrivere il nome non è più lento (si salva con Invio o uscendo dal campo).
+
+### Correzioni
+
+- Il player trascinato non salta più di lato all'inizio del trascinamento.
+- Le registrazioni Android lunghe non si fermano più dopo pochi secondi in Studio.
+- «Rileggi l'unità» nel ripasso apre l'unità nello Studio.
+- Nel PDF della lezione tornano i pallini e i numeri degli elenchi.
+- Le formule come `\mathrm{Ca^{2+}}` non perdono più `\m` nel testo rielaborato.
+- Cambiare data o materia di una lezione non rende più obsolete scaletta e pre-elaborazione.
+- La scheda generata dall'arricchimento non sparisce più nell'editor, e i media generati si possono trascinare nel testo.
+
 ## 4.3.8b4 — 2026-11-06
 
 Beta con la condivisione da iPhone, il player audio spostabile e lo zoom che non rompe più la pagina.

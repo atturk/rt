@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -121,7 +121,7 @@ it('elimina uno stato personalizzato con richiesta di conferma se in uso', async
   expect(putSpy).toHaveBeenCalled()
 })
 
-it('permette di riordinare gli stati', async () => {
+it('trascinamento di una riga (dragStart/dragOver/drop) salva il nuovo ordine', async () => {
   const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
     data: testSettings,
     response: new Response('{}', { status: 200 }),
@@ -133,18 +133,85 @@ it('permette di riordinare gli stati', async () => {
     </QueryClientProvider>,
   )
 
-  // Riga "da-imparare": prova a spostare giù
-  const firstRow = screen.getByTestId('status-row-da-imparare')
-  const downBtn = firstRow.querySelector('button[aria-label="Sposta giù"]')
-  expect(downBtn).toBeInTheDocument()
-  await userEvent.click(downBtn!)
+  const rows = screen.getByTestId('study-statuses-list').children
+  const data = new Map<string, string>()
+  const dataTransfer = {
+    setData: (k: string, v: string) => data.set(k, v),
+    getData: (k: string) => data.get(k) ?? '',
+    get types() { return [...data.keys()] },
+    effectAllowed: '',
+    dropEffect: '',
+  }
 
-  expect(putSpy).toHaveBeenCalledWith(
-    '/api/v1/settings/study-statuses',
-    expect.objectContaining({
-      body: expect.objectContaining({
-        ordine_stati_studio: ['in-apprendimento', 'da-imparare', 'appreso', 'ignorata'],
+  // Trascina la prima riga (da-imparare) sopra la terza (appreso)
+  fireEvent.dragStart(rows[0], { dataTransfer })
+  fireEvent.dragOver(rows[2], { dataTransfer })
+  fireEvent.drop(rows[2], { dataTransfer })
+
+  await waitFor(() => {
+    expect(putSpy).toHaveBeenCalledWith(
+      '/api/v1/settings/study-statuses',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          ordine_stati_studio: ['in-apprendimento', 'appreso', 'da-imparare', 'ignorata'],
+        }),
       }),
-    }),
+    )
+  })
+})
+
+it('Alt+↓ sulla maniglia sposta di una posizione', async () => {
+  const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
+    data: testSettings,
+    response: new Response('{}', { status: 200 }),
+  } as never)
+
+  render(
+    <QueryClientProvider client={client}>
+      <StudyStatusesSection settings={testSettings} />
+    </QueryClientProvider>,
   )
+
+  const handle = screen.getByLabelText(/Riordina stato Da imparare/)
+  // Senza Alt non sposta
+  fireEvent.keyDown(handle, { key: 'ArrowDown' })
+  expect(putSpy).not.toHaveBeenCalled()
+
+  // Con Alt+ArrowDown sposta di una posizione
+  fireEvent.keyDown(handle, { key: 'ArrowDown', altKey: true })
+  await waitFor(() => {
+    expect(putSpy).toHaveBeenCalledWith(
+      '/api/v1/settings/study-statuses',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          ordine_stati_studio: ['in-apprendimento', 'da-imparare', 'appreso', 'ignorata'],
+        }),
+      }),
+    )
+  })
+})
+
+it('il nome dello stato si salva con Invio, non a ogni tasto', async () => {
+  const settingsWithCustom = {
+    ...testSettings,
+    stati_studio: [{ id: 'c1', nome: 'Da ripassare', colore: 'text-amber-500', icona: 'Star' }],
+    ordine_stati_studio: ['da-imparare', 'in-apprendimento', 'appreso', 'ignorata', 'c1'],
+  }
+  const putSpy = vi.spyOn(api, 'PUT').mockResolvedValue({
+    data: settingsWithCustom, response: new Response('{}', { status: 200 }),
+  } as never)
+  render(
+    <QueryClientProvider client={client}>
+      <StudyStatusesSection settings={settingsWithCustom} />
+    </QueryClientProvider>,
+  )
+  const input = screen.getByLabelText('Nome per stato Da ripassare')
+  await userEvent.clear(input)
+  await userEvent.type(input, 'Carte Anki')
+  expect(putSpy).not.toHaveBeenCalled()
+  await userEvent.keyboard('{Enter}')
+  expect(putSpy).toHaveBeenCalledTimes(1)
+  expect(putSpy).toHaveBeenCalledWith('/api/v1/settings/study-statuses', expect.objectContaining({
+    body: expect.objectContaining({ stati_studio: [expect.objectContaining({ nome: 'Carte Anki' })] }),
+  }))
 })

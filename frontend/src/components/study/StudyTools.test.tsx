@@ -150,7 +150,7 @@ describe('lettura veloce', () => {
 
   it('le scorciatoie non intercettano i controlli dell’intestazione e delle impostazioni', async () => {
     await open()
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio' }), { key: ' ' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio · L' }), { key: ' ' })
     expect(screen.getByRole('button', { name: 'Avvia' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Tono' }), { key: 'ArrowUp' })
@@ -204,7 +204,7 @@ describe('lettura veloce', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByTestId('speed-reader-settings')).not.toBeInTheDocument()
     expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio · L' }))
     await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
     expect(JSON.parse(localStorage.getItem('rt-pref:study.rsvp')!)).toMatchObject({ pauseMs: 650 })
     expect(screen.getByRole('heading', { level: 2, name: '1.2 Secondo' })).toBeInTheDocument()
