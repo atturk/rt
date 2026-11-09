@@ -1,5 +1,13 @@
 # Novità di RT
 
+## 4.3.8b8 — 2026-11-09
+
+Beta con la copia rapida delle keywords dell'unità.
+
+### Novità
+
+- **Copia le keywords**: nella pagina lezione, accanto a «Mettimi alla prova su questa unità», un pulsante con l'icona di copia e una K copia negli appunti le keywords dell'unità, una per riga. Il pulsante compare solo se l'unità ha keywords.
+
 ## 4.3.8b7 — 2026-11-09
 
 Beta di correzioni: trascinamento delle immagini nel testo, Condividi e stati di studio da saltare.
