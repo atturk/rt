@@ -47,7 +47,7 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     il documento) e quante domande ciascuna ha da porre. Titolo e materia sono nell'elenco."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.core.markdown_render import markdown_parser
-    from rt.services.lesson_service import lesson_audio_file
+    from rt.services.lesson_service import _unit_key_concepts, lesson_audio_file
     from rt.services.study_progress_service import list_units
     from rt.services import question_types
     suggested = question_types.suggestions(lesson_dir)
@@ -56,9 +56,11 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     md = markdown_parser()
     units = []
     if ready:
+        concepts = _unit_key_concepts(lesson_dir)
         for unit in study_units(lesson_dir):
             units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending", "immagini_sezione", "start_formatted")},
                           "suggested_qtype": suggested.get(unit["id"]),
                           "html": md.render(unit["content"]), "markdown": unit["content"], "questions": sum(unit["pending"].values()),
+                          "key_concepts": concepts.get(unit["id"], []),
                           **{k: v for k, v in progress.get(unit["id"], {}).items() if k != "unit_id"}})
     return {"id": lesson_id, "suggestions": question_types.enabled(), "ready": ready, "has_audio": lesson_audio_file(lesson_dir) is not None, "units": units}

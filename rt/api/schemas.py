@@ -600,6 +600,7 @@ class StudyUnit(BaseModel):
     title: str
     html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
     markdown: Optional[str] = Field(None, description="Testo sorgente Markdown dell'unità")
+    key_concepts: List[str] = Field(default_factory=list, description="Keywords dell'unità dalla scaletta (vuoto se la scaletta manca)")
     start: Optional[float] = Field(None, description="Inizio dell'unità nell'audio della lezione (secondi)")
     end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
     pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")

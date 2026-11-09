@@ -35,6 +35,7 @@ const UNITS = [
     title: 'Continuità didattica',
     html: '<p>Contenuto 1 con <strong>grassetto</strong> e formula <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x = 1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="mord mathnormal">x</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mord">1</span></span></span></span></p>',
     markdown: 'Contenuto 1 con **grassetto** e formula $x = 1$.\n\n![figura](figura.png)\n<!-- commento interno -->\n[allegato](doc.pdf)',
+    key_concepts: ['Continuità, didattica', 'Lezione frontale'],
     questions: 2,
     pending: {},
   },
@@ -688,6 +689,21 @@ describe('Copia dell’unità e selezione', () => {
     expect(copied).not.toContain('allegato')
 
     expect(await screen.findByText('Unità copiata in Markdown')).toBeInTheDocument()
+  })
+
+  it('Mod-k copia le keywords dell’unità, una per riga, e mostra l’avviso', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    renderStudy('/studio/lezione/1')
+    fireEvent.keyDown(window, { key: 'k', [isMac ? 'metaKey' : 'ctrlKey']: true })
+    expect(writeText).toHaveBeenCalledWith('Continuità, didattica\nLezione frontale')
+    expect(await screen.findByText('Keywords copiate (2)')).toBeInTheDocument()
+    // Un'unità senza keywords lo dice e non tocca gli appunti
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    fireEvent.keyDown(window, { key: 'k', [isMac ? 'metaKey' : 'ctrlKey']: true })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText("L'unità non ha keywords")).toBeInTheDocument()
   })
 
   it('scorciatoia personalizzata per la copia in Markdown', async () => {

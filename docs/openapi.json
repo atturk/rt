@@ -12232,6 +12232,14 @@
             "title": "Immagini Sezione",
             "type": "array"
           },
+          "key_concepts": {
+            "description": "Keywords dell'unità dalla scaletta (vuoto se la scaletta manca)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Concepts",
+            "type": "array"
+          },
           "last_read_at": {
             "anyOf": [
               {

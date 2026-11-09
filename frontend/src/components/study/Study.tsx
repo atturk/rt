@@ -598,6 +598,8 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     const prevShortcut = prevCmd ? commandShortcut(prevCmd, shortcutPrefs) : 'Alt-ArrowLeft'
     const nextShortcut = nextCmd ? commandShortcut(nextCmd, shortcutPrefs) : 'Alt-ArrowRight'
     const copyMdShortcut = copyMdCmd ? commandShortcut(copyMdCmd, shortcutPrefs) : 'Mod-Alt-c'
+    const copyKwCmd = editorCommands.find(c => c.id === 'study-copy-unit-keywords')
+    const copyKwShortcut = copyKwCmd ? commandShortcut(copyKwCmd, shortcutPrefs) : 'Mod-k'
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
@@ -627,6 +629,18 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
           const text = formatUnitAsMarkdown(currentUnit)
           navigator.clipboard.writeText(text).catch(() => {})
           setToast({ message: 'Unità copiata in Markdown' })
+        }
+        return
+      }
+      if (copyKwShortcut && matchesShortcut(e, copyKwShortcut)) {
+        e.preventDefault()
+        const keywords = units?.[unitIndex]?.key_concepts ?? []
+        if (keywords.length) {
+          // Una per riga: una keyword può contenere virgole.
+          navigator.clipboard.writeText(keywords.join('\n')).catch(() => {})
+          setToast({ message: `Keywords copiate (${keywords.length})` })
+        } else {
+          setToast({ message: "L'unità non ha keywords" })
         }
         return
       }

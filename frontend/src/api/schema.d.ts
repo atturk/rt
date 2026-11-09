@@ -8913,6 +8913,11 @@ export interface components {
             id: string;
             /** Immagini Sezione */
             immagini_sezione?: string[];
+            /**
+             * Key Concepts
+             * @description Keywords dell'unità dalla scaletta (vuoto se la scaletta manca)
+             */
+            key_concepts?: string[];
             /** Last Read At */
             last_read_at?: string | null;
             /**
