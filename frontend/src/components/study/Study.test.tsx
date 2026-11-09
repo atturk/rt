@@ -29,9 +29,16 @@ const LESSON: Lesson = {
 }
 
 const UNITS = [
-  { id: '1.1', title: 'Continuità didattica', html: '<p>Contenuto 1</p>', questions: 2, pending: {} },
-  { id: '1.2', title: 'Acidosi metabolica', html: '<p>Contenuto 2</p>', questions: 1, pending: {} },
-  { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
+  {
+    id: '1.1',
+    title: 'Continuità didattica',
+    html: '<p>Contenuto 1 con <strong>grassetto</strong> e formula <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x = 1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="mord mathnormal">x</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mord">1</span></span></span></span></p>',
+    markdown: 'Contenuto 1 con **grassetto** e formula $x = 1$.\n\n![figura](figura.png)\n<!-- commento interno -->\n[allegato](doc.pdf)',
+    questions: 2,
+    pending: {},
+  },
+  { id: '1.2', title: 'Acidosi metabolica', html: '<p>Contenuto 2</p>', markdown: 'Contenuto 2', questions: 1, pending: {} },
+  { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', markdown: 'Contenuto 3', questions: 0, pending: {} },
 ]
 
 let mockSuggestions = false
@@ -521,5 +528,108 @@ describe('Segnalazioni aperte nello Studio', () => {
     await waitFor(() => {
       expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
     })
+  })
+})
+
+describe('Copia dell’unità e selezione', () => {
+  it('Cmd+A nella fase di lettura seleziona titolo e testo e non la barra', () => {
+    renderStudy('/studio/lezione/1')
+    const titleEl = document.getElementById('study-unit-title')!
+    const textEl = screen.getByTestId('study-text')
+    const headerTools = screen.getByTestId('study-header-tools')
+
+    const sel = window.getSelection()!
+    const setBaseAndExtentSpy = vi.spyOn(sel, 'setBaseAndExtent')
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+
+    expect(setBaseAndExtentSpy).toHaveBeenCalledWith(titleEl, 0, textEl, textEl.childNodes.length)
+    expect(headerTools.contains(titleEl)).toBe(false)
+  })
+
+  it('Cmd+A dentro un campo di testo non attiva la selezione globale dell’unità', () => {
+    renderStudy('/studio/lezione/1')
+    const sel = window.getSelection()!
+    const setBaseAndExtentSpy = vi.spyOn(sel, 'setBaseAndExtent')
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'a', metaKey: true })
+
+    expect(setBaseAndExtentSpy).not.toHaveBeenCalled()
+    document.body.removeChild(input)
+  })
+
+  it('copia dell’unità intera include titolo in h2, testo formattato in HTML e testo semplice senza timestamp', () => {
+    renderStudy('/studio/lezione/1')
+    const unitSection = screen.getByTestId('study-unit')
+    const titleEl = document.getElementById('study-unit-title')!
+    const textEl = screen.getByTestId('study-text')
+
+    // Inseriamo un timecode all'interno per verificare che venga omesso
+    const timecode = document.createElement('button')
+    timecode.className = 'rt-timecode'
+    timecode.textContent = '05:40'
+    textEl.prepend(timecode)
+
+    const sel = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(titleEl, 0)
+    range.setEnd(textEl, textEl.childNodes.length)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(unitSection, { clipboardData: { setData } })
+
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.stringContaining('1.1 Continuità didattica\n\n'))
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.not.stringMatching(/05:40/))
+    expect(setData).toHaveBeenCalledWith('text/html', expect.stringContaining('<h2>1.1 Continuità didattica</h2>'))
+    expect(setData).toHaveBeenCalledWith('text/html', expect.not.stringMatching(/05:40/))
+  })
+
+  it('Mod-Alt-c copia l’unità in Markdown grezzo negli appunti e mostra l’avviso', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    renderStudy('/studio/lezione/1')
+
+    fireEvent.keyDown(window, { key: 'c', [isMac ? 'metaKey' : 'ctrlKey']: true, altKey: true })
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    const copied = writeText.mock.calls[0][0]
+    expect(copied).toContain('## 1.1 Continuità didattica')
+    expect(copied).toContain('**grassetto**')
+    expect(copied).toContain('$x = 1$')
+    expect(copied).not.toContain('![figura]')
+    expect(copied).not.toContain('commento interno')
+    expect(copied).not.toContain('allegato')
+
+    expect(await screen.findByText('Unità copiata in Markdown')).toBeInTheDocument()
+  })
+
+  it('scorciatoia personalizzata per la copia in Markdown', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    localStorage.clear()
+    localStorage.setItem('rt-pref:editor.shortcuts', JSON.stringify({ 'study-copy-unit-markdown': 'Mod-Shift-m' }))
+
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    renderStudy('/studio/lezione/1')
+
+    // Scorciatoia di default ignorata
+    fireEvent.keyDown(window, { key: 'c', [isMac ? 'metaKey' : 'ctrlKey']: true, altKey: true })
+    expect(writeText).not.toHaveBeenCalled()
+
+    // Nuova scorciatoia funziona
+    fireEvent.keyDown(window, { key: 'm', [isMac ? 'metaKey' : 'ctrlKey']: true, shiftKey: true })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText.mock.calls[0][0]).toContain('## 1.1 Continuità didattica')
+
+    localStorage.clear()
   })
 })

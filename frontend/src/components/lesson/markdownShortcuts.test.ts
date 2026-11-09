@@ -314,6 +314,7 @@ describe('registro dei comandi e keymap personale', () => {
       checkbox: 'Mod-Enter', indent: 'Mod-]', unindent: 'Mod-[', 'delete-paragraph': 'Mod-d',
       fold: 'Mod-Alt-[', unfold: 'Mod-Alt-]', 'fold-all': 'Ctrl-Alt-[', 'unfold-all': 'Ctrl-Alt-]',
       'study-prev-unit': 'Alt-ArrowLeft', 'study-next-unit': 'Alt-ArrowRight',
+      'study-copy-unit-markdown': 'Mod-Alt-c',
     })
     expect(new Set(editorCommands.map(c => c.id)).size).toBe(editorCommands.length)
   })

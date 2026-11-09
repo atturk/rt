@@ -69,7 +69,7 @@ it('PDF: se il browser per la stampa manca mostra il motivo invece di scaricare 
   fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'PDF' }))
   expect(await screen.findByText('Il browser per il PDF si sta ancora scaricando. Riprova tra poco.')).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=pdf', { credentials: 'same-origin' })
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=pdf', expect.objectContaining({ credentials: 'same-origin' }))
 })
 
 it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {

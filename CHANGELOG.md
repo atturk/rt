@@ -1,5 +1,20 @@
 # Novità di RT
 
+## 4.3.8b6 — 2026-11-09
+
+Beta con l'esportazione unificata, la copia rapida dell'unità in Studio e il trascinamento delle immagini più chiaro.
+
+### Novità
+
+- **Un solo Esporta**: nella lezione e nella selezione di più lezioni si sceglie solo cosa esportare; quando il file è pronto un riquadro chiede se salvarlo o condividerlo, oppure annullare (X o Esc), anche mentre RT lo prepara. Annullando non restano file temporanei.
+- **Più lezioni insieme**: nella pagina Lezioni, con la selezione, ci sono «Esporta PDF» ed «Esporta lezioni (.rt)». Ogni lezione diventa un file a sé: Condividi li passa tutti al menu di sistema, Salva nell'app li mette in una cartella a scelta e nel browser in un solo zip.
+- **Copiare un'unità in Studio**: Cmd+A (Ctrl+A) seleziona solo l'unità aperta, titolo compreso, senza barra né timestamp; Cmd+C la copia formattata secondo Impostazioni → Copia. Cmd+Option+C (Ctrl+Alt+C) copia l'unità in Markdown grezzo; la scorciatoia si cambia in Editor e scorciatoie.
+- **Accesso da altri dispositivi**: la sezione delle Impostazioni prima chiamata «Accesso da iPhone» vale per qualsiasi telefono, tablet o computer della stessa rete Tailscale.
+
+### Correzioni
+
+- Trascinando le immagini l'anteprima resta in basso a destra del cursore anche sopra intestazione e barre laterali; dove non si può rilasciare compare un segno di divieto e il rilascio non fa nulla.
+
 ## 4.3.8b5 — 2026-11-07
 
 Beta con il trascinamento delle immagini rifatto, le slide dei pptx, lo Studio più comodo con il player e diverse correzioni.

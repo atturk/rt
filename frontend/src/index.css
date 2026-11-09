@@ -1409,6 +1409,12 @@
   margin: -6px 0 12px 0;
   font-size: var(--size-meta);
   color: var(--mute);
+  user-select: none;
+}
+
+.rt-unit-images-section,
+.rt-image-strip-slot {
+  user-select: none;
 }
 
 .rt-unit-meta-below .rt-unit-images-button {

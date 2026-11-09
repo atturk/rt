@@ -5,6 +5,8 @@ import { useLessons, useIssues } from '@/api/hooks'
 import { AudioPlayer } from '@/components/lesson/AudioPlayer'
 import { AudioProvider, useLessonAudio } from '@/components/lesson/audio'
 import { commandShortcut, editorCommands, matchesShortcut, DEFAULT_SHORTCUTS, type ShortcutPreferences } from '@/components/lesson/markdownShortcuts'
+import { formatUnitAsMarkdown } from '@/lib/studyMarkdown'
+import { readCopyFormat, selectionHtml } from '@/lib/copyFormat'
 import { usePreference } from '@/lib/preferences'
 import { lessonNeighbors } from '@/lib/lessonNeighbors'
 import { LessonJumpTab } from '@/components/shared/LessonJump'
@@ -582,8 +584,10 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
     if (phase !== 'lettura' || speedReading) return
     const prevCmd = editorCommands.find(c => c.id === 'study-prev-unit')
     const nextCmd = editorCommands.find(c => c.id === 'study-next-unit')
+    const copyMdCmd = editorCommands.find(c => c.id === 'study-copy-unit-markdown')
     const prevShortcut = prevCmd ? commandShortcut(prevCmd, shortcutPrefs) : 'Alt-ArrowLeft'
     const nextShortcut = nextCmd ? commandShortcut(nextCmd, shortcutPrefs) : 'Alt-ArrowRight'
+    const copyMdShortcut = copyMdCmd ? commandShortcut(copyMdCmd, shortcutPrefs) : 'Mod-Alt-c'
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
@@ -604,6 +608,36 @@ function StudyFlowInner({ lessons, onlyUnits = null, back }: {
       if (matchesShortcut(e, nextShortcut)) {
         e.preventDefault()
         navigateReading(1)
+        return
+      }
+      if (copyMdShortcut && matchesShortcut(e, copyMdShortcut)) {
+        e.preventDefault()
+        const currentUnit = units?.[unitIndex]
+        if (currentUnit) {
+          const text = formatUnitAsMarkdown(currentUnit)
+          navigator.clipboard.writeText(text).catch(() => {})
+          setToast({ message: 'Unità copiata in Markdown' })
+        }
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        const titleEl = document.getElementById('study-unit-title')
+        const textEl = document.querySelector('[data-testid="study-text"]')
+        if (titleEl && textEl) {
+          e.preventDefault()
+          const sel = window.getSelection()
+          if (sel) {
+            if (typeof sel.setBaseAndExtent === 'function') {
+              sel.setBaseAndExtent(titleEl, 0, textEl, textEl.childNodes.length)
+            } else {
+              const range = document.createRange()
+              range.setStart(titleEl, 0)
+              range.setEnd(textEl, textEl.childNodes.length)
+              sel.removeAllRanges()
+              sel.addRange(range)
+            }
+          }
+        }
         return
       }
 
@@ -1517,9 +1551,29 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   }, [unit.html])
 
   const handleCopy = (event: React.ClipboardEvent) => {
+    if (event.defaultPrevented) return
     const sel = window.getSelection(), root = ref.current
     if (!root || !sel?.rangeCount || sel.isCollapsed) return
-    const range = clipToRoot(sel.getRangeAt(0), root)
+    const rawRange = sel.getRangeAt(0)
+    const titleEl = document.getElementById('study-unit-title')
+    const includesTitle = Boolean(rawRange && titleEl && rawRange.intersectsNode(titleEl))
+
+    if (includesTitle) {
+      event.preventDefault()
+      const titleText = titleEl ? (titleEl.textContent?.trim() || `${unit.id} ${unit.title}`) : `${unit.id} ${unit.title}`
+      const fullRange = document.createRange()
+      fullRange.selectNodeContents(root)
+      const { text } = sourceOffsets(root, fullRange)
+      const copyFormat = readCopyFormat()
+      const bodyHtml = selectionHtml(fullRange, copyFormat)
+      const escape = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const titleHtml = `<h2>${escape(titleText)}</h2>`
+      event.clipboardData.setData('text/plain', `${titleText}\n\n${text}`)
+      event.clipboardData.setData('text/html', `${titleHtml}${bodyHtml}`)
+      return
+    }
+
+    const range = clipToRoot(rawRange, root)
     if (!range) return
     // Senza formule la copia del browser va bene e tiene paragrafi e formattazione.
     if (!sourceParts(root).some(p => p.node.nodeType === Node.ELEMENT_NODE && range.intersectsNode(p.node))) return
@@ -1567,7 +1621,7 @@ export function UnitText({ lessonId, unit, highlightMode, onReady, notes, active
   }
 
   return (
-    <section aria-labelledby="study-unit-title" data-testid="study-unit" style={fontFamily ? { fontFamily } : undefined}>
+    <section aria-labelledby="study-unit-title" data-testid="study-unit" onCopy={handleCopy} style={fontFamily ? { fontFamily } : undefined}>
       <h2 id="study-unit-title" className="mb-3.5 text-heading font-semibold leading-snug">{unit.id} {unit.title}</h2>
       <div
         ref={ref}

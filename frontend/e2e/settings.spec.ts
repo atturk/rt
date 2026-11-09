@@ -6,7 +6,7 @@ const KEY = 'sk-e2e-chiave-422-0123456789abcdef'
 const BASE_URL = 'http://127.0.0.1:9/v1'
 const sections = [
   ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['calendario', 'Calendario'], ['materie', 'Materie'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
-  ['modelli-connessioni', 'Modelli e connessioni'], ['telegram', 'Telegram'], ['accesso', 'Accesso da iPhone'], ['info-aggiornamenti', 'Info e aggiornamenti'],
+  ['modelli-connessioni', 'Modelli e connessioni'], ['telegram', 'Telegram'], ['accesso', 'Accesso da altri dispositivi'], ['info-aggiornamenti', 'Info e aggiornamenti'],
 ]
 async function choose(root: Page | Locator, label: string, option: string) {
   await root.getByRole('button', { name: label, exact: true }).click()
