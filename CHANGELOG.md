@@ -1,5 +1,29 @@
 # Novità di RT
 
+## 4.3.8 — 2026-11-09
+
+Raccoglie le beta da 4.3.8b1 a 4.3.8b8: guida dentro l'app, Studio più rapido, esportazione unificata, arricchimento più fedele e tante correzioni.
+
+### Novità
+
+- **Guida di RT** dentro l'app anche senza rete, con ricerca e immagini: «?» nell'intestazione, F1 o ⌘?, menu Aiuto (su Mac la ricerca del menu trova anche le voci). Una pagina spiega la privacy.
+- **Primo avvio** con una lezione di esempio gratuita e la stima del costo per lezione; **backup leggero** (database e testi) prima di ogni aggiornamento, tenendo gli ultimi 5.
+- **Studio**: prima selezioni il testo e poi premi E, G, V o C; stati delle unità personalizzati (nome, colore, icona, ordine, «Salta in Studio»); player audio a scomparsa (P) che segue l'unità; domande dell'unità col tasto D; valutazione delle risposte con correttezza, completezza e attinenza e una domanda di approfondimento quando serve.
+- **Copiare in Studio**: Cmd+A seleziona solo l'unità, Cmd+C la copia formattata, Cmd+Option+C in Markdown, **Cmd+K le keywords dell'unità** (una per riga, con un avviso in basso). Le scorciatoie si cambiano in Impostazioni → Editor e scorciatoie. Nella pagina lezione c'è anche il pulsante «Copia le keywords».
+- **Lettura veloce**: mantiene i colori delle evidenziazioni, parte dalla parola selezionata e mostra lo stato dell'unità.
+- **Esporta**: un solo menu per Markdown, PDF, Lezione (.rt) e fonti; quando il file è pronto scegli Salva, Condividi o Annulla. Con più lezioni selezionate, «Esporta PDF» ed «Esporta lezioni (.rt)» producono un file per lezione.
+- **File di RT**: `.rt` per le lezioni, `.rtdb` per la collezione, `.rtcal` per l'orario, con la loro icona e il doppio clic che li apre in RT.
+- **Affidabilità delle fonti** (alta, normale, bassa): la verifica si fida di più delle slide del docente e meno degli appunti.
+- **Arricchimento**: visualizzazioni interattive nell'anteprima, infografiche con testo vero, controllo automatico di valori mancanti, idee più mirate, elementi generati visibili anche in Studio.
+- **Immagini**: anteprima piccola che segue il cursore (con il divieto dove non si può rilasciare), più immagini insieme, togliere una sola occorrenza, slide dei pptx disegnate con LibreOffice o Keynote.
+- **Accesso da altri dispositivi** (prima «Accesso da iPhone») con l'API di sola lettura per gli agenti.
+
+### Correzioni
+
+- Il rilascio delle immagini nel testo funziona al primo colpo; Condividi non mostra più «Autenticazione richiesta» senza token API salvato.
+- Il player non si ferma più con le registrazioni Android; cambiare data o materia non invalida più la scaletta.
+- «Mettimi alla prova · N» non conta le domande bloccate; LaTeX leggibile nella Verifica; tante piccole correzioni elencate nelle beta qui sotto.
+
 ## 4.3.8b8 — 2026-11-09
 
 Beta con la copia rapida delle keywords dell'unità.
