@@ -1,5 +1,18 @@
 # Novità di RT
 
+## 4.3.8b7 — 2026-11-09
+
+Beta di correzioni: trascinamento delle immagini nel testo, Condividi e stati di studio da saltare.
+
+### Novità
+
+- **Stati personalizzati da saltare**: in Impostazioni → Stati delle unità ogni stato personalizzato ha la casella «Salta in Studio». Aprendo lo Studio le unità con quello stato si saltano, come già succede con Appresa e Ignorata.
+
+### Correzioni
+
+- Le immagini trascinate dal pannello Arricchimento si rilasciano di nuovo nel testo al primo colpo, senza il segno di divieto sopra l'editor.
+- Condividi (PDF, Markdown, fonti) non mostra più «Autenticazione richiesta» quando RT non ha il token API salvato, per esempio dopo un ripristino da un altro Mac.
+
 ## 4.3.8b6 — 2026-11-09
 
 Beta con l'esportazione unificata, la copia rapida dell'unità in Studio e il trascinamento delle immagini più chiaro.
