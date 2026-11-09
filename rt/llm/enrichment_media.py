@@ -144,7 +144,8 @@ def snapshot(html: str) -> bytes:
             validation_error = frame.evaluate("""() => {
                 const root = document.getElementById('rt-visualization-root');
                 if (!root) return "elemento #rt-visualization-root mancante";
-                const text = (root.innerText || "") + " " + (root.textContent || "");
+                // Solo il testo visibile: textContent includerebbe <script> e <style> del frammento.
+                const text = root.innerText || "";
                 if (/\\bundefined\\b/.test(text)) return 'etichette "undefined"';
                 if (/\\bNaN\\b/.test(text)) return 'valori "NaN"';
                 if (/\\bnull\\b/.test(text)) return 'valori "null"';
@@ -159,6 +160,9 @@ def snapshot(html: str) -> bytes:
                 for (const el of textNodes) {
                     if (!el.textContent || !el.textContent.trim()) continue;
                     if (el.children.length > 0 && el.tagName.toLowerCase() !== 'text') continue;
+                    if (el.closest('script, style')) continue;
+                    const style = getComputedStyle(el);
+                    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
                     const r = el.getBoundingClientRect();
                     if (r.width === 0 && r.height === 0) continue;
                     if (r.left < rootRect.left - 2 || r.right > rootRect.right + 2 ||

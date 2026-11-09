@@ -180,6 +180,19 @@ def test_snapshot_renders_initialized_interaction_without_network():
     assert snapshot(html).startswith(b"\x89PNG")
 
 
+def test_snapshot_validation_reads_visible_text_not_scripts():
+    import shutil
+    from rt.llm.enrichment_media import VisualizationValidationError, standalone, snapshot
+    if not (os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium")):
+        pytest.skip("Chromium not installed in this test environment")
+    # Codice JS normale (typeof … 'undefined', === null) e un tooltip nascosto: non sono errori.
+    ok = standalone('<p id="v">0</p><span style="position:absolute;left:-500px;visibility:hidden">tip</span>'
+                    '<script>let x=null; if (typeof y === "undefined") document.getElementById("v").textContent = "1";</script>')
+    assert snapshot(ok).startswith(b"\x89PNG")
+    with pytest.raises(VisualizationValidationError, match="undefined"):
+        snapshot(standalone('<p>Distanza: undefined</p>'))
+
+
 def test_dismissing_a_generated_element_takes_it_out_of_the_text_and_restore_puts_it_back(lesson):
     path, _, _ = lesson
     item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="A", description="D", prompt="Matrice"))
