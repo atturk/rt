@@ -233,6 +233,14 @@ def test_infographic_generates_via_visualizer_and_snapshot_not_image_model(lesso
     assert el.asset_mode == "static"
 
 
+def _fake_snapshot(html):
+    # Il browser vero è coperto da test_snapshot_validation_*; qui conta la logica di retry.
+    from rt.llm.enrichment_media import VisualizationValidationError
+    if "undefined" in html:
+        raise VisualizationValidationError('etichette "undefined"')
+    return b"\x89PNG\r\n\x1a\nfake-png"
+
+
 def test_visualization_validation_retries_on_undefined_then_fails(lesson, monkeypatch):
     path, rows, cfg = lesson
     item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="Visual", description="D", prompt="Simula"))
@@ -241,6 +249,7 @@ def test_visualization_validation_retries_on_undefined_then_fails(lesson, monkey
     bad_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: undefined</p>')
     mock_llm = Mock(return_value=bad_visual)
     monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", _fake_snapshot)
 
     with pytest.raises(Exception, match='undefined'):
         es.generate(path, item.id)
@@ -267,6 +276,7 @@ def test_visualization_validation_clean_html_publishes(lesson, monkeypatch):
     clean_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: 42</p>')
     mock_llm = Mock(return_value=clean_visual)
     monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", _fake_snapshot)
 
     es.generate(path, item.id)
 
