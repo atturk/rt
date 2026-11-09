@@ -284,13 +284,16 @@ export function LessonEditor({
   }, [navigate])
   const shortcutKey = doc.sections.filter(section => !section.relevance).map(section => section.unit_id).join('|')
   const shortcutUnits = useMemo(() => shortcutKey ? shortcutKey.split('|') : [], [shortcutKey])
+  const keywordsKey = JSON.stringify(doc.sections.map(section => [section.unit_id, section.key_concepts ?? []]))
+  const shortcutKeywords = useMemo(() => Object.fromEntries(JSON.parse(keywordsKey) as [string, string[]][]), [keywordsKey])
   useEffect(() => {
     viewOf(handle.current)?.dispatch({ effects: setUnitShortcuts.of({
       lessonId,
       units: shortcutUnits,
+      keywords: shortcutKeywords,
       navigate: openStudy,
     }) })
-  }, [shortcutUnits, lessonId, openStudy, source.key])
+  }, [shortcutUnits, shortcutKeywords, lessonId, openStudy, source.key])
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush }

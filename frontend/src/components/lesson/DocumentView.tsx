@@ -94,7 +94,7 @@ export function DocumentView({ document: doc, hasAudio, lessonId, highlightText,
         button.setAttribute('aria-label', `Ascolta l'unità ${section.unit_id} da ${section.start_formatted}`)
         meta.append(button)
       }
-      if (!section.relevance) meta.append(createUnitShortcuts(lessonId, section.unit_id, navigate))
+      if (!section.relevance) meta.append(createUnitShortcuts(lessonId, section.unit_id, navigate, section.key_concepts))
       if (section.relevance) {
         const tag = window.document.createElement('span')
         tag.className = 'rt-relevance-tag'

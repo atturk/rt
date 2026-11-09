@@ -81,6 +81,7 @@ test.describe('Scorciatoie su telefono', () => {
     await page.goto(`/lezioni/${l.id}`)
     const shortcuts = page.getByRole('link', { name: "Studia l'unità 1.2", exact: true, includeHidden: true }).locator('..')
     await expect(shortcuts).toHaveCSS('opacity', '1')
+    await expect(shortcuts.getByRole('button', { name: "Copia le keywords dell'unità 1.2" })).toBeVisible()
     await page.emulateMedia({ media: 'print' })
     await expect(shortcuts).toHaveCSS('display', 'none')
   })

@@ -616,6 +616,7 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
     positions = {s.id: idx for idx, s in enumerate(seg_list)}
     by_id = {s.id: s for s in seg_list}
     section_images = unit_section_images(lesson_dir)
+    concepts = _unit_key_concepts(lesson_dir)
     out = []
     for unit in draft.units:
         # un timecode spostato nell'anteprima vale anche per il player (RT4-FA3)
@@ -640,8 +641,20 @@ def document_sections(lesson_dir: str) -> List[Dict[str, Any]]:
             "start_formatted": start.start_formatted if start else None,
             "relevance": relevance.get(unit.unit_id) if relevance.get(unit.unit_id) in ("organizational", "no_content") else None,
             "speech_segments": speech_segments,
+            "key_concepts": concepts.get(unit.unit_id, []),
         })
     return out
+
+
+def _unit_key_concepts(lesson_dir: str) -> Dict[str, List[str]]:
+    """Keywords (key_concepts) della scaletta per unità; vuoto se la scaletta manca."""
+    from rt.pipeline.outline import load_outline
+    try:
+        outline = load_outline(lesson_dir)
+    except Exception:
+        return {}
+    return {u.id: [k.strip() for k in u.key_concepts if k and k.strip()]
+            for m in outline.macro_sections for u in m.units}
 
 
 @fs.read_snapshot()

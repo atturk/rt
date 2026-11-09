@@ -170,6 +170,7 @@ class DocumentSection(BaseModel):
     start_formatted: Optional[str] = None
     relevance: Optional[Literal["organizational", "no_content"]] = None
     speech_segments: Optional[List[List[float]]] = Field(None, description="Tratti di parlato [inizio, fine] in secondi per la linea audio")
+    key_concepts: List[str] = Field(default_factory=list, description="Keywords dell'unità dalla scaletta (vuoto se mancano)")
 
 
 class LessonDocument(BaseModel):

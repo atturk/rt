@@ -91,6 +91,7 @@ def test_document_issues_and_costs_after_full_run(api_client, lesson):
     doc = api_client.get(f"/api/v1/lessons/{lesson_id}/document").json()
     assert doc["final"] is True and doc["markdown"].strip()
     assert doc["sections"] and doc["sections"][0]["start_seconds"] is not None
+    assert doc["sections"][0]["key_concepts"] == ["Concetto chiave 1", "Concetto chiave 2"]
 
     issues = api_client.get(f"/api/v1/lessons/{lesson_id}/issues", params={"status": "all"}).json()
     assert issues["pending"] == 0 and issues["review_complete"] is True
