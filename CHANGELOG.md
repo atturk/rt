@@ -11,6 +11,10 @@ Beta con l'esportazione unificata, la copia rapida dell'unità in Studio e il tr
 - **Copiare un'unità in Studio**: Cmd+A (Ctrl+A) seleziona solo l'unità aperta, titolo compreso, senza barra né timestamp; Cmd+C la copia formattata secondo Impostazioni → Copia. Cmd+Option+C (Ctrl+Alt+C) copia l'unità in Markdown grezzo; la scorciatoia si cambia in Editor e scorciatoie.
 - **Accesso da altri dispositivi**: la sezione delle Impostazioni prima chiamata «Accesso da iPhone» vale per qualsiasi telefono, tablet o computer della stessa rete Tailscale.
 
+- **Arricchimento**: le visualizzazioni interattive si aprono interattive nell'anteprima, con un badge sulla miniatura; la «i» dei media generati mostra tipo, unità, descrizione e prompt; gli elementi generati compaiono anche in Studio dopo il testo dell'unità.
+- **Infografiche fedeli**: le infografiche si disegnano con testo vero (niente più formule e numeri inventati dal modello di immagini), e prima di pubblicare una visualizzazione RT controlla che non mostri valori mancanti o testo fuori dai bordi, riprovando una volta.
+- **Idee più mirate**: la domanda che decide se un'unità merita un elemento generato guarda cose concrete del testo (processi, confronti, strutture, formule, dati).
+
 ### Correzioni
 
 - Trascinando le immagini l'anteprima resta in basso a destra del cursore anche sopra intestazione e barre laterali; dove non si può rilasciare compare un segno di divieto e il rilascio non fa nulla.
