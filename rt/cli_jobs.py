@@ -68,6 +68,7 @@ def cmd_worker(args: argparse.Namespace) -> None:
     from rt.services.worker import Worker, registered_handlers, run_workers
     from rt.core.log_stamp import stamp_std_streams
     stamp_std_streams()
+    import rt.api.routers.lessons  # noqa: F401 - registra il disegno del PDF per l'esportazione di più lezioni
 
     handlers = registered_handlers()
     types = [t.strip() for t in args.types.split(",") if t.strip()] if args.types else sorted(handlers)

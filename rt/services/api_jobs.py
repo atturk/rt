@@ -534,6 +534,16 @@ def sweep_stale_exports(max_age_hours: float = EXPORT_MAX_AGE_HOURS) -> int:
     return removed
 
 
+# Il PDF si disegna con il browser dell'API (rt/api/routers/lessons.py): il router lo registra qui,
+# così i servizi non importano le interfacce.
+_PDF_RENDERER = None
+
+
+def set_pdf_renderer(renderer) -> None:
+    global _PDF_RENDERER
+    _PDF_RENDERER = renderer
+
+
 def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Lo stesso export multiplo del GET, con avanzamento e file riscaricabile per 24 ore."""
     import shutil
@@ -574,8 +584,11 @@ def export_lessons_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
     try:
         if fmt == "pdf":
-            from rt.api.routers.lessons import _render_pdf
+            from rt.services.errors import Unavailable
             from rt.services.service_manager import api_port
+            _render_pdf = _PDF_RENDERER
+            if _render_pdf is None:
+                raise Unavailable("pdf_unavailable", "Il PDF non è disponibile in questo processo.")
             port = job.payload.get("port") or api_port()
             for index, (lesson_id, lesson_dir) in enumerate(id_to_dir.items()):
                 ctx.check_cancelled()

@@ -102,8 +102,8 @@ def test_export_validation_failed_and_wrong_job(api_client, workspace, rt_db):
 
 
 def test_export_pdf_separate_files_and_endpoints(api_client, workspace, rt_db, monkeypatch):
-    from rt.api.routers import lessons as lessons_router
-    monkeypatch.setattr(lessons_router, "_render_pdf", lambda lid, port: b"%PDF-1.4 dummy " + str(lid).encode())
+    from rt.services import api_jobs
+    monkeypatch.setattr(api_jobs, "_PDF_RENDERER", lambda lid, port: b"%PDF-1.4 dummy " + str(lid).encode())
 
     first = make_lesson(workspace)
     second = make_lesson(workspace, name="seconda lezione")

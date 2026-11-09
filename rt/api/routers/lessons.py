@@ -330,6 +330,14 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
         auth.drop_session(session_id)
 
 
+
+def _register_pdf_renderer() -> None:
+    from rt.services import api_jobs
+    api_jobs.set_pdf_renderer(_render_pdf)
+
+
+_register_pdf_renderer()
+
 @router.get("/lessons/{lesson_id}/export",
             summary="Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF",
             description="Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, "

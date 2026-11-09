@@ -204,7 +204,7 @@ export function startDragPreview(
 
   const updatePosition = (clientX: number, clientY: number) => {
     // In WebKit su elementi non di rilascio le coordinate possono arrivare a (0, 0).
-    // In tal caso preserviamo l'ultima posizione valida nota.
+    // Allora teniamo l'ultima posizione valida nota.
     if (clientX === 0 && clientY === 0) {
       if (lastX !== 0 || lastY !== 0) {
         container.style.display = 'block'
