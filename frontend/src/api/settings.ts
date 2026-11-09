@@ -36,6 +36,12 @@ export function useSavePreferences() {
   )
 }
 
+export function useSaveStudyStatuses() {
+  return useSettingsMutation((body: Schemas['StudyStatusesUpdate']) =>
+    unwrap(api.PUT('/api/v1/settings/study-statuses', { body })),
+  )
+}
+
 export function useSaveRewrite() {
   return useSettingsMutation((body: Schemas['RewriteIn']) => unwrap(api.PUT('/api/v1/settings/rewrite', { body })))
 }
@@ -190,6 +196,8 @@ export interface ReadonlyKeyInfo {
   configured: boolean
   created_at?: string | null
   key_preview?: string | null
+  key?: string | null
+  base_url?: string | null
 }
 
 export interface ReadonlyKeyCreated {
@@ -209,7 +217,14 @@ export function useCreateReadonlyKey() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: () => unwrap((api as any).POST('/api/v1/settings/readonly-key')) as Promise<ReadonlyKeyCreated>,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      client.setQueryData(['settings', 'readonly-key'], (old: any) => ({
+        ...old,
+        configured: true,
+        key: data.key,
+        key_preview: data.key_preview,
+        created_at: data.created_at,
+      }))
       void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
     },
   })
@@ -220,6 +235,13 @@ export function useRevokeReadonlyKey() {
   return useMutation({
     mutationFn: () => unwrap((api as any).DELETE('/api/v1/settings/readonly-key')),
     onSuccess: () => {
+      client.setQueryData(['settings', 'readonly-key'], (old: any) => ({
+        ...old,
+        configured: false,
+        key: null,
+        key_preview: null,
+        created_at: null,
+      }))
       void client.invalidateQueries({ queryKey: ['settings', 'readonly-key'] })
     },
   })

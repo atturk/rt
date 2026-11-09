@@ -1,5 +1,5 @@
 import { KnownBadge } from '@/components/sources/ArchiveFileBadge'
-import { ExtractOptions, PagesOptions, SourceBadges, SourceFileIcon, UseOptions } from '@/components/sources/SourceControls'
+import { ExtractOptions, PagesOptions, ReliabilityOptions, SourceBadges, SourceFileIcon, UseOptions } from '@/components/sources/SourceControls'
 import { fileFacts, textOnly, type SourceOptions } from '@/api/archive'
 import { defaultOptions, hasPages, sourceReasons, useSourceDefaults } from '@/lib/sourceDefaults'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -162,7 +162,7 @@ function formatDayLabel(dateStr: string): string {
   return `${isToday ? 'Oggi, ' : ''}${dayName} ${dayNum} ${monthName}`
 }
 
-const isZip = (file: File) => file.name.toLowerCase().endsWith('.zip')
+const isZip = (file: File) => file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.rt')
 
 /** Il server rifiuta due file con lo stesso nome (anche solo per maiuscole), e lo scopre solo
  * a upload finito: un file già scelto, o ripetuto nella stessa scelta, si tiene una volta sola. */
@@ -391,7 +391,7 @@ export function NewLessonDialog({
       const zipsFound = chosen.filter(isZip)
       if (zipsFound.length > 0) {
         if (zipsFound.length !== chosen.length) {
-          setProblem('Scegli o solo file audio/materiali o solo pacchetti .zip.')
+          setProblem('Scegli o solo file audio/materiali o solo pacchetti .rt/.zip.')
           return
         }
         setZipFiles(zipsFound)
@@ -706,7 +706,7 @@ export function NewLessonDialog({
           type="file"
           multiple
           hidden
-          accept={['audio/*', '.zip', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
+          accept={['audio/*', '.zip', '.rt', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
           aria-label="Audio o pacchetto della lezione"
           onChange={(event) => {
             choose(Array.from(event.target.files ?? []))
@@ -886,6 +886,8 @@ export function NewLessonDialog({
                         onChange={(estrai) => updateMaterial(m, i, { estrai })} />
                       <UseOptions value={current.uso ?? 'contesto'} unavailable={reasons.use} off={reasons.off}
                         onChange={(uso) => updateMaterial(m, i, { uso })} />
+                      <ReliabilityOptions value={current.affidabilita}
+                        onChange={(affidabilita) => updateMaterial(m, i, { affidabilita })} />
                       {hasPages(m.name) && !textOnly(m.name) && total !== 1 && (
                         <PagesOptions value={current.pagine} total={total}
                           onChange={(pagine) => updateMaterial(m, i, { pagine })} />

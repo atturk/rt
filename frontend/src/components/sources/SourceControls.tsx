@@ -1,4 +1,4 @@
-import { Brackets, Files, FileText, Image } from 'lucide-react'
+import { Brackets, Files, FileText, Image, Shield } from 'lucide-react'
 import type { ReactNode, SVGProps } from 'react'
 
 import { textOnly, type Extraction, type SourceOptions } from '@/api/archive'
@@ -89,14 +89,65 @@ export function SourceFileIcon({ name, className }: { name: string; className?: 
   return <PdfIcon className={className} aria-hidden />
 }
 
+export type Affidabilita = 'alta' | 'normale' | 'bassa'
+
+export function ReliabilityOptions({
+  value = 'normale',
+  onChange,
+}: {
+  value?: Affidabilita | null
+  onChange: (value: Affidabilita) => void
+}) {
+  const current = value ?? 'normale'
+  return (
+    <div className="flex items-center gap-2">
+      <Segmented label="Affidabilità">
+        {(['alta', 'normale', 'bassa'] as const).map((key) => {
+          const label = key === 'alta' ? 'Alta' : key === 'normale' ? 'Normale' : 'Bassa'
+          const active = current === key
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-label={label}
+              aria-pressed={active}
+              onClick={() => onChange(key)}
+              className={cn(
+                'rounded-md px-2 py-1 text-meta font-medium transition-colors cursor-pointer',
+                active ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </Segmented>
+      <span className="min-w-16 text-meta text-muted-foreground">
+        {current === 'alta' ? 'Alta' : current === 'normale' ? 'Normale' : 'Bassa'}
+      </span>
+    </div>
+  )
+}
+
 /** Modalità e uso in piccolo sulla miniatura. */
 export function SourceBadges({ options }: { options: SourceOptions }) {
   const Mode = EXTRACTIONS.find(([key]) => key === (options.estrai ?? 'immagini'))?.[1]
   const Use = options.estrai === 'solo_immagini' ? null : USES.find(([key]) => key === (options.uso ?? 'contesto'))?.[1]
+  const affidabilita = options.affidabilita
   return (
-    <span className="absolute right-1 bottom-1 flex gap-0.5 text-muted-foreground [&_svg]:size-3" aria-hidden>
+    <span className="absolute right-1 bottom-1 flex gap-0.5 text-muted-foreground [&_svg]:size-3" aria-hidden={!affidabilita ? true : undefined}>
       {Mode && <Mode />}
       {Use && <Use />}
+      {affidabilita === 'alta' && (
+        <span title="Affidabilità alta" aria-label="Affidabilità alta" data-testid="badge-reliability-alta">
+          <Shield className="fill-current" />
+        </span>
+      )}
+      {affidabilita === 'bassa' && (
+        <span title="Affidabilità bassa" aria-label="Affidabilità bassa" data-testid="badge-reliability-bassa">
+          <Shield />
+        </span>
+      )}
     </span>
   )
 }

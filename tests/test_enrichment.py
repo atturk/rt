@@ -180,6 +180,19 @@ def test_snapshot_renders_initialized_interaction_without_network():
     assert snapshot(html).startswith(b"\x89PNG")
 
 
+def test_snapshot_validation_reads_visible_text_not_scripts():
+    import shutil
+    from rt.llm.enrichment_media import VisualizationValidationError, standalone, snapshot
+    if not (os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium")):
+        pytest.skip("Chromium not installed in this test environment")
+    # Codice JS normale (typeof … 'undefined', === null) e un tooltip nascosto: non sono errori.
+    ok = standalone('<p id="v">0</p><span style="position:absolute;left:-500px;visibility:hidden">tip</span>'
+                    '<script>let x=null; if (typeof y === "undefined") document.getElementById("v").textContent = "1";</script>')
+    assert snapshot(ok).startswith(b"\x89PNG")
+    with pytest.raises(VisualizationValidationError, match="undefined"):
+        snapshot(standalone('<p>Distanza: undefined</p>'))
+
+
 def test_dismissing_a_generated_element_takes_it_out_of_the_text_and_restore_puts_it_back(lesson):
     path, _, _ = lesson
     item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="A", description="D", prompt="Matrice"))
@@ -190,3 +203,107 @@ def test_dismissing_a_generated_element_takes_it_out_of_the_text_and_restore_put
     assert es.get_element(es.load(path), item.id).asset_image  # resta nei media
     es.mutate(path, item.id, "restore")
     assert "1.1" in es.document_blocks(path)
+
+
+def test_infographic_generates_via_visualizer_and_snapshot_not_image_model(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "infographic", es.IdeaText(title="Infografica", description="Diagramma", prompt="Gap anionico"))
+
+    from rt.llm.enrichment_media import Visualization
+    structured = Mock(return_value=Visualization(body='<svg><text>Gap</text></svg>'))
+    snap = Mock(return_value=b"\x89PNG\r\n\x1a\nfake-png")
+    gen_img = Mock(side_effect=AssertionError("generate_image must not be called for infographic"))
+
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", structured)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", snap)
+    monkeypatch.setattr("rt.llm.enrichment_media.generate_image", gen_img)
+
+    es.generate(path, item.id)
+
+    assert structured.call_count == 1
+    call_kwargs = structured.call_args.kwargs
+    assert call_kwargs["job_name"] == "enrichment_visualizer"
+    assert "Modalità: static" in call_kwargs["prompt"]
+    assert "infografica" in call_kwargs["system_prompt"].lower()
+    assert snap.call_count == 1
+    gen_img.assert_not_called()
+
+    el = es.get_element(es.load(path), item.id)
+    assert el.asset_image and el.asset_html
+    assert el.asset_mode == "static"
+
+
+def _fake_snapshot(html):
+    # Il browser vero è coperto da test_snapshot_validation_*; qui conta la logica di retry.
+    from rt.llm.enrichment_media import VisualizationValidationError
+    if "undefined" in html:
+        raise VisualizationValidationError('etichette "undefined"')
+    return b"\x89PNG\r\n\x1a\nfake-png"
+
+
+def test_visualization_validation_retries_on_undefined_then_fails(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="Visual", description="D", prompt="Simula"))
+
+    from rt.llm.enrichment_media import Visualization
+    bad_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: undefined</p>')
+    mock_llm = Mock(return_value=bad_visual)
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", _fake_snapshot)
+
+    with pytest.raises(Exception, match='undefined'):
+        es.generate(path, item.id)
+
+    # Riprova esattamente una volta: 2 chiamate in tutto
+    assert mock_llm.call_count == 2
+    first_call_prompt = mock_llm.call_args_list[0].kwargs["prompt"]
+    second_call_prompt = mock_llm.call_args_list[1].kwargs["prompt"]
+    assert 'Nel tentativo precedente: etichette "undefined", correggi.' in second_call_prompt
+
+    # L'elemento va in errore e non viene pubblicato
+    el = es.get_element(es.load(path), item.id)
+    assert el.status == "error"
+    assert 'undefined' in (el.error or "")
+    assert not el.asset_image
+    assert es.document_blocks(path) == {}
+
+
+def test_visualization_validation_clean_html_publishes(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    item = es.create_manual(path, "1.1", "visualization", es.IdeaText(title="Visual", description="D", prompt="Simula"))
+
+    from rt.llm.enrichment_media import Visualization
+    clean_visual = Visualization(body='<h2>Visualizzazione</h2><p>Valore: 42</p>')
+    mock_llm = Mock(return_value=clean_visual)
+    monkeypatch.setattr("rt.llm.client.LLMClient.call_structured", mock_llm)
+    monkeypatch.setattr("rt.llm.enrichment_media.snapshot", _fake_snapshot)
+
+    es.generate(path, item.id)
+
+    # Una sola chiamata (nessun retry necessario)
+    assert mock_llm.call_count == 1
+    el = es.get_element(es.load(path), item.id)
+    assert el.status == "ready"
+    assert el.asset_image and el.asset_html
+    assert "1.1" in es.document_blocks(path)
+
+
+def test_utility_questions_passed_to_decision(lesson, monkeypatch):
+    path, rows, cfg = lesson
+    from rt.llm.jev_client import JevNoulAnswer
+    decide = Mock(return_value=SimpleNamespace(answers={k: JevNoulAnswer(noul=0.1) for k in es.UTILITY}))
+    monkeypatch.setattr(es, "decision", decide)
+    es.analyze(path)
+
+    assert decide.call_count > 0
+    questions = decide.call_args_list[0].args[1]
+    assert "infographic" in questions and "visualization" in questions
+    vis_inst = questions["visualization"].instructions
+    info_inst = questions["infographic"].instructions
+
+    assert "processo a passaggi" in vis_inst
+    assert "formula con variabili o dati numerici" in vis_inst
+    assert "relazioni, sequenze o confronti riassumibili in poche etichette" in info_inst
+
+
+

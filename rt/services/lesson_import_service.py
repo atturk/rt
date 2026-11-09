@@ -49,7 +49,7 @@ def group_archive_members(archive: str) -> Optional[List[str]]:
     """
     with zipfile.ZipFile(archive) as zipped:
         files = [item for item in zipped.infolist() if not item.is_dir()]
-        if not files or not all(item.filename.lower().endswith(".zip") for item in files):
+        if not files or not all(item.filename.lower().endswith((".zip", ".rt")) for item in files):
             return None
         return [item.filename for item in _checked_files(zipped)]
 

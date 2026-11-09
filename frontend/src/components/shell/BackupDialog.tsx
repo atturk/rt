@@ -175,9 +175,11 @@ export function BackupDialog() {
       <div className="p-6 max-md:p-5 flex flex-col gap-4">
         {state.kind === 'in_corso' && (
           <>
-            <h2 id={titleId} className="text-[15px] font-semibold">
-              {state.tipo === 'copia' ? 'Salvo una copia…' : state.tipo === 'esporta' ? 'Esportazione in corso…' : state.tipo === 'importa' ? 'Importazione in corso…' : 'Backup in corso…'}
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 id={titleId} className="text-[15px] font-semibold">
+                {state.tipo === 'copia' ? 'Salvo una copia…' : state.tipo === 'esporta' ? 'Esportazione in corso…' : state.tipo === 'importa' ? 'Importazione in corso…' : 'Backup in corso…'}
+              </h2>
+            </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">{phaseText}</span>

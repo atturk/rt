@@ -1,5 +1,164 @@
 # Novità di RT
 
+## 4.3.8 — 2026-11-09
+
+Raccoglie le beta da 4.3.8b1 a 4.3.8b8: guida dentro l'app, Studio più rapido, esportazione unificata, arricchimento più fedele e tante correzioni.
+
+### Novità
+
+- **Guida di RT** dentro l'app anche senza rete, con ricerca e immagini: «?» nell'intestazione, F1 o ⌘?, menu Aiuto (su Mac la ricerca del menu trova anche le voci). Una pagina spiega la privacy.
+- **Primo avvio** con una lezione di esempio gratuita e la stima del costo per lezione; **backup leggero** (database e testi) prima di ogni aggiornamento, tenendo gli ultimi 5.
+- **Studio**: prima selezioni il testo e poi premi E, G, V o C; stati delle unità personalizzati (nome, colore, icona, ordine, «Salta in Studio»); player audio a scomparsa (P) che segue l'unità; domande dell'unità col tasto D; valutazione delle risposte con correttezza, completezza e attinenza e una domanda di approfondimento quando serve.
+- **Copiare in Studio**: Cmd+A seleziona solo l'unità, Cmd+C la copia formattata, Cmd+Option+C in Markdown, **Cmd+K le keywords dell'unità** (una per riga, con un avviso in basso). Le scorciatoie si cambiano in Impostazioni → Editor e scorciatoie. Nella pagina lezione c'è anche il pulsante «Copia le keywords».
+- **Lettura veloce**: mantiene i colori delle evidenziazioni, parte dalla parola selezionata e mostra lo stato dell'unità.
+- **Esporta**: un solo menu per Markdown, PDF, Lezione (.rt) e fonti; quando il file è pronto scegli Salva, Condividi o Annulla. Con più lezioni selezionate, «Esporta PDF» ed «Esporta lezioni (.rt)» producono un file per lezione.
+- **File di RT**: `.rt` per le lezioni, `.rtdb` per la collezione, `.rtcal` per l'orario, con la loro icona e il doppio clic che li apre in RT.
+- **Affidabilità delle fonti** (alta, normale, bassa): la verifica si fida di più delle slide del docente e meno degli appunti.
+- **Arricchimento**: visualizzazioni interattive nell'anteprima, infografiche con testo vero, controllo automatico di valori mancanti, idee più mirate, elementi generati visibili anche in Studio.
+- **Immagini**: anteprima piccola che segue il cursore (con il divieto dove non si può rilasciare), più immagini insieme, togliere una sola occorrenza, slide dei pptx disegnate con LibreOffice o Keynote.
+- **Accesso da altri dispositivi** (prima «Accesso da iPhone») con l'API di sola lettura per gli agenti.
+
+### Correzioni
+
+- Il rilascio delle immagini nel testo funziona al primo colpo; Condividi non mostra più «Autenticazione richiesta» senza token API salvato.
+- Il player non si ferma più con le registrazioni Android; cambiare data o materia non invalida più la scaletta.
+- «Mettimi alla prova · N» non conta le domande bloccate; LaTeX leggibile nella Verifica; tante piccole correzioni elencate nelle beta qui sotto.
+
+## 4.3.8b8 — 2026-11-09
+
+Beta con la copia rapida delle keywords dell'unità.
+
+### Novità
+
+- **Copia le keywords**: nella pagina lezione, accanto a «Mettimi alla prova su questa unità», un pulsante con l'icona di copia e una K copia negli appunti le keywords dell'unità, una per riga. Il pulsante compare solo se l'unità ha keywords.
+
+## 4.3.8b7 — 2026-11-09
+
+Beta di correzioni: trascinamento delle immagini nel testo, Condividi e stati di studio da saltare.
+
+### Novità
+
+- **Stati personalizzati da saltare**: in Impostazioni → Stati delle unità ogni stato personalizzato ha la casella «Salta in Studio». Aprendo lo Studio le unità con quello stato si saltano, come già succede con Appresa e Ignorata.
+
+### Correzioni
+
+- Le immagini trascinate dal pannello Arricchimento si rilasciano di nuovo nel testo al primo colpo, senza il segno di divieto sopra l'editor.
+- Condividi (PDF, Markdown, fonti) non mostra più «Autenticazione richiesta» quando RT non ha il token API salvato, per esempio dopo un ripristino da un altro Mac.
+
+## 4.3.8b6 — 2026-11-09
+
+Beta con l'esportazione unificata, la copia rapida dell'unità in Studio e il trascinamento delle immagini più chiaro.
+
+### Novità
+
+- **Un solo Esporta**: nella lezione e nella selezione di più lezioni si sceglie solo cosa esportare; quando il file è pronto un riquadro chiede se salvarlo o condividerlo, oppure annullare (X o Esc), anche mentre RT lo prepara. Annullando non restano file temporanei.
+- **Più lezioni insieme**: nella pagina Lezioni, con la selezione, ci sono «Esporta PDF» ed «Esporta lezioni (.rt)». Ogni lezione diventa un file a sé: Condividi li passa tutti al menu di sistema, Salva nell'app li mette in una cartella a scelta e nel browser in un solo zip.
+- **Copiare un'unità in Studio**: Cmd+A (Ctrl+A) seleziona solo l'unità aperta, titolo compreso, senza barra né timestamp; Cmd+C la copia formattata secondo Impostazioni → Copia. Cmd+Option+C (Ctrl+Alt+C) copia l'unità in Markdown grezzo; la scorciatoia si cambia in Editor e scorciatoie.
+- **Accesso da altri dispositivi**: la sezione delle Impostazioni prima chiamata «Accesso da iPhone» vale per qualsiasi telefono, tablet o computer della stessa rete Tailscale.
+
+- **Arricchimento**: le visualizzazioni interattive si aprono interattive nell'anteprima, con un badge sulla miniatura; la «i» dei media generati mostra tipo, unità, descrizione e prompt; gli elementi generati compaiono anche in Studio dopo il testo dell'unità.
+- **Infografiche fedeli**: le infografiche si disegnano con testo vero (niente più formule e numeri inventati dal modello di immagini), e prima di pubblicare una visualizzazione RT controlla che non mostri valori mancanti o testo fuori dai bordi, riprovando una volta.
+- **Idee più mirate**: la domanda che decide se un'unità merita un elemento generato guarda cose concrete del testo (processi, confronti, strutture, formule, dati).
+
+### Correzioni
+
+- Trascinando le immagini l'anteprima resta in basso a destra del cursore anche sopra intestazione e barre laterali; dove non si può rilasciare compare un segno di divieto e il rilascio non fa nulla.
+
+## 4.3.8b5 — 2026-11-07
+
+Beta con il trascinamento delle immagini rifatto, le slide dei pptx, lo Studio più comodo con il player e diverse correzioni.
+
+### Novità
+
+- **Trascinare le immagini**: l'anteprima è piccola e sta in basso a sinistra del cursore, così vedi dove la lasci.
+- **Togliere una sola immagine**: trascina la miniatura di un'unità sul pannello Media per togliere solo quella occorrenza; le altre restano. Si annulla con Cmd+Z.
+- **Più immagini insieme**: nel pannello Media selezioni più immagini con Cmd/Ctrl+clic o Shift+clic e le trascini tutte in una volta.
+- **Slide dei pptx**: RT disegna le slide con LibreOffice o Keynote, se installati, al posto delle icone di Quick Look.
+- **Cambiare unità col player aperto**: Option+frecce (Alt+frecce su Windows) cambiano unità anche quando le frecce spostano l'audio. La scorciatoia si cambia in Impostazioni → Editor e scorciatoie.
+- **Il player segue l'unità**: cambiando unità l'audio va all'inizio della nuova unità, senza cambiare play o pausa. Si spegne in Impostazioni → Aspetto e lettura.
+- **Tasti P e L**: P apre e chiude il player in Studio e nella lettura veloce; i tooltip mostrano P e L.
+- **Stati personalizzati**: nella barra dello Studio ogni stato ha il suo colore; in Impostazioni l'ordine si cambia trascinando le righe, e scrivere il nome non è più lento (si salva con Invio o uscendo dal campo).
+
+### Correzioni
+
+- Il player trascinato non salta più di lato all'inizio del trascinamento.
+- Le registrazioni Android lunghe non si fermano più dopo pochi secondi in Studio.
+- «Rileggi l'unità» nel ripasso apre l'unità nello Studio.
+- Nel PDF della lezione tornano i pallini e i numeri degli elenchi.
+- Le formule come `\mathrm{Ca^{2+}}` non perdono più `\m` nel testo rielaborato.
+- Cambiare data o materia di una lezione non rende più obsolete scaletta e pre-elaborazione.
+- La scheda generata dall'arricchimento non sparisce più nell'editor, e i media generati si possono trascinare nel testo.
+
+## 4.3.8b4 — 2026-11-06
+
+Beta con la condivisione da iPhone, il player audio spostabile e lo zoom che non rompe più la pagina.
+
+### Novità
+
+- **Condividi**: nel menu Esporta ci sono «Condividi PDF» e «Condividi lezione», che aprono il menu di condivisione del sistema (iPhone e Mac). Le voci si chiamano ora «Lezione (.rt)» e «Solo le fonti (zip)».
+- **Stato del file**: mentre RT prepara un file da salvare o condividere compare una barra in basso con l'avanzamento, poi il bottone «Salva» o l'errore.
+- **Domande dell'unità in Studio**: il blocco «Genera» in fondo all'unità non c'è più; il bottone con il cervello nella barra in alto (tasto D) apre le domande dell'unità che stai leggendo.
+- **Player audio spostabile**: trascinalo dai bordi e si aggancia in basso, a sinistra o a destra; RT ricorda la posizione su ogni dispositivo. Sugli schermi stretti resta in basso.
+- **Stesso docente**: nel salto tra lezioni (Studio e pagina della lezione) c'è una terza riga per la lezione prima o dopo dello stesso docente e della stessa materia.
+
+### Correzioni
+
+- Lo zoom dell'app (Cmd + e Cmd −, Impostazioni → Aspetto) usa lo zoom vero della finestra e non rompe più il disegno della pagina della lezione. Nel browser vale lo zoom del browser.
+- I download dalla web app su iPhone ora funzionano anche per Markdown, zip e fonti.
+- In Studio il player audio ricorda se era aperto o chiuso; tolto il bottone ▶ dell'unità.
+- Le barre laterali di Impostazioni e Guida scorrono quando lo zoom è alto.
+- Immagini e classificatore non si fermano più con «ValidationError … cost_details»: il servizio di classificazione ora manda dettagli di costo in più, che RT ignora.
+
+## 4.3.8b3 — 2026-11-05
+
+Beta con le correzioni sulla beta 2, il ripasso «da professore» e gli stati di studio personalizzati.
+
+### Novità
+
+- **Menu Aiuto**: la guida si apre dal menu «Aiuto» nella barra dei menu, con tutte le pagine e le sezioni; su Mac il campo di ricerca del menu cerca anche nelle voci. Dentro l'app la guida si apre da Impostazioni → Guida o con F1.
+- **Guida con immagini**: le pagine della guida possono contenere immagini, e l'ordine delle pagine si decide in un solo file.
+- **Valutazione delle risposte**: per le domande mirate e vaste RT mostra correttezza, completezza e attinenza (quanto la risposta segue quello che dice l'unità). La valutazione considera la correttezza generale della risposta, non solo l'unità.
+- **Domanda di approfondimento**: se la risposta va nella direzione giusta ma è incompleta o poco attinente, RT fa una domanda in più per aiutarti a completarla e poi valuta tutto insieme. Si può saltare.
+- **Stati di studio personalizzati**: in Impostazioni puoi creare nuovi stati per le unità (nome, colore, icona) e decidere l'ordine in cui il tasto S li fa scorrere, insieme a quelli predefiniti.
+- **Audio in Studio**: un player a scomparsa (icona cuffie) con velocità e salti di 5 secondi; quando è aperto le frecce spostano l'audio invece di cambiare unità.
+
+### Correzioni
+
+- Il bottone «Indietro» della guida ora esce sempre dalla guida.
+- Tolti il «?» nelle pagine e il bottone «Genera domande» del ripasso vuoto, che portava alla lezione invece di generare.
+
+## 4.3.8b2 — 2026-11-04
+
+Beta con la guida, il primo avvio e la sicurezza degli aggiornamenti.
+
+### Novità
+
+- **Guida di RT**: dentro l'app anche senza rete, con ricerca. Si apre con «?» nell'intestazione, con F1 o ⌘?, dal menu «Guida di RT» e dai piccoli «?» nelle finestre più complesse. La stessa guida sarà pubblica sul sito di RT.
+- **Primo avvio**: con la libreria vuota, RT propone una lezione di esempio già pronta (non costa niente) e mostra una stima del costo per lezione con i modelli scelti, anche in Impostazioni → Modelli.
+- **Backup prima degli aggiornamenti**: prima di installare una nuova versione RT salva database e testi delle lezioni (senza audio e immagini) e tiene gli ultimi 5. Se il backup non riesce, l'aggiornamento non parte. Si ripristinano dal menu «Ripristina dati prima di un aggiornamento…».
+- **Privacy**: una pagina della guida spiega cosa resta sul computer e cosa esce, e verso chi.
+
+### Correzioni
+
+- Dopo «Genera le domande» su un'unità con segnalazioni aperte RT spiega che le domande compariranno quando avrai deciso le segnalazioni, con il link alla Verifica.
+
+## 4.3.8b1 — 2026-11-04
+
+Beta con le novità dello Studio, l'affidabilità delle fonti, i file di RT e l'accesso per gli agenti.
+
+### Novità
+
+- **Studio, prima la selezione**: seleziona il testo e poi premi E, G, V o C (o il pulsante): lo strumento si applica una volta sola alla selezione. Senza selezione funziona come prima.
+- **Lettura veloce**: mantiene i colori delle evidenziazioni, parte dalla parola selezionata e mostra lo stato dell'unità accanto al titolo (clic o S per cambiarlo), anche in zen. Avviso quando il filtro Irlen copre i colori, con «Non mostrare più».
+- **Affidabilità delle fonti** (alta, normale, bassa) in Dettagli → Fonti e in Nuova lezione: la verifica si fida di più delle slide del docente e meno degli appunti. Con tutte le fonti normali non cambia niente.
+- **File di RT**: le lezioni si esportano in `.rt`, la collezione in `.rtdb`, l'orario in `.rtcal`, con la loro icona. Un doppio clic li apre in RT; collezione e orario chiedono sempre conferma prima di sostituire qualcosa. I vecchi `.zip` funzionano ancora.
+- **API di sola lettura per gli agenti** (Impostazioni → Accesso da iPhone): la chiave resta visibile con «Copia» e c'è un prompt pronto per Antigravity, Claude, pi o Codex. Le chiavi create prima vanno rigenerate una volta.
+
+### Correzioni
+
+- **Mettimi alla prova · N** non conta più le domande bloccate da segnalazioni aperte.
+- Le formule nella Verifica si vedono anche nel testo intorno alla frase contestata.
+
 ## 4.3.7 — 2026-11-03
 
 Raccoglie la beta 4.3.7b1: le correzioni dal test notturno del frontend 4.3.6, molte per l'iPhone.

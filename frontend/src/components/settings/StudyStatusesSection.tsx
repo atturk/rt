@@ -1,0 +1,331 @@
+import { useState, useId, type DragEvent, type KeyboardEvent } from 'react'
+import {
+  GripVertical,
+  Plus,
+  Trash2,
+} from 'lucide-react'
+
+import { api, unwrap } from '@/api/client'
+import { useSaveStudyStatuses, type Settings } from '@/api/settings'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
+import { Tooltip } from '@/components/ui/tooltip'
+import {
+  DEFAULT_STATUS_IDS,
+  PRESET_COLORS,
+  PRESET_ICONS,
+  resolveStatusOrder,
+  resolveStudyStatus,
+  SKIPPED_DEFAULT_STATUSES,
+  type CustomStudyStatus,
+} from '@/components/study/studyProgress'
+import { moveItem } from '@/lib/order'
+import { cn } from '@/lib/utils'
+import { Section } from './common'
+
+const DRAG_TYPE = 'application/x-rt-study-status-index'
+
+export function StudyStatusesSection({ settings }: { settings: Settings }) {
+  const saveStudyStatuses = useSaveStudyStatuses()
+
+  const rawStatuses = (settings.stati_studio as CustomStudyStatus[]) ?? []
+  const rawOrder = (settings.ordine_stati_studio as string[]) ?? []
+
+  const statuses = rawStatuses
+  const order = resolveStatusOrder(statuses, rawOrder)
+
+  const [dragged, setDragged] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
+  const [deletePending, setDeletePending] = useState<{ id: string; name: string; count: number } | null>(null)
+  const confirmTitleId = useId()
+
+  const persist = (nextStatuses: CustomStudyStatus[], nextOrder: string[]) => {
+    saveStudyStatuses.mutate({
+      stati_studio: nextStatuses.map((status) => ({ ...status, salta: Boolean(status.salta) })),
+      ordine_stati_studio: nextOrder,
+    })
+  }
+
+  function drop(event: DragEvent, index: number) {
+    if (!event.dataTransfer.types.includes(DRAG_TYPE)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const from = Number(event.dataTransfer.getData(DRAG_TYPE))
+    if (Number.isInteger(from) && from >= 0 && from < order.length && from !== index) {
+      persist(statuses, moveItem(order, from, index))
+    }
+    setDragged(null)
+    setOver(null)
+  }
+
+  function keyMove(event: KeyboardEvent, index: number) {
+    if (!event.altKey) return
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    const to = event.key === 'ArrowUp' ? index - 1 : index + 1
+    if (to < 0 || to >= order.length) return
+    event.preventDefault()
+    const nextOrder = moveItem(order, index, to)
+    persist(statuses, nextOrder)
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-status-handle="${order[index]}"]`)?.focus()
+    })
+  }
+
+  const addStatus = () => {
+    const existingNums = statuses
+      .map((s) => parseInt(s.id.replace(/\D/g, '') || '0', 10))
+      .filter((n) => !isNaN(n))
+    const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1
+    const newId = `c${nextNum}`
+    const newStatus: CustomStudyStatus = {
+      id: newId,
+      nome: 'Nuovo stato',
+      colore: 'text-amber-500',
+      icona: 'Star',
+    }
+    const nextStatuses = [...statuses, newStatus]
+    const nextOrder = [...order, newId]
+    persist(nextStatuses, nextOrder)
+  }
+
+  const updateStatus = (id: string, patch: Partial<CustomStudyStatus>) => {
+    const nextStatuses = statuses.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    persist(nextStatuses, order)
+  }
+
+  const handleDeleteClick = async (status: CustomStudyStatus) => {
+    try {
+      // Controlla quante unità usano questo stato
+      const usageRes = await unwrap(
+        api.GET('/api/v1/study/statuses/{status_id}/usage', {
+          params: { path: { status_id: status.id } },
+        })
+      )
+      const count = usageRes?.count ?? 0
+      if (count > 0) {
+        setDeletePending({ id: status.id, name: status.nome, count })
+        return
+      }
+    } catch {
+      // Se la verifica fallisce procedi direttamente
+    }
+    executeDelete(status.id)
+  }
+
+  const executeDelete = async (id: string) => {
+    try {
+      await unwrap(
+        api.DELETE('/api/v1/study/statuses/{status_id}', {
+          params: { path: { status_id: id } },
+        })
+      )
+    } catch {
+      // Fallback: aggiorna le preferenze
+    }
+    const nextStatuses = statuses.filter((s) => s.id !== id)
+    const nextOrder = order.filter((sId) => sId !== id)
+    persist(nextStatuses, nextOrder)
+    setDeletePending(null)
+  }
+
+  return (
+    <Section
+      id="stati-unita"
+      title="Stati delle unità"
+      description="Personalizza e ordina il ciclo degli stati di studio (tasto S e clic sull'icona)."
+    >
+      <div className="flex flex-col gap-2" data-testid="study-statuses-list">
+        {order.map((id, index) => {
+          const isDefault = DEFAULT_STATUS_IDS.includes(id)
+          const def = resolveStudyStatus(id, statuses)
+          const custom = statuses.find((s) => s.id === id)
+          const Icon = def.icon
+
+          return (
+            <div
+              key={id}
+              data-testid={`status-row-${id}`}
+              draggable
+              onDragStart={(event) => {
+                const target = event.target as HTMLElement
+                if (target.closest('input, select, button:not([data-status-handle])')) {
+                  event.preventDefault()
+                  return
+                }
+                event.dataTransfer.setData(DRAG_TYPE, String(index))
+                event.dataTransfer.effectAllowed = 'move'
+                setDragged(index)
+              }}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(DRAG_TYPE)) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                setOver(index)
+              }}
+              onDragLeave={() => setOver((current) => (current === index ? null : current))}
+              onDrop={(event) => drop(event, index)}
+              onDragEnd={() => { setDragged(null); setOver(null) }}
+              className={cn(
+                'flex items-center gap-3 rounded-lg border bg-card p-2.5 text-body transition-colors',
+                dragged === index && 'opacity-50',
+                over === index && dragged !== null && dragged !== index && (
+                  index < dragged ? 'border-t-2 border-t-primary' : 'border-b-2 border-b-primary'
+                ),
+              )}
+            >
+              <Tooltip content="Trascina per riordinare (o usa Alt+frecce)">{(trigger) => (
+                <button
+                  {...trigger}
+                  type="button"
+                  data-status-handle={id}
+                  aria-label={`Riordina stato ${def.label}: posizione ${index + 1} di ${order.length}, usa Alt e le frecce su e giù`}
+                  onKeyDown={(event) => keyMove(event, index)}
+                  className="cursor-grab active:cursor-grabbing shrink-0 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                >
+                  <GripVertical className="size-4" aria-hidden />
+                </button>
+              )}</Tooltip>
+
+              <div className="flex items-center gap-2">
+                <Icon aria-hidden className={`size-5 shrink-0 ${def.className}`} />
+              </div>
+
+              {isDefault ? (
+                <div className="flex-1 font-medium">{def.label}</div>
+              ) : (
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  <StatusNameInput
+                    key={custom?.nome}
+                    name={custom?.nome ?? ''}
+                    onSave={(nome) => updateStatus(id, { nome })}
+                  />
+
+                  {/* Selettore colore tra i preset */}
+                  <select
+                    value={custom?.colore}
+                    onChange={(e) => updateStatus(id, { colore: e.target.value })}
+                    className="h-8 rounded-md border border-input bg-card px-2 text-meta text-foreground"
+                    aria-label="Colore dello stato"
+                  >
+                    {PRESET_COLORS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Selettore icona tra i preset */}
+                  <select
+                    value={custom?.icona}
+                    onChange={(e) => updateStatus(id, { icona: e.target.value })}
+                    className="h-8 rounded-md border border-input bg-card px-2 text-meta text-foreground"
+                    aria-label="Icona dello stato"
+                  >
+                    {Object.keys(PRESET_ICONS).map((iconName) => (
+                      <option key={iconName} value={iconName}>
+                        {iconName}
+                      </option>
+                    ))}
+                  </select>
+
+                  <Tooltip content="Aprendo lo Studio le unità con questo stato si saltano, come Appresa e Ignorata">{(trigger) => (
+                    <label {...trigger} className="flex items-center gap-2 text-meta text-muted-foreground">
+                      <Checkbox
+                        label={`Salta in Studio le unità «${custom?.nome ?? ''}»`}
+                        checked={Boolean(custom?.salta)}
+                        onChange={(salta) => updateStatus(id, { salta })}
+                      />
+                      Salta in Studio
+                    </label>
+                  )}</Tooltip>
+                </div>
+              )}
+
+              {isDefault && SKIPPED_DEFAULT_STATUSES.includes(id) && (
+                <span className="text-meta text-muted-foreground">Saltata in Studio</span>
+              )}
+
+              {!isDefault && custom && (
+                <IconButton
+                  label="Elimina stato"
+                  icon={Trash2}
+                  onClick={() => handleDeleteClick(custom)}
+                  aria-label={`Elimina stato ${custom.nome}`}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <Button variant="outline" size="sm" onClick={addStatus}>
+          <Plus className="mr-1.5 size-4" />
+          Aggiungi stato
+        </Button>
+      </div>
+
+      {deletePending && (
+        <Modal
+          open
+          onClose={() => setDeletePending(null)}
+          title="Elimina stato"
+          testId="confirm-delete-status-modal"
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDeletePending(null)}>
+                Annulla
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => executeDelete(deletePending.id)}
+              >
+                Elimina e converti
+              </Button>
+            </div>
+          }
+        >
+          <div className="p-4 text-body">
+            <h3 id={confirmTitleId} className="font-semibold text-danger">
+              Stato in uso
+            </h3>
+            <p className="mt-2 text-muted-foreground">
+              Ci sono <strong className="text-foreground">{deletePending.count}</strong> unità con
+              lo stato «{deletePending.name}». Eliminandolo, torneranno a «In apprendimento».
+              Vuoi continuare?
+            </p>
+          </div>
+        </Modal>
+      )}
+    </Section>
+  )
+}
+
+/** Nome dello stato: si salva all'uscita dal campo o con Invio, non a ogni tasto. */
+function StatusNameInput({ name, onSave }: { name: string; onSave: (name: string) => void }) {
+  const [draft, setDraft] = useState(name)
+  const commit = () => {
+    const next = draft.trim()
+    if (next && next !== name) onSave(next)
+    else setDraft(name)
+  }
+  return (
+    <Input
+      value={draft}
+      maxLength={24}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        else if (e.key === 'Escape') setDraft(name)
+      }}
+      className="h-8 max-w-[200px] text-body"
+      placeholder="Nome stato"
+      aria-label={`Nome per stato ${name}`}
+    />
+  )
+}

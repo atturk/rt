@@ -17,9 +17,14 @@ from pydantic import BaseModel, Field, field_validator
 
 class LessonExportRequest(BaseModel):
     ids: List[int] = Field(min_length=1, description="Id delle lezioni")
-    format: Literal["markdown", "zip", "sources"] = "markdown"
+    format: Literal["markdown", "zip", "sources", "pdf"] = "markdown"
     name: str = Field("lezioni", max_length=120, description="Nome del file scaricato (senza estensione)")
     study: bool = Field(False, description="Include lo stato di studio negli archivi completi")
+
+
+class LessonExportFileItem(BaseModel):
+    name: str
+    size: int
 
 
 class LessonMetadataUpdate(BaseModel):
@@ -165,6 +170,7 @@ class DocumentSection(BaseModel):
     start_formatted: Optional[str] = None
     relevance: Optional[Literal["organizational", "no_content"]] = None
     speech_segments: Optional[List[List[float]]] = Field(None, description="Tratti di parlato [inizio, fine] in secondi per la linea audio")
+    key_concepts: List[str] = Field(default_factory=list, description="Keywords dell'unità dalla scaletta (vuoto se mancano)")
 
 
 class LessonDocument(BaseModel):
@@ -485,6 +491,16 @@ class RecallSavedEvaluation(BaseModel):
     answer_text: str
     evaluation: str
     outcome: Optional[Literal["corretta", "parziale", "sbagliata"]] = None
+    correttezza: Optional[int] = None
+    completezza: Optional[int] = None
+    attinenza: Optional[int] = None
+    domanda_followup: Optional[str] = None
+    followup_question: Optional[str] = None
+    followup_answer: Optional[str] = None
+    followup_evaluation: Optional[str] = None
+    followup_correttezza: Optional[int] = None
+    followup_completezza: Optional[int] = None
+    followup_attinenza: Optional[int] = None
 
 
 class RecallQuestion(BaseModel):
@@ -559,6 +575,14 @@ class StudyStatusUpdate(BaseModel):
     status: StudyStatus
 
 
+class StatusUsage(BaseModel):
+    count: int
+
+
+class DeleteStatusResult(BaseModel):
+    reassigned: int
+
+
 class StudyProgress(StudyStatusUpdate):
     unit_id: str
     status_at: Optional[datetime] = None
@@ -575,6 +599,8 @@ class StudyUnit(BaseModel):
     id: str
     title: str
     html: str = Field(description="Testo dell'unità in HTML sanificato (come il documento)")
+    markdown: Optional[str] = Field(None, description="Testo sorgente Markdown dell'unità")
+    key_concepts: List[str] = Field(default_factory=list, description="Keywords dell'unità dalla scaletta (vuoto se la scaletta manca)")
     start: Optional[float] = Field(None, description="Inizio dell'unità nell'audio della lezione (secondi)")
     end: Optional[float] = Field(None, description="Fine dell'unità nell'audio della lezione (secondi)")
     pending: Dict[str, int] = Field(default_factory=dict, description="Domande da porre sull'unità, per tipo")
@@ -608,6 +634,17 @@ class RecallAnswerRecord(BaseModel):
     vote_comment: Optional[str] = None
     dont_know: bool = False
     answered_at: str
+    correttezza: Optional[int] = None
+    completezza: Optional[int] = None
+    attinenza: Optional[int] = None
+    domanda_followup: Optional[str] = None
+    followup_question: Optional[str] = None
+    followup_answer: Optional[str] = None
+    followup_evaluation: Optional[str] = None
+    followup_is_voice: bool = False
+    followup_correttezza: Optional[int] = None
+    followup_completezza: Optional[int] = None
+    followup_attinenza: Optional[int] = None
 
 
 class RecallHistory(BaseModel):
@@ -631,6 +668,8 @@ class RecallAnswer(BaseModel):
     choice: Optional[int] = Field(None, description="Quiz: indice dell'opzione (0-3)")
     answer: Optional[str] = Field(None, description="Mirata/vasta: risposta scritta (valutata da un job)")
     mock: bool = False
+    is_followup: bool = False
+    skip_followup: bool = False
 
 
 class QuizResult(BaseModel):

@@ -4,6 +4,7 @@ import { errorMessage } from '@/api/client'
 import type { ImportedLessonInfo, ZipImportDecision, ZipImportItem } from '@/api/jobs'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { fetchExport, saveFile } from '@/lib/fileExport'
 
 type Choice = 'replace' | 'keep' | 'skip'
 
@@ -25,17 +26,8 @@ function describe(info?: ImportedLessonInfo) {
 /** Salva sul computer lo ZIP completo (stato dello studio compreso) di una lezione. Il file si
  * scarica per intero prima di proseguire: la lezione viene rimpiazzata solo dopo. */
 async function downloadLessonCopy(lessonId: number, fallbackName: string) {
-  const response = await fetch(`/api/v1/lessons/${lessonId}/export?format=zip&scope=all&study=1`, { credentials: 'same-origin' })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null
-    throw new Error(body?.error?.message ?? `Copia non riuscita (${response.status})`)
-  }
-  const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(await response.blob())
-  link.download = encoded ? decodeURIComponent(encoded) : `${fallbackName}.zip`
-  link.click()
-  URL.revokeObjectURL(link.href)
+  const file = await fetchExport(`/api/v1/lessons/${lessonId}/export?format=zip&scope=all&study=1`, `${fallbackName}.rt`)
+  saveFile(file)
 }
 
 /** Lezioni del pacchetto che l'utente ha già (stessa data, materia e ora): per ognuna si
@@ -147,7 +139,7 @@ export function ImportConflicts({
             Prima di rimpiazzare vuoi scaricare una copia {replacing.length === 1 ? 'della tua lezione' : 'delle tue lezioni'}?
           </p>
           <p className="mb-2 text-muted-foreground">
-            È lo ZIP completo, stato dello studio compreso: se poi cambi idea lo reimporti da qui.
+            È la lezione completa (.rt), stato dello studio compreso: se poi cambi idea la reimporti da qui.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" disabled={saving} onClick={() => void saveCopiesAndSend()}>

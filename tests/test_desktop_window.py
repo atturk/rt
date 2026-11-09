@@ -157,9 +157,12 @@ def test_window_settings_session_menu_and_pid(data, monkeypatch, webview):
         items = kwargs["menu"][0].items
         assert [x.title for x in items if hasattr(x, "title")] == [
             "Controlla aggiornamenti…", "Apri cartella dati", "Mostra registri", "Backup…", "Esporta tutto…", "Importa…",
+            "Ripristina dati prima di un aggiornamento…",
             "Diagnostica", "Autenticazione", "Apri nel browser", "Ricarica",
             "Ingrandisci", "Riduci", "Dimensioni reali", "Esci da RT"]
-        items[0].function()
+        assert kwargs["menu"][1].title == "Aiuto"
+        update_item = next(x for x in items if getattr(x, "title", None) == "Controlla aggiornamenti…")
+        update_item.function()
         webview.create_window.assert_called_with(
             "Aggiornamento di RT", "http://127.0.0.1:8765/app/aggiornamento",
             width=420, height=240, resizable=False, on_top=True)
@@ -241,7 +244,7 @@ def test_window_smoke_does_not_hide_failure(data, monkeypatch, webview):
 
 def test_smoke_reads_the_native_page(data, monkeypatch):
     monkeypatch.setattr("rt._window_smoke.downloads", lambda window: ["lezione.zip", "nota.md", "domande.json"])
-    monkeypatch.setattr("rt._window_smoke.macos_menu", lambda: ["Esci da RT", "Modifica"])
+    monkeypatch.setattr("rt._window_smoke.macos_menu", lambda: ["Esci da RT", "Modifica", "Aiuto"])
     fake = Mock()
     fake.evaluate_js.side_effect = ["RT", True]
     fake.get_current_url.return_value = "http://127.0.0.1:8765/"
@@ -452,7 +455,8 @@ def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     exit_item = SimpleNamespace(title=lambda: 'Esci da RT', target=lambda: object(), keyEquivalent=lambda: 'q')
     app_menu = SimpleNamespace(title=lambda: 'RT', itemArray=lambda: [about_item, exit_item])
     roots = [SimpleNamespace(title=lambda: '', submenu=lambda: app_menu),
-             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica'))]
+             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Modifica')),
+             SimpleNamespace(title=lambda: '', submenu=lambda: SimpleNamespace(title=lambda: 'Aiuto'))]
     main = SimpleNamespace(itemArray=lambda: roots, itemAtIndex_=lambda index: roots[index])
     appkit = ModuleType('AppKit')
     appkit.NSApplication = SimpleNamespace(sharedApplication=lambda: SimpleNamespace(mainMenu=lambda: main))
@@ -460,7 +464,7 @@ def test_mac_smoke_reads_the_submenu_title(monkeypatch):
     objc_tools.AppHelper = SimpleNamespace(callAfter=lambda callback: callback())
     monkeypatch.setitem(sys.modules, 'AppKit', appkit)
     monkeypatch.setitem(sys.modules, 'PyObjCTools', objc_tools)
-    assert macos_menu() == ['Esci da RT', 'Modifica']
+    assert macos_menu() == ['Esci da RT', 'Modifica', 'Aiuto']
 
 
 def test_about_options():
@@ -501,6 +505,37 @@ def test_windows_menu_has_about(monkeypatch, webview):
     menu = window._menu(webview.create_window.return_value, "http://127.0.0.1:8765")
     items = menu[0].items
     assert items[0].title == "Informazioni su RT"
+
+
+def test_menu_has_aiuto_menu_with_search_and_pages(monkeypatch, webview):
+    win = webview.create_window.return_value
+    menu = window._menu(win, "http://127.0.0.1:8765")
+    # "Guida di RT" non è più nel menu principale RT
+    rt_items = menu[0].items
+    assert not any(getattr(item, "title", None) == "Guida di RT" for item in rt_items)
+
+    # Menu "Aiuto"
+    aiuto = next(m for m in menu if m.title == "Aiuto")
+    assert aiuto is not None
+    assert len(aiuto.items) >= 2
+
+    # Prima voce: "Cerca nella guida…"
+    cerca_item = aiuto.items[0]
+    assert cerca_item.title == "Cerca nella guida…"
+    cerca_item.function()
+    win.load_url.assert_called_with("http://127.0.0.1:8765/guida?cerca=1")
+
+    # Pagine della guida come sottomenu
+    page_menus = [it for it in aiuto.items[1:] if hasattr(it, "items")]
+    assert len(page_menus) >= 1
+    # Verifica una pagina specifica, es. index o installazione
+    install_menu = next((m for m in page_menus if m.title == "Installazione"), None)
+    assert install_menu is not None
+    # Ha le sezioni della pagina
+    assert len(install_menu.items) >= 1
+    first_sec = install_menu.items[0]
+    first_sec.function()
+    assert win.load_url.call_args[0][0].startswith("http://127.0.0.1:8765/guida/installazione#")
 
 
 def test_backup_stream_events_in_order(monkeypatch):
@@ -634,7 +669,7 @@ def test_desktop_api_salva_copia_backup_starts_stream(data, monkeypatch, webview
     assert stream.call_count == 1
     args, kwargs = stream.call_args
     assert kwargs.get("tipo") == "copia"
-    assert "/chiavetta/copia.zip" in args[1]
+    assert "/chiavetta/copia.rtdb" in args[1]
 
 
 def test_desktop_api_apri_aggiornamento_creates_single_window(webview):
@@ -847,3 +882,240 @@ def test_auth_menu_copies_and_regenerates_token(monkeypatch, webview):
     assert copied[-1] == "nuovo" and notices[-1] == "Token nuovo copiato negli appunti."
     # La sessione della finestra è chiusa dal reset: si riapre con un link monouso.
     win.load_url.assert_called_with("http://127.0.0.1:8765/login?code=monouso")
+
+
+def test_condividi_native(monkeypatch):
+    import requests
+
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_view = Mock()
+    fake_view.bounds.return_value = SimpleNamespace(size=SimpleNamespace(width=1000, height=800))
+    fake_native.contentView.return_value = fake_view
+    fake_win.native = fake_native
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    # Percorso non ammesso rifiutato
+    assert "errore" in api.condividi("/api/v1/system/status")
+    assert "errore" in api.condividi("/api/v1/lessons/1/view")
+    assert "errore" in api.condividi("../secret")
+
+    # Mock requests response
+    class FakeResponse:
+        ok = True
+        status_code = 200
+        content = b"%PDF-1.4 dummy"
+        headers = {
+            "Content-Disposition": "attachment; filename*=UTF-8''lezione%20prova.pdf"
+        }
+
+    calls = []
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, url, **kwargs):
+            calls.append((url, dict(self.headers), kwargs))
+            return FakeResponse()
+
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    from rt.api import auth
+    # Senza token salvato (archivio dei segreti di un altro Mac): sessione con codice monouso.
+    monkeypatch.setattr(auth, "saved_token", lambda: None)
+    monkeypatch.setattr(auth, "create_login_code", lambda: "codice")
+
+    # Mock AppKit e PyObjCTools
+    picker_instance = Mock()
+    picker_class = Mock(return_value=picker_instance)
+    picker_alloc = SimpleNamespace(initWithItems_=picker_class)
+
+    appkit = ModuleType("AppKit")
+    appkit.NSSharingServicePicker = SimpleNamespace(alloc=lambda: picker_alloc)
+
+    foundation = ModuleType("Foundation")
+    foundation.NSURL = SimpleNamespace(fileURLWithPath_=lambda path: f"file://{path}")
+    foundation.NSMakeRect = lambda x, y, w, h: (x, y, w, h)
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "Foundation", foundation)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    res = api.condividi("/api/v1/lessons/1/export?format=pdf")
+    assert res == {"ok": True}
+    assert calls[0][0] == "http://127.0.0.1:8765/login" and calls[0][2]["params"] == {"code": "codice"}
+    assert calls[1][0] == "http://127.0.0.1:8765/api/v1/lessons/1/export?format=pdf"
+    assert "Authorization" not in calls[1][1]
+    # Con il token salvato e valido basta l'header
+    calls.clear()
+    monkeypatch.setattr(auth, "saved_token", lambda: "tok")
+    assert api.condividi("/api/v1/lessons/1/export?format=pdf") == {"ok": True}
+    assert len(calls) == 1 and calls[0][1]["Authorization"] == "Bearer tok"
+
+    assert picker_class.call_count == 2
+    file_arg = picker_class.call_args[0][0][0]
+    assert file_arg.endswith("lezione prova.pdf")
+    assert picker_instance.showRelativeToRect_ofView_preferredEdge_.call_count == 2
+
+
+def test_set_zoom_macos(monkeypatch):
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_wv = Mock()
+    fake_native.webview = fake_wv
+    fake_win.native = fake_native
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    # Fattore valido
+    res = api.set_zoom(1.25)
+    assert res == {"ok": True, "factor": 1.25}
+    fake_wv.setPageZoom_.assert_called_once_with(1.25)
+
+    # Fattore clampato
+    res = api.set_zoom(4.5)
+    assert res == {"ok": True, "factor": 3.0}
+
+    res = api.set_zoom(0.1)
+    assert res == {"ok": True, "factor": 0.5}
+
+    # Fattore non valido
+    res = api.set_zoom("non-numero")
+    assert "errore" in res
+
+
+def test_set_zoom_windows(monkeypatch):
+    """Su Windows lo zoom passa dal thread dell'interfaccia (BeginInvoke), mai dalla js_api."""
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_webview = SimpleNamespace(ZoomFactor=1.0)
+    fake_native.webview = fake_webview
+    fake_native.BeginInvoke = lambda action: action()
+    fake_win.native = fake_native
+    system = ModuleType("System")
+    system.Action = lambda fn: fn
+    monkeypatch.setitem(sys.modules, "System", system)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    res = api.set_zoom(1.5)
+    assert res == {"ok": True, "factor": 1.5}
+    assert fake_webview.ZoomFactor == 1.5
+
+
+def test_salva_esportazione_and_cleanup(tmp_path, monkeypatch, webview):
+    from rt.services.api_jobs import exports_root
+    from rt.api import jobs as api_jobs
+
+    fake_win = Mock()
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    job_id = "job123"
+    job_dir = os.path.join(exports_root(), job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "l1.pdf"), "w") as f:
+        f.write("pdf1")
+    with open(os.path.join(job_dir, "l2.pdf"), "w") as f:
+        f.write("pdf2")
+    with open(os.path.join(job_dir, "lezioni.zip"), "w") as f:
+        f.write("zip")
+
+    class FakeQueue:
+        def get(self, jid):
+            return SimpleNamespace(id=jid, result={"files": ["l1.pdf", "l2.pdf"], "file": "lezioni.zip"})
+
+    monkeypatch.setattr(api_jobs, "queue", lambda: FakeQueue())
+
+    dest = tmp_path / "target_folder"
+    dest.mkdir()
+    fake_win.create_file_dialog = Mock(return_value=[str(dest)])
+
+    # Aggiungi una finta cartella condivisione temporanea
+    fake_temp = tmp_path / "temp_condividi"
+    fake_temp.mkdir()
+    window._condividi_temp_dirs.append(str(fake_temp))
+
+    res = api.salva_esportazione(job_id)
+    assert res == {"ok": True, "count": 2}
+    assert (dest / "l1.pdf").is_file()
+    assert (dest / "l2.pdf").is_file()
+    assert not (dest / "lezioni.zip").exists()
+    assert not os.path.exists(job_dir)
+    assert len(window._condividi_temp_dirs) == 0
+    assert not fake_temp.exists()
+
+
+def test_condividi_esportazione_multiple(tmp_path, monkeypatch):
+    from rt.services.api_jobs import exports_root
+    from rt.api import jobs as api_jobs
+
+    fake_win = Mock()
+    fake_native = Mock()
+    fake_view = Mock()
+    fake_view.bounds.return_value = SimpleNamespace(size=SimpleNamespace(width=1000, height=800))
+    fake_native.contentView.return_value = fake_view
+    fake_win.native = fake_native
+
+    api = window.DesktopApi(fake_win, base_url="http://127.0.0.1:8765")
+
+    job_id = "job456"
+    job_dir = os.path.join(exports_root(), job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "l1.pdf"), "w") as f:
+        f.write("pdf1")
+    with open(os.path.join(job_dir, "l2.pdf"), "w") as f:
+        f.write("pdf2")
+
+    class FakeQueue:
+        def get(self, jid):
+            return SimpleNamespace(id=jid, result={"files": ["l1.pdf", "l2.pdf"]})
+
+    monkeypatch.setattr(api_jobs, "queue", lambda: FakeQueue())
+
+    picker_instance = Mock()
+    picker_class = Mock(return_value=picker_instance)
+    picker_alloc = SimpleNamespace(initWithItems_=picker_class)
+
+    appkit = ModuleType("AppKit")
+    appkit.NSSharingServicePicker = SimpleNamespace(alloc=lambda: picker_alloc)
+
+    foundation = ModuleType("Foundation")
+    foundation.NSURL = SimpleNamespace(fileURLWithPath_=lambda path: f"file://{path}")
+    foundation.NSMakeRect = lambda x, y, w, h: (x, y, w, h)
+
+    objc_tools = ModuleType("PyObjCTools")
+    objc_tools.AppHelper = SimpleNamespace(callAfter=lambda cb: cb())
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "Foundation", foundation)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", objc_tools)
+
+    res = api.condividi_esportazione(job_id)
+    assert res == {"ok": True}
+    picker_class.assert_called_once()
+    items = picker_class.call_args[0][0]
+    assert len(items) == 2
+    assert len(window._condividi_temp_dirs) == 1
+    temp_dir = window._condividi_temp_dirs[0]
+    assert os.path.isdir(temp_dir)
+
+    # Pulizia
+    p_res = api.pulisci_condivisione()
+    assert p_res == {"ok": True}
+    assert len(window._condividi_temp_dirs) == 0
+    assert not os.path.exists(temp_dir)
+
+
+

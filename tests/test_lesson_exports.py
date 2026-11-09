@@ -54,7 +54,7 @@ def test_export_job_progress_download_and_compatibility(api_client, workspace, r
     assert download.status_code == 200 and "Oggi%200410" in download.headers["content-disposition"]
     with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
         assert len(archive.namelist()) == 2
-        assert all(n.endswith(".md" if fmt == "markdown" else ".zip") for n in archive.namelist())
+        assert all(n.endswith(".md" if fmt == "markdown" else (".rt", ".zip")) for n in archive.namelist())
         if fmt == "zip":
             with zipfile.ZipFile(io.BytesIO(archive.read(archive.namelist()[0]))) as inner:
                 assert any(n.endswith("/rt-export.json") for n in inner.namelist())
@@ -77,7 +77,7 @@ def _contents(data: bytes) -> dict:
         out = {}
         for name in archive.namelist():
             payload = archive.read(name)
-            if name.endswith(".zip"):
+            if name.endswith((".rt", ".zip")):
                 with zipfile.ZipFile(io.BytesIO(payload)) as inner:
                     payload = {n: inner.read(n) for n in inner.namelist()}
             out[name] = payload
@@ -88,7 +88,7 @@ def test_export_validation_failed_and_wrong_job(api_client, workspace, rt_db):
     make_lesson(workspace)
     [lesson] = api_client.get("/api/v1/lessons").json()
     assert api_client.post("/api/v1/lesson-exports", json={"ids": []}).status_code == 422
-    assert api_client.post("/api/v1/lesson-exports", json={"ids": [lesson["id"]], "format": "pdf"}).status_code == 422
+    assert api_client.post("/api/v1/lesson-exports", json={"ids": [lesson["id"]], "format": "invalid_format"}).status_code == 422
     assert api_client.post("/api/v1/lesson-exports", json={"ids": [999999]}).status_code == 404
     job_id = api_client.post("/api/v1/lesson-exports", json={"ids": [lesson["id"]]}).json()["job_id"]
     Worker(DbJobQueue(rt_db)).run_once()
@@ -99,6 +99,61 @@ def test_export_validation_failed_and_wrong_job(api_client, workspace, rt_db):
     Worker(DbJobQueue(rt_db)).run_once()
     assert api_client.get(f"/api/v1/lesson-exports/{wrong_id}/file").status_code == 404
     assert api_client.get("/api/v1/lesson-exports/assente/file").status_code == 404
+
+
+def test_export_pdf_separate_files_and_endpoints(api_client, workspace, rt_db, monkeypatch):
+    from rt.services import api_jobs
+    monkeypatch.setattr(api_jobs, "_PDF_RENDERER", lambda lid, port: b"%PDF-1.4 dummy " + str(lid).encode())
+
+    first = make_lesson(workspace)
+    second = make_lesson(workspace, name="seconda lezione")
+    third = make_lesson(workspace, name="terza senza finale")
+    run_mock_pipeline(first, with_review=False)
+    run_mock_pipeline(second, with_review=False)
+    # third non ha build VALID, quindi verrà saltata
+
+    all_lessons = api_client.get("/api/v1/lessons").json()
+    ids = [l["id"] for l in all_lessons]
+    assert len(ids) == 3
+
+    resp = api_client.post("/api/v1/lesson-exports", json={"ids": ids, "format": "pdf", "name": "PDFs"})
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    Worker(DbJobQueue(rt_db)).run_once()
+    job = api_client.get(f"/api/v1/jobs/{job_id}").json()
+    assert job["state"] == "succeeded"
+    assert job["result"]["included"] == 2
+    assert job["result"]["skipped"] == 1
+    assert len(job["result"]["files"]) == 2
+
+    # Elenco dei file
+    files_resp = api_client.get(f"/api/v1/lesson-exports/{job_id}/files")
+    assert files_resp.status_code == 200
+    file_items = files_resp.json()
+    assert len(file_items) == 2
+    assert all(f["name"].endswith(".pdf") for f in file_items)
+    assert all(f["size"] > 0 for f in file_items)
+
+    # Download singolo file
+    first_file = file_items[0]["name"]
+    single_resp = api_client.get(f"/api/v1/lesson-exports/{job_id}/files/{first_file}")
+    assert single_resp.status_code == 200
+    assert single_resp.headers["content-type"] == "application/pdf"
+    assert b"%PDF-1.4" in single_resp.content
+
+    # Download zip dell'intero gruppo (per browser)
+    archive_resp = api_client.get(f"/api/v1/lesson-exports/{job_id}/file")
+    assert archive_resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(archive_resp.content)) as zf:
+        assert len(zf.namelist()) == 2
+        assert all(n.endswith(".pdf") for n in zf.namelist())
+
+    # Cancellazione
+    del_resp = api_client.delete(f"/api/v1/lesson-exports/{job_id}")
+    assert del_resp.status_code == 204
+    assert api_client.get(f"/api/v1/lesson-exports/{job_id}/files").status_code == 404
+    assert api_client.get(f"/api/v1/lesson-exports/{job_id}/file").status_code == 404
 
 
 def test_cancellation_between_lessons_cleans_temporary_exports(workspace, rt_db, monkeypatch, tmp_path):

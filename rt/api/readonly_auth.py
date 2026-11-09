@@ -43,8 +43,29 @@ def is_local_request(request: Request) -> bool:
     return _is_loopback(request.client.host)
 
 
+def get_readonly_key() -> Optional[str]:
+    """Restituisce il token in chiaro se presente nei segreti di RT."""
+    import os
+    from rt.core.config import load_env_file
+    load_env_file()
+    val = os.environ.get("RT_READONLY_KEY")
+    if val:
+        return val.strip() or None
+    from rt.security.secrets import default_store_path, is_initialized
+    from rt.services import secrets_service
+    try:
+        if is_initialized():
+            store = secrets_service.store(default_store_path())
+            s = store.get("RT_READONLY_KEY")
+            if s:
+                return s.strip() or None
+    except Exception:
+        pass
+    return None
+
+
 def get_readonly_key_info(db=None) -> Dict[str, Any]:
-    """Restituisce le informazioni sulla chiave (senza il segreto completo)."""
+    """Restituisce le informazioni sulla chiave (con il token in chiaro se presente nei segreti)."""
     from rt.db.repositories import SettingRepository
     from rt.db.session import read_scope
 
@@ -53,19 +74,30 @@ def get_readonly_key_info(db=None) -> Dict[str, Any]:
         record = SettingRepository(session).get(READONLY_AUTH_KEY)
 
     if not isinstance(record, dict) or not record.get("token_hash"):
-        return {"configured": False, "created_at": None, "key_preview": None}
+        return {"configured": False, "created_at": None, "key_preview": None, "key": None}
 
     return {
         "configured": True,
         "created_at": record.get("created_at"),
         "key_preview": record.get("key_preview"),
+        "key": _matching_key(record),
     }
 
 
+def _matching_key(record: Dict[str, Any]) -> Optional[str]:
+    """Il segreto si mostra solo se è la chiave attuale (dopo un ripristino può essere di un'altra)."""
+    key = get_readonly_key()
+    if key and hmac.compare_digest(_hash(key, record.get("salt", "")), record["token_hash"]):
+        return key
+    return None
+
+
 def create_readonly_key(db=None) -> str:
-    """Genera una nuova chiave di sola lettura, la salva e la restituisce in chiaro (una sola volta)."""
+    """Genera una nuova chiave di sola lettura, la salva e la conserva anche tra i segreti."""
+    import os
     from rt.db.repositories import SettingRepository
     from rt.db.session import session_scope
+    from rt.services import config_service
 
     token = "rt_ro_" + secrets.token_urlsafe(32)
     salt = secrets.token_hex(16)
@@ -82,17 +114,29 @@ def create_readonly_key(db=None) -> str:
                 "key_preview": preview,
             },
         )
+    try:
+        config_service.set_secret("RT_READONLY_KEY", token)
+    except Exception:
+        pass
+    os.environ["RT_READONLY_KEY"] = token
     return token
 
 
 def revoke_readonly_key(db=None) -> bool:
-    """Revoca la chiave di sola lettura."""
+    """Revoca la chiave di sola lettura e cancella il segreto."""
+    import os
     from rt.db.repositories import SettingRepository
     from rt.db.session import session_scope
+    from rt.services import config_service
 
     database = db or _db()
     with session_scope(database) as session:
         SettingRepository(session).set(READONLY_AUTH_KEY, None)
+    try:
+        config_service.unset_secret("RT_READONLY_KEY")
+    except Exception:
+        pass
+    os.environ.pop("RT_READONLY_KEY", None)
     return True
 
 

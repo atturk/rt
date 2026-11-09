@@ -589,5 +589,124 @@ describe('MediaSelectionBar', () => {
 
     container.remove()
   })
+
+  it('trascinando una selezionata trascina tutte le selezionate nell’ordine del pannello', () => {
+    const dataStore = new Map<string, string>()
+    const dataTransfer = {
+      setData: (t: string, v: string) => dataStore.set(t, v),
+      getData: (t: string) => dataStore.get(t) ?? '',
+      effectAllowed: 'all',
+    }
+
+    render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set(['source1-p2.png', 'source1-p1.png'])}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    const cellBtn1 = screen.getByTestId('media-cell-source1-p1.png').querySelector('button')!
+    fireEvent.dragStart(cellBtn1, { dataTransfer })
+
+    expect(dataStore.has('application/x-rt-media-image')).toBe(true)
+    const payload = JSON.parse(dataStore.get('application/x-rt-media-image')!)
+    expect(Array.isArray(payload)).toBe(true)
+    expect(payload).toHaveLength(2)
+    // Ordine del pannello: p1 prima di p2
+    expect(payload[0].path).toBe('/media/source1-p1.png')
+    expect(payload[1].path).toBe('assets/images/source1-p2.png')
+  })
+
+  it('trascinando una non selezionata trascina solo quella', () => {
+    const dataStore = new Map<string, string>()
+    const dataTransfer = {
+      setData: (t: string, v: string) => dataStore.set(t, v),
+      getData: (t: string) => dataStore.get(t) ?? '',
+      effectAllowed: 'all',
+    }
+
+    render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set(['source1-p1.png'])}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    const cellBtn3 = screen.getByTestId('media-cell-source1-p3.png').querySelector('button')!
+    fireEvent.dragStart(cellBtn3, { dataTransfer })
+
+    expect(dataStore.has('application/x-rt-media-image')).toBe(true)
+    const payload = JSON.parse(dataStore.get('application/x-rt-media-image')!)
+    expect(Array.isArray(payload)).toBe(true)
+    expect(payload).toHaveLength(1)
+    expect(payload[0].path).toBe('/media/source1-p3.png')
+  })
+
+  it('clic sul vuoto della galleria svuota la selezione', () => {
+    const onClearSelection = vi.fn()
+    render(
+      <MediaGallery
+        images={mockImages}
+        selectedNames={new Set(['source1-p1.png'])}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={onClearSelection}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    const gallery = screen.getByTestId('media-gallery')
+    fireEvent.click(gallery)
+    expect(onClearSelection).toHaveBeenCalled()
+  })
+
+  it('mostra il badge Interattiva solo sulle miniature con interactive=true', () => {
+    const imagesWithInteractive: LessonImage[] = [
+      {
+        ...mockImages[0],
+        name: 'interactive-vis.png',
+        interactive: true,
+      },
+      {
+        ...mockImages[1],
+        name: 'static-img.png',
+        interactive: false,
+      },
+    ]
+
+    render(
+      <MediaGallery
+        images={imagesWithInteractive}
+        selectedNames={new Set()}
+        onToggleSelect={vi.fn()}
+        onSelectRange={vi.fn()}
+        onSelectGroup={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClearSelection={vi.fn()}
+        onOpenViewer={vi.fn()}
+      />,
+    )
+
+    const cellInteractive = screen.getByTestId('media-cell-interactive-vis.png')
+    expect(cellInteractive.querySelector('[data-testid="interactive-badge"]')).toBeInTheDocument()
+    expect(cellInteractive.querySelector('[data-testid="interactive-badge"]')).toHaveTextContent('Interattiva')
+
+    const cellStatic = screen.getByTestId('media-cell-static-img.png')
+    expect(cellStatic.querySelector('[data-testid="interactive-badge"]')).toBeNull()
+  })
 })
 

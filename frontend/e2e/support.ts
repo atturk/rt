@@ -65,6 +65,15 @@ export async function openLessonDetails(page: Page) {
 }
 
 /** Voce del menu Esporta dell'intestazione della lezione. */
+/** Dopo Esporta: il riquadro in basso chiede Salva/Condividi; Salva avvia il download. */
+export async function saveFromPopup(page: Page, timeout = 50_000) {
+  const save = page.getByRole('button', { name: 'Salva', exact: true })
+  await expect(save).toBeVisible({ timeout })
+  const download = page.waitForEvent('download', { timeout })
+  await save.click()
+  return download
+}
+
 export async function exportItem(page: Page, name: string | RegExp) {
   await page.getByTestId('lesson-actions').getByRole('button', { name: 'Esporta' }).click()
   return page.getByRole('menu', { name: 'Esporta' }).getByRole('menuitem', { name })

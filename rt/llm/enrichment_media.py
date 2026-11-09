@@ -90,6 +90,12 @@ class BrowserMissingError(RuntimeError):
     pass
 
 
+class VisualizationValidationError(ValueError):
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def find_capture_browser_executable(p) -> Optional[str]:
     executable = os.environ.get("RT_ENRICHMENT_CHROMIUM") or shutil.which("chromium") or shutil.which("google-chrome")
     if executable:
@@ -135,6 +141,39 @@ def snapshot(html: str) -> bytes:
             frame = page.frames[-1]
             frame.wait_for_selector("#rt-visualization-root", timeout=10000)
             frame.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            validation_error = frame.evaluate("""() => {
+                const root = document.getElementById('rt-visualization-root');
+                if (!root) return "elemento #rt-visualization-root mancante";
+                // Solo il testo visibile: textContent includerebbe <script> e <style> del frammento.
+                const text = root.innerText || "";
+                if (/\\bundefined\\b/.test(text)) return 'etichette "undefined"';
+                if (/\\bNaN\\b/.test(text)) return 'valori "NaN"';
+                if (/\\bnull\\b/.test(text)) return 'valori "null"';
+                if (text.includes("[object Object]")) return 'valori "[object Object]"';
+                const inputs = root.querySelectorAll('input, select, textarea');
+                for (const inp of inputs) {
+                    if (/\\bundefined\\b/.test(inp.value)) return 'etichette "undefined"';
+                    if (/\\bNaN\\b/.test(inp.value)) return 'valori "NaN"';
+                }
+                const rootRect = root.getBoundingClientRect();
+                const textNodes = root.querySelectorAll('text, tspan, p, span, div, h1, h2, h3, h4, h5, h6, label, li');
+                for (const el of textNodes) {
+                    if (!el.textContent || !el.textContent.trim()) continue;
+                    if (el.children.length > 0 && el.tagName.toLowerCase() !== 'text') continue;
+                    if (el.closest('script, style')) continue;
+                    const style = getComputedStyle(el);
+                    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width === 0 && r.height === 0) continue;
+                    if (r.left < rootRect.left - 2 || r.right > rootRect.right + 2 ||
+                        r.top < rootRect.top - 2 || r.bottom > rootRect.bottom + 2) {
+                        return `testo esce dai bordi di #rt-visualization-root: "${el.textContent.trim().slice(0, 30)}"`;
+                    }
+                }
+                return null;
+            }""")
+            if validation_error:
+                raise VisualizationValidationError(validation_error)
             height = min(4000, max(300, frame.locator("body").evaluate("el => el.scrollHeight")))
             page.locator("iframe").evaluate("(el, height) => el.style.height = height + 'px'", height)
             return page.locator("iframe").screenshot(type="png", animations="disabled", timeout=15000)
@@ -150,9 +189,9 @@ def generate_image(prompt, lesson_dir):
     job = cfg.jobs.get("enrichment_image")
     route = job.primary if job else None
     if not route or not route.is_configured:
-        raise ValueError("Configura il modello Generazione infografiche in Impostazioni → Modelli")
+        raise ValueError("Configura il modello Generazione immagini IA in Impostazioni → Modelli")
     if route.provider not in ("openrouter", "openai_compatible"):
-        raise ValueError("Le infografiche richiedono una connessione OpenRouter oppure OpenAI-compatible (Images API)")
+        raise ValueError("La generazione di immagini IA richiede una connessione OpenRouter oppure OpenAI-compatible (Images API)")
     key = GLOBAL_CREDENTIALS.get_api_key(route.credential or route.provider)
     if not key:
         raise ValueError("Credenziale del generatore immagini non configurata")
@@ -206,7 +245,8 @@ def generate_image(prompt, lesson_dir):
 def generate_media(lesson_dir, element, unit, *, mock=False):
     from rt.llm.client import LLMClient
     source = f"Subunità {unit['id']} — {unit['title']}\n\n{unit['content']}"
-    prompt = f"Richiesta: {element.prompt}\nModalità: {element.mode}\nUnica fonte:\n{source}"
+    mode = "static" if element.kind == "infographic" else element.mode
+    prompt = f"Richiesta: {element.prompt}\nModalità: {mode}\nUnica fonte:\n{source}"
     html = None
     if mock:
         from PIL import Image, ImageDraw
@@ -217,16 +257,26 @@ def generate_media(lesson_dir, element, unit, *, mock=False):
         png = buf.getvalue()
         if element.kind == "visualization":
             html = standalone('<h2>Visualizzazione di prova</h2><label>Parametro <input type="range" aria-label="Parametro"></label>')
-    elif element.kind == "infographic":
-        png = generate_image(INFOGRAPHIC_INSTRUCTIONS + "\n" + prompt, lesson_dir)
+        elif element.kind == "infographic":
+            html = standalone('<h2>Infografica di prova</h2><p>Contenuto</p>')
     elif element.kind == "image":
         png = generate_image(IMAGE_INSTRUCTIONS + "\n" + prompt, lesson_dir)
     else:
-        visual = LLMClient().call_structured(prompt=prompt, system_prompt=VISUALIZER_SYSTEM,
-                            response_model=Visualization, job_name="enrichment_visualizer",
-                            unit_id=unit["id"], lesson_dir=lesson_dir)
-        html = standalone(visual.body)
-        png = snapshot(html)
+        sys_prompt = f"{VISUALIZER_SYSTEM}\n\n{INFOGRAPHIC_INSTRUCTIONS}" if element.kind == "infographic" else VISUALIZER_SYSTEM
+        llm = LLMClient()
+        attempt_prompt = prompt
+        for attempt in (1, 2):
+            visual = llm.call_structured(prompt=attempt_prompt, system_prompt=sys_prompt,
+                                response_model=Visualization, job_name="enrichment_visualizer",
+                                unit_id=unit["id"], lesson_dir=lesson_dir)
+            html = standalone(visual.body)
+            try:
+                png = snapshot(html)
+                break
+            except VisualizationValidationError as exc:
+                if attempt == 2:
+                    raise
+                attempt_prompt = f"{prompt}\n\nNel tentativo precedente: {exc.reason}, correggi."
     raise_if_cancelled()
     version = uuid.uuid4().hex
     prefix = f"assets/enrichment/{element.id}-{version}"

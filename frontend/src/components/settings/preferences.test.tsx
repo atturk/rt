@@ -21,6 +21,7 @@ let client: QueryClient
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.setItem('rt-app', '1') // lo zoom di RT c'è solo nella finestra dell'app
   resetZoom()
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(PREFERENCES_KEY, {})
@@ -33,6 +34,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   resetZoom()
   localStorage.clear()
+  sessionStorage.clear()
 })
 
 it('cambiare la Select aggiorna lo zoom', async () => {
@@ -108,6 +110,11 @@ it('Testo dello Studio: Seravek salva study.text-font e 120% porta la scala a 1,
   await userEvent.click(screen.getByRole('menuitemradio', { name: '120%' }))
   expect(getSavedStudyTextScale()).toBe(1.2)
   expect(screen.getByTestId('pref-study-scale')).toHaveTextContent('120%')
+
+  const playerSwitch = screen.getByRole('switch', { name: "Il player segue l'unità" })
+  expect(playerSwitch).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(playerSwitch)
+  expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'study.player-follows-unit' } }, body: false })
 })
 
 it('Fonti: i default per tipo di file, con Solo immagini l’uso si spegne e la guida si sceglie nell’import', async () => {

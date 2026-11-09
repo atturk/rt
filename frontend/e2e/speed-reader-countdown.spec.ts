@@ -17,7 +17,7 @@ test('conto alla rovescia nella lettura veloce: impostare 2 s, Play, vedere il c
   await expect(page.getByTestId('study-text')).toBeVisible()
 
   // Apri lettura veloce
-  await page.getByRole('button', { name: 'Lettura veloce', exact: true }).click()
+  await page.getByRole('button', { name: 'Lettura veloce · L', exact: true }).click()
   const reader = page.getByTestId('speed-reader')
   await expect(reader).toBeVisible()
 

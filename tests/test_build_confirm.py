@@ -260,7 +260,7 @@ def test_preview_zip_all_reimports(api_client, api_lesson):
     """Il LEGGIMI e il Markdown "(anteprima)" sono fuori dal manifesto ma non bloccano l'import."""
     from rt.services.lesson_import_service import import_archive
     res = api_client.get(f"/api/v1/lessons/{_lesson_id(api_client)}/export", params={"format": "zip", "scope": "all"})
-    assert "%28anteprima%29.zip" in res.headers["content-disposition"]
+    assert "%28anteprima%29.rt" in res.headers["content-disposition"]
     copy = io.BytesIO()  # stessa lezione con un altro nome, per non urtare quella esistente
     with zipfile.ZipFile(io.BytesIO(res.content)) as source, zipfile.ZipFile(copy, "w") as target:
         for name in source.namelist():
@@ -309,7 +309,7 @@ def test_api_export_without_build_is_the_preview(api_client, api_lesson):
 
     res = api_client.get(f"/api/v1/lessons/{lesson_id}/export", params={"format": "zip"})
     assert res.status_code == 200
-    assert "%28anteprima%29.zip" in res.headers["content-disposition"]
+    assert "%28anteprima%29.rt" in res.headers["content-disposition"]
     with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
         names = [n.split("/", 1)[1] for n in zf.namelist()]
         readme = next(n for n in zf.namelist() if n.endswith("LEGGIMI - anteprima.txt"))

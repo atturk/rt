@@ -133,6 +133,25 @@ export function PrintLessonPage() {
           margin-top: 0;
           margin-bottom: 0.8em;
         }
+        .print-page ul {
+          list-style: disc;
+          padding-left: 1.4em;
+          margin-top: 0.4em;
+          margin-bottom: 0.8em;
+        }
+        .print-page ol {
+          list-style: decimal;
+          padding-left: 1.4em;
+          margin-top: 0.4em;
+          margin-bottom: 0.8em;
+        }
+        .print-page li {
+          margin-bottom: 0.25em;
+        }
+        .print-page ul ul,
+        .print-page ol ul {
+          list-style: circle;
+        }
         .print-timecode {
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 8.5pt;

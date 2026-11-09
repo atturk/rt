@@ -302,12 +302,22 @@ class WorkerConfig(BaseModel):
     concurrency: Optional[int] = Field(default=None, description="Deprecato (8 fissi)")
 
 
+class CustomStudyStatus(BaseModel):
+    id: str = Field(max_length=16)
+    nome: str = Field(max_length=24)
+    colore: str = "text-amber-500"
+    icona: str = "Star"
+    salta: bool = Field(default=False, description="Aprendo lo Studio si salta l'unità, come Appresa e Ignorata")
+
+
 class UiConfig(BaseModel):
     theme: Literal["dark", "light"] = Field(default="dark", description="Tema interfaccia terminale: 'dark' | 'light'")
     dismissed_notices: List[str] = Field(default_factory=list,
                                          description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
     group_background: Literal["colors", "gray", "none"] = Field(default="colors", description="Sfondo dei gruppi in Lezioni: colors | gray | none")
     outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    study_statuses: List[CustomStudyStatus] = Field(default_factory=list, description="Stati di studio personalizzati")
+    study_status_order: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
 
 
 class JevConfig(BaseModel):

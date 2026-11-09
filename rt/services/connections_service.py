@@ -23,7 +23,7 @@ PHASES = (
     ("image_description", "Descrizione immagine"),
     ("enrichment_writer", "Arricchitore"),
     ("enrichment_visualizer", "Visualizzazioni HTML"),
-    ("enrichment_image", "Generazione infografiche"),
+    ("enrichment_image", "Generazione immagini IA"),
 )
 PROVIDERS = (
     ("OpenRouter", "openrouter"),

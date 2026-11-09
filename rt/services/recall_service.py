@@ -142,15 +142,19 @@ def ensure_initial_batch(lesson_dir: str, force_mock: bool = False, *, regenerat
     generate_pool(lesson_dir, force_mock=force_mock)
 
 
-def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is_voice: bool = False, force_mock: Optional[bool] = None, *, mark_answered: bool = True) -> Optional[str]:
+def handle_recall_answer(
+    lesson_dir: str,
+    question_id: str,
+    answer_text: str,
+    is_voice: bool = False,
+    force_mock: Optional[bool] = None,
+    *,
+    mark_answered: bool = True,
+    is_followup: bool = False,
+) -> Optional[str]:
     """Salva la risposta a una domanda mirata/vasta e la valuta con l'LLM.
     Ritorna il testo di valutazione, o None se la domanda non esiste o è un quiz
-    (i quiz si rispondono con un bottone, gestiti a parte).
-
-    force_mock=None (default) risolve dal flag persistito in telegram_recall_session.json:
-    la sessione è stata avviata via terminale/CLI con --mock, e il daemon (processo separato,
-    invocato più tardi per i rifornimenti/risposte) deve rispettarlo senza doverlo ripassare
-    esplicitamente ad ogni chiamata."""
+    (i quiz si rispondono con un bottone, gestiti a parte)."""
     from rt.pipeline.recall import load_recall_bank, record_recall_answer, evaluate_recall_answer
 
     bank = load_recall_bank(lesson_dir)
@@ -161,9 +165,28 @@ def handle_recall_answer(lesson_dir: str, question_id: str, answer_text: str, is
     if force_mock is None:
         force_mock = load_recall_session_state(lesson_dir).get("force_mock", False)
 
-    evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock)
-    record_recall_answer(lesson_dir, question_id, answer_text, is_voice=is_voice, evaluation=evaluation, mark_answered=mark_answered)
+    evaluation = evaluate_recall_answer(lesson_dir, question_id, answer_text, force_mock=force_mock, is_followup=is_followup)
+    has_followup = bool(getattr(evaluation, "domanda_followup", None))
+    mark = mark_answered if not has_followup else False
+    record_recall_answer(
+        lesson_dir,
+        question_id,
+        answer_text,
+        is_voice=is_voice,
+        evaluation=evaluation,
+        mark_answered=mark,
+        correttezza=getattr(evaluation, "correttezza", None),
+        completezza=getattr(evaluation, "completezza", None),
+        attinenza=getattr(evaluation, "attinenza", None),
+        domanda_followup=getattr(evaluation, "domanda_followup", None),
+        is_followup=is_followup,
+    )
     return evaluation
+
+
+def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
+    from rt.pipeline.recall import skip_recall_followup as skip_followup
+    skip_followup(lesson_dir, question_id)
 
 
 def next_question(
@@ -287,7 +310,11 @@ def question_resume_view(lesson_dir, question, actor=None):
     cur = current_answers(bank, question)
     saved = next((a for a in reversed(cur) if a.evaluation), None)
     if saved is not None:
-        result['saved_evaluation'] = {key: getattr(saved, key) for key in ('answer_text', 'evaluation', 'outcome')}
+        result['saved_evaluation'] = {key: getattr(saved, key) for key in (
+            'answer_text', 'evaluation', 'outcome', 'correttezza', 'completezza', 'attinenza',
+            'domanda_followup', 'followup_question', 'followup_answer', 'followup_evaluation',
+            'followup_correttezza', 'followup_completezza', 'followup_attinenza'
+        )}
     else:
         from rt.services.jobs import get_job_queue, ACTIVE_STATES
         pending = next((job for job in get_job_queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)

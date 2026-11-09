@@ -21,10 +21,10 @@ import {
 } from '@/lib/deviceLogin'
 import { Field, Section } from './common'
 
-/** Accesso da iPhone o da un altro computer: un QR con il link monouso (5 minuti, una volta).
+/** Accesso da un altro dispositivo (telefono, tablet, computer): un QR con il link monouso (5 minuti, una volta).
  * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della tailnet
- * che il Mac stesso rileva (https://nome-mac.tailnet.ts.net, l'unico per cui vale il certificato
- * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-mac.local:8765). */
+ * che il Mac stesso rileva (https://nome-computer.tailnet.ts.net, l'unico per cui vale il certificato
+ * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-computer.local:8765). */
 export function DeviceAccessSection() {
   const here = window.location.origin
   const tailnet = useTailnet().data
@@ -52,15 +52,15 @@ export function DeviceAccessSection() {
     <Section
       id="altro-dispositivo"
       title="Accesso da un altro dispositivo"
-      description="Apri RT da iPhone inquadrando un QR: il link entra una sola volta e vale 5 minuti."
+      description="Apri RT da un telefono, un tablet o un altro computer inquadrando un QR: il link entra una sola volta e vale 5 minuti."
     >
       <Field
         label="Indirizzo di RT per l'altro dispositivo"
         htmlFor="device-origin"
         hint={
           <>
-            Con Tailscale Serve è <code>https://nome-mac.tailnet.ts.net</code>; in rete locale{' '}
-            <code>http://nome-mac.local:8765</code>. 127.0.0.1 funziona solo su questo Mac.
+            Con Tailscale Serve è <code>https://nome-computer.tailnet.ts.net</code>; in rete locale{' '}
+            <code>http://nome-computer.local:8765</code>. 127.0.0.1 funziona solo su questo computer.
           </>
         }
       >
@@ -69,7 +69,7 @@ export function DeviceAccessSection() {
           inputMode="url"
           autoComplete="off"
           value={address}
-          placeholder="https://nome-mac.tailnet.ts.net"
+          placeholder="https://nome-computer.tailnet.ts.net"
           onChange={(e) => {
             setTyped(e.target.value)
             setLink(null)
@@ -77,24 +77,24 @@ export function DeviceAccessSection() {
         />
       </Field>
       {origin && isLoopback(origin) && (
-        <Alert tone="warning">Questo indirizzo raggiunge solo il Mac stesso: da iPhone non si apre.</Alert>
+        <Alert tone="warning">Questo indirizzo raggiunge solo questo computer: dagli altri dispositivi non si apre.</Alert>
       )}
       {origin && isHttpsIp(origin) && (
         <Alert tone="warning">
-          Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del Mac
+          Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del computer
           {detected ? (
             <>
               , cioè <code>{detected}</code>
             </>
           ) : (
-            ' (https://nome-mac.tailnet.ts.net)'
+            ' (https://nome-computer.tailnet.ts.net)'
           )}
           .
         </Alert>
       )}
       {tailnet && detected && origin === detected && !tailnet.serve && (
         <Alert tone="warning">
-          Tailscale Serve non è attivo su questo Mac: nel Terminale esegui <code>tailscale serve --bg 8765</code>, poi
+          Tailscale Serve non è attivo su questo computer: nel Terminale (su Windows nel Prompt dei comandi) esegui <code>tailscale serve --bg 8765</code>, poi
           crea il QR.
         </Alert>
       )}
@@ -117,78 +117,112 @@ export function DeviceAccessSection() {
   )
 }
 
+function buildAgentPrompt(base: string, key: string): string {
+  return `Puoi leggere le mie lezioni universitarie da RT, un'app che gira su questo computer.
+- API (solo lettura): ${base}
+- Specifica OpenAPI: ${base}/openapi.json
+- Ogni richiesta deve avere l'header: Authorization: Bearer ${key}
+Prima scarica la specifica OpenAPI per sapere quali endpoint ci sono, poi usali per rispondere alle mie domande sulle lezioni.
+Esempio: curl -H "Authorization: Bearer ${key}" ${base}/openapi.json
+Regole: l'accesso è di sola lettura, non provare a modificare niente. Le lezioni sono mie e private: non mandarne il contenuto ad altri servizi se non te lo chiedo. L'API risponde solo da questo computer, quindi funziona con agenti che girano qui (per esempio Antigravity, Claude Code, Codex, pi), non con quelli nel cloud.`
+}
+
 function ReadonlyKeyManager() {
   const query = useReadonlyKey()
   const createKey = useCreateReadonlyKey()
   const revokeKey = useRevokeReadonlyKey()
-  const [newKey, setNewKey] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copiedKey, setCopiedKey] = useState(false)
+  const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
 
   const handleCreate = () => {
-    createKey.mutate(undefined, {
-      onSuccess: (data) => {
-        setNewKey(data.key)
-      },
-    })
+    createKey.mutate(undefined)
   }
 
   const handleRevoke = () => {
     revokeKey.mutate(undefined, {
       onSuccess: () => {
         setConfirmRevoke(false)
-        setNewKey(null)
       },
     })
   }
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, isPrompt: boolean) => {
     void navigator.clipboard?.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (isPrompt) {
+      setCopiedPrompt(true)
+      setTimeout(() => setCopiedPrompt(false), 2000)
+    } else {
+      setCopiedKey(true)
+      setTimeout(() => setCopiedKey(false), 2000)
+    }
   }
 
   const info = query.data
+  const activeKey = info?.key ?? null
+  const baseUrl = info?.base_url || 'http://127.0.0.1:8765/api/v1/readonly'
+  const promptText = activeKey ? buildAgentPrompt(baseUrl, activeKey) : ''
 
   return (
     <div className="mt-8 border-t border-border/60 pt-6" data-testid="readonly-api-section">
       <div className="flex flex-col gap-1">
-        <h3 className="text-body font-semibold text-foreground">API di sola lettura (Open WebUI)</h3>
+        <h3 className="text-body font-semibold text-foreground">API di sola lettura (agenti e Open WebUI)</h3>
         <p className="text-meta text-muted-foreground">
-          Chiave separata di sola lettura per consultare le lezioni su 127.0.0.1 con Open WebUI o assistenti locali.
+          Chiave separata di sola lettura per consultare le lezioni su 127.0.0.1 con agenti o assistenti locali.
         </p>
       </div>
 
-      {newKey && (
-        <div className="mt-3 rounded-lg border border-ok/40 bg-ok/5 p-3" data-testid="readonly-key-created-box">
-          <p className="text-meta font-medium text-ok">Nuova chiave generata (mostrata solo ora):</p>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="rounded bg-background px-2 py-1 font-mono text-body text-foreground border break-all">
-              {newKey}
-            </code>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => copyToClipboard(newKey)}
-              className="gap-1 shrink-0"
-              data-testid="copy-readonly-key"
-            >
-              <Copy className="size-3.5" aria-hidden /> {copied ? 'Copiata!' : 'Copia'}
-            </Button>
+      {info?.configured && activeKey && (
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-meta font-medium text-foreground">Chiave API:</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={activeKey}
+                className="w-full rounded border bg-muted/40 px-3 py-1.5 font-mono text-body text-foreground"
+                data-testid="readonly-key-value"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => copyToClipboard(activeKey, false)}
+                className="gap-1 shrink-0"
+                data-testid="copy-readonly-key"
+              >
+                <Copy className="size-3.5" aria-hidden /> {copiedKey ? 'Copiata!' : 'Copia'}
+              </Button>
+            </div>
           </div>
-          <p className="mt-2 text-meta text-muted-foreground">
-            Incolla questa chiave nell'Action/Tool di Open WebUI come Bearer token.
-          </p>
+
+          <div className="rounded-lg border border-border bg-card p-4" data-testid="readonly-agent-prompt-box">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/60">
+              <span className="text-body font-semibold text-foreground">Prompt per un agente</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => copyToClipboard(promptText, true)}
+                className="gap-1 shrink-0"
+                data-testid="copy-agent-prompt"
+              >
+                <Copy className="size-3.5" aria-hidden /> {copiedPrompt ? 'Prompt copiato!' : 'Copia prompt'}
+              </Button>
+            </div>
+            <pre className="mt-3 whitespace-pre-wrap font-mono text-meta text-muted-foreground break-all" data-testid="agent-prompt-text">
+              {promptText}
+            </pre>
+          </div>
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-body">
           <span className="font-medium text-foreground">Stato chiave:</span>
           {info?.configured ? (
             <span className="inline-flex items-center gap-1.5 text-ok font-medium" data-testid="readonly-key-status">
               <span className="size-2 rounded-full bg-ok" />
-              Attiva ({info.key_preview})
+              Attiva {info.key_preview ? `(${info.key_preview})` : ''}
               {info.created_at && (
                 <span className="text-meta text-muted-foreground font-normal">
                   · creata {formatDateTime(info.created_at)}
@@ -208,7 +242,7 @@ function ReadonlyKeyManager() {
             disabled={createKey.isPending}
             data-testid="btn-create-readonly-key"
           >
-            {info?.configured ? 'Rigenera chiave' : 'Genera chiave'}
+            {info?.configured ? 'Rigenera chiave' : 'Crea chiave'}
           </Button>
 
           {info?.configured && (
@@ -227,7 +261,7 @@ function ReadonlyKeyManager() {
 
       <div className="mt-3 text-meta text-muted-foreground">
         URL specifica OpenAPI:{' '}
-        <code className="text-foreground">http://127.0.0.1:8765/api/v1/readonly/openapi.json</code>
+        <code className="text-foreground">{baseUrl}/openapi.json</code>
       </div>
 
       <ConfirmDialog
@@ -240,7 +274,7 @@ function ReadonlyKeyManager() {
       >
         <p>Revocare la chiave di sola lettura?</p>
         <p className="mt-2 text-meta text-muted-foreground">
-          Open WebUI e gli altri client locali non potranno più accedere alle lezioni finché non generi una nuova chiave.
+          Agenti, Open WebUI e gli altri client locali non potranno più accedere alle lezioni finché non generi una nuova chiave.
         </p>
       </ConfirmDialog>
     </div>
@@ -260,7 +294,7 @@ function LinkQr({ url, expiresAt }: { url: string; expiresAt: number }) {
     <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
       <QrCode value={url} />
       <div className="flex min-w-0 flex-col gap-1 text-body">
-        <p>Inquadralo con la fotocamera dell'iPhone. Scade tra {formatSeconds(secondsLeft)}.</p>
+        <p>Inquadralo con la fotocamera del telefono o del tablet. Scade tra {formatSeconds(secondsLeft)}.</p>
         <code className="break-all text-meta text-muted-foreground" data-testid="device-login-url">{url}</code>
       </div>
     </div>

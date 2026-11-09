@@ -3,6 +3,8 @@ export type ImageItem = {
   alt: string
   docName: string
   pageNumber?: number
+  from?: number
+  interactiveUrl?: string
 }
 
 /**

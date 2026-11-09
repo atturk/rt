@@ -11,6 +11,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { api, ApiError, CSRF_COOKIE, CSRF_HEADER, errorMessage, readCookie, unwrap, type Schemas } from '@/api/client'
 import { imageKeys, uploadEditorImage } from '@/api/images'
 import { Alert } from '@/components/ui/alert'
+import { saveFile } from '@/lib/fileExport'
 import { lessonImageUploads } from './lessonImages'
 import { useRelevance } from '@/api/relevance'
 import { lessonKeys, useIssues } from '@/api/hooks'
@@ -283,13 +284,16 @@ export function LessonEditor({
   }, [navigate])
   const shortcutKey = doc.sections.filter(section => !section.relevance).map(section => section.unit_id).join('|')
   const shortcutUnits = useMemo(() => shortcutKey ? shortcutKey.split('|') : [], [shortcutKey])
+  const keywordsKey = JSON.stringify(doc.sections.map(section => [section.unit_id, section.key_concepts ?? []]))
+  const shortcutKeywords = useMemo(() => Object.fromEntries(JSON.parse(keywordsKey) as [string, string[]][]), [keywordsKey])
   useEffect(() => {
     viewOf(handle.current)?.dispatch({ effects: setUnitShortcuts.of({
       lessonId,
       units: shortcutUnits,
+      keywords: shortcutKeywords,
       navigate: openStudy,
     }) })
-  }, [shortcutUnits, lessonId, openStudy, source.key])
+  }, [shortcutUnits, shortcutKeywords, lessonId, openStudy, source.key])
   useEffect(() => {
     if (!actionsRef) return
     actionsRef.current = { flush }
@@ -528,12 +532,8 @@ export function LessonEditor({
   }
   // Il Markdown com'è adesso, per continuare altrove; poi si ripristina.
   const downloadAndRestore = () => {
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
-    const link = window.document.createElement('a')
-    link.href = url
-    link.download = `lezione-${lessonId}-modifiche.md`
-    link.click()
-    URL.revokeObjectURL(url)
+    const file = new File([text], `lezione-${lessonId}-modifiche.md`, { type: 'text/markdown;charset=utf-8' })
+    saveFile(file)
     restore()
   }
 

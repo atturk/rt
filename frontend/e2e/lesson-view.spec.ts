@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, type Page } from '@playwright/test'
 
-import { test, apiGet, authHeaders, exportItem, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
+import { test, apiGet, authHeaders, exportItem, saveFromPopup, loginViaLink, openLessonDetails, lessonJobs, runPhase } from './support'
 
 type Lesson = { id: number; materia: string }
 type PhaseReport = { phases: { phase: string; status: string; reason: string }[] }
@@ -38,11 +38,8 @@ test('la vista lezione mostra documento, fasi, validazioni, costi e download', a
   await page.getByTestId('details-panel').getByRole('button', { name: /^dettaglio/ }).click()
   await expect(page.getByTestId('cost-panel')).toContainText('Scaletta')
 
-  const markdown = await exportItem(page, 'Markdown')
-  await expect(markdown).toHaveAttribute('href', `/api/v1/lessons/${id}/export?format=markdown`)
-  const download = page.waitForEvent('download')
-  await markdown.click()
-  expect((await download).suggestedFilename()).toMatch(/\.md$/)
+  await (await exportItem(page, 'Markdown')).click()
+  expect((await saveFromPopup(page)).suggestedFilename()).toMatch(/\.md$/)
 })
 
 test('dall\'elenco si scaricano i Markdown finali senza aprire la lezione (barra della selezione)', async ({ page }) => {
@@ -54,17 +51,17 @@ test('dall\'elenco si scaricano i Markdown finali senza aprire la lezione (barra
   const row = (id: number) => page.locator(`[data-testid=lesson-row][data-lesson-id="${id}"]`)
   await page.getByRole('button', { name: 'Seleziona' }).click()
   const bar = page.getByTestId('selection-bar')
-  // Senza documento finale il Markdown non c'è: il pulsante resta, non disponibile.
+  // Senza documento finale il PDF non c'è: il pulsante resta, non disponibile.
   await row(notBuilt.id).getByRole('checkbox').check()
-  await expect(bar.getByRole('button', { name: 'Scarica Markdown' })).toHaveAttribute('aria-disabled', 'true')
+  await expect(bar.getByRole('button', { name: 'Esporta PDF' })).toHaveAttribute('aria-disabled', 'true')
   await row(notBuilt.id).getByRole('checkbox').uncheck()
 
   await row(built.id).getByRole('checkbox').check()
-  const download = page.waitForEvent('download', { timeout: 50_000 })
-  await bar.getByRole('button', { name: 'Scarica Markdown' }).click()
-  const file = await download
-  // Uno ZIP con i documenti finali aggiornati (job export_lessons, download automatico a job finito).
-  expect(file.suggestedFilename()).toBe('Lezioni selezionate.zip')
+  await bar.getByRole('button', { name: 'Esporta lezioni (.rt)' }).click()
+  await page.getByRole('menuitem', { name: 'Esporta lezioni (.rt)', exact: true }).click()
+  // Nel browser più lezioni si salvano in un solo zip (job export_lessons, poi Salva nel riquadro).
+  const file = await saveFromPopup(page)
+  expect(file.suggestedFilename()).toMatch(/\.zip$/)
   expect(readFileSync((await file.path())!).subarray(0, 2).toString()).toBe('PK')
   await expect(page).toHaveURL(/\/$/)
 })
@@ -112,17 +109,17 @@ test('esportazione: Markdown finale e zip completo uguali a quelli dell\'API', a
   const id = await lessonId(page, 'BIOCHIMICA')
   await page.goto(`/lezioni/${id}`)
 
-  let download = page.waitForEvent('download')
   await (await exportItem(page, 'Markdown')).click()
+  let download = saveFromPopup(page)
   const markdown = readFileSync((await (await download).path())!, 'utf-8')
   const fromApi = await page.request.get(`/api/v1/lessons/${id}/export?format=markdown`, { headers: authHeaders() })
   expect(markdown).toBe(await fromApi.text())
   expect(markdown).toContain('# ')
 
-  download = page.waitForEvent('download')
-  await (await exportItem(page, /^Tutti i dati/)).click()
+  await (await exportItem(page, /^Lezione/)).click()
+  download = saveFromPopup(page)
   const zip = readFileSync((await (await download).path())!)
-  expect((await download).suggestedFilename()).toMatch(/\.zip$/)
+  expect((await download).suggestedFilename()).toMatch(/\.rt$/)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
   expect(zip.includes(Buffer.from('info.yaml'))).toBeTruthy()
 })
@@ -176,7 +173,10 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await expect(page.getByRole('tooltip')).toContainText(/rielaborazione/)
   await actions.getByRole('button', { name: 'Esporta' }).click()
   const menu = page.getByRole('menu', { name: 'Esporta' })
-  await expect(menu.getByRole('menuitem')).toHaveText([/^Markdown/, /^PDF/, /^Tutti i dati \(zip\)/, /^Solo le fonti \(zip\)/])
+  await expect(menu.getByRole('menuitem', { name: /^Markdown/ })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /^PDF/ })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /^Lezione \(\.rt\)/ })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /^Solo le fonti \(zip\)/ })).toBeVisible()
   // Le fonti si scaricano anche prima della rielaborazione
   await expect(menu.getByRole('menuitem', { name: /^Solo le fonti/ })).not.toHaveAttribute('aria-disabled', 'true')
   for (const item of (await menu.getByRole('menuitem').all()).slice(0, 3)) {
@@ -209,9 +209,10 @@ test('intestazione: Domande, Studio, Arricchimento, Verifica, Dettagli ed Esport
   await page.goto(`/lezioni/${reviewed}`)
   await expect(page.getByTestId('lesson-meta')).toContainText(/unità · /)
   await expect(page.getByTestId('document-preview-note')).toHaveCount(0)
-  const download = page.waitForEvent('download')
   await (await exportItem(page, 'Markdown')).click()
-  expect((await download).suggestedFilename()).not.toMatch(/\(anteprima\)\.md$/)
+  const download = await saveFromPopup(page)
+  expect(download.suggestedFilename()).not.toMatch(/\(anteprima\)\.md$/)
+  await expect(page.getByRole('button', { name: 'Salva', exact: true })).toBeHidden()
 
   // Domande apre il pannello (riempito nel giro 2, G5).
   await actions.getByRole('button', { name: 'Domande' }).click()

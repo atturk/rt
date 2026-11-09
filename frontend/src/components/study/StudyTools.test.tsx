@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StudyFlow } from './Study'
 import type { Lesson } from '@/lib/format'
 import { api as apiClient } from '@/api/client'
+import { sourceRange } from '@/lib/sourceText'
+import type { StudyUnit } from '@/api/recall'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(async () => [] as unknown[]),
@@ -31,14 +33,23 @@ const LESSON = {
   unit_count: 2, pending_issues: 0, recall_pending: 0, study_learned: 0, study_learning: 0, study_ignored: 0, recall_questions: 0,
   media_count: 0,
 } as Lesson
-const UNITS = [
-  { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {} },
-  { id: '1.2', title: 'Secondo', html: '<p>Altro testo.</p>', questions: 0, pending: {} },
+const UNITS: StudyUnit[] = [
+  { id: '1.1', title: 'Primo', html: '<p>Il rene filtra il sangue. Poi, riassorbe acqua e sali.</p>', questions: 0, pending: {}, status: 'da-imparare' },
+  { id: '1.2', title: 'Secondo', html: '<p>Altro testo.</p>', questions: 0, pending: {}, status: 'da-imparare' },
 ]
-vi.mock('@/api/recall', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/recall')>()),
-  useStudyLesson: () => ({ data: { id: 1, units: UNITS, has_audio: false }, isPending: false, isError: false }),
-}))
+const unitsState: StudyUnit[] = UNITS.map(u => ({ ...u }))
+vi.mock('@/api/recall', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/recall')>()
+  const { useQuery } = await import('@tanstack/react-query')
+  return {
+    ...actual,
+    useStudyLesson: (id: number | null) => useQuery({
+      queryKey: actual.recallKeys.study(id ?? 0),
+      queryFn: () => ({ id: 1, units: unitsState, has_audio: false }),
+      initialData: () => ({ id: 1, units: unitsState, has_audio: false }),
+    }),
+  }
+})
 
 function renderStudy() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -50,6 +61,7 @@ function renderStudy() {
 }
 
 beforeEach(() => {
+  unitsState.forEach(u => { u.status = 'da-imparare' })
   localStorage.clear()
   Object.values(api).forEach((fn) => fn.mockClear())
 })
@@ -138,7 +150,7 @@ describe('lettura veloce', () => {
 
   it('le scorciatoie non intercettano i controlli dell’intestazione e delle impostazioni', async () => {
     await open()
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio' }), { key: ' ' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Torna allo Studio · L' }), { key: ' ' })
     expect(screen.getByRole('button', { name: 'Avvia' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Impostazioni della lettura veloce' }))
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Tono' }), { key: 'ArrowUp' })
@@ -192,7 +204,7 @@ describe('lettura veloce', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByTestId('speed-reader-settings')).not.toBeInTheDocument()
     expect(screen.getByTestId('speed-reader')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Torna allo Studio · L' }))
     await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
     expect(JSON.parse(localStorage.getItem('rt-pref:study.rsvp')!)).toMatchObject({ pauseMs: 650 })
     expect(screen.getByRole('heading', { level: 2, name: '1.2 Secondo' })).toBeInTheDocument()
@@ -236,6 +248,34 @@ describe('lettura veloce', () => {
     await waitFor(() => expect(screen.queryByTestId('speed-reader')).not.toBeInTheDocument())
   })
 
+  it('seleziono una parola a metà unità, premo L → la parola corrente è quella', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+    const text = screen.getByTestId('study-text')
+    const range = sourceRange(text, 26, 30)!
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+    expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('Poi,')
+  })
+
+  it('seleziono a metà di una parola → parte da quella parola', async () => {
+    renderStudy()
+    await waitFor(() => expect(screen.getByTestId('study-rsvp-btn')).not.toHaveAttribute('aria-disabled', 'true'))
+    const text = screen.getByTestId('study-text')
+    const range = sourceRange(text, 10, 13)!
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    fireEvent.keyDown(window, { key: 'l' })
+    await waitFor(() => expect(screen.getByTestId('speed-reader')).toBeInTheDocument())
+    expect(screen.getByTestId('speed-reader-word')).toHaveTextContent('filtra')
+  })
+
   it('durante la riproduzione speed-reader-panel ha opacity-25 e in pausa no', async () => {
     await open()
     const panel = screen.getByTestId('speed-reader-panel')
@@ -266,25 +306,135 @@ describe('lettura veloce', () => {
     expect(screen.getByRole('button', { name: /Unità successiva/ })).toHaveAttribute('aria-disabled', 'true')
   })
 
-  it('s in lettura veloce cambia lo stato e mostra l’avviso', async () => {
-    const put = vi.spyOn(apiClient, 'PUT').mockResolvedValue({ data: {}, response: new Response() } as never)
+  it('stato dell’unità accanto al titolo in lettura veloce: icona, clic e S cambiano stato', async () => {
+    const put = vi.spyOn(apiClient, 'PUT').mockImplementation(async (path: string, opts?: any) => {
+      if (path === '/api/v1/lessons/{lesson_id}/study/units/{unit_id}') {
+        const unitId = opts?.params?.path?.unit_id
+        const target = unitsState.find(u => u.id === unitId)
+        if (target && opts?.body?.status) target.status = opts.body.status
+      }
+      return { data: {}, response: new Response() } as never
+    })
     await open()
-    fireEvent.keyDown(window, { key: 's' })
+    const statusBtn = screen.getByTestId('rsvp-status')
+    expect(statusBtn).toHaveAttribute('aria-label', 'Stato: da imparare')
+
+    fireEvent.click(statusBtn)
     await waitFor(() => expect(put).toHaveBeenCalledWith(
       '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
       expect.objectContaining({ body: { status: 'in-apprendimento' } }),
     ))
     expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+    await waitFor(() => expect(statusBtn).toHaveAttribute('aria-label', 'Stato: in apprendimento'))
+
+    // Premendo S cambia al successivo
+    fireEvent.keyDown(window, { key: 's' })
+    await waitFor(() => expect(put).toHaveBeenCalledWith(
+      '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
+      expect.objectContaining({ body: { status: 'appreso' } }),
+    ))
+    await waitFor(() => expect(statusBtn).toHaveAttribute('aria-label', 'Stato: appresa'))
   })
 })
 
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · clic: colore successivo, dopo l’ultimo si spegne · E/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · E · seleziona il testo, prima o dopo/ })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
   expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+})
+
+it('selezione e poi V apre la verifica con la quote giusta e hlMode resta null', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'v' })
+
+  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
+  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-verifica')).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('selezione e poi E crea l’evidenziazione nel colore corrente', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'e' })
+
+  await waitFor(() => expect(api.add).toHaveBeenCalledWith(1, expect.objectContaining({
+    color: 0,
+    source: expect.objectContaining({ text: 'rene' }),
+  })))
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-pen')).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('selezione e poi clic sul pulsante Verifica fa lo stesso', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  const range = sourceRange(text, 3, 7)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  const btnV = screen.getByTestId('highlight-verifica')
+  fireEvent.pointerDown(btnV)
+  fireEvent.click(btnV)
+
+  await waitFor(() => expect(screen.getByTestId('study-note-popup')).toBeInTheDocument())
+  expect(screen.getByTestId('study-note-popup')).toHaveTextContent('rene')
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('senza selezione V accende la modalità come oggi', async () => {
+  renderStudy()
+  await waitFor(() => expect(screen.getByTestId('study-text')).toBeInTheDocument())
+  const text = screen.getByTestId('study-text')
+  window.getSelection()?.removeAllRanges()
+
+  const btnV = screen.getByTestId('highlight-verifica')
+  expect(btnV).toHaveAttribute('aria-pressed', 'false')
+
+  fireEvent.keyDown(window, { key: 'v' })
+
+  expect(btnV).toHaveAttribute('aria-pressed', 'true')
+  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
+  expect(screen.queryByTestId('study-note-popup')).not.toBeInTheDocument()
+})
+
+it('selezione e poi G toglie le evidenziazioni che toccano la selezione', async () => {
+  api.list.mockResolvedValueOnce([
+    { id: 3, unit_id: '1.1', color: 2, source: { startMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 3 }, endMeta: { parentTagName: 'P', parentIndex: 0, textOffset: 7 }, text: 'rene', id: 'a' } },
+  ])
+  renderStudy()
+  const text = screen.getByTestId('study-text')
+  await waitFor(() => expect(text.querySelector('.rt-hl')).toBeInTheDocument())
+
+  const range = sourceRange(text, 0, 10)!
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  fireEvent.keyDown(window, { key: 'g' })
+
+  await waitFor(() => expect(api.remove).toHaveBeenCalledWith(1, 3))
+  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.getByTestId('highlight-eraser')).toHaveAttribute('aria-pressed', 'false')
 })
 
 it('E e G attivano e tolgono lo strumento, ⇧E cambia colore; esclusi i campi', () => {
@@ -344,13 +494,45 @@ it('Z entra in zen, resta al cambio di unità; Esc chiude prima le impostazioni'
   expect(screen.getByTestId('study')).not.toHaveAttribute('data-zen')
 })
 
-it('D senza domande apre Genera anche in zen e blocca le scorciatoie', () => {
+it('stato dell’unità accanto al titolo in zen: icona, clic e S cambiano stato', async () => {
+  const put = vi.spyOn(apiClient, 'PUT').mockImplementation(async (path: string, opts?: any) => {
+    if (path === '/api/v1/lessons/{lesson_id}/study/units/{unit_id}') {
+      const unitId = opts?.params?.path?.unit_id
+      const target = unitsState.find(u => u.id === unitId)
+      if (target && opts?.body?.status) target.status = opts.body.status
+    }
+    return { data: {}, response: new Response() } as never
+  })
+  renderStudy()
+  fireEvent.keyDown(window, { key: 'z' })
+  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+
+  const zenStatusBtn = screen.getByTestId('zen-status')
+  expect(zenStatusBtn).toHaveAttribute('aria-label', 'Stato: da imparare')
+
+  fireEvent.click(zenStatusBtn)
+  await waitFor(() => expect(put).toHaveBeenCalledWith(
+    '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
+    expect.objectContaining({ body: { status: 'in-apprendimento' } }),
+  ))
+  expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+  await waitFor(() => expect(zenStatusBtn).toHaveAttribute('aria-label', 'Stato: in apprendimento'))
+
+  // S cambia ancora lo stato e mostra zen-notice
+  fireEvent.keyDown(window, { key: 's' })
+  await waitFor(() => expect(put).toHaveBeenCalledWith(
+    '/api/v1/lessons/{lesson_id}/study/units/{unit_id}',
+    expect.objectContaining({ body: { status: 'appreso' } }),
+  ))
+  expect(screen.getByTestId('zen-notice')).toBeInTheDocument()
+  await waitFor(() => expect(zenStatusBtn).toHaveAttribute('aria-label', 'Stato: appresa'))
+})
+
+it('D apre le domande dell’unità anche in zen', () => {
   renderStudy()
   fireEvent.keyDown(window, { key: 'z' })
   fireEvent.keyDown(window, { key: 'd' })
-  expect(screen.getByTestId('study-generate-modal')).toHaveAttribute('open')
-  fireEvent.keyDown(window, { key: 'z' })
-  expect(screen.getByTestId('study')).toHaveAttribute('data-zen', 'true')
+  expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
 })
 
 it('S/E/G non rimontano il testo e non spostano lo scroll', async () => {

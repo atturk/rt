@@ -2,6 +2,7 @@ import { mountDomTooltip, unmountDomTooltip } from '@/components/ui/dom-tooltip'
 import { isEnrichmentPanelOpen } from '@/components/shell/globalFileDropUtils'
 import { parseImageAlt, type ImageItem } from './imageUtils'
 import { RT_SECTION_IMAGE_DRAG_TYPE } from '@/components/lesson/imageSections'
+import { startDragPreview, stopDragPreview } from '@/components/lesson/dragPreview'
 
 const PAPERCLIP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="rt-strip-clip"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`
 const PREV_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`
@@ -45,8 +46,20 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
       thumb.ondragstart = event => {
         event.stopPropagation()
         thumb.closest('.cm-editor')?.classList.add('rt-dragging-images')
-        event.dataTransfer?.setData(RT_SECTION_IMAGE_DRAG_TYPE, JSON.stringify({ name, fromUnit: options.fromUnit, width: thumb.querySelector('img')?.naturalWidth || 480 }))
+        event.dataTransfer?.setData(
+          RT_SECTION_IMAGE_DRAG_TYPE,
+          JSON.stringify({
+            name,
+            fromUnit: options.fromUnit,
+            fromText: img.from,
+            width: thumb.querySelector('img')?.naturalWidth || 480,
+          }),
+        )
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+        startDragPreview(event, { urls: [img.src] })
+      }
+      thumb.ondragend = () => {
+        stopDragPreview()
       }
     }
     const pageLabel = img.pageNumber !== undefined ? `pagina ${img.pageNumber}` : `${idx + 1}`

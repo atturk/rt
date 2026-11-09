@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent } from 'react'
+import { InteractiveElement } from '@/components/lesson/Enrichment'
 import type { ImageItem } from './imageUtils'
 
 export function ImageViewer() {
@@ -121,11 +122,17 @@ export function ImageViewer() {
           </button>
 
           <div className="rt-slide-wrapper">
-            <img
-              src={current.src}
-              alt={current.alt}
-              className="rt-viewer-slide"
-            />
+            {current.interactiveUrl ? (
+              <div className="w-full max-w-[min(90vw,720px)] max-h-[min(65vh,600px)] overflow-auto">
+                <InteractiveElement title={current.alt} url={current.interactiveUrl} />
+              </div>
+            ) : (
+              <img
+                src={current.src}
+                alt={current.alt}
+                className="rt-viewer-slide"
+              />
+            )}
           </div>
 
           <button

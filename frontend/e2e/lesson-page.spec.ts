@@ -199,8 +199,13 @@ test('4.2.3.1: il pannello laterale non copre la barra dell’editor né il test
   expect(bar.x + bar.width).toBeLessThanOrEqual(panel.x)
   const page_ = (await page.getByTestId('lesson-page').boundingBox())!
   expect(page_.x + page_.width).toBeLessThanOrEqual(panel.x)
-  const player = await page.getByTestId('audio-player').boundingBox()
-  if (player) expect(player.x + player.width).toBeLessThanOrEqual(panel.x)
+  // Il player si sposta con una transizione di 200 ms quando si apre il pannello.
+  if (await page.getByTestId('audio-player').count()) {
+    await expect.poll(async () => {
+      const player = (await page.getByTestId('audio-player').boundingBox())!
+      return player.x + player.width
+    }).toBeLessThanOrEqual(panel.x)
+  }
   // Col testo scorso sotto la barra, la barra resta sopra il testo (gutter compresa).
   await page.getByTestId('lesson-document').evaluate((doc: HTMLElement) => { doc.style.paddingBottom = '2000px' })
   await page.evaluate(() => window.scrollTo(0, 400))

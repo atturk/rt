@@ -36,6 +36,7 @@ WizardStyle=modern
 CloseApplications=force
 RestartApplications=no
 ShowLanguageDialog=no
+ChangesAssociations=yes
 
 [Languages]
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
@@ -49,10 +50,14 @@ Name: "startup"; Description: "Avvia RT all'accesso a Windows"; Flags: unchecked
 Type: filesandordirs; Name: "{app}\python"
 Type: filesandordirs; Name: "{app}\rt"
 Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\docs"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#IconFile}"; DestDir: "{app}"; DestName: "rt.ico"; Flags: ignoreversion
+Source: "..\icons\rt-lezioni.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icons\rt-collezione.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icons\rt-orario.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#RtCmd} desktop"; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\rt.ico"; AppUserModelID: "atturk.RT"; Comment: "Apre RT"
@@ -63,6 +68,30 @@ Name: "{userstartup}\RT"; Filename: "{app}\python\pythonw.exe"; Parameters: "{#R
 Root: HKCU; Subkey: "Software\Classes\RT.File"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\RT.File"; ValueType: string; ValueName: ""; ValueData: "File RT"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\RT.File\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\python\pythonw.exe"" {#RtCmd} desktop --open ""%1"""; Flags: uninsdeletekey
+
+; RT.Lezioni (.rt)
+Root: HKCU; Subkey: "Software\Classes\RT.Lezioni"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Lezioni"; ValueType: string; ValueName: ""; ValueData: "Lezione RT"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Lezioni\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\rt-lezioni.ico"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Lezioni\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\python\pythonw.exe"" {#RtCmd} desktop --open ""%1"""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\.rt"; ValueType: string; ValueName: ""; ValueData: "RT.Lezioni"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.rt\OpenWithProgids"; ValueType: none; ValueName: "RT.Lezioni"; Flags: uninsdeletevalue
+
+; RT.Collezione (.rtdb)
+Root: HKCU; Subkey: "Software\Classes\RT.Collezione"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Collezione"; ValueType: string; ValueName: ""; ValueData: "Collezione RT"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Collezione\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\rt-collezione.ico"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Collezione\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\python\pythonw.exe"" {#RtCmd} desktop --open ""%1"""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\.rtdb"; ValueType: string; ValueName: ""; ValueData: "RT.Collezione"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.rtdb\OpenWithProgids"; ValueType: none; ValueName: "RT.Collezione"; Flags: uninsdeletevalue
+
+; RT.Orario (.rtcal)
+Root: HKCU; Subkey: "Software\Classes\RT.Orario"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Orario"; ValueType: string; ValueName: ""; ValueData: "Orario RT"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Orario\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\rt-orario.ico"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\RT.Orario\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\python\pythonw.exe"" {#RtCmd} desktop --open ""%1"""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\.rtcal"; ValueType: string; ValueName: ""; ValueData: "RT.Orario"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.rtcal\OpenWithProgids"; ValueType: none; ValueName: "RT.Orario"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: none; ValueName: "RT.File"; Flags: uninsdeletevalue

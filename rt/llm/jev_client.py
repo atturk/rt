@@ -180,9 +180,10 @@ def call_jev(
     finally:
         elapsed = time.time() - t_start
         usage = resp_json.get("usage", {}) if isinstance(resp_json, dict) else {}
+        usage = usage if isinstance(usage, dict) else {}
         in_tok = usage.get("input_tokens")
         out_tok = usage.get("output_tokens")
-        reported_cost = usage.get("cost")
+        reported_cost = usage.get("cost") if isinstance(usage.get("cost"), (int, float)) else None
         cost_est = reported_cost if reported_cost is not None else calculate_cost(
             provider="openrouter", model=model, input_tokens=in_tok, output_tokens=out_tok
         )
@@ -237,5 +238,9 @@ def call_jev(
             (answer.probabilities and set(answer.probabilities) != set(question.criteria))
         ):
             raise JevError(f"Scelta o probabilità non valide per '{name}'.")
-    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=resp_json.get("usage", {}),
+    # Solo i numeri: l'endpoint ora aggiunge anche dettagli annidati (es. cost_details).
+    raw_usage = resp_json.get("usage")
+    usage = {k: float(v) for k, v in raw_usage.items()
+             if isinstance(v, (int, float)) and not isinstance(v, bool)} if isinstance(raw_usage, dict) else {}
+    return JevResponse(model=resp_json.get("model", model), answers=answers, usage=usage,
                        raw=resp_json)

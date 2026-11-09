@@ -83,7 +83,7 @@ export const SETTINGS_SECTIONS = [
   { path: 'lavorazione', label: 'Lavorazione delle lezioni', description: 'Trascrizione, scaletta, arricchimento, job' },
   { path: 'modelli-connessioni', label: 'Modelli e connessioni', description: 'Modelli per fase, chiavi e costi' },
   { path: 'telegram', label: 'Telegram', description: 'Notifiche nella tua chat' },
-  { path: 'accesso', label: 'Accesso da iPhone', description: 'Indirizzo e QR di accesso' },
+  { path: 'accesso', label: 'Accesso da altri dispositivi', description: 'Indirizzo e QR di accesso' },
   { path: 'info-aggiornamenti', label: 'Info e aggiornamenti', description: 'Versione, canale e cartelle' },
 ] as const
 

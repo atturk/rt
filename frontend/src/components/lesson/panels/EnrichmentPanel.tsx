@@ -37,6 +37,8 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { assetUrl, kindLabel } from '@/lib/enrichment'
 import { EDITOR_SCROLL_EVENT } from '@/lib/lessonPanel'
 import { cn } from '@/lib/utils'
+import { RT_SECTION_IMAGE_DRAG_TYPE } from '../imageSections'
+import { EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT } from '../lessonImages'
 import { MediaGallery } from './MediaGallery'
 import { MediaSelectionBar } from './MediaSelectionBar'
 import { ImageInfoModal, type ImageInfoTarget } from '@/components/images/ImageInfoModal'
@@ -97,6 +99,7 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [showIgnored, setShowIgnored] = useState(false)
   const [mediaDragActive, setMediaDragActive] = useState(false)
+  const [sectionDragActive, setSectionDragActive] = useState(false)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [canInsertAtCursor, setCanInsertAtCursor] = useState(false)
   const navigate = useNavigate()
@@ -192,12 +195,15 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
       const clean = name.split('#')[0]
       setSelectedNames(new Set([clean]))
     }
+    const onDragEnd = () => setSectionDragActive(false)
+    window.addEventListener('dragend', onDragEnd)
     window.addEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
     window.addEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
     window.addEventListener('rt-editor-cursor-state', onCursorState)
     window.addEventListener('rt-media-select', onMediaSelect)
     window.dispatchEvent(new CustomEvent('rt-editor-request-cursor-state'))
     return () => {
+      window.removeEventListener('dragend', onDragEnd)
       window.removeEventListener(ENRICHMENT_MEDIA_DRAG_EVENT, onMediaDrag)
       window.removeEventListener(ENRICHMENT_MEDIA_DROP_EVENT, onMediaDrop)
       window.removeEventListener('rt-editor-cursor-state', onCursorState)
@@ -218,6 +224,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
     .map((el) => {
       const kindText = kindLabel(el.kind)
       const assetFileName = el.asset_image ? el.asset_image.split('/').pop()! : el.id
+      const isInteractive = Boolean(el.asset_html && (el.asset_mode ?? el.mode) === 'interactive')
+      const interactiveUrl = isInteractive && el.asset_html ? assetUrl(id, el.asset_html) : undefined
       return {
         name: assetFileName,
         url: el.asset_image ? assetUrl(id, el.asset_image) : '',
@@ -230,6 +238,8 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
         in_assets: true,
         page: null,
         descritta: true,
+        interactive: isInteractive,
+        interactiveUrl,
       }
     })
 
@@ -275,6 +285,10 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   const handleInfo = () => {
     const selected = imageList.find((i) => selectedNames.has(i.name))
     if (!selected) return
+    if (selected.source === 'enrichment') {
+      const el = enrichmentByName.get(selected.name)
+      if (el) return setInfoTarget({ enrichment: el })
+    }
     if (selected.source?.startsWith('material:') && !selected.in_assets) {
       const [, sourceId, page] = selected.source.split(':')
       const sha = sourcesQuery.data?.sources.find((s) => s.id === sourceId)?.impronta
@@ -322,12 +336,24 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   const handleOpenViewer = (flatIndex: number) => {
-    const viewerImages = imageList.map((img) => ({
-      src: img.url,
-      alt: img.alt_text || img.name,
-      docName: img.source_name || img.source || 'Media',
-      pageNumber: img.page ?? undefined,
-    }))
+    const viewerImages = imageList.map((img) => {
+      const enrichmentEl = enrichmentByName.get(img.name)
+      const isInteractive = img.interactive || Boolean(
+        enrichmentEl &&
+        enrichmentEl.asset_html &&
+        (enrichmentEl.asset_mode ?? enrichmentEl.mode) === 'interactive'
+      )
+      const interactiveUrl =
+        img.interactiveUrl ||
+        (isInteractive && enrichmentEl?.asset_html ? assetUrl(id, enrichmentEl.asset_html) : undefined)
+      return {
+        src: img.url,
+        alt: img.alt_text || img.name,
+        docName: img.source_name || img.source || 'Media',
+        pageNumber: img.page ?? undefined,
+        interactiveUrl,
+      }
+    })
     window.dispatchEvent(
       new CustomEvent('rt-image-viewer-open', {
         detail: { images: viewerImages, index: flatIndex },
@@ -497,7 +523,50 @@ export function EnrichmentPanel({ lessonId }: { lessonId?: number }) {
   }
 
   return (
-    <div className="relative flex flex-col gap-4 text-body" data-testid="enrichment-panel">
+    <div
+      className="relative flex flex-col gap-4 text-body"
+      data-testid="enrichment-panel"
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types.includes(RT_SECTION_IMAGE_DRAG_TYPE)) {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (!sectionDragActive) setSectionDragActive(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return
+        setSectionDragActive(false)
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer?.types.includes(RT_SECTION_IMAGE_DRAG_TYPE)) {
+          e.preventDefault()
+          e.stopPropagation()
+          const raw = e.dataTransfer.getData(RT_SECTION_IMAGE_DRAG_TYPE)
+          if (raw) {
+            try {
+              const item = JSON.parse(raw)
+              window.dispatchEvent(
+                new CustomEvent(EDITOR_REMOVE_IMAGE_OCCURRENCE_EVENT, { detail: item }),
+              )
+            } catch {
+              // Ignore
+            }
+          }
+          setSectionDragActive(false)
+        }
+      }}
+    >
+      {sectionDragActive && (
+        <div
+          className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-primary/10 p-5 text-center font-semibold text-foreground pointer-events-none select-none animate-in fade-in duration-150"
+          data-testid="enrichment-remove-veil"
+          role="status"
+          aria-live="polite"
+        >
+          <X className="size-8 text-primary" aria-hidden />
+          <p>Rilascia per togliere dall'unità</p>
+        </div>
+      )}
       {mediaDragActive && (
         <div
           className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-primary/10 p-5 text-center font-semibold text-foreground pointer-events-none select-none animate-in fade-in duration-150"

@@ -1,6 +1,6 @@
 import { useRecallRules } from '@/api/recallRules'
 import { isMacKeyboard } from '@/components/lesson/markdownShortcuts'
-import { questionTypeId, typeLabel } from '@/lib/recall'
+import { cleanComment, questionTypeId, typeLabel } from '@/lib/recall'
 import { EmptyGeneration } from './EmptyGeneration'
 import {
   BookOpen,
@@ -47,7 +47,6 @@ import { PageHeader } from '@/components/shell/PageHeader'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button-variants'
 import { Chip } from '@/components/ui/chip'
 import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
@@ -57,6 +56,8 @@ import { selectionSubject } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 
 type SessionType = RecallType | 'mista'
+
+
 
 
 type DiscardReason = NonNullable<Schemas['RecallVote']['reasons']>[number]
@@ -194,7 +195,18 @@ export function LightweightSession({
     outcome?: 'corretta' | 'parziale' | 'sbagliata'
     explanation?: string
     correctIndex?: number
+    correttezza?: number | null
+    completezza?: number | null
+    attinenza?: number | null
+    domandaFollowup?: string | null
+    followupQuestion?: string | null
+    followupAnswer?: string | null
+    followupEvaluation?: string | null
   } | null>(null)
+
+  // Risposta di approfondimento
+  const [followupAnswer, setFollowupAnswer] = useState<string>('')
+  const [showFollowupVoice, setShowFollowupVoice] = useState<boolean>(false)
 
   // Voto
   const [currentVote, setCurrentVote] = useState<'up' | 'down' | null>(null)
@@ -214,7 +226,17 @@ export function LightweightSession({
     void markSeen(currentQuestion.id).then(() => {
       if (!active) return
       setWrittenAnswer(saved.answer_text)
-      setEvaluatedResult({ outcome: saved.outcome ?? undefined, explanation: saved.evaluation })
+      setEvaluatedResult({
+        outcome: saved.outcome ?? undefined,
+        explanation: saved.evaluation,
+        correttezza: saved.correttezza,
+        completezza: saved.completezza,
+        attinenza: saved.attinenza,
+        domandaFollowup: saved.domanda_followup,
+        followupQuestion: saved.followup_question,
+        followupAnswer: saved.followup_answer,
+        followupEvaluation: saved.followup_evaluation,
+      })
     }).catch(error => { if (active) setGeneralError(errorMessage(error)) })
     return () => { active = false }
   }, [currentQuestion, activeLessonId, markSeen])
@@ -229,6 +251,8 @@ export function LightweightSession({
       setSelectedChoice(null)
       setWrittenAnswer('')
       setShowVoiceRecorder(false)
+      setFollowupAnswer('')
+      setShowFollowupVoice(false)
       setEvaluatedResult(null)
       setEvaluationJob(null)
       setFailedEvaluationJob(null)
@@ -370,7 +394,77 @@ export function LightweightSession({
     setEvaluatedResult({
       outcome: saved?.outcome ?? undefined,
       explanation: saved?.evaluation ?? currentQuestion?.explanation ?? undefined,
+      correttezza: saved?.correttezza,
+      completezza: saved?.completezza,
+      attinenza: saved?.attinenza,
+      domandaFollowup: saved?.domanda_followup,
+      followupQuestion: saved?.followup_question,
+      followupAnswer: saved?.followup_answer,
+      followupEvaluation: saved?.followup_evaluation,
     })
+    setFollowupAnswer('')
+    setShowFollowupVoice(false)
+  }
+
+  // Risposta di approfondimento scritta
+  const handleFollowupAnswer = async () => {
+    if (!followupAnswer.trim() || !currentQuestion || !activeLessonId) return
+    try {
+      const result = await answerMutation.mutateAsync({
+        questionId: currentQuestion.id,
+        answer: followupAnswer.trim(),
+        isFollowup: true,
+      })
+      setFailedEvaluationJob(null)
+      if (result.job) setEvaluationJob(result.job.job_id)
+    } catch (err) {
+      setGeneralError(errorMessage(err))
+    }
+  }
+
+  // Risposta vocale di approfondimento
+  const handleFollowupVoice = async (audio: File) => {
+    if (!currentQuestion || !activeLessonId) return
+    try {
+      const job = await voiceMutation.mutateAsync({
+        questionId: currentQuestion.id,
+        audio,
+        isFollowup: true,
+      })
+      setFailedEvaluationJob(null)
+      setEvaluationJob(job.job_id)
+    } catch (err) {
+      setGeneralError(errorMessage(err))
+    }
+  }
+
+  // Non lo so sull'approfondimento
+  const handleFollowupDontKnow = async () => {
+    if (!currentQuestion || !activeLessonId) return
+    try {
+      const res = await answerMutation.mutateAsync({
+        questionId: currentQuestion.id,
+        dontKnow: true,
+        isFollowup: true,
+      })
+      if (res.job) setEvaluationJob(res.job.job_id)
+    } catch (err) {
+      setGeneralError(errorMessage(err))
+    }
+  }
+
+  // Salta approfondimento
+  const handleSkipFollowup = async () => {
+    if (!currentQuestion || !activeLessonId) return
+    try {
+      await answerMutation.mutateAsync({
+        questionId: currentQuestion.id,
+        skipFollowup: true,
+      })
+      setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null } : null))
+    } catch (err) {
+      setGeneralError(errorMessage(err))
+    }
   }
 
   // Non lo so
@@ -626,16 +720,6 @@ export function LightweightSession({
                   </Button>
                 )}
 
-                {/* Una lezione sola, zero da porre: Genera domande */}
-                {!unit && !isSelection && daPorreCount === 0 && lessonId && (
-                  <Link
-                    to={`/lezioni/${lessonId}?panel=domande`}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                  >
-                    Genera domande
-                  </Link>
-                )}
-
                 {/* Ripescaggio: solo se una lezione sola o modo unità, e conteggio > 0 */}
                 {!isSelection && lessonId && wrongCount > 0 && (
                   <Button
@@ -864,20 +948,139 @@ export function LightweightSession({
                           ? 'Sbagliata.'
                           : 'Valutazione'}
                   </p>
+
+                  {(evaluatedResult.correttezza != null ||
+                    evaluatedResult.completezza != null ||
+                    evaluatedResult.attinenza != null) && (
+                    <div className="mt-2 flex flex-wrap gap-2" data-testid="recall-eval-scores">
+                      {evaluatedResult.correttezza != null && (
+                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                          Correttezza {evaluatedResult.correttezza}%
+                        </span>
+                      )}
+                      {evaluatedResult.completezza != null && (
+                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                          Completezza {evaluatedResult.completezza}%
+                        </span>
+                      )}
+                      {evaluatedResult.attinenza != null && (
+                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                          Attinenza {evaluatedResult.attinenza}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {evaluatedResult.explanation && (
                     <p className="mt-1 text-meta leading-relaxed">
-                      <MathText text={evaluatedResult.explanation} />
+                      <MathText
+                        text={cleanComment(
+                          evaluatedResult.explanation,
+                          evaluatedResult.correttezza != null ||
+                            evaluatedResult.completezza != null ||
+                            evaluatedResult.attinenza != null,
+                        )}
+                      />
                     </p>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">
                       <Link
-                        to={`/lezioni/${activeLessonId}#unit-${currentQuestion.unit_ids[0]}`}
+                        to={`/studio/lezione/${activeLessonId}?unita=${encodeURIComponent(currentQuestion.unit_ids[0])}`}
                         className="font-medium text-link underline underline-offset-2 hover:opacity-80"
                       >
                         Rileggi l'unità {currentQuestion.unit_ids.join(', ')}
                       </Link>
                     </p>
+                  )}
+
+                  {/* Recap Approfondimento se completato */}
+                  {evaluatedResult.followupQuestion && (
+                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs" data-testid="recall-followup-recap">
+                      <p className="font-semibold text-muted-foreground">Domanda di approfondimento:</p>
+                      <p className="mt-0.5"><MathText text={evaluatedResult.followupQuestion} /></p>
+                      {evaluatedResult.followupAnswer && (
+                        <>
+                          <p className="mt-2 font-semibold text-muted-foreground">La tua risposta:</p>
+                          <p className="mt-0.5 italic"><MathText text={evaluatedResult.followupAnswer} /></p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Box di Approfondimento (in attesa di risposta 2) */}
+                  {evaluatedResult.domandaFollowup && (
+                    <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3" data-testid="recall-followup-box">
+                      <p className="font-semibold text-xs text-foreground">Domanda di approfondimento:</p>
+                      <p className="mt-1 text-sm text-foreground"><MathText text={evaluatedResult.domandaFollowup} /></p>
+                      {!showFollowupVoice ? (
+                        <div className="mt-2.5 flex flex-col gap-2">
+                          <textarea
+                            className="w-full rounded-md border border-input bg-background p-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            rows={3}
+                            placeholder="Scrivi qui la tua risposta di approfondimento..."
+                            value={followupAnswer}
+                            onChange={(e) => setFollowupAnswer(e.target.value)}
+                            data-testid="recall-followup-input"
+                          />
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={() => setShowFollowupVoice(true)}
+                                disabled={busy}
+                              >
+                                <Mic className="mr-1.5 size-3.5" aria-hidden />
+                                Registra voce
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={handleSkipFollowup}
+                                disabled={busy}
+                                data-testid="recall-followup-skip"
+                              >
+                                Salta
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                type="button"
+                                onClick={handleFollowupDontKnow}
+                                disabled={busy}
+                              >
+                                Non lo so
+                              </Button>
+                            </div>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              type="button"
+                              onClick={handleFollowupAnswer}
+                              disabled={busy || !followupAnswer.trim()}
+                              data-testid="recall-followup-submit"
+                            >
+                              Rispondi
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2.5 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Registrazione risposta vocale</span>
+                            <IconButton
+                              label="Annulla registrazione vocale"
+                              icon={X}
+                              onClick={() => setShowFollowupVoice(false)}
+                            />
+                          </div>
+                          <VoiceRecorder onRecorded={handleFollowupVoice} disabled={busy} />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -926,7 +1129,7 @@ export function LightweightSession({
                   <Button variant="outline" onClick={handleEnd} disabled={busy}>
                     Termina
                   </Button>
-                  {isAnswered && (
+                  {evaluatedResult && !evaluatedResult.domandaFollowup && (
                     <Button
                       variant="default"
                       disabled={busy}

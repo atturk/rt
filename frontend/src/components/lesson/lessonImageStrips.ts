@@ -75,6 +75,7 @@ export function findMarkdownImageStrips(state: EditorState, lessonId: number) {
       src: `/api/v1/lessons/${lessonId}/assets/images/${encodeURIComponent(image.name)}`,
       alt: image.alt,
       ...parseImageAlt(image.alt),
+      from: image.from,
     })),
   }))
 }

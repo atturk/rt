@@ -86,7 +86,7 @@ test('ripasso: risposta aperta con la valutazione del job', async ({ page }) => 
   const answer = data.answers.find((a) => a.question_id === id)!
   expect(answer.answer_text).toBe('Gli acidi grassi saturi non hanno doppi legami.')
   expect(answer.evaluation).toBeTruthy()
-  await expect(card).toContainText(answer.evaluation!.trim().split('\n')[0])
+  await expect(card).toContainText(answer.evaluation!.trim().split('\n').at(-1)!)
 })
 
 test('arricchimento: PDF caricato dal pannello, job e immagini nella galleria', async ({ page }) => {

@@ -1,14 +1,12 @@
 import { Tooltip } from '@/components/ui/tooltip'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Archive, Check, Brain, Calendar, CalendarRange, FileText, Info, List, ListFilter, Pin, Plus, Search, SquareCheck, SquareMinus, Tag, Trash2, User, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import { api, errorMessage, unwrap } from '@/api/client'
-import { lessonExportUrl, useExportLessons } from '@/api/exports'
+import { exportLessonsMultiple } from '@/lib/fileStatus'
 import { useSettings } from '@/api/settings'
-import { JobProgress } from '@/components/JobProgress'
-import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -19,7 +17,7 @@ import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { lessonTitle, type Lesson } from '@/lib/format'
 import {
   GROUPING_LABELS, GROUP_CYCLE, groupBackground, PHONE_GROUP_LABELS, PHONE_SORT_LABELS, SORT_CYCLE, SORT_OPTIONS,
-  markdownExportNote, STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
+  STATUS_LABELS, groupLabel, lessonStatus, lessonSubtitle,
   type LessonStatus, type LessonsGrouping, type LessonsPrefs, type LessonsSort,
 } from '@/lib/lessonsPage'
 import type { LessonGroup } from '@/lib/lessonView'
@@ -390,27 +388,24 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
   const selectedIds = new Set(lessons.map((l) => l.id))
   const allSelected = visibleLessons.length > 0 && visibleLessons.every((l) => selectedIds.has(l.id))
   const finals = lessons.filter((l) => l.phases.build === 'VALID')
-  const markdown = markdownExportNote(lessons)
   const ready = lessons.filter((l) => l.phases.rewrite === 'VALID')
   const [deleting, setDeleting] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const start = useExportLessons()
   const [exportStudy, setExportStudy] = usePreference('export.study', true)
-  const [exportJob, setExportJob] = useState<{ id: string; state: string } | null>(null)
-  const download = useRef<HTMLAnchorElement>(null)
-  const downloaded = useRef<string | null>(null)
-  const exporting = start.isPending || exportJob?.state === 'queued'
-  const runExport = (format: 'markdown' | 'zip' | 'sources') => {
-    start.mutate({ ids: (format === 'markdown' ? finals : lessons).map((l) => l.id), format, name: 'Lezioni selezionate', study: format === 'zip' && exportStudy }, {
-      onSuccess: (accepted) => setExportJob({ id: accepted.job_id, state: 'queued' }),
+  const [exporting, setExporting] = useState(false)
+
+  const runExport = (format: 'pdf' | 'zip') => {
+    setExporting(true)
+    void exportLessonsMultiple({
+      ids: lessons.map((l) => l.id),
+      format,
+      name: 'Lezioni selezionate',
+      study: format === 'zip' && exportStudy,
+    }).finally(() => {
+      setExporting(false)
     })
   }
-  useEffect(() => {
-    if (exportJob?.state === 'succeeded' && download.current && downloaded.current !== exportJob.id) {
-      downloaded.current = exportJob.id
-      download.current.click()
-    }
-  }, [exportJob])
+
   return (
     <div
       role="region"
@@ -440,19 +435,18 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
           unavailable={lessons.length === 0 ? 'nessuna lezione selezionata' : ready.length === 0 ? 'nessuna lezione selezionata ha la rielaborazione' : null}
         />
         <IconButton
-          label="Scarica Markdown"
+          label="Esporta PDF"
           icon={FileText}
           side="top"
-          onClick={() => runExport('markdown')}
-          unavailable={exporting ? 'esportazione in corso' : markdown.unavailable}
-          hint={markdown.hint}
+          onClick={() => runExport('pdf')}
+          unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : finals.length === 0 ? 'nessuna lezione selezionata ha il documento finale' : null}
+          hint={finals.length < lessons.length && finals.length > 0 ? `${finals.length} di ${lessons.length} lezioni hanno il documento finale` : undefined}
         />
-        <LinkMenuButton label="Scarica zip" icon={Archive} side="top"
+        <LinkMenuButton label="Esporta lezioni (.rt)" icon={Archive} side="top"
           unavailable={exporting ? 'esportazione in corso' : lessons.length === 0 ? 'nessuna lezione selezionata' : null}
           items={[
             { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
-            { label: 'Scarica zip', onSelect: () => runExport('zip') },
-            { label: 'Solo le fonti (zip)', onSelect: () => runExport('sources') },
+            { label: 'Esporta lezioni (.rt)', onSelect: () => runExport('zip') },
           ]} />
         <IconButton
           label="Elimina le lezioni selezionate"
@@ -464,12 +458,7 @@ export function SelectionBar({ lessons, visibleLessons, onSelectAll, onCancel, o
         />
         <IconButton label="Annulla" icon={X} side="top" onClick={onCancel} />
       </div>
-      {start.isError && <Alert tone="danger">{errorMessage(start.error)}</Alert>}
       {detailsOpen && <SelectionDetails lessons={lessons} open onClose={() => setDetailsOpen(false)} />}
-      {exportJob && <JobProgress key={exportJob.id} jobId={exportJob.id} label="Esportazione delle lezioni" onFinished={(state) => setExportJob((current) => current ? { ...current, state } : null)} />}
-      {exportJob?.state === 'succeeded' && (
-        <a ref={download} className="text-meta text-link underline" href={lessonExportUrl(exportJob.id)} download>Scarica di nuovo</a>
-      )}
       {deleting && <DeleteSelection lessons={lessons} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
     </div>
   )

@@ -27,3 +27,18 @@ it('il timecode compare una volta sola, accanto al titolo', async () => {
   expect(content.textContent!.match(/00:22/g)).toHaveLength(1)
   expect(container.querySelector('.print-timecode')).toHaveTextContent('00:22')
 })
+
+it('definisce gli stili per elenchi puntati, numerati, rientro e annidati nel tag style', () => {
+  const { container } = render(
+    <MemoryRouter initialEntries={['/stampa/1']}>
+      <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
+    </MemoryRouter>,
+  )
+  const styleText = container.querySelector('style')?.textContent ?? ''
+  expect(styleText).toContain('.print-page ul')
+  expect(styleText).toContain('list-style: disc')
+  expect(styleText).toContain('.print-page ol')
+  expect(styleText).toContain('list-style: decimal')
+  expect(styleText).toContain('padding-left: 1.4em')
+  expect(styleText).toContain('list-style: circle')
+})

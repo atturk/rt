@@ -14,8 +14,9 @@ import { useRsvpPrefs, type RsvpPreference } from '@/lib/studyPrefs'
 import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudyTextScale, type StudyFont } from '@/lib/studyText'
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
-import { ZOOM_LEVELS, getZoom, setZoom } from '@/lib/zoom'
+import { ZOOM_LEVELS, getZoom, isAppWindow, setZoom } from '@/lib/zoom'
 import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from './common'
+import { StudyStatusesSection } from './StudyStatusesSection'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
 function useGeneralPreference() {
@@ -37,6 +38,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   const [rsvp, setRsvp] = useRsvpPrefs()
   const [copy, setCopy] = useCopyFormat()
   const [rate, setRate] = usePreference('audio.rate', 1)
+  const [playerFollowsUnit, setPlayerFollowsUnit] = usePreference('study.player-follows-unit', true)
   const [zoom, setZoomState] = useState(getZoom)
   const [textFont, setTextFont] = useStudyFont()
   const [textScale, setTextScale] = useStudyTextScale()
@@ -63,13 +65,13 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
           <option value="colori">Colori</option><option value="grigi">Grigi</option><option value="niente">Niente</option>
         </Select>
       </Field>
-      <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
+      {isAppWindow() && <Field label="Zoom" htmlFor="pref-zoom" hint="Solo su questo dispositivo. Nell'app anche con Cmd + e Cmd − (Ctrl su Windows).">
         <Select id="pref-zoom" value={zoom} onChange={e => setZoom(Number(e.target.value))}>
           {ZOOM_LEVELS.map(level => (
             <option key={level} value={level}>{Math.round(level * 100)}%</option>
           ))}
         </Select>
-      </Field>
+      </Field>}
       <SaveFeedback mutation={save} />
     </Section>
     <Section id="testo-studio" title="Testo dello Studio">
@@ -86,7 +88,9 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
           {Array.from({ length: 13 }, (_, i) => (8 + i) / 10).map(n => <option key={n} value={n.toFixed(1)}>{Math.round(n * 100)}%</option>)}
         </Select>
       </Field>
+      <Checkbox id="pref-study-player-follows-unit" label="Il player segue l'unità" checked={playerFollowsUnit} onChange={setPlayerFollowsUnit} />
     </Section>
+    <StudyStatusesSection settings={settings} />
     <Section id="copia" title="Copia">
       <Checkbox id="copy-bold" label="Grassetto" checked={copy.bold} onChange={bold => setCopy({ ...copy, bold })} />
       <Checkbox id="copy-italic" label="Corsivo" checked={copy.italic} onChange={italic => setCopy({ ...copy, italic })} />

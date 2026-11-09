@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { waitFor } from '@testing-library/react'
 import type { Schemas } from '@/api/client'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { FileStatusBar } from '@/components/ui/file-status'
 import { LessonPage } from './lessons'
 
 const workflow = vi.hoisted(() => ({ outline: undefined as Schemas['Outline'] | undefined, document: undefined as Schemas['LessonDocument'] | undefined, jobs: [] as Schemas['Job'][], ready: false }))
@@ -35,29 +36,40 @@ vi.mock('@/components/lesson/LessonEditor', () => ({ LessonEditor: ({ document, 
 beforeEach(() => { localStorage.clear(); workflow.outline = undefined; workflow.document = undefined; workflow.jobs = []; workflow.ready = false })
 afterEach(() => vi.restoreAllMocks())
 
-it('la preferenza sul server controlla lo stato di studio nel link ZIP', async () => {
+it('la preferenza sul server controlla lo stato di studio nell esportazione ZIP', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   client.setQueryData(['preferences'], { 'export.study': true })
   const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: false, error: undefined, response: new Response('{}') } as never)
   vi.spyOn(api, 'GET').mockResolvedValue({ data: { 'export.study': false }, error: undefined, response: new Response('{}') } as never)
+  globalThis.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    headers: new Headers({ 'content-disposition': 'attachment; filename="lezione.rt"' }),
+    blob: async () => new Blob(['']),
+  } as unknown as Response)
+  URL.createObjectURL = vi.fn(() => 'blob:test')
+  URL.revokeObjectURL = vi.fn()
+
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
   fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
-  const zip = screen.getByRole('menuitem', { name: 'Tutti i dati (zip)' })
-  expect(zip).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=all&study=1')
+  const zip = screen.getByRole('menuitem', { name: 'Lezione (.rt)' })
+  fireEvent.click(zip)
+  expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=zip&scope=all&study=1', expect.anything())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
   fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Includi lo stato di studio' }))
-  await waitFor(() => expect(zip).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=all'))
-  expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'export.study' } }, body: false })
-  expect(screen.getByRole('menuitem', { name: 'Markdown' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=markdown')
-  expect(screen.getByRole('menuitem', { name: 'Solo le fonti (zip)' })).toHaveAttribute('href', '/api/v1/lessons/1/export?format=zip&scope=sources')
+  await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'export.study' } }, body: false }))
+
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Lezione (.rt)' }))
+  expect(globalThis.fetch).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=zip&scope=all', expect.anything())
 })
 
 it('PDF: se il browser per la stampa manca mostra il motivo invece di scaricare un file', async () => {
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: { code: 'pdf_browser_missing', message: 'Il browser per il PDF si sta ancora scaricando. Riprova tra poco.' } }), { status: 409 }))
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<LessonPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={['/lezioni/1']}><Routes><Route path="/lezioni/:lessonId" element={<><LessonPage /><FileStatusBar /></>} /></Routes></MemoryRouter></QueryClientProvider>)
   fireEvent.click(screen.getByRole('button', { name: 'Esporta' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'PDF' }))
   expect(await screen.findByText('Il browser per il PDF si sta ancora scaricando. Riprova tra poco.')).toBeInTheDocument()
-  expect(fetchMock).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=pdf', { credentials: 'same-origin' })
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/lessons/1/export?format=pdf', expect.objectContaining({ credentials: 'same-origin' }))
 })
 
 it('mostra i metadati sotto il titolo e le azioni del wireframe Main', () => {

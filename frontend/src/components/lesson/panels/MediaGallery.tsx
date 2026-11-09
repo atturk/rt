@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { LessonImage } from '@/api/images'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { startDragPreview, stopDragPreview } from '../dragPreview'
 import { flashAndScroll, groupMediaImages } from './mediaGalleryUtils'
 
 interface MediaGalleryProps {
@@ -29,7 +30,8 @@ interface MediaCellProps {
   view: 'rows' | 'grid'
   lessonId?: number
   isPeekActive?: boolean
-  onImageClick: (img: LessonImage, flatIndex: number, shiftKey: boolean) => void
+  onImageClick: (img: LessonImage, flatIndex: number, e: React.MouseEvent | boolean) => void
+  onDragStart: (e: React.DragEvent, img: LessonImage) => void
   onOpenViewer: (flatIndex: number) => void
   startLongPress: (index: number) => void
   cancelLongPress: () => void
@@ -48,9 +50,10 @@ function MediaCell({
   flatIndex,
   isSelected,
   view,
-  lessonId,
-  isPeekActive,
+  lessonId: _lessonId,
+  isPeekActive: _isPeekActive,
   onImageClick,
+  onDragStart,
   onOpenViewer,
   startLongPress,
   cancelLongPress,
@@ -88,28 +91,10 @@ function MediaCell({
       <button
         type="button"
         data-image-name={img.name}
-        draggable
-        onDragStart={(e) => {
-          cancelPeekTimer()
-          if (isPeekActive) {
-            e.preventDefault()
-            return
-          }
-          e.dataTransfer.setData(
-            'application/x-rt-media-image',
-            JSON.stringify({
-              path: img.in_assets ? `assets/images/${img.name}` : img.url,
-              alt_text:
-                img.alt_text ||
-                (img.page ? `${img.source_name}, pagina ${img.page}` : img.name),
-              source_name: img.source_name,
-              source: img.source,
-              page: img.page,
-              in_assets: img.in_assets,
-              lessonId,
-            }),
-          )
-          e.dataTransfer.effectAllowed = 'copy'
+        draggable={img.source !== 'enrichment'}
+        onDragStart={(e) => onDragStart(e, img)}
+        onDragEnd={() => {
+          stopDragPreview()
         }}
         aria-label={ariaLabel}
         aria-pressed={isSelected}
@@ -125,7 +110,7 @@ function MediaCell({
         onPointerMove={onPointerMove}
         onPointerUp={cancelPeekTimer}
         onPointerLeave={cancelPeekTimer}
-        onClick={(e) => onImageClick(img, flatIndex, e.shiftKey)}
+        onClick={(e) => onImageClick(img, flatIndex, e)}
         onDoubleClick={() => onOpenViewer(flatIndex)}
         onTouchStart={() => startLongPress(flatIndex)}
         onTouchEnd={cancelLongPress}
@@ -155,6 +140,14 @@ function MediaCell({
             aria-label="Ritaglio"
           >
             <Scissors className="size-3" aria-hidden />
+          </span>
+        )}
+        {img.interactive && (
+          <span
+            className="absolute left-1.5 bottom-1.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white shadow-sm pointer-events-none"
+            data-testid="interactive-badge"
+          >
+            Interattiva
           </span>
         )}
         {!img.descritta && (
@@ -335,11 +328,56 @@ export function MediaGallery({
     })
   }, [])
 
-  const handleImageClick = (img: LessonImage, flatIndex: number, shiftKey: boolean) => {
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, img: LessonImage) => {
+      cancelPeekTimer()
+      if (peekShownRef.current) {
+        e.preventDefault()
+        return
+      }
+      const isSelected = selectedNames.has(img.name)
+      // I media dell'arricchimento stanno in assets/enrichment e arrivano nel testo col loro
+      // blocco: trascinati come immagini normali diventerebbero un link rotto in assets/images.
+      const dragged = (isSelected
+        ? flatImages.filter((i) => selectedNames.has(i.name))
+        : [img]).filter((i) => i.source !== 'enrichment')
+      if (dragged.length === 0) {
+        e.preventDefault()
+        return
+      }
+
+      const payload = dragged.map((item) => ({
+        path: item.in_assets ? `assets/images/${item.name}` : item.url,
+        alt_text:
+          item.alt_text ||
+          (item.page ? `${item.source_name}, pagina ${item.page}` : item.name),
+        source_name: item.source_name,
+        source: item.source,
+        page: item.page,
+        in_assets: item.in_assets,
+        lessonId,
+      }))
+
+      e.dataTransfer.setData('application/x-rt-media-image', JSON.stringify(payload))
+      e.dataTransfer.effectAllowed = 'copy'
+      startDragPreview(e, {
+        urls: dragged.map((i) => i.url),
+        count: dragged.length,
+      })
+    },
+    [cancelPeekTimer, selectedNames, flatImages, lessonId],
+  )
+
+  const handleImageClick = (
+    img: LessonImage,
+    flatIndex: number,
+    e: React.MouseEvent | boolean,
+  ) => {
     if (peekShownRef.current) {
       peekShownRef.current = false
       return
     }
+    const shiftKey = typeof e === 'boolean' ? e : e.shiftKey
     if (shiftKey && lastClickedIndexRef.current !== null) {
       const start = Math.min(lastClickedIndexRef.current, flatIndex)
       const end = Math.max(lastClickedIndexRef.current, flatIndex)
@@ -392,6 +430,12 @@ export function MediaGallery({
       className="flex flex-col gap-3 outline-none"
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onClick={(e) => {
+        const target = e.target as HTMLElement
+        if (!target.closest('button, a, input, [role="button"]')) {
+          onClearSelection()
+        }
+      }}
       role="region"
       aria-label="Galleria media della lezione"
       data-testid="media-gallery"
@@ -463,6 +507,7 @@ export function MediaGallery({
                       lessonId={lessonId}
                       isPeekActive={Boolean(peek)}
                       onImageClick={handleImageClick}
+                      onDragStart={handleDragStart}
                       onOpenViewer={handleDoubleClick}
                       startLongPress={startLongPress}
                       cancelLongPress={cancelLongPress}

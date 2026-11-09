@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from rt.api import schemas
@@ -21,6 +22,26 @@ def _lesson_id(lesson_dir: str) -> int:
     if lesson_id is None:
         raise ApiError(404, "lesson_not_found", "Lezione non trovata.")
     return lesson_id
+
+
+class SampleLessonOut(BaseModel):
+    lesson_id: int = Field(description="ID della lezione di esempio importata")
+    materia: str = Field(description="Materia (ESEMPIO)")
+    titolo: str = Field(description="Titolo della lezione di esempio")
+
+
+@router.post("/lessons/sample", response_model=SampleLessonOut, status_code=201, summary="Importa la lezione di esempio inclusa in RT")
+def import_sample_lesson(_actor: Actor):
+    from rt.core import paths
+    from rt.services.lesson_import_service import import_archive
+    sample_path = paths.sample_lesson_path()
+    if not os.path.isfile(sample_path):
+        from scripts.make_sample_lesson import build_sample_lesson
+        build_sample_lesson(sample_path)
+    lesson_id = import_archive(sample_path, on_existing="keep")
+    lesson_dir = lesson_service.resolve_lesson_dir(lesson_id)
+    detail = lesson_service.lesson_detail(lesson_id, lesson_dir)
+    return SampleLessonOut(lesson_id=lesson_id, materia=detail.get("materia", "ESEMPIO"), titolo=detail.get("titolo", "Introduzione a RT"))
 
 
 @router.get("/lessons", response_model=List[schemas.LessonSummary], summary="Elenco delle lezioni (come la dashboard)")
@@ -309,6 +330,14 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
         auth.drop_session(session_id)
 
 
+
+def _register_pdf_renderer() -> None:
+    from rt.services import api_jobs
+    api_jobs.set_pdf_renderer(_render_pdf)
+
+
+_register_pdf_renderer()
+
 @router.get("/lessons/{lesson_id}/export",
             summary="Scarica il Markdown finale (o l'anteprima dalla bozza), un archivio con i dati della lezione o il PDF",
             description="Usa il documento finale se esiste ed è aggiornato; altrimenti, con la bozza pronta, "
@@ -384,7 +413,7 @@ def export_lessons(
 
 @router.post("/lesson-exports", response_model=schemas.JobAccepted, status_code=202,
              summary="Esporta più lezioni come job con avanzamento per lezione")
-def start_lesson_export(body: schemas.LessonExportRequest, actor: Actor):
+def start_lesson_export(body: schemas.LessonExportRequest, actor: Actor, request: Request):
     from rt.api.jobs import enqueue_job
     from rt.services.api_jobs import EXPORT_LESSONS
     from rt.services.lesson_service import LessonNotFound, resolve_lesson_dir
@@ -394,7 +423,8 @@ def start_lesson_export(body: schemas.LessonExportRequest, actor: Actor):
             resolve_lesson_dir(lesson_id)
     except LessonNotFound as exc:
         raise ApiError(404, "lesson_not_found", str(exc))
-    return enqueue_job(EXPORT_LESSONS, None, {**body.model_dump(), "ids": ids}, actor)
+    port = _local_port(request)
+    return enqueue_job(EXPORT_LESSONS, None, {**body.model_dump(), "ids": ids, "port": port}, actor)
 
 
 @router.get("/lesson-exports/{job_id}/file", response_class=Response,
@@ -411,6 +441,60 @@ def download_lesson_export(job_id: str, _actor: Actor):
     if not path or not os.path.isfile(path):
         raise ApiError(404, "export_not_available", "L'archivio non è più disponibile: esporta di nuovo le lezioni.")
     return FileResponse(path, media_type="application/zip", filename=os.path.basename(path))
+
+
+@router.get("/lesson-exports/{job_id}/files", response_model=List[schemas.LessonExportFileItem],
+            summary="Elenco dei singoli file prodotti dall'esportazione")
+def list_lesson_export_files(job_id: str, _actor: Actor):
+    from rt.api.jobs import queue
+    from rt.services.api_jobs import EXPORT_LESSONS, exports_root
+    info = queue().get(job_id)
+    if info is None or info.type != EXPORT_LESSONS or info.state != "succeeded":
+        raise ApiError(404, "export_not_available", "Esportazione non disponibile.")
+    job_dir = os.path.join(exports_root(), os.path.basename(job_id))
+    if not os.path.isdir(job_dir):
+        raise ApiError(404, "export_not_available", "Esportazione non disponibile.")
+    res = info.result or {}
+    separate_files = res.get("files")
+    if separate_files is None:
+        main_file = res.get("file")
+        separate_files = [f for f in sorted(os.listdir(job_dir)) if f != main_file and not f.startswith(".")]
+    items = []
+    for f in separate_files:
+        p = os.path.join(job_dir, f)
+        if os.path.isfile(p):
+            items.append({"name": f, "size": os.path.getsize(p)})
+    return items
+
+
+@router.get("/lesson-exports/{job_id}/files/{filename}", response_class=Response,
+            summary="Scarica un singolo file prodotto dall'esportazione")
+def download_single_lesson_export_file(job_id: str, filename: str, _actor: Actor):
+    from urllib.parse import quote
+    from rt.api.jobs import queue
+    from rt.services.api_jobs import EXPORT_LESSONS, exports_root
+    info = queue().get(job_id)
+    if info is None or info.type != EXPORT_LESSONS or info.state != "succeeded":
+        raise ApiError(404, "export_not_available", "Esportazione non disponibile.")
+    clean_name = os.path.basename(filename)
+    path = os.path.join(exports_root(), os.path.basename(job_id), clean_name)
+    if not os.path.isfile(path):
+        raise ApiError(404, "export_not_available", "File non trovato.")
+    media_type = "application/pdf" if clean_name.endswith(".pdf") else "application/zip"
+    disposition = f"attachment; filename*=UTF-8''{quote(clean_name)}"
+    return FileResponse(path, media_type=media_type, filename=clean_name,
+                        headers={"Content-Disposition": disposition})
+
+
+@router.delete("/lesson-exports/{job_id}", status_code=204,
+               summary="Cancella i file generati dall'esportazione sul server")
+def delete_lesson_export(job_id: str, _actor: Actor):
+    import shutil
+    from rt.services.api_jobs import exports_root
+    job_dir = os.path.join(exports_root(), os.path.basename(job_id))
+    if os.path.isdir(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+    return Response(status_code=204)
 
 
 @router.get("/lessons/{lesson_id}/outline", response_model=schemas.Outline,

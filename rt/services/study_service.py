@@ -22,7 +22,12 @@ def study_units(lesson_dir: str) -> List[Dict[str, Any]]:
     from rt.pipeline.ledger import load_resolved_draft
     from rt.pipeline.recall import load_recall_bank
     from rt.services.lesson_service import document_sections, unit_section_images
-    pending = [q for q in load_recall_bank(lesson_dir).questions if q.status.value in ("pending", "asked")]
+    from rt.pipeline.ledger import get_pending_issues
+    # Come POST /recall/next: le domande delle unità con segnalazioni aperte non si propongono.
+    blocked = {iss.unit_id for iss in get_pending_issues(lesson_dir)[1]
+               if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")}
+    pending = [q for q in load_recall_bank(lesson_dir).questions
+               if q.status.value in ("pending", "asked") and not blocked.intersection(q.unit_ids)]
     draft = load_resolved_draft(lesson_dir)
     sections = {s["unit_id"]: s for s in document_sections(lesson_dir)}
     images = unit_section_images(lesson_dir)
@@ -42,7 +47,7 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     il documento) e quante domande ciascuna ha da porre. Titolo e materia sono nell'elenco."""
     from rt.core.idempotency import PhaseStatus, check_phase_status
     from rt.core.markdown_render import markdown_parser
-    from rt.services.lesson_service import lesson_audio_file
+    from rt.services.lesson_service import _unit_key_concepts, lesson_audio_file
     from rt.services.study_progress_service import list_units
     from rt.services import question_types
     suggested = question_types.suggestions(lesson_dir)
@@ -51,9 +56,11 @@ def study_lesson(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     md = markdown_parser()
     units = []
     if ready:
+        concepts = _unit_key_concepts(lesson_dir)
         for unit in study_units(lesson_dir):
             units.append({**{k: unit[k] for k in ("id", "title", "start", "end", "pending", "immagini_sezione", "start_formatted")},
                           "suggested_qtype": suggested.get(unit["id"]),
-                          "html": md.render(unit["content"]), "questions": sum(unit["pending"].values()),
+                          "html": md.render(unit["content"]), "markdown": unit["content"], "questions": sum(unit["pending"].values()),
+                          "key_concepts": concepts.get(unit["id"], []),
                           **{k: v for k, v in progress.get(unit["id"], {}).items() if k != "unit_id"}})
     return {"id": lesson_id, "suggestions": question_types.enabled(), "ready": ready, "has_audio": lesson_audio_file(lesson_dir) is not None, "units": units}

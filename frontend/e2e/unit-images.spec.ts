@@ -88,3 +88,41 @@ test('anteprima modificabile: clic apre il visore, doppio clic mostra il markdow
     })).status()).toBe(200)
   }
 })
+
+test('trascinamento reale dal pannello Arricchimento al testo: il rilascio inserisce l’immagine', async ({ page }) => {
+  const [lesson] = await apiGet<{ id: number }[]>(page.request, '/lessons?materia=CHIRURGIA')
+  const before = await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)
+  const response = await page.request.post(`/api/v1/lessons/${lesson.id}/media/images`, {
+    headers: authHeaders(), multipart: { file: { name: 'figura-drop.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') } },
+  })
+  expect(response.ok()).toBeTruthy()
+  const image = await response.json() as { name: string }
+  try {
+    await page.setViewportSize({ width: 1400, height: 900 })
+    await loginViaLink(page)
+    await page.goto(`/lezioni/${lesson.id}`)
+    await page.getByTestId('lesson-actions').getByRole('button', { name: 'Arricchimento' }).click()
+    const cell = page.getByTestId(`media-cell-${image.name}`)
+    await expect(cell).toBeVisible()
+    const text = page.getByTestId('lesson-document').locator('.cm-line').filter({ hasText: 'Correzione #3' })
+    const from = (await cell.boundingBox())!
+    const to = (await text.boundingBox())!
+    // Mouse vero: dragstart nativo, l'anteprima segue il cursore e il testo deve accettare il rilascio.
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(from.x - 40, from.y + 20, { steps: 5 })
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 })
+    await expect(page.locator('.rt-drag-preview')).toBeVisible()
+    await expect(page.getByTestId('drag-preview-ban')).toHaveCount(0)
+    // L'editor deve ricevere il dragover (in WebKit senza di esso il rilascio è rifiutato): compare la linea di rilascio.
+    await expect(page.locator('.cm-drop-line-widget')).toBeAttached()
+    await page.mouse.up()
+    await expect(page.locator('.rt-drag-preview')).toHaveCount(0)
+    await expect.poll(async () => (await apiGet<{ markdown: string }>(page.request, `/lessons/${lesson.id}/document`)).markdown).toContain(image.name)
+  } finally {
+    await page.goto('about:blank')
+    await expect.poll(async () => (await page.request.put(`/api/v1/lessons/${lesson.id}/document/draft`, {
+      headers: authHeaders(), data: { markdown: before.markdown },
+    })).status()).toBe(200)
+  }
+})

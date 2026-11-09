@@ -16,6 +16,7 @@ import { PhaseProgress } from '@/components/jobs/PhaseProgress'
 import { RetryButton } from '@/components/jobs/JobParts'
 import { LessonWaiting } from '@/components/jobs/JobsIndicator'
 import { LessonsHeaderActions, LessonsList, SelectionBar } from '@/components/lessons/LessonsView'
+import { WelcomeBox } from '@/components/lessons/WelcomeBox'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { useOpenNewLesson } from '@/components/shell/newLesson'
 import { useJob, useJobs, useOutline } from '@/api/jobs'
@@ -25,6 +26,8 @@ import { isActive } from '@/lib/jobs'
 import { useFilteredLessons } from '@/lib/lessonFilters'
 import { formatDuration, lessonsGroups, sameView, shortDate, subjectName, useLessonsPrefs, usePinnedLessonsView, type LessonsPrefs, type LessonsView } from '@/lib/lessonsPage'
 import { consumeLastClosedLessonId, setLastClosedLessonId } from '@/lib/lastClosedLesson'
+import { fetchExport } from '@/lib/fileExport'
+import { trackFileExport } from '@/lib/fileStatus'
 import type { LessonListFilters } from '@/lib/lessonSearch'
 import { cn } from '@/lib/utils'
 import { Alert } from '@/components/ui/alert'
@@ -46,6 +49,7 @@ export function DashboardPage() {
   const openNewLesson = useOpenNewLesson()
   const { filters, setFilter, resetFilters, applyFilters, filtered } = useFilteredLessons(all.data)
   const [prefs, setPrefs] = useLessonsPrefs()
+  const [welcomeDismissed, setWelcomeDismissed] = usePreference('welcome.dismissed', false)
   const { pinned, pin, unpin } = usePinnedLessonsView()
   const [searchParams] = useSearchParams()
   const mountedRef = useRef(false)
@@ -193,10 +197,18 @@ export function DashboardPage() {
           </p>
         )}
         {all.data?.length === 0 && (
-          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
-            Nessuna lezione.
-            <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
-          </p>
+          !welcomeDismissed ? (
+            <WelcomeBox
+              onNewLesson={openNewLesson}
+              onSampleImported={() => void all.refetch()}
+              onDismiss={() => setWelcomeDismissed(true)}
+            />
+          ) : (
+            <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
+              Nessuna lezione.
+              <Button onClick={openNewLesson}><Plus aria-hidden />Nuova lezione</Button>
+            </p>
+          )
         )}
         {all.data && all.data.length > 0 && filtered.length === 0 && (
           <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
@@ -463,26 +475,14 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
   const hasDot = Boolean(sourcesQuery.data?.has_unused_sources || sourcesQuery.data?.solo_ricostruzione)
   const a = l.actions ?? { recall: NOT_LOADED, images: NOT_LOADED, export_markdown: NOT_LOADED, export_zip: NOT_LOADED }
   const reason = (action: ActionState) => (action.available ? null : (action.reason ?? 'non disponibile'))
-  // Il PDF si scarica con fetch: se il browser per la stampa non c'è ancora, si mostra il motivo invece di salvare l'errore come file.
-  const [pdf, setPdf] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
-  const exportPdf = async () => {
-    setPdf({ busy: true, error: null })
-    try {
-      const response = await fetch(`/api/v1/lessons/${l.id}/export?format=pdf`, { credentials: 'same-origin' })
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
-        throw new Error(body?.error?.message ?? `PDF non riuscito (${response.status})`)
-      }
-      const encoded = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1]
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(await response.blob())
-      link.download = encoded ? decodeURIComponent(encoded) : `${l.folder_name}.pdf`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      setPdf({ busy: false, error: null })
-    } catch (error) {
-      setPdf({ busy: false, error: errorMessage(error) })
-    }
+  const exportSingle = (url: string, busyMessage: string, doneLabel: string, fileType = 'application/octet-stream') => {
+    void trackFileExport((signal) => fetchExport(url, { signal }), {
+      busyMessage,
+      doneLabel,
+      fileType,
+      url,
+      shareTitle: l.titolo || l.folder_name,
+    })
   }
   return (
     <div className="relative flex items-center gap-0.5" data-testid="lesson-actions">
@@ -510,14 +510,13 @@ function LessonHeaderActions({ lesson: l, panel, onToggle }: { lesson: Schemas['
         label="Esporta"
         icon={Download}
         items={[
-          { label: 'Markdown', href: `/api/v1/lessons/${l.id}/export?format=markdown`, download: true, title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
-          { label: 'PDF', onSelect: () => void exportPdf(), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: pdf.busy ? 'Preparo il PDF' : reason(a.export_markdown) },
-          { label: 'Tutti i dati (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, download: true, title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
-          { label: 'Solo le fonti (zip)', href: `/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, download: true },
+          { label: 'Markdown', onSelect: () => exportSingle(`/api/v1/lessons/${l.id}/export?format=markdown`, 'Preparo il Markdown…', 'Markdown pronto', 'text/markdown'), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'PDF', onSelect: () => exportSingle(`/api/v1/lessons/${l.id}/export?format=pdf`, 'Preparo il PDF…', 'PDF pronto', 'application/pdf'), title: a.export_markdown.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_markdown) },
+          { label: 'Lezione (.rt)', onSelect: () => exportSingle(`/api/v1/lessons/${l.id}/export?format=zip&scope=all${exportStudy ? '&study=1' : ''}`, 'Preparo la lezione…', 'Lezione pronta (.rt)', 'application/zip'), title: a.export_zip.preview ? PREVIEW_HINT : undefined, unavailable: reason(a.export_zip) },
+          { label: 'Solo le fonti (zip)', onSelect: () => exportSingle(`/api/v1/lessons/${l.id}/export?format=zip&scope=sources`, 'Preparo le fonti…', 'Fonti pronte', 'application/zip') },
           { label: 'Includi lo stato di studio', checked: exportStudy, onSelect: () => setExportStudy(!exportStudy) },
         ]}
       />
-      {pdf.error && <Alert tone="danger" className="absolute right-0 top-full z-20 mt-2 w-72 cursor-pointer" onClick={() => setPdf({ busy: false, error: null })}>{pdf.error}</Alert>}
     </div>
   )
 }

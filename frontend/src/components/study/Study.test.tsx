@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
-import { StudyFlow } from './Study'
+import { StudyFlow, UnitText } from './Study'
 import type { Lesson } from '@/lib/format'
 import { reviewKeys } from '@/api/hooks'
+import type { Element as EnrichmentElement } from '@/api/enrichment'
 
 const LESSON: Lesson = {
   id: 1,
@@ -29,19 +30,37 @@ const LESSON: Lesson = {
 }
 
 const UNITS = [
-  { id: '1.1', title: 'Continuità didattica', html: '<p>Contenuto 1</p>', questions: 2, pending: {} },
-  { id: '1.2', title: 'Acidosi metabolica', html: '<p>Contenuto 2</p>', questions: 1, pending: {} },
-  { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', questions: 0, pending: {} },
+  {
+    id: '1.1',
+    title: 'Continuità didattica',
+    html: '<p>Contenuto 1 con <strong>grassetto</strong> e formula <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x = 1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="mord mathnormal">x</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.27778em;"></span><span class="mord">1</span></span></span></span></p>',
+    markdown: 'Contenuto 1 con **grassetto** e formula $x = 1$.\n\n![figura](figura.png)\n<!-- commento interno -->\n[allegato](doc.pdf)',
+    key_concepts: ['Continuità, didattica', 'Lezione frontale'],
+    questions: 2,
+    pending: {},
+  },
+  { id: '1.2', title: 'Acidosi metabolica', html: '<p>Contenuto 2</p>', markdown: 'Contenuto 2', questions: 1, pending: {} },
+  { id: '2.1', title: 'Prelievo arterioso', html: '<p>Contenuto 3</p>', markdown: 'Contenuto 3', questions: 0, pending: {} },
 ]
 
 let mockSuggestions = false
+let mockEnrichmentElements: EnrichmentElement[] = []
 const mockGenerate = vi.fn()
 const progress = vi.hoisted(() => ({ status: vi.fn(), read: vi.fn() }))
 vi.mock('@/api/studyProgress', () => ({
   useStudyStatus: () => ({ mutate: progress.status, isPending: false }),
   useStudyRead: () => ({ mutate: progress.read }),
 }))
-beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false })
+vi.mock('@/api/enrichment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/enrichment')>()
+  return {
+    ...actual,
+    useEnrichment: () => ({
+      data: { elements: mockEnrichmentElements },
+    }),
+  }
+})
+beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false; mockEnrichmentElements = [] })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 vi.mock('@/api/recall', async (importOriginal) => {
@@ -103,22 +122,20 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
   })
 
-  it('ripasso senza domande apre Genera una sola volta su quell’unità', () => {
+  it('ripasso senza domande porta alla schermata domande di quell’unità', () => {
     renderStudy('/studio/lezione/1?unita=2.1&azione=ripasso')
-    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
-    expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Prelievo arterioso')
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Prelievo arterioso')
     expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
-    fireEvent.click(screen.getByRole('button', { name: 'Annulla' }))
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Torna allo studio' })[0])
+    expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.2')
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
   })
 
   it('un’unità inesistente ignora anche l’azione e conserva l’ingresso precedente', () => {
     renderStudy({ pathname: '/studio/lezione/1', search: '?unita=assente&azione=ripasso', state: { enter: 'last' } })
     expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '2.1')
-    expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
     expect(screen.queryByTestId('recall-session-page')).not.toBeInTheDocument()
     expect(screen.getByTestId('study-location')).toHaveTextContent(/^\/studio\/lezione\/1$/)
   })
@@ -271,47 +288,84 @@ describe('StudyFlow unit navigation', () => {
     localStorage.clear()
   })
 
-  it('unità senza domande: "genera ora" apre il popup e lancia il job su quell’unità, niente study-next (4.2.2b3, 4.2.2b4)', () => {
+  it('con il player aperto Alt+→ cambia unità e → sposta l’audio; rispetta scorciatoia personalizzata', () => {
+    localStorage.setItem('rt-device:study-audio-open', 'true')
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con player aperto, freccia destra da sola non cambia unità (sposta l'audio)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Con player aperto, Alt+ArrowRight cambia unità
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    // Alt+ArrowLeft torna a 1.1
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Fuori dallo studio o con focus in un input non si muove
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+    document.body.removeChild(input)
+
+    // Con scorciatoia personalizzata
+    cleanup()
+    localStorage.setItem('rt-pref:editor.shortcuts', JSON.stringify({ 'study-next-unit': 'Mod-Shift-ArrowRight' }))
+    renderStudy()
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // Alt+ArrowRight ora non è più la scorciatoia attiva
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
+
+    // La nuova scorciatoia Mod+Shift+ArrowRight cambia unità
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    fireEvent.keyDown(window, { key: 'ArrowRight', [isMac ? 'metaKey' : 'ctrlKey']: true, shiftKey: true })
+    expect(screen.getByRole('heading', { level: 2, name: '1.2 Acidosi metabolica' })).toBeInTheDocument()
+
+    localStorage.clear()
+  })
+
+  it('unità senza domande: il bottone cervello porta alla schermata domande dell’unità (4.3.8b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 2.1 non ha domande.
     fireEvent.click(screen.getByTestId('unit-index-toggle'))
     fireEvent.click(screen.getByRole('menuitem', { name: /2.1 Prelievo arterioso/ }))
-    const generate = screen.getByTestId('study-generate')
-    expect(generate).toHaveTextContent('Nessuna domanda · genera ora')
-    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+    const questionsBtn = screen.getByTestId('study-unit-questions-btn')
+    expect(questionsBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-generate')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('study-quiz')).not.toBeInTheDocument()
 
-    fireEvent.click(generate)
-    fireEvent.click(screen.getByRole('button', { name: 'Query SQL' }))
-    fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText(/Istruzioni aggiuntive/), { target: { value: 'solo sui valori soglia' } })
-    fireEvent.click(screen.getByTestId('study-generate-start'))
-
-    expect(mockGenerate).toHaveBeenCalledWith(
-      { unitIds: ['2.1'], qtype: 'query-sql', count: 2, instructions: 'solo sui valori soglia' },
-      expect.anything(),
-    )
+    fireEvent.click(questionsBtn)
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Prelievo arterioso')
   })
 
-  it('con domande mostra entrambi i pulsanti e il secondo apre il popup di generazione (4.2.2b4 F2)', () => {
+  it('con domande mostra il bottone cervello nella barra in alto (4.3.8b4)', () => {
     localStorage.clear()
     renderStudy()
     // L'unità 1.1 ha 2 domande
-    expect(screen.getByTestId('study-quiz')).toHaveTextContent('Mettimi alla prova · 2')
-    const generateBtn = screen.getByTestId('study-generate')
-    expect(generateBtn).toBeInTheDocument()
-    expect(screen.queryByTestId('study-next')).not.toBeInTheDocument()
+    const questionsBtn = screen.getByTestId('study-unit-questions-btn')
+    expect(questionsBtn).toBeInTheDocument()
+    expect(screen.queryByTestId('study-generate')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('study-quiz')).not.toBeInTheDocument()
 
-    // Il secondo pulsante apre il popup di generazione
-    fireEvent.click(generateBtn)
-    expect(screen.getByTestId('study-generate-modal')).toBeInTheDocument()
+    // Il bottone apre la sessione di ripasso
+    fireEvent.click(questionsBtn)
+    expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
   })
 
   it('nessun effetto delle frecce nella fase domande', () => {
     localStorage.clear()
     renderStudy()
     // Passa alla fase domande
-    const quizBtn = screen.getByTestId('study-quiz')
+    const quizBtn = screen.getByTestId('study-unit-questions-btn')
     fireEvent.click(quizBtn)
     expect(screen.getByTestId('recall-session-page')).toBeInTheDocument()
 
@@ -361,19 +415,6 @@ describe('StudyFlow unit navigation', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1.1 Continuità didattica' })).toBeInTheDocument()
     localStorage.clear()
   })
-})
-
-it.each([true, false])('popup Genera: consigliato presente e selezionato solo con Jev (%s)', suggestions => {
-  mockSuggestions = suggestions
-  renderStudy()
-  fireEvent.click(screen.getByTestId('study-generate'))
-  expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
-  if (suggestions) expect(screen.getByTestId('question-type-advice')).toHaveAttribute('aria-label', 'Consigliato da Jev')
-  if (suggestions) expect(screen.getByRole('button', { name: 'Mirata' })).toHaveAttribute('aria-pressed', 'true')
-  else expect(screen.queryByRole('button', { name: /Consigliato/ })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Fino a'), { target: { value: '2' } })
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  expect(mockGenerate).toHaveBeenCalledWith({ unitIds: ['1.1'], qtype: suggestions ? 'mirata' : 'quiz', count: 2, instructions: '' }, expect.anything())
 })
 
 it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () => {
@@ -465,81 +506,6 @@ it('font del testo: con study.text-font = seravek la section dell’unità usa S
   localStorage.clear()
 })
 
-
-async function startGeneration() {
-  mockGenerate.mockImplementation((_input, options) => options.onSuccess({ job_id: 'generation-1' }))
-  const client = renderStudy()
-  // Lo stato arriva dalla stessa cache aggiornata dal canale live.
-  client.setQueryDefaults(['job'], { staleTime: Infinity })
-  client.setQueryData(['job', 'generation-1'], { state: 'running' })
-  fireEvent.click(screen.getByTestId('study-generate'))
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  await waitFor(() => expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument())
-  return client
-}
-
-it.each(['x', 'esc', 'outside'])('Genera: chiusura %s durante il job e riapertura senza duplicati', async method => {
-  const client = await startGeneration()
-  const popup = screen.getByTestId('study-generate-modal')
-  if (method === 'x') fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  else if (method === 'esc') fireEvent(popup, new Event('cancel', { bubbles: false, cancelable: true }))
-  else fireEvent.click(popup)
-  expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByTestId('study-generate'))
-  expect(screen.getByLabelText('Fino a')).toBeDisabled()
-  expect(screen.getByTestId('study-generate-start')).toBeDisabled()
-  expect(screen.getByText('Genero le domande su 1.1…')).toBeInTheDocument()
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
-  await waitFor(() => expect(screen.queryByTestId('study-generate-modal')).not.toBeInTheDocument())
-})
-
-it('ricarica le domande quando il job finisce a popup chiuso', async () => {
-  const client = await startGeneration()
-  const invalidate = vi.spyOn(client, 'invalidateQueries')
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  // Anche passando alle domande il monitoraggio resta nello Studio.
-  fireEvent.click(screen.getByTestId('study-quiz'))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'succeeded' }))
-  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
-})
-
-it('mostra l’errore del job a popup chiuso', async () => {
-  const client = await startGeneration()
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
-  expect(await screen.findByText('Generatore non disponibile')).toBeInTheDocument()
-})
-
-it('mantiene il popup aperto con l’errore se il job fallisce', async () => {
-  const client = await startGeneration()
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generatore non disponibile' }))
-  await waitFor(() => expect(screen.getByTestId('study-generate-modal')).toHaveTextContent('Generatore non disponibile'))
-  expect(screen.getByTestId('study-generate-start')).toBeEnabled()
-})
-
-it('segue il job anche chiudendo il popup prima della risposta di avvio', async () => {
-  let accepted!: (result: { job_id: string }) => void
-  mockGenerate.mockImplementation((_input, options) => { accepted = options.onSuccess })
-  const client = renderStudy()
-  client.setQueryDefaults(['job'], { staleTime: Infinity })
-  client.setQueryData(['job', 'delayed'], { state: 'running' })
-  fireEvent.click(screen.getByTestId('study-generate'))
-  fireEvent.click(screen.getByTestId('study-generate-start'))
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  act(() => accepted({ job_id: 'delayed' }))
-  const invalidate = vi.spyOn(client, 'invalidateQueries')
-  act(() => client.setQueryData(['job', 'delayed'], { state: 'succeeded' }))
-  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recall', 1] }))
-})
-
-it('l’errore della generazione resta visibile passando alle domande', async () => {
-  const client = await startGeneration()
-  fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
-  fireEvent.click(screen.getByTestId('study-quiz'))
-  act(() => client.setQueryData(['job', 'generation-1'], { state: 'failed', error: 'Generazione interrotta' }))
-  expect(await screen.findByText('Generazione interrotta')).toBeVisible()
-})
-
 describe('Segnalazioni aperte nello Studio', () => {
   it('la barra non compare quando ci sono 0 segnalazioni aperte', () => {
     renderStudy('/', [{ ...LESSON, pending_issues: 0 }])
@@ -574,5 +540,191 @@ describe('Segnalazioni aperte nello Studio', () => {
     await waitFor(() => {
       expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
     })
+  })
+})
+
+describe('Elementi generati dell’arricchimento nello Studio', () => {
+  it('un elemento pronto della 4.3 compare nella 4.3, uno ignorato o di altra unità no', async () => {
+    mockEnrichmentElements = [
+      {
+        id: 'el-ready-43',
+        unit_id: '4.3',
+        kind: 'infographic',
+        title: 'Infografica 4.3 Pronta',
+        mode: 'static',
+        status: 'ready',
+        asset_image: 'assets/enrichment/info43.png',
+      } as unknown as EnrichmentElement,
+      {
+        id: 'el-dismissed-43',
+        unit_id: '4.3',
+        kind: 'visualization',
+        title: 'Visualizzazione 4.3 Ignorata',
+        mode: 'interactive',
+        status: 'dismissed',
+        asset_image: 'assets/enrichment/vis43.png',
+      } as unknown as EnrichmentElement,
+      {
+        id: 'el-other-unit',
+        unit_id: '4.4',
+        kind: 'visualization',
+        title: 'Visualizzazione 4.4 Pronta',
+        mode: 'interactive',
+        status: 'ready',
+        asset_image: 'assets/enrichment/vis44.png',
+      } as unknown as EnrichmentElement,
+    ]
+
+    const onReady = vi.fn()
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <UnitText
+          lessonId={1}
+          unit={{
+            id: '4.3',
+            title: 'Unità 4.3',
+            html: '<p>Testo unità 4.3</p>',
+            questions: 0,
+            pending: {},
+            status: 'da_fare',
+          }}
+          highlightMode={null}
+          onReady={onReady}
+        />
+      </QueryClientProvider>,
+    )
+
+    // Elemento pronto della 4.3 presente con titolo
+    expect(screen.getByText('Infografica 4.3 Pronta')).toBeInTheDocument()
+    expect(screen.getByTestId('study-enrichment-el-ready-43')).toBeInTheDocument()
+
+    // Elemento ignorato e elemento di altra unità non presenti
+    expect(screen.queryByText('Visualizzazione 4.3 Ignorata')).toBeNull()
+    expect(screen.queryByText('Visualizzazione 4.4 Pronta')).toBeNull()
+
+    // L'elemento generato non è dentro il contenitore del testo usato per lettura/evidenziazioni/note
+    const studyText = screen.getByTestId('study-text')
+    expect(studyText.querySelector('[data-testid="study-enrichment-el-ready-43"]')).toBeNull()
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalledWith(studyText)
+    })
+  })
+})
+
+describe('Copia dell’unità e selezione', () => {
+  it('Cmd+A nella fase di lettura seleziona titolo e testo e non la barra', () => {
+    renderStudy('/studio/lezione/1')
+    const titleEl = document.getElementById('study-unit-title')!
+    const textEl = screen.getByTestId('study-text')
+    const headerTools = screen.getByTestId('study-header-tools')
+
+    const sel = window.getSelection()!
+    const setBaseAndExtentSpy = vi.spyOn(sel, 'setBaseAndExtent')
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true })
+
+    expect(setBaseAndExtentSpy).toHaveBeenCalledWith(titleEl, 0, textEl, textEl.childNodes.length)
+    expect(headerTools.contains(titleEl)).toBe(false)
+  })
+
+  it('Cmd+A dentro un campo di testo non attiva la selezione globale dell’unità', () => {
+    renderStudy('/studio/lezione/1')
+    const sel = window.getSelection()!
+    const setBaseAndExtentSpy = vi.spyOn(sel, 'setBaseAndExtent')
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'a', metaKey: true })
+
+    expect(setBaseAndExtentSpy).not.toHaveBeenCalled()
+    document.body.removeChild(input)
+  })
+
+  it('copia dell’unità intera include titolo in h2, testo formattato in HTML e testo semplice senza timestamp', () => {
+    renderStudy('/studio/lezione/1')
+    const unitSection = screen.getByTestId('study-unit')
+    const titleEl = document.getElementById('study-unit-title')!
+    const textEl = screen.getByTestId('study-text')
+
+    // Inseriamo un timecode all'interno per verificare che venga omesso
+    const timecode = document.createElement('button')
+    timecode.className = 'rt-timecode'
+    timecode.textContent = '05:40'
+    textEl.prepend(timecode)
+
+    const sel = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(titleEl, 0)
+    range.setEnd(textEl, textEl.childNodes.length)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    const setData = vi.fn()
+    fireEvent.copy(unitSection, { clipboardData: { setData } })
+
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.stringContaining('1.1 Continuità didattica\n\n'))
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.not.stringMatching(/05:40/))
+    expect(setData).toHaveBeenCalledWith('text/html', expect.stringContaining('<h2>1.1 Continuità didattica</h2>'))
+    expect(setData).toHaveBeenCalledWith('text/html', expect.not.stringMatching(/05:40/))
+  })
+
+  it('Mod-Alt-c copia l’unità in Markdown grezzo negli appunti e mostra l’avviso', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    renderStudy('/studio/lezione/1')
+
+    fireEvent.keyDown(window, { key: 'c', [isMac ? 'metaKey' : 'ctrlKey']: true, altKey: true })
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    const copied = writeText.mock.calls[0][0]
+    expect(copied).toContain('## 1.1 Continuità didattica')
+    expect(copied).toContain('**grassetto**')
+    expect(copied).toContain('$x = 1$')
+    expect(copied).not.toContain('![figura]')
+    expect(copied).not.toContain('commento interno')
+    expect(copied).not.toContain('allegato')
+
+    expect(await screen.findByText('Unità copiata in Markdown')).toBeInTheDocument()
+  })
+
+  it('Mod-k copia le keywords dell’unità, una per riga, e mostra l’avviso', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    renderStudy('/studio/lezione/1')
+    fireEvent.keyDown(window, { key: 'k', [isMac ? 'metaKey' : 'ctrlKey']: true })
+    expect(writeText).toHaveBeenCalledWith('Continuità, didattica\nLezione frontale')
+    expect(await screen.findByText('Keywords copiate (2)')).toBeInTheDocument()
+    // Un'unità senza keywords lo dice e non tocca gli appunti
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
+    fireEvent.keyDown(window, { key: 'k', [isMac ? 'metaKey' : 'ctrlKey']: true })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText("L'unità non ha keywords")).toBeInTheDocument()
+  })
+
+  it('scorciatoia personalizzata per la copia in Markdown', async () => {
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+    localStorage.clear()
+    localStorage.setItem('rt-pref:editor.shortcuts', JSON.stringify({ 'study-copy-unit-markdown': 'Mod-Shift-m' }))
+
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    renderStudy('/studio/lezione/1')
+
+    // Scorciatoia di default ignorata
+    fireEvent.keyDown(window, { key: 'c', [isMac ? 'metaKey' : 'ctrlKey']: true, altKey: true })
+    expect(writeText).not.toHaveBeenCalled()
+
+    // Nuova scorciatoia funziona
+    fireEvent.keyDown(window, { key: 'm', [isMac ? 'metaKey' : 'ctrlKey']: true, shiftKey: true })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText.mock.calls[0][0]).toContain('## 1.1 Continuità didattica')
+
+    localStorage.clear()
   })
 })

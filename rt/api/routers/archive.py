@@ -115,6 +115,7 @@ class AddToLessonRequest(BaseModel):
     uso: Literal['guida', 'contesto', 'integra'] = 'contesto'
     pagine: list[int] | None = None
     estrai: Literal['testo', 'immagini', 'solo_immagini'] = 'immagini'
+    affidabilita: Literal['alta', 'normale', 'bassa'] | None = None
 
 
 class AddToMediaRequest(PagesRequest):
@@ -171,7 +172,7 @@ def delete_entry(sha: str, _actor: Actor):
 
 @router.post('/archive/{sha}/add-to-lesson', response_model=Source, status_code=201)
 def add_to_lesson(sha: str, body: AddToLessonRequest, _actor: Actor):
-    return archive_service.add_to_lesson(sha, body.lesson_id, body.uso, body.pagine, body.estrai)
+    return archive_service.add_to_lesson(sha, body.lesson_id, body.uso, body.pagine, body.estrai, body.affidabilita)
 
 
 @router.post('/archive/{sha}/add-to-media', response_model=list[EditorImage], status_code=201)

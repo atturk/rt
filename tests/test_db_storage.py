@@ -294,7 +294,7 @@ def test_cli_export_writes_the_files(folder_lesson, rt_db, tmp_path, capsys):
     main(["export", LESSON_NAME, "-o", str(tmp_path / "out")])  # nome sotto lessons_root
     assert "Esportati 3 file" in capsys.readouterr().out
     main(["export", lesson_dir, "-o", str(tmp_path / "zip"), "--zip", "--all"])
-    assert os.listdir(tmp_path / "zip") == [f"{LESSON_NAME}.zip"]
+    assert os.listdir(tmp_path / "zip") == [f"{LESSON_NAME}.rt"]
 
 
 def test_api_export_endpoint(folder_lesson, rt_db, api_client):

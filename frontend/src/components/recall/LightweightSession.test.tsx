@@ -228,7 +228,7 @@ describe('LightweightSession', () => {
     expect(await screen.findByTestId('recall-result-card')).toBeInTheDocument()
     expect(screen.getByText('Giusto.')).toBeInTheDocument()
     expect(screen.getByText("Sotto 22 mEq/L.")).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: "Rileggi l'unità 1.2" })).toHaveAttribute('href', '/lezioni/1#unit-1.2')
+    expect(screen.getByRole('link', { name: "Rileggi l'unità 1.2" })).toHaveAttribute('href', '/studio/lezione/1?unita=1.2')
   })
 
   it('rientrando mostra la valutazione salvata e rende la domanda risposta', async () => {
@@ -396,9 +396,8 @@ describe('LightweightSession', () => {
     // Nessun "Prova mista" perché zero da porre
     expect(screen.queryByRole('button', { name: 'Prova mista' })).not.toBeInTheDocument()
 
-    // Pulsante "Genera domande"
-    const generaLink = screen.getByRole('link', { name: 'Genera domande' })
-    expect(generaLink).toHaveAttribute('href', '/lezioni/1?panel=domande')
+    // Nessun link/pulsante Genera domande
+    expect(screen.queryByRole('link', { name: 'Genera domande' })).not.toBeInTheDocument()
 
     // Pulsanti ripescaggio con conteggio
     const wrongBtn = screen.getByRole('button', { name: 'Riproponi le sbagliate (2)' })

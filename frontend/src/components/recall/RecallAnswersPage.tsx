@@ -7,6 +7,7 @@ import type { Schemas } from '@/api/client'
 import { MathText } from '@/components/MathText'
 import { IconButton } from '@/components/ui/icon-button'
 import { cn } from '@/lib/utils'
+import { cleanComment } from '@/lib/recall'
 
 type OutcomeFilter = 'tutte' | 'sbagliata' | 'parziale' | 'corretta'
 
@@ -243,9 +244,45 @@ export function RecallAnswersPage() {
                                     ? 'Sbagliata.'
                                     : 'Valutazione'}
                             </p>
+                            {(ans.correttezza != null || ans.completezza != null || ans.attinenza != null) && (
+                              <div className="mb-2 flex flex-wrap gap-2" data-testid="answer-eval-scores">
+                                {ans.correttezza != null && (
+                                  <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                                    Correttezza {ans.correttezza}%
+                                  </span>
+                                )}
+                                {ans.completezza != null && (
+                                  <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                                    Completezza {ans.completezza}%
+                                  </span>
+                                )}
+                                {ans.attinenza != null && (
+                                  <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                                    Attinenza {ans.attinenza}%
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             <div className="text-meta leading-relaxed">
-                              <MathText text={ans.evaluation} />
+                              <MathText
+                                text={cleanComment(
+                                  ans.evaluation,
+                                  ans.correttezza != null || ans.completezza != null || ans.attinenza != null,
+                                )}
+                              />
                             </div>
+                            {ans.followup_question && (
+                              <div className="mt-2.5 border-t border-border/40 pt-2 text-xs" data-testid="answer-followup-recap">
+                                <p className="font-semibold text-muted-foreground">Approfondimento:</p>
+                                <p className="mt-0.5"><MathText text={ans.followup_question} /></p>
+                                {ans.followup_answer && (
+                                  <>
+                                    <p className="mt-1.5 font-semibold text-muted-foreground">Risposta:</p>
+                                    <p className="mt-0.5 italic"><MathText text={ans.followup_answer} /></p>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
