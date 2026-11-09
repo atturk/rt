@@ -88,4 +88,45 @@ describe('ImageViewer', () => {
     fireEvent.touchEnd(main, { changedTouches: [{ clientX: 200 }] })
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
   })
+
+  it('mostra un iframe per un elemento interattivo e un img per uno statico', () => {
+    const mixedImages: ImageItem[] = [
+      {
+        src: '/media/vis.png',
+        alt: 'Visualizzazione interattiva',
+        docName: 'Arricchimento',
+        interactiveUrl: '/api/v1/lessons/1/enrichment/vis.html',
+      },
+      {
+        src: '/media/static.png',
+        alt: 'Immagine statica',
+        docName: 'Documento',
+      },
+    ]
+
+    render(<ImageViewer />)
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rt-image-viewer-open', {
+          detail: { images: mixedImages, index: 0 },
+        }),
+      )
+    })
+
+    const dialog = screen.getByRole('dialog', { name: 'Visore immagini' })
+    const iframe = dialog.querySelector('iframe')
+    expect(iframe).not.toBeNull()
+    expect(iframe?.src).toContain('/api/v1/lessons/1/enrichment/vis.html')
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(dialog.querySelector('.rt-viewer-slide')).toBeNull()
+
+    // Passa alla seconda immagine (statica)
+    fireEvent.click(screen.getByRole('button', { name: 'Successiva' }))
+
+    expect(dialog.querySelector('iframe')).toBeNull()
+    const img = dialog.querySelector('.rt-viewer-slide') as HTMLImageElement
+    expect(img).not.toBeNull()
+    expect(img.src).toContain('/media/static.png')
+  })
 })

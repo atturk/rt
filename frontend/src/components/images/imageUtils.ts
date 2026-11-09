@@ -4,6 +4,7 @@ export type ImageItem = {
   docName: string
   pageNumber?: number
   from?: number
+  interactiveUrl?: string
 }
 
 /**

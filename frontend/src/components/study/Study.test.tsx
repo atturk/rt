@@ -3,9 +3,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 
-import { StudyFlow } from './Study'
+import { StudyFlow, UnitText } from './Study'
 import type { Lesson } from '@/lib/format'
 import { reviewKeys } from '@/api/hooks'
+import type { Element as EnrichmentElement } from '@/api/enrichment'
 
 const LESSON: Lesson = {
   id: 1,
@@ -42,13 +43,23 @@ const UNITS = [
 ]
 
 let mockSuggestions = false
+let mockEnrichmentElements: EnrichmentElement[] = []
 const mockGenerate = vi.fn()
 const progress = vi.hoisted(() => ({ status: vi.fn(), read: vi.fn() }))
 vi.mock('@/api/studyProgress', () => ({
   useStudyStatus: () => ({ mutate: progress.status, isPending: false }),
   useStudyRead: () => ({ mutate: progress.read }),
 }))
-beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false })
+vi.mock('@/api/enrichment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/enrichment')>()
+  return {
+    ...actual,
+    useEnrichment: () => ({
+      data: { elements: mockEnrichmentElements },
+    }),
+  }
+})
+beforeEach(() => { vi.clearAllMocks(); mockSuggestions = false; mockEnrichmentElements = [] })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 vi.mock('@/api/recall', async (importOriginal) => {
@@ -527,6 +538,74 @@ describe('Segnalazioni aperte nello Studio', () => {
     })
     await waitFor(() => {
       expect(screen.getByTestId('unit-pending-marker')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('Elementi generati dell’arricchimento nello Studio', () => {
+  it('un elemento pronto della 4.3 compare nella 4.3, uno ignorato o di altra unità no', async () => {
+    mockEnrichmentElements = [
+      {
+        id: 'el-ready-43',
+        unit_id: '4.3',
+        kind: 'infographic',
+        title: 'Infografica 4.3 Pronta',
+        mode: 'static',
+        status: 'ready',
+        asset_image: 'assets/enrichment/info43.png',
+      } as unknown as EnrichmentElement,
+      {
+        id: 'el-dismissed-43',
+        unit_id: '4.3',
+        kind: 'visualization',
+        title: 'Visualizzazione 4.3 Ignorata',
+        mode: 'interactive',
+        status: 'dismissed',
+        asset_image: 'assets/enrichment/vis43.png',
+      } as unknown as EnrichmentElement,
+      {
+        id: 'el-other-unit',
+        unit_id: '4.4',
+        kind: 'visualization',
+        title: 'Visualizzazione 4.4 Pronta',
+        mode: 'interactive',
+        status: 'ready',
+        asset_image: 'assets/enrichment/vis44.png',
+      } as unknown as EnrichmentElement,
+    ]
+
+    const onReady = vi.fn()
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <UnitText
+          lessonId={1}
+          unit={{
+            id: '4.3',
+            title: 'Unità 4.3',
+            html: '<p>Testo unità 4.3</p>',
+            questions: 0,
+            pending: {},
+            status: 'da_fare',
+          }}
+          highlightMode={null}
+          onReady={onReady}
+        />
+      </QueryClientProvider>,
+    )
+
+    // Elemento pronto della 4.3 presente con titolo
+    expect(screen.getByText('Infografica 4.3 Pronta')).toBeInTheDocument()
+    expect(screen.getByTestId('study-enrichment-el-ready-43')).toBeInTheDocument()
+
+    // Elemento ignorato e elemento di altra unità non presenti
+    expect(screen.queryByText('Visualizzazione 4.3 Ignorata')).toBeNull()
+    expect(screen.queryByText('Visualizzazione 4.4 Pronta')).toBeNull()
+
+    // L'elemento generato non è dentro il contenitore del testo usato per lettura/evidenziazioni/note
+    const studyText = screen.getByTestId('study-text')
+    expect(studyText.querySelector('[data-testid="study-enrichment-el-ready-43"]')).toBeNull()
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalledWith(studyText)
     })
   })
 })

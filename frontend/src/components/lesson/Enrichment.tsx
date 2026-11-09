@@ -17,7 +17,7 @@ export function GeneratedElement({ element, lessonId }: { element: Element; less
     : <img src={assetUrl(lessonId, element.asset_image)} alt={element.title} className="w-full rounded-lg" loading="lazy" />
 }
 
-function InteractiveElement({ title, url }: { title: string; url: string }) {
+export function InteractiveElement({ title, url }: { title: string; url: string }) {
   const frame = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(600)
   useEffect(() => {

@@ -4,7 +4,10 @@ import { api, unwrap, type Schemas } from './client'
 import { lessonKeys } from './hooks'
 import { formData } from './jobStatus'
 
-export type LessonImage = Schemas['LessonImage']
+export type LessonImage = Schemas['LessonImage'] & {
+  interactive?: boolean
+  interactiveUrl?: string
+}
 
 export const imageKeys = { list: (id: number) => ['images', id] as const }
 
