@@ -1,5 +1,14 @@
 # Novità di RT
 
+## 4.3.8.1 — 2026-11-10
+
+Correzione urgente per il Mac.
+
+### Correzioni
+
+- **Permesso della cartella lezioni negato**: dopo un aggiornamento macOS chiede di nuovo a RT il permesso per la cartella delle lezioni (es. Scrivania). Se lo neghi, RT non mostra più «Operation not permitted» a ogni avvio: spiega cosa fare, offre di aprire Impostazioni → Privacy e sicurezza → File e cartelle e si chiude senza toccare nulla.
+- I servizi in background (bot e worker) ripartono sempre dopo un aggiornamento, anche se un passo della preparazione non riesce.
+
 ## 4.3.8 — 2026-11-09
 
 Raccoglie le beta da 4.3.8b1 a 4.3.8b8: guida dentro l'app, Studio più rapido, esportazione unificata, arricchimento più fedele e tante correzioni.

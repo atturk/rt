@@ -172,3 +172,26 @@ def test_post_update_migrates_and_creates_database(install, tmp_path, monkeypatc
     assert paths.active_data_dir() == str(home / ".rt")
     assert (home / ".rt" / "rt.db").is_file()
     assert "🗄  Database aggiornato." in messages
+
+
+def test_post_update_restarts_services_even_if_lessons_folder_is_denied(install, tmp_path, monkeypatch):
+    """macOS che nega la Scrivania non deve fermare l'aggiornamento a metà con i servizi spenti."""
+    from rt.services import service_manager as sm
+    from rt.storage import migrate
+    root, _home = install
+    lessons = tmp_path / "lezioni"
+    lessons.mkdir()
+    (root / "config").mkdir()
+    (root / "config" / "general.yaml").write_text(f"telegram:\n  lessons_root: {lessons}\n", encoding="utf-8")
+    monkeypatch.setattr(sm, "supported", lambda: True)
+    monkeypatch.setattr(sm, "installed", lambda: ["api", "worker"])
+    monkeypatch.setattr(sm, "stop", lambda *a, **k: None)
+    install_calls = []
+    monkeypatch.setattr(sm, "install", lambda *a, **k: install_calls.append(a))
+    monkeypatch.setattr(migrate, "folder_lessons",
+                        lambda *_a: (_ for _ in ()).throw(PermissionError(1, "Operation not permitted")))
+    messages = []
+    assert not data_service.post_update(say=messages.append)
+    assert install_calls, "i servizi fermati devono ripartire"
+    assert "▶️  Servizi aggiornati e riavviati." in messages
+    assert any("Operation not permitted" in m for m in messages)
