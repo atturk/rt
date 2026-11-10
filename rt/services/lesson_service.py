@@ -368,30 +368,105 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
     return out
 
 
+def _serialize_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    copy_sum = copy.deepcopy(summary)
+    if isinstance(copy_sum.get("pipeline_at"), datetime):
+        copy_sum["pipeline_at"] = copy_sum["pipeline_at"].isoformat()
+    return copy_sum
+
+
+def _deserialize_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    copy_sum = copy.deepcopy(summary)
+    if isinstance(copy_sum.get("pipeline_at"), str):
+        try:
+            copy_sum["pipeline_at"] = datetime.fromisoformat(copy_sum["pipeline_at"])
+        except Exception:
+            pass
+    return copy_sum
+
+
 def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
     import time
     started = time.perf_counter()
     fingerprints = _input_fingerprints(ids)
-    items = []
-    recomputed = 0
+    path_by_id = {lid: path for path, lid in ids.items()}
+
+    results: Dict[int, Dict[str, Any]] = {}
+    missing_ids: List[int] = []
+
+    # 1. Memoria
     for path, lesson_id in ids.items():
         key = fingerprints[lesson_id]
         with _summary_lock:
             hit = _summary_cache.get(lesson_id)
         if hit is not None and hit[0] == key:
-            items.append(copy.deepcopy(hit[1]))
-            continue
-        summary = lesson_summary(lesson_id, path)
+            results[lesson_id] = copy.deepcopy(hit[1])
+        else:
+            missing_ids.append(lesson_id)
+
+    from_vetrina = 0
+    recomputed = 0
+    to_persist: List[Tuple[int, str, int, Dict[str, Any]]] = []
+    has_stale_in_db = False
+
+    # 2. Vetrina persistente (tabella lesson_summary_cache)
+    if missing_ids:
+        from sqlalchemy import select
+        from rt.db.models import LessonSummaryCache
+        from rt.db.session import read_scope
+        with read_scope(_require_db()) as s:
+            rows = s.execute(
+                select(LessonSummaryCache.lesson_id, LessonSummaryCache.fingerprint,
+                       LessonSummaryCache.schema, LessonSummaryCache.summary)
+                .where(LessonSummaryCache.lesson_id.in_(missing_ids))
+            ).all()
+            if fingerprints:
+                has_stale_in_db = s.execute(
+                    select(LessonSummaryCache.lesson_id)
+                    .where(LessonSummaryCache.lesson_id.not_in(list(fingerprints.keys())))
+                    .limit(1)
+                ).first() is not None
+        for lid, fp, sch, raw_summ in rows:
+            if fp == fingerprints[lid] and sch == SUMMARY_SCHEMA:
+                from_vetrina += 1
+                summ = _deserialize_summary(raw_summ)
+                results[lid] = copy.deepcopy(summ)
+                with _summary_lock:
+                    _summary_cache[lid] = (fp, copy.deepcopy(summ))
+
+    # 3. Ricalcolo
+    remaining = [lid for lid in missing_ids if lid not in results]
+    for lid in remaining:
+        summary = lesson_summary(lid, path_by_id[lid])
         recomputed += 1
-        if summary["error"] is None:  # un errore si ricalcola alla richiesta successiva
+        if summary["error"] is None:
+            to_persist.append((lid, fingerprints[lid], SUMMARY_SCHEMA, _serialize_summary(summary)))
             with _summary_lock:
-                _summary_cache[lesson_id] = (key, copy.deepcopy(summary))
-        items.append(summary)
+                _summary_cache[lid] = (fingerprints[lid], copy.deepcopy(summary))
+        results[lid] = summary
+
+    # Pulizia memoria (stale)
     with _summary_lock:
-        for stale in set(_summary_cache) - set(fingerprints):
+        stale_memory = set(_summary_cache) - set(fingerprints)
+        for stale in stale_memory:
             del _summary_cache[stale]
-    if recomputed:  # stdout del server è api.log, con data e ora: misura il caricamento a freddo
-        print(f"📋 Elenco lezioni: {len(items)} lezioni, {recomputed} ricalcolate, "
+
+    # Scrittura persistente e pulizia tabella in un'unica transazione
+    if to_persist or stale_memory or has_stale_in_db:
+        from sqlalchemy import delete
+        from rt.db.models import LessonSummaryCache
+        from rt.db.session import session_scope
+        with session_scope(_require_db()) as session:
+            for lid, fp, sch, summ in to_persist:
+                session.merge(LessonSummaryCache(lesson_id=lid, fingerprint=fp, schema=sch, summary=summ))
+            if fingerprints:
+                session.execute(delete(LessonSummaryCache).where(LessonSummaryCache.lesson_id.not_in(list(fingerprints.keys()))))
+            else:
+                session.execute(delete(LessonSummaryCache))
+
+    items = [results[lid] for lid in ids.values()]
+    if recomputed or from_vetrina:
+        print(f"📋 Elenco lezioni: {len(items)} lezioni, {from_vetrina} dalla vetrina, {recomputed} ricalcolate, "
               f"{(time.perf_counter() - started) * 1000:.0f} ms", flush=True)
     return items
 
@@ -399,12 +474,28 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
 def clear_summary_cache() -> None:
     with _summary_lock:
         _summary_cache.clear()
+    from rt.db.engine import get_database
+    db = get_database()
+    if db is not None:
+        from sqlalchemy import delete
+        from rt.db.models import LessonSummaryCache
+        from rt.db.session import session_scope
+        with session_scope(db) as session:
+            session.execute(delete(LessonSummaryCache))
 
 
 def forget_summary(lesson_id: int) -> None:
     """Toglie dalla cache il riepilogo di una sola lezione (le altre restano valide)."""
     with _summary_lock:
         _summary_cache.pop(lesson_id, None)
+    from rt.db.engine import get_database
+    db = get_database()
+    if db is not None:
+        from sqlalchemy import delete
+        from rt.db.models import LessonSummaryCache
+        from rt.db.session import session_scope
+        with session_scope(db) as session:
+            session.execute(delete(LessonSummaryCache).where(LessonSummaryCache.lesson_id == lesson_id))
 
 
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,
