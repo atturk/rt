@@ -307,6 +307,17 @@ SUMMARY_SCHEMA = 1
 # cambia l'impronta: file della lezione (hash e mtime, nel DB o su disco) e chiamate LLM.
 _summary_cache: Dict[int, Tuple[str, Dict[str, Any]]] = {}
 _summary_lock = threading.Lock()
+_lesson_locks: Dict[int, threading.Lock] = {}
+_lesson_locks_guard = threading.Lock()
+
+
+def _get_lesson_lock(lesson_id: int) -> threading.Lock:
+    with _lesson_locks_guard:
+        lock = _lesson_locks.get(lesson_id)
+        if lock is None:
+            lock = threading.Lock()
+            _lesson_locks[lesson_id] = lock
+        return lock
 
 
 def _folder_fingerprint(lesson_dir: str) -> str:
@@ -437,13 +448,20 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
     # 3. Ricalcolo
     remaining = [lid for lid in missing_ids if lid not in results]
     for lid in remaining:
-        summary = lesson_summary(lid, path_by_id[lid])
-        recomputed += 1
-        if summary["error"] is None:
-            to_persist.append((lid, fingerprints[lid], SUMMARY_SCHEMA, _serialize_summary(summary)))
+        lock = _get_lesson_lock(lid)
+        with lock:
             with _summary_lock:
-                _summary_cache[lid] = (fingerprints[lid], copy.deepcopy(summary))
-        results[lid] = summary
+                hit = _summary_cache.get(lid)
+            if hit is not None and hit[0] == fingerprints[lid]:
+                results[lid] = copy.deepcopy(hit[1])
+                continue
+            summary = lesson_summary(lid, path_by_id[lid])
+            recomputed += 1
+            if summary["error"] is None:
+                to_persist.append((lid, fingerprints[lid], SUMMARY_SCHEMA, _serialize_summary(summary)))
+                with _summary_lock:
+                    _summary_cache[lid] = (fingerprints[lid], copy.deepcopy(summary))
+            results[lid] = summary
 
     # Pulizia memoria (stale)
     with _summary_lock:

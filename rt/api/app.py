@@ -76,6 +76,21 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
         except Exception:
             import logging
             logging.getLogger(__name__).exception('Avvio popolamento archivio')
+        try:
+            import threading
+
+            def _warmup_lessons():
+                try:
+                    from rt.services.lesson_service import list_lessons
+                    list_lessons()
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).exception("Riscaldamento elenco lezioni all'avvio")
+
+            threading.Thread(target=_warmup_lessons, daemon=True, name="lesson-summary-warmup").start()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Avvio riscaldamento elenco lezioni")
         yield
     app.router.lifespan_context = lifespan
     if serve_spa:

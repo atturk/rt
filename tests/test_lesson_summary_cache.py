@@ -232,3 +232,39 @@ def test_clear_summary_cache_and_forget_summary_clear_table(tmp_path, monkeypatc
     lesson_service.clear_summary_cache()
     with read_scope(rt_db) as s:
         assert len(s.execute(select(LessonSummaryCache)).all()) == 0
+
+
+def test_concurrent_calls_do_not_recompute_the_same_lesson(tmp_path, monkeypatch, rt_db, counted):
+    import concurrent.futures
+    root = isolated_workspace(tmp_path, monkeypatch)
+    make_lesson(root, "[2026-09-05] LEZIONE 1")
+    make_lesson(root, "[2026-09-06] LEZIONE 2")
+    lesson_service.clear_summary_cache()
+    counted.clear()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(lesson_service.list_lessons) for _ in range(4)]
+        results = [f.result() for f in futures]
+
+    assert len(results) == 4
+    for res in results[1:]:
+        assert res == results[0]
+    # Nonostante 4 thread concorrenti su cache vuota, ogni lezione si calcola una sola volta!
+    assert len(counted) == 2
+
+
+def test_lifespan_warmup_runs_on_app_startup(tmp_path, monkeypatch, rt_db, counted):
+    from rt.api.app import create_app
+    from starlette.testclient import TestClient
+    import time
+    root = isolated_workspace(tmp_path, monkeypatch)
+    make_lesson(root)
+    lesson_service.clear_summary_cache()
+    counted.clear()
+
+    app = create_app()
+    with TestClient(app):
+        # Il thread daemon parte durante l'entrata nel lifespan
+        time.sleep(0.2)
+
+    assert len(counted) >= 1
