@@ -2,12 +2,13 @@
 
 ## 4.3.8.1 — 2026-11-10
 
-Correzione urgente per il Mac.
+Correzione urgente per il Mac e la ruota degli stati.
 
 ### Correzioni
 
 - **Permesso della cartella lezioni negato**: dopo un aggiornamento macOS chiede di nuovo a RT il permesso per la cartella delle lezioni (es. Scrivania). Se lo neghi, RT non mostra più «Operation not permitted» a ogni avvio: spiega cosa fare, offre di aprire Impostazioni → Privacy e sicurezza → File e cartelle e si chiude senza toccare nulla.
 - I servizi in background (bot e worker) ripartono sempre dopo un aggiornamento, anche se un passo della preparazione non riesce.
+- **Ruota degli stati** nella lista lezioni: gli stati personalizzati compaiono col loro colore (prima finivano nel giallo di «in apprendimento»), e il suggerimento li elenca.
 
 ## 4.3.8 — 2026-11-09
 
