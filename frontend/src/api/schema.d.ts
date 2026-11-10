@@ -6741,6 +6741,13 @@ export interface components {
              */
             state?: string | null;
             /**
+             * Study Custom
+             * @description Unità per stato personalizzato (già contate in study_learning)
+             */
+            study_custom?: {
+                [key: string]: number;
+            };
+            /**
              * Study Ignored
              * @description Unità ignorate nella scaletta attuale
              * @default 0
@@ -7109,6 +7116,13 @@ export interface components {
              * @description Stato effettivo del workflow (come 'rt status')
              */
             state?: string | null;
+            /**
+             * Study Custom
+             * @description Unità per stato personalizzato (già contate in study_learning)
+             */
+            study_custom?: {
+                [key: string]: number;
+            };
             /**
              * Study Ignored
              * @description Unità ignorate nella scaletta attuale

@@ -25,6 +25,7 @@ import { useIsPhone } from '@/lib/phone'
 import { selectionRecallPath } from '@/lib/recallView'
 import { cn } from '@/lib/utils'
 import { usePreference } from '@/lib/preferences'
+import type { CustomStudyStatus } from '@/components/study/studyProgress'
 import { MissingLessonsButton } from './MissingLessonsButton'
 import { SelectionDetails } from './SelectionDetails'
 
@@ -271,25 +272,37 @@ export function LessonRow({ lesson, grouping, running, selecting, selected, onSe
   )
 }
 
-/** Anello sommato sulle unità della scaletta attuale, allineato sul margine delle righe. */
+/** Anello sommato sulle unità della scaletta attuale, allineato sul margine delle righe.
+ *  Ordine: apprese, in apprendimento, stati personalizzati (col loro colore), ignorate in fondo. */
 export function StudyRing({ lesson }: { lesson: Lesson }) {
+  const settings = useSettings()
   const learned = lesson.study_learned ?? 0
-  const learning = lesson.study_learning ?? 0
   const ignored = lesson.study_ignored ?? 0
-  if (!learned && !learning && !ignored) return null
+  const customStatuses = (settings.data?.stati_studio as CustomStudyStatus[] | undefined) ?? []
+  const custom = customStatuses
+    .map(status => ({ status, count: lesson.study_custom?.[status.id] ?? 0 }))
+    .filter(entry => entry.count > 0)
+  // gli stati personalizzati sono già contati in study_learning; quelli eliminati restano gialli
+  const learning = (lesson.study_learning ?? 0) - custom.reduce((n, entry) => n + entry.count, 0)
+  if (!learned && !learning && !ignored && !custom.length) return null
   const total = lesson.unit_count ?? 0
-  const ignoredArc = total ? ignored / total * 100 : 0
-  const learnedArc = total ? learned / total * 100 : 0
-  const learningArc = total ? learning / total * 100 : 0
-  const label = `${learned} ${learned === 1 ? 'appresa' : 'apprese'} · ${Math.max(0, total - learned - ignored)} da apprendere · ${ignored} ${ignored === 1 ? 'ignorata' : 'ignorate'}`
+  const arc = (n: number) => total ? n / total * 100 : 0
+  const segments: { key: string, n: number, className: string }[] = [
+    { key: 'learned', n: learned, className: 'stroke-study-learned' },
+    { key: 'learning', n: learning, className: 'stroke-study-learning' },
+    ...custom.map(({ status, count }) => ({ key: status.id, n: count, className: cn('stroke-current', status.colore) })),
+  ]
+  const starts = segments.map((_, i) => segments.slice(0, i).reduce((sum, seg) => sum + arc(seg.n), 0))
+  const customLabel = custom.map(({ status, count }) => ` · ${count} ${status.nome.toLowerCase()}`).join('')
+  const label = `${learned} ${learned === 1 ? 'appresa' : 'apprese'}${customLabel} · ${Math.max(0, total - learned - ignored)} da apprendere · ${ignored} ${ignored === 1 ? 'ignorata' : 'ignorate'}`
+  const dash = (a: number) => `${Math.max(0, a - 3)} ${100 - Math.max(0, a - 3)}`
   return <Tooltip content={label} describe={false}>{trigger => <Link {...trigger} to={`/studio/lezione/${lesson.id}`} aria-label={label} data-testid="lesson-study-ring" className="relative flex size-full items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
     <svg width="19" height="19" viewBox="0 0 22 22" aria-hidden className="-rotate-90 fill-none stroke-[2.6]">
       <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-track" />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learned" strokeDasharray={`${Math.max(0, learnedArc - 3)} ${100 - Math.max(0, learnedArc - 3)}`} />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-learning" strokeDasharray={`${Math.max(0, learningArc - 3)} ${100 - Math.max(0, learningArc - 3)}`} strokeDashoffset={-learnedArc} />
-      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={`${Math.max(0, ignoredArc - 3)} ${100 - Math.max(0, ignoredArc - 3)}`} strokeDashoffset={-(100 - ignoredArc)} />
+      {segments.map(({ key, n, className }, i) => <circle key={key} data-testid={`study-ring-${key}`} cx="11" cy="11" r="9" pathLength="100" className={className} strokeDasharray={dash(arc(n))} strokeDashoffset={-starts[i]} />)}
+      <circle cx="11" cy="11" r="9" pathLength="100" className="stroke-study-ignored" strokeDasharray={dash(arc(ignored))} strokeDashoffset={-(100 - arc(ignored))} />
     </svg>
-    {total > 0 && learned + learning + ignored >= total && <Check data-testid="lesson-study-complete" aria-hidden className="absolute size-2.5 text-study-learned" strokeWidth={1.5} />}
+    {total > 0 && learned + (lesson.study_learning ?? 0) + ignored >= total && <Check data-testid="lesson-study-complete" aria-hidden className="absolute size-2.5 text-study-learned" strokeWidth={1.5} />}
   </Link>}</Tooltip>
 }
 

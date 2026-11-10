@@ -56,9 +56,20 @@ def test_removed_unit_is_ignored_without_deleting_its_progress(api_client, ready
                 u.id = "99.9"
     save_outline(outline, path)
     summary = service.summaries({lid: path})[lid]
-    assert summary == {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_last_at": None}
+    assert summary == {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_custom": {},
+                       "study_last_at": None}
     assert service.list_units(lid)[0]["status"] == "appreso"
     assert api_client.get("/api/v1/lessons").json()[0]["study_learned"] == 0
+
+
+def test_summaries_count_custom_statuses_inside_learning(ready, monkeypatch):
+    path, lid, units = ready
+    monkeypatch.setattr(service, "valid_statuses", lambda: {"in-apprendimento", "ripasso"})
+    service.set_status(lid, path, units[0]["id"], "in-apprendimento")
+    assert service.summaries({lid: path})[lid]["study_custom"] == {}
+    service.set_status(lid, path, units[0]["id"], "ripasso")
+    summary = service.summaries({lid: path})[lid]
+    assert summary["study_learning"] == 1 and summary["study_custom"] == {"ripasso": 1}
 
 
 def test_summaries_use_one_query_for_all_lessons(ready, rt_db):

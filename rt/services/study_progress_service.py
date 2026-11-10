@@ -110,7 +110,8 @@ class _Row(NamedTuple):
 
 def summaries(lessons: dict[int, str]) -> dict[int, dict]:
     """Una sola query per tutte le lezioni; ignora le unità tolte dalla scaletta."""
-    result = {lid: {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_last_at": None} for lid in lessons}
+    result = {lid: {"study_learned": 0, "study_learning": 0, "study_ignored": 0, "study_custom": {}, "study_last_at": None}
+              for lid in lessons}
     if not lessons:
         return result
     with read_scope(get_database()) as session:
@@ -128,8 +129,9 @@ def summaries(lessons: dict[int, str]) -> dict[int, dict]:
             summary["study_learning"] += 1
         elif row.status == "ignorata":
             summary["study_ignored"] += 1
-        elif row.status != "da-imparare":
+        elif row.status != "da-imparare":  # stati personalizzati: contano come «in apprendimento»
             summary["study_learning"] += 1
+            summary["study_custom"][row.status] = summary["study_custom"].get(row.status, 0) + 1
         dates = [date for date in (summary["study_last_at"], _at(row.status_at), _at(row.last_read_at)) if date]
         summary["study_last_at"] = max(dates) if dates else None
     return result

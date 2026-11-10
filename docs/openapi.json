@@ -6973,6 +6973,14 @@
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
           },
+          "study_custom": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Unità per stato personalizzato (già contate in study_learning)",
+            "title": "Study Custom",
+            "type": "object"
+          },
           "study_ignored": {
             "default": 0,
             "description": "Unità ignorate nella scaletta attuale",
@@ -7615,6 +7623,14 @@
             ],
             "description": "Stato effettivo del workflow (come 'rt status')",
             "title": "State"
+          },
+          "study_custom": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Unità per stato personalizzato (già contate in study_learning)",
+            "title": "Study Custom",
+            "type": "object"
           },
           "study_ignored": {
             "default": 0,
