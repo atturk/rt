@@ -168,6 +168,53 @@ def _alert(message: str) -> None:
         ctypes.windll.user32.MessageBoxW(None, message, "RT", 0x10)
 
 
+SETTINGS_FILES_AND_FOLDERS = "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"
+
+
+def _lessons_root() -> Optional[str]:
+    try:
+        from rt.core.config import load_config
+        return load_config().telegram.lessons_root or None
+    except Exception:  # noqa: BLE001 - senza configurazione non c'è nulla da controllare
+        return None
+
+
+def check_folder_access(say: Callable[[str], None]) -> bool:
+    """Mac: la cartella delle lezioni (spesso sulla Scrivania o in Documenti) è protetta da
+    macOS. Leggerla fa comparire la richiesta di permesso; l'app non è firmata da Apple,
+    quindi la richiesta torna dopo ogni aggiornamento. Se il permesso è negato macOS non la
+    ripropone: si spiega cosa fare, si offre di aprire Impostazioni e si esce senza toccare
+    database e servizi (prima l'aggiornamento si fermava a metà e lasciava i servizi spenti)."""
+    if sys.platform != "darwin":
+        return True
+    root = _lessons_root()
+    if not root:
+        return True
+    try:
+        os.listdir(root)
+        return True
+    except PermissionError as exc:
+        say(f"🔒 macOS non permette a RT di aprire la cartella delle lezioni: {exc}")
+        _permission_alert(root)
+        return False
+    except OSError:  # cartella sparita o disco esterno scollegato: ci pensa il resto dell'app
+        return True
+
+
+def _permission_alert(root: str) -> None:
+    message = (f"RT non ha il permesso di aprire la cartella delle lezioni:\n{root}\n\n"
+               "macOS chiede di nuovo il permesso dopo ogni aggiornamento di RT. "
+               "In Impostazioni di Sistema → Privacy e sicurezza → File e cartelle, "
+               "attiva per RT la cartella che contiene le lezioni (es. Scrivania), poi riapri RT.\n\n"
+               "Se RT non compare nell'elenco, da Terminale: "
+               "tccutil reset SystemPolicyDesktopFolder com.atturk.rt e riapri RT.")
+    script = (f'display alert "RT non può aprire le lezioni" message {_applescript_string(message)} '
+              'as critical buttons {"Esci", "Apri Impostazioni"} default button "Apri Impostazioni"')
+    result = subprocess.run(["osascript", "-e", script], check=False, capture_output=True, text=True)
+    if "Apri Impostazioni" in (result.stdout or ""):
+        subprocess.run(["open", SETTINGS_FILES_AND_FOLDERS], check=False, capture_output=True)
+
+
 def _applescript_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -320,6 +367,8 @@ def run(port: Optional[int] = None, open_browser: bool = True, browser: bool = F
     from rt.services.service_manager import choose_port
     say = _sayer()
     version = get_current_version(paths.project_root())
+    if not serve and not check_folder_access(say):
+        return 1
     if needs_setup(version) and not prepare(version, say):
         say("⚠️  Preparazione incompleta: RT parte lo stesso, i dettagli sono qui sopra.")
     if not serve:

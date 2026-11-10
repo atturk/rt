@@ -76,6 +76,7 @@ class LessonSummary(BaseModel):
     study_learned: int = Field(0, description="Unità apprese nella scaletta attuale")
     study_ignored: int = Field(0, description="Unità ignorate nella scaletta attuale")
     study_learning: int = Field(0, description="Unità in apprendimento nella scaletta attuale")
+    study_custom: Dict[str, int] = Field(default_factory=dict, description="Unità per stato personalizzato (già contate in study_learning)")
     study_last_at: Optional[datetime] = Field(None, description="Ultima lettura o cambio di stato nella scaletta attuale")
     pipeline_at: Optional[datetime] = Field(None, description="Ultima esecuzione di scaletta, rielaborazione o documento dalla pipeline")
     media_count: int = Field(0, description="Numero di media/immagini della lezione")

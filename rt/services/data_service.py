@@ -322,7 +322,14 @@ def _convert_folder_lessons(say: Callable[[str], None]) -> bool:
     from rt.storage.migrate import folder_lessons, migrate_storage
     db = get_database()
     root = load_config().telegram.lessons_root
-    if db is None or not folder_lessons(db, root):
+    if db is None:
+        return True
+    try:
+        pending = folder_lessons(db, root)
+    except OSError as exc:  # es. macOS nega l'accesso alla Scrivania: RT parte lo stesso
+        say(f"⚠️  Non riesco a controllare le lezioni a cartelle in {root}: {exc}")
+        return False
+    if not pending:
         return True
     say("📦 Converto le lezioni a cartelle nel database (con backup)...")
     try:
@@ -334,6 +341,16 @@ def _convert_folder_lessons(say: Callable[[str], None]) -> bool:
     for err in report.errors:
         say(f"  ⚠️  {err}")
     return not report.errors
+
+
+def _restart_services(sm, say: Callable[[str], None]) -> bool:
+    try:
+        sm.install(sm.installed(), start=True, say=lambda _m: None)
+    except sm.ServiceError as exc:
+        say(f"⚠️  Servizi non riavviati: {exc}")
+        return False
+    say("▶️  Servizi aggiornati e riavviati.")
+    return True
 
 
 def post_update(say: Callable[[str], None] = print,
@@ -348,33 +365,31 @@ def post_update(say: Callable[[str], None] = print,
         sm.stop()
     plan = None
     try:
-        plan = auto_migrate(say=say)
-    except DataDirError as exc:
-        say(f"⚠️  {exc}")
-        ok = False
-    from_3x = plan is not None and bool(plan.steps or plan.redirect_from)
-    from rt.core.config import load_env_file
-    from rt.db.bootstrap import ensure_database
-    from rt.db.engine import DatabaseUnavailable, reset_database_cache
-    reset_database_cache()
-    load_env_file(override=True)
-    try:
-        ensure_database()
-        say("🗄  Database aggiornato.")
-    except DatabaseUnavailable as exc:
-        say(f"❌ {exc}")
-        ok = False
-    else:
-        ok = _convert_folder_lessons(say) and ok
-    _offer_secrets_migration(say, confirm)
-    if had_services:
         try:
-            sm.install(sm.installed(), start=True, say=lambda _m: None)
-            say("▶️  Servizi aggiornati e riavviati.")
-        except sm.ServiceError as exc:
-            say(f"⚠️  Servizi non riavviati: {exc}")
+            plan = auto_migrate(say=say)
+        except DataDirError as exc:
+            say(f"⚠️  {exc}")
             ok = False
-    elif from_3x and sm.supported() and os.environ.get("RT_NO_SERVICES") != "1":
+        from_3x = plan is not None and bool(plan.steps or plan.redirect_from)
+        from rt.core.config import load_env_file
+        from rt.db.bootstrap import ensure_database
+        from rt.db.engine import DatabaseUnavailable, reset_database_cache
+        reset_database_cache()
+        load_env_file(override=True)
+        try:
+            ensure_database()
+            say("🗄  Database aggiornato.")
+        except DatabaseUnavailable as exc:
+            say(f"❌ {exc}")
+            ok = False
+        else:
+            ok = _convert_folder_lessons(say) and ok
+        _offer_secrets_migration(say, confirm)
+    finally:
+        # i servizi fermati qui sopra ripartono anche se un passo solleva
+        if had_services:
+            ok = _restart_services(sm, say) and ok
+    if not had_services and from_3x and sm.supported() and os.environ.get("RT_NO_SERVICES") != "1":
         # dalla 3.x alla 4.0: API, worker e bot diventano servizi in background (rt web li trova)
         try:
             sm.install(say=say)

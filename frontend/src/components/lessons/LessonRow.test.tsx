@@ -1,8 +1,12 @@
 import { render, screen } from '@testing-library/react'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { LessonRow, StudyRing } from './LessonsView'
 import type { Lesson } from '@/lib/format'
+
+vi.mock('@/api/settings', () => ({
+  useSettings: () => ({ data: { stati_studio: [{ id: 'ripasso', nome: 'Ripasso', colore: 'text-blue-500', icona: 'Star' }] } }),
+}))
 
 export const lesson = { id: 15, titolo: 'Emogasanalisi', materia: '', data: '', docente: '', argomenti: '', ora: '', folder_name: '', path: '', unit_count: 10, study_learned: 3, study_learning: 2, study_ignored: 1, recall_questions: 4, recall_pending: 0, pending_issues: 0, media_count: 0, phases: { rewrite: 'VALID', review: 'VALID', build: 'VALID' } } as Lesson
 it('l’anello usa i colori dello studio con stacchi fra gli archi', () => {
@@ -10,6 +14,18 @@ it('l’anello usa i colori dello studio con stacchi fra gli archi', () => {
   const ring = screen.getByTestId('lesson-study-ring')
   for (const color of ['track', 'learned', 'learning', 'ignored']) expect(ring.querySelector(`.stroke-study-${color}`)).toBeInTheDocument()
   expect(ring.querySelector('.stroke-study-learned')).toHaveAttribute('stroke-dasharray', '27 73')
+})
+
+it('l’anello mostra gli stati personalizzati col loro colore, dopo «in apprendimento»', () => {
+  render(<MemoryRouter><StudyRing lesson={{ ...lesson, study_learning: 5, study_custom: { ripasso: 3, eliminato: 1 } }} /></MemoryRouter>)
+  const ring = screen.getByTestId('lesson-study-ring')
+  // 5 in apprendimento di cui 3 «Ripasso»: restano 2 gialle (anche quella con stato eliminato)
+  expect(ring.querySelector('[data-testid="study-ring-learning"]')).toHaveAttribute('stroke-dasharray', '17 83')
+  const custom = ring.querySelector('[data-testid="study-ring-ripasso"]')
+  expect(custom).toHaveClass('stroke-current', 'text-blue-500')
+  expect(custom).toHaveAttribute('stroke-dasharray', '27 73')
+  expect(custom).toHaveAttribute('stroke-dashoffset', '-50')
+  expect(ring).toHaveAttribute('aria-label', '3 apprese · 3 ripasso · 6 da apprendere · 1 ignorata')
 })
 
 
