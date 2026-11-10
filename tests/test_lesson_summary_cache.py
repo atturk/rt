@@ -95,3 +95,20 @@ def test_global_prompt_does_not_make_done_phases_stale(tmp_path, monkeypatch, rt
     lesson_service.clear_summary_cache()
     phases = lesson_service.list_lessons()[0]["phases"]
     assert phases["rewrite"] == "VALID" and phases["review"] == "VALID"
+
+
+def test_metadata_change_recomputes_only_that_lesson(tmp_path, monkeypatch, rt_db, counted, capsys):
+    from rt.services.lesson_metadata_service import update_metadata
+    from rt.core.config import load_config
+    root = isolated_workspace(tmp_path, monkeypatch)
+    load_config()  # la migrazione una tantum di general.yaml invaliderebbe tutte le lezioni
+    edited = make_lesson(root)
+    make_lesson(root, "[2026-09-06] ALTRA")
+    lesson_service.list_lessons()
+    assert len(counted) == 2
+    assert "2 lezioni, 2 ricalcolate" in capsys.readouterr().out
+    lesson_id = lesson_service.lesson_id_for_dir(edited)
+    update_metadata(lesson_id, edited, {"titolo": "Nuovo titolo"})
+    counted.clear()
+    titles = {i["id"]: i["titolo"] for i in lesson_service.list_lessons()}
+    assert counted == [lesson_id] and titles[lesson_id] == "Nuovo titolo"

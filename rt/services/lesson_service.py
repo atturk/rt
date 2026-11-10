@@ -367,8 +367,11 @@ def _input_fingerprints(ids: Dict[str, int]) -> Dict[int, str]:
 
 
 def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
+    import time
+    started = time.perf_counter()
     fingerprints = _input_fingerprints(ids)
     items = []
+    recomputed = 0
     for path, lesson_id in ids.items():
         key = fingerprints[lesson_id]
         with _summary_lock:
@@ -377,6 +380,7 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
             items.append(copy.deepcopy(hit[1]))
             continue
         summary = lesson_summary(lesson_id, path)
+        recomputed += 1
         if summary["error"] is None:  # un errore si ricalcola alla richiesta successiva
             with _summary_lock:
                 _summary_cache[lesson_id] = (key, copy.deepcopy(summary))
@@ -384,12 +388,21 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
     with _summary_lock:
         for stale in set(_summary_cache) - set(fingerprints):
             del _summary_cache[stale]
+    if recomputed:  # stdout del server è api.log, con data e ora: misura il caricamento a freddo
+        print(f"📋 Elenco lezioni: {len(items)} lezioni, {recomputed} ricalcolate, "
+              f"{(time.perf_counter() - started) * 1000:.0f} ms", flush=True)
     return items
 
 
 def clear_summary_cache() -> None:
     with _summary_lock:
         _summary_cache.clear()
+
+
+def forget_summary(lesson_id: int) -> None:
+    """Toglie dalla cache il riepilogo di una sola lezione (le altre restano valide)."""
+    with _summary_lock:
+        _summary_cache.pop(lesson_id, None)
 
 
 def list_lessons(materia: Optional[str] = None, state: Optional[str] = None,

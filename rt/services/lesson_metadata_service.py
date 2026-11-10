@@ -13,7 +13,7 @@ from rt.db.models import Job, Lesson
 from rt.db.session import session_scope
 from rt.db.sync import relocate_path_keyed_rows, suspend_dual_write, sync_lesson
 from rt.services.errors import Conflict, NotFound
-from rt.services.lesson_service import _require_db, clear_summary_cache, lesson_detail, lessons_root
+from rt.services.lesson_service import _require_db, forget_summary, lesson_detail, lessons_root
 from rt.storage import fs
 
 
@@ -24,7 +24,7 @@ def update_metadata(lesson_id: int, lesson_dir: str, updates: Dict[str, Any]) ->
             current = _update_locked(lesson_id, lesson_dir, updates)
     except LessonBusy:
         raise Conflict("lesson_busy", "La lezione è in lavorazione.") from None
-    clear_summary_cache()
+    forget_summary(lesson_id)  # solo questa lezione: le altre non sono cambiate
     return lesson_detail(lesson_id, current)
 
 
