@@ -268,3 +268,98 @@ def test_lifespan_warmup_runs_on_app_startup(tmp_path, monkeypatch, rt_db, count
         time.sleep(0.2)
 
     assert len(counted) >= 1
+
+
+def test_memoization_load_segments_called_at_most_once_per_lesson(tmp_path, monkeypatch, rt_db):
+    from rt.core import segments
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(root)
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+
+    lesson_service.clear_summary_cache()
+    seg_calls = []
+    real_load = segments.load_segments_json
+
+    def spy_load(path):
+        seg_calls.append(path)
+        return real_load(path)
+
+    monkeypatch.setattr(segments, "load_segments_json", spy_load)
+
+    # list_lessons a freddo: load_segments_json deve essere chiamato al massimo 1 volta per lezione
+    results = lesson_service.list_lessons()
+    assert len(results) == 1
+    assert len(seg_calls) <= 1
+
+
+def test_memoization_returns_copies_preventing_mutation(tmp_path, monkeypatch, rt_db):
+    from rt.core import segments
+    from rt.core.lesson_paths import lesson_path
+    from rt.storage import fs
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(root)
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+
+    seg_path = lesson_path(lesson_dir, "segments.json")
+    with fs.read_snapshot():
+        data1 = segments.load_segments_json(seg_path)
+        if data1.segments:
+            data1.segments[0].text_raw = "TESTO_MUTATO"
+        data2 = segments.load_segments_json(seg_path)
+        if data2.segments:
+            assert data2.segments[0].text_raw != "TESTO_MUTATO"
+
+
+def test_compute_file_sha256_uses_db_without_reading_bytes(tmp_path, monkeypatch, rt_db):
+    from rt.core.idempotency import compute_file_sha256
+    from rt.core.lesson_paths import lesson_path
+    from rt.storage import fs
+    from rt.storage.migrate import migrate_storage
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(root)
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+    assert not migrate_storage(lesson_service.lessons_root()).errors
+
+    seg_path = lesson_path(lesson_dir, "segments.json")
+    sha_val = compute_file_sha256(seg_path)
+    assert len(sha_val) == 64
+
+    # Per le lezioni nel DB, non deve aprire lo stream per rileggere i byte
+    opened = []
+    real_open = fs.open
+
+    def spy_open(path, *args, **kwargs):
+        opened.append(path)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(fs, "open", spy_open)
+    assert compute_file_sha256(seg_path) == sha_val
+    assert len(opened) == 0
+
+
+def test_memoization_same_results_with_and_without(tmp_path, monkeypatch, rt_db):
+    from contextlib import contextmanager
+    from rt.storage import fs
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(root)
+    run_mock_pipeline(lesson_dir, with_review=True, auto_accept=True)
+
+    lesson_service.clear_summary_cache()
+    # Con memoizzazione attiva
+    res_with = lesson_service.list_lessons()
+
+    lesson_service.clear_summary_cache()
+    # Senza memoizzazione (disabilitando i dizionari di snapshot)
+    real_read_snapshot = fs.read_snapshot
+
+    @contextmanager
+    def no_cache_snapshot():
+        with real_read_snapshot():
+            fs._snapshot.segments_cache = None
+            fs._snapshot.phase_status_cache = None
+            yield
+
+    monkeypatch.setattr(fs, "read_snapshot", no_cache_snapshot)
+    res_without = lesson_service.list_lessons()
+
+    assert res_with == res_without

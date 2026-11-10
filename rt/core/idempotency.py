@@ -103,14 +103,8 @@ OPTIONAL_UPSTREAM_DEPS = {"review"}
 
 
 def compute_file_sha256(path: str) -> str:
-    """Calcola l'hash SHA256 di un file su disco in modo efficiente."""
-    if not fs.isfile(path):
-        return ""
-    h = hashlib.sha256()
-    with fs.open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """Calcola l'hash SHA256 di un file (su disco o nel DB) in modo efficiente."""
+    return fs.sha256(path)
 
 
 def compute_string_sha256(text: str) -> str:
@@ -320,6 +314,22 @@ def upstream_acknowledgement(lesson_dir: str, phase_name: str) -> Dict[str, str]
     return ack
 
 
+def _get_segments_data(seg_path: str):
+    import copy
+    cache = getattr(fs._snapshot, "segments_cache", None)
+    if cache is not None:
+        key = fs.file_cache_key(seg_path)
+        if key is not None and key in cache:
+            return copy.deepcopy(cache[key])
+        from rt.core.segments import load_segments_json
+        data = load_segments_json(seg_path)
+        if key is not None:
+            cache[key] = copy.deepcopy(data)
+        return copy.deepcopy(data)
+    from rt.core.segments import load_segments_json
+    return load_segments_json(seg_path)
+
+
 def check_phase_status(
     lesson_dir: str,
     phase_name: str,
@@ -332,6 +342,25 @@ def check_phase_status(
     è non-VALID (STALE, INVALID, MISSING), la fase corrente risulterà STALE.
     Restituisce (PhaseStatus, motivo).
     """
+    cache = getattr(fs._snapshot, "phase_status_cache", None)
+    if cache is not None:
+        manifest_path = lesson_path(lesson_dir, "manifest.yaml")
+        mkey = fs.file_cache_key(manifest_path)
+        cache_key = (os.path.abspath(lesson_dir), phase_name, target_unit_id, mkey)
+        if cache_key in cache:
+            return cache[cache_key]
+        result = _check_phase_status_impl(lesson_dir, phase_name, target_unit_id, _visited)
+        cache[cache_key] = result
+        return result
+    return _check_phase_status_impl(lesson_dir, phase_name, target_unit_id, _visited)
+
+
+def _check_phase_status_impl(
+    lesson_dir: str,
+    phase_name: str,
+    target_unit_id: Optional[str] = None,
+    _visited: Optional[set] = None
+) -> Tuple[PhaseStatus, str]:
     manifest = load_manifest(lesson_dir)
     phase_records = getattr(manifest, "phase_records", {}) if manifest else {}
     current_rec = phase_records.get(phase_name, {})
@@ -387,8 +416,7 @@ def check_phase_status(
         if not fs.isfile(seg_path) or not fs.isfile(md_norm):
             return PhaseStatus.MISSING, "File segments.json o transcript_normalized.md mancante"
         try:
-            from rt.core.segments import load_segments_json
-            data = load_segments_json(seg_path)
+            data = _get_segments_data(seg_path)
             if not data.segments:
                 return PhaseStatus.INVALID, "segments.json non contiene segmenti"
         except Exception as e:
@@ -411,10 +439,9 @@ def check_phase_status(
 
         try:
             from rt.pipeline.outline import load_outline
-            from rt.core.segments import load_segments_json
             from rt.pipeline.validator import validate_outline
             outline = load_outline(lesson_dir)
-            seg_data = load_segments_json(seg_path)
+            seg_data = _get_segments_data(seg_path)
             validate_outline(outline, seg_data)
         except Exception as e:
             return PhaseStatus.INVALID, f"outline.json non valido rispetto ai segmenti: {e}"
@@ -437,11 +464,10 @@ def check_phase_status(
         try:
             from rt.pipeline.rewrite import load_draft
             from rt.pipeline.outline import load_outline
-            from rt.core.segments import load_segments_json
             from rt.pipeline.validator import validate_draft
             draft = load_draft(lesson_dir)
             outline = load_outline(lesson_dir)
-            seg_data = load_segments_json(seg_path)
+            seg_data = _get_segments_data(seg_path)
             val_report = validate_draft(draft, outline, seg_data)
         except Exception as e:
             return PhaseStatus.INVALID, f"draft.json non valido: {e}"
