@@ -1,0 +1,4 @@
+- Voce 1: Creata tabella `lesson_summary_cache` (migrazione Alembic 0020), modello SQLAlchemy `LessonSummaryCache` e costante `SUMMARY_SCHEMA = 1`.
+- Voce 2: Lookup a tre livelli (memoria → vetrina DB con query batch → ricalcolo), scrittura/pulizia transazionale unica, estensione di `forget_summary`/`clear_summary_cache` e log api.log con contatore «dalla vetrina».
+- Voce 3: Riscaldamento elenco all'avvio tramite thread daemon nel `lifespan` di FastAPI e lock per lezione con double-checked locking per prevenire ricalcoli concorrenti.
+- Voce 4: Memoizzazione per la durata dello snapshot (`read_snapshot`) di `load_segments_json` e `check_phase_status` con restituzione copie e riuso diretto di `LessonFile.sha256` in `compute_file_sha256`.
