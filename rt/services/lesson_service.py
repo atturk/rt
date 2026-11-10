@@ -298,6 +298,8 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
     return out
 
 
+SUMMARY_SCHEMA = 1
+
 # Cache dei riepiloghi per l'elenco: Lesson.id -> (impronta degli input, riepilogo). Il
 # riepilogo costa centinaia di letture per lezione (freschezza delle fasi con gli hash dei
 # file, issue, costi); l'impronta costa due query per tutto l'elenco più uno stat per file

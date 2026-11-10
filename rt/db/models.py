@@ -418,3 +418,14 @@ class SubjectTeacher(Base):
     materia: Mapped[str] = mapped_column(String(256), primary_key=True)
     nome: Mapped[str] = mapped_column(String(256), primary_key=True)
     creata_il: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LessonSummaryCache(Base):
+    """Vetrina persistente dei riepiloghi delle lezioni (elenco rapido all'avvio)."""
+    __tablename__ = "lesson_summary_cache"
+
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(128))
+    schema: Mapped[int] = mapped_column(Integer, default=1)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
