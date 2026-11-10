@@ -1119,3 +1119,33 @@ def test_condividi_esportazione_multiple(tmp_path, monkeypatch):
 
 
 
+
+
+def test_denied_lessons_folder_asks_for_settings_and_quits_before_update(data, monkeypatch):
+    """Mac, permesso Scrivania negato: avviso con 'Apri Impostazioni', uscita pulita e
+    nessun passo dell'aggiornamento (prima i servizi restavano fermi)."""
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    monkeypatch.setattr(desktop, '_lessons_root', lambda: '/Users/x/Desktop/_RT Lezioni')
+    monkeypatch.setattr(desktop.os, 'listdir', Mock(side_effect=PermissionError(1, 'Operation not permitted')))
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout='button returned:Apri Impostazioni\n', stderr='')
+    monkeypatch.setattr(desktop.subprocess, 'run', fake_run)
+    prepare = Mock(side_effect=AssertionError('Non deve preparare RT'))
+    monkeypatch.setattr(desktop, 'prepare', prepare)
+    monkeypatch.setattr(desktop, 'needs_setup', lambda _v: True)
+    assert desktop.run(open_browser=False) == 1
+    assert calls[0][0] == 'osascript' and 'Apri Impostazioni' in calls[0][-1]
+    assert calls[1] == ['open', desktop.SETTINGS_FILES_AND_FOLDERS]
+    assert 'Operation not permitted' in (data / 'logs' / 'desktop.log').read_text()
+
+
+def test_folder_access_check_is_mac_only_and_ignores_missing_folders(monkeypatch):
+    monkeypatch.setattr(desktop, '_lessons_root', lambda: '/non/esiste')
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    assert desktop.check_folder_access(lambda _m: None)
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    monkeypatch.setattr(desktop.os, 'listdir', Mock(side_effect=FileNotFoundError()))
+    assert desktop.check_folder_access(lambda _m: None)
