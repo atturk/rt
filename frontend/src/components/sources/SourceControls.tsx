@@ -122,9 +122,6 @@ export function ReliabilityOptions({
           )
         })}
       </Segmented>
-      <span className="min-w-16 text-meta text-muted-foreground">
-        {current === 'alta' ? 'Alta' : current === 'normale' ? 'Normale' : 'Bassa'}
-      </span>
     </div>
   )
 }

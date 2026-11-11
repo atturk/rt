@@ -697,7 +697,7 @@ export function NewLessonDialog({
         onClose={onClose}
         title="Nuova lezione"
         testId="new-lesson"
-        className="w-[min(680px,calc(100vw-32px))]"
+        className="w-[min(760px,calc(100vw-32px))]"
       >
       <form onSubmit={submit} aria-label="Nuova lezione" noValidate>
         {/* Input file principale (audio, zip, o materiali) */}
@@ -881,7 +881,7 @@ export function NewLessonDialog({
                   const total = facts[i]?.data?.pagine_totali ?? null
                   return (
                     <div key={m.name} data-testid="source-layer"
-                      className="-mx-3 -mb-3 mt-1 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-muted/40 px-3 py-2 sm:flex-nowrap">
+                      className="-mx-3 -mb-3 mt-1 flex flex-wrap items-center gap-3 rounded-b-lg border-t bg-muted/40 px-3 py-2">
                       <ExtractOptions value={current.estrai ?? 'immagini'} unavailable={reasons.extract}
                         onChange={(estrai) => updateMaterial(m, i, { estrai })} />
                       <UseOptions value={current.uso ?? 'contesto'} unavailable={reasons.use} off={reasons.off}
