@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scarica RT</title>
+  <meta name="description" content="Scarica RT per Mac e Windows. Gratuito e open source.">
+  <link rel="icon" type="image/svg+xml" href="img/icona.svg">
+  <link rel="stylesheet" href="stile.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href="./"><img src="img/icona.svg" alt="" width="30" height="30">RT</a>
+      <nav>
+        <a class="opz" href="./#come-funziona">Come funziona</a>
+        <a href="guida/">Guida</a>
+        <a class="opz" href="https://github.com/atturk/rt">GitHub</a>
+        <a class="btn piccolo pri" href="download.html" aria-current="page">Scarica</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="wrap">
+        <h1 style="margin:0 0 8px; font-size:clamp(30px,5vw,44px); line-height:1.15">Scarica RT</h1>
+        <p class="versione">Versione <span data-versione>{{VERSIONE}}</span> · <a href="https://github.com/atturk/rt/blob/main/CHANGELOG.md">novità</a></p>
+
+        <div class="scarica">
+          <div class="os" data-os="mac">
+            <span class="badge-tuo">Il tuo sistema</span>
+            <h2>macOS</h2>
+            <p class="req">Mac con chip Apple (M1 o successivi).</p>
+            <a class="btn pri" data-file="mac" href="https://github.com/atturk/rt/releases/download/v{{VERSIONE}}/RT-{{VERSIONE}}-macos-arm64.dmg">Scarica per Mac (.dmg)</a>
+            <span class="file" data-nome="mac">RT-{{VERSIONE}}-macos-arm64.dmg</span>
+          </div>
+          <div class="os" data-os="win">
+            <span class="badge-tuo">Il tuo sistema</span>
+            <h2>Windows</h2>
+            <p class="req">PC con Windows a 64 bit.</p>
+            <a class="btn pri" data-file="win" href="https://github.com/atturk/rt/releases/download/v{{VERSIONE}}/RT-{{VERSIONE}}-windows-x64-setup.exe">Scarica per Windows (.exe)</a>
+            <span class="file" data-nome="win">RT-{{VERSIONE}}-windows-x64-setup.exe</span>
+          </div>
+        </div>
+        <p class="nota">Tutte le versioni, le somme di controllo (SHA256SUMS) e il codice sorgente sono nella <a href="https://github.com/atturk/rt/releases/latest">pagina delle release su GitHub</a>.</p>
+      </div>
+    </section>
+
+    <section class="tenue">
+      <div class="wrap">
+        <h2>Primo avvio</h2>
+        <p class="intro">RT non passa dagli store e non ha ancora una firma a pagamento di Apple o Microsoft, quindi la prima volta il sistema chiede una conferma. Succede una volta sola.</p>
+        <div class="due">
+          <div class="riquadro">
+            <h3>macOS</h3>
+            <ol class="istr">
+              <li>Apri il file <code>.dmg</code> e trascina RT nella cartella <strong>Applicazioni</strong>.</li>
+              <li>Apri RT. Se il Mac dice che lo sviluppatore non è verificato, vai in <strong>Impostazioni di Sistema → Privacy e sicurezza</strong>.</li>
+              <li>Scorri fino a <strong>Sicurezza</strong> e premi <strong>Apri comunque</strong> accanto al messaggio su RT.</li>
+            </ol>
+            <p class="nota">Dal Terminale puoi anche togliere la quarantena:</p>
+            <pre><code>xattr -dr com.apple.quarantine /Applications/RT.app</code></pre>
+          </div>
+          <div class="riquadro">
+            <h3>Windows</h3>
+            <ol class="istr">
+              <li>Apri il file <code>.exe</code> che hai scaricato.</li>
+              <li>Se compare la schermata blu «PC protetto da Windows», premi <strong>Ulteriori informazioni</strong>.</li>
+              <li>Premi <strong>Esegui comunque</strong> e segui l'installazione.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>E poi?</h2>
+        <div class="griglia">
+          <div><h3>Prova la lezione di esempio</h3><p>Al primo avvio RT ti propone una lezione già rielaborata, gratis, per vedere come funziona.</p></div>
+          <div><h3>Inserisci la tua chiave</h3><p>In <strong>Impostazioni → Modelli</strong> aggiungi la chiave del fornitore AI che preferisci. <a href="guida/chiavi-e-costi/">Come si fa</a>.</p></div>
+          <div><h3>Aggiornamenti automatici</h3><p>RT controlla da solo le nuove versioni e fa un backup dei dati prima di aggiornarsi.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© 2026 Attilio Turco · RT è software libero (AGPL-3.0)</span>
+      <nav>
+        <a href="./">Home</a>
+        <a href="guida/">Guida</a>
+        <a href="guida/privacy/">Privacy</a>
+        <a href="https://github.com/atturk/rt">Codice sorgente</a>
+      </nav>
+    </div>
+  </footer>
+  <script src="download.js"></script>
+</body>
+</html>

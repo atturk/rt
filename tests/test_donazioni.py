@@ -1,10 +1,6 @@
 """Test per la gestione delle donazioni (Voce 7)."""
-import os
-import tempfile
-from unittest.mock import patch
-
 from rt.core import donazioni
-from scripts.build_docs_site import prepare_site_docs
+from scripts.build_docs_site import prepare_landing
 
 
 def test_system_info_donazioni_empty(api_client, monkeypatch):
@@ -24,17 +20,25 @@ def test_system_info_donazioni_custom(api_client, monkeypatch):
     assert data["donazioni_url"] == "https://ko-fi.com/example"
 
 
-def test_build_docs_site_donazioni_empty(monkeypatch, tmp_path):
-    target = tmp_path / "site_docs"
-    with patch("scripts.build_docs_site.DONAZIONI_URL", ""):
-        prepare_site_docs(str(target))
-    index_md = (target / "index.md").read_text(encoding="utf-8")
-    assert "Sostieni RT" not in index_md
+def test_build_docs_site_donazioni_empty(tmp_path):
+    prepare_landing(str(tmp_path), donazioni_url="")
+    index_html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "Sostieni RT" not in index_html
+    assert "DONAZIONI_SEGNAPOSTO" not in index_html
 
 
-def test_build_docs_site_donazioni_configured(monkeypatch, tmp_path):
-    target = tmp_path / "site_docs"
-    with patch("scripts.build_docs_site.DONAZIONI_URL", "https://ko-fi.com/example"):
-        prepare_site_docs(str(target))
-    index_md = (target / "index.md").read_text(encoding="utf-8")
-    assert "[Sostieni RT](https://ko-fi.com/example)" in index_md
+def test_build_docs_site_donazioni_configured(tmp_path):
+    prepare_landing(str(tmp_path), donazioni_url="https://ko-fi.com/example")
+    index_html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert '<a class="btn pri" href="https://ko-fi.com/example">Sostieni RT</a>' in index_html
+
+
+def test_build_docs_site_versione(tmp_path):
+    prepare_landing(str(tmp_path), donazioni_url="")
+    versione = open("VERSION", encoding="utf-8").read().strip()
+    download = (tmp_path / "download.html").read_text(encoding="utf-8")
+    assert "{{VERSIONE}}" not in download
+    assert f"releases/download/v{versione}/RT-{versione}-macos-arm64.dmg" in download
+    assert f"RT-{versione}-windows-x64-setup.exe" in download
+    assert (tmp_path / ".nojekyll").exists()
+    assert not (tmp_path / "img" / "README.md").exists()
