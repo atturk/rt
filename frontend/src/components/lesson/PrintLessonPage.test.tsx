@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { expect, it, vi } from 'vitest'
 
+import { RT_SITE_URL, rtSiteLabel } from '@/lib/rtSite'
+
 import { PrintLessonPage } from './PrintLessonPage'
 
 vi.mock('@/api/hooks', () => ({
@@ -41,4 +43,16 @@ it('definisce gli stili per elenchi puntati, numerati, rientro e annidati nel ta
   expect(styleText).toContain('list-style: decimal')
   expect(styleText).toContain('padding-left: 1.4em')
   expect(styleText).toContain('list-style: circle')
+})
+
+it('nella prima pagina, accanto al titolo, c\'è il QR che porta al sito di RT', () => {
+  render(
+    <MemoryRouter initialEntries={['/stampa/1']}>
+      <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
+    </MemoryRouter>,
+  )
+  const qr = screen.getByTestId('rt-site-qr')
+  expect(qr).toHaveAttribute('href', RT_SITE_URL)
+  expect(qr.closest('header')).toContainElement(screen.getByRole('heading', { level: 1 }))
+  expect(qr).toHaveTextContent(rtSiteLabel())
 })
