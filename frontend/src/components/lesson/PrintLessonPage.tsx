@@ -8,6 +8,8 @@ import { shortDate, subjectName } from '@/lib/lessonsPage'
 import { renderDelimitedMath } from '@/lib/math'
 import { transformPrintDom, waitForImagesLoaded } from '@/lib/printDocument'
 
+import { RtSiteQr } from './RtSiteQr'
+
 export function PrintLessonPage() {
   const { lessonId } = useParams()
   const id = Number(lessonId)
@@ -101,6 +103,45 @@ export function PrintLessonPage() {
           font-size: 9pt;
           color: #6b7280;
           margin-bottom: 2mm;
+        }
+        .print-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 6mm;
+        }
+        .print-head-text {
+          flex: 1;
+          min-width: 0;
+        }
+        .print-rt-qr {
+          flex: none;
+          width: 24mm;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1mm;
+          color: #6b7280;
+          text-decoration: none;
+          break-inside: avoid;
+        }
+        .print-rt-qr svg {
+          width: 17mm;
+          height: 17mm;
+          display: block;
+        }
+        .print-rt-qr-label {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 6.5pt;
+          line-height: 1.25;
+          text-align: center;
+        }
+        .print-rt-qr-url {
+          color: #111827;
+          font-weight: 600;
         }
         .print-title {
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -213,15 +254,20 @@ export function PrintLessonPage() {
         }
       `}</style>
 
-      {metaParts.length > 0 && (
-        <div className="print-header">
-          {metaParts.join(' · ')}
-        </div>
-      )}
+      <header className="print-head">
+        <div className="print-head-text">
+          {metaParts.length > 0 && (
+            <div className="print-header">
+              {metaParts.join(' · ')}
+            </div>
+          )}
 
-      <h1 className="print-title">
-        {lessonTitle(lesson)}
-      </h1>
+          <h1 className="print-title">
+            {lessonTitle(lesson)}
+          </h1>
+        </div>
+        <RtSiteQr />
+      </header>
 
       <div ref={rootRef} className="print-content" />
     </article>
