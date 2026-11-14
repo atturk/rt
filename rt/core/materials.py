@@ -408,8 +408,10 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         calls = stats['vision_calls']
         mean = stats['vision_seconds'] / calls if calls else 0
         if ctx:
-            ctx.progress('prepare', message=f"Lettura di {name}: finita in {_elapsed(stats['seconds'])} "
-                         f"(Vision {calls} chiamate, media {mean:.1f} s)")
+            detail = (f"già letta in precedenza, {stats['cached_pages']} pagin{'a' if stats['cached_pages'] == 1 else 'e'} "
+                      f"riusat{'a' if stats['cached_pages'] == 1 else 'e'} senza Vision"
+                      if not calls and stats['cached_pages'] else f"Vision {calls} chiamate, media {mean:.1f} s")
+            ctx.progress('prepare', message=f"Lettura di {name}: finita in {_elapsed(stats['seconds'])} ({detail})")
         return for_mode(pages, mode)
 
     from rt.core.source_options import default_extraction
@@ -519,6 +521,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
             reusable = read_json(os.path.join(folder, 'descrizione.json')) if file_type(source.file) == 'immagine' else None
             if reusable and not refresh:
                 described = '\n'.join(str(reusable.get(key) or '') for key in ('slide_title', 'ocr_text', 'visual_elements'))
+                stats['cached_pages'] += 1
                 return save(dict(entry, testo=described, mapping_text=described)), 0, 0.0
             for relative in entry['immagini']:
                 if stopped.is_set():
