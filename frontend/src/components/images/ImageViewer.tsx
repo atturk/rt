@@ -75,9 +75,12 @@ export function ImageViewer() {
 
   const current = state.images[state.index]
   const count = state.images.length
-  const caption = current.docName
+  const docRef = current.docName
     ? `${current.docName}${current.pageNumber !== undefined ? `, pagina ${current.pageNumber}` : ''}`
-    : current.alt || 'Immagine'
+    : ''
+  const mainCaption = current.caption || docRef || current.alt || 'Immagine'
+  const subRef = current.caption && docRef ? docRef : ''
+  const fullTitle = subRef ? `${mainCaption} — ${subRef}` : mainCaption
 
   return (
     <div
@@ -91,7 +94,10 @@ export function ImageViewer() {
     >
       <div className="rt-viewer-box">
         <div className="rt-vtop">
-          <span className="cap" title={caption}>{caption}</span>
+          <div className="cap" title={fullTitle}>
+            <span className="cap-title">{mainCaption}</span>
+            {subRef && <span className="cap-ref">{subRef}</span>}
+          </div>
           <span className="count">{state.index + 1} / {count}</span>
           <button
             type="button"

@@ -12,7 +12,7 @@ from rt.core.lesson_lock import lesson_locked
 import os
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from rt.core.models import (
     Outline, Draft, SegmentsData, Segment,
     ScienceIssue, DecisionLedger
@@ -263,6 +263,68 @@ def _atomic_write_text(filepath: str, content: str) -> None:
     fs.replace(tmp_path, filepath)
 
 
+def _upgrade_legacy_material_alts(
+    lesson_dir: str,
+    images_by_macro: Dict[str, List[dict]],
+    images_by_unit: Dict[str, List[dict]],
+) -> Tuple[Dict[str, List[dict]], Dict[str, List[dict]]]:
+    """Ricostruisce alt_text con il titolo in cache per lezioni già fatte senza ' — '."""
+    from rt.core.archive import file_type
+    from rt.core.captions import ALT_SEPARATOR, caption_from_description, page_alt
+    from rt.core.materials import cached_pages
+    from rt.core.sources import load_sources
+
+    tag_re = re.compile(r"^material:([^:]+):(\d+)$")
+    needs_upgrade = any(
+        not img.get("unplaced")
+        and ALT_SEPARATOR not in str(img.get("alt_text") or "")
+        and tag_re.match(str(img.get("source") or ""))
+        for group in (images_by_macro, images_by_unit)
+        for items in group.values()
+        for img in items
+    )
+    if not needs_upgrade:
+        return images_by_macro, images_by_unit
+
+    sources = load_sources(lesson_dir, readonly=True)
+    by_key = {}
+    for src in sources:
+        by_key[src.id] = src
+        if src.impronta:
+            by_key[src.impronta] = src
+    pages_cache: Dict[str, Dict[int, dict]] = {}
+
+    def upgraded_list(items: List[dict]) -> List[dict]:
+        out = []
+        for img in items:
+            alt = str(img.get("alt_text") or "")
+            match = tag_re.match(str(img.get("source") or ""))
+            if img.get("unplaced") or ALT_SEPARATOR in alt or not match:
+                out.append(img)
+                continue
+            src = by_key.get(match.group(1))
+            if not src:
+                out.append(img)
+                continue
+            page_num = int(match.group(2))
+            if src.id not in pages_cache:
+                pages = cached_pages(lesson_dir, src) or []
+                pages_cache[src.id] = {int(p.get("numero", 0)): p for p in pages}
+            page = pages_cache[src.id].get(page_num) or {}
+            titolo = page.get("titolo") or caption_from_description(img)
+            if not titolo:
+                out.append(img)
+                continue
+            new_alt = page_alt(src.file, page_num, titolo, single_page=file_type(src.file) == "immagine")
+            out.append({**img, "alt_text": new_alt})
+        return out
+
+    return (
+        {k: upgraded_list(v) for k, v in images_by_macro.items()},
+        {k: upgraded_list(v) for k, v in images_by_unit.items()},
+    )
+
+
 def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     """Documenti della lezione come li scrive il build, calcolati dai file attuali (bozza,
     decisioni della revisione, immagini posizionate) senza scrivere nulla. È anche
@@ -303,8 +365,9 @@ def render_lesson_documents(lesson_dir: str) -> Dict[str, Any]:
     edited = edited_unit_dates(lesson_dir)
     resolved_draft = apply_decisions_to_draft(draft, ledger, science_issues, edited)
     doc_images = images_for_document(lesson_dir, outline)
-    images_by_macro = doc_images.by_macro
-    images_by_unit = doc_images.by_unit
+    images_by_macro, images_by_unit = _upgrade_legacy_material_alts(
+        lesson_dir, doc_images.by_macro, doc_images.by_unit
+    )
     from rt.services.enrichment_service import document_blocks
 
     return {

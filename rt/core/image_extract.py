@@ -21,6 +21,7 @@ class ExtractedImage:
     unit_id: Optional[str] = None
     has_figures: bool = True
     mapping_skip: bool = False
+    title: Optional[str] = None
 
 
 def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional[Callable[[int, int], None]] = None) -> List[ExtractedImage]:
@@ -49,6 +50,7 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
     results = []
     mat = fitz.Matrix(zoom, zoom)
     from rt.core.material_page_filter import cleaned_page_texts, few_words, pdf_pages_have_figures
+    from rt.core.materials import _pdf_page_title
     texts = cleaned_page_texts([page.get_text().strip() for page in doc])
     figures = pdf_pages_have_figures(doc)
     for i in range(doc.page_count):
@@ -64,6 +66,7 @@ def extract_images_from_pdf(pdf_path: str, zoom: float = 2.0, progress: Optional
             file_fingerprint=fingerprint,
             has_figures=has_figures,
             mapping_skip=sparse and not has_figures,
+            title=_pdf_page_title(page),
         ))
         if progress:
             progress(i + 1, doc.page_count)
@@ -93,7 +96,7 @@ def _archived_pages(sha, basename, count):
         results.append(ExtractedImage(
             image_bytes=data, source_label=f"pdf:{basename}#{page['numero']}", text=text or '',
             page_number=page['numero'], file_fingerprint=sha, has_figures=page['has_figures'],
-            mapping_skip=bool(page.get('mapping_skip'))))
+            mapping_skip=bool(page.get('mapping_skip')), title=page.get('titolo')))
     return results
 
 
@@ -114,6 +117,7 @@ def _archive_pages(pdf_path, sha, results, texts):
                 pages.append({'numero': image.page_number, 'testo': text, 'immagini': [name],
                               'mapping_text': text, 'has_figures': image.has_figures,
                               'mapping_skip': image.mapping_skip,
+                              **({'titolo': image.title} if image.title else {}),
                               **({'vision_pending': True} if not image.text and not image.mapping_skip else {})})
             write_json(os.path.join(folder, 'pages.json'), {'impronta': sha, 'pages': pages})
             _write_page_entries(folder, pages)
@@ -162,8 +166,14 @@ def update_archived_descriptions(images, descriptions):
                 described = description_text(description.get('slide_title'), description.get('ocr_text'),
                                              description.get('visual_elements'))
                 if page and page.get('vision_pending') and described:
+                    from rt.core.captions import caption_from_description
                     page.pop('vision_pending')
-                    page.update(testo='\n'.join(filter(None, [page.get('testo'), described])), mapping_text=described)
+                    titolo = caption_from_description(description)
+                    page.update(
+                        testo='\n'.join(filter(None, [page.get('testo'), described])),
+                        mapping_text=described,
+                        **({'titolo': titolo} if titolo else {}),
+                    )
                     changed = True
             if changed:
                 write_json(path, data)

@@ -14,6 +14,7 @@ from contextvars import copy_context
 from contextlib import contextmanager
 import logging
 
+from rt.core.captions import clean_caption, page_alt
 from rt.core.idempotency import compute_file_sha256
 from rt.core.lesson_lock import lesson_lock
 from rt.storage import fs
@@ -65,7 +66,12 @@ def _describe(data, lesson_dir, mock):
         system_prompt=effective_system('image_description', IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT),
         response_model=ImageDescription, job_name='image_description', lesson_dir=lesson_dir,
         image_data_url='data:image/png;base64,' + base64.b64encode(data).decode('ascii'))
-    return description_text(result.slide_title, result.ocr_text, result.visual_elements)
+    text = description_text(result.slide_title, result.ocr_text, result.visual_elements)
+    return {
+        'text': text,
+        'slide_title': result.slide_title or '',
+        'alt_text': result.alt_text or '',
+    }
 
 
 def description_text(title, ocr, visuals):
@@ -184,6 +190,49 @@ def _quicklook_slides(real, count):
                 document.close()
 
 
+def _slide_title(slide):
+    title_shape = getattr(slide.shapes, 'title', None)
+    if title_shape is not None and getattr(title_shape, 'text', None):
+        return clean_caption(title_shape.text)
+    return None
+
+
+def _pdf_page_title(page):
+    """Riga col carattere più grande nel 40% alto della pagina (3-120 caratteri, non solo numeri)."""
+    height = getattr(page.rect, 'height', 0) or 0
+    if height <= 0:
+        return None
+    y_limit = 0.4 * height
+    page_dict = page.get_text('dict') or {}
+    candidates = []
+    top_sizes = []
+    for block in page_dict.get('blocks', []):
+        if block.get('type') != 0:
+            continue
+        for line in block.get('lines', []):
+            bbox = line.get('bbox') or (0, 0, 0, 0)
+            if bbox[1] > y_limit:
+                continue
+            spans = [s for s in line.get('spans', []) if str(s.get('text') or '').strip()]
+            if not spans:
+                continue
+            line_text = ' '.join(''.join(str(s.get('text') or '') for s in line.get('spans', [])).split())
+            if not (3 <= len(line_text) <= 120) or not any(ch.isalpha() for ch in line_text):
+                continue
+            line_size = max(float(s.get('size') or 0) for s in spans)
+            top_sizes.append(line_size)
+            cleaned = clean_caption(line_text)
+            if cleaned:
+                candidates.append((line_size, -bbox[1], cleaned))
+    if not candidates:
+        return None
+    best_size, _neg_y, best_title = max(candidates)
+    uniform_top = (max(top_sizes) - min(top_sizes)) < 0.5
+    if (len(top_sizes) >= 3 and uniform_top) or (len(top_sizes) >= 2 and uniform_top and best_size <= 13):
+        return None
+    return best_title
+
+
 def _slide_content(slide):
     texts, images = [], []
     def visit(shapes):
@@ -246,6 +295,7 @@ def _filter_slide_images(slide, slide_width=None, slide_height=None):
 
 def _document_pages(real, images=False):
     """Circa 400 parole, paragrafi indivisibili; ogni titolo apre una pagina."""
+    import re
     blocks = []
     if real.lower().endswith(('.txt', '.md')):
         with open(real, 'rb') as stream:
@@ -254,8 +304,13 @@ def _document_pages(real, images=False):
             text = data.decode('utf-8-sig')
         except UnicodeDecodeError:
             text = data.decode('cp1252')
-        import re
-        blocks = [(p.strip(), False, []) for p in re.split(r'\n\s*\n', text) if p.strip()]
+        for p in re.split(r'\n\s*\n', text):
+            stripped = p.strip()
+            if not stripped:
+                continue
+            first_line = stripped.splitlines()[0].strip()
+            heading = bool(re.match(r'^#{1,6}\s+\S', first_line))
+            blocks.append((stripped, heading, []))
     else:
         from docx import Document
         from docx.table import Table
@@ -280,18 +335,21 @@ def _document_pages(real, images=False):
                         if rid and rid in document.part.related_parts:
                             pictures.append(_png_image(document.part.related_parts[rid].blob))
                 blocks.append(('\n'.join(' | '.join(c.text for c in row.cells) for row in table.rows), False, pictures))
-    texts, pictures, words = [], [], 0
+    texts, pictures, words, page_title = [], [], 0, None
     for text, heading, imgs in blocks:
         count = len(text.split())
         if texts and (heading or words + count > 400):
-            yield '\n\n'.join(texts), pictures, bool(pictures)
-            texts, pictures, words = [], [], 0
+            yield '\n\n'.join(texts), pictures, bool(pictures), page_title
+            texts, pictures, words, page_title = [], [], 0, None
+        if not texts and heading and text.strip():
+            heading_line = text.strip().splitlines()[0].strip()
+            page_title = clean_caption(re.sub(r'^#{1,6}\s+', '', heading_line))
         if text.strip():
             texts.append(text)
         pictures.extend(imgs)
         words += count
     if texts or pictures:
-        yield '\n\n'.join(texts), pictures, bool(pictures)
+        yield '\n\n'.join(texts), pictures, bool(pictures), page_title
 
 
 def _extract(real):
@@ -304,7 +362,7 @@ def _extract(real):
         with fitz.open(real) as document:
             figures = pdf_pages_have_figures(document)
             for page, has_figures in zip(document, figures):
-                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], has_figures
+                yield page.get_text().strip(), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], has_figures, _pdf_page_title(page)
     elif suffix == '.pptx':
         from pptx import Presentation
         presentation = Presentation(real)
@@ -317,10 +375,10 @@ def _extract(real):
                     pictures = [render(i)]
                 else:
                     pictures = _filter_slide_images(slide, sw, sh)
-                yield text, pictures, bool(pictures)
+                yield text, pictures, bool(pictures), _slide_title(slide)
     else:
         with open(real, 'rb') as stream:
-            yield '', [_png_image(stream.read())], True
+            yield '', [_png_image(stream.read())], True, None
 
 
 def _extract_text(real):
@@ -331,13 +389,13 @@ def _extract_text(real):
         import pymupdf as fitz
         with fitz.open(real) as document:
             for page in document:
-                yield page.get_text().strip(), [], False
+                yield page.get_text().strip(), [], False, _pdf_page_title(page)
     elif suffix == '.pptx':
         from pptx import Presentation
         for slide in Presentation(real).slides:
-            yield _slide_content(slide)[0], [], False
+            yield _slide_content(slide)[0], [], False, _slide_title(slide)
     else:
-        yield '', [], False
+        yield '', [], False, None
 
 
 def _extract_images(real, previous):
@@ -349,7 +407,7 @@ def _extract_images(real, previous):
             figures = pdf_pages_have_figures(document)
             for i, page in enumerate(document):
                 old = previous[i] if i < len(previous) else {}
-                yield old.get('testo', ''), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], figures[i]
+                yield old.get('testo', ''), [page.get_pixmap(matrix=fitz.Matrix(2, 2)).tobytes('png')], figures[i], old.get('titolo') or _pdf_page_title(page)
     else:
         yield from _extract(real)
 
@@ -446,7 +504,9 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         previous = read_json(os.path.join(folder, 'pages.json'), {}).get('pages', [])
         extraction = (_extract_images(real, previous) if upgrading and previous else _extract(real)) if extract != 'testo' else _extract_text(real)
         crops = (load_meta(source.impronta) or {}).get('ritagli', {})
-        for number, (text, images, has_figures) in enumerate(extraction, 1):
+        for number, item in enumerate(extraction, 1):
+            text, images, has_figures = item[:3]
+            page_title = item[3] if len(item) > 3 else None
             if ctx:
                 ctx.check_cancelled()
             filenames = []
@@ -458,10 +518,10 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                             stream.write(data)
                         fs.replace(os.path.join(folder, relative) + '.tmp', os.path.join(folder, relative))
                     filenames.append(relative)
-            extracted.append((text, filenames, has_figures))
+            extracted.append((text, filenames, has_figures, page_title))
     if not extracted:
         raise ValueError('Il materiale non ha pagine')
-    cleaned = cleaned_page_texts([text for text, _, _ in extracted])
+    cleaned = cleaned_page_texts([text for text, _, _, _ in extracted])
     pages = [None] * len(extracted)
     pending = []
     completed = 0
@@ -474,7 +534,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
             fs.replace(entry_path + '.tmp', entry_path)
         return entry
 
-    for number, (text, filenames, has_figures) in enumerate(extracted, 1):
+    for number, (text, filenames, has_figures, page_title) in enumerate(extracted, 1):
         entry_path = os.path.join(folder, f'page-{number}.json')
         if not refresh and fs.isfile(entry_path):
             with fs.open(entry_path, encoding='utf-8') as stream:
@@ -483,6 +543,8 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 if upgrading:
                     saved['immagini'] = filenames
                     saved['has_figures'] = has_figures
+                    if page_title and not saved.get('titolo'):
+                        saved['titolo'] = page_title
                     saved['mapping_skip'] = few_words(saved.get('mapping_text', saved.get('testo', ''))) and not has_figures
                     if few_words(saved.get('mapping_text', saved.get('testo', ''))) and has_figures and filenames:
                         if mode == 'solo_immagini' or (wanted_pages is not None and number not in wanted_pages):
@@ -502,6 +564,8 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
         entry = {'numero': number, 'testo': text, 'immagini': filenames,
                  'mapping_text': mapping_text, 'has_figures': has_figures,
                  'mapping_skip': sparse and not has_figures}
+        if page_title:
+            entry['titolo'] = page_title
         if sparse and has_figures and filenames and (mode == 'solo_immagini' or (
                 wanted_pages is not None and number not in wanted_pages)):
             # Descritta solo quando una lezione la sceglie: niente page-N.json, resta da fare.
@@ -522,13 +586,23 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
     failures = []
 
     def describe(entry):
-        texts, seconds = [], 0.0
+        texts, slide_titles, alt_texts, seconds = [], [], [], 0.0
         try:
             from rt.core.archive import read_json, write_json, archive_lock
             reusable = read_json(os.path.join(folder, 'descrizione.json')) if file_type(source.file) == 'immagine' else None
             if reusable and not refresh:
                 described = description_text(reusable.get('slide_title'), reusable.get('ocr_text'), reusable.get('visual_elements'))
-                return save(dict(entry, testo=described, mapping_text=described)), 0, 0.0
+                first_line = next((line for line in described.splitlines() if line.strip()), '')
+                titolo = (
+                    clean_caption(reusable.get('titolo'))
+                    or clean_caption(reusable.get('slide_title'))
+                    or clean_caption(reusable.get('alt_text'))
+                    or clean_caption(first_line)
+                )
+                updated = dict(entry, testo=described, mapping_text=described)
+                if titolo:
+                    updated['titolo'] = titolo
+                return save(updated), 0, 0.0
             for relative in entry['immagini']:
                 if stopped.is_set():
                     raise RunCancelled('Lettura dei materiali interrotta')
@@ -537,13 +611,32 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 with fs.open(os.path.join(folder, relative), 'rb') as stream:
                     data = stream.read()
                 before = time.monotonic()
-                texts.append(_describe(data, lesson_dir, mock))
+                res = _describe(data, lesson_dir, mock)
                 seconds += time.monotonic() - before
+                if isinstance(res, dict):
+                    texts.append(str(res.get('text') or ''))
+                    if res.get('slide_title'):
+                        slide_titles.append(res['slide_title'])
+                    if res.get('alt_text'):
+                        alt_texts.append(res['alt_text'])
+                else:
+                    texts.append(str(res))
             described = '\n'.join(texts)
+            first_slide_title = slide_titles[0] if slide_titles else ''
+            first_alt_text = alt_texts[0] if alt_texts else ''
             if file_type(source.file) == 'immagine':
+                # ocr_text contiene già il titolo: lo salvo a parte come 'titolo', non come slide_title,
+                # così il riuso (che unisce slide_title e ocr_text) non lo duplica nel testo.
+                payload = {'ocr_text': described}
+                saved_title = clean_caption(first_slide_title) or clean_caption(first_alt_text)
+                if saved_title:
+                    payload['titolo'] = saved_title
                 with archive_lock(source.impronta):
-                    write_json(os.path.join(folder, 'descrizione.json'), {'ocr_text': described})
+                    write_json(os.path.join(folder, 'descrizione.json'), payload)
+            titolo = clean_caption(first_slide_title) or clean_caption(first_alt_text) or entry.get('titolo')
             entry = dict(entry, testo='\n'.join(filter(None, [entry['testo'], described])), mapping_text=described)
+            if titolo:
+                entry['titolo'] = titolo
             return save(entry), len(texts), seconds
         except BaseException as error:
             if not isinstance(error, RunCancelled):

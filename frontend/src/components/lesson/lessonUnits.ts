@@ -194,22 +194,20 @@ function handleImageClick(view: EditorView, lessonId: number, img: HTMLImageElem
     while ((match = imgRe.exec(docText)) !== null) {
       const imgAlt = match[1]
       const imgName = match[2]
-      const { docName, pageNumber } = parseImageAlt(imgAlt)
       if (imgName === name && activeIdx === 0 && allImages.length > 0) {
         activeIdx = allImages.length
       }
       allImages.push({
         src: imageUrl(lessonId, imgName),
         alt: imgAlt,
-        docName,
-        pageNumber,
+        ...parseImageAlt(imgAlt),
       })
     }
     if (allImages.length === 0) {
       allImages.push({
         src: img.src,
         alt: img.alt,
-        docName: parseImageAlt(img.alt).docName,
+        ...parseImageAlt(img.alt),
       })
     }
     window.dispatchEvent(

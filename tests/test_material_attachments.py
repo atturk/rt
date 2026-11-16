@@ -27,8 +27,9 @@ def test_clip_attaches_images_never_ocr_and_off_preserves_existing_images(multi_
     assert len(attached[mid]) == 2
     assert all('ocr_text' not in image for image in attached[mid])
     docs = render_lesson_documents(lesson)
-    # OCR resta contesto, non compare in didascalie o allegati del documento.
-    assert 'OCR SECRET CONTEXT' not in str(docs)
+    # Il testo della pagina resta contesto: nel documento entra al più il titolo (prima riga, didascalia).
+    assert 'processi cellulari' not in str(docs)
+    assert '![OCR SECRET CONTEXT — doc.pdf, pagina 1]' in str(docs)
     update_info_yaml(lesson_path(lesson, 'info.yaml'), {'allega_materiali': False})
     attach_material_pages(lesson, outline, mock=True)
     assert images_for_document(lesson, outline)[0][mid] == [{'filename': 'assets/images/old.png', 'alt_text': 'Existing'}]
