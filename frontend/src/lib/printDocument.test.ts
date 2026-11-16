@@ -70,9 +70,9 @@ describe('transformPrintDom', () => {
 
     const secondCards = grids[1].querySelectorAll('.pdf-image-card')
     expect(secondCards[0].querySelector('.pdf-image-title')?.textContent).toBe('Schema neurone')
-    expect(secondCards[0].querySelector('.pdf-image-ref')?.textContent).toBe('foto')
+    expect(secondCards[0].querySelector('.pdf-image-ref')).toBeNull()
     expect(secondCards[1].querySelector('.pdf-image-title')?.textContent).toBe('Figura 2')
-    expect(secondCards[1].querySelector('.pdf-image-ref')?.textContent).toBe('Slide · p. 12')
+    expect(secondCards[1].querySelector('.pdf-image-ref')?.textContent).toBe('p. 12')
   })
 
   it('3 immagini: due documenti diversi mostrano nome breve + p. N e foto singola mostra solo il titolo', () => {

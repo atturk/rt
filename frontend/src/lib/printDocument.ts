@@ -30,7 +30,7 @@ export function buildPrintCaption(
   const usedUntitled = !parsed.caption
   const title = parsed.caption || `Figura ${nextFigureNumber}`
   const parts: string[] = []
-  if (showDocName && parsed.docName) {
+  if (showDocName && parsed.docName && parsed.pageNumber !== undefined) {
     parts.push(shortDocName(parsed.docName))
   }
   if (parsed.pageNumber !== undefined) {
@@ -84,7 +84,10 @@ export function transformPrintDom(root: HTMLElement) {
       return
     }
 
-    const docNames = new Set(imgs.map((img) => parseImageAlt(img.alt || '').docName).filter(Boolean))
+    // Solo le pagine di documenti contano: le foto singole non mostrano mai il nome del file.
+    const docNames = new Set(
+      imgs.map((img) => parseImageAlt(img.alt || '')).filter((p) => p.pageNumber !== undefined).map((p) => p.docName),
+    )
     const showDocName = docNames.size > 1
 
     const grid = document.createElement('div')

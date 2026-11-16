@@ -122,8 +122,8 @@ def test_vision_description_saves_and_reuses_title_and_legacy_image_cache(tmp_pa
     pages_a = material_pages(lesson_a, src_a)
     assert pages_a[0]["titolo"] == "Potenziale del potassio"
     desc_json = archive.read_json(os.path.join(archive.entry_dir(src_a.impronta), "descrizione.json"))
-    assert desc_json["slide_title"] == "Potenziale del potassio"
-    assert desc_json["alt_text"] == "Grafico potenziale di membrana"
+    assert desc_json["titolo"] == "Potenziale del potassio"
+    assert "slide_title" not in desc_json
 
     # 2. slide_title == 'N/A' -> ripiega su alt_text
     monkeypatch.setattr(

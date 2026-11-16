@@ -585,7 +585,8 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
                 described = '\n'.join(str(reusable.get(key) or '') for key in ('slide_title', 'ocr_text', 'visual_elements'))
                 first_line = next((line for line in described.splitlines() if line.strip()), '')
                 titolo = (
-                    clean_caption(reusable.get('slide_title'))
+                    clean_caption(reusable.get('titolo'))
+                    or clean_caption(reusable.get('slide_title'))
                     or clean_caption(reusable.get('alt_text'))
                     or clean_caption(first_line)
                 )
@@ -615,11 +616,12 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
             first_slide_title = slide_titles[0] if slide_titles else ''
             first_alt_text = alt_texts[0] if alt_texts else ''
             if file_type(source.file) == 'immagine':
+                # ocr_text contiene già il titolo: lo salvo a parte come 'titolo', non come slide_title,
+                # così il riuso (che unisce slide_title e ocr_text) non lo duplica nel testo.
                 payload = {'ocr_text': described}
-                if first_slide_title:
-                    payload['slide_title'] = first_slide_title
-                if first_alt_text:
-                    payload['alt_text'] = first_alt_text
+                saved_title = clean_caption(first_slide_title) or clean_caption(first_alt_text)
+                if saved_title:
+                    payload['titolo'] = saved_title
                 with archive_lock(source.impronta):
                     write_json(os.path.join(folder, 'descrizione.json'), payload)
             titolo = clean_caption(first_slide_title) or clean_caption(first_alt_text) or entry.get('titolo')
