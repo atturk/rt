@@ -168,11 +168,13 @@ def render_rielaborato_md(
         
         macro_id_str = str(macro.id)
         macro_imgs = (images_by_macro or {}).get(macro_id_str, [])
+        # Anche le pagine non collocate vanno nel gruppo sotto il titolo della sezione (dopo
+        # quelle collocate): in fondo alla sezione l'app non le raggruppa sotto l'allegato.
         placed_macro_imgs = [img for img in macro_imgs if not img.get("unplaced")]
-        unplaced_macro_imgs = [img for img in macro_imgs if img.get("unplaced")]
+        placed_macro_imgs += [img for img in macro_imgs if img.get("unplaced")]
         if placed_macro_imgs:
             for img in placed_macro_imgs:
-                alt = img.get("alt_text", "")
+                alt = img.get("alt_text") or ("Materiale non collocato" if img.get("unplaced") else "")
                 lines.append(f"![{alt}]({img['filename']})")
                 lines.append("")
         
@@ -206,12 +208,7 @@ def render_rielaborato_md(
             if enrichment_by_unit:
                 lines.extend(enrichment_by_unit.get(str(unit.id), []))
 
-        if unplaced_macro_imgs:
-            for img in unplaced_macro_imgs:
-                alt = img.get("alt_text") or "Materiale non collocato"
-                lines.append(f"![{alt}]({img['filename']})")
-                lines.append("")
-            
+
     return "\n".join(lines)
 
 
