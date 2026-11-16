@@ -94,7 +94,12 @@ def test_pdf_text_mapping_preserves_every_placement_context_and_history(lesson, 
     assert placement['units']['1.2'] == [hashes[3], by_page['pdf:organelli.pdf#2']]
     assert by_page['pdf:organelli.pdf#3'] not in {h for hs in placement['units'].values() for h in hs}
     for source, h in by_page.items():
-        assert descriptions[h]['alt_text'] == f"organelli.pdf, pagina {source.rsplit('#', 1)[1]}"
+        page_num = source.rsplit('#', 1)[1]
+        expected_ref = f"organelli.pdf, pagina {page_num}"
+        if page_num == '3':
+            assert descriptions[h]['alt_text'] == f"Astronomia orbite galassie pianeti — {expected_ref}"
+        else:
+            assert descriptions[h]['alt_text'] == expected_ref
     cache = Path(lesson_path(lesson, mapping.CACHE_FILE)).read_bytes()
     run_add_images(lesson, input_path=path, force_mock=True)
     assert load_image_placement(lesson) == placement
@@ -125,7 +130,7 @@ def test_blank_pdf_and_single_photo_use_vision_and_keep_unassigned_media(lesson,
     run_add_images(lesson, input_path=str(photo), force_mock=True)
     assert calls == ['image_description', 'image_description']
     descriptions = load_image_descriptions(lesson)
-    assert {d['alt_text'] for d in descriptions.values()} == {'senza-testo.pdf, pagina 1', 'foto.png, pagina 1'}
+    assert {d['alt_text'] for d in descriptions.values()} == {'Mitocondri — senza-testo.pdf, pagina 1', 'Mitocondri — foto.png'}
     assert len(load_image_placement(lesson)['units']['1.1']) == 2
     run_add_images(lesson, input_path=str(photo), force_mock=True)
     assert len(calls) == 2

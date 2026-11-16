@@ -393,12 +393,18 @@ def add_to_media(sha, lesson_id, pages):
             contents = [(n, page_bytes(sha, n)) for n in pages]
             descriptions = load_image_descriptions(directory)
             for n, data in contents:
+                from rt.core.captions import caption_from_description, clean_caption, page_alt
                 image_hash = compute_image_hash(data)
                 relative = save_raw_image(directory, data, image_hash)
                 description = archive.read_json(os.path.join(archive.entry_dir(image_hash), 'descrizione.json'), {})
                 page = next((p for p in archive.read_json(os.path.join(archive.entry_dir(meta['impronta']), 'pages.json'), {}).get('pages', []) if p['numero'] == n), {})
+                single_page = archive.file_type(meta['nome']) == 'immagine'
+                titolo = page.get('titolo') or caption_from_description(description)
+                if not titolo and single_page and page.get('testo'):
+                    first_line = next((l for l in str(page['testo']).splitlines() if l.strip()), '')
+                    titolo = clean_caption(first_line)
                 description = {**description, 'ocr_text': description.get('ocr_text') or page.get('testo', ''), 'filename': relative, 'source': f'archive:{meta["impronta"]}:{n}',
-                    'alt_text': f'{meta["nome"]}, pagina {n}'}
+                    'alt_text': page_alt(meta['nome'], n, titolo, single_page=single_page)}
                 descriptions.setdefault(image_hash, description)
                 results.append(_editor_image(lesson_id, descriptions[image_hash]))
             save_image_descriptions(directory, descriptions)

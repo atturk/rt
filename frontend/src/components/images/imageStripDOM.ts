@@ -64,6 +64,9 @@ export function buildImageStripDOM(images: ImageItem[], options?: StripOptions):
     }
     const pageLabel = img.pageNumber !== undefined ? `pagina ${img.pageNumber}` : `${idx + 1}`
     thumb.setAttribute('aria-label', `Apri ${pageLabel}`)
+    if (img.caption) {
+      mountDomTooltip(thumb, img.caption)
+    }
 
     const imageEl = document.createElement('img')
     imageEl.src = img.src
@@ -315,6 +318,7 @@ export function mountDocumentImageStrips(
     meta.prepend(button)
     cleanups.push(() => {
       unmountDomTooltip(button)
+      slot.querySelectorAll<HTMLElement>('.thumb').forEach(unmountDomTooltip)
       button.remove()
       if (createdMeta) meta.remove()
       slot.replaceWith(...originals)

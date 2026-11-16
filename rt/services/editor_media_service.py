@@ -118,11 +118,15 @@ def _copy_material_page(lesson_dir: str, source_id: str, page_number: int) -> tu
     image_hash = compute_image_hash(content)
     descriptions = load_image_descriptions(lesson_dir)
     if image_hash not in descriptions:
+        from rt.core.archive import file_type
+        from rt.core.captions import page_alt
         relative = save_raw_image(lesson_dir, content, image_hash, ext='.png')
+        titolo = page.get('titolo')
         descriptions[image_hash] = {
             'filename': relative, 'source': f'material:{source.id}:{page_number}',
-            'slide_title': '', 'ocr_text': page.get('testo', '') or '', 'visual_elements': [],
-            'summary_keywords': [], 'alt_text': f'{os.path.basename(source.file)}, pagina {page_number}',
+            'slide_title': titolo or '', 'ocr_text': page.get('testo', '') or '', 'visual_elements': [],
+            'summary_keywords': [],
+            'alt_text': page_alt(source.file, page_number, titolo, single_page=file_type(source.file) == 'immagine'),
         }
         save_image_descriptions(lesson_dir, descriptions)
     return image_hash, descriptions[image_hash]
@@ -313,12 +317,16 @@ def crop_image(lesson_id: int, lesson_dir: str, image_name: str, rect: list[floa
             crop_hash = compute_image_hash(crop_bytes)
 
             # La pagina d'origine: il ritaglio di un ritaglio conta sulla stessa pagina.
+            from rt.core.captions import ALT_SEPARATOR, clean_caption
             root = orig.get('crop_root') or orig.get('crop_of') or orig_hash
             root_entry = descriptions.get(root, orig)
+            title = clean_caption(root_entry.get('slide_title'))
+            if not title and ALT_SEPARATOR in str(root_entry.get('alt_text') or ''):
+                title = clean_caption(str(root_entry['alt_text']).rsplit(ALT_SEPARATOR, 1)[0])
             match = re.search(r':(\d+)$', str(root_entry.get('source') or '')) or \
                 re.search(r'#(\d+)$', str(root_entry.get('source') or '')) or \
                 re.search(r'pagina\s+(\d+)', str(root_entry.get('alt_text') or ''), re.IGNORECASE)
-            label = f'Pag. {match.group(1)}' if match else (root_entry.get('alt_text') or 'Immagine')
+            label = title or (f'Pag. {match.group(1)}' if match else (root_entry.get('alt_text') or 'Immagine'))
 
             if crop_hash not in descriptions:
                 if replace:

@@ -129,4 +129,39 @@ describe('ImageViewer', () => {
     expect(img).not.toBeNull()
     expect(img.src).toContain('/media/static.png')
   })
+
+  it('mostra il titolo della slide in evidenza e sotto il riferimento discreto', () => {
+    const captionedImages: ImageItem[] = [
+      {
+        src: '/img1.png',
+        alt: 'Ipossia cellulare — Patologia.pdf, pagina 4',
+        caption: 'Ipossia cellulare',
+        docName: 'Patologia.pdf',
+        pageNumber: 4,
+      },
+      {
+        src: '/img2.png',
+        alt: 'Schema sinapsi — foto.jpg',
+        caption: 'Schema sinapsi',
+        docName: 'foto.jpg',
+      },
+    ]
+
+    render(<ImageViewer />)
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('rt-image-viewer-open', {
+          detail: { images: captionedImages, index: 0 },
+        }),
+      )
+    })
+
+    const dialog = screen.getByRole('dialog', { name: 'Visore immagini' })
+    expect(dialog.querySelector('.cap-title')?.textContent).toBe('Ipossia cellulare')
+    expect(dialog.querySelector('.cap-ref')?.textContent).toBe('Patologia.pdf, pagina 4')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Successiva' }))
+    expect(dialog.querySelector('.cap-title')?.textContent).toBe('Schema sinapsi')
+    expect(dialog.querySelector('.cap-ref')?.textContent).toBe('foto.jpg')
+  })
 })

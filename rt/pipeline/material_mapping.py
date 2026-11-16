@@ -6,7 +6,8 @@ Assegnazione delle pagine dei materiali alle sottounità didattiche (MF1).
 - MF1b: Valutazione sì/no tramite Jev Decision API con aggregazione a macro-unità (>= 3).
 - MF1c-MF1e: Integrazione nella pipeline prima della rielaborazione.
 """
-from rt.core.archive import page_image_path
+from rt.core.archive import file_type, page_image_path
+from rt.core.captions import page_alt
 
 import json
 import math
@@ -609,7 +610,7 @@ def assign_material_pages(
                     descriptions.setdefault(h, {
                         "filename": save_raw_image(lesson_dir, data, h),
                         "source": f"material:{source.id}:{page['numero']}",
-                        "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                        "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                     })["ruolo"] = role
                     append_page_placements(units_placement, macros_placement, h, assigned_units, assigned_macros)
             continue
@@ -645,7 +646,7 @@ def assign_material_pages(
                             descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                                "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })
                             if h not in units_placement.setdefault(target_unit_id, []):
                                 units_placement[target_unit_id].append(h)
@@ -676,7 +677,7 @@ def assign_material_pages(
                             descriptions.setdefault(h, {
                                 "filename": save_raw_image(lesson_dir, data, h),
                                 "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                                "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })["ruolo"] = role
                             placed = (units_found, macros_found) if role == "contenuto" else ([], [])
                 if placed is None:
@@ -719,7 +720,7 @@ def assign_material_pages(
                             desc = descriptions.setdefault(h, {
                                 "filename": fn,
                                 "source": f"material:{source.id}:{page['numero']}",
-                                "alt_text": f"{os.path.basename(source.file)}, pagina {page['numero']}",
+                                "alt_text": page_alt(source.file, page["numero"], page.get("titolo"), single_page=file_type(source.file) == "immagine"),
                             })
                             if page.get("unplaced"):
                                 desc["unplaced"] = True
