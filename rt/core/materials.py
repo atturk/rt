@@ -65,7 +65,16 @@ def _describe(data, lesson_dir, mock):
         system_prompt=effective_system('image_description', IMAGE_DESCRIPTION_SYSTEM_PROMPT_NO_CONTEXT),
         response_model=ImageDescription, job_name='image_description', lesson_dir=lesson_dir,
         image_data_url='data:image/png;base64,' + base64.b64encode(data).decode('ascii'))
-    return '\n'.join(str(value) for value in (result.slide_title, result.ocr_text, result.visual_elements) if value)
+    return description_text(result.slide_title, result.ocr_text, result.visual_elements)
+
+
+def description_text(title, ocr, visuals):
+    """Testo della pagina per il classificatore: le figure come frasi, non come lista Python."""
+    parts = [str(title or ''), str(ocr or '')]
+    for item in visuals or []:
+        item = item if isinstance(item, dict) else getattr(item, '__dict__', {'description': item})
+        parts.append(str(item.get('description') or ''))
+    return '\n'.join(part for part in parts if part.strip())
 
 
 def _soffice():
@@ -518,7 +527,7 @@ def _material_pages(lesson_dir, source, *, mock=False, ctx=None, refresh=False, 
             from rt.core.archive import read_json, write_json, archive_lock
             reusable = read_json(os.path.join(folder, 'descrizione.json')) if file_type(source.file) == 'immagine' else None
             if reusable and not refresh:
-                described = '\n'.join(str(reusable.get(key) or '') for key in ('slide_title', 'ocr_text', 'visual_elements'))
+                described = description_text(reusable.get('slide_title'), reusable.get('ocr_text'), reusable.get('visual_elements'))
                 return save(dict(entry, testo=described, mapping_text=described)), 0, 0.0
             for relative in entry['immagini']:
                 if stopped.is_set():

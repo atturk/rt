@@ -158,7 +158,9 @@ def update_archived_descriptions(images, descriptions):
             for image in pages_images:
                 page = by_number.get(image.page_number)
                 description = descriptions.get(hashlib.sha256(image.image_bytes).hexdigest()) or {}
-                described = '\n'.join(str(description.get(k) or '') for k in ('slide_title', 'ocr_text', 'visual_elements')).strip()
+                from rt.core.materials import description_text
+                described = description_text(description.get('slide_title'), description.get('ocr_text'),
+                                             description.get('visual_elements'))
                 if page and page.get('vision_pending') and described:
                     page.pop('vision_pending')
                     page.update(testo='\n'.join(filter(None, [page.get('testo'), described])), mapping_text=described)
