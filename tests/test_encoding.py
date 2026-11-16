@@ -157,3 +157,13 @@ def test_multiline_display_formulas_and_known_commands():
     assert repair_latex_escapes("\nabla") == "\\nabla"
     assert repair_latex_escapes("\rho") == "\\rho"
 
+
+
+def test_double_escaped_formulas_are_repaired():
+    from rt.core.encoding import repair_latex_escapes
+    # Gemini a volte fa l'escape JSON due volte: "\\mathrm" arriva con due barre.
+    assert repair_latex_escapes(r"$\\mathrm{CaO_2} = 1{,}34 \\times \\mathrm{Hb}$") == r"$\mathrm{CaO_2} = 1{,}34 \times \mathrm{Hb}$"
+    assert repair_latex_escapes(r"$$\\mathrm{A} \\\\ \\mathrm{B}$$") == r"$$\mathrm{A} \\ \mathrm{B}$$"
+    # Un a-capo vero accanto a comandi con barra singola resta com'è.
+    assert repair_latex_escapes(r"$\begin{cases} a \\ b \end{cases}$") == r"$\begin{cases} a \\ b \end{cases}$"
+    assert repair_latex_escapes(r"$x \\\text{y}$") == r"$x \\\text{y}$"

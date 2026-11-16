@@ -110,6 +110,11 @@ _REPAIR_R_IN_MATH = re.compile(
     r"\r(?=(?:ho|ight|angle|ceil|floor)(?![a-zA-Z])|m\{)"
 )
 
+# Formula con tutte le barre raddoppiate (doppia barra + mathrm, times...): il modello ha fatto
+# l'escape JSON due volte e KaTeX legge un a-capo seguito da lettere ("mathrmCaO").
+_SINGLE_BS_COMMAND = re.compile(r"(?<!\\)(?:\\\\)*\\[a-zA-Z]")
+_DOUBLE_BS_COMMAND = re.compile(r"(?<!\\)\\\\[a-zA-Z]")
+
 _INVALID_MATH_COMMANDS = re.compile(r"\\(?:trm|rm|textrm)\s*\{")
 _MATH_PREFIX_REPAIR = re.compile(r"(?<![a-zA-Z\\])ath(rm|bf|it|cal|bb|sf)\{")
 
@@ -119,6 +124,9 @@ def _repair_inside_math(content: str, is_display: bool) -> str:
     content = _CONTROL_IN_MATH.sub(lambda m: _ESC_MAP[m.group(1)], content)
     content = _REPAIR_N_IN_MATH.sub(r"\\n", content)
     content = _REPAIR_R_IN_MATH.sub(r"\\r", content)
+    # 1b. Escape doppio: se nessun comando ha la barra singola, ogni doppia barra torna singola
+    if _DOUBLE_BS_COMMAND.search(content) and not _SINGLE_BS_COMMAND.search(content):
+        content = content.replace("\\\\", "\\")
     # 2. Comandi non validi più comuni: \trm{, \rm{ e \textrm{ dentro una formula diventano \mathrm{
     content = _INVALID_MATH_COMMANDS.sub(r"\\mathrm{", content)
     # 3. Rimette \m davanti a athrm{, athbf{, athit{, athcal{, athbb{, athsf{ non preceduti da lettera o barra
