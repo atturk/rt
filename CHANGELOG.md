@@ -1,5 +1,14 @@
 # Novità di RT
 
+## 4.3.8.2 — 2026-11-17
+
+Il sito di RT e il QR nei PDF.
+
+### Novità
+
+- **QR del sito nei PDF**: nella prima pagina dei PDF esportati, accanto al titolo, c'è un piccolo QR con il logo di RT che porta al sito (atturk.github.io/rt), con la scritta «Rielaborato con RT». È nero su bianco, quindi si legge anche dalle stampe in bianco e nero.
+- **Sito di RT** su GitHub Pages: pagina di presentazione, pagina Scarica che riconosce Mac o Windows e guida online.
+
 ## 4.3.8.1 — 2026-11-10
 
 Correzione urgente per il Mac e la ruota degli stati.
