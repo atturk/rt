@@ -45,7 +45,7 @@ it('definisce gli stili per elenchi puntati, numerati, rientro e annidati nel ta
   expect(styleText).toContain('list-style: circle')
 })
 
-it('nella prima pagina, accanto al titolo, c\'è il QR che porta al sito di RT', () => {
+it('nella prima pagina, accanto al titolo, c\'è il QR che porta al sito di RT', async () => {
   render(
     <MemoryRouter initialEntries={['/stampa/1']}>
       <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
@@ -55,4 +55,7 @@ it('nella prima pagina, accanto al titolo, c\'è il QR che porta al sito di RT',
   expect(qr).toHaveAttribute('href', RT_SITE_URL)
   expect(qr.closest('header')).toContainElement(screen.getByRole('heading', { level: 1 }))
   expect(qr).toHaveTextContent(rtSiteLabel())
+  // Lascia finire l'impaginazione: un lavoro di React rimasto in coda dopo la fine del file
+  // scatta senza jsdom («window is not defined») nel file di test successivo.
+  await waitFor(() => expect(document.body.dataset.ready).toBe('1'))
 })
