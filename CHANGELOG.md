@@ -1,5 +1,30 @@
 # Novità di RT
 
+## 4.3.9b2 — 2026-11-18
+
+Beta che allinea la 4.3.9 alla 4.3.8.2: chi è sulla 4.3.9b1 riceve anche il QR del sito nei PDF.
+
+### Novità
+
+- **QR del sito nei PDF** (dalla 4.3.8.2): nella prima pagina dei PDF esportati, accanto al titolo, un piccolo QR con il logo di RT porta al sito (atturk.github.io/rt).
+
+## 4.3.9b1 — 2026-11-17
+
+Beta su immagini dei materiali, didascalie e formule.
+
+### Novità
+
+- **Didascalie chiare**: le immagini prese dai materiali mostrano il titolo della slide seguito da file e pagina («Titolo — file, pagina N»). Nel visore il titolo è in evidenza e il riferimento è in grigio; nel PDF stampato la didascalia va su due righe. Le lezioni già fatte si aggiornano alla prossima costruzione.
+- **Collocazione delle slide più pulita**: le slide di un'altra lezione (fuori tema) non finiscono più nella lezione come «non collocate»; indici e copertine restano fuori; due foto della stessa slide finiscono nello stesso posto. Ogni pagina lascia una riga 📎 in api.log con candidate, punteggi ed esito.
+- **Nuova lezione**: la barra delle impostazioni di una fonte va a capo invece di uscire dal riquadro.
+
+### Correzioni
+
+- Le pagine dei materiali non collocate compaiono nel gruppo immagini della loro sezione, non più sciolte in fondo.
+- Le formule LaTeX con le barre raddoppiate dal modello (per esempio «mathrmCaO») si leggono di nuovo bene. Le lezioni già salvate vanno rigenerate.
+- Il testo delle figure passato al classificatore è scritto come frasi, non come lista grezza.
+- Nel log, una foto già letta dice «già letta in precedenza» invece di «Vision 0 chiamate».
+
 ## 4.3.8.2 — 2026-11-17
 
 Il sito di RT e il QR nei PDF.

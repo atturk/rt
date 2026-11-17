@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+import * as domTooltip from '@/components/ui/dom-tooltip'
 import { buildImageStripDOM, mountDocumentImageStrips } from './imageStripDOM'
 
 describe('imageStripDOM', () => {
   it('costruisce solo miniature, badge e pulsanti di scorrimento', () => {
+    const tooltipSpy = vi.spyOn(domTooltip, 'mountDomTooltip')
     const images = [
-      { src: '/img1.png', alt: 'Doc.pdf, pagina 1', docName: 'Doc.pdf', pageNumber: 1 },
+      { src: '/img1.png', alt: 'Ipossia — Doc.pdf, pagina 1', caption: 'Ipossia', docName: 'Doc.pdf', pageNumber: 1 },
       { src: '/img2.png', alt: 'Doc.pdf, pagina 2', docName: 'Doc.pdf', pageNumber: 2 },
     ]
     const strip = buildImageStripDOM(images)
@@ -18,7 +20,12 @@ describe('imageStripDOM', () => {
 
     const firstThumb = thumbs[0] as HTMLButtonElement
     expect(firstThumb.getAttribute('aria-label')).toBe('Apri pagina 1')
+    expect(tooltipSpy).toHaveBeenCalledWith(firstThumb, 'Ipossia')
     expect(firstThumb.querySelector('.pg')?.textContent).toBe('p. 1')
+    const secondThumb = thumbs[1] as HTMLButtonElement
+    expect(tooltipSpy).toHaveBeenCalledTimes(1)
+    expect(secondThumb.querySelector('.pg')?.textContent).toBe('p. 2')
+    tooltipSpy.mockRestore()
   })
 
   it('invia l’evento di apertura del visore al clic su una miniatura', () => {

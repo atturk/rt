@@ -247,10 +247,24 @@ export function PrintLessonPage() {
         }
         .pdf-image-caption {
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          font-size: 8pt;
-          color: #6b7280;
+          font-size: 8.5pt;
+          color: #111827;
           text-align: center;
           margin-top: 2mm;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.5mm;
+        }
+        .pdf-image-title {
+          display: block;
+          line-height: 1.3;
+        }
+        .pdf-image-ref {
+          display: block;
+          font-size: 7.5pt;
+          color: #6b7280;
+          line-height: 1.2;
         }
       `}</style>
 

@@ -1,6 +1,7 @@
 export type ImageItem = {
   src: string
   alt: string
+  caption?: string
   docName: string
   pageNumber?: number
   from?: number
@@ -8,23 +9,39 @@ export type ImageItem = {
 }
 
 /**
- * Estrae il nome del documento e il numero di pagina dal testo alternativo dell'immagine.
+ * Estrae didascalia opzionale, nome del documento e numero di pagina dal testo alternativo.
+ * Separatore tra titolo e riferimento: " — " (spazio, trattino lungo, spazio); divide sull'ULTIMO.
  * Esempi:
+ * - "Cascata — 4. Emostasi.pdf, pagina 3" -> { caption: "Cascata", docName: "4. Emostasi.pdf", pageNumber: 3 }
  * - "4. Emostasi coagulazione trombosi embolia.pdf, pagina 3" -> { docName: "4. Emostasi...", pageNumber: 3 }
- * - "Documento.pdf, p. 12" -> { docName: "Documento.pdf", pageNumber: 12 }
- * - "Documento.pdf, pag. 5" -> { docName: "Documento.pdf", pageNumber: 5 }
+ * - "Schema — foto.jpg" -> { caption: "Schema", docName: "foto.jpg" }
  * - "Schema fisiologico" -> { docName: "Schema fisiologico" }
  */
-export function parseImageAlt(alt: string): { docName: string; pageNumber?: number } {
+export function parseImageAlt(alt: string): { caption?: string; docName: string; pageNumber?: number } {
   const clean = alt.replace(/[\r\n]+/g, ' ').trim()
-  const match = /^(.*?)(?:,\s*(?:pagina|pag\.|p\.)\s*(\d+))$/i.exec(clean)
+  const sepIndex = clean.lastIndexOf(' — ')
+  let caption: string | undefined
+  let rest = clean
+  if (sepIndex > 0) {
+    const candidate = clean.slice(0, sepIndex).trim()
+    const after = clean.slice(sepIndex + 3).trim()
+    if (candidate && after) {
+      caption = candidate
+      rest = after
+    }
+  }
+  const match = /^(.*?)(?:,\s*(?:pagina|pag\.|p\.)\s*(\d+))$/i.exec(rest)
   if (match && match[1].trim()) {
     return {
+      ...(caption ? { caption } : {}),
       docName: match[1].trim(),
       pageNumber: parseInt(match[2], 10),
     }
   }
-  return { docName: clean || 'Documento' }
+  return {
+    ...(caption ? { caption } : {}),
+    docName: rest || 'Documento',
+  }
 }
 
 /**

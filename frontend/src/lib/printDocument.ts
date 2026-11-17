@@ -1,14 +1,46 @@
 /**
  * Impaginazione e trasformazioni per la pagina di stampa PDF della lezione.
  */
+import { parseImageAlt } from '@/components/images/imageUtils'
 
 /**
- * Estrae la didascalia della pagina se l'alt termina con "pagina N".
- * Es: "slide 1 pagina 34" -> "pag. 34"
+ * Riduce il nome del documento per il riferimento discreto sotto le immagini:
+ * senza estensione, '_' e '-' diventano spazi, spazi compattati, max 40 caratteri con '…'.
  */
-export function extractPageCaption(alt: string): string | null {
-  const match = alt.trim().match(/(?:^|\s)pagina\s+(\d+)$/i)
-  return match ? `pag. ${match[1]}` : null
+export function shortDocName(docName: string): string {
+  const withoutExt = docName.trim().replace(/\.[^.\s]+$/, '')
+  const normalized = withoutExt.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim() || docName.trim()
+  if (normalized.length > 40) {
+    return `${normalized.slice(0, 39).trimEnd()}…`
+  }
+  return normalized
+}
+
+/**
+ * Calcola le due righe della didascalia di stampa per una figura:
+ * - riga 1 (title): titolo della slide oppure "Figura N" se manca il titolo;
+ * - riga 2 (ref): "p. N" se presente, preceduto dal nome breve se la griglia mescola documenti diversi.
+ */
+export function buildPrintCaption(
+  alt: string,
+  nextFigureNumber: number,
+  showDocName: boolean,
+): { title: string; ref: string | null; usedUntitled: boolean } {
+  const parsed = parseImageAlt(alt)
+  const usedUntitled = !parsed.caption
+  const title = parsed.caption || `Figura ${nextFigureNumber}`
+  const parts: string[] = []
+  if (showDocName && parsed.docName && parsed.pageNumber !== undefined) {
+    parts.push(shortDocName(parsed.docName))
+  }
+  if (parsed.pageNumber !== undefined) {
+    parts.push(`p. ${parsed.pageNumber}`)
+  }
+  return {
+    title,
+    ref: parts.length > 0 ? parts.join(' · ') : null,
+    usedUntitled,
+  }
 }
 
 /**
@@ -24,6 +56,7 @@ export function transformPrintDom(root: HTMLElement) {
   const children = Array.from(root.children)
   let currentGroup: HTMLElement[] = []
   let afterHeading = false
+  let untitledCount = 0
 
   const isImageContainer = (el: Element): boolean => {
     if (el.tagName === 'IMG') return !el.hasAttribute('width')
@@ -51,6 +84,12 @@ export function transformPrintDom(root: HTMLElement) {
       return
     }
 
+    // Solo le pagine di documenti contano: le foto singole non mostrano mai il nome del file.
+    const docNames = new Set(
+      imgs.map((img) => parseImageAlt(img.alt || '')).filter((p) => p.pageNumber !== undefined).map((p) => p.docName),
+    )
+    const showDocName = docNames.size > 1
+
     const grid = document.createElement('div')
     grid.className = 'pdf-image-grid'
     grid.dataset.count = String(imgs.length)
@@ -76,13 +115,22 @@ export function transformPrintDom(root: HTMLElement) {
       imgClone.className = 'pdf-img'
       card.appendChild(imgClone)
 
-      const captionText = extractPageCaption(img.alt || '')
-      if (captionText) {
-        const figcap = document.createElement('figcaption')
-        figcap.className = 'pdf-image-caption'
-        figcap.textContent = captionText
-        card.appendChild(figcap)
+      const { title, ref, usedUntitled } = buildPrintCaption(img.alt || '', untitledCount + 1, showDocName)
+      if (usedUntitled) untitledCount += 1
+
+      const figcap = document.createElement('figcaption')
+      figcap.className = 'pdf-image-caption'
+      const titleEl = document.createElement('span')
+      titleEl.className = 'pdf-image-title'
+      titleEl.textContent = title
+      figcap.appendChild(titleEl)
+      if (ref) {
+        const refEl = document.createElement('span')
+        refEl.className = 'pdf-image-ref'
+        refEl.textContent = ref
+        figcap.appendChild(refEl)
       }
+      card.appendChild(figcap)
 
       grid.appendChild(card)
     }

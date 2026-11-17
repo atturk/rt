@@ -26,7 +26,29 @@ describe('imageUtils', () => {
 
     it('gestisce testo senza indicazione di pagina', () => {
       const res = parseImageAlt('Schema della cascata coagulativa')
+      expect(res.caption).toBeUndefined()
       expect(res.docName).toBe('Schema della cascata coagulativa')
+      expect(res.pageNumber).toBeUndefined()
+    })
+
+    it('estrae titolo con virgole, nome documento e pagina', () => {
+      const res = parseImageAlt('Ipossia, ischemia, necrosi — Patologia generale.pdf, pagina 12')
+      expect(res.caption).toBe('Ipossia, ischemia, necrosi')
+      expect(res.docName).toBe('Patologia generale.pdf')
+      expect(res.pageNumber).toBe(12)
+    })
+
+    it('divide sull’ultimo separatore quando ci sono più " — "', () => {
+      const res = parseImageAlt('Titolo — Corso — Lezione 1.pdf, pagina 5')
+      expect(res.caption).toBe('Titolo — Corso')
+      expect(res.docName).toBe('Lezione 1.pdf')
+      expect(res.pageNumber).toBe(5)
+    })
+
+    it('gestisce foto singola con titolo e senza numero di pagina', () => {
+      const res = parseImageAlt('Schema della sinapsi — PHOTO-2026-11-16.jpg')
+      expect(res.caption).toBe('Schema della sinapsi')
+      expect(res.docName).toBe('PHOTO-2026-11-16.jpg')
       expect(res.pageNumber).toBeUndefined()
     })
   })

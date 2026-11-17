@@ -148,8 +148,7 @@ def test_render_rielaborato_md_unplaced_images_at_end_of_macro():
         images_by_macro=images_by_macro,
     )
 
-    # top.png must appear before unit 1.1
-    # bottom.png must appear after unit 1.1 content
+    # entrambe nel gruppo sotto il titolo della sezione, le non collocate dopo le collocate
     pos_top = md.find("![Figura Iniziale](assets/images/top.png)")
     pos_unit = md.find("### 1.1 Unità Uno")
     pos_content = md.find("Contenuto dell'unità 1.1")
@@ -159,7 +158,7 @@ def test_render_rielaborato_md_unplaced_images_at_end_of_macro():
     assert pos_unit != -1
     assert pos_content != -1
     assert pos_bottom != -1
-    assert pos_top < pos_unit < pos_content < pos_bottom
+    assert pos_top < pos_bottom < pos_unit < pos_content
 
 
 def test_sources_view_returns_unplaced(tmp_path):
