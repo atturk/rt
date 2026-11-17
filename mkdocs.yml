@@ -1,7 +1,9 @@
-site_name: RT
-site_description: Assistente allo studio universitario e scolastico
+site_name: Guida di RT
+site_description: Guida di RT, il rielaboratore di lezioni universitarie
+site_url: https://atturk.github.io/rt/guida/
+repo_url: https://github.com/atturk/rt
 docs_dir: site_docs
-site_dir: site
+site_dir: site/guida
 theme:
   name: mkdocs
   locale: it
@@ -9,19 +11,18 @@ plugins:
 - search:
     lang: it
 nav:
-- Home: index.md
-- Guida:
-  - Guida di RT: guida/index.md
-  - Installazione: guida/installazione.md
-  - Chiavi API e costi: guida/chiavi-e-costi.md
-  - Nuova lezione: guida/nuova-lezione.md
-  - Fonti e materiali: guida/fonti.md
-  - Verifica delle lezioni: guida/verifica.md
-  - Studio e lettura attiva: guida/studio.md
-  - Ripasso e autovalutazione: guida/ripasso.md
-  - Calendario e pianificazione: guida/calendario.md
-  - File e formati di RT: guida/file-di-rt.md
-  - iPhone e agenti esterni: guida/iphone-e-agenti.md
-  - Backup e aggiornamenti: guida/backup-e-aggiornamenti.md
-  - Risoluzione problemi e FAQ: guida/problemi.md
-  - Privacy: guida/privacy.md
+- Guida di RT: index.md
+- Installazione: installazione.md
+- Chiavi API e costi: chiavi-e-costi.md
+- Nuova lezione: nuova-lezione.md
+- Fonti e materiali: fonti.md
+- Verifica delle lezioni: verifica.md
+- Studio e lettura attiva: studio.md
+- Ripasso e autovalutazione: ripasso.md
+- Calendario e pianificazione: calendario.md
+- File e formati di RT: file-di-rt.md
+- iPhone e agenti esterni: iphone-e-agenti.md
+- Backup e aggiornamenti: backup-e-aggiornamenti.md
+- Risoluzione problemi e FAQ: problemi.md
+- Privacy: privacy.md
+- ← Sito di RT: https://atturk.github.io/rt/

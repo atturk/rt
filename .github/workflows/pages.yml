@@ -10,6 +10,8 @@ on:
       - '.github/workflows/pages.yml'
       - 'mkdocs.yml'
       - 'scripts/build_docs_site.py'
+      - 'rt/core/donazioni.py'
+      - 'VERSION'
   workflow_dispatch:
 
 permissions:
@@ -37,7 +39,7 @@ jobs:
           python-version: '3.12'
 
       - name: Installa MkDocs
-        run: pip install mkdocs
+        run: pip install mkdocs pyyaml
 
       - name: Prepara e compila la documentazione
         run: python scripts/build_docs_site.py

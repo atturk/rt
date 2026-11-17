@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RT · Rielabora le tue lezioni</title>
+  <meta name="description" content="RT trasforma le registrazioni delle lezioni universitarie in testi chiari, verificati con le slide del docente e pronti da studiare. Gratuito e open source.">
+  <meta property="og:title" content="RT · Rielabora le tue lezioni">
+  <meta property="og:description" content="Dalla registrazione della lezione a un testo chiaro, verificato e pronto da studiare. Gratuito e open source.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="img/lezione-chiaro.webp">
+  <link rel="icon" type="image/svg+xml" href="img/icona.svg">
+  <link rel="stylesheet" href="stile.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href="./"><img src="img/icona.svg" alt="" width="30" height="30">RT</a>
+      <nav>
+        <a class="opz" href="#come-funziona">Come funziona</a>
+        <a href="guida/">Guida</a>
+        <a class="opz" href="https://github.com/atturk/rt">GitHub</a>
+        <a class="btn piccolo pri" href="download.html">Scarica</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="wrap">
+        <span class="etichetta">Gratuito e open source · v{{VERSIONE}}</span>
+        <h1>Dalla lezione registrata a un testo da studiare</h1>
+        <p class="sotto">RT trascrive la registrazione, toglie digressioni e ripetizioni, la divide in unità chiare e la confronta con le slide del docente. Poi ti aiuta a studiarla e a ripassarla.</p>
+        <div class="azioni">
+          <a class="btn pri" href="download.html">Scarica RT per Mac e Windows</a>
+          <a class="btn" href="guida/">Leggi la guida</a>
+        </div>
+        <p class="nota">Usi la tua chiave di un fornitore AI e paghi solo quello che consumi, direttamente a lui.</p>
+        <picture>
+          <source srcset="img/lezione-scuro.webp" media="(prefers-color-scheme: dark)">
+          <img class="schermata" src="img/lezione-chiaro.webp" width="2560" height="1600" alt="Una lezione rielaborata in RT, divisa in sezioni e unità con il minuto della registrazione accanto a ciascuna.">
+        </picture>
+      </div>
+    </div>
+
+    <section id="come-funziona" class="tenue">
+      <div class="wrap">
+        <h2>Come funziona</h2>
+        <p class="intro">Una lezione di 90 minuti è piena di pause, ripetizioni e domande dal fondo dell'aula. RT ne tira fuori il contenuto e te lo restituisce in ordine.</p>
+        <ol class="passi">
+          <li><h3>Registra o carica</h3><p>Registra la lezione dal microfono oppure carica un file audio o video che hai già.</p></li>
+          <li><h3>Aggiungi le fonti</h3><p>Allega slide, dispense o appunti. Per ognuna dici quanto è affidabile.</p></li>
+          <li><h3>Rielabora e verifica</h3><p>RT trascrive, riscrive in unità logiche e segnala dove il testo non torna con le fonti.</p></li>
+          <li><h3>Studia e ripassa</h3><p>Leggi un'unità alla volta, segna cosa hai appreso e mettiti alla prova con le domande.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Perché non dare la trascrizione a un chatbot?</h2>
+        <p class="intro">Puoi farlo, ma perdi il legame con la registrazione e nessuno controlla il risultato. RT lavora diversamente.</p>
+        <div class="griglia">
+          <div><h3>Ogni parola ha il suo minuto</h3><p>La trascrizione tiene il tempo e la sicurezza di ogni parola. Dal testo torni al punto esatto dell'audio, e il player segue l'unità che stai leggendo.</p></div>
+          <div><h3>Verifica con le fonti</h3><p>Il testo viene confrontato con i materiali del docente. Incongruenze, omissioni e dubbi diventano segnalazioni che controlli tu.</p></div>
+          <div><h3>Unità di studio, non un muro di testo</h3><p>La lezione è divisa in sezioni e unità, ognuna con le sue parole chiave e le sue domande.</p></div>
+          <div><h3>Studio attivo</h3><p>Modalità lettura, lettura veloce, evidenziazioni e stati di studio personalizzati per sapere sempre a che punto sei.</p></div>
+          <div><h3>Ripasso e autovalutazione</h3><p>Quiz, domande mirate o ampie e modelli di domanda tuoi. RT valuta la risposta e, quando serve, ti fa una domanda di approfondimento.</p></div>
+          <div><h3>Organizzazione</h3><p>Calendario delle lezioni con il tuo orario, esportazione in PDF e Markdown, accesso in lettura dal telefono.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tenue">
+      <div class="wrap">
+        <div class="due">
+          <div class="riquadro">
+            <h3>Porta la tua chiave</h3>
+            <p>RT è gratuito. Per trascrivere e rielaborare usa un fornitore di modelli AI che scegli tu (per esempio OpenRouter, OpenAI o Google), con la tua chiave.</p>
+            <ul>
+              <li>Paghi solo i token che usi, direttamente al fornitore. Nessun abbonamento a RT.</li>
+              <li>RT ti mostra una stima del costo per lezione con il modello che hai scelto.</li>
+              <li>Al primo avvio trovi una lezione di esempio già pronta, gratis, per provare tutto.</li>
+            </ul>
+            <p><a href="guida/chiavi-e-costi/">Chiavi API e costi →</a></p>
+          </div>
+          <div class="riquadro">
+            <h3>I tuoi dati restano tuoi</h3>
+            <p>RT gira sul tuo computer. Non c'è un account, non c'è un server del progetto e non raccoglie statistiche d'uso.</p>
+            <ul>
+              <li>Lezioni, audio, testi e chiavi restano sul computer.</li>
+              <li>Escono solo i testi da elaborare, verso il fornitore AI che hai scelto. L'audio esce solo se scegli la trascrizione online.</li>
+            </ul>
+            <p><a href="guida/privacy/">Cosa esce dal computer, nel dettaglio →</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sostieni">
+      <div class="wrap">
+        <h2>Software libero</h2>
+        <p class="intro">Il codice di RT è pubblico sotto licenza AGPL-3.0: puoi leggerlo, modificarlo e ridistribuirlo. Se RT ti fa risparmiare tempo, puoi aiutarlo a crescere.</p>
+        <div class="azioni">
+<!-- DONAZIONI_SEGNAPOSTO -->
+          <a class="btn" href="https://github.com/atturk/rt">Lascia una stella su GitHub</a>
+          <a class="btn" href="https://github.com/atturk/rt/issues">Segnala un problema</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© 2026 Attilio Turco · RT è software libero (AGPL-3.0)</span>
+      <nav>
+        <a href="download.html">Scarica</a>
+        <a href="guida/">Guida</a>
+        <a href="guida/privacy/">Privacy</a>
+        <a href="https://github.com/atturk/rt/blob/main/CHANGELOG.md">Novità</a>
+        <a href="https://github.com/atturk/rt">Codice sorgente</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
