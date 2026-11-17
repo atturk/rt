@@ -445,10 +445,14 @@ def prepare_uploaded_images(lesson_dir, images, *, force_mock=False, failures=No
                                     force_mock=force_mock, failures=failures)
                 descriptions = load_image_descriptions(lesson_dir)
         if image_hash in descriptions and descriptions[image_hash].get('source') == image.source_label:
+            from rt.core.captions import caption_from_description, page_alt
             source_name = image.source_label.split(':', 1)[-1]
+            single_page = not image.source_label.startswith('pdf:')
             if image.source_label.startswith('pdf:'):
                 source_name = source_name.rsplit('#', 1)[0]
-            descriptions[image_hash]['alt_text'] = f"{source_name}, pagina {image.page_number}"
+            desc_entry = descriptions[image_hash]
+            titolo = getattr(image, 'title', None) or caption_from_description(desc_entry)
+            desc_entry['alt_text'] = page_alt(source_name, image.page_number, titolo, single_page=single_page)
             save_image_descriptions(lesson_dir, descriptions)
         if progress:
             progress(i, len(images))
@@ -649,11 +653,13 @@ def resolve_selected_images(
             # Solo le pagine già lette all'import: mai estrazioni (o testo finto) da qui.
             pages = cached_pages(lesson_dir, mat_match)
             page_text = ""
+            page_title = None
             img_rel = None
             if pages:
                 p = next((p for p in pages if int(p.get("numero", 0)) == page_num), None)
                 if p:
                     page_text = p.get("testo", "")
+                    page_title = p.get("titolo")
                     if p.get("immagini"):
                         img_rel = p["immagini"][0]
             if not img_rel:
@@ -665,13 +671,14 @@ def resolve_selected_images(
                     data = f.read()
                 h = compute_image_hash(data)
                 rel = save_raw_image(lesson_dir, data, h)
-                src_name = os.path.basename(mat_match.file)
                 descriptions = load_image_descriptions(lesson_dir)
                 if h not in descriptions:
+                    from rt.core.archive import file_type
+                    from rt.core.captions import page_alt
                     descriptions[h] = {
                         "filename": rel,
                         "source": f"material:{mat_match.id}:{page_num}",
-                        "alt_text": f"{src_name}, pagina {page_num}",
+                        "alt_text": page_alt(mat_match.file, page_num, page_title, single_page=file_type(mat_match.file) == "immagine"),
                         "ocr_text": page_text,
                     }
                     save_image_descriptions(lesson_dir, descriptions)
@@ -750,8 +757,9 @@ def run_add_images(
                     "ocr_text": img.text or "",
                 }
             if img.source_label.startswith("pdf:"):
+                from rt.core.captions import page_alt
                 source_name = img.source_label.split(":", 1)[-1].rsplit("#", 1)[0]
-                descriptions[h]["alt_text"] = f"{source_name}, pagina {img.page_number}"
+                descriptions[h]["alt_text"] = page_alt(source_name, img.page_number, getattr(img, "title", None))
             report(80, 20, "Salvo le pagine")(i, len(uploaded))
         save_image_descriptions(lesson_dir, descriptions)
         if ctx:

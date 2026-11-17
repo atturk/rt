@@ -1278,10 +1278,23 @@
 .rt-vtop .cap {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rt-vtop .cap-title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 0.9;
+  font-weight: 500;
+  opacity: 0.95;
+}
+.rt-vtop .cap-ref {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #9ca3af;
 }
 .rt-vtop .count {
   font-variant-numeric: tabular-nums;

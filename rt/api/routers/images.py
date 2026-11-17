@@ -137,6 +137,8 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
     processed_desc_hashes = set()
 
     # 1. Pagine delle fonti materiali
+    from rt.core.archive import file_type
+    from rt.core.captions import page_alt
     sources = load_sources(lesson_dir)
     for src in sources:
         if src.rimossa_il:
@@ -145,8 +147,11 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
         if not pages:
             continue
         src_name = os.path.basename(src.file)
+        single_page = file_type(src.file) == "immagine"
         for page in pages:
             num = int(page.get("numero", 1))
+            page_title = page.get("titolo")
+            default_alt = page_alt(src_name, num, page_title, single_page=single_page)
             # Cerca se questa pagina è già in descriptions.json
             found_hash = None
             found_desc = None
@@ -174,8 +179,8 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     in_assets=True,
                     units=units,
                     in_document=_is_in_document(name, rel, units),
-                    slide_title=str(found_desc.get("slide_title") or ""),
-                    alt_text=str(found_desc.get("alt_text") or f"{src_name}, pagina {num}"),
+                    slide_title=str(found_desc.get("slide_title") or page_title or ""),
+                    alt_text=str(found_desc.get("alt_text") or default_alt),
                     crop_of=found_desc.get("crop_of"),
                     crop_index=found_desc.get("crop_index"),
                     descritta=_is_described(found_desc),
@@ -195,8 +200,8 @@ def list_images(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
                     in_assets=False,
                     units=[],
                     in_document=False,
-                    slide_title="",
-                    alt_text=f"{src_name}, pagina {num}",
+                    slide_title=str(page_title or ""),
+                    alt_text=default_alt,
                     descritta=False,
                     macro_ids=[],
                 ))
