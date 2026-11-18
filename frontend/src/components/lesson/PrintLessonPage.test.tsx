@@ -1,13 +1,21 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 
 import { RT_SITE_URL, rtSiteLabel } from '@/lib/rtSite'
 
 import { PrintLessonPage } from './PrintLessonPage'
 
+const mockLesson: {
+  id: number
+  materia: string
+  titolo: string
+  data: string
+  docente?: string | null
+} = { id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', data: '2026-10-02' }
+
 vi.mock('@/api/hooks', () => ({
-  useLesson: () => ({ data: { id: 1, materia: 'FISIOLOGIA', titolo: 'Acidosi', data: '2026-10-02' } }),
+  useLesson: () => ({ data: { ...mockLesson } }),
   useLessonDocument: () => ({
     data: {
       html: '<h3 data-unit-id="u1">Titolo</h3><p data-unit-timecode="u1">00:22</p><p>Testo</p>',
@@ -15,6 +23,10 @@ vi.mock('@/api/hooks', () => ({
     },
   }),
 }))
+
+beforeEach(() => {
+  delete mockLesson.docente
+})
 
 it('il timecode compare una volta sola, accanto al titolo', async () => {
   const { container } = render(
@@ -45,17 +57,45 @@ it('definisce gli stili per elenchi puntati, numerati, rientro e annidati nel ta
   expect(styleText).toContain('list-style: circle')
 })
 
-it('nella prima pagina, accanto al titolo, c\'è il QR che porta al sito di RT', async () => {
-  render(
+it('il QR per il timbro sta nel contenitore fuori flusso [data-rt-stamp] e il titolo è a tutta larghezza', async () => {
+  const { container } = render(
     <MemoryRouter initialEntries={['/stampa/1']}>
       <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
     </MemoryRouter>,
   )
   const qr = screen.getByTestId('rt-site-qr')
   expect(qr).toHaveAttribute('href', RT_SITE_URL)
-  expect(qr.closest('header')).toContainElement(screen.getByRole('heading', { level: 1 }))
+  expect(qr).toHaveTextContent('Rielaborato con RT')
   expect(qr).toHaveTextContent(rtSiteLabel())
+  const stamp = container.querySelector('[data-rt-stamp]')
+  expect(stamp).not.toBeNull()
+  expect(stamp).toContainElement(qr)
+  expect(container.querySelector('.print-head')).toBeNull()
+  const styleText = container.querySelector('style')?.textContent ?? ''
+  expect(styleText).toContain('.print-rt-stamp')
+  expect(styleText).toContain('text-wrap: wrap')
   // Lascia finire l'impaginazione: un lavoro di React rimasto in coda dopo la fine del file
   // scatta senza jsdom («window is not defined») nel file di test successivo.
+  await waitFor(() => expect(document.body.dataset.ready).toBe('1'))
+})
+
+it('mostra i metadati con docente quando presente e li omette quando assente', async () => {
+  mockLesson.docente = 'Prof. Rossi'
+  const { container, unmount } = render(
+    <MemoryRouter initialEntries={['/stampa/1']}>
+      <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
+    </MemoryRouter>,
+  )
+  expect(container.querySelector('.print-header')).toHaveTextContent('Fisiologia · Prof. Rossi · 2 ott')
+  await waitFor(() => expect(document.body.dataset.ready).toBe('1'))
+  unmount()
+
+  delete mockLesson.docente
+  const second = render(
+    <MemoryRouter initialEntries={['/stampa/1']}>
+      <Routes><Route path="/stampa/:lessonId" element={<PrintLessonPage />} /></Routes>
+    </MemoryRouter>,
+  )
+  expect(second.container.querySelector('.print-header')).toHaveTextContent('Fisiologia · 2 ott')
   await waitFor(() => expect(document.body.dataset.ready).toBe('1'))
 })

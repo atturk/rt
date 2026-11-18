@@ -64,6 +64,7 @@ export function PrintLessonPage() {
 
   const metaParts = [
     lesson.materia ? subjectName(lesson.materia) : null,
+    lesson.docente?.trim() || null,
     lesson.data ? shortDate(lesson.data) : null,
   ].filter(Boolean)
 
@@ -104,40 +105,33 @@ export function PrintLessonPage() {
           color: #6b7280;
           margin-bottom: 2mm;
         }
-        .print-head {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 6mm;
-        }
-        .print-head-text {
-          flex: 1;
-          min-width: 0;
+        .print-rt-stamp {
+          display: none;
         }
         .print-rt-qr {
-          flex: none;
-          width: 24mm;
           display: flex;
-          flex-direction: column;
+          flex-direction: row-reverse;
           align-items: center;
-          gap: 1mm;
+          gap: 2mm;
           color: #6b7280;
           text-decoration: none;
           break-inside: avoid;
         }
         .print-rt-qr svg {
-          width: 17mm;
-          height: 17mm;
+          width: 14mm;
+          height: 14mm;
           display: block;
+          flex: none;
         }
         .print-rt-qr-label {
           display: flex;
           flex-direction: column;
-          align-items: center;
+          align-items: flex-end;
           font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 6.5pt;
           line-height: 1.25;
-          text-align: center;
+          text-align: right;
+          white-space: nowrap;
         }
         .print-rt-qr-url {
           color: #111827;
@@ -148,6 +142,7 @@ export function PrintLessonPage() {
           font-size: 19pt;
           font-weight: 700;
           line-height: 1.25;
+          text-wrap: wrap;
           margin-top: 0;
           margin-bottom: 6mm;
           text-align: left;
@@ -254,22 +249,21 @@ export function PrintLessonPage() {
         }
       `}</style>
 
-      <header className="print-head">
-        <div className="print-head-text">
-          {metaParts.length > 0 && (
-            <div className="print-header">
-              {metaParts.join(' · ')}
-            </div>
-          )}
-
-          <h1 className="print-title">
-            {lessonTitle(lesson)}
-          </h1>
+      {metaParts.length > 0 && (
+        <div className="print-header">
+          {metaParts.join(' · ')}
         </div>
-        <RtSiteQr />
-      </header>
+      )}
+
+      <h1 className="print-title">
+        {lessonTitle(lesson)}
+      </h1>
 
       <div ref={rootRef} className="print-content" />
+
+      <div className="print-rt-stamp" data-rt-stamp>
+        <RtSiteQr />
+      </div>
     </article>
   )
 }
