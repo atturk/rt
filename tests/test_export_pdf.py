@@ -139,6 +139,27 @@ def test_export_lesson_pdf_with_simulated_browser(api_client, ws, monkeypatch):
     assert mock_page.pdf.called
 
 
+def test_export_pdf_without_rt_qr_when_preference_is_off(api_client, ws, monkeypatch):
+    """Con pdf.qr-sito = false il PDF esce senza timbro: niente seconda pagina di stampa."""
+    from rt.services.preferences_service import save_preference
+
+    lesson = make_lesson(ws)
+    run_mock_pipeline(lesson)
+    lid = api_client.get("/api/v1/lessons").json()[0]["id"]
+    mock_browser = MagicMock()
+    mock_page = mock_browser.new_context.return_value.new_page.return_value
+    mock_page.pdf.return_value = b"%PDF-1.4 senza qr"
+    monkeypatch.setattr("rt.llm.enrichment_media.launch_capture_browser", lambda p, **kw: mock_browser)
+
+    save_preference(lessons_router.PDF_QR_PREFERENCE, False)
+    res = api_client.get(f"/api/v1/lessons/{lid}/export?format=pdf")
+    assert res.status_code == 200
+    assert res.content == b"%PDF-1.4 senza qr"
+    mock_page.evaluate.assert_not_called()
+    mock_page.set_content.assert_not_called()
+    assert mock_page.pdf.call_count == 1
+
+
 def test_pdf_uses_the_local_port_behind_tailscale_serve():
     """Da https://mac.ts.net (Tailscale Serve) l'URL non ha porta: conta quella del server."""
     from starlette.requests import Request
