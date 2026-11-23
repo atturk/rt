@@ -85,7 +85,7 @@ def test_pdf_text_mapping_preserves_every_placement_context_and_history(lesson, 
     monkeypatch.setattr(mapping, 'classify_material_page', classify)
     result = run_add_images(lesson, input_path=path, force_mock=True)
     assert result['images_added'] == 2
-    assert calls == [(1, ['1.1'], compute_file_sha256(path)), (2, ['1.2'], compute_file_sha256(path))]
+    assert sorted(calls) == [(1, ['1.1'], compute_file_sha256(path)), (2, ['1.2'], compute_file_sha256(path))]
     descriptions = load_image_descriptions(lesson)
     by_page = {d['source']: h for h, d in descriptions.items() if d['source'].startswith('pdf:organelli')}
     placement = load_image_placement(lesson)

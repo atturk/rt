@@ -306,4 +306,31 @@ def test_utility_questions_passed_to_decision(lesson, monkeypatch):
     assert "relazioni, sequenze o confronti riassumibili in poche etichette" in info_inst
 
 
+def test_analyze_runs_units_in_parallel(lesson, monkeypatch):
+    import threading
+    import time
+    path, rows, cfg = lesson
+    rows.extend([
+        {"id": "3.1", "macro_id": "3", "title": "Ciclo", "content": "Ciclo di Krebs."},
+        {"id": "4.1", "macro_id": "4", "title": "Enzimi", "content": "Cinetica enzimatica."},
+    ])
+    lock = threading.Lock()
+    active = [0]
+    max_active = [0]
+
+    def slow_decide(*args, **kwargs):
+        with lock:
+            active[0] += 1
+            max_active[0] = max(max_active[0], active[0])
+        time.sleep(0.08)
+        with lock:
+            active[0] -= 1
+        return SimpleNamespace(answers={k: JevNoulAnswer(noul=0.1) for k in es.UTILITY})
+
+    monkeypatch.setattr(es, "decision", slow_decide)
+    es.analyze(path)
+    assert max_active[0] >= 2
+    assert len(es.load(path).assessments) == 4
+
+
 

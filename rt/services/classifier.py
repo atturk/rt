@@ -28,7 +28,7 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
         import logging
         logging.getLogger(__name__).warning("Etichette non disponibili", exc_info=True)
     owner, labels = question_types._sections(lesson_dir, units)
-    failed = []
+    work_items = []
     for unit in units:
         questions = {}
         rel = relevance.get(unit.unit_id, {})
@@ -50,7 +50,18 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
             batches = [(rel_cfg if jev_mapping.QUESTION_NAMES["relevance"] in questions else qt_cfg, questions)] if same_connection or len(questions) == 1 else [
                 (rel_cfg, {k: v for k, v in questions.items() if k != "tipo_consigliato"}),
                 (qt_cfg, {"tipo_consigliato": questions["tipo_consigliato"]})]
+            work_items.append((unit, batches))
+
+    if work_items:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from contextvars import copy_context
+        from rt.llm.cancel import RunCancelled, raise_if_cancelled
+        import logging
+
+        def _call_unit(unit, batches):
+            raise_if_cancelled()
             answers = {}
+            errors = []
             for connection, batch in batches:
                 try:
                     response = jev_client.call_jev(
@@ -59,13 +70,37 @@ def classify_units(lesson_dir, ctx=None, *, force_mock=False):
                         model=connection.relevance_model, credential=connection.credential, base_url=connection.base_url,
                         timeout_seconds=connection.timeout_seconds)
                     answers.update(response.answers)
+                except RunCancelled:
+                    raise
                 except Exception as exc:
-                    # I servizi registrano la risposta mancante senza ripetere la chiamata;
-                    # qui resta la causa vera, una volta per lezione.
-                    if not failed:
-                        import logging
-                        logging.getLogger(__name__).warning("Classificatore non disponibile (%s): %s", unit.unit_id, exc)
-                    failed.append(unit.unit_id)
+                    errors.append(exc)
+            return answers, errors
+
+        failed = []
+        raw_results = {}
+        with ThreadPoolExecutor(max_workers=max(1, min(4, len(work_items))), thread_name_prefix="rt-classifier") as pool:
+            futures = {}
+            try:
+                for unit, batches in work_items:
+                    raise_if_cancelled()
+                    futures[pool.submit(copy_context().run, _call_unit, unit, batches)] = unit.unit_id
+                for fut in as_completed(futures):
+                    raise_if_cancelled()
+                    uid = futures[fut]
+                    raw_results[uid] = fut.result()
+            except BaseException:
+                for f in futures:
+                    f.cancel()
+                raise
+
+        for unit, _batches in work_items:
+            answers, errors = raw_results[unit.unit_id]
+            for exc in errors:
+                # I servizi registrano la risposta mancante senza ripetere la chiamata;
+                # qui resta la causa vera, una volta per lezione.
+                if not failed:
+                    logging.getLogger(__name__).warning("Classificatore non disponibile (%s): %s", unit.unit_id, exc)
+                failed.append(unit.unit_id)
             responses[unit.unit_id] = jev_client.JevResponse(model=rel_cfg.relevance_model, answers=answers)
     relevance = unit_relevance.refresh(lesson_dir, force_mock=mock, ctx=ctx, responses=responses) if rel_enabled else relevance
     try:

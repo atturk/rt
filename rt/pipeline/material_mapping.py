@@ -410,6 +410,7 @@ def classify_material_page(
     mock: bool = False,
     ctx: Any = None,
     idf: Optional[Dict[str, float]] = None,
+    cache_lock: Any = None,
 ) -> Tuple[List[str], List[str]]:
     """
     Classifica una pagina rispetto alle sottounità candidate usando Jev (MF1b).
@@ -477,8 +478,12 @@ def classify_material_page(
         candidates_text,
     ])
 
+    from contextlib import nullcontext
+    lock = cache_lock if cache_lock is not None else nullcontext()
+
     probabilities: Dict[str, float] = {}
-    entry = cached.get(pid, {})
+    with lock:
+        entry = dict(cached.get(pid, {}))
     if entry.get("key") == key and "probabilities" in entry:
         probabilities = entry["probabilities"]
     elif force_mock:
@@ -487,8 +492,9 @@ def classify_material_page(
             q_key = f"unit_{c.unit_id.replace('.', '_')}"
             probabilities[q_key] = 0.9 if idx == 0 else 0.1
         probabilities['didactic_content'] = 0.9
-        cached[pid] = {"key": key, "probabilities": probabilities}
-        _write_json(lesson_dir, CACHE_FILE, cached)
+        with lock:
+            cached[pid] = {"key": key, "probabilities": probabilities}
+            _write_json(lesson_dir, CACHE_FILE, cached)
     else:
         try:
             if ctx:
@@ -506,8 +512,9 @@ def classify_material_page(
                     probabilities[k] = ans.noul
                 else:
                     probabilities[k] = 0.0
-            cached[pid] = {"key": key, "probabilities": probabilities}
-            _write_json(lesson_dir, CACHE_FILE, cached)
+            with lock:
+                cached[pid] = {"key": key, "probabilities": probabilities}
+                _write_json(lesson_dir, CACHE_FILE, cached)
         except RunCancelled:
             raise
         except Exception:
@@ -586,7 +593,7 @@ class PageSourceIdentity:
 
 
 def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock=False, ctx=None,
-                          mock_fallback=False):
+                          mock_fallback=False, cache_lock=None):
     """Candidate TF-IDF e stessa decisione per import materiali e Arricchimento.
 
     Il fallback serve soltanto a conservare i fixture storici dell'import in mock.
@@ -601,7 +608,7 @@ def place_page_in_outline(page, corpus, idf, source, lesson_dir, cached, *, mock
     if not candidates and mock and mock_fallback and corpus and page_dict.get("testo", "").strip():
         entry = corpus[0]
         candidates = [CandidateSubunit(entry.unit_id, entry.macro_id, entry.title, entry.transcript, 1.0)]
-    res = classify_material_page(page_dict, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf)
+    res = classify_material_page(page_dict, candidates, source, lesson_dir, cached, mock=mock, ctx=ctx, idf=idf, cache_lock=cache_lock)
     for flag in ("unplaced", "off_topic", "_didactic_ok", "_best_prob"):
         if flag in page_dict:
             page[flag] = page_dict[flag]
@@ -849,6 +856,53 @@ def assign_material_pages(
                                 units_placement[target_unit_id].append(h)
         else:
             # Materiale non principale: MF1a candidate locali + MF1b classificatore
+            if not read_page_images and pages:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                from contextvars import copy_context
+                import threading
+                from rt.core.config import load_config
+                from rt.llm.cancel import raise_if_cancelled
+
+                cache_lock = threading.Lock()
+                placed_by_idx: Dict[int, Tuple[List[str], List[str]]] = {}
+
+                def _place_mat_page(p):
+                    raise_if_cancelled()
+                    return place_page_in_outline(
+                        p, corpus, idf, source, lesson_dir, cached_decisions,
+                        mock=mock, ctx=ctx, mock_fallback=True, cache_lock=cache_lock,
+                    )
+
+                max_workers = max(1, min(load_config().pipeline.parallel_pages, len(pages)))
+                with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rt-mat-map") as pool:
+                    futures = {}
+                    try:
+                        for idx, page in enumerate(pages):
+                            if ctx:
+                                ctx.check_cancelled()
+                            raise_if_cancelled()
+                            futures[pool.submit(copy_context().run, _place_mat_page, page)] = idx
+                        for fut in as_completed(futures):
+                            if ctx:
+                                ctx.check_cancelled()
+                            raise_if_cancelled()
+                            idx = futures[fut]
+                            placed_by_idx[idx] = fut.result()
+                    except BaseException:
+                        for f in futures:
+                            f.cancel()
+                        raise
+                for idx, page in enumerate(pages):
+                    assigned_units, assigned_macros = placed_by_idx[idx]
+                    classified_records.append({
+                        "source": source,
+                        "page": page,
+                        "assigned_units": list(assigned_units),
+                        "assigned_macros": list(assigned_macros),
+                        "used_image_decision": False,
+                    })
+                continue
+
             for page in pages:
                 if ctx:
                     ctx.check_cancelled()
