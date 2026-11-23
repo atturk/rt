@@ -1,3 +1,3 @@
 """Configurazione dell'URL per sostenere RT (donazioni)."""
 
-DONAZIONI_URL = ""
+DONAZIONI_URL = "https://ko-fi.com/attilio_o"

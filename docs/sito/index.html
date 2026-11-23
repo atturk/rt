@@ -905,16 +905,16 @@ a { color: inherit; }
 
 
 /* ============ Atto 10 · Confronto ============ */
-.cn { margin: 28px 0 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
-.cn-r { display: grid; grid-template-columns: minmax(0, .55fr) minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; border-top: 1px solid var(--border); }
+.cn { margin: 18px 0 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+.cn-r { display: grid; grid-template-columns: minmax(0, .5fr) minmax(0, .9fr) minmax(0, 1.4fr); align-items: center; border-top: 1px solid var(--border); }
 .cn-r:first-child { border-top: 0; }
-.cn-r > * { padding: 10px 18px; font-size: 14px; line-height: 1.4; }
+.cn-r > * { padding: 6px 18px; font-size: 14px; line-height: 1.36; }
 .cn-r b { font-weight: 600; font-size: 14px; }
 .cn-r .ch { color: var(--faint); display: flex; gap: 10px; align-items: baseline; }
 .cn-r .rt { display: flex; gap: 10px; align-items: baseline; background: color-mix(in srgb, var(--acc-bg) 45%, transparent); height: 100%; align-content: center; }
 .cn-r .ch::before { content: "–"; flex: none; width: 16px; color: var(--x2); text-align: center; }
 .cn-r .rt::before { content: "✓"; flex: none; width: 16px; color: var(--acc-strong); font-weight: 700; text-align: center; }
-.cn-h > * { padding-block: 14px; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.cn-h > * { padding-block: 9px; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 .cn-h .rt { color: var(--acc); }
 .cn-h .ch::before, .cn-h .rt::before, .cn-r .rt.lista::before { content: none; }
 .cn-r .rt ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
@@ -951,6 +951,15 @@ a { color: inherit; }
 .dona p { margin: 0; flex: 1; color: var(--mute); font-size: 15px; line-height: 1.5; }
 .dona p b { color: var(--fg); }
 .dona a { display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 10px; background: var(--fg); color: var(--bg); text-decoration: none; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.kofi { width: min(440px, calc(100vw - 32px)); max-height: calc(100svh - 32px); padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--fg); box-shadow: var(--shadow); overflow: hidden; }
+.kofi::backdrop { background: rgba(10,14,12,.45); backdrop-filter: blur(3px); }
+.kofi[open] { animation: kofi-in .35s var(--ease); }
+@keyframes kofi-in { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+.kofi header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 15px; }
+.kofi header a { margin-left: auto; color: var(--mute); font-size: 13px; font-weight: 500; }
+.kofi header button { width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--mute); font-size: 20px; cursor: pointer; }
+.kofi header button:hover { background: var(--soft); color: var(--fg); }
+.kofi iframe { display: block; width: 100%; height: min(640px, calc(100svh - 90px)); border: 0; background: #f9f9f9; }
 .dona a.sec { background: transparent; color: var(--fg); border: 1px solid var(--border); }
 .pie { scroll-snap-align: end; padding-block: 40px 56px; margin-top: 24px; border-top: 1px solid var(--border); color: var(--faint); font-size: 12.5px; line-height: 1.6; }
 .pie .wrap { display: grid; gap: 10px; }
@@ -1068,7 +1077,7 @@ a { color: inherit; }
 
   <section class="atto" id="lezione" aria-labelledby="lezione-titolo">
     <div class="wrap">
-      <p class="atto-num">01 — Riascoltare non basta</p>
+      <p class="atto-num">01 — Rielabora</p>
       <h2 id="lezione-titolo">Da ore di lezione a poche pagine da studiare.</h2>
       <p class="intro">Una lezione registrata è piena di ripetizioni, pause e momenti fuori tema. RT li toglie e ti restituisce solo il contenuto, in ordine. E se un passaggio non ti è chiaro, lo riascolti dal punto esatto in cui il prof l'ha spiegato.</p>
 
@@ -1235,7 +1244,7 @@ a { color: inherit; }
     <div class="wrap">
       <p class="atto-num">05 — Ripassa</p>
       <h2 id="rp-titolo">Domande fatte per il tuo esame.</h2>
-      <p class="intro">Per ogni unità RT prepara quiz e domande aperte, valuta la tua risposta e, se sei sulla strada giusta ma manca qualcosa, ti fa una domanda di approfondimento, proprio come farebbe un docente a un esame. E puoi creare i tuoi tipi di domanda: esercizi per le materie scientifiche, casi clinici per medicina, query per informatica.</p>
+      <p class="intro">Per ogni unità RT prepara quiz e domande aperte, valuta la tua risposta e, se sei sulla strada giusta ma manca qualcosa, ti fa una domanda di approfondimento. Proprio come farebbe un docente a un esame. E puoi creare i tuoi tipi di domanda: esercizi per le materie scientifiche, casi clinici per medicina, query per informatica.</p>
 
       <figure class="rp" id="rp" aria-label="Animazione: nel ripasso di microeconomia arriva una domanda mirata, la risposta viene scritta e valutata per correttezza, completezza e attinenza, con una domanda di approfondimento. Poi si crea un nuovo tipo di domanda, Caso clinico, che propone un paziente con la febbre. Lo stesso spazio mostra poi un esercizio sulla trasformata di Laplace e una query SQL.">
         <div class="rp-win" aria-hidden="true">
@@ -1412,7 +1421,7 @@ a { color: inherit; }
     <div class="wrap">
       <p class="atto-num">08 — Chiavi e costi</p>
       <h2 id="ck-titolo">La tua chiave, i tuoi centesimi.</h2>
-      <p class="intro">RT non ha abbonamenti. Scegli un fornitore di AI, carichi il credito che vuoi e paghi solo quello che usi. Il costo dipende dal modello, ma per rielaborare una lezione bastano pochi centesimi: in media 3. E se non vuoi spendere nulla, puoi usare modelli che girano sul tuo computer o modelli gratuiti via API.</p>
+      <p class="intro">RT non ha abbonamenti. Scegli un fornitore di AI, carichi il credito che vuoi, porti la chiave su RT e paghi solo quello che usi. Il costo dipende dal modello, ma per rielaborare una lezione bastano pochi centesimi: in media 3. E se non vuoi spendere nulla, puoi usare modelli che girano sul tuo computer o modelli gratuiti via API.</p>
 
       <figure class="ck" id="ck" aria-label="Animazione in quattro passi: si sceglie OpenRouter tra i fornitori di AI, si caricano 5 euro sul conto del fornitore, si crea una chiave e la si incolla in RT, poi ogni lezione creata scala 3 centesimi dal credito.">
         <ol class="ck-passi">
@@ -1521,15 +1530,15 @@ a { color: inherit; }
     <div class="wrap">
       <p class="atto-num">10 — Perché RT</p>
       <h2 id="cn-titolo">Non basta una chat con l'AI.</h2>
-      <p class="intro">Una chat ti risponde, ma non ti organizza lo studio: ogni volta ricominci da capo e il risultato resta in una conversazione. RT fa il lavoro dall'inizio alla fine e lo tiene dove studi.</p>
       <div class="cn" id="cn">
         <div class="cn-r cn-h"><b></b><span class="ch">Una chat con l'AI</span><span class="rt">RT</span></div>
         <div class="cn-r cn-b"><b>La registrazione</b><span class="ch">La trascrizione la fa la stessa AI che rielabora, costa e non ti dice quanto è precisa</span><span class="rt lista"><ul><li>Trascrizione in locale e gratuita</li><li>Gestisce e unisce più registrazioni</li><li>Punteggio di affidabilità per ogni parola trascritta</li><li>Mantiene il minutaggio, così riascolti velocemente ciò che ti serve</li></ul></span></div>
         <div class="cn-r cn-b"><b>Slide e foto</b><span class="ch">Non tutte le AI le mostrano nel testo, e se lo fanno spesso non puoi più spostarle</span><span class="rt lista"><ul><li>Le mette da solo nelle unità giuste</li><li>Puoi spostarle o posizionarle a mano</li><li>Puoi aggiungerne di nuove quando vuoi</li><li>Le usa per una rielaborazione più precisa e te le mostra quando studi</li></ul></span></div>
         <div class="cn-r cn-b"><b>Gli errori</b><span class="ch">Il modello sbaglia, nessuno controlla</span><span class="rt lista"><ul><li>Una verifica separata li segnala</li><li>Puoi scegliere modelli diversi per rielaborazione e verifica</li></ul></span></div>
-        <div class="cn-r cn-b"><b>Il riascolto</b><span class="ch">L'AI non sa a che minuto il prof dice qualcosa: quando glielo chiedi, tira a indovinare</span><span class="rt">Torni al punto esatto in cui il prof ne parla</span></div>
-        <div class="cn-r cn-b"><b>Il ripasso</b><span class="ch">Le domande finiscono in fondo alla chat</span><span class="rt">Domande, unità studiate e calendario restano salvati</span></div>
-        <div class="cn-r cn-b"><b>Il costo</b><span class="ch">Un abbonamento al mese per usarla davvero</span><span class="rt">Pochi centesimi a lezione, solo quando la usi</span></div>
+        <div class="cn-r cn-b"><b>Il riascolto</b><span class="ch">L'AI non sa a che minuto il prof dice qualcosa: quando glielo chiedi, tira a indovinare</span><span class="rt lista"><ul><li>La trascrizione mantiene il minutaggio</li><li>Ogni unità ha un timestamp</li><li>Riascolti da quel punto quando vuoi</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Lo studio</b><span class="ch">Studi nella chat: dopo un po' trovare le cose importanti diventa difficile</span><span class="rt lista"><ul><li>Ti offre un ambiente di studio dedicato: evidenzia, chiedi, riascolta</li><li>Modalità lettura veloce</li><li>Ripassa e spunta le unità come studiate</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Il ripasso</b><span class="ch">Non hai il controllo su cosa ripassare: sceglie l'AI</span><span class="rt lista"><ul><li>Genera le domande a partire dalle unità che scegli tu</li><li>Crei tipi di domanda personalizzati, così da testare ciò che serve per l'esame</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Il costo</b><span class="ch">Un abbonamento mensile per usarla davvero</span><span class="rt lista"><ul><li>Pochi centesimi per singola lezione</li><li>Paghi per quello che usi</li></ul></span></div>
       </div>
     </div>
   </section>
@@ -2270,6 +2279,28 @@ a { color: inherit; }
     if (riduci) { righe.forEach(function (r) { r.classList.add('on'); }); return; }
     var io = new IntersectionObserver(function (v) { if (!v[0].isIntersecting) return; io.disconnect(); righe.forEach(function (r, k) { setTimeout(function () { r.classList.add('on'); }, 200 + k * 380); }); }, { threshold: 0.3 });
     io.observe(cn);
+  })();
+  /* Donazioni: i link Ko-fi si aprono in un pannello sopra la pagina */
+  (function () {
+    var dlg;
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href^="https://ko-fi.com/"]');
+      if (!a || a.closest('.kofi') || typeof HTMLDialogElement !== 'function' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      var pagina = a.href.replace(/[?#].*$/, '').replace(/\/$/, '');
+      if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.className = 'kofi';
+        dlg.innerHTML = '<header>Una donazione per RT <a target="_blank" rel="noopener">Apri su Ko-fi ↗</a><button type="button" aria-label="Chiudi">×</button></header><iframe title="Donazione con Ko-fi" loading="lazy"></iframe>';
+        dlg.querySelector('button').onclick = function () { dlg.close(); };
+        dlg.addEventListener('click', function (ev) { if (ev.target === dlg) dlg.close(); });
+        document.body.appendChild(dlg);
+      }
+      dlg.querySelector('header a').href = pagina;
+      var f = dlg.querySelector('iframe'), src = pagina + '/?hidefeed=true&widget=true&embed=true&preview=true';
+      if (f.getAttribute('src') !== src) f.setAttribute('src', src);
+      dlg.showModal();
+    });
   })();
   /* Donazioni: senza un link reale la striscia non compare */
   (function () { var d = document.getElementById('dona'); if (d && !d.querySelector('a:not(.sec)')) d.hidden = true; })();
