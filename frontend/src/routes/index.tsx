@@ -164,7 +164,13 @@ const guideArea: Area = {
   ],
 }
 
-export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea, guideArea]
+const permissionsArea: Area = {
+  routes: [
+    { path: 'permessi', Component: page(() => import('./permissions'), (m) => m.PermissionsPage), handle: bare },
+  ],
+}
+
+export const areas: Area[] = [lessonsArea, calendarArea, studyArea, jobsArea, reviewsArea, reviewArea, recallArea, imagesArea, settingsArea, appArea, guideArea, permissionsArea]
 
 const LoginPage = page(() => import('./auth'), (m) => m.LoginPage)
 

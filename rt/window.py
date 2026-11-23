@@ -458,6 +458,22 @@ class DesktopApi:
         _cleanup_share_dirs()
         return {"ok": True}
 
+    def stato_microfono(self) -> str:
+        from rt import window_permissions
+        return window_permissions.mic_status() if sys.platform == "darwin" else "unknown"
+
+    def richiedi_microfono(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.request_mic_sync()
+
+    def stato_permessi(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.permissions_status()
+
+    def apri_impostazioni_sistema(self, chiave: str) -> dict:
+        from rt import window_permissions
+        return window_permissions.open_system_settings(chiave)
+
     def set_zoom(self, factor: float) -> dict:
         """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
         try:
@@ -703,10 +719,10 @@ def _maintenance(window, command: str) -> None:
     threading.Thread(target=work, name=f"rt-{command}", daemon=True).start()
 
 
-def _check_permissions(window) -> None:
+def _check_permissions(window, base_url: str = "") -> None:
     from rt import window_permissions
     try:
-        window_permissions.check(window, _notice, _open_path)
+        window_permissions.check(window, base_url)
     except Exception as exc:
         _log(f"Controllo dei permessi non riuscito: {exc}")
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
@@ -876,7 +892,7 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Importa…", lambda: _import_collection(window, base_url)),
         MenuAction("Ripristina dati prima di un aggiornamento…", lambda: _restore_pre_update(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
-        *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
+        *([MenuAction("Controlla permessi", lambda: _check_permissions(window, base_url))]
           if sys.platform in ("darwin", "win32") else []),
         MenuSeparator(),
         Menu("Autenticazione", [

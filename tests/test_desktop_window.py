@@ -1300,3 +1300,30 @@ def test_open_window_close_action(data, monkeypatch, webview, close_action, prog
         stop_bg.assert_called_once_with("http://127.0.0.1:8765")
     else:
         stop_bg.assert_not_called()
+
+
+def test_run_macos_explains_when_background_disabled(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sm, "installed", lambda: [])
+    monkeypatch.setattr(sm, "install", Mock(side_effect=sm.ServiceError("bootstrap failed")))
+    monkeypatch.setattr(sm, "background_disabled", lambda: True)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="button returned:Apri Impostazioni\n", stderr="")
+
+    monkeypatch.setattr(desktop.subprocess, "run", fake_run)
+    assert desktop.run_macos(8765, True, lambda _m: None) == 1
+    assert calls[0][0] == "osascript" and "Elementi login ed estensioni" in calls[0][-1]
+    assert calls[1] == ["open", desktop.SETTINGS_LOGIN_ITEMS]
+
+    # Anche quando _wait_for_api fallisce con background disattivato
+    calls.clear()
+    monkeypatch.setattr(sm, "installed", lambda: ["api", "worker"])
+    monkeypatch.setattr(sm, "api_is_up", lambda port: True)
+    monkeypatch.setattr(desktop, "_services_match_app", lambda: True)
+    monkeypatch.setattr(desktop, "_service_port", lambda: 8765)
+    monkeypatch.setattr(desktop, "_wait_for_api", lambda port: False)
+    assert desktop.run_macos(8765, True, lambda _m: None) == 1
+    assert calls[0][0] == "osascript" and "Consenti in background" in calls[0][-1]
