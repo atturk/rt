@@ -17,6 +17,12 @@ class GoogleProvider(BaseLLMProvider):
     def name(self) -> str:
         return "google"
 
+    @property
+    def supports_batch(self) -> bool:
+        # L'adapter Google attuale usa l'endpoint REST OpenAI-compatible (/v1beta/openai) senza SDK
+        # google-genai: senza verifica live dei campi nativi batchGenerateContent resta disattivato.
+        return False
+
     def get_endpoint(self, base_url: Optional[str] = None) -> str:
         base = (base_url or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
         if base.endswith("/chat/completions"):

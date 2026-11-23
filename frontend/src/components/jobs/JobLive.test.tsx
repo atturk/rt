@@ -84,6 +84,17 @@ describe('JobLive', () => {
     expect(screen.getByRole('link', { name: 'Rivedi la scaletta' })).toHaveAttribute('href', '/lezioni/3')
   })
 
+  it('in attesa del provider mostra stato con orologio e messaggio informativo sulle 24 ore', () => {
+    renderJob({ state: 'waiting_for_provider' })
+    expect(screen.getByText('In attesa del provider')).toBeInTheDocument()
+    expect(screen.getByTestId('job-waiting-provider')).toHaveTextContent('Le risposte arrivano entro 24 ore, a costo ridotto. RT le riceve anche con la finestra chiusa.')
+    expect(screen.getByRole('button', { name: 'Annulla job' })).toBeInTheDocument()
+    cleanup()
+    render(<MemoryRouter><PhaseProgress jobId="j1" /></MemoryRouter>)
+    expect(screen.getByTestId('phase-progress-title')).toHaveTextContent('In attesa del provider')
+    expect(screen.getByTestId('phase-waiting-provider')).toHaveTextContent('Le risposte arrivano entro 24 ore, a costo ridotto.')
+  })
+
   it('un job fallito già riprovato mostra errore e nuovo tentativo, senza Riprova né Annulla', () => {
     renderJob({ state: 'failed', error: 'Chiave API non valida', retried_by: 'j2' })
     expect(screen.getByTestId('job-error')).toHaveTextContent('Chiave API non valida')

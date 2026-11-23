@@ -230,6 +230,7 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
     context = lesson_context(lesson_dir)
     client = LLMClient(force_mock=mock)
     failures = UnitFailureTracker()
+    deferred_calls = []
     results, last_error, succeeded = [], None, False
     report(0, len(todo), f"{label}: {len(todo)} {'unità' if len(todo) != 1 else 'unità'} riconosciute dal classificatore")
     active = todo
@@ -272,6 +273,10 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                                                        response_model=response_model, job_name="recall",
                                                        unit_id=", ".join(all_units), lesson_dir=lesson_dir).items
             except Exception as exc:
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(exc)
+                    continue
                 if not is_unit_failure(exc):
                     raise
                 failures.failed(", ".join(ids), type_key(qtype), exc)
@@ -301,7 +306,14 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                         summary['local_discarded'] = summary.get('local_discarded', 0) + 1
                     continue
                 pairs.append((question, template))
-            kept = recall_rules.filter_group([q for q, _ in pairs], rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
+            try:
+                kept = recall_rules.filter_group([q for q, _ in pairs], rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
+            except Exception as filter_exc:
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(filter_exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(filter_exc)
+                    continue
+                raise
             kept_ids = {id(q) for q in kept}
             pairs = [(q, t) for q, t in pairs if id(q) in kept_ids]
             attempt = {"fingerprint": fingerprint, "exhausted": not pairs, "outcome": "questions" if pairs else "empty",
@@ -314,6 +326,9 @@ def _originals(lesson_dir, qtype, count, mock, regenerate, shuffle, report,
                    if saved else "nessuna domanda nuova") + f" ({time.monotonic() - started:.0f}s)", **where)
             if count is not None and len(results) >= count:
                 break
+        if deferred_calls:
+            from rt.llm.deferred import raise_deferred_phase
+            raise_deferred_phase(deferred_calls, phase="recall")
         if count is None or len(results) >= count or not next_groups or failures.too_many():
             break
         active = next_groups
@@ -480,7 +495,7 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
             template.tipo.procedimento if template else "", answer_text, dont_know=dont_know)
         system = prompts.RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT
     from rt.pipeline.recall_checks import checked_evaluation
-    result = checked_evaluation(LLMClient(force_mock=False), dont_know=dont_know,
+    result = checked_evaluation(LLMClient(force_mock=False, interactive=True), dont_know=dont_know,
         prompt=prompt,
         system_prompt=effective_system("recall", system),
         response_model=prompts.RecallEvalMirataResult, job_name="recall", unit_id=", ".join(question.unit_ids),

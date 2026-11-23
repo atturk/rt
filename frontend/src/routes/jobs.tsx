@@ -92,7 +92,7 @@ export function JobsPage() {
                   )}
                   <JobStateBadge state={job.state} />
                 </span>
-                {isActive(job.state) && <PhaseProgress jobId={job.id} className="basis-full" />}
+                {(isActive(job.state) || job.state === 'waiting_for_provider') && <PhaseProgress jobId={job.id} className="basis-full" />}
               </Card>
             </li>
           )

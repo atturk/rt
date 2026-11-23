@@ -550,7 +550,10 @@ def sse_stream(job_id: str, after: int, request: Optional[Request] = None,
         if batch:
             continue
         job = q.get(job_id)
-        if job is None or job.state in TERMINAL_STATES or job.state == JobState.WAITING_FOR_DECISION.value:
+        if job is None or job.state in TERMINAL_STATES or job.state in (
+            JobState.WAITING_FOR_DECISION.value,
+            JobState.WAITING_FOR_PROVIDER.value,
+        ):
             if not q.events(job_id, cursor):
                 yield f"event: end\ndata: {json.dumps({'state': job.state if job else None})}\n\n"
                 return

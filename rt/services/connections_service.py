@@ -148,20 +148,31 @@ def add_model(project_root: Path, connection_name: str, model: str) -> str:
     return model
 
 
-def assign_phase(project_root: Path, job: str, connection_name: str, model: str) -> str:
+BATCH_INELIGIBLE_PHASES = frozenset({"image_description", "enrichment_image"})
+
+
+def assign_phase(project_root: Path, job: str, connection_name: str, model: str, batch: bool = False) -> str:
     if job not in dict(PHASES):
         raise ValueError("Fase non riconosciuta.")
     if not model or not str(model).strip():
         raise ValueError("Seleziona un modello per questa connessione.")
+    clean_model = str(model).strip()
+    if clean_model.endswith(":batch"):
+        clean_model = clean_model[:-len(":batch")].strip()
+        batch = True
+    if not clean_model:
+        raise ValueError("Seleziona un modello per questa connessione.")
+    if batch and job in BATCH_INELIGIBLE_PHASES:
+        raise ValueError("Questa fase usa immagini e non supporta la modalità batch.")
     # Il modello scelto viene salvato nella connessione: quelli ricavati dai vecchi file
     # YAML altrimenti sparirebbero dall'elenco appena nessuna fase li usa più, mentre la
     # pagina continua a proporli.
-    model = add_model(project_root, connection_name, str(model))
+    clean_model = add_model(project_root, connection_name, clean_model)
     connection = find_connection(project_root, connection_name)
     credentials = connection["credentials"]
     return save_route(project_root, job, "primary", connection["provider"],
-                      credentials[0], model, connection["base_url"],
-                      len(credentials) > 1, credentials)
+                      credentials[0], clean_model, connection["base_url"],
+                      len(credentials) > 1, credentials, batch=batch)
 
 
 def clear_phase(project_root: Path, job: str) -> str:

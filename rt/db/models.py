@@ -448,3 +448,27 @@ class StudyChatMessage(Base):
         ForeignKey("study_notes.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LlmDeferred(Base):
+    """Cache e stato delle chiamate LLM in modalità batch differita."""
+    __tablename__ = "llm_deferred"
+    __table_args__ = (
+        Index("ix_llm_deferred_job_state", "job_id", "state"),
+        Index("ix_llm_deferred_batch_state", "batch_id", "state"),
+    )
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    lesson_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True, index=True)
+    batch_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(256))
+    credential_ref: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    base_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    request: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    state: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    response: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

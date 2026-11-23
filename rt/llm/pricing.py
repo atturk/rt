@@ -70,7 +70,13 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
 # Cache in-memory per processo per i prezzi recuperati dinamicamente da OpenRouter
 _OPENROUTER_DYNAMIC_CACHE: Dict[str, Optional[ModelPricing]] = {}
 _OPENROUTER_CONTEXT_LENGTHS: Dict[str, int] = {}
+_OPENROUTER_BATCH_MODELS: set[str] = set()
 _OPENROUTER_DYNAMIC_FETCHED: bool = False
+
+
+def openrouter_batch_models() -> list[str]:
+    """Modelli OpenRouter noti che espongono una variante ':batch' (solo dalla cache caricata)."""
+    return sorted(_OPENROUTER_BATCH_MODELS)
 
 
 def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
@@ -93,6 +99,9 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
                 data = resp.json().get("data", [])
                 for item in data:
                     if isinstance(item, dict) and "id" in item:
+                        raw_id = str(item["id"]).lower().strip()
+                        if raw_id.endswith(":batch"):
+                            _OPENROUTER_BATCH_MODELS.add(raw_id[:-len(":batch")])
                         length = item.get("context_length")
                         if type(length) is int and length > 0:
                             _OPENROUTER_CONTEXT_LENGTHS[str(item["id"]).lower().strip()] = length
@@ -127,6 +136,46 @@ def get_model_context_length(provider: str, model: str) -> Optional[int]:
     return _OPENROUTER_CONTEXT_LENGTHS.get(clean)
 
 
+def _lookup_pricing(prov_clean: str, mod_clean: str, custom_pricing: Optional[Dict[str, Any]] = None) -> tuple[Optional[ModelPricing], float]:
+    """Cerca il listino del modello; per suffisso ':batch' non presente a listino applica -50% sul modello base."""
+    pricing: Optional[ModelPricing] = None
+
+    if custom_pricing and prov_clean in custom_pricing:
+        p_dict = custom_pricing[prov_clean]
+        if mod_clean in p_dict:
+            pricing = ModelPricing.model_validate(p_dict[mod_clean])
+
+    if pricing is None and prov_clean in DEFAULT_PRICING:
+        prov_models = DEFAULT_PRICING[prov_clean]
+        if mod_clean in prov_models:
+            pricing = prov_models[mod_clean]
+        else:
+            prefix = f"{prov_clean}/"
+            norm_mod = mod_clean[len(prefix):] if mod_clean.startswith(prefix) else mod_clean
+            if norm_mod in prov_models:
+                pricing = prov_models[norm_mod]
+            else:
+                query_tokens = [s for s in mod_clean.replace("/", "-").split("-") if s]
+                for k, v in sorted(prov_models.items(), key=lambda item: len(item[0]), reverse=True):
+                    k_tokens = [s for s in k.replace("/", "-").split("-") if s]
+                    if k_tokens == query_tokens:
+                        pricing = v
+                        break
+
+    if pricing is None and prov_clean == "openrouter":
+        pricing = _get_dynamic_openrouter_pricing(mod_clean)
+
+    if pricing is None and mod_clean.endswith(":batch"):
+        base_pricing, base_mult = _lookup_pricing(prov_clean, mod_clean[:-len(":batch")], custom_pricing)
+        if base_pricing is not None:
+            return base_pricing, base_mult * 0.5
+
+    if pricing is None and "deepseek" in mod_clean:
+        pricing = ModelPricing(input_per_million=0.14, output_per_million=0.28)
+
+    return pricing, 1.0
+
+
 def calculate_cost(
     provider: str,
     model: str,
@@ -150,45 +199,9 @@ def calculate_cost(
     prov_clean = provider.lower().strip()
     mod_clean = model.lower().strip().lstrip("~")
 
-    pricing: Optional[ModelPricing] = None
-
-    # 1. Verifica in custom_pricing (se fornito da rt.config.yaml)
-    if custom_pricing and prov_clean in custom_pricing:
-        p_dict = custom_pricing[prov_clean]
-        if mod_clean in p_dict:
-            pricing = ModelPricing.model_validate(p_dict[mod_clean])
-
-    # 2. Verifica in DEFAULT_PRICING
-    if pricing is None and prov_clean in DEFAULT_PRICING:
-        prov_models = DEFAULT_PRICING[prov_clean]
-        # (a) Match esatto sulla chiave
-        if mod_clean in prov_models:
-            pricing = prov_models[mod_clean]
-        else:
-            # (b) Match esatto dopo normalizzazione prefisso provider (es. "google/gemini-2.0-flash")
-            prefix = f"{prov_clean}/"
-            norm_mod = mod_clean[len(prefix):] if mod_clean.startswith(prefix) else mod_clean
-            if norm_mod in prov_models:
-                pricing = prov_models[norm_mod]
-            else:
-                # (c) Match deterministico per segmenti interi separati da '-' o '/'
-                query_tokens = [s for s in mod_clean.replace("/", "-").split("-") if s]
-                for k, v in sorted(prov_models.items(), key=lambda item: len(item[0]), reverse=True):
-                    k_tokens = [s for s in k.replace("/", "-").split("-") if s]
-                    if k_tokens == query_tokens:
-                        pricing = v
-                        break
-
-    # 3. Se provider è openrouter e non trovato in tabella statica, tenta fetch dinamico da API OpenRouter
-    if pricing is None and prov_clean == "openrouter":
-        pricing = _get_dynamic_openrouter_pricing(mod_clean)
-
-    # Se non trovato ma il provider è deepseek/openrouter con modello deepseek generico, usa fallback conservativo
+    pricing, multiplier = _lookup_pricing(prov_clean, mod_clean, custom_pricing)
     if pricing is None:
-        if "deepseek" in mod_clean:
-            pricing = ModelPricing(input_per_million=0.14, output_per_million=0.28)
-        else:
-            return None
+        return None
 
     cached_tok = min(max(0, cached_input_tokens or 0), max(0, in_tok))
     cache_rate = pricing.cached_input_per_million
@@ -201,7 +214,7 @@ def calculate_cost(
     reason_rate = pricing.reasoning_per_million if pricing.reasoning_per_million is not None else pricing.output_per_million
     cost_reason = (reas_tok / 1_000_000.0) * reason_rate
 
-    total_cost = cost_in + cost_out + cost_reason
+    total_cost = (cost_in + cost_out + cost_reason) * multiplier
     return round(total_cost, 6)
 
 
@@ -267,15 +280,24 @@ def estimate_configured_lesson_cost(
 
     provider = ""
     model = ""
+    is_batch = False
 
     if config is not None:
         custom_pricing = custom_pricing or getattr(config, "pricing", None)
+        jobs = getattr(config, "jobs", None) or {}
+        rw_job = jobs.get("rewrite")
+        if rw_job is not None and getattr(rw_job, "primary", None) is not None and rw_job.primary.is_configured:
+            provider = rw_job.primary.provider or ""
+            model = rw_job.primary.model or ""
+            is_batch = bool(getattr(rw_job.primary, "batch", False))
         # Cerca il modello per la rielaborazione o il modello predefinito
-        phases = getattr(config, "phases", None) or {}
-        rewrite_phase = phases.get("rewrite") or phases.get("rielaborato")
-        if rewrite_phase:
-            provider = getattr(rewrite_phase, "provider", "") or getattr(rewrite_phase, "connection", "")
-            model = getattr(rewrite_phase, "model", "")
+        if not model:
+            phases = getattr(config, "phases", None) or {}
+            rewrite_phase = phases.get("rewrite") or phases.get("rielaborato")
+            if rewrite_phase:
+                provider = getattr(rewrite_phase, "provider", "") or getattr(rewrite_phase, "connection", "")
+                model = getattr(rewrite_phase, "model", "")
+                is_batch = bool(getattr(rewrite_phase, "batch", False))
         if not model:
             connections = getattr(config, "connections", None) or []
             if connections:
@@ -288,6 +310,7 @@ def estimate_configured_lesson_cost(
         # Se non c'è una configurazione esplicita, verifica se il default provider è DeepSeek / Gemini
         return None, "stima non disponibile"
 
-    cost = estimate_lesson_cost(provider, model, custom_pricing=custom_pricing)
+    effective_model = f"{model}:batch" if (is_batch and not model.endswith(":batch")) else model
+    cost = estimate_lesson_cost(provider, effective_model, custom_pricing=custom_pricing)
     return cost, format_cost_estimate(cost)
 

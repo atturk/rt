@@ -244,6 +244,10 @@ def describe_new_images(
                     _cancel_pending(futures)
                     raise
                 except Exception as exc:
+                    from rt.llm.errors import DeferredCall, DeferredPhase
+                    if isinstance(exc, (DeferredCall, DeferredPhase)):
+                        _cancel_pending(futures)
+                        raise
                     if failures is None or not is_unit_failure(exc):
                         _cancel_pending(futures)
                         raise

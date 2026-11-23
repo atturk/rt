@@ -1,4 +1,4 @@
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Clock } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
 import { LessonConflictAction } from './LessonConflictAction'
@@ -114,6 +114,12 @@ export function JobLive({ jobId, compact = false }: { jobId: string; compact?: b
               {j.decision?.kind === 'outline_approval' ? 'Rivedi la scaletta' : j.decision?.kind === 'science_issue' ? 'Apri la revisione' : 'Apri la lezione'}
             </Link>
           )}
+        </Alert>
+      )}
+      {j.state === 'waiting_for_provider' && (
+        <Alert data-testid="job-waiting-provider" className="flex items-start gap-2">
+          <Clock className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>Le risposte arrivano entro 24 ore, a costo ridotto. RT le riceve anche con la finestra chiusa.</span>
         </Alert>
       )}
       {j.state === 'failed' && (j.error_message || j.error) && (

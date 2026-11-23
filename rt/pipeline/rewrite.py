@@ -448,6 +448,9 @@ def _run_rewrite(
                         prompt_prefix=prefix,
                     )
                 except Exception as exc:
+                    from rt.llm.errors import DeferredCall, DeferredPhase
+                    if isinstance(exc, (DeferredCall, DeferredPhase)):
+                        raise
                     if not is_unit_failure(exc):
                         stop_event.set()
                         raise
@@ -505,6 +508,8 @@ def _run_rewrite(
                     )
 
         if macro_groups:
+            from rt.llm.errors import DeferredCall, DeferredPhase
+            deferred_calls = []
             max_workers = min(max(1, parallel_macros), len(macro_groups))
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = [
@@ -512,7 +517,13 @@ def _run_rewrite(
                     for macro, m_units in macro_groups
                 ]
                 for future in as_completed(futures):
-                    future.result()
+                    try:
+                        future.result()
+                    except (DeferredCall, DeferredPhase) as dc:
+                        deferred_calls.append(dc)
+            if deferred_calls:
+                from rt.llm.deferred import raise_deferred_phase
+                raise_deferred_phase(deferred_calls, phase="rewrite")
 
     else:
         for idx, u in enumerate(units_to_process, start=1):

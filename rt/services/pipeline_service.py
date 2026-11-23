@@ -121,6 +121,9 @@ def run_pipeline(
     except (KeyboardInterrupt, RunCancelled):
         raise
     except Exception as exc:  # noqa: BLE001 - lo stato FAILED porta l'eccezione al chiamante
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (DeferredCall, DeferredPhase)):
+            raise
         result.status = PipelineStatus.FAILED
         result.error = exc
     return result
@@ -281,6 +284,9 @@ def automatic_enrichment(lesson_dir: str, mock: bool, ctx: RunContext,
     except RunCancelled:
         raise
     except Exception as exc:
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (DeferredCall, DeferredPhase)):
+            raise
         from rt.services.context import _sanitize
         ctx.emit(Notice(level="warning", message=f"Analisi di arricchimento da riprovare: {_sanitize(str(exc))}"))
         return {"error": _sanitize(str(exc))}

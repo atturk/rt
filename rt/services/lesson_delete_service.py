@@ -82,7 +82,7 @@ def _delete_locked(db, root, lesson_id: int, lesson_dir: str) -> None:
         if row.storage == "folder" and (not root or not _safe_child(lesson_dir, os.path.realpath(root))):
             raise Conflict("unsafe_lesson_path", "La lezione non è una cartella diretta della radice configurata.")
         if session.scalar(select(Job.id).where(Job.lesson_path == row.path, Job.state.in_(
-                ["queued", "running", "waiting_for_decision"])).limit(1)):
+                ["queued", "running", "waiting_for_decision", "waiting_for_provider"])).limit(1)):
             raise Conflict("lesson_busy", "La lezione ha job ancora attivi o in attesa.")
         media = [item for item in session.scalars(select(LessonFile.media_path).where(
             LessonFile.lesson_id == lesson_id, LessonFile.media_path.is_not(None)))]

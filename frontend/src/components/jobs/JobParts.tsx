@@ -1,4 +1,4 @@
-import { RotateCcw, TriangleAlert } from 'lucide-react'
+import { Clock, RotateCcw, TriangleAlert } from 'lucide-react'
 
 import { ApiError, errorMessage } from '@/api/client'
 import { useRetryJob, useWorkers } from '@/api/jobs'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 export function JobStateBadge({ state }: { state: string }) {
   return (
     <Badge tone={jobStateTone(state)} data-state={state}>
+      {state === 'waiting_for_provider' && <Clock className="size-3 shrink-0" aria-hidden />}
       {JOB_STATE_LABELS[state] ?? state}
     </Badge>
   )

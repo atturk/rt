@@ -138,6 +138,7 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     options = job.payload.get("options") or {}
     if options.get("include_excluded") and len(pending) != 1:
         raise ValueError("L'esclusione si può ignorare solo per una singola unità.")
+    deferred_calls = []
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
     with extra_scope(job.lesson_path, "review", job.payload), ctx.activate():
         for unit in pending.copy():
@@ -148,13 +149,24 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 ctx.emit(ReviewUnitDone(unit_id=unit, issues=0, pending_units=pending.copy()))
                 continue
             ctx.emit(ReviewUnitStarted(unit_id=unit, pending_units=pending.copy(), running_units=[unit]))
-            results.append(run_review_unit(job.lesson_path, unit,
-                                           force_mock=bool((job.payload.get("options") or {}).get("mock")),
-                                           parent_context=bool(job.payload.get("parent_context")),
-                                           force=bool(job.payload.get("force") or options.get("force")),
-                                           **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)}))
+            try:
+                results.append(run_review_unit(job.lesson_path, unit,
+                                               force_mock=bool((job.payload.get("options") or {}).get("mock")),
+                                               parent_context=bool(job.payload.get("parent_context")),
+                                               force=bool(job.payload.get("force") or options.get("force")),
+                                               **{name: True for name in ("skip_prefilter", "include_excluded") if options.get(name)}))
+            except Exception as exc:
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(exc)
+                    pending.remove(unit)
+                    continue
+                raise
             pending.remove(unit)
             ctx.emit(ReviewUnitDone(unit_id=unit, issues=results[-1].get("issues", 0), pending_units=pending.copy()))
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="review")
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
@@ -165,16 +177,28 @@ def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     pending = [part["unit_id"] for part in job.payload["parts"]]
     ctx.emit(ReviewUnitsQueued(pending_units=pending.copy()))
     results = []
+    deferred_calls = []
     with ctx.activate():
         for part in job.payload["parts"]:
             ctx.check_cancelled()
             uid = part["unit_id"]
             ctx.emit(ReviewUnitStarted(unit_id=uid, pending_units=pending.copy(), running_units=[uid]))
-            result = run_review_part(job.lesson_path, part,
-                                     force_mock=ctx.force_mock or bool((job.payload.get("options") or {}).get("mock")))
+            try:
+                result = run_review_part(job.lesson_path, part,
+                                         force_mock=ctx.force_mock or bool((job.payload.get("options") or {}).get("mock")))
+            except Exception as exc:
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(exc)
+                    pending.remove(uid)
+                    continue
+                raise
             results.append(result)
             pending.remove(uid)
             ctx.emit(ReviewUnitDone(unit_id=uid, issues=result["issues"], pending_units=pending.copy()))
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="review")
     return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
 
 
@@ -216,7 +240,7 @@ def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):
         except RunCancelled:
             _cleanup_upload(job.payload)
             raise
-        if outcome.state != JobState.WAITING_FOR_DECISION:
+        if outcome.state not in (JobState.WAITING_FOR_DECISION, JobState.WAITING_FOR_PROVIDER):
             _cleanup_upload(job.payload)
         return outcome
     wrapped.upload_cleanup = True
@@ -417,7 +441,7 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 if isinstance(c, dict)}
     provider = p.get("provider") or (declared.get(p["credential"]) or {}).get("provider")
     try:
-        LLMClient().call_structured(
+        LLMClient(interactive=True).call_structured(
             prompt='Rispondi con {"ok": true}.', system_prompt="Rispondi solo con JSON.",
             response_model=_Ping, job_name="outline", max_retries=0,
             override_provider=provider, override_model=p["model"], override_base_url=p.get("base_url") or None,

@@ -728,6 +728,7 @@ def generate_recall_batch(
         policy['rules'] = rules
     results = []
     failures = UnitFailureTracker()
+    deferred_calls = []
     last_error = None
     succeeded = False
     system = getattr(prompts, "RECALL_" + qtype.value.upper() + "_SYSTEM_PROMPT")
@@ -821,7 +822,11 @@ def generate_recall_batch(
             work_items, run_group, min(parallel, len(work_items)) if work_items else 1, should_stop, started=on_started
         ):
             if exc is not None:
+                from rt.llm.errors import DeferredCall, DeferredPhase
                 from rt.services.context import RunCancelled
+                if isinstance(exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(exc)
+                    continue
                 if isinstance(exc, RunCancelled):
                     continue
                 if not is_unit_failure(exc):
@@ -856,7 +861,14 @@ def generate_recall_batch(
                     classifier_level=assessment.get("level"),
                     da_verificare=bool(set(grp_ids) & pending_conceptual_units))
                 group_results.append(question)
-            group_results = recall_rules.filter_group(group_results, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
+            try:
+                group_results = recall_rules.filter_group(group_results, rules, mock=mock, summary=summary, lesson_dir=lesson_dir)
+            except Exception as filter_exc:
+                from rt.llm.errors import DeferredCall, DeferredPhase
+                if isinstance(filter_exc, (DeferredCall, DeferredPhase)):
+                    deferred_calls.append(filter_exc)
+                    continue
+                raise
             attempt = {"fingerprint": fp, "exhausted": not group_results,
                        "outcome": "questions" if group_results else "empty",
                        "generated_at": datetime.now().isoformat(), "question_ids": []}
@@ -870,6 +882,9 @@ def generate_recall_batch(
                    else "nessuna domanda nuova") + f" ({time.monotonic() - started_t:.0f}s)", **wh)
             if count is not None and len(results) >= count:
                 break
+        if deferred_calls:
+            from rt.llm.deferred import raise_deferred_phase
+            raise_deferred_phase(deferred_calls, phase="recall")
         if count is None or len(results) >= count or not next_groups or failures.too_many():
             break
         active = next_groups
@@ -942,7 +957,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                 domanda_followup=None,
             )
 
-        client = LLMClient(force_mock=force_mock)
+        client = LLMClient(force_mock=force_mock, interactive=True)
         from rt.pipeline.recall_checks import checked_evaluation
 
         if question.type == RecallQuestionType.MIRATA:
@@ -1025,7 +1040,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             domanda_followup="Quali sono gli ulteriori aspetti della scaletta che andrebbero integrati?",
         )
 
-    client = LLMClient(force_mock=force_mock)
+    client = LLMClient(force_mock=force_mock, interactive=True)
     from rt.pipeline.recall_checks import checked_evaluation
 
     if question.type == RecallQuestionType.MIRATA:

@@ -109,6 +109,22 @@ def route_settings(project_root: Path, job: str, role: str) -> tuple[str, str, s
             bool(role == "primary" and data.get("round_robin")))
 
 
+def route_batch(project_root: Path, job: str, role: str) -> bool:
+    paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
+    if job == "recall" and job not in paths:
+        previous = _legacy_recall_path(paths)
+        if previous:
+            paths[job] = str(previous)
+    data = _read_yaml(Path(paths[job])) if job in paths else {}
+    if role in {"primary", "secondary"}:
+        route = data.get(role) or {}
+        if role == "primary" and data.get("primary_routes"):
+            route = data["primary_routes"][0]
+    else:
+        route = (data.get("fallback") or {}).get(role) or {}
+    return bool(route.get("batch", False))
+
+
 def route_round_robin_keys(project_root: Path, job: str) -> list[str]:
     paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
     data = _read_yaml(Path(paths[job])) if job in paths else {}
@@ -118,7 +134,8 @@ def route_round_robin_keys(project_root: Path, job: str) -> list[str]:
 
 def save_route(project_root: Path, job: str, role: str, provider: str,
                credential: str, model: str, base_url: str, round_robin: bool,
-               round_robin_credentials: list[str] | None = None) -> str:
+               round_robin_credentials: list[str] | None = None,
+               batch: bool = False) -> str:
     if role not in ROUTE_ROLES or provider not in (*KNOWN_PROVIDER_DEFAULT_BASE_URLS, "openai_compatible"):
         raise ValueError("Ruolo o provider non riconosciuto.")
     paths = find_job_yaml_paths(str(general_config_path(project_root).parent))
@@ -157,6 +174,10 @@ def save_route(project_root: Path, job: str, role: str, provider: str,
                 else (data.get(role) or {}))
     route = {**previous, "provider": provider, "credential": credential, "model": model}
     route.pop("base_url", None)
+    if batch:
+        route["batch"] = True
+    else:
+        route.pop("batch", None)
     if previous.get("provider") != provider:
         route.pop("provider_routing", None)
     if base_url and base_url != KNOWN_PROVIDER_DEFAULT_BASE_URLS.get(provider):
@@ -329,16 +350,45 @@ def snapshot(project_root: Path) -> dict[str, Any]:
     set_by_name = {c["name"]: c["set"] for c in credentials}
     connections = []
     all_connections = list_connections(project_root)  # legge molti YAML: una volta sola
+    from rt.llm.pricing import openrouter_batch_models
+    from rt.llm.providers import get_provider
+    known_or_batch = set(openrouter_batch_models())
     for conn in all_connections:
+        prov_name = conn.get("provider") or ""
+        try:
+            supports_batch = bool(get_provider(prov_name).supports_batch)
+        except ValueError:
+            supports_batch = False
+        conn_models = list(conn.get("models") or [])
+        if supports_batch and prov_name == "openrouter":
+            batch_models = [
+                m[:-len(":batch")] if m.endswith(":batch") else m
+                for m in conn_models
+                if m.endswith(":batch") or m.lower().strip() in known_or_batch
+            ]
+            # Preserva ordine senza duplicati
+            batch_models = list(dict.fromkeys(batch_models))
+        elif supports_batch:
+            batch_models = list(conn_models)
+        else:
+            batch_models = []
         connections.append({
-            "name": conn["name"], "provider": conn.get("provider") or "", "base_url": conn.get("base_url") or "",
-            "models": list(conn.get("models") or []),
+            "name": conn["name"], "provider": prov_name, "base_url": conn.get("base_url") or "",
+            "models": conn_models,
+            "supports_batch": supports_batch,
+            "batch_models": batch_models,
             "credentials": [{"name": n, "set": set_by_name.get(n, False)} for n in conn.get("credentials") or []],
         })
     phases = []
     for job, label in PHASES:
         connection, model = phase_selection(project_root, job, all_connections)
-        phases.append({"job": job, "label": label, "connection": connection, "model": model})
+        phases.append({
+            "job": job,
+            "label": label,
+            "connection": connection,
+            "model": model,
+            "batch": route_batch(project_root, job, "primary"),
+        })
     return {
         "transcription": {
             "engine": cfg.transcription.engine, "base_url": cfg.transcription.base_url,

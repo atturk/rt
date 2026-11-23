@@ -75,8 +75,8 @@ export function useAddModel() {
 }
 
 export function useAssignPhase() {
-  return useSettingsMutation(({ job, connection, model }: { job: string; connection: string; model: string }) =>
-    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model } })),
+  return useSettingsMutation(({ job, connection, model, batch }: { job: string; connection: string; model: string; batch?: boolean }) =>
+    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, ...(batch !== undefined ? { batch } : {}) } })),
   )
 }
 
