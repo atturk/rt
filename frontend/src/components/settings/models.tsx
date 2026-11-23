@@ -8,6 +8,7 @@ import {
   isTerminal,
   useAddModel,
   useAssignPhase,
+  useClearPhase,
   useCreateConnection,
   useDeleteConnection,
   useJob,
@@ -72,6 +73,7 @@ const PHASE_HINTS: Record<string, string> = {
   enrichment_writer: 'Prepara idee e prompt JSON da una singola subunità, senza generare contenuti.',
   enrichment_visualizer: 'Genera HTML/SVG/JavaScript autonomo per grafici, matrici, diagrammi e simulazioni.',
   enrichment_image: 'Generatore di immagini tramite Images API. Usa un modello con output immagine su OpenRouter o OpenAI-compatible.',
+  study_chat: 'Risponde alle domande nella chat dello Studio. Se non scelto, usa il modello della Revisione.',
 }
 
 // ------------------------------------------------------------------ modelli per fase
@@ -114,14 +116,21 @@ export function PhaseRows({ settings }: { settings: Settings }) {
 
 function PhaseRow({ phase, connections, settings }: { phase: Phase; connections: Connection[]; settings?: Settings }) {
   const assign = useAssignPhase()
+  const clear = useClearPhase()
   const saveRewrite = useSaveRewrite()
+  const isStudyChat = phase.job === 'study_chat'
   const [connection, setConnection] = useState(phase.connection ?? '')
   const [model, setModel] = useState(phase.model ?? '')
   const models = connections.find((c) => c.name === connection)?.models ?? []
   const dirty = connection !== (phase.connection ?? '') || model !== (phase.model ?? '')
+  const canSubmit = dirty && ((isStudyChat && !connection) || (Boolean(connection) && Boolean(model.trim())))
   const listId = `modelli-${phase.job}`
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (isStudyChat && !connection) {
+      clear.mutate(phase.job)
+      return
+    }
     assign.mutate({ job: phase.job, connection, model: model.trim() })
   }
   return (
@@ -138,6 +147,10 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
           <span className="text-meta text-muted-foreground" data-testid="phase-saved">
             {phase.connection} · {phase.model}
           </span>
+        ) : isStudyChat ? (
+          <span className="text-meta text-muted-foreground" data-testid="phase-saved">
+            Come la Revisione
+          </span>
         ) : (
           <Badge tone="warning" className="w-fit">
             Non assegnato
@@ -153,7 +166,7 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
             setModel('')
           }}
         >
-          <option value="">Scegli…</option>
+          <option value="">{isStudyChat ? 'Come la Revisione' : 'Scegli…'}</option>
           {connections.map((c) => (
             <option key={c.name} value={c.name}>
               {c.name}
@@ -176,7 +189,7 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
           ))}
         </datalist>
       </Field>
-      <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
+      <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!canSubmit || assign.isPending || clear.isPending}>
         Salva
       </Button>
       {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
@@ -205,9 +218,9 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
           )}
         </div>
       )}
-      {assign.isError && (
+      {(assign.isError || clear.isError) && (
         <Alert tone="danger" className="sm:col-span-5">
-          {errorMessage(assign.error)}
+          {errorMessage(assign.error ?? clear.error)}
         </Alert>
       )}
     </form>

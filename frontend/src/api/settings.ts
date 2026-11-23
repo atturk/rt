@@ -80,6 +80,12 @@ export function useAssignPhase() {
   )
 }
 
+export function useClearPhase() {
+  return useSettingsMutation((job: string) =>
+    unwrap(api.DELETE('/api/v1/settings/phases/{job}', { params: { path: { job } } })),
+  )
+}
+
 /** Stesso modello per tutte le fasi (configurazione guidata): una rilettura sola alla fine. */
 export function useAssignAllPhases() {
   return useSettingsMutation(async ({ jobs, connection, model }: { jobs: string[]; connection: string; model: string }) => {

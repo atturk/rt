@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import type { ComponentProps, ReactNode } from 'react'
+import type { ComponentProps, ComponentType, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router'
 
 import { Tooltip } from '@/components/ui/tooltip'
@@ -31,7 +31,7 @@ function iconButtonClass({ variant = 'ghost', active = false, className }: { var
 
 type Common = {
   label: string
-  icon: LucideIcon
+  icon: LucideIcon | ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
   /** Dove compare il suggerimento. */
   side?: 'top' | 'right' | 'bottom'
   variant?: IconVariant

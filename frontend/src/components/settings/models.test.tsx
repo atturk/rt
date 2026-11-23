@@ -45,3 +45,21 @@ it('mostra il selettore del contesto per la fase di rielaborazione e ne permette
     })
   })
 })
+
+it('mostra Chat dello Studio con opzione Come la Revisione', () => {
+  const settings = {
+    ...testSettings,
+    phases: [
+      ...testSettings.phases,
+      { job: 'study_chat', label: 'Chat dello Studio', connection: null, model: null },
+    ],
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <PhaseRows settings={settings} />
+    </QueryClientProvider>,
+  )
+  const chatRow = screen.getByRole('form', { name: 'Fase Chat dello Studio' })
+  expect(chatRow).toHaveTextContent('Come la Revisione')
+  expect(chatRow).not.toHaveTextContent('Non assegnato')
+})
