@@ -113,7 +113,7 @@ def system_info(_actor: Actor) -> SystemInfo:
     import platform
     from rt.core import bundle, paths
     from rt.core.config import _default_project_root
-    from rt.core.donazioni import DONAZIONI_URL
+    from rt.core.donazioni import donazioni_app_url
     from rt.core.version import get_current_version, get_update_channel, is_prerelease
     root = _default_project_root()
     version = get_current_version(root)
@@ -124,7 +124,7 @@ def system_info(_actor: Actor) -> SystemInfo:
                       install_dir=str(root), data_dir=str(paths.data_dir()), config_dir=str(paths.config_dir(root)),
                       python_version=platform.python_version(),
                       platform=f"{platform.system()} {platform.release()} ({platform.machine()})",
-                      donazioni_url=DONAZIONI_URL)
+                      donazioni_url=donazioni_app_url())
 
 
 class UpdateProgress(BaseModel):
