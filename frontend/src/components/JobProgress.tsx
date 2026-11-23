@@ -9,6 +9,7 @@ const STATE_TEXT: Record<string, string> = {
   queued: 'In coda',
   running: 'In corso',
   waiting_for_decision: 'In attesa di una decisione',
+  waiting_for_provider: 'In attesa del provider',
   succeeded: 'Completato',
   failed: 'Fallito',
   cancelled: 'Annullato',

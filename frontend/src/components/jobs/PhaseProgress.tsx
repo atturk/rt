@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Clock } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -49,6 +49,8 @@ function headline(job: Job, phase: string | null, detail: string | null): string
       return 'In coda · in attesa del worker'
     case 'waiting_for_decision':
       return `In attesa · devi ${decisionLabel(job.decision)}`
+    case 'waiting_for_provider':
+      return 'In attesa del provider'
     case 'failed':
       return `Errore${job.error_message || job.error ? ` · ${job.error_message || job.error}` : ''}`
     case 'cancelled':
@@ -129,6 +131,12 @@ export function PhaseProgress({ jobId, events: withEvents = true, className, onR
         <i className="absolute inset-y-0 left-0 bg-foreground opacity-25 transition-[width]" style={{ width: `${phasePercent}%` }} data-testid="phase-bar" />
         <i className="absolute inset-y-0 left-0 bg-foreground transition-[width]" style={{ width: `${overall}%` }} data-testid="overall-bar" />
       </div>
+      {j.state === 'waiting_for_provider' && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="phase-waiting-provider">
+          <Clock className="size-3.5 shrink-0" aria-hidden />
+          <span>Le risposte arrivano entro 24 ore, a costo ridotto. RT le riceve anche con la finestra chiusa.</span>
+        </p>
+      )}
       {withEvents && (
         <ol
           id={logId}

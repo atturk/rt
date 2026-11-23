@@ -52,12 +52,18 @@ class JobState(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     WAITING_FOR_DECISION = "waiting_for_decision"
+    WAITING_FOR_PROVIDER = "waiting_for_provider"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
 
-ACTIVE_STATES = frozenset({JobState.QUEUED.value, JobState.RUNNING.value, JobState.WAITING_FOR_DECISION.value})
+ACTIVE_STATES = frozenset({
+    JobState.QUEUED.value,
+    JobState.RUNNING.value,
+    JobState.WAITING_FOR_DECISION.value,
+    JobState.WAITING_FOR_PROVIDER.value,
+})
 TERMINAL_STATES = frozenset({JobState.SUCCEEDED.value, JobState.FAILED.value, JobState.CANCELLED.value})
 
 # Job in attesa che si possono chiudere (close_waiting): la decisione ha una sua schermata.
@@ -298,8 +304,10 @@ class DbJobQueue:
             return self._with_retries(s, [JobInfo.from_row(r) for r in s.scalars(stmt)])
 
     def cancel(self, job_id: str) -> JobInfo:
-        """Un job in coda o in attesa di decisione si annulla subito; uno in esecuzione
-        riceve la richiesta e il worker lo ferma al prossimo punto di controllo."""
+        """Un job in coda, in attesa di decisione o in attesa del provider si annulla subito;
+        uno in esecuzione riceve la richiesta e il worker lo ferma al prossimo punto di controllo."""
+        was_waiting_provider = False
+        info: Optional[JobInfo] = None
         with session_scope(self.db) as s:
             row = s.get(Job, job_id)
             if row is None:
@@ -309,13 +317,41 @@ class DbJobQueue:
             if row.state == JobState.RUNNING.value:
                 row.cancel_requested = True
                 s.add(JobEvent(job_id=job_id, type="job_cancel_requested", payload={}))
+                info = JobInfo.from_row(row)
             else:
+                was_waiting_provider = row.state == JobState.WAITING_FOR_PROVIDER.value
                 row.state = JobState.CANCELLED.value
                 row.cancel_requested = True
                 row.finished_at = utcnow()
                 row.active_lesson = None
                 s.add(JobEvent(job_id=job_id, type="job_finished", payload={"state": row.state}))
-            return JobInfo.from_row(row)
+                info = JobInfo.from_row(row)
+        if was_waiting_provider:
+            from rt.llm import deferred
+            cancelled_entries = deferred.delete_for_job(job_id, db=self.db)
+            if cancelled_entries:
+                self._cancel_provider_batches(job_id, cancelled_entries)
+        return info  # type: ignore[return-value]
+
+    def _cancel_provider_batches(self, job_id: str, entries: List[Any]) -> None:
+        from rt.llm import deferred
+        from rt.llm.credentials import GLOBAL_CREDENTIALS
+        from rt.llm.providers import get_provider
+        seen: set[str] = set()
+        for entry in entries:
+            bid = getattr(entry, "batch_id", None)
+            if not bid or bid in seen or getattr(entry, "state", None) != "submitted":
+                continue
+            seen.add(bid)
+            if deferred.batch_still_used_by_other_job(bid, exclude_job_id=job_id, db=self.db):
+                continue
+            try:
+                provider = get_provider(entry.provider)
+                api_key = GLOBAL_CREDENTIALS.get_api_key(entry.credential_ref) if entry.credential_ref else None
+                if api_key:
+                    provider.cancel_batch(bid, api_key=api_key, base_url=entry.base_url)
+            except Exception:
+                pass
 
     def close_waiting(self, job_id: str) -> JobInfo:
         """Chiude un job fermo su una decisione senza annullarlo: il lavoro fatto resta, il job
@@ -375,7 +411,10 @@ class DbJobQueue:
                 yield event
             if not batch:
                 job = self.get(job_id)
-                if job is None or job.state in TERMINAL_STATES or job.state == JobState.WAITING_FOR_DECISION.value:
+                if job is None or job.state in TERMINAL_STATES or job.state in (
+                    JobState.WAITING_FOR_DECISION.value,
+                    JobState.WAITING_FOR_PROVIDER.value,
+                ):
                     if not self.events(job_id, cursor):
                         return
                     continue
@@ -491,16 +530,18 @@ class DbJobQueue:
 
     def finish(self, job_id: str, worker_id: str, state: Union[JobState, str], *,
                result: Optional[Dict[str, Any]] = None, error: Optional[str] = None,
-               decision: Optional[Dict[str, Any]] = None, lesson_path: Optional[str] = None) -> bool:
-        """Chiude l'esecuzione (anche in waiting_for_decision). False se il lease era perso."""
+               decision: Optional[Dict[str, Any]] = None, lesson_path: Optional[str] = None,
+               progress: Optional[Dict[str, Any]] = None, event_type: Optional[str] = None,
+               event_payload: Optional[Dict[str, Any]] = None) -> bool:
+        """Chiude l'esecuzione (anche in waiting_for_decision / waiting_for_provider). False se il lease era perso."""
         state = JobState(state).value
         now = utcnow()
         with session_scope(self.db) as s:
             row = s.get(Job, job_id)
             if row is None or row.state != JobState.RUNNING.value or row.worker_id != worker_id:
                 return False
-            if state == JobState.WAITING_FOR_DECISION.value and row.cancel_requested:
-                # Annullato mentre girava e fermo su una decisione: nessuno la prenderà più.
+            if state in (JobState.WAITING_FOR_DECISION.value, JobState.WAITING_FOR_PROVIDER.value) and row.cancel_requested:
+                # Annullato mentre girava: nessuno lo riprenderà.
                 state, decision = JobState.CANCELLED.value, None
             row.state = state
             row.lease_until = None
@@ -508,15 +549,21 @@ class DbJobQueue:
             row.result = json_safe(result) if result is not None else row.result
             row.error = error
             row.decision = json_safe(decision) if decision is not None else None
+            if progress is not None:
+                row.progress = json_safe(progress)
             if lesson_path:
                 row.lesson_path = normalize_lesson_path(lesson_path)
             if state in TERMINAL_STATES:
                 row.finished_at = now
-            payload: Dict[str, Any] = {"state": state}
+            payload: Dict[str, Any] = {"state": state, **(event_payload or {})}
             if error:
                 payload["error"] = error
-            s.add(JobEvent(job_id=job_id, type="job_finished" if state in TERMINAL_STATES else "job_waiting",
-                           payload=payload))
+            ev_name = event_type or (
+                "job_finished" if state in TERMINAL_STATES
+                else "job_waiting_provider" if state == JobState.WAITING_FOR_PROVIDER.value
+                else "job_waiting"
+            )
+            s.add(JobEvent(job_id=job_id, type=ev_name, payload=json_safe(payload)))
             return True
 
     def complete_queued_documents(self, lesson_path: str) -> None:
@@ -571,6 +618,31 @@ class DbJobQueue:
             row.decision = None
             row.attempts = 0
             s.add(JobEvent(job_id=job_id, type="job_resumed", payload={}))
+            return JobInfo.from_row(row)
+
+    def resume_after_provider(self, job_id: str, *, fallback_sync: bool = False,
+                              reason: Optional[str] = None) -> JobInfo:
+        """Un job in attesa del provider (batch) torna in coda al completamento o fallback del lotto."""
+        with session_scope(self.db) as s:
+            row = s.get(Job, job_id)
+            if row is None:
+                raise JobError(f"Job {job_id} inesistente")
+            if row.state != JobState.WAITING_FOR_PROVIDER.value:
+                raise JobError(f"Job {job_id} non è in attesa del provider (stato: {row.state})")
+            payload = unforced_payload(row.type, row.payload or {})
+            if fallback_sync:
+                payload["batch_fallback"] = True
+            else:
+                payload.pop("batch_fallback", None)
+            row.payload = json_safe(payload)
+            row.state = JobState.QUEUED.value
+            row.decision = None
+            row.progress = None
+            row.attempts = 0
+            ev_payload: Dict[str, Any] = {"source": "provider", "batch_fallback": bool(fallback_sync)}
+            if reason:
+                ev_payload["reason"] = reason
+            s.add(JobEvent(job_id=job_id, type="job_resumed", payload=ev_payload))
             return JobInfo.from_row(row)
 
     # ------------------------------------------------------------ registro dei worker

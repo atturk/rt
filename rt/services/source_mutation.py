@@ -12,7 +12,7 @@ def source_mutation(lesson_id, lesson_dir, *, allow_documents=True):
     try:
         with lesson_work_lock(lesson_dir):
             assert_editable(lesson_id)
-            busy = [job for job in get_job_queue().list(state=['queued', 'running', 'waiting_for_decision'],
+            busy = [job for job in get_job_queue().list(state=['queued', 'running', 'waiting_for_decision', 'waiting_for_provider'],
                                                        lesson_id=lesson_dir)
                     if job.type != 'documents' or not allow_documents]
             if busy:

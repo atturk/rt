@@ -40,7 +40,7 @@ def _update_locked(lesson_id: int, lesson_dir: str, updates: Dict[str, Any]) -> 
             if row is None or row.path != os.path.realpath(lesson_dir):
                 raise NotFound("lesson_not_found", "Lezione non trovata.")
             busy = session.scalar(select(Job).where(Job.lesson_path == row.path,
-                Job.state.in_(["queued", "running", "waiting_for_decision"])).limit(1))
+                Job.state.in_(["queued", "running", "waiting_for_decision", "waiting_for_provider"])).limit(1))
             if busy:
                 raise Conflict("lesson_busy", "La lezione ha un job attivo o in attesa.", {"job_id": busy.id})
             from rt.services.document_edit_lease import is_being_edited, DocumentBeingEdited

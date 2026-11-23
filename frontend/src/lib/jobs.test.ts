@@ -29,6 +29,14 @@ describe('describeEvent', () => {
     })
     expect(describeEvent(event(5, 'job_finished', { state: 'failed', error: 'boom' }))).toEqual({ text: 'Fallito: boom', tone: 'danger' })
     expect(describeEvent(event(6, 'job_finished', { state: 'succeeded' })).tone).toBe('success')
+    expect(describeEvent(event(7, 'job_waiting_provider', { requests: 12, provider: 'openrouter' }))).toEqual({
+      text: 'In attesa del provider (12 richieste · openrouter)',
+      tone: 'neutral',
+    })
+    expect(describeEvent(event(8, 'job_resumed', { source: 'provider', batch_fallback: true, reason: 'Lotto scaduto' }))).toEqual({
+      text: 'Lotto scaduto',
+      tone: 'warning',
+    })
   })
 })
 

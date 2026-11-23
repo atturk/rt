@@ -240,7 +240,7 @@ def with_upload_cleanup(handler: Callable[[JobInfo, RunContext], JobOutcome]):
         except RunCancelled:
             _cleanup_upload(job.payload)
             raise
-        if outcome.state != JobState.WAITING_FOR_DECISION:
+        if outcome.state not in (JobState.WAITING_FOR_DECISION, JobState.WAITING_FOR_PROVIDER):
             _cleanup_upload(job.payload)
         return outcome
     wrapped.upload_cleanup = True
