@@ -793,10 +793,11 @@ def test_install_macos_open_files(data, webview, monkeypatch):
 
     fake_app = Mock()
     open_files_fn(AppDelegate(), fake_app, [str(test_file)])
-    assert fake_window.evaluate_js.call_count == 1
-    call_str = fake_window.evaluate_js.call_args[0][0]
-    assert "window.rtOpenedFiles" in call_str
-    assert "test.docx" in call_str
+    # Sul thread principale niente evaluate_js (si bloccherebbe): il file resta in attesa.
+    assert fake_window.evaluate_js.call_count == 0
+    from rt.core import opened_files
+    pending = opened_files.get_unannounced_tokens(since=0, exclude=window._announced_tokens)
+    assert any(it["name"] == "test.docx" for it in pending)
     fake_app.replyToOpenOrPrint_.assert_called_once_with(0)
 
 

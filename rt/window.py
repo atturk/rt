@@ -137,6 +137,7 @@ def _command(command: str) -> subprocess.CompletedProcess:
 
 _window_start_time = 0.0
 _announced_tokens = set()
+_announce_lock = threading.Lock()  # file_in_attesa e il watcher non consegnano due volte lo stesso file
 
 
 class DesktopApi:
@@ -148,9 +149,10 @@ class DesktopApi:
 
     def file_in_attesa(self) -> list:
         from rt.core import opened_files
-        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
-        for it in items:
-            _announced_tokens.add(it["token"])
+        with _announce_lock:
+            items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+            for it in items:
+                _announced_tokens.add(it["token"])
         return items
 
     def importa_collezione(self, token: str) -> dict:
@@ -1085,15 +1087,11 @@ def install_macos_open_files(window=None) -> None:
         selector = b"application:openFiles:"
 
         def open_files(self, app, filenames):
+            # Gira sul thread principale: evaluate_js qui aspetterebbe il thread principale stesso
+            # (rotellina). Si registrano i file e li annuncia _watch_opened_files, tutti insieme.
             from rt.core import opened_files
-            items = []
             for p in filenames or []:
-                reg = opened_files.register_file(str(p))
-                if reg:
-                    items.append({"token": reg["token"], "name": reg["name"], "size": reg["size"]})
-                    _announced_tokens.add(reg["token"])
-            if items and window:
-                window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                opened_files.register_file(str(p))
             if hasattr(app, "replyToOpenOrPrint_"):
                 app.replyToOpenOrPrint_(0)
 
@@ -1194,11 +1192,16 @@ def open_window(base_url: str, path: str = "/") -> int:
                 time.sleep(1)
                 try:
                     from rt.core import opened_files
-                    items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
-                    if items:
-                        for it in items:
-                            _announced_tokens.add(it["token"])
-                        window.evaluate_js(f"window.rtOpenedFiles && window.rtOpenedFiles({json.dumps(items)})")
+                    with _announce_lock:
+                        items = opened_files.get_unannounced_tokens(since=_window_start_time, exclude=_announced_tokens)
+                        if not items:
+                            continue
+                        # Segnati come annunciati solo se la pagina li ha ricevuti: all'avvio da Finder
+                        # la pagina non è ancora pronta e li prende poi con file_in_attesa.
+                        if window.evaluate_js(
+                                f"!!window.rtOpenedFiles && (window.rtOpenedFiles({json.dumps(items)}), true)"):
+                            for it in items:
+                                _announced_tokens.add(it["token"])
                 except Exception as exc:
                     _log(f"Errore controllo file aperti: {exc}")
 

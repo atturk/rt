@@ -1,4 +1,4 @@
-import { BookOpen, Brain, Download, Image, Info, Plus, ShieldCheck } from 'lucide-react'
+import { BookOpen, Brain, Download, Image, Info, Plus, SearchX, ShieldCheck } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
@@ -211,10 +211,10 @@ export function DashboardPage() {
           )
         )}
         {all.data && all.data.length > 0 && filtered.length === 0 && (
-          <p className="flex flex-wrap items-center gap-3 text-body text-muted-foreground" data-testid="lessons-empty">
-            Nessuna lezione corrisponde alla ricerca.
-            <Button variant="outline" size="sm" onClick={handleResetFilters}>Azzera</Button>
-          </p>
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center text-muted-foreground" data-testid="lessons-empty">
+            <SearchX className="size-10 opacity-60" strokeWidth={1.5} aria-hidden />
+            <p className="text-body">Nessuna lezione corrisponde alla ricerca.</p>
+          </div>
         )}
         {filters.materia && filtered.length > 0 && (
           <p className="mb-4 text-meta text-muted-foreground">
