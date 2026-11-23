@@ -1150,3 +1150,124 @@ def test_folder_access_check_is_mac_only_and_ignores_missing_folders(monkeypatch
     monkeypatch.setattr(sys, 'platform', 'darwin')
     monkeypatch.setattr(desktop.os, 'listdir', Mock(side_effect=FileNotFoundError()))
     assert desktop.check_folder_access(lambda _m: None)
+
+
+def test_applescript_dialog_with_and_without_icon(tmp_path):
+    icon = tmp_path / "rt.icns"
+    icon.write_bytes(b"icns")
+    with_icon = desktop._applescript_dialog('Messaggio "test"', title="RT", buttons=("Esci", "Apri Impostazioni"),
+                                            default_button="Apri Impostazioni", icon_path=str(icon))
+    assert with_icon.startswith('display dialog "Messaggio \\"test\\""')
+    assert f'with icon (POSIX file "{icon}")' in with_icon
+    assert 'buttons {"Esci", "Apri Impostazioni"}' in with_icon
+    assert 'default button "Apri Impostazioni"' in with_icon
+
+    without_icon = desktop._applescript_dialog("Errore", icon_path=str(tmp_path / "manca.icns"))
+    assert "with icon caution" in without_icon
+    assert "POSIX file" not in without_icon
+
+
+def test_install_macos_dialog_icon_wraps_dialogs_and_handles_failure(tmp_path, monkeypatch, webview):
+    icon = tmp_path / "rt.icns"
+    icon.write_bytes(b"icns")
+    monkeypatch.setattr(window, "_macos_icon_path", lambda: str(icon))
+
+    fake_img = object()
+    alerts = []
+
+    class FakeTextField:
+        def __init__(self):
+            self._value = ""
+
+        def cell(self):
+            return SimpleNamespace(setScrollable_=lambda v: None)
+
+        def setStringValue_(self, value):
+            self._value = value
+
+        def stringValue(self):
+            return self._value + "-mod"
+
+    class FakeAlert:
+        def __init__(self):
+            self.icon = None
+            self.buttons = []
+            self.message = None
+            self.accessory = None
+            alerts.append(self)
+
+        def addButtonWithTitle_(self, title):
+            self.buttons.append(title)
+
+        def setMessageText_(self, msg):
+            self.message = msg
+
+        def setAlertStyle_(self, style):
+            pass
+
+        def setIcon_(self, img):
+            self.icon = img
+
+        def setAccessoryView_(self, view):
+            self.accessory = view
+
+        def runModal(self):
+            return 1000
+
+    fake_app = Mock()
+    fake_appkit = ModuleType("AppKit")
+    fake_appkit.NSImage = SimpleNamespace(alloc=lambda: SimpleNamespace(initWithContentsOfFile_=lambda p: fake_img))
+    fake_appkit.NSApplication = SimpleNamespace(sharedApplication=lambda: fake_app)
+    fake_appkit.NSRunningApplication = SimpleNamespace(currentApplication=lambda: SimpleNamespace(activateWithOptions_=lambda o: None))
+    fake_appkit.NSApplicationActivateIgnoringOtherApps = 2
+    fake_appkit.NSWarningAlertStyle = 0
+    fake_appkit.NSAlertFirstButtonReturn = 1000
+    fake_appkit.NSAlert = SimpleNamespace(alloc=lambda: SimpleNamespace(init=FakeAlert))
+    fake_appkit.NSTextField = SimpleNamespace(alloc=lambda: SimpleNamespace(initWithFrame_=lambda r: FakeTextField()))
+    fake_appkit.NSMakeRect = lambda x, y, w, h: (x, y, w, h)
+
+    orig_confirm = Mock(return_value="orig_confirm")
+    orig_input = Mock(return_value="orig_input")
+
+    class BrowserView:
+        display_confirmation_dialog = staticmethod(orig_confirm)
+        display_input_dialog = staticmethod(orig_input)
+
+    cocoa_mod = ModuleType("webview.platforms.cocoa")
+    cocoa_mod.BrowserView = BrowserView
+    platforms_mod = ModuleType("webview.platforms")
+    platforms_mod.__path__ = []
+    platforms_mod.cocoa = cocoa_mod
+    webview.__path__ = []
+    webview.platforms = platforms_mod
+    monkeypatch.setitem(sys.modules, "AppKit", fake_appkit)
+    monkeypatch.setitem(sys.modules, "webview.platforms", platforms_mod)
+    monkeypatch.setitem(sys.modules, "webview.platforms.cocoa", cocoa_mod)
+
+    window._install_macos_dialog_icon()
+
+    fake_app.setApplicationIconImage_.assert_called_once_with(fake_img)
+    assert BrowserView.display_confirmation_dialog("Esci", "Annulla", "Uscire?") is True
+    assert alerts[-1].icon is fake_img
+    assert BrowserView.display_input_dialog("OK", "Annulla", "Titolo", "val") == "val-mod"
+    assert alerts[-1].icon is fake_img
+
+    # Se il wrapping fallisce restano i metodi originali
+    class BrokenView:
+        display_confirmation_dialog = staticmethod(orig_confirm)
+        display_input_dialog = staticmethod(orig_input)
+
+    monkeypatch.setattr(cocoa_mod, "BrowserView", BrokenView)
+    # Rendi non scrivibile l'attributo per simulare un fallimento nel patch
+    class ReadOnlyMeta(type):
+        def __setattr__(cls, name, value):
+            raise RuntimeError("sola lettura")
+
+    class LockedView(metaclass=ReadOnlyMeta):
+        display_confirmation_dialog = staticmethod(orig_confirm)
+        display_input_dialog = staticmethod(orig_input)
+
+    cocoa_mod.BrowserView = LockedView
+    window._install_macos_dialog_icon()
+    assert LockedView.display_confirmation_dialog("a", "b", "c") == "orig_confirm"
+    assert LockedView.display_input_dialog("a", "b", "c", "d") == "orig_input"

@@ -953,9 +953,92 @@ def about_options(info: dict, versions: dict | None = None) -> dict:
     return options
 
 
+def _macos_icon_path() -> str | None:
+    app = bundle.app_path()
+    if app:
+        candidate = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(candidate):
+            return candidate
+    fallback = os.path.join(paths.project_root(), "packaging", "icons", "rt.icns")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _load_macos_icon():
+    icon_path = _macos_icon_path()
+    if not icon_path:
+        return None
+    try:
+        from AppKit import NSImage
+        return NSImage.alloc().initWithContentsOfFile_(icon_path)
+    except Exception:
+        return None
+
+
+def _install_macos_dialog_icon() -> None:
+    """Imposta subito l'icona di RT sull'app e sui dialoghi NSAlert di pywebview.
+
+    Il processo dell'app è python3, quindi senza questa configurazione prima di webview.start
+    macOS mostra l'icona generica (cartella blu) nei dialoghi di conferma e di input."""
+    try:
+        import AppKit
+        img = _load_macos_icon()
+        if not img:
+            return
+        AppKit.NSApplication.sharedApplication().setApplicationIconImage_(img)
+    except Exception as exc:
+        _log(f"Icona macOS non impostata: {exc}")
+        return
+
+    try:
+        from webview.platforms import cocoa
+        browser_view = cocoa.BrowserView
+        if getattr(browser_view, "_rt_icon_patched", False):
+            return
+
+        # Metodi ricopiati da pywebview 6.2.1 aggiungendo alert.setIcon_(img);
+        # se il wrapping fallisce restano i metodi originali di pywebview.
+        def display_confirmation_dialog(first_button, second_button, message):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(message)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            return alert.runModal() == AppKit.NSAlertFirstButtonReturn
+
+        def display_input_dialog(first_button, second_button, prompt, default_text):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            text_field = AppKit.NSTextField.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 240, 24))
+            text_field.cell().setScrollable_(True)
+            text_field.setStringValue_(default_text)
+            alert.setAccessoryView_(text_field)
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(prompt)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            if alert.runModal() == AppKit.NSAlertFirstButtonReturn:
+                return text_field.stringValue()
+            return None
+
+        browser_view.display_confirmation_dialog = staticmethod(display_confirmation_dialog)
+        browser_view.display_input_dialog = staticmethod(display_input_dialog)
+        browser_view._rt_icon_patched = True
+    except Exception as exc:
+        _log(f"Icona nei dialoghi macOS non configurata: {exc}")
+
+
 def _show_macos_about() -> None:
     from AppKit import (NSApplication, NSAttributedString, NSColor, NSFont,
-                        NSFontAttributeName, NSForegroundColorAttributeName, NSImage)
+                        NSFontAttributeName, NSForegroundColorAttributeName)
     from rt.core import bundle
     info = bundle.build_info()
     opts = about_options(info)
@@ -973,13 +1056,9 @@ def _show_macos_about() -> None:
     if "Version" in opts:
         panel_opts["Version"] = opts["Version"]
 
-    app = bundle.app_path()
-    if app:
-        icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-        if os.path.isfile(icon_path):
-            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-            if img:
-                panel_opts["ApplicationIcon"] = img
+    img = _load_macos_icon()
+    if img:
+        panel_opts["ApplicationIcon"] = img
     NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(panel_opts)
 
 
@@ -1005,21 +1084,12 @@ def _get_about_target():
 def _macos_menu() -> None:
     """Mantiene Modifica, collega Informazioni su RT e assegna Cmd+Q all'uscita."""
     from AppKit import NSApplication
-    try:
-        from AppKit import NSImage
-    except ImportError:
-        NSImage = None
     from PyObjCTools import AppHelper
-    from rt.core import bundle
 
     def configure():
-        app = bundle.app_path()
-        if app and NSImage is not None:
-            icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-            if os.path.isfile(icon_path):
-                img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-                if img:
-                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+        img = _load_macos_icon()
+        if img:
+            NSApplication.sharedApplication().setApplicationIconImage_(img)
 
         about_target = _get_about_target()
         main_menu = NSApplication.sharedApplication().mainMenu()
@@ -1176,6 +1246,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         window.events.loaded += loaded
         window.events.initialized += initialized
         if sys.platform == "darwin":
+            _install_macos_dialog_icon()
             window.events.shown += _macos_menu
             try:
                 from rt import window_permissions

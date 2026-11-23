@@ -158,10 +158,43 @@ def _wait_for_api(port: int, seconds: float = API_WAIT_SECONDS) -> bool:
     return False
 
 
+def _icon_path() -> Optional[str]:
+    app = bundle.app_path()
+    if app:
+        candidate = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(candidate):
+            return candidate
+    fallback = os.path.join(paths.project_root(), "packaging", "icons", "rt.icns")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _applescript_dialog(
+    message: str,
+    title: str = "RT",
+    buttons: tuple[str, ...] = ("OK",),
+    default_button: str = "OK",
+    icon_path: Optional[str] = None,
+) -> str:
+    """Costruisce uno script osascript `display dialog` con l'icona di RT (o caution se assente)."""
+    buttons_as = ", ".join(_applescript_string(b) for b in buttons)
+    icon_clause = (
+        f"with icon (POSIX file {_applescript_string(icon_path)})"
+        if icon_path and os.path.isfile(icon_path)
+        else "with icon caution"
+    )
+    return (
+        f"display dialog {_applescript_string(message)} "
+        f"with title {_applescript_string(title)} "
+        f"buttons {{{buttons_as}}} "
+        f"default button {_applescript_string(default_button)} "
+        f"{icon_clause}"
+    )
+
+
 def _alert(message: str) -> None:
     """Gli errori dell'app si mostrano anche quando non c'è una console."""
     if sys.platform == "darwin":
-        script = f'display alert "RT" message {_applescript_string(message)} as critical'
+        script = _applescript_dialog(message, title="RT", icon_path=_icon_path())
         subprocess.run(["osascript", "-e", script], check=False, capture_output=True)
     elif sys.platform == "win32":
         import ctypes
@@ -208,8 +241,13 @@ def _permission_alert(root: str) -> None:
                "attiva per RT la cartella che contiene le lezioni (es. Scrivania), poi riapri RT.\n\n"
                "Se RT non compare nell'elenco, da Terminale: "
                "tccutil reset SystemPolicyDesktopFolder com.atturk.rt e riapri RT.")
-    script = (f'display alert "RT non può aprire le lezioni" message {_applescript_string(message)} '
-              'as critical buttons {"Esci", "Apri Impostazioni"} default button "Apri Impostazioni"')
+    script = _applescript_dialog(
+        message,
+        title="RT non può aprire le lezioni",
+        buttons=("Esci", "Apri Impostazioni"),
+        default_button="Apri Impostazioni",
+        icon_path=_icon_path(),
+    )
     result = subprocess.run(["osascript", "-e", script], check=False, capture_output=True, text=True)
     if "Apri Impostazioni" in (result.stdout or ""):
         subprocess.run(["open", SETTINGS_FILES_AND_FOLDERS], check=False, capture_output=True)
