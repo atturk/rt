@@ -8,7 +8,7 @@ import { SecretInput } from '@/components/ui/secret-input'
 import { isAppWindow } from '@/lib/zoom'
 import { SettingsSelect as Select } from './common'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
-import { useGeneralPreference } from './preferences'
+import { useGeneralPreference } from './useGeneralPreference'
 
 import { ExtraSecretDelete } from './keys'
 

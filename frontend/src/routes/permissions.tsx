@@ -88,7 +88,7 @@ export function PermissionsPage() {
 
   useEffect(() => {
     if (!isApp) return
-    void refresh()
+    void Promise.resolve().then(refresh)
     const onReady = () => {
       void refresh()
     }
