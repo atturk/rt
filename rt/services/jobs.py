@@ -17,6 +17,7 @@ jobs.active_lesson vale il percorso della lezione ed è UNIQUE: due job mutanti 
 lezione non possono girare insieme, garantito dal DB.
 """
 import json
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -31,6 +32,20 @@ from rt.db.engine import Database
 from rt.db.models import Job, JobEvent, Worker, utcnow
 from rt.db.repositories import normalize_lesson_path
 from rt.db.session import read_scope, session_scope
+
+
+
+_ENQUEUE_LOCK = threading.Lock()
+_last_enqueue = [datetime.min]
+
+
+def _enqueue_time():
+    """created_at sempre crescente: su Windows l'orologio va a scatti di ~15 ms e due job
+    accodati nello stesso scatto partirebbero in ordine casuale (l'id è un uuid)."""
+    with _ENQUEUE_LOCK:
+        now = max(utcnow(), _last_enqueue[0] + timedelta(microseconds=1))
+        _last_enqueue[0] = now
+        return now
 
 
 class JobState(str, Enum):
@@ -201,6 +216,7 @@ class DbJobQueue:
                 *, created_by: Optional[str] = None, max_attempts: int = DEFAULT_MAX_ATTEMPTS,
                 retry_of: Optional[str] = None) -> str:
         job_id = uuid.uuid4().hex
+        created_at = _enqueue_time()
         with session_scope(self.db) as s:
             lesson_path = self._lesson_path(s, lesson_id)
             if lesson_path:
@@ -214,7 +230,7 @@ class DbJobQueue:
             job = Job(id=job_id, type=job_type, state=JobState.QUEUED.value,
                       lesson_path=lesson_path, payload=json_safe(payload or {}),
                       attempts=0, max_attempts=max_attempts, cancel_requested=False, created_by=created_by,
-                      retry_of=retry_of)
+                      retry_of=retry_of, created_at=created_at)
             s.add(job)
             s.flush()
             event = {"job_type": job_type}
