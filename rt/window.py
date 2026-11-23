@@ -138,6 +138,13 @@ def _command(command: str) -> subprocess.CompletedProcess:
 _window_start_time = 0.0
 _announced_tokens = set()
 _announce_lock = threading.Lock()  # file_in_attesa e il watcher non consegnano due volte lo stesso file
+_programmatic_close = False
+
+
+def _destroy_window(window) -> None:
+    global _programmatic_close
+    _programmatic_close = True
+    window.destroy()
 
 
 class DesktopApi:
@@ -451,6 +458,22 @@ class DesktopApi:
         _cleanup_share_dirs()
         return {"ok": True}
 
+    def stato_microfono(self) -> str:
+        from rt import window_permissions
+        return window_permissions.mic_status() if sys.platform == "darwin" else "unknown"
+
+    def richiedi_microfono(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.request_mic_sync()
+
+    def stato_permessi(self) -> dict:
+        from rt import window_permissions
+        return window_permissions.permissions_status()
+
+    def apri_impostazioni_sistema(self, chiave: str) -> dict:
+        from rt import window_permissions
+        return window_permissions.open_system_settings(chiave)
+
     def set_zoom(self, factor: float) -> dict:
         """Imposta il fattore di zoom nativo della webview (macOS WKWebView, Windows WebView2)."""
         try:
@@ -696,10 +719,10 @@ def _maintenance(window, command: str) -> None:
     threading.Thread(target=work, name=f"rt-{command}", daemon=True).start()
 
 
-def _check_permissions(window) -> None:
+def _check_permissions(window, base_url: str = "") -> None:
     from rt import window_permissions
     try:
-        window_permissions.check(window, _notice, _open_path)
+        window_permissions.check(window, base_url)
     except Exception as exc:
         _log(f"Controllo dei permessi non riuscito: {exc}")
         _notice(window, f"Non riesco a controllare i permessi: {exc}")
@@ -845,7 +868,7 @@ def _menu(window, base_url: str, api=None):
                 try:
                     from rt.desktop import stop_background
                     stop_background(base_url)
-                    window.destroy()
+                    _destroy_window(window)
                 except Exception as exc:
                     _log(f"RT non si è fermato: {exc}")
                     _notice(window, f"Non riesco a fermare RT: {exc}")
@@ -869,7 +892,7 @@ def _menu(window, base_url: str, api=None):
         MenuAction("Importa…", lambda: _import_collection(window, base_url)),
         MenuAction("Ripristina dati prima di un aggiornamento…", lambda: _restore_pre_update(window, base_url)),
         MenuAction("Diagnostica", lambda: _maintenance(window, "doctor")),
-        *([MenuAction("Controlla permessi", lambda: _check_permissions(window))]
+        *([MenuAction("Controlla permessi", lambda: _check_permissions(window, base_url))]
           if sys.platform in ("darwin", "win32") else []),
         MenuSeparator(),
         Menu("Autenticazione", [
@@ -953,9 +976,92 @@ def about_options(info: dict, versions: dict | None = None) -> dict:
     return options
 
 
+def _macos_icon_path() -> str | None:
+    app = bundle.app_path()
+    if app:
+        candidate = os.path.join(app, "Contents", "Resources", "rt.icns")
+        if os.path.isfile(candidate):
+            return candidate
+    fallback = os.path.join(paths.project_root(), "packaging", "icons", "rt.icns")
+    return fallback if os.path.isfile(fallback) else None
+
+
+def _load_macos_icon():
+    icon_path = _macos_icon_path()
+    if not icon_path:
+        return None
+    try:
+        from AppKit import NSImage
+        return NSImage.alloc().initWithContentsOfFile_(icon_path)
+    except Exception:
+        return None
+
+
+def _install_macos_dialog_icon() -> None:
+    """Imposta subito l'icona di RT sull'app e sui dialoghi NSAlert di pywebview.
+
+    Il processo dell'app è python3, quindi senza questa configurazione prima di webview.start
+    macOS mostra l'icona generica (cartella blu) nei dialoghi di conferma e di input."""
+    try:
+        import AppKit
+        img = _load_macos_icon()
+        if not img:
+            return
+        AppKit.NSApplication.sharedApplication().setApplicationIconImage_(img)
+    except Exception as exc:
+        _log(f"Icona macOS non impostata: {exc}")
+        return
+
+    try:
+        from webview.platforms import cocoa
+        browser_view = cocoa.BrowserView
+        if getattr(browser_view, "_rt_icon_patched", False):
+            return
+
+        # Metodi ricopiati da pywebview 6.2.1 aggiungendo alert.setIcon_(img);
+        # se il wrapping fallisce restano i metodi originali di pywebview.
+        def display_confirmation_dialog(first_button, second_button, message):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(message)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            return alert.runModal() == AppKit.NSAlertFirstButtonReturn
+
+        def display_input_dialog(first_button, second_button, prompt, default_text):
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            text_field = AppKit.NSTextField.alloc().initWithFrame_(AppKit.NSMakeRect(0, 0, 240, 24))
+            text_field.cell().setScrollable_(True)
+            text_field.setStringValue_(default_text)
+            alert.setAccessoryView_(text_field)
+            alert.addButtonWithTitle_(first_button)
+            alert.addButtonWithTitle_(second_button)
+            alert.setMessageText_(prompt)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            alert.setIcon_(img)
+            if alert.runModal() == AppKit.NSAlertFirstButtonReturn:
+                return text_field.stringValue()
+            return None
+
+        browser_view.display_confirmation_dialog = staticmethod(display_confirmation_dialog)
+        browser_view.display_input_dialog = staticmethod(display_input_dialog)
+        browser_view._rt_icon_patched = True
+    except Exception as exc:
+        _log(f"Icona nei dialoghi macOS non configurata: {exc}")
+
+
 def _show_macos_about() -> None:
     from AppKit import (NSApplication, NSAttributedString, NSColor, NSFont,
-                        NSFontAttributeName, NSForegroundColorAttributeName, NSImage)
+                        NSFontAttributeName, NSForegroundColorAttributeName)
     from rt.core import bundle
     info = bundle.build_info()
     opts = about_options(info)
@@ -973,13 +1079,9 @@ def _show_macos_about() -> None:
     if "Version" in opts:
         panel_opts["Version"] = opts["Version"]
 
-    app = bundle.app_path()
-    if app:
-        icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-        if os.path.isfile(icon_path):
-            img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-            if img:
-                panel_opts["ApplicationIcon"] = img
+    img = _load_macos_icon()
+    if img:
+        panel_opts["ApplicationIcon"] = img
     NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(panel_opts)
 
 
@@ -1005,21 +1107,12 @@ def _get_about_target():
 def _macos_menu() -> None:
     """Mantiene Modifica, collega Informazioni su RT e assegna Cmd+Q all'uscita."""
     from AppKit import NSApplication
-    try:
-        from AppKit import NSImage
-    except ImportError:
-        NSImage = None
     from PyObjCTools import AppHelper
-    from rt.core import bundle
 
     def configure():
-        app = bundle.app_path()
-        if app and NSImage is not None:
-            icon_path = os.path.join(app, "Contents", "Resources", "rt.icns")
-            if os.path.isfile(icon_path):
-                img = NSImage.alloc().initWithContentsOfFile_(icon_path)
-                if img:
-                    NSApplication.sharedApplication().setApplicationIconImage_(img)
+        img = _load_macos_icon()
+        if img:
+            NSApplication.sharedApplication().setApplicationIconImage_(img)
 
         about_target = _get_about_target()
         main_menu = NSApplication.sharedApplication().mainMenu()
@@ -1075,7 +1168,7 @@ def _smoke(window) -> None:
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             json.dump(result, f, ensure_ascii=False)
             f.write("\n")
-        window.destroy()
+        _destroy_window(window)
 
 
 def install_macos_open_files(window=None) -> None:
@@ -1107,8 +1200,9 @@ def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
     from rt.core import opened_files
-    global _window_start_time
+    global _window_start_time, _programmatic_close
     _window_start_time = time.time()
+    _programmatic_close = False
     try:
         opened_files.cleanup_expired(600)
     except Exception:
@@ -1176,6 +1270,7 @@ def open_window(base_url: str, path: str = "/") -> int:
         window.events.loaded += loaded
         window.events.initialized += initialized
         if sys.platform == "darwin":
+            _install_macos_dialog_icon()
             window.events.shown += _macos_menu
             try:
                 from rt import window_permissions
@@ -1218,12 +1313,20 @@ def open_window(base_url: str, path: str = "/") -> int:
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)
         if engine_error:
             raise RuntimeError(engine_error[0])
+        if not _programmatic_close:
+            try:
+                from rt.core.config import load_config
+                if load_config().ui.close_action == "quit":
+                    from rt.desktop import stop_background
+                    stop_background(base_url)
+            except Exception as exc:
+                _log(f"Arresto in background alla chiusura non riuscito: {exc}")
         return 0
     except Exception as exc:
         _log(f"Non riesco ad aprire la finestra: {exc}. Apro il browser.")
         if window is not None and window.events.shown.is_set():
             try:
-                window.destroy()
+                _destroy_window(window)
             except Exception:
                 pass
         if os.environ.get("RT_WINDOW_SMOKE") == "1":
@@ -1287,7 +1390,7 @@ def _restart_after_import(window):
         command = [sys.executable, os.path.join(paths.project_root(), 'bin', 'rt'), 'desktop']
     else:
         _notice(window, 'Riapri RT')
-        window.destroy()
+        _destroy_window(window)
         return
     script = (
         'import sys, time, subprocess; '
@@ -1300,7 +1403,7 @@ def _restart_after_import(window):
     kwargs = {'creationflags': 0x08000000 | 0x00000008} if sys.platform == 'win32' else {'start_new_session': True}
     subprocess.Popen([sys.executable, '-c', script, paths.project_root(), str(os.getpid()), *command],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
-    window.destroy()
+    _destroy_window(window)
 
 
 def _import_collection(window, base_url, chosen=None):

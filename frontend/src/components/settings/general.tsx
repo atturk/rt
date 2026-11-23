@@ -2,10 +2,13 @@ import { useState, type FormEvent } from 'react'
 
 import { useSaveTranscription, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
+import { isAppWindow } from '@/lib/zoom'
 import { SettingsSelect as Select } from './common'
 import { Field, SaveFeedback, SecretBadge, Section } from './common'
+import { useGeneralPreference } from './preferences'
 
 import { ExtraSecretDelete } from './keys'
 
@@ -97,5 +100,73 @@ function TranscriptionFields({
         </Button>
       </div>
     </form>
+  )
+}
+
+type CloseAction = 'background' | 'esci'
+
+const CLOSE_OPTIONS: ReadonlyArray<{ value: CloseAction; label: string; hint: string }> = [
+  {
+    value: 'background',
+    label: 'Continua a lavorare in background (consigliato)',
+    hint: 'RT finisce i job in corso e riceve le risposte dei provider IA che lavorano in modalità batch, più economica ma più lenta.',
+  },
+  {
+    value: 'esci',
+    label: 'Chiudi del tutto RT',
+    hint: 'Ogni volta che premi la X RT smette di lavorare in background, come con Esci da RT (⌘Q). I job in corso si fermano e riprendono alla prossima apertura.',
+  },
+]
+
+export function CloseActionSection({ settings }: { settings: Settings }) {
+  const save = useGeneralPreference()
+  const [confirmQuit, setConfirmQuit] = useState(false)
+  if (!isAppWindow()) return null
+  const current: CloseAction = settings.preferences?.chiusura_x === 'esci' ? 'esci' : 'background'
+
+  function select(next: CloseAction) {
+    if (next === current) return
+    if (next === 'esci') {
+      setConfirmQuit(true)
+      return
+    }
+    save.mutate({ chiusura_x: next })
+  }
+
+  return (
+    <Section id="chiusura-finestra" title="Chiudendo la finestra con la X">
+      <div role="radiogroup" aria-label="Chiudendo la finestra con la X" className="flex flex-col divide-y">
+        {CLOSE_OPTIONS.map((opt) => (
+          <label key={opt.value} className="flex cursor-pointer items-start gap-3 py-3 first:pt-1 last:pb-1">
+            <input
+              type="radio"
+              name="chiusura_x"
+              value={opt.value}
+              checked={current === opt.value}
+              disabled={save.isPending}
+              onChange={() => select(opt.value)}
+              className="mt-1 size-4 accent-primary"
+            />
+            <span className="flex flex-col gap-1">
+              <span className="text-body font-medium">{opt.label}</span>
+              <span className="text-meta text-muted-foreground">{opt.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <SaveFeedback mutation={save} />
+      <ConfirmDialog
+        open={confirmQuit}
+        title="Chiudi del tutto RT alla chiusura?"
+        confirmLabel="Chiudi del tutto"
+        onCancel={() => setConfirmQuit(false)}
+        onConfirm={() => {
+          setConfirmQuit(false)
+          save.mutate({ chiusura_x: 'esci' })
+        }}
+      >
+        <p>Ogni volta che chiudi la finestra con la X, RT smetterà di lavorare in background e i job in corso si fermeranno.</p>
+      </ConfirmDialog>
+    </Section>
   )
 }

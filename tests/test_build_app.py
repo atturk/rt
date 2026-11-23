@@ -175,3 +175,10 @@ def test_info_plist_contains_rt_types():
     assert supportati["LSHandlerRank"] == "Alternate"
 
 
+def test_info_plist_contains_permission_usage_descriptions():
+    import scripts.build_app as build_app
+    plist = build_app.macos_info_plist("4.3.9")
+    assert "Keynote" in plist["NSAppleEventsUsageDescription"]
+    assert "Wi‑Fi" in plist["NSLocalNetworkUsageDescription"] or "Wi-Fi" in plist["NSLocalNetworkUsageDescription"]
+
+

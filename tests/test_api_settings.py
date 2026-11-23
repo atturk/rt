@@ -201,6 +201,7 @@ def test_preferences_persist(api_client, api_token, ws):
         "secondi_approvazione": 10,
         "sfondo_gruppi": "colori",
         "modalita_arricchimento": "manuale",
+        "chiusura_x": "background",
     }
 
     # Update preferences
@@ -210,6 +211,7 @@ def test_preferences_persist(api_client, api_token, ws):
             "secondi_approvazione": 20,
             "sfondo_gruppi": "grigi",
             "modalita_arricchimento": "automatica",
+            "chiusura_x": "esci",
         },
     )
     assert res.status_code == 200, res.text
@@ -217,6 +219,7 @@ def test_preferences_persist(api_client, api_token, ws):
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
+        "chiusura_x": "esci",
     }
 
     # Persists to fresh app
@@ -225,5 +228,6 @@ def test_preferences_persist(api_client, api_token, ws):
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
+        "chiusura_x": "esci",
     }
 

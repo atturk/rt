@@ -327,6 +327,32 @@ def parse_launchctl_print(text: str) -> Dict[str, str]:
     return out
 
 
+def parse_launchctl_disabled(text: str) -> bool:
+    """True se almeno un servizio com.atturk.rt.* risulta disabilitato in 'launchctl print-disabled'."""
+    for line in (text or "").splitlines():
+        if "=>" not in line:
+            continue
+        left, _, right = line.partition("=>")
+        service_label = left.strip().strip('"').strip("'")
+        value = right.strip().rstrip(",").strip().lower()
+        if service_label.startswith(LABEL_PREFIX) and value in ("disabled", "true"):
+            return True
+    return False
+
+
+def background_disabled() -> bool:
+    """True su macOS se l'utente ha disattivato RT in Impostazioni di Sistema -> Elementi login."""
+    if not supported():
+        return False
+    try:
+        res = _launchctl("print-disabled", _domain())
+    except ServiceError:
+        return False
+    if res.returncode != 0:
+        return False
+    return parse_launchctl_disabled(res.stdout)
+
+
 def api_is_up(port: Optional[int] = None, timeout: float = 1.0) -> bool:
     """L'API di RT risponde su 127.0.0.1:<porta> (servizio, 'rt web' o 'rt api')."""
     try:

@@ -7,7 +7,7 @@ import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
-import { TranscriptionSection } from '@/components/settings/general'
+import { CloseActionSection, TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
@@ -114,7 +114,7 @@ export function SettingsIndexPage() {
   return <AppearanceSettingsPage />
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
-export function AppearanceSettingsPage() { return page(s => <AppearanceSection settings={s} />) }
+export function AppearanceSettingsPage() { return page(s => <><AppearanceSection settings={s} /><CloseActionSection settings={s} /></>) }
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
 export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
 export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }

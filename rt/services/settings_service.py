@@ -365,6 +365,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
             "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
+            "chiusura_x": {"background": "background", "quit": "esci"}.get(getattr(cfg.ui, "close_action", "background"), "background"),
         },
         "stati_studio": [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in getattr(cfg.ui, "study_statuses", [])],
         "ordine_stati_studio": getattr(cfg.ui, "study_status_order", []) or ["da-imparare", "in-apprendimento", "appreso", "ignorata"],
@@ -468,6 +469,13 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
     secs = int(preferences.get("secondi_approvazione", ui_data.get("outline_auto_approval_seconds", 10)))
     ui_data["outline_auto_approval_seconds"] = secs
 
+    close_val = preferences.get(
+        "chiusura_x",
+        {"background": "background", "quit": "esci"}.get(ui_data.get("close_action", "background"), "background"),
+    )
+    close_canonical = {"esci": "quit", "quit": "quit", "background": "background"}.get(close_val, "background")
+    ui_data["close_action"] = close_canonical
+
     from rt.core.config import RTConfig, ClassifierJobConfig
     from rt.services.classifier_settings import write_classifier
     cfg = RTConfig.model_validate(data)
@@ -483,6 +491,7 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
         "secondi_approvazione": secs,
         "sfondo_gruppi": bg_val,
         "modalita_arricchimento": enr_val,
+        "chiusura_x": "esci" if close_canonical == "quit" else "background",
     }
 
 

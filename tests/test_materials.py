@@ -115,6 +115,45 @@ def test_slide_render_methods_order(monkeypatch):
     assert [name for name, _ in methods] == ['Quick Look']
 
 
+def test_slide_render_methods_windows_powerpoint_after_libreoffice_without_path_interpolation(monkeypatch):
+    from rt.core.materials import _slide_render_methods, _quicklook_slides
+    from pathlib import Path
+    monkeypatch.setattr('rt.core.materials.sys.platform', 'win32')
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: 'C:\\LibreOffice\\soffice.exe')
+    monkeypatch.setattr('rt.core.materials._has_powerpoint', lambda: True)
+    monkeypatch.setattr('rt.core.materials.shutil.which', lambda cmd: 'C:\\Windows\\powershell.exe' if cmd == 'powershell' else None)
+
+    pptx_path = "C:\\Users\\Mario's\\Desktop\\lezione $test.pptx"
+    target_dir = "C:\\Temp\\rt-slides-xyz"
+    methods = _slide_render_methods(pptx_path, target_dir)
+    assert [name for name, _ in methods] == ['LibreOffice', 'PowerPoint']
+
+    ps_command = dict(methods)['PowerPoint']
+    script = ps_command[-1]
+    assert 'PowerPoint.Application' in script
+    assert '$env:RT_PPTX_INPUT' in script and '$env:RT_PDF_OUTPUT' in script
+    assert pptx_path not in script and target_dir not in script
+    assert all(pptx_path not in token and target_dir not in token for token in ps_command)
+
+    # Verifica che _quicklook_slides passi i percorsi via env e legga il PDF prodotto
+    monkeypatch.setattr('rt.core.materials._soffice', lambda: None)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured['cmd'] = cmd
+        captured['env'] = kwargs.get('env', {})
+        captured['creationflags'] = kwargs.get('creationflags')
+        Path(captured['env']['RT_PDF_OUTPUT']).write_bytes(pdf_bytes())
+
+    monkeypatch.setattr('rt.core.materials.subprocess.run', fake_run)
+    with _quicklook_slides(pptx_path, 1) as render:
+        assert render is not None
+        assert render(0).startswith(b'\x89PNG')
+    assert captured['env']['RT_PPTX_INPUT'].endswith("lezione $test.pptx")
+    assert captured['env']['RT_PDF_OUTPUT'].endswith("powerpoint_export.pdf")
+    assert captured['creationflags'] == 0x08000000
+
+
 def test_slide_render_page_count_verification_and_worker_log(monkeypatch, caplog):
     import logging
     from rt.core.materials import _quicklook_slides

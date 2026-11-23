@@ -7578,6 +7578,13 @@ export interface components {
         /** PreferencesSettings */
         PreferencesSettings: {
             /**
+             * Chiusura X
+             * @description Azione chiudendo la finestra dell'app con la X
+             * @default background
+             * @enum {string}
+             */
+            chiusura_x: "background" | "esci";
+            /**
              * Modalita Arricchimento
              * @description Modalità dell'arricchimento
              * @default manuale

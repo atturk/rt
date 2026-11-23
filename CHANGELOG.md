@@ -1,10 +1,22 @@
 # Novità di RT
 
-## 4.3.9b4 — 2026-11-23
+## 4.3.9b4 — 2026-11-24
+
+Beta su app Mac/Windows, permessi, chiusura, pin delle lezioni e velocità della pipeline.
 
 ### Novità
 
 - **Pin per categoria nelle Lezioni**: accanto a ogni gruppo (giorno, mese, materia o docente) puoi fissare una categoria in cima all'elenco; ogni raggruppamento ricorda la propria scelta. Il pin nell'intestazione sgancia la categoria fissata oppure fissa temporaneamente la ricerca per tutta la sessione.
+- **Apertura dei file .rt dal Finder**: aprire uno o più file .rt con doppio clic non blocca più RT (rotellina) e mostra la schermata di import.
+- **Ricerca senza risultati**: messaggio centrato con icona.
+- **Chiusura con la X**: nell'app desktop puoi scegliere se continuare a lavorare in background (consigliato) o chiudere del tutto RT quando chiudi la finestra.
+- **Pagina dei permessi**: «Controlla permessi» apre la pagina dedicata con stato e accesso rapido alle impostazioni di sistema (Mac e Windows), e su Mac segnala se gli elementi in background sono disattivati.
+- **Slide PowerPoint su Windows**: la conversione dei file `.pptx` usa anche Microsoft PowerPoint quando LibreOffice non è installato.
+- **Immagini e classificazione in parallelo**: lettura e posizionamento immagini, ricerca immagini web, analisi dell'arricchimento e classificatori lavorano in parallelo.
+
+### Correzioni
+
+- **Icona nei dialoghi Mac**: gli avvisi e le conferme dell'app mostrano l'icona di RT al posto della cartella generica.
 
 ## 4.3.9b3 — 2026-11-23
 
