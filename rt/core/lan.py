@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from typing import Callable, List, Optional
 
 from rt.core import paths
@@ -177,8 +178,22 @@ def _lan_ips() -> List[str]:
     return out
 
 
+_ADDRESS_CACHE: dict = {}
+_ADDRESS_TTL = 30.0
+
+
 def lan_addresses(port: int) -> List[str]:
-    """Indirizzi con cui un altro dispositivo della stessa rete apre RT: prima il nome .local, poi gli IP."""
+    """Indirizzi con cui un altro dispositivo della stessa rete apre RT: prima il nome .local, poi gli IP.
+    Tenuti 30 s: su macOS getaddrinfo del nome host può impiegare secondi a ogni chiamata."""
+    cached = _ADDRESS_CACHE.get(port)
+    if cached and time.monotonic() - cached[0] < _ADDRESS_TTL:
+        return list(cached[1])
+    out = _lan_addresses(port)
+    _ADDRESS_CACHE[port] = (time.monotonic(), out)
+    return list(out)
+
+
+def _lan_addresses(port: int) -> List[str]:
     out = []
     name = _local_hostname()
     if name and name.lower() != "localhost":

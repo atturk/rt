@@ -66,6 +66,7 @@ def test_lan_ip_filter():
 
 def test_addresses_local_name_first(monkeypatch):
     from rt.core import lan
+    monkeypatch.setattr(lan, "_ADDRESS_CACHE", {})
     monkeypatch.setattr(lan, "_local_hostname", lambda: "MacBook-Air-di-Attilio")
     monkeypatch.setattr(lan, "_lan_ips", lambda: ["192.168.1.20"])
     assert lan.lan_addresses(8765) == ["http://MacBook-Air-di-Attilio.local:8765", "http://192.168.1.20:8765"]
