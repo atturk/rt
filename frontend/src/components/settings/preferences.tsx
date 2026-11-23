@@ -19,14 +19,14 @@ import { Checkbox, Field, SaveFeedback, Section, SettingsSelect as Select } from
 import { StudyStatusesSection } from './StudyStatusesSection'
 
 /** Salva solo il controllo cambiato, rileggendo i valori generali per non ripristinare la modalità. */
-function useGeneralPreference() {
+export function useGeneralPreference() {
   const client = useQueryClient()
   return useMutation({
     scope: { id: 'general-preferences' },
     mutationFn: async (change: Partial<NonNullable<Settings['preferences']>>) => {
       const latest = await unwrap(api.GET('/api/v1/settings'))
       return unwrap(api.PUT('/api/v1/settings/preferences', { body: {
-        secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale', ...latest.preferences, ...change,
+        secondi_approvazione: 10, sfondo_gruppi: 'colori', modalita_arricchimento: 'manuale', chiusura_x: 'background', ...latest.preferences, ...change,
       } }))
     },
     onSuccess: settings => { client.setQueryData(['settings'], settings) },
@@ -46,7 +46,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   // Seravek e Avenir ci sono solo sul Mac: si mostrano i font installati, più quello salvato.
   const [availableFonts] = useState(() => new Set(STUDY_FONTS.filter(([v]) => studyFontAvailable(v)).map(([v]) => v)))
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
+  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
 
   useEffect(() => {
     const onZoomChange = (e: Event) => {
@@ -122,7 +122,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
 
 export function OutlineSettingsSection({ settings }: { settings: Settings }) {
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const }
+  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
   const [seconds, setSeconds] = useState(preferences.secondi_approvazione)
   function submit(e: FormEvent) { e.preventDefault(); save.mutate({ secondi_approvazione: seconds }) }
   return <Section id="scaletta" title="Scaletta"><form onSubmit={submit}>

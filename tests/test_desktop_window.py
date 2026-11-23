@@ -1271,3 +1271,32 @@ def test_install_macos_dialog_icon_wraps_dialogs_and_handles_failure(tmp_path, m
     window._install_macos_dialog_icon()
     assert LockedView.display_confirmation_dialog("a", "b", "c") == "orig_confirm"
     assert LockedView.display_input_dialog("a", "b", "c", "d") == "orig_input"
+
+
+@pytest.mark.parametrize("close_action,programmatic,should_stop", [
+    ("quit", False, True),
+    ("background", False, False),
+    ("quit", True, False),
+])
+def test_open_window_close_action(data, monkeypatch, webview, close_action, programmatic, should_stop):
+    from rt.core import config as cfg_mod
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(auth, "create_login_code", lambda: "monouso")
+    monkeypatch.setattr(window.webbrowser, "open", Mock())
+
+    cfg = cfg_mod.RTConfig(ui=cfg_mod.UiConfig(close_action=close_action))
+    monkeypatch.setattr(cfg_mod, "load_config", lambda *a, **kw: cfg)
+
+    stop_bg = Mock()
+    monkeypatch.setattr(desktop, "stop_background", stop_bg)
+
+    def start(**kwargs):
+        if programmatic:
+            window._destroy_window(webview.create_window.return_value)
+
+    webview.start.side_effect = start
+    assert window.open_window("http://127.0.0.1:8765") == 0
+    if should_stop:
+        stop_bg.assert_called_once_with("http://127.0.0.1:8765")
+    else:
+        stop_bg.assert_not_called()

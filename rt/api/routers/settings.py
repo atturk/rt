@@ -156,6 +156,7 @@ class PreferencesSettings(BaseModel):
     secondi_approvazione: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
     sfondo_gruppi: Literal["colori", "grigi", "niente"] = Field(default="colori", description="Sfondo dei gruppi in Lezioni")
     modalita_arricchimento: Literal["manuale", "automatica", "disattivata"] = Field(default="manuale", description="Modalità dell'arricchimento")
+    chiusura_x: Literal["background", "esci"] = Field(default="background", description="Azione chiudendo la finestra dell'app con la X")
 
 
 class StudyStatusesUpdate(BaseModel):

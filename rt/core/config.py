@@ -319,6 +319,7 @@ class UiConfig(BaseModel):
     outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
     study_statuses: List[CustomStudyStatus] = Field(default_factory=list, description="Stati di studio personalizzati")
     study_status_order: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
+    close_action: Literal["background", "quit"] = Field(default="background", description="Azione alla chiusura della finestra con la X nell'app desktop: 'background' | 'quit'")
 
 
 class JevConfig(BaseModel):

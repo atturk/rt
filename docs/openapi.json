@@ -8604,6 +8604,16 @@
       },
       "PreferencesSettings": {
         "properties": {
+          "chiusura_x": {
+            "default": "background",
+            "description": "Azione chiudendo la finestra dell'app con la X",
+            "enum": [
+              "background",
+              "esci"
+            ],
+            "title": "Chiusura X",
+            "type": "string"
+          },
           "modalita_arricchimento": {
             "default": "manuale",
             "description": "Modalità dell'arricchimento",

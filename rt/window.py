@@ -138,6 +138,13 @@ def _command(command: str) -> subprocess.CompletedProcess:
 _window_start_time = 0.0
 _announced_tokens = set()
 _announce_lock = threading.Lock()  # file_in_attesa e il watcher non consegnano due volte lo stesso file
+_programmatic_close = False
+
+
+def _destroy_window(window) -> None:
+    global _programmatic_close
+    _programmatic_close = True
+    window.destroy()
 
 
 class DesktopApi:
@@ -845,7 +852,7 @@ def _menu(window, base_url: str, api=None):
                 try:
                     from rt.desktop import stop_background
                     stop_background(base_url)
-                    window.destroy()
+                    _destroy_window(window)
                 except Exception as exc:
                     _log(f"RT non si è fermato: {exc}")
                     _notice(window, f"Non riesco a fermare RT: {exc}")
@@ -1145,7 +1152,7 @@ def _smoke(window) -> None:
         with open(target, "w", encoding="utf-8", newline="\n") as f:
             json.dump(result, f, ensure_ascii=False)
             f.write("\n")
-        window.destroy()
+        _destroy_window(window)
 
 
 def install_macos_open_files(window=None) -> None:
@@ -1177,8 +1184,9 @@ def open_window(base_url: str, path: str = "/") -> int:
     """Apre una sessione nella finestra; se non riesce usa il browser."""
     from rt.api import auth
     from rt.core import opened_files
-    global _window_start_time
+    global _window_start_time, _programmatic_close
     _window_start_time = time.time()
+    _programmatic_close = False
     try:
         opened_files.cleanup_expired(600)
     except Exception:
@@ -1289,12 +1297,20 @@ def open_window(base_url: str, path: str = "/") -> int:
                       gui="cocoa" if sys.platform == "darwin" else "edgechromium", **options)
         if engine_error:
             raise RuntimeError(engine_error[0])
+        if not _programmatic_close:
+            try:
+                from rt.core.config import load_config
+                if load_config().ui.close_action == "quit":
+                    from rt.desktop import stop_background
+                    stop_background(base_url)
+            except Exception as exc:
+                _log(f"Arresto in background alla chiusura non riuscito: {exc}")
         return 0
     except Exception as exc:
         _log(f"Non riesco ad aprire la finestra: {exc}. Apro il browser.")
         if window is not None and window.events.shown.is_set():
             try:
-                window.destroy()
+                _destroy_window(window)
             except Exception:
                 pass
         if os.environ.get("RT_WINDOW_SMOKE") == "1":
@@ -1358,7 +1374,7 @@ def _restart_after_import(window):
         command = [sys.executable, os.path.join(paths.project_root(), 'bin', 'rt'), 'desktop']
     else:
         _notice(window, 'Riapri RT')
-        window.destroy()
+        _destroy_window(window)
         return
     script = (
         'import sys, time, subprocess; '
@@ -1371,7 +1387,7 @@ def _restart_after_import(window):
     kwargs = {'creationflags': 0x08000000 | 0x00000008} if sys.platform == 'win32' else {'start_new_session': True}
     subprocess.Popen([sys.executable, '-c', script, paths.project_root(), str(os.getpid()), *command],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
-    window.destroy()
+    _destroy_window(window)
 
 
 def _import_collection(window, base_url, chosen=None):
