@@ -300,6 +300,14 @@ def _lesson_summary(lesson_id: int, lesson_dir: str) -> Dict[str, Any]:
 
 SUMMARY_SCHEMA = 1
 
+
+def _persisted_fingerprint(fingerprint: str) -> str:
+    """Impronta salvata nella vetrina: con la versione di RT, così dopo un aggiornamento
+    i riepiloghi calcolati dal codice vecchio si ricalcolano invece di restare in elenco."""
+    from rt.core.version import get_current_version
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return f"{get_current_version(root)}|{fingerprint}"
+
 # Cache dei riepiloghi per l'elenco: Lesson.id -> (impronta degli input, riepilogo). Il
 # riepilogo costa centinaia di letture per lezione (freschezza delle fasi con gli hash dei
 # file, issue, costi); l'impronta costa due query per tutto l'elenco più uno stat per file
@@ -438,12 +446,12 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
                     .limit(1)
                 ).first() is not None
         for lid, fp, sch, raw_summ in rows:
-            if fp == fingerprints[lid] and sch == SUMMARY_SCHEMA:
+            if fp == _persisted_fingerprint(fingerprints[lid]) and sch == SUMMARY_SCHEMA:
                 from_vetrina += 1
                 summ = _deserialize_summary(raw_summ)
                 results[lid] = copy.deepcopy(summ)
                 with _summary_lock:
-                    _summary_cache[lid] = (fp, copy.deepcopy(summ))
+                    _summary_cache[lid] = (fingerprints[lid], copy.deepcopy(summ))
 
     # 3. Ricalcolo
     remaining = [lid for lid in missing_ids if lid not in results]
@@ -458,7 +466,7 @@ def _cached_summaries(ids: Dict[str, int]) -> List[Dict[str, Any]]:
             summary = lesson_summary(lid, path_by_id[lid])
             recomputed += 1
             if summary["error"] is None:
-                to_persist.append((lid, fingerprints[lid], SUMMARY_SCHEMA, _serialize_summary(summary)))
+                to_persist.append((lid, _persisted_fingerprint(fingerprints[lid]), SUMMARY_SCHEMA, _serialize_summary(summary)))
                 with _summary_lock:
                     _summary_cache[lid] = (fingerprints[lid], copy.deepcopy(summary))
             results[lid] = summary

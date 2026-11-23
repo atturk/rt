@@ -363,3 +363,15 @@ def test_memoization_same_results_with_and_without(tmp_path, monkeypatch, rt_db)
     res_without = lesson_service.list_lessons()
 
     assert res_with == res_without
+
+
+def test_rt_update_recomputes_the_vetrina(tmp_path, monkeypatch, rt_db, counted):
+    """Dopo un aggiornamento di RT i riepiloghi salvati dalla versione vecchia si ricalcolano."""
+    make_lesson(isolated_workspace(tmp_path, monkeypatch))
+    monkeypatch.setattr("rt.core.version.get_current_version", lambda root: "4.3.9b2")
+    lesson_service.list_lessons()
+    lesson_service._summary_cache.clear()
+    counted.clear()
+    monkeypatch.setattr("rt.core.version.get_current_version", lambda root: "4.3.9b3")
+    lesson_service.list_lessons()
+    assert len(counted) == 1
