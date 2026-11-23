@@ -117,11 +117,11 @@ it('Testo dello Studio: Seravek salva study.text-font e 120% porta la scala a 1,
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'study.player-follows-unit' } }, body: false })
 })
 
-it('PDF esportati: il QR del sito di RT è attivo e si spegne salvando pdf.qr-sito', async () => {
+it('PDF esportati: logo e QR di RT sono attivi e si spegne salvando pdf.qr-sito', async () => {
   const put = vi.spyOn(api, 'PUT').mockImplementation(((_path: string, { body }: { body: unknown }) =>
     Promise.resolve({ data: body, response: new Response('{}') })) as never)
   render(<QueryClientProvider client={client}><AppearanceSection settings={testSettings} /></QueryClientProvider>)
-  const qr = screen.getByRole('switch', { name: 'QR del sito di RT nella prima pagina' })
+  const qr = screen.getByRole('switch', { name: 'Logo e QR di RT («Rielaborato con RT») nella prima pagina' })
   expect(qr).toHaveAttribute('aria-checked', 'true')
   await userEvent.click(qr)
   expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'pdf.qr-sito' } }, body: false })

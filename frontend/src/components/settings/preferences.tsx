@@ -99,7 +99,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
       <Checkbox id="copy-color" label="Colore del testo" checked={copy.color} onChange={color => setCopy({ ...copy, color })} />
     </Section>
     <Section id="pdf" title="PDF esportati">
-      <Checkbox id="pdf-qr-sito" label="QR del sito di RT nella prima pagina" checked={pdfQr} onChange={setPdfQr} />
+      <Checkbox id="pdf-qr-sito" label="Logo e QR di RT («Rielaborato con RT») nella prima pagina" checked={pdfQr} onChange={setPdfQr} />
     </Section>
     <Section id="lettura-veloce" title="Lettura veloce">
       <Field label="Velocità (parole/min)" htmlFor="rsvp-wpm"><Input id="rsvp-wpm" type="number" min={100} max={900} step={25} value={rsvp.wpm}
