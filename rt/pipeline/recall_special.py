@@ -480,7 +480,7 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
             template.tipo.procedimento if template else "", answer_text, dont_know=dont_know)
         system = prompts.RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT
     from rt.pipeline.recall_checks import checked_evaluation
-    result = checked_evaluation(LLMClient(force_mock=False), dont_know=dont_know,
+    result = checked_evaluation(LLMClient(force_mock=False, interactive=True), dont_know=dont_know,
         prompt=prompt,
         system_prompt=effective_system("recall", system),
         response_model=prompts.RecallEvalMirataResult, job_name="recall", unit_id=", ".join(question.unit_ids),

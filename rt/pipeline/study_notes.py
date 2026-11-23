@@ -77,7 +77,7 @@ def run_study_note(
         sources_text = "\n".join([f"- {s['title']} ({s['url']})" for s in sources_data])
         user_prompt += f"\n\nFONTI CONSULTATE SUL WEB:\n{sources_text}"
 
-    client = LLMClient(force_mock=force_mock)
+    client = LLMClient(force_mock=force_mock, interactive=True)
     response_obj = client.call_structured(
         prompt=user_prompt,
         system_prompt=system_prompt,

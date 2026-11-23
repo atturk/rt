@@ -417,7 +417,7 @@ def credential_test_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
                 if isinstance(c, dict)}
     provider = p.get("provider") or (declared.get(p["credential"]) or {}).get("provider")
     try:
-        LLMClient().call_structured(
+        LLMClient(interactive=True).call_structured(
             prompt='Rispondi con {"ok": true}.', system_prompt="Rispondi solo con JSON.",
             response_model=_Ping, job_name="outline", max_retries=0,
             override_provider=provider, override_model=p["model"], override_base_url=p.get("base_url") or None,

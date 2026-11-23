@@ -50,6 +50,7 @@ class RouteConfig(BaseModel):
     temperature: Optional[float] = Field(default=None)
     max_tokens: Optional[int] = Field(default=None)
     timeout_seconds: int = Field(default=180)
+    batch: bool = Field(default=False, description="Modalità batch differita (~50% costo, risposte entro 24h)")
     pricing: Optional[ModelPricing] = Field(default=None, description="Prezzo specifico per questa route (priorità massima: sovrascrive sia il pricing custom globale sia DEFAULT_PRICING)")
     provider_routing: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -76,6 +77,10 @@ class RouteConfig(BaseModel):
         allowed_providers = {"deepseek", "openrouter", "google", "openai_compatible"}
         if clean_p not in allowed_providers:
             raise ValueError(f"Provider LLM non supportato: '{self.provider}'. Provider ammessi: {sorted(allowed_providers)}")
+        if self.batch:
+            from rt.llm.providers import get_provider
+            if not get_provider(clean_p).supports_batch:
+                raise ValueError(f"Il provider '{self.provider}' non supporta la modalità batch.")
         if not self.model or not str(self.model).strip():
             raise ValueError(f"Il modello per il provider '{self.provider}' non può essere vuoto.")
         if clean_p == "openai_compatible" and not self.base_url:

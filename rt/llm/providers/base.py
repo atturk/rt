@@ -5,7 +5,7 @@ Disaccoppia la pipeline RT dalle specificità di DeepSeek direct, OpenRouter e a
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +19,14 @@ class NormalizedResponse(BaseModel):
     model: str = Field(description="ID o nome del modello")
     resolved_model: Optional[str] = Field(default=None, description="ID del modello realmente utilizzato dal provider (può differire dal modello richiesto, es. per router aggregatori come 'openrouter/free')")
     request_id: Optional[str] = Field(default=None, description="ID della richiesta fornito dal provider")
+
+
+class BatchResultItem(BaseModel):
+    """Singolo risultato di un lotto batch abbinato tramite custom_id."""
+    custom_id: str
+    response: Optional[NormalizedResponse] = None
+    error: Optional[str] = None
+    http_status: Optional[int] = None
 
 
 class StreamChunk(BaseModel):
@@ -82,3 +90,57 @@ class BaseLLMProvider(ABC):
     ) -> NormalizedResponse:
         """Normalizza la risposta JSON completa non in streaming nel formato standard."""
         pass
+
+    @property
+    def supports_batch(self) -> bool:
+        """True se il provider supporta la modalità batch differita."""
+        return False
+
+    def batch_model(self, model: str) -> str:
+        """Identificativo del modello usato in modalità batch (default: invariato)."""
+        return (model or "").strip()
+
+    def submit_batch(
+        self,
+        requests_list: List[Dict[str, Any]],
+        *,
+        model: str,
+        api_key: str,
+        base_url: Optional[str] = None,
+        timeout: float = 60.0,
+    ) -> str:
+        """Invia un lotto di richieste ({custom_id, body}) e restituisce batch_id."""
+        raise NotImplementedError(f"Il provider '{self.name}' non supporta la modalità batch.")
+
+    def poll_batch(
+        self,
+        batch_id: str,
+        *,
+        api_key: str,
+        base_url: Optional[str] = None,
+        timeout: float = 30.0,
+    ) -> Tuple[str, Optional[Dict[str, BatchResultItem]]]:
+        """Controlla lo stato di un lotto: (status, {custom_id: BatchResultItem} | None)."""
+        raise NotImplementedError(f"Il provider '{self.name}' non supporta la modalità batch.")
+
+    def cleanup_batch(
+        self,
+        batch_id: str,
+        *,
+        api_key: str,
+        base_url: Optional[str] = None,
+        timeout: float = 15.0,
+    ) -> None:
+        """Pulizia opzionale del lotto lato provider dopo il salvataggio dei risultati."""
+        return None
+
+    def cancel_batch(
+        self,
+        batch_id: str,
+        *,
+        api_key: str,
+        base_url: Optional[str] = None,
+        timeout: float = 15.0,
+    ) -> bool:
+        """Annulla un lotto lato provider se supportato. Restituisce True se annullato."""
+        return False

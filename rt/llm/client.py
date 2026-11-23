@@ -12,6 +12,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 import contextlib
 import contextvars
 import json
+import logging
 import os
 import re
 import time
@@ -22,7 +23,11 @@ from pydantic import BaseModel
 
 from rt.core.config import load_config, RouteConfig, JobRoutingConfig
 from rt.core.encoding import fix_mojibake, sanitize_llm_output, sanitize_object_encoding
+from rt.db.engine import get_database
+from rt.llm import deferred
+from rt.llm.deferred import current_job_id, is_batch_fallback
 from rt.llm.providers import get_provider
+from rt.llm.providers.base import NormalizedResponse
 from rt.llm.pricing import calculate_cost
 from rt.llm.usage import cached_prompt_tokens
 from rt.llm.cancel import RunCancelled, current_cancel_token, raise_if_cancelled
@@ -30,6 +35,7 @@ from rt.llm.telemetry import LLMTelemetryRecord, current_telemetry
 from rt.llm.monitor import LiveTerminalMonitor
 from rt.llm.credentials import GLOBAL_CREDENTIALS
 from rt.llm.errors import (
+    DeferredCall,
     LLMFailure,
     TimeoutFailure,
     RateLimitFailure,
@@ -52,6 +58,15 @@ from rt.core.lesson_paths import lesson_path
 from rt.storage import fs
 
 T = TypeVar("T", bound=BaseModel)
+LOG = logging.getLogger(__name__)
+INTERACTIVE_JOB_NAMES = frozenset({
+    "study_note",
+    "recall_evaluate",
+    "recall_comment",
+    "credential_test",
+    "probe",
+    "smoke_test",
+})
 
 
 def _append_debug_log(lesson_dir: Optional[str], entry: Dict[str, Any]) -> None:
@@ -180,9 +195,10 @@ def _is_openrouter_free_tier(provider: str, model: str) -> bool:
 
 
 class LLMClient:
-    def __init__(self, config_path: Optional[str] = None, force_mock: bool = False):
+    def __init__(self, config_path: Optional[str] = None, force_mock: bool = False, interactive: bool = False):
         self.config = load_config(config_path)
         self.force_mock = force_mock or self.config.mock_llm
+        self.interactive = bool(interactive)
         self.router = RoutingEngine(self.config)
         # review_science chiama l'LLM una volta per unità didattica, review_asr una
         # volta per batch di segmenti: senza questo contatore, il mock inietterebbe
@@ -479,10 +495,28 @@ class LLMClient:
             use_monitor = show_monitor if show_monitor is not None else getattr(self.config, "show_monitor", True)
             timeout_seconds = route.timeout_seconds
 
+            use_batch_route = (
+                bool(getattr(route, "batch", False))
+                and not self.force_mock
+                and not self.interactive
+                and not is_batch_fallback()
+                and (job_name or "").lower().strip() not in INTERACTIVE_JOB_NAMES
+                and getattr(provider, "supports_batch", False)
+            )
+            if use_batch_route and image_data_url:
+                LOG.info("immagini: chiamata immediata (batch non usato per immagini)")
+                use_batch_route = False
+            if use_batch_route and get_database() is None:
+                LOG.warning("Database non disponibile: batch disabilitato, eseguo chiamata immediata")
+                use_batch_route = False
+
+            effective_model_name = provider.batch_model(model_name) if use_batch_route else model_name
+            effective_stream = False if use_batch_route else use_stream
+
             monitor = LiveTerminalMonitor(
                 job=job_name,
                 provider=provider_name,
-                model=model_name,
+                model=effective_model_name,
                 unit_id=unit_id,
                 enabled=use_monitor,
                 pricing=self.config.pricing,
@@ -522,7 +556,7 @@ class LLMClient:
                     monitor.reset_for_attempt(call_attempt)
 
                 payload = provider.build_payload(
-                    model=model_name,
+                    model=effective_model_name,
                     messages=_cache_lesson_prefix(
                         _with_json_reminder(messages) if schema_reminder else list(messages),
                         provider_name, model_name, bool(prompt_prefix), prefix_parts),
@@ -531,7 +565,7 @@ class LLMClient:
                     reasoning_effort=route.reasoning_effort,
                     temperature=route.temperature,
                     response_format={"type": "json_object"},
-                    stream=use_stream,
+                    stream=effective_stream,
                     max_thinking_tokens=route.max_thinking_tokens,
                     provider_routing=self._resolve_provider_routing(route, provider_name),
                     response_json_schema=(strict_json_schema(response_model)
@@ -548,6 +582,8 @@ class LLMClient:
                 t_last_chunk = None
                 http_status = None
                 attempt_exception: Optional[Exception] = None
+                served_from_batch_cache = False
+                batch_cache_key: Optional[str] = None
 
                 # Sotto-ciclo per riparazione schema (max_retries riparazioni)
                 for repair_turn in range(max_retries + 1):
@@ -560,6 +596,8 @@ class LLMClient:
                     in_t = out_t = reas_t = cached_t = cost_est = None
                     finish_reason = None
                     req_id = None
+                    served_from_batch_cache = False
+                    batch_cache_key = None
 
                     if deadline is not None:
                         rem_sec = deadline - time.monotonic()
@@ -579,7 +617,66 @@ class LLMClient:
 
                     try:
                         raise_if_cancelled()
-                        if use_stream:
+                        if use_batch_route:
+                            batch_params = {
+                                k: payload.get(k)
+                                for k in (
+                                    "max_tokens",
+                                    "temperature",
+                                    "reasoning",
+                                    "thinking",
+                                    "reasoning_effort",
+                                    "response_format",
+                                    "provider",
+                                )
+                                if k in payload
+                            }
+                            batch_cache_key = deferred.request_key(
+                                provider=provider_name,
+                                model=effective_model_name,
+                                messages=payload.get("messages"),
+                                schema=response_model.model_json_schema(),
+                                params=batch_params,
+                            )
+                            cached_entry = deferred.get(batch_cache_key)
+                            if cached_entry is not None and cached_entry.state == "done" and cached_entry.response is not None:
+                                norm = NormalizedResponse.model_validate(cached_entry.response)
+                                raw_content = fix_mojibake(norm.content)
+                                reasoning_content = fix_mojibake(norm.reasoning or "")
+                                final_usage = norm.usage
+                                finish_reason = norm.finish_reason
+                                req_id = norm.request_id
+                                if norm.resolved_model:
+                                    resolved_model = norm.resolved_model
+                                    monitor.set_resolved_model(resolved_model)
+                                served_from_batch_cache = True
+                            elif cached_entry is not None and cached_entry.state == "error":
+                                err_msg = cached_entry.error or "Errore batch del provider"
+                                deferred.consume_error(batch_cache_key)
+                                raise classify_failure(
+                                    raw_response=err_msg,
+                                    provider=provider_name,
+                                    model=effective_model_name,
+                                )
+                            else:
+                                if cached_entry is None:
+                                    deferred.put_pending(
+                                        batch_cache_key,
+                                        job_id=current_job_id(),
+                                        lesson_path=lesson_dir,
+                                        provider=provider_name,
+                                        model=effective_model_name,
+                                        credential_ref=credential_ref,
+                                        base_url=base_url,
+                                        request=payload,
+                                    )
+                                raise DeferredCall(
+                                    key=batch_cache_key,
+                                    provider=provider_name,
+                                    model=effective_model_name,
+                                    job_id=current_job_id(),
+                                )
+                        elif effective_stream:
                             post_kwargs = {
                                 "headers": headers,
                                 "json": payload,
@@ -950,18 +1047,22 @@ class LLMClient:
                         if tot_t is None and (in_t is not None or out_t is not None):
                             tot_t = (in_t or 0) + (out_t or 0)
 
-                        cost_est = calculate_cost(
-                            provider=provider_name,
-                            model=model_name,
-                            input_tokens=in_t,
-                            output_tokens=out_t,
-                            reasoning_tokens=reas_t,
-                            cached_input_tokens=cached_t,
-                            custom_pricing=self._resolve_custom_pricing(route, provider_name, model_name)
-                        )
+                        cost_est = None
+                        if served_from_batch_cache and final_usage and isinstance(final_usage.get("cost"), (int, float)) and not isinstance(final_usage.get("cost"), bool):
+                            cost_est = round(float(final_usage["cost"]), 6)
+                        if cost_est is None:
+                            cost_est = calculate_cost(
+                                provider=provider_name,
+                                model=effective_model_name,
+                                input_tokens=in_t,
+                                output_tokens=out_t,
+                                reasoning_tokens=reas_t,
+                                cached_input_tokens=cached_t,
+                                custom_pricing=self._resolve_custom_pricing(route, provider_name, effective_model_name)
+                            )
 
                         ttft = round(t_first_chunk - t_attempt_start, 4) if t_first_chunk else None
-                        stream_dur = round(t_attempt_end - (t_first_chunk or t_attempt_start), 4) if use_stream else None
+                        stream_dur = round(t_attempt_end - (t_first_chunk or t_attempt_start), 4) if effective_stream else None
                         last_chk_iso = datetime.datetime.fromtimestamp(t_last_chunk).isoformat() if t_last_chunk else None
 
                         telemetry_rec = LLMTelemetryRecord(
@@ -970,7 +1071,7 @@ class LLMClient:
                             job=job_name,
                             unit_id=unit_id,
                             provider=provider_name,
-                            model=model_name,
+                            model=effective_model_name,
                             resolved_model=resolved_model,
                             route_id=route_id,
                             route_role=current_exec_route.route_role,
@@ -998,7 +1099,7 @@ class LLMClient:
                             error_class="success",
                             http_status=http_status or 200,
                             estimated_cost=cost_est,
-                            streaming=use_stream
+                            streaming=effective_stream
                         )
                         current_telemetry().add(telemetry_rec)
 
@@ -1010,7 +1111,7 @@ class LLMClient:
                                 "job": job_name,
                                 "unit_id": unit_id,
                                 "provider": provider_name,
-                                "model": model_name,
+                                "model": effective_model_name,
                                 "resolved_model": resolved_model,
                                 "route_id": route_id,
                                 "route_role": current_exec_route.route_role,
@@ -1040,21 +1141,11 @@ class LLMClient:
                         self.router.record_success(job_name, used_fallback=used_dedicated_fallback)
 
                         self.last_usage = dict(final_usage) if final_usage else None
-                        self.last_context_model = {"provider": provider_name, "model": resolved_model or model_name}
+                        self.last_context_model = {"provider": provider_name, "model": resolved_model or effective_model_name}
                         self.last_max_tokens = route.max_tokens
                         return validated_obj
 
-                    except RunCancelled:
-                        if 'response' in locals() and hasattr(response, "close"):
-                            try:
-                                response.close()
-                            except Exception:
-                                pass
-                        raise
-                    except KeyboardInterrupt:
-                        # Interruzione volontaria dell'utente: il fallback esiste per gli ERRORI,
-                        # non per sostituirsi alla volontà esplicita di fermarsi — propaga senza
-                        # tentare altre route (gestito a monte da cli.py::main()).
+                    except (RunCancelled, KeyboardInterrupt, DeferredCall):
                         if 'response' in locals() and hasattr(response, "close"):
                             try:
                                 response.close()
@@ -1064,6 +1155,8 @@ class LLMClient:
                     except Exception as e:
                         if _cancel_requested():
                             raise RunCancelled("Esecuzione annullata") from e
+                        if served_from_batch_cache and batch_cache_key:
+                            deferred.delete_key(batch_cache_key)
                         attempt_exception = e
                         if 'content_parts' in locals() and content_parts and not raw_content:
                             raw_content = "".join(content_parts)
@@ -1082,7 +1175,7 @@ class LLMClient:
                             requests.exceptions.RequestException
                         )) or "timeout" in type(e).__name__.lower()
 
-                        if not is_infra_error and repair_turn < max_retries:
+                        if not is_infra_error and not served_from_batch_cache and repair_turn < max_retries:
                             time.sleep(1.0)
                             payload["messages"].append({
                                 "role": "assistant",

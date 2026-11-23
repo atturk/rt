@@ -13,6 +13,18 @@ class OpenRouterProvider(BaseLLMProvider):
     def name(self) -> str:
         return "openrouter"
 
+    @property
+    def supports_batch(self) -> bool:
+        return True
+
+    def batch_model(self, model: str) -> str:
+        clean = (model or "").strip()
+        if "/" not in clean and not clean.startswith("~") and clean.startswith("deepseek"):
+            clean = f"deepseek/{clean}"
+        if clean and not clean.endswith(":batch"):
+            return f"{clean}:batch"
+        return clean
+
     def get_endpoint(self, base_url: Optional[str] = None) -> str:
         base = (base_url or "https://openrouter.ai/api/v1").rstrip("/")
         if base.endswith("/chat/completions"):

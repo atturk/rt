@@ -942,7 +942,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                 domanda_followup=None,
             )
 
-        client = LLMClient(force_mock=force_mock)
+        client = LLMClient(force_mock=force_mock, interactive=True)
         from rt.pipeline.recall_checks import checked_evaluation
 
         if question.type == RecallQuestionType.MIRATA:
@@ -1025,7 +1025,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             domanda_followup="Quali sono gli ulteriori aspetti della scaletta che andrebbero integrati?",
         )
 
-    client = LLMClient(force_mock=force_mock)
+    client = LLMClient(force_mock=force_mock, interactive=True)
     from rt.pipeline.recall_checks import checked_evaluation
 
     if question.type == RecallQuestionType.MIRATA:

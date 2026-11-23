@@ -105,7 +105,7 @@ def run_smoke_test(
         "- test_id: 42"
     )
 
-    client = LLMClient(config_path=config_path, force_mock=False)
+    client = LLMClient(config_path=config_path, force_mock=False, interactive=True)
 
     try:
         res: SmokeTestResponse = client.call_structured(

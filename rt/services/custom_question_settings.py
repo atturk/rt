@@ -110,7 +110,7 @@ def trial(item: CustomQuestionType, lesson_id, unit_id, *, mock=False):
         if mock:
             result = response_model.model_validate(_mock_items(item.id, [section], 0, definition=item))
         else:
-            result = LLMClient(force_mock=False).call_structured(
+            result = LLMClient(force_mock=False, interactive=True).call_structured(
                 prompt=build_recall_special_user_prompt(item.nome, [section], [], context,
                     text_correction=item.correzione == 'testo', labels={unit_id: 'presente'}),
                 system_prompt=system_for(item), response_model=response_model, job_name='recall')
