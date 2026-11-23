@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.9b4 — 2026-11-23
+
+### Novità
+
+- **Pin per categoria nelle Lezioni**: accanto a ogni gruppo (giorno, mese, materia o docente) puoi fissare una categoria in cima all'elenco; ogni raggruppamento ricorda la propria scelta. Il pin nell'intestazione sgancia la categoria fissata oppure fissa temporaneamente la ricerca per tutta la sessione.
+
 ## 4.3.9b3 — 2026-11-23
 
 Beta su PDF, elenco lezioni più rapido all'avvio e import dal Finder.

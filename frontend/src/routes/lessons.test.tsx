@@ -54,6 +54,7 @@ const groups = () => screen.getAllByTestId('lesson-group').map((g) => within(g).
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -257,7 +258,187 @@ describe('pagina Lezioni', () => {
     expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
   })
 
-  it('con una vista fissata salvata e URL vuoto, la pagina si apre con quel raggruppamento, ordine e testo nel campo, e il pulsante ha aria-pressed="true"', () => {
+  it('pin di categoria: fissa il gruppo in cima, sostituisce nello stesso raggruppamento e sgancia al secondo clic', async () => {
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(undefined))
+    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
+    renderDashboard()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fissa in cima Patologia' }))
+    await waitFor(() => expect(groups()).toEqual(['Patologia', 'Biochimica']))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pins' } },
+      body: { materia: 'PATOLOGIA' },
+    }))
+    expect(screen.getAllByRole('button', { name: 'Togli Patologia dalla cima' })).toHaveLength(2)
+
+    // Fissare un'altra categoria nello stesso raggruppamento sostituisce la precedente
+    fireEvent.click(screen.getByRole('button', { name: 'Fissa in cima Biochimica' }))
+    await waitFor(() => expect(groups()).toEqual(['Biochimica', 'Patologia']))
+    await waitFor(() => expect(put).toHaveBeenLastCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pins' } },
+      body: { materia: 'BIOCHIMICA' },
+    }))
+
+    // Secondo clic sul gruppo fissato lo sgancia
+    const [, groupPin] = screen.getAllByRole('button', { name: 'Togli Biochimica dalla cima' })
+    fireEvent.click(groupPin)
+    await waitFor(() => expect(groups()).toEqual(['Biochimica', 'Patologia']))
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pins' } },
+    }))
+  })
+
+  it('pin per raggruppamento indipendenti (giorno, materia, docente) con cambio vista e ritorno', async () => {
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(undefined))
+    renderDashboard()
+
+    // Fissa il 5 settembre in Per data
+    const [firstDateGroup, secondDateGroup] = screen.getAllByTestId('lesson-group')
+    expect(firstDateGroup.getAttribute('data-group')).toBe('2026-09-28')
+    expect(secondDateGroup.getAttribute('data-group')).toBe('2026-09-05')
+    fireEvent.click(within(secondDateGroup).getByTestId('group-pin'))
+    await waitFor(() => expect(screen.getAllByTestId('lesson-group').map((g) => g.getAttribute('data-group'))).toEqual(['2026-09-05', '2026-09-28']))
+
+    // Cambia a Per materia: il pin della data non si vede ma resta salvato; fissa Patologia
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+    fireEvent.click(screen.getByRole('button', { name: 'Fissa in cima Patologia' }))
+    await waitFor(() => expect(groups()).toEqual(['Patologia', 'Biochimica']))
+
+    // Cambia a Per docente: fissa Senza docente
+    fireEvent.click(screen.getByRole('button', { name: 'Per docente' }))
+    expect(groups()).toEqual(['Maria Rossi', 'Senza docente'])
+    fireEvent.click(screen.getByRole('button', { name: 'Fissa in cima Senza docente' }))
+    await waitFor(() => expect(groups()).toEqual(['Senza docente', 'Maria Rossi']))
+
+    await waitFor(() => expect(put).toHaveBeenLastCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pins' } },
+      body: { data: '2026-09-05', materia: 'PATOLOGIA', docente: '' },
+    }))
+
+    // Tornando ai raggruppamenti precedenti i loro pin riappaiono
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(groups()).toEqual(['Patologia', 'Biochimica'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Per data' }))
+    expect(screen.getAllByTestId('lesson-group').map((g) => g.getAttribute('data-group'))).toEqual(['2026-09-05', '2026-09-28'])
+  })
+
+  it('ricerca che esclude il gruppo fissato: non compare ma resta salvato e torna in cima cancellata la query', () => {
+    localStorage.setItem('rt-pref:lessons.pins', JSON.stringify({ materia: 'PATOLOGIA' }))
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(groups()).toEqual(['Patologia', 'Biochimica'])
+
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'Lipidi' } })
+    expect(groups()).toEqual(['Biochimica'])
+    expect(JSON.parse(localStorage.getItem('rt-pref:lessons.pins')!)).toEqual({ materia: 'PATOLOGIA' })
+
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '' } })
+    expect(groups()).toEqual(['Patologia', 'Biochimica'])
+  })
+
+  it('ignora senza errori una chiave salvata che non esiste più', () => {
+    localStorage.setItem('rt-pref:lessons.pins', JSON.stringify({ materia: 'MATERIA_INESISTENTE' }))
+    renderDashboard()
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+  })
+
+  it('icona intestazione verde con pin di categoria: clic sgancia la categoria senza fissare la ricerca', async () => {
+    localStorage.setItem('rt-pref:lessons.pins', JSON.stringify({ materia: 'PATOLOGIA' }))
+    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
+    renderDashboard()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '2026' } })
+    expect(groups()).toEqual(['Patologia', 'Biochimica'])
+
+    const header = screen.getByRole('banner')
+    const headerPin = within(header).getByRole('button', { name: 'Togli Patologia dalla cima' })
+    expect(headerPin).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(headerPin)
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+      params: { path: { name: 'lessons.pins' } },
+    }))
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+    expect(sessionStorage.getItem('rt.lessons.searchPin')).toBeNull()
+    const normalHeaderPin = within(header).getByRole('button', { name: 'Fissa la ricerca' })
+    expect(normalHeaderPin).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('pin della ricerca: disabilitato se ricerca vuota, nasconde i pin di categoria in tutte le viste e li ripristina quando tolto', () => {
+    localStorage.setItem('rt-pref:lessons.pins', JSON.stringify({ materia: 'PATOLOGIA' }))
+    renderDashboard()
+
+    // Nel raggruppamento data (nessun pin di categoria) con ricerca vuota: pulsante disabilitato
+    const header = screen.getByRole('banner')
+    const disabledPin = within(header).getByRole('button', { name: 'Fissa la ricerca' })
+    expect(disabledPin).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(disabledPin)
+    expect(sessionStorage.getItem('rt.lessons.searchPin')).toBeNull()
+
+    // Con ricerca attiva: fissa la ricerca in sessionStorage
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '  2026  ' } })
+    const searchPinBtn = within(header).getByRole('button', { name: 'Fissa la ricerca' })
+    expect(searchPinBtn).not.toHaveAttribute('aria-disabled')
+    fireEvent.click(searchPinBtn)
+
+    expect(JSON.parse(sessionStorage.getItem('rt.lessons.searchPin')!)).toEqual({ q: '2026', materia: '', stato: '' })
+    expect(within(header).getByRole('button', { name: 'Togli la ricerca fissata' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Passando a Per materia, i pin di categoria e le icone sui gruppi sono nascosti
+    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
+    expect(screen.queryAllByTestId('group-pin')).toEqual([])
+    expect(groups()).toEqual(['Biochimica', 'Patologia'])
+    expect(within(header).getByRole('button', { name: 'Togli la ricerca fissata' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Togliendo il pin della ricerca, i pin di categoria riappaiono e Patologia torna in cima
+    fireEvent.click(within(header).getByRole('button', { name: 'Togli la ricerca fissata' }))
+    expect(sessionStorage.getItem('rt.lessons.searchPin')).toBeNull()
+    expect(screen.getAllByTestId('group-pin').length).toBeGreaterThan(0)
+    expect(groups()).toEqual(['Patologia', 'Biochimica'])
+    expect(within(header).getByRole('button', { name: 'Togli Patologia dalla cima' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pin della ricerca salvato in sessionStorage si riapplica aprendo la pagina senza filtri URL', () => {
+    sessionStorage.setItem('rt.lessons.searchPin', JSON.stringify({ q: 'rossi', materia: 'PATOLOGIA', stato: '' }))
+    renderDashboard()
+    expect(screen.getByLabelText('Cerca')).toHaveValue('rossi')
+    expect(screen.getByText(/Solo Patologia\./)).toBeInTheDocument()
+    expect(screen.getAllByTestId('lesson-row')).toHaveLength(2)
+    expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Togli la ricerca fissata' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('sessionStorage che lancia eccezioni non rompe la pagina', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key?: string) => {
+      if (key === 'rt.lessons.searchPin') throw new Error('SecurityError')
+      return null
+    })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === 'rt.lessons.searchPin') throw new Error('SecurityError')
+      Object.getOwnPropertyDescriptor(Storage.prototype, 'setItem')
+      void value
+    })
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation((key: string) => {
+      if (key === 'rt.lessons.searchPin') throw new Error('SecurityError')
+    })
+
+    renderDashboard()
+    const header = screen.getByRole('banner')
+    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '2026' } })
+    fireEvent.click(within(header).getByRole('button', { name: 'Fissa la ricerca' }))
+    expect(within(header).getByRole('button', { name: 'Togli la ricerca fissata' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(within(header).getByRole('button', { name: 'Togli la ricerca fissata' }))
+    expect(within(header).getByRole('button', { name: 'Fissa la ricerca' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('migrazione: lessons.pinned non si applica all’avvio e viene rimossa', async () => {
     localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
       group: 'materia',
       sort: 'titolo',
@@ -265,84 +446,14 @@ describe('pagina Lezioni', () => {
       materia: '',
       stato: '',
     }))
-    renderDashboard()
-    expect(screen.getByLabelText('Cerca')).toHaveValue('Lipidi')
-    expect(screen.getByRole('button', { name: 'Per materia' })).toHaveAttribute('aria-pressed', 'true')
-    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
-    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('scrivere un carattere nel campo cancella la preferenza e il pulsante torna non premuto', async () => {
-    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
-      group: 'data',
-      sort: 'recenti',
-      q: 'Lipidi',
-      materia: '',
-      stato: '',
-    }))
     const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
     renderDashboard()
-    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
-    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
 
-    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: 'Lipidix' } })
-    expect(screen.getByLabelText('Cerca')).toHaveValue('Lipidix')
-    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'lessons.pinned' } } }))
-    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
-  })
-
-  it('cambiare raggruppamento o ordine cancella la preferenza', async () => {
-    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
-      group: 'data',
-      sort: 'recenti',
-      q: '',
-      materia: '',
-      stato: '',
-    }))
-    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
-    renderDashboard()
-    const pinBtn = screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })
-    expect(pinBtn).toHaveAttribute('aria-pressed', 'true')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Per materia' }))
-    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'lessons.pinned' } } }))
-    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
-  })
-
-  it('con una vista fissata e ?materia=X nell\'URL vince l\'URL e la preferenza resta', () => {
-    localStorage.setItem('rt-pref:lessons.pinned', JSON.stringify({
-      group: 'data',
-      sort: 'recenti',
-      q: '',
-      materia: '',
-      stato: '',
-    }))
-    const del = vi.spyOn(api, 'DELETE').mockResolvedValue(ok(undefined))
-    renderDashboard(['/?materia=PATOLOGIA'])
-    expect(screen.getByText(/Solo Patologia\./)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Fissa questa vista' })).toHaveAttribute('aria-pressed', 'false')
-    expect(del).not.toHaveBeenCalled()
-    expect(localStorage.getItem('rt-pref:lessons.pinned')).not.toBeNull()
-  })
-
-  it('clic sul pulsante non premuto salva la vista corrente', async () => {
-    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok(undefined))
-    renderDashboard()
-    fireEvent.change(screen.getByLabelText('Cerca'), { target: { value: '  infiammazione  ' } })
-    const pinBtn = screen.getByRole('button', { name: 'Fissa questa vista' })
-    expect(pinBtn).toHaveAttribute('aria-pressed', 'false')
-
-    fireEvent.click(pinBtn)
-    await waitFor(() => expect(put).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
+    expect(screen.getByLabelText('Cerca')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Per data' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/api/v1/preferences/{name}', {
       params: { path: { name: 'lessons.pinned' } },
-      body: {
-        group: 'data',
-        sort: 'recenti',
-        q: 'infiammazione',
-        materia: '',
-        stato: '',
-      },
     }))
-    expect(screen.getByRole('button', { name: 'Vista fissata: tocca per non fissarla più' })).toHaveAttribute('aria-pressed', 'true')
+    expect(localStorage.getItem('rt-pref:lessons.pinned')).toBeNull()
   })
 })

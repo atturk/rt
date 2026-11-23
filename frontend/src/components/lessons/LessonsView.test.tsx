@@ -184,8 +184,66 @@ describe('LessonsView - raggruppamento', () => {
     fireEvent.click(newLessonBtn)
     expect(mockOpenNewLesson).toHaveBeenCalledTimes(1)
 
-    // Data e Recenti a sola icona con aria-label
+    // Data e Recenti a sola icona con aria-label, più il pulsante pin nell'intestazione
     expect(screen.getByRole('button', { name: /Raggruppa: Data/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Ordina: Recenti/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fissa la ricerca' })).toBeInTheDocument()
+  })
+
+  it('mostra il pin accanto al gruppo, visibile sempre sul gruppo fissato e su touch/mobile, nascosto se hideGroupPins', () => {
+    const onToggle = vi.fn()
+    const qc = new QueryClient()
+    const groups = [
+      { key: 'FISIOLOGIA', label: 'FISIOLOGIA', lessons: [sampleLesson(1)] },
+      { key: 'PATOLOGIA', label: 'PATOLOGIA', lessons: [sampleLesson(2)] },
+    ]
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <LessonsList
+            groups={groups}
+            grouping="materia"
+            running={new Set()}
+            selecting={false}
+            selected={new Set()}
+            onSelected={() => {}}
+            pinnedGroupKey="FISIOLOGIA"
+            onToggleGroupPin={onToggle}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const pinnedBtn = screen.getByRole('button', { name: 'Togli Fisiologia dalla cima' })
+    expect(pinnedBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(pinnedBtn.className).toContain('opacity-100')
+    expect(pinnedBtn.className).toContain('text-success')
+    expect(pinnedBtn.className).toContain('[&_svg]:fill-current')
+
+    const unpinnedBtn = screen.getByRole('button', { name: 'Fissa in cima Patologia' })
+    expect(unpinnedBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(unpinnedBtn.className).toContain('[@media(hover:none)]:opacity-100')
+    expect(unpinnedBtn.className).toContain('max-md:opacity-100')
+    fireEvent.click(unpinnedBtn)
+    expect(onToggle).toHaveBeenCalledWith('PATOLOGIA')
+
+    rerender(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <LessonsList
+            groups={groups}
+            grouping="materia"
+            running={new Set()}
+            selecting={false}
+            selected={new Set()}
+            onSelected={() => {}}
+            pinnedGroupKey="FISIOLOGIA"
+            hideGroupPins
+            onToggleGroupPin={onToggle}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByTestId('group-pin')).toBeNull()
   })
 })
