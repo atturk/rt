@@ -20,7 +20,9 @@ test('undici sezioni (con Guida): desktop a due colonne, telefono con pagina e r
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const nav = page.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
-  await expect(nav.getByRole('link')).toHaveCount(11)
+  // undici sezioni; «Supporta RT» è un link esterno sotto Guida, non una sezione
+  await expect(nav.locator('a:not([data-testid="link-sostieni-rt"])')).toHaveCount(11)
+  await expect(nav.getByTestId('link-sostieni-rt')).toHaveCount(1)
   await expect(page.getByRole('radiogroup', { name: 'Tema' })).toBeVisible()
   const navBox = (await nav.boundingBox())!
   const themeBox = (await page.getByRole('radiogroup', { name: 'Tema' }).boundingBox())!
