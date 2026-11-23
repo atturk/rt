@@ -13,7 +13,7 @@ RT è un programma che gira sul tuo computer. Non ha un account, non ha un serve
 
 RT si collega a servizi esterni solo per quello che chiedi tu:
 
-- **Il fornitore di modelli che scegli** (per esempio OpenRouter, OpenAI, Google), con la tua chiave. Riceve i testi da elaborare: trascrizione, appunti, testo delle slide e dei materiali, le tue domande con «Chiedi». Cosa ne fa lo decidono le sue condizioni: leggile prima di scegliere.
+- **Il fornitore di modelli che scegli** (per esempio OpenRouter, OpenAI, Google), con la tua chiave. Riceve i testi da elaborare: trascrizione, appunti, testo delle slide e dei materiali, le tue domande nella Chat dello Studio. Cosa ne fa lo decidono le sue condizioni: leggile prima di scegliere.
 - **La trascrizione online**, solo se la scegli al posto di quella sul computer. In quel caso il fornitore riceve l'audio.
 - **La ricerca di immagini**, solo se la attivi per arricchire le lezioni. Riceve le parole cercate.
 - **Telegram**, solo se attivi il ripasso via Telegram. Riceve le domande e le tue risposte.

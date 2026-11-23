@@ -194,6 +194,15 @@ class LLMClient:
     def _get_job_routing_config(self, job_name: str) -> JobRoutingConfig:
         clean = job_name.lower().strip()
         cfg = self.config.jobs.get(clean) or self.config.llm.get(clean)
+        if clean == "study_chat":
+            if cfg and cfg.primary and cfg.primary.is_configured:
+                return cfg
+            review_cfg = self.config.jobs.get("review") or self.config.llm.get("review")
+            if review_cfg:
+                return review_cfg
+            raise ValueError(
+                "Nessuna configurazione di routing trovata per il job 'study_chat' né per il ripiego 'review'."
+            )
         if cfg:
             return cfg
         default_cfg = self.config.jobs.get("default") or self.config.llm.get("default")
@@ -1528,6 +1537,12 @@ class LLMClient:
             from rt.llm.prompts import StudyNoteChiediResponse
             return StudyNoteChiediResponse(
                 spiegazione="[MOCK] Spiegazione didattica del passaggio selezionato nel contesto dell'unità e della lezione.",
+            )  # type: ignore
+
+        elif model_name == "StudyChatReply":
+            from rt.llm.prompts import StudyChatReply
+            return StudyChatReply(
+                text="[MOCK] Risposta dell'assistente di studio sulla lezione.",
             )  # type: ignore
 
         # Fallback generico per qualsiasi altro modello

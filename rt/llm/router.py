@@ -66,6 +66,15 @@ class RoutingEngine:
     def _get_job_config(self, job_name: str) -> JobRoutingConfig:
         clean_name = job_name.lower().strip()
         job_cfg = self.config.jobs.get(clean_name) or self.config.llm.get(clean_name)
+        if clean_name == "study_chat":
+            if job_cfg and job_cfg.primary and job_cfg.primary.is_configured:
+                return job_cfg
+            review_cfg = self.config.jobs.get("review") or self.config.llm.get("review")
+            if review_cfg:
+                return review_cfg
+            raise ValueError(
+                "Nessuna configurazione di routing trovata per il job 'study_chat' né per il ripiego 'review'."
+            )
         if job_cfg:
             return job_cfg
         default_job = self.config.jobs.get("default") or self.config.llm.get("default")

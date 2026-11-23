@@ -41,6 +41,7 @@ import { formatBytes } from '@/lib/jobs'
 import { formatSourceSize, formatVersionDate } from '@/lib/sourcesFormat'
 import { cn } from '@/lib/utils'
 import { useIsPhone } from '@/lib/phone'
+import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { SourceAudioParts } from './SourceAudioParts'
 
 export function SourcesSection({ lessonId }: { lessonId: number }) {
@@ -80,6 +81,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
 
   const audioInputRef = useRef<HTMLInputElement>(null)
   const materialsInputRef = useRef<HTMLInputElement>(null)
+  const { guardPptxFiles, warningDialog } = usePptxConverterGuard()
 
   const sourcesView = sourcesQuery.data
   const sources = sourcesView?.sources ?? []
@@ -120,11 +122,11 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
     }
   }
 
-  const handleMaterialsSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMaterialsSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    if (!files.length) return
-    setPendingMaterials(files)
     if (materialsInputRef.current) materialsInputRef.current.value = ''
+    if (!files.length) return
+    guardPptxFiles(files, () => setPendingMaterials(files))
   }
 
   const saveMaterial = async (options: SourceOptions) => {
@@ -676,6 +678,7 @@ export function SourcesSection({ lessonId }: { lessonId: number }) {
           {confirmDialog.description}
         </ConfirmDialog>
       )}
+      {warningDialog}
     </div>
   )
 }

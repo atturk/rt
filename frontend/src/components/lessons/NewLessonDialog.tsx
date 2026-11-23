@@ -47,6 +47,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Modal } from '@/components/ui/modal'
 import { AUDIO_EXTENSIONS, formatBytes } from '@/lib/jobs'
 import { cancelUpload, enqueueUpload, isUploadActive, useUpload, type UploadSend } from '@/lib/uploadQueue'
+import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { cn } from '@/lib/utils'
 
 const DROP_LABEL = "Trascina l'audio o il pacchetto della lezione, o fai clic"
@@ -241,6 +242,7 @@ export function NewLessonDialog({
   const upload = useUpload(uploadId)
   const [recreating, setRecreating] = useState(false)
   const [uploadError, setUploadError] = useState<unknown>(null)
+  const { guardPptxFiles, warningDialog: pptxWarningDialog } = usePptxConverterGuard()
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -421,15 +423,18 @@ export function NewLessonDialog({
         (a, b) => a.lastModified - b.lastModified || a.name.localeCompare(b.name),
       )
 
-      setZipFiles([])
-      setAudioFiles((prev) => [...prev, ...sortedAuds])
-      setMaterialFiles((prev) => [...prev, ...mats])
-      setProblem(null)
-      setNotice(repeatedNotice(repeated))
-      setZipJob(null)
-      setUploadError(null)
+      const apply = () => {
+        setZipFiles([])
+        setAudioFiles((prev) => [...prev, ...sortedAuds])
+        setMaterialFiles((prev) => [...prev, ...mats])
+        setProblem(null)
+        setNotice(repeatedNotice(repeated))
+        setZipJob(null)
+        setUploadError(null)
+      }
+      guardPptxFiles(mats, apply)
     },
-    [busy, audioFiles, materialFiles],
+    [busy, audioFiles, materialFiles, guardPptxFiles],
   )
 
   const initialFilesHandled = useRef(false)
@@ -448,8 +453,10 @@ export function NewLessonDialog({
       return
     }
     const { fresh, repeated } = withoutRepeated(chosen.filter(isMaterialFile), [...audioFiles, ...materialFiles])
-    setMaterialFiles((prev) => [...prev, ...fresh])
-    setNotice(repeatedNotice(repeated))
+    guardPptxFiles(fresh, () => {
+      setMaterialFiles((prev) => [...prev, ...fresh])
+      setNotice(repeatedNotice(repeated))
+    })
   }
 
   // Togliendo la guida passa al primo documento con testo rimasto (primaryMaterialName).
@@ -1289,6 +1296,7 @@ export function NewLessonDialog({
         </div>
       </Modal>
     )}
+    {pptxWarningDialog}
     </>
   )
 }

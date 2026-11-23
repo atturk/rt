@@ -64,6 +64,25 @@ const mockNotes: StudyNote[] = [
     created_at: '2026-10-11T10:10:00Z',
     applied_decision_id: null,
   },
+  {
+    id: 4,
+    lesson_id: 10,
+    unit_id: '1.2',
+    unit_fingerprint: '',
+    kind: 'chat',
+    anchor: {},
+    anchor_state: 'trovata',
+    current_quote: null,
+    request: 'Perché il bicarbonato scende subito?',
+    response: {
+      text: 'Perché **tampona** gli acidi non volatili con $H^+$.',
+    },
+    spiegazione_html: '<p>Perché <strong>tampona</strong> gli acidi non volatili con $H^+$.</p>',
+    model: 'gpt-4o',
+    cost: 0.001,
+    created_at: '2026-10-11T10:15:00Z',
+    applied_decision_id: null,
+  },
 ]
 
 const mutateApply = vi.fn()
@@ -231,5 +250,39 @@ describe('StudyNotesPanel', () => {
     const link = screen.getByRole('link', { name: /Manuale MSD/i })
     expect(link).toHaveAttribute('href', 'https://msd.it/ph')
     expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('mostra le note chat con domanda dell’utente, risposta in Markdown, filtro Domande e nessuna citazione vuota', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    renderPanel()
+    // Conteggio unità 1.2 include verifica (3) + chat (4)
+    expect(screen.getByTestId('notes-unit-1.2')).toHaveTextContent('2')
+    expect(screen.getByText('Perché il bicarbonato scende subito?')).toBeInTheDocument()
+
+    // Filtro Domande include sia chiedi che chat
+    fireEvent.click(screen.getByTestId('filter-chiedi'))
+    expect(screen.getByText('compensazione metabolica')).toBeInTheDocument()
+    expect(screen.getByText('Perché il bicarbonato scende subito?')).toBeInTheDocument()
+    expect(screen.queryByText('93 mmHg')).not.toBeInTheDocument()
+
+    // Dettaglio nota chat
+    fireEvent.click(screen.getByTestId('note-item-4'))
+    expect(screen.getByTestId('study-notes-detail')).toBeInTheDocument()
+    expect(screen.queryByTestId('detail-quote')).not.toBeInTheDocument()
+    expect(screen.getByTestId('detail-request')).toHaveTextContent('Perché il bicarbonato scende subito?')
+    const answer = screen.getByTestId('detail-answer')
+    expect(answer.querySelector('strong')).toHaveTextContent('tampona')
+    await waitFor(() => expect(answer.querySelector('math')).not.toBeNull())
+
+    // Copia risposta della nota chat
+    fireEvent.click(screen.getByTestId('detail-copy'))
+    expect(writeText).toHaveBeenCalledWith('Perché **tampona** gli acidi non volatili con $H^+$.')
+
+    // Elimina nota chat
+    fireEvent.click(screen.getByTestId('detail-delete'))
+    fireEvent.click(screen.getByRole('button', { name: 'Elimina' }))
+    expect(mutateDelete).toHaveBeenCalledWith(4, expect.anything())
   })
 })

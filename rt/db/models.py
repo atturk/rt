@@ -285,7 +285,7 @@ class StudyNote(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"))
     unit_id: Mapped[str] = mapped_column(String(64))
-    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi"
+    kind: Mapped[str] = mapped_column(String(32))  # "verifica" | "chiedi" | "chat"
     anchor: Mapped[dict[str, Any]] = mapped_column(JSON)
     unit_fingerprint: Mapped[str] = mapped_column(String(64), default="")
     request: Mapped[str] = mapped_column(Text, default="")
@@ -429,3 +429,22 @@ class LessonSummaryCache(Base):
     schema: Mapped[int] = mapped_column(Integer, default=1)
     summary: Mapped[dict[str, Any]] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class StudyChatMessage(Base):
+    """Messaggio della chat dello Studio associata a una lezione."""
+    __tablename__ = "study_chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text, default="")
+    images: Mapped[list[str]] = mapped_column(JSON, default=list)
+    unit_id: Mapped[str] = mapped_column(String(64), default="")
+    model: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    saved_note_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("study_notes.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

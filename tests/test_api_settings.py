@@ -16,7 +16,7 @@ BOT = "987654321:AAH-segreto-bot-telegram-zyxwvu"
 STT = "stt-segreto-chiave-5555-abcdef"
 SECRETS = (KEY_A, KEY_B, BOT, STT)
 JOBS = ("outline", "rewrite", "review", "recall", "image_description",
-        "enrichment_writer", "enrichment_visualizer", "enrichment_image")
+        "enrichment_writer", "enrichment_visualizer", "enrichment_image", "study_chat")
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 """Stato del servizio e sessione della SPA."""
 import os
+import sys
 import threading
 from typing import Literal, Optional
 
@@ -415,3 +416,27 @@ def client_log(entry: ClientLogEntry, _actor: Actor) -> Response:
     # stdout del server è api.log, con data e ora (rt.core.log_stamp).
     print("\n".join(lines), flush=True)
     return Response(status_code=204)
+
+
+class PptxConverterInfo(BaseModel):
+    available: bool = Field(description="True se è disponibile almeno un convertitore affidabile per .pptx")
+    methods: list[str] = Field(description="Nomi dei convertitori disponibili (es. LibreOffice, PowerPoint, Keynote)")
+    platform: str = Field(description="Piattaforma del server (sys.platform)")
+
+
+class ConvertersInfo(BaseModel):
+    pptx: PptxConverterInfo
+
+
+@router.get("/system/converters", response_model=ConvertersInfo,
+            summary="Programmi disponibili per rendere le presentazioni come immagini")
+def get_system_converters(_actor: Actor) -> ConvertersInfo:
+    from rt.core.materials import available_slide_methods
+    methods = available_slide_methods()
+    return ConvertersInfo(
+        pptx=PptxConverterInfo(
+            available=bool(methods),
+            methods=methods,
+            platform=sys.platform,
+        )
+    )

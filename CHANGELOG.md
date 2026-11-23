@@ -17,6 +17,9 @@ Beta su app Mac/Windows, permessi, chiusura, pin delle lezioni e velocità della
 ### Correzioni
 
 - **Icona nei dialoghi Mac**: gli avvisi e le conferme dell'app mostrano l'icona di RT al posto della cartella generica.
+- **Chat nello Studio**: durante la lettura (tasto C o pulsante accanto all'evidenziatore) puoi fare domande sulla lezione anche allegando immagini o dettando a voce, salvare risposte in «Verifiche e domande» e scegliere il modello in Impostazioni › Modelli IA (o seguire quello della Revisione). Rimosso il vecchio popup di Verifica/Chiedi nello Studio.
+- **Avviso conversione `.pptx`**: quando aggiungi una presentazione `.pptx` senza LibreOffice/Keynote/PowerPoint disponibili, RT avvisa prima di procedere che userà solo il testo delle slide.
+- **Avviso alla chiusura con lavori in corso**: uscendo dall'app desktop con job attivi, RT chiede conferma indicando quanti lavori sono in corso.
 
 ## 4.3.9b3 — 2026-11-23
 

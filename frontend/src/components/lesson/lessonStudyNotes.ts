@@ -9,7 +9,7 @@ type NotesState = { notes: StudyNote[]; selected: number | null }
 export const setStudyNotes = StateEffect.define<NotesState>()
 
 export function noteRange(state: EditorState, note: StudyNote): { from: number; to: number } | null {
-  if (note.anchor_state === 'non_ritrovata') return null
+  if (note.kind === 'chat' || note.anchor_state === 'non_ritrovata') return null
   const unit = unitRanges(state).find((u) => u.id === note.unit_id)
   if (!unit) return null
 

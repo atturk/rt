@@ -468,11 +468,20 @@ def delete_connection(name: str, _actor: Actor):
 
 
 @router.put("/settings/phases/{job}", response_model=Settings,
-            summary="Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini)")
+            summary="Assegna connessione e modello a una fase (outline, rewrite, review, recall, immagini, chat)")
 def put_phase(job: str, body: PhaseIn, _actor: Actor):
     from rt.services.connections_service import assign_phase
     from rt.services.settings_service import snapshot
     _call(assign_phase, _project_root(), job, body.connection, body.model)
+    return snapshot(_project_root())
+
+
+@router.delete("/settings/phases/{job}", response_model=Settings,
+               summary="Ripristina il ripiego predefinito per una fase (es. Chat dello Studio come la Revisione)")
+def delete_phase(job: str, _actor: Actor):
+    from rt.services.connections_service import clear_phase
+    from rt.services.settings_service import snapshot
+    _call(clear_phase, _project_root(), job)
     return snapshot(_project_root())
 
 

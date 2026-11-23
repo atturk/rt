@@ -13,6 +13,7 @@ import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
+import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
 import { Alert } from '@/components/ui/alert'
@@ -73,6 +74,7 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 
 export function Layout() {
   useUploadGuard()
+  const { guardPptxFiles, warningDialog } = usePptxConverterGuard()
   const studyZen = useState(false)
   const [rsvp, setRsvp] = useState<RsvpLayoutState>({ active: false, tint: null })
   const [zen, setZen] = useState<RsvpLayoutState>({ active: false, tint: null })
@@ -203,8 +205,9 @@ export function Layout() {
       </div>
       <GlobalFileDrop
         disabled={!!newLessonOptions}
-        onDropFiles={(files) => openNewLesson({ initialFiles: files })}
+        onDropFiles={(files) => guardPptxFiles(files, () => openNewLesson({ initialFiles: files }))}
       />
+      {warningDialog}
       <ImageViewer />
       <BackupDialog />
       <Suspense fallback={null}><FileStatusBar /></Suspense>

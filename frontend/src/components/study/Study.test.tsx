@@ -427,35 +427,28 @@ it('D apre il ripasso classico, Tornando allo Studio la zen resta accesa', () =>
   expect(screen.getByTestId('study-text')).toHaveAttribute('data-unit-id', '1.1')
 })
 
-it('strumenti V e C: scorciatoie tastiera, accensione/spegnimento e tasto Esc', () => {
+it('tasto C apre e chiude la Chat dello Studio; tasto V è inerte', async () => {
   renderStudy()
-  const btnV = screen.getByTestId('highlight-verifica')
-  const btnC = screen.getByTestId('highlight-chiedi')
+  const btnC = screen.getByTestId('study-chat-btn')
   const text = screen.getByTestId('study-text')
 
-  // Inizialmente spenti
-  expect(btnV).toHaveAttribute('aria-pressed', 'false')
   expect(btnC).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
 
-  // Tasto V accende Verifica
+  // Tasto V non fa nulla
   fireEvent.keyDown(window, { key: 'v' })
-  expect(btnV).toHaveAttribute('aria-pressed', 'true')
-  expect(text).toHaveAttribute('data-hl-mode', 'verifica')
-
-  // Tasto V spegne Verifica
-  fireEvent.keyDown(window, { key: 'v' })
-  expect(btnV).toHaveAttribute('aria-pressed', 'false')
   expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
 
-  // Tasto C accende Chiedi
+  // Tasto C apre Chat
   fireEvent.keyDown(window, { key: 'c' })
   expect(btnC).toHaveAttribute('aria-pressed', 'true')
-  expect(text).toHaveAttribute('data-hl-mode', 'chiedi')
+  expect(await screen.findByTestId('study-chat-panel')).toBeInTheDocument()
 
-  // Tasto Esc a popup chiuso spegne lo strumento
-  fireEvent.keyDown(window, { key: 'Escape' })
+  // Tasto C chiude Chat
+  fireEvent.keyDown(window, { key: 'c' })
   expect(btnC).toHaveAttribute('aria-pressed', 'false')
-  expect(text).not.toHaveAttribute('data-hl-mode')
+  expect(screen.queryByTestId('study-chat-panel')).not.toBeInTheDocument()
 })
 
 it('zoom testo: + porta --study-text-scale a 1.1, - torna a 1, in textarea o con Ctrl non cambia, con lettura veloce aperta non cambia, etichetta compare', async () => {
