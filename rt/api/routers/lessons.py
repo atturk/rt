@@ -277,7 +277,7 @@ RT_SITE_URL = "https://atturk.github.io/rt/"
 
 def _stamp_first_page(pdf: bytes, stamp: bytes) -> bytes:
     """Sovrappone il timbro QR alla prima pagina di `pdf`, mantenendo testo e link.
-    In caso di errore registra un avviso e restituisce `pdf` invariato."""
+    Se qualcosa non riesce registra un avviso e restituisce `pdf` invariato."""
     try:
         import pymupdf
 
