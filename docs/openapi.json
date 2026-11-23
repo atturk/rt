@@ -3700,13 +3700,6 @@
             "title": "Base Url",
             "type": "string"
           },
-          "batch_models": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Batch Models",
-            "type": "array"
-          },
           "credentials": {
             "items": {
               "$ref": "#/components/schemas/ConnectionCredential"
@@ -3728,11 +3721,6 @@
           "provider": {
             "title": "Provider",
             "type": "string"
-          },
-          "supports_batch": {
-            "default": false,
-            "title": "Supports Batch",
-            "type": "boolean"
           }
         },
         "required": [
@@ -6412,7 +6400,7 @@
             "title": "Started At"
           },
           "state": {
-            "description": "queued | running | waiting_for_decision | waiting_for_provider | succeeded | failed | cancelled",
+            "description": "queued | running | waiting_for_decision | succeeded | failed | cancelled",
             "title": "State",
             "type": "string"
           },
@@ -8448,11 +8436,6 @@
       },
       "PhaseAssignment": {
         "properties": {
-          "batch": {
-            "default": false,
-            "title": "Batch",
-            "type": "boolean"
-          },
           "connection": {
             "anyOf": [
               {
@@ -8493,11 +8476,6 @@
       },
       "PhaseIn": {
         "properties": {
-          "batch": {
-            "default": false,
-            "title": "Batch",
-            "type": "boolean"
-          },
           "connection": {
             "title": "Connection",
             "type": "string"
@@ -11054,11 +11032,6 @@
             "title": "Base Url",
             "type": "string"
           },
-          "batch": {
-            "default": false,
-            "title": "Batch",
-            "type": "boolean"
-          },
           "credential": {
             "default": "",
             "title": "Credential",
@@ -11104,11 +11077,6 @@
           "base_url": {
             "title": "Base Url",
             "type": "string"
-          },
-          "batch": {
-            "default": false,
-            "title": "Batch",
-            "type": "boolean"
           },
           "credential": {
             "title": "Credential",

@@ -444,9 +444,9 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
                 data-testid={`chat-msg-user-${msg.id}`}
                 className="flex max-w-[85%] flex-col gap-1.5 self-end rounded-2xl rounded-br-sm border border-border/60 bg-muted/70 px-3.5 py-2.5 text-body text-foreground"
               >
-                {msg.image_urls.length > 0 && (
+                {(msg.image_urls ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {msg.image_urls.map((url, i) => (
+                    {(msg.image_urls ?? []).map((url, i) => (
                       <img
                         key={i}
                         src={url}

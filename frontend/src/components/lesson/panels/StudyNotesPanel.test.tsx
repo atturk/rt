@@ -74,9 +74,10 @@ const mockNotes: StudyNote[] = [
     anchor_state: 'trovata',
     current_quote: null,
     request: 'Perché il bicarbonato scende subito?',
+    // Le note della chat salvano { text } (lo schema descrive solo Verifica/Chiedi).
     response: {
       text: 'Perché **tampona** gli acidi non volatili con $H^+$.',
-    },
+    } as never,
     spiegazione_html: '<p>Perché <strong>tampona</strong> gli acidi non volatili con $H^+$.</p>',
     model: 'gpt-4o',
     cost: 0.001,

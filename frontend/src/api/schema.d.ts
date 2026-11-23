@@ -5331,11 +5331,8 @@ export interface components {
             name: string;
             /** Provider */
             provider: string;
-            /**
-             * Supports Batch
-             * @default false
-             */
-            supports_batch: boolean;
+            /** Supports Batch */
+            supports_batch?: boolean;
         };
         /** ConnectionCredential */
         ConnectionCredential: {
@@ -6573,7 +6570,7 @@ export interface components {
             started_at?: string | null;
             /**
              * State
-             * @description queued | running | waiting_for_decision | waiting_for_provider | succeeded | failed | cancelled
+             * @description queued | running | waiting_for_decision | succeeded | failed | cancelled
              */
             state: string;
             /** Type */
@@ -7614,11 +7611,8 @@ export interface components {
         };
         /** PhaseAssignment */
         PhaseAssignment: {
-            /**
-             * Batch
-             * @default false
-             */
-            batch: boolean;
+            /** Batch */
+            batch?: boolean;
             /** Connection */
             connection?: string | null;
             /** Job */
@@ -7630,11 +7624,8 @@ export interface components {
         };
         /** PhaseIn */
         PhaseIn: {
-            /**
-             * Batch
-             * @default false
-             */
-            batch: boolean;
+            /** Batch */
+            batch?: boolean;
             /** Connection */
             connection: string;
             /** Model */
@@ -8638,7 +8629,7 @@ export interface components {
              * Batch
              * @default false
              */
-            batch: boolean;
+            batch?: boolean;
             /**
              * Credential
              * @default
@@ -8660,11 +8651,8 @@ export interface components {
         RouteOut: {
             /** Base Url */
             base_url: string;
-            /**
-             * Batch
-             * @default false
-             */
-            batch: boolean;
+            /** Batch */
+            batch?: boolean;
             /** Credential */
             credential: string;
             /** Job */
