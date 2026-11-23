@@ -13,6 +13,7 @@ import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
+import { SupportRailButton } from '@/components/shell/SupportRailButton'
 import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
@@ -179,6 +180,7 @@ export function Layout() {
           <NavItem section={LESSONS} path={path} side="right" variant="rail" />
           <NavItem section={CALENDAR} path={path} side="right" variant="rail" />
           <div className="flex-1" aria-hidden />
+          <SupportRailButton />
           <NavItem section={JOBS} path={path} side="right" variant="rail" />
           <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
         </nav>}

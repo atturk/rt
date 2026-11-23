@@ -440,3 +440,32 @@ def get_system_converters(_actor: Actor) -> ConvertersInfo:
             platform=sys.platform,
         )
     )
+
+
+class SupportPromptState(BaseModel):
+    visible: bool
+    url: str
+
+
+class SupportPromptEvent(BaseModel):
+    event: Literal["opened", "hidden", "donated"]
+
+
+@router.get("/system/support-prompt", response_model=SupportPromptState,
+            summary="Stato del promemoria per sostenere RT")
+def get_support_prompt(_actor: Actor) -> SupportPromptState:
+    from rt.core.donazioni import donazioni_app_url
+    from rt.services.support_prompt import check_support_prompt
+    url = donazioni_app_url()
+    visible = check_support_prompt() and bool(url)
+    return SupportPromptState(visible=visible, url=url)
+
+
+@router.post("/system/support-prompt", response_model=SupportPromptState,
+             summary="Registra un'azione sul promemoria per sostenere RT")
+def post_support_prompt(body: SupportPromptEvent, _actor: Actor) -> SupportPromptState:
+    from rt.core.donazioni import donazioni_app_url
+    from rt.services.support_prompt import record_support_event
+    url = donazioni_app_url()
+    visible = record_support_event(body.event) and bool(url)
+    return SupportPromptState(visible=visible, url=url)

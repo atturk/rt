@@ -3809,6 +3809,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/support-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stato del promemoria per sostenere RT */
+        get: operations["get_support_prompt_api_v1_system_support_prompt_get"];
+        put?: never;
+        /** Registra un'azione sul promemoria per sostenere RT */
+        post: operations["post_support_prompt_api_v1_system_support_prompt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/tailnet": {
         parameters: {
             query?: never;
@@ -9294,6 +9312,21 @@ export interface components {
             lezioni: number;
             /** Nome */
             nome: string;
+        };
+        /** SupportPromptEvent */
+        SupportPromptEvent: {
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: "opened" | "hidden" | "donated";
+        };
+        /** SupportPromptState */
+        SupportPromptState: {
+            /** Url */
+            url: string;
+            /** Visible */
+            visible: boolean;
         };
         /** SyncIn */
         SyncIn: {
@@ -26702,6 +26735,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_support_prompt_api_v1_system_support_prompt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPromptState"];
+                };
+            };
+        };
+    };
+    post_support_prompt_api_v1_system_support_prompt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportPromptEvent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPromptState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
