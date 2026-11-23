@@ -280,6 +280,7 @@ def analyze(lesson_dir, *, mock=False, ctx=None, force=False, unit_ids=None):
 
     max_workers = max(1, min(full_cfg.pipeline.parallel_pages, len(pending)))
     done_count = 0
+    deferred_calls = []
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rt-enrichment") as pool:
         futures = {}
         try:
@@ -292,6 +293,10 @@ def analyze(lesson_dir, *, mock=False, ctx=None, force=False, unit_ids=None):
                 try:
                     utilities, ideas = fut.result()
                 except Exception as exc:
+                    from rt.llm.errors import DeferredCall, DeferredPhase
+                    if isinstance(exc, (DeferredCall, DeferredPhase)):
+                        deferred_calls.append(exc)
+                        continue
                     for f in futures:
                         f.cancel()
                     with lesson_lock(lesson_dir):
@@ -333,6 +338,9 @@ def analyze(lesson_dir, *, mock=False, ctx=None, force=False, unit_ids=None):
             for f in futures:
                 f.cancel()
             raise
+    if deferred_calls:
+        from rt.llm.deferred import raise_deferred_phase
+        raise_deferred_phase(deferred_calls, phase="enrichment")
     if ctx:
         ctx.progress("enrichment", len(rows), len(rows), "Suggerimenti pronti")
     return {"suggestions": sum(e.status == "suggestion" for e in view(lesson_dir)["elements"])}

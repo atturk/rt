@@ -150,11 +150,13 @@ def phase_scope(
         with ctx.activate():
             yield scope
     except BaseException as exc:
-        ctx.emit(PhaseFailed(
-            phase=phase,
-            error_class=getattr(exc, "failure_class", None) or type(exc).__name__,
-            message=_sanitize(str(exc)),
-        ))
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if not isinstance(exc, (DeferredCall, DeferredPhase)):
+            ctx.emit(PhaseFailed(
+                phase=phase,
+                error_class=getattr(exc, "failure_class", None) or type(exc).__name__,
+                message=_sanitize(str(exc)),
+            ))
         raise
     finally:
         if ctx.telemetry.get_summary()["total_requests"] != requests_before:

@@ -91,7 +91,8 @@ def prepare(qtype, lesson_dir, *, mock=False):
         return update(qtype, subject, mock=mock)
     except Exception as exc:  # un modello che sbaglia il JSON non ferma la generazione
         from rt.llm.cancel import RunCancelled
-        if isinstance(exc, RunCancelled):
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (RunCancelled, DeferredCall, DeferredPhase)):
             raise
         _LOG.warning("Regole dai voti non aggiornate (%s, %s): %s", qtype, subject, exc)
         return load().get(qtype, {}).get(subject, {}).get('rules', [])
@@ -112,9 +113,12 @@ def filter_group(questions, rules, *, mock=False, summary=None, lesson_dir=None)
             system_prompt='Confronta le domande con le regole. Scarta solo violazioni chiare; restituisci RuleCheck con gli indici da scartare, a partire da zero.',
             prompt=json.dumps({'regole': rules, 'domande': [q.model_dump(mode='json') for q in questions]}, ensure_ascii=False),
             response_model=RuleCheck, job_name='recall', lesson_dir=lesson_dir)
-    except RunCancelled:
+    except (RunCancelled,):
         raise
     except Exception as exc:  # controllo non riuscito: le domande generate si tengono
+        from rt.llm.errors import DeferredCall, DeferredPhase
+        if isinstance(exc, (DeferredCall, DeferredPhase)):
+            raise
         _LOG.warning("Controllo prima di salvare non riuscito: %s", exc)
         return questions
     rejected = set(i for i in result.rejected if 0 <= i < len(questions))

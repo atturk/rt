@@ -11,7 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, TypeVar
 
 from sqlalchemy import delete as sa_delete, or_, select, update
 
@@ -19,6 +19,11 @@ from rt.db.engine import Database, get_database
 from rt.db.models import Job, LlmDeferred, utcnow
 from rt.db.repositories import normalize_lesson_path
 from rt.db.session import read_scope, session_scope
+from rt.llm.cancel import RunCancelled
+from rt.llm.errors import DeferredCall, DeferredPhase
+
+TItem = TypeVar("TItem")
+TResult = TypeVar("TResult")
 
 _CURRENT_JOB_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("rt_deferred_job_id", default=None)
 _BATCH_FALLBACK: contextvars.ContextVar[bool] = contextvars.ContextVar("rt_batch_fallback", default=False)
@@ -396,3 +401,85 @@ def cleanup(
             )
         )
         return int(res.rowcount or 0)
+
+
+def collect_deferred_keys(calls: Sequence[BaseException]) -> List[str]:
+    """Estrae tutte le chiavi differite da DeferredCall e DeferredPhase senza duplicati."""
+    keys: List[str] = []
+    seen: set[str] = set()
+    for exc in calls:
+        if isinstance(exc, DeferredCall):
+            if exc.key and exc.key not in seen:
+                seen.add(exc.key)
+                keys.append(exc.key)
+        elif isinstance(exc, DeferredPhase):
+            for k in exc.keys:
+                if k and k not in seen:
+                    seen.add(k)
+                    keys.append(k)
+    return keys
+
+
+def raise_deferred_phase(
+    calls: Sequence[BaseException],
+    *,
+    job_id: Optional[str] = None,
+    phase: Optional[str] = None,
+) -> None:
+    """Solleva un singolo DeferredPhase con tutte le chiavi raccolte."""
+    keys = collect_deferred_keys(calls)
+    resolved_job_id = job_id or current_job_id()
+    if resolved_job_id is None:
+        for exc in calls:
+            if getattr(exc, "job_id", None):
+                resolved_job_id = exc.job_id
+                break
+    raise DeferredPhase(job_id=resolved_job_id, keys=keys, phase=phase)
+
+
+def run_collecting(
+    items: Sequence[TItem],
+    fn: Callable[[TItem], TResult],
+    *,
+    max_workers: int = 1,
+    job_id: Optional[str] = None,
+    phase: Optional[str] = None,
+) -> List[TResult]:
+    """Esegue fn su tutti gli items raccogliendo eventuali DeferredCall.
+    Restituisce i risultati se nessuna chiamata è stata differita, altrimenti solleva un solo DeferredPhase."""
+    seq = list(items)
+    if not seq:
+        return []
+
+    deferred_calls: List[BaseException] = []
+    results: Dict[int, TResult] = {}
+
+    if max_workers <= 1 or len(seq) <= 1:
+        for idx, item in enumerate(seq):
+            try:
+                results[idx] = fn(item)
+            except (DeferredCall, DeferredPhase) as dc:
+                deferred_calls.append(dc)
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from contextvars import copy_context
+
+        workers = max(1, min(max_workers, len(seq)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(copy_context().run, fn, item): idx for idx, item in enumerate(seq)}
+            try:
+                for fut in as_completed(futures):
+                    idx = futures[fut]
+                    try:
+                        results[idx] = fut.result()
+                    except (DeferredCall, DeferredPhase) as dc:
+                        deferred_calls.append(dc)
+            except BaseException:
+                for f in futures:
+                    f.cancel()
+                raise
+
+    if deferred_calls:
+        raise_deferred_phase(deferred_calls, job_id=job_id, phase=phase)
+
+    return [results[i] for i in range(len(seq))]
