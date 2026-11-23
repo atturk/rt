@@ -6631,6 +6631,53 @@
         "title": "JobRequest",
         "type": "object"
       },
+      "LanInfo": {
+        "properties": {
+          "active": {
+            "description": "Il server ascolta già sulla rete locale (non solo su 127.0.0.1)",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "addresses": {
+            "description": "Indirizzi per gli altri dispositivi della rete: http://nome-mac.local:porta, poi gli IP",
+            "items": {
+              "type": "string"
+            },
+            "title": "Addresses",
+            "type": "array"
+          },
+          "enabled": {
+            "description": "Accesso dalla stessa rete locale acceso nelle Impostazioni",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "restarting": {
+            "default": false,
+            "description": "RT si sta riavviando per applicare la scelta",
+            "title": "Restarting",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "active"
+        ],
+        "title": "LanInfo",
+        "type": "object"
+      },
+      "LanUpdate": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "LanUpdate",
+        "type": "object"
+      },
       "LastUpdate": {
         "properties": {
           "il": {
@@ -35510,6 +35557,96 @@
           }
         ],
         "summary": "Versione, canale di aggiornamento e cartelle di RT",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/lan": {
+      "get": {
+        "operationId": "system_lan_api_v1_system_lan_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accesso dalla stessa rete locale (Wi-Fi di casa o hotspot): stato e indirizzi del computer",
+        "tags": [
+          "sistema"
+        ]
+      },
+      "put": {
+        "operationId": "put_system_lan_api_v1_system_lan_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LanUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accende o spegne l'accesso dalla rete locale (solo da questo computer)",
         "tags": [
           "sistema"
         ]

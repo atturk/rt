@@ -64,6 +64,46 @@ describe("Accesso da un altro dispositivo", () => {
     expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del computer/)).toBeInTheDocument()
   })
 
+  it("rete locale: si accende da questo computer e il QR punta all'indirizzo del Mac nella rete", async () => {
+    let lan = { enabled: false, active: false, addresses: [] as string[], restarting: false }
+    vi.spyOn(api, 'GET').mockImplementation((path: string) =>
+      Promise.resolve(ok(path === '/api/v1/system/lan' ? lan : {})),
+    )
+    const put = vi.spyOn(api, 'PUT').mockImplementation(() => {
+      lan = { enabled: true, active: true, addresses: ['http://air.local:8765', 'http://192.168.1.20:8765'], restarting: false }
+      return Promise.resolve(ok(lan))
+    })
+    const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'http://127.0.0.1:8765/login?code=lan1', expires_in: 300 }))
+    renderSection()
+    const user = userEvent.setup()
+    expect(screen.getByText(/la connessione non è cifrata/)).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'QR del link di accesso' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Abilita e crea QR' }))
+    expect(put).toHaveBeenCalledWith('/api/v1/system/lan', { body: { enabled: true } })
+    // il QR arriva subito, sul primo indirizzo (il nome .local)
+    expect(await screen.findByTestId('device-login-url')).toHaveTextContent('http://air.local:8765/login?code=lan1')
+    await user.click(screen.getByLabelText('http://192.168.1.20:8765'))
+    await user.click(screen.getByRole('button', { name: 'Crea QR per la rete locale' }))
+    expect(post).toHaveBeenCalledWith('/api/v1/auth/login-link')
+    expect(await screen.findByTestId('device-login-url')).toHaveTextContent('http://192.168.1.20:8765/login?code=lan1')
+    lan = { enabled: false, active: false, addresses: [], restarting: false }
+    put.mockResolvedValue(ok(lan))
+    await user.click(screen.getByRole('button', { name: 'Spegni' }))
+    expect(put).toHaveBeenLastCalledWith('/api/v1/system/lan', { body: { enabled: false } })
+    expect(await screen.findByRole('button', { name: 'Abilita e crea QR' })).toBeInTheDocument()
+  })
+
+  it("rete locale: mentre RT si riavvia lo dice", async () => {
+    vi.spyOn(api, 'GET').mockImplementation((path: string) =>
+      Promise.resolve(ok(path === '/api/v1/system/lan' ? { enabled: false, active: false, addresses: [], restarting: false } : {})),
+    )
+    vi.spyOn(api, 'PUT').mockResolvedValue(ok({ enabled: true, active: false, addresses: [], restarting: true }))
+    renderSection()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Abilita e crea QR' }))
+    expect(await screen.findByText(/RT si prepara per la rete locale/)).toBeInTheDocument()
+  })
+
   it("avvisa se l'indirizzo è quello locale del Mac", async () => {
     renderSection()
     const user = userEvent.setup()

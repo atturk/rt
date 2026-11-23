@@ -3,7 +3,7 @@ import os
 import threading
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic import BaseModel, Field
 
 from rt.api import auth, schemas
@@ -307,6 +307,55 @@ def system_tailnet(request: Request, _actor: Actor) -> TailnetInfo:
     if found is None:
         return TailnetInfo()
     return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel)
+
+
+class LanInfo(BaseModel):
+    enabled: bool = Field(description="Accesso dalla stessa rete locale acceso nelle Impostazioni")
+    active: bool = Field(description="Il server ascolta già sulla rete locale (non solo su 127.0.0.1)")
+    addresses: list[str] = Field(default_factory=list,
+                                 description="Indirizzi per gli altri dispositivi della rete: http://nome-mac.local:porta, poi gli IP")
+    restarting: bool = Field(False, description="RT si sta riavviando per applicare la scelta")
+
+
+class LanUpdate(BaseModel):
+    enabled: bool
+
+
+def _lan_info(request: Request, restarting: bool = False) -> LanInfo:
+    from rt.core.lan import lan_addresses, lan_enabled
+    from rt.api.server import LOOPBACK
+    server = request.scope.get("server") or (None, None)
+    port = int(server[1] or request.url.port or 8765)
+    active = getattr(request.app.state, "bind_host", "127.0.0.1") not in LOOPBACK
+    return LanInfo(enabled=lan_enabled(), active=active, addresses=lan_addresses(port), restarting=restarting)
+
+
+@router.get("/system/lan", response_model=LanInfo,
+            summary="Accesso dalla stessa rete locale (Wi-Fi di casa o hotspot): stato e indirizzi del computer")
+def system_lan(request: Request, _actor: Actor) -> LanInfo:
+    return _lan_info(request)
+
+
+@router.put("/system/lan", response_model=LanInfo, summary="Accende o spegne l'accesso dalla rete locale (solo da questo computer)",
+            responses={403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+def put_system_lan(body: LanUpdate, request: Request, background: BackgroundTasks, _actor: Actor) -> LanInfo:
+    from rt.api.readonly_auth import is_local_request
+    from rt.core.lan import network_id, set_lan_enabled
+    if not is_local_request(request):
+        raise ApiError(403, "local_only", "L'accesso dalla rete locale si accende o si spegne solo da questo computer.")
+    if body.enabled and network_id() is None:
+        raise ApiError(409, "no_network", "Questo computer non è collegato a una rete locale (Wi-Fi o hotspot).")
+    set_lan_enabled(body.enabled)
+    info = _lan_info(request)
+    server = getattr(request.app.state, "uvicorn_server", None)
+    # Il server ascolta su un solo indirizzo: per cambiarlo si riavvia (dopo aver risposto).
+    if server is not None and info.enabled != info.active:
+        def restart() -> None:
+            request.app.state.restart_requested = True
+            server.should_exit = True
+        background.add_task(restart)
+        info.restarting = True
+    return info
 
 
 @router.delete("/auth/session", status_code=204, summary="Chiude la sessione della SPA")

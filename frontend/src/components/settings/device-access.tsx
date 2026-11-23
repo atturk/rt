@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Copy } from 'lucide-react'
 import { encode } from 'uqr'
 
 import { errorMessage } from '@/api/client'
-import { useLoginLink, useTailnet } from '@/api/hooks'
+import { useLan, useLoginLink, useSetLan, useTailnet } from '@/api/hooks'
 import { useCreateReadonlyKey, useReadonlyKey, useRevokeReadonlyKey } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -22,10 +22,170 @@ import {
 import { Field, Section } from './common'
 
 /** Accesso da un altro dispositivo (telefono, tablet, computer): un QR con il link monouso (5 minuti, una volta).
- * Se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della tailnet
- * che il Mac stesso rileva (https://nome-computer.tailnet.ts.net, l'unico per cui vale il certificato
- * di Tailscale); senza Tailscale si scrive a mano (rete locale: http://nome-computer.local:8765). */
+ * Due strade affiancate: la stessa rete locale (http, non cifrata: casa o hotspot) e Tailscale (https, ovunque). */
 export function DeviceAccessSection() {
+  return (
+    <Section
+      id="altro-dispositivo"
+      title="Accesso da un altro dispositivo"
+      description="Apri RT da un telefono, un tablet o un altro computer inquadrando un QR: il link entra una sola volta e vale 5 minuti."
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
+        <LanPanel />
+        <TailscalePanel />
+      </div>
+      <ReadonlyKeyManager />
+    </Section>
+  )
+}
+
+function Panel({ title, testId, children }: { title: string; testId: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-4" data-testid={testId}>
+      <h3 className="text-body font-semibold text-foreground">{title}</h3>
+      {children}
+    </div>
+  )
+}
+
+/** Stessa rete: "Abilita e crea QR" fa ascoltare RT anche sulla rete del computer (si riavvia da solo)
+ * e crea subito il QR, che porta all'indirizzo del computer in quella rete (http://nome.local:porta o
+ * l'IP), mai a 127.0.0.1. Si spegne con "Spegni", uscendo da RT o cambiando rete. */
+function LanPanel() {
+  const here = window.location.origin
+  const onThisComputer = isLoopback(here)
+  // riavvio in corso dal momento della scelta finché l'API non risponde come richiesto
+  const [waitSince, setWaitSince] = useState<number | null>(null)
+  const [polling, setPolling] = useState(false)
+  const wantQr = useRef(false)
+  const lan = useLan(polling)
+  const setLan = useSetLan()
+  const info = lan.data
+  const settled = !!info && info.enabled === info.active && lan.dataUpdatedAt > (waitSince ?? 0)
+  const waiting = waitSince !== null && !settled
+  if (polling && !waiting) setPolling(false)
+  const ready = !!info?.enabled && !!info?.active && !waiting
+  const addresses = info?.addresses ?? []
+  const [chosen, setChosen] = useState<string | null>(null)
+  const origin = chosen && addresses.includes(chosen) ? chosen : (addresses[0] ?? null)
+  const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null)
+  const loginLink = useLoginLink()
+
+  const createFor = (target: string) => {
+    loginLink.mutate(undefined, {
+      onSuccess: (data) => {
+        const url = deviceLoginUrl(data.url, target)
+        setLink(url ? { url, expiresAt: Date.now() + data.expires_in * 1000 } : null)
+      },
+    })
+  }
+
+  // il QR chiesto con "Abilita e crea QR" arriva appena RT ascolta sulla rete
+  const createLater = useRef(createFor)
+  useEffect(() => {
+    createLater.current = createFor
+  })
+  useEffect(() => {
+    if (wantQr.current && ready && origin) {
+      wantQr.current = false
+      createLater.current(origin)
+    }
+  }, [ready, origin])
+
+  const turn = (next: boolean) => {
+    setLink(null)
+    wantQr.current = next
+    setLan.mutate(next, {
+      onSuccess: (data) => {
+        const restarting = !!data?.restarting
+        setWaitSince(restarting ? Date.now() : null)
+        setPolling(restarting)
+      },
+      onError: () => {
+        wantQr.current = false
+      },
+    })
+  }
+
+  return (
+    <Panel title="Stessa rete Wi‑Fi (senza Tailscale)" testId="device-access-lan">
+      <p className="text-body text-muted-foreground">
+        Collega questo computer e l'altro dispositivo alla stessa rete, poi crea il QR: ogni dispositivo di quella rete può
+        entrare con il link.
+      </p>
+      <p className="text-body text-muted-foreground">
+        È pensato per le reti private, come la Wi‑Fi di casa o l'hotspot del tuo telefono. Sulle reti pubbliche (università,
+        biblioteche, bar) è meglio non usarlo, perché la connessione non è cifrata: lì, o quando non sei sulla stessa rete, usa
+        Tailscale. Si spegne da solo quando esci da RT o quando il computer cambia rete.
+      </p>
+      {!onThisComputer && !ready && (
+        <p className="text-meta text-muted-foreground">Si abilita dal computer su cui gira RT.</p>
+      )}
+      {setLan.isError && <Alert tone="danger">{errorMessage(setLan.error)}</Alert>}
+      {waiting ? (
+        <Alert>RT si prepara per la rete locale: qualche secondo…</Alert>
+      ) : ready ? (
+        <>
+          {addresses.length > 1 && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1 text-meta text-muted-foreground">Indirizzo per l'altro dispositivo</legend>
+              {addresses.map((address) => (
+                <label key={address} className="flex items-center gap-2 text-body">
+                  <input
+                    type="radio"
+                    name="lan-address"
+                    value={address}
+                    checked={origin === address}
+                    onChange={() => {
+                      setChosen(address)
+                      setLink(null)
+                    }}
+                  />
+                  <code className="break-all">{address}</code>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          {addresses.length === 0 && (
+            <Alert tone="warning">Non trovo l'indirizzo di questo computer nella rete: controlla di essere collegato alla Wi‑Fi.</Alert>
+          )}
+          <p className="text-meta text-muted-foreground">
+            Il nome che finisce in .local resta valido anche se l'IP cambia; se non si apre (capita su alcuni Android) usa
+            l'indirizzo con i numeri. Se macOS chiede di consentire le connessioni in entrata a RT, rispondi Consenti.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => origin && createFor(origin)} disabled={!origin || loginLink.isPending}>
+              {link ? 'Crea un nuovo QR' : 'Crea QR per la rete locale'}
+            </Button>
+            {onThisComputer && (
+              <Button variant="outline" onClick={() => turn(false)} disabled={setLan.isPending}>
+                Spegni
+              </Button>
+            )}
+          </div>
+          {loginLink.isError && <Alert tone="danger">{errorMessage(loginLink.error)}</Alert>}
+          {link && <LinkQr key={link.url} url={link.url} expiresAt={link.expiresAt} />}
+        </>
+      ) : (
+        <>
+          {info?.enabled && !info.active && (
+            <Alert tone="warning">Esci da RT e riaprilo, poi abilita di nuovo la rete locale.</Alert>
+          )}
+          <div>
+            <Button onClick={() => turn(true)} disabled={!onThisComputer || setLan.isPending}>
+              Abilita e crea QR
+            </Button>
+          </div>
+        </>
+      )}
+    </Panel>
+  )
+}
+
+/** Tailscale: se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della
+ * tailnet che il Mac stesso rileva (https://nome-computer.tailnet.ts.net, l'unico per cui vale il
+ * certificato di Tailscale). */
+function TailscalePanel() {
   const here = window.location.origin
   const tailnet = useTailnet().data
   const [saved] = useState(readDeviceOrigin)
@@ -49,18 +209,17 @@ export function DeviceAccessSection() {
   }
 
   return (
-    <Section
-      id="altro-dispositivo"
-      title="Accesso da un altro dispositivo"
-      description="Apri RT da un telefono, un tablet o un altro computer inquadrando un QR: il link entra una sola volta e vale 5 minuti."
-    >
+    <Panel title="Tailscale (o un'altra VPN)" testId="device-access-tailscale">
+      <p className="text-body text-muted-foreground">
+        Funziona ovunque, anche fuori casa e sulle reti pubbliche: la connessione è cifrata e la vedono solo i tuoi dispositivi.
+      </p>
       <Field
         label="Indirizzo di RT per l'altro dispositivo"
         htmlFor="device-origin"
         hint={
           <>
-            Con Tailscale Serve è <code>https://nome-computer.tailnet.ts.net</code>; in rete locale{' '}
-            <code>http://nome-computer.local:8765</code>. 127.0.0.1 funziona solo su questo computer.
+            Con Tailscale Serve è <code>https://nome-computer.tailnet.ts.net</code>. 127.0.0.1 funziona solo su questo
+            computer.
           </>
         }
       >
@@ -111,9 +270,7 @@ export function DeviceAccessSection() {
       </div>
       {loginLink.isError && <Alert tone="danger">{errorMessage(loginLink.error)}</Alert>}
       {link && <LinkQr key={link.url} url={link.url} expiresAt={link.expiresAt} />}
-
-      <ReadonlyKeyManager />
-    </Section>
+    </Panel>
   )
 }
 

@@ -50,9 +50,45 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, reset_token: bool = 
     if no_auth:
         say("⚠️  Autenticazione disattivata (--no-auth).")
     # Gli stream SSE (canale live della web app) restano aperti: allo stop si chiudono dopo pochi secondi.
-    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5,
-                log_config=log_config())
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5,
+                                         log_config=log_config()))
+    app.state.uvicorn_server = server
+    app.state.bind_host = host
+    watch_lan(app, server)
+    server.run()
+    if getattr(app.state, "restart_requested", False):
+        restart_process()
     return 0
+
+
+def watch_lan(app, server) -> None:
+    """Accesso dalla rete locale acceso: se il computer cambia rete, riavvia solo su 127.0.0.1."""
+    from rt.core.lan import ALL_HOSTS, lan_enabled, watch_network
+    if app.state.bind_host != ALL_HOSTS or not lan_enabled():
+        return
+
+    def restart() -> None:
+        app.state.restart_requested = True
+        server.should_exit = True
+    watch_network(restart)
+
+
+def restart_process() -> None:
+    """Riavvia questo processo con gli stessi argomenti (es. per ascoltare anche in rete locale).
+    Su macOS/Linux exec mantiene il PID (launchd non se ne accorge); su Windows parte un nuovo
+    processo nascosto che scrive di nuovo server.pid e il registro api.log."""
+    import os
+    import subprocess
+    import sys
+    os.environ["RT_RESTARTED"] = "1"  # 'rt web' non riapre il browser
+    os.environ["RT_LAN_KEEP"] = "1"  # rt.core.lan: il riavvio non spegne l'accesso dalla rete locale
+    args = list(sys.argv) if sys.argv[0].lower().endswith(".exe") else [sys.executable] + list(sys.argv)
+    if sys.platform != "win32":
+        os.execv(args[0], args)
+    from rt.core import paths
+    with open(os.path.join(paths.sub_dir("logs", create=True), "api.log"), "a", encoding="utf-8", newline="\n") as log:
+        subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                         creationflags=0x08000000 | 0x00000008 | 0x00000200, close_fds=True)
 
 
 # Richieste che la web app ripete da sola ogni pochi secondi: riuscite non dicono nulla e

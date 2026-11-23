@@ -61,6 +61,27 @@ export function useTailnet() {
   return useQuery({ queryKey: ['system', 'tailnet'], queryFn: () => unwrap(api.GET('/api/v1/system/tailnet')), staleTime: 60_000 })
 }
 
+/** Accesso dalla stessa rete locale (Wi-Fi di casa o hotspot). Mentre RT si riavvia per applicare
+ * la scelta la richiesta fallisce: si riprova finché il server non ascolta come richiesto. */
+export function useLan(waiting = false) {
+  return useQuery({
+    queryKey: ['system', 'lan'],
+    queryFn: () => unwrap(api.GET('/api/v1/system/lan')),
+    staleTime: 30_000,
+    retry: waiting ? 20 : 1,
+    retryDelay: 1500,
+    refetchInterval: waiting ? 2000 : false,
+  })
+}
+
+export function useSetLan() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (enabled: boolean) => unwrap(api.PUT('/api/v1/system/lan', { body: { enabled } })),
+    onSuccess: (data) => client.setQueryData(['system', 'lan'], data),
+  })
+}
+
 export function useLogout() {
   const client = useQueryClient()
   return useMutation({

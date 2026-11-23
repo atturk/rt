@@ -3668,6 +3668,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/lan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Accesso dalla stessa rete locale (Wi-Fi di casa o hotspot): stato e indirizzi del computer */
+        get: operations["system_lan_api_v1_system_lan_get"];
+        /** Accende o spegne l'accesso dalla rete locale (solo da questo computer) */
+        put: operations["put_system_lan_api_v1_system_lan_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/opened-files/{token}": {
         parameters: {
             query?: never;
@@ -6562,6 +6580,35 @@ export interface components {
              * @default false
              */
             with_review: boolean;
+        };
+        /** LanInfo */
+        LanInfo: {
+            /**
+             * Active
+             * @description Il server ascolta già sulla rete locale (non solo su 127.0.0.1)
+             */
+            active: boolean;
+            /**
+             * Addresses
+             * @description Indirizzi per gli altri dispositivi della rete: http://nome-mac.local:porta, poi gli IP
+             */
+            addresses?: string[];
+            /**
+             * Enabled
+             * @description Accesso dalla stessa rete locale acceso nelle Impostazioni
+             */
+            enabled: boolean;
+            /**
+             * Restarting
+             * @description RT si sta riavviando per applicare la scelta
+             * @default false
+             */
+            restarting: boolean;
+        };
+        /** LanUpdate */
+        LanUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** LastUpdate */
         LastUpdate: {
@@ -25703,6 +25750,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+        };
+    };
+    system_lan_api_v1_system_lan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanInfo"];
+                };
+            };
+        };
+    };
+    put_system_lan_api_v1_system_lan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LanUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanInfo"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
