@@ -5,6 +5,7 @@ Supporta sia l'export JSON di macparakeet-cli (predefinito) e MacWhisper (storic
 """
 
 from typing import List, Tuple, Dict, Any, Optional
+import copy
 import os
 import json
 import re
@@ -306,12 +307,25 @@ def save_segments_json(segments: List[Segment], output_path: str, lesson_id: Opt
 
 def load_segments_json(segments_path: str) -> SegmentsData:
     """Carica segments.json."""
+    cache = getattr(fs._snapshot, "segments_cache", None)
+    key = None
+    if cache is not None:
+        key = fs.file_cache_key(segments_path)
+        if key is not None and key in cache:
+            return copy.deepcopy(cache[key])
+
     if not fs.isfile(segments_path):
         raise FileNotFoundError(f"segments.json non trovato in '{segments_path}'")
     with fs.open(segments_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     cleaned_data = sanitize_object_encoding(data)
-    return SegmentsData.model_validate(cleaned_data)
+    result = SegmentsData.model_validate(cleaned_data)
+    if cache is not None:
+        if key is None:
+            key = fs.file_cache_key(segments_path)
+        if key is not None:
+            cache[key] = copy.deepcopy(result)
+    return result
 
 
 def export_normalized_transcript_md(segments: List[Segment], output_path: str) -> None:

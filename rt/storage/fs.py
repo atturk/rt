@@ -21,7 +21,7 @@ import shutil
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from contextlib import contextmanager
 
@@ -188,15 +188,20 @@ def read_snapshot() -> Iterator[None]:
         yield
         return
     _snapshot.rows, _snapshot.missing = {}, set()
+    _snapshot.segments_cache = {}
+    _snapshot.phase_status_cache = {}
     try:
         yield
     finally:
         _snapshot.rows = _snapshot.missing = None
+        _snapshot.segments_cache = _snapshot.phase_status_cache = None
 
 
 def _drop_snapshot() -> None:
     if getattr(_snapshot, "rows", None) is not None:
         _snapshot.rows, _snapshot.missing = {}, set()
+        _snapshot.segments_cache = {}
+        _snapshot.phase_status_cache = {}
 
 
 @dataclass(frozen=True)
@@ -234,6 +239,22 @@ def _read_row(t: DbTarget):
         if row is None:
             return None
         return _SnapRow(row.content, row.media_path, row.size, row.sha256, row.mtime)
+
+
+def file_cache_key(path) -> Optional[Tuple[str, Any]]:
+    """Chiave di cache (percorso, sha o mtime) basata sul backend storage."""
+    p = os.fspath(path)
+    t = resolve(p)
+    if t is not None:
+        row = _read_row(t)
+        if row is None:
+            return None
+        return (p, row.sha256 if row.sha256 is not None else row.mtime)
+    try:
+        st = os.stat(p)
+        return (p, st.st_mtime_ns)
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------- righe lesson_files
