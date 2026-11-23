@@ -273,13 +273,11 @@ def _local_port(request: Request) -> int:
 
 
 RT_SITE_URL = "https://atturk.github.io/rt/"
-# Preferenza personale (Impostazioni › Aspetto): false toglie il QR di RT dai PDF.
-PDF_QR_PREFERENCE = "pdf.qr-sito"
 
 
 def _stamp_first_page(pdf: bytes, stamp: bytes) -> bytes:
     """Sovrappone il timbro QR alla prima pagina di `pdf`, mantenendo testo e link.
-    Se qualcosa va storto registra un avviso e restituisce `pdf` invariato."""
+    Se qualcosa non riesce registra un avviso e restituisce `pdf` invariato."""
     try:
         import pymupdf
 
@@ -362,9 +360,6 @@ def _render_pdf(lesson_id: int, port: int) -> bytes:
                     footer_template=footer_html,
                     header_template="<span></span>",
                 )
-                from rt.services.preferences_service import list_preferences
-                if list_preferences().get(PDF_QR_PREFERENCE, True) is False:
-                    return pdf_main
                 try:
                     stamp_data = page.evaluate("""() => {
                         const el = document.querySelector('[data-rt-stamp]');
