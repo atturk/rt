@@ -59,6 +59,7 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
             allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Last-Event-ID"],
         )
 
+    app.add_middleware(UploadTimingMiddleware)
     app.include_router(system.router, prefix=API_PREFIX)
     for router in _domain_routers():
         app.include_router(router, prefix=API_PREFIX, responses=COMMON_RESPONSES)
@@ -82,6 +83,38 @@ def create_app(auth_disabled: bool = False, cors_origins: Optional[Iterable[str]
         from rt.api.spa import find_spa_dir, install_spa
         install_spa(app, spa_dir or find_spa_dir())
     return app
+
+
+class UploadTimingMiddleware:
+    """Una riga in api.log per ogni upload multipart: durata e dimensione, per misurare
+    l'entrata dei dati dai log (l'access log di uvicorn ha solo l'ora di fine)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] not in ("POST", "PUT"):
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers") or [])
+        if not headers.get(b"content-type", b"").startswith(b"multipart/"):
+            return await self.app(scope, receive, send)
+        import logging
+        import time
+        started = time.monotonic()
+        status = [None]
+
+        async def tracked_send(message):
+            if message["type"] == "http.response.start":
+                status[0] = message["status"]
+            await send(message)
+        try:
+            await self.app(scope, receive, tracked_send)
+        finally:
+            size = headers.get(b"content-length", b"").decode() or "?"
+            megabytes = f"{int(size) / 1_000_000:.1f} MB" if size.isdigit() else "dimensione ignota"
+            logging.getLogger("uvicorn.error").info(
+                "Upload %s %s: %.1f s, %s, stato %s", scope["method"], scope["path"],
+                time.monotonic() - started, megabytes, status[0] or "interrotto")
 
 
 def _domain_routers() -> list:
