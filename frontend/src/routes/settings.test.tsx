@@ -59,10 +59,11 @@ describe('SetupGate', () => {
 
 
 // Navigazione delle route vere, isolata dal layout autenticato dell'app.
-function realSettings(path: string, phone = false) {
+function realSettings(path: string, phone = false, info: object = {}) {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: phone && query.includes('max-width'), addEventListener: vi.fn(), removeEventListener: vi.fn() }))
   vi.spyOn(api, 'GET').mockImplementation(((path: string) => Promise.resolve({
     data: path === '/api/v1/settings' ? testSettings : path === '/api/v1/settings/enrichment' ? enrichmentSettings
+      : path === '/api/v1/system/info' ? info
       : path === '/api/v1/system/cache' ? { audio: { entries: 0, bytes: 0 }, waveform: { entries: 0, bytes: 0 }, total: { entries: 0, bytes: 0 } } : {},
     response: new Response('{}', { status: 200 }),
   })) as never)
@@ -83,6 +84,18 @@ describe('Le otto sezioni', () => {
     await userEvent.click(within(nav).getByRole('link', { name: 'Lavorazione delle lezioni' }))
     expect(await screen.findByRole('region', { name: 'Trascrizione' })).toBeVisible()
     expect(screen.queryByRole('radiogroup', { name: 'Tema' })).toBeNull()
+  })
+  it('Supporta RT: bottone sotto Guida solo con un URL per le donazioni, aperto nel browser', async () => {
+    realSettings('/impostazioni/aspetto')
+    await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    expect(screen.queryByTestId('link-sostieni-rt')).toBeNull()
+    cleanup(); vi.restoreAllMocks()
+    realSettings('/impostazioni/aspetto', false, { donazioni_url: 'https://ko-fi.com/example' })
+    const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
+    const link = await within(nav).findByRole('link', { name: 'Supporta RT' })
+    expect(link).toHaveAttribute('href', 'https://ko-fi.com/example')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link.compareDocumentPosition(within(nav).getByRole('link', { name: /^Guida/ })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   })
   it('telefono: elenco, pagina della sezione e freccia indietro', async () => {
     realSettings('/impostazioni', true)

@@ -1,11 +1,11 @@
 import { useReturnAddress } from '@/lib/returnAddress'
-import { ChevronRight, LogOut, Wand2 } from 'lucide-react'
+import { ChevronRight, Heart, LogOut, Wand2 } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
-import { useSettings, type Settings } from '@/api/settings'
+import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
 import { TranscriptionSection } from '@/components/settings/general'
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
@@ -70,6 +70,7 @@ export function SettingsLayout() {
             <span>Guida{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}</span>
             {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
           </Link>
+          <SupportButton />
         </nav>}
         {(!phone || !index) && <div className="min-w-0 flex-1">
           {!phone && <h2 className="mb-4 text-heading font-semibold">{current.label}</h2>}<Outlet />
@@ -77,6 +78,19 @@ export function SettingsLayout() {
       </div>
     </PageBody>
   </>
+}
+
+/** «Supporta RT» sotto Guida, solo se c'è un URL per le donazioni. Il link apre il browser di
+ * sistema (target=_blank + OPEN_EXTERNAL_LINKS_IN_BROWSER in window.py): niente pagamenti nella
+ * webview. Blu fisso con testo bianco: contrasto uguale in tema chiaro e scuro. */
+function SupportButton() {
+  const url = useSystemInfo().data?.donazioni_url
+  if (!url) return null
+  return <a href={url} target="_blank" rel="noopener noreferrer" data-testid="link-sostieni-rt"
+    className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+    <Heart className="size-4 shrink-0 fill-current" aria-hidden />
+    Supporta RT
+  </a>
 }
 
 function ScrollToHash() {
