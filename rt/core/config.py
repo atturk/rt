@@ -225,6 +225,7 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
         "enrichment_visualizer": empty_shell(max_tokens=16384, timeout=240),
         "enrichment_image": empty_shell(timeout=300),
         "recall": empty_shell(max_tokens=8192, timeout=180),
+        "study_chat": empty_shell(max_tokens=8192, timeout=180),
     }
 
 

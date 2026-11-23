@@ -11,7 +11,7 @@ from sqlalchemy import select
 from rt.core.portable import lock_file, unlock_file
 from rt.services.errors import Conflict, NotFound, Unavailable
 from rt.db.engine import get_database
-from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
+from rt.db.models import Job, Lesson, LessonFile, RecallSession, Setting, StateDocument, StudyChatMessage, StudyHighlight, StudyNote, StudyUnit, TelegramCommand
 from rt.db.session import session_scope
 from rt.services.lesson_service import lessons_root
 from rt.storage import fs
@@ -34,6 +34,7 @@ def purge_lesson_records(session, row: Lesson) -> None:
     path = row.path
     for model in (RecallSession, TelegramCommand):
         session.execute(delete(model).where(model.lesson_path == path))
+    session.execute(delete(StudyChatMessage).where(StudyChatMessage.lesson_id == row.id))
     session.execute(delete(StudyHighlight).where(StudyHighlight.lesson_id == row.id))
     session.execute(delete(StudyNote).where(StudyNote.lesson_id == row.id))
     session.execute(delete(StudyUnit).where(StudyUnit.lesson_id == row.id))

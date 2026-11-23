@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 from rt.core.lesson_lock import lesson_lock
 from rt.core.models import Anchor, ScienceIssue, ScienceSeverity, ScienceType
 from rt.db.engine import get_database
-from rt.db.models import ReviewDecision, StudyNote
+from rt.db.models import ReviewDecision, StudyChatMessage, StudyNote
 from rt.db.session import read_scope, session_scope
 from rt.pipeline.anchors import locate, make_anchor
 from rt.pipeline.ledger import load_resolved_draft
@@ -18,6 +18,7 @@ def _row(n: StudyNote) -> dict[str, Any]:
     from rt.services.previous_study import previous_for_lesson
     from rt.core.markdown_render import render_markdown
     response = n.response or {}
+    spiegazione_raw = response.get("text") if n.kind == "chat" else response.get("spiegazione")
     return {
         "precedente": previous_for_lesson(n.lesson_id, n.unit_id, n.created_at),
         "id": n.id,
@@ -28,7 +29,7 @@ def _row(n: StudyNote) -> dict[str, Any]:
         "unit_fingerprint": n.unit_fingerprint,
         "request": n.request,
         "response": n.response,
-        "spiegazione_html": render_markdown(str(response.get('spiegazione') or '')),
+        "spiegazione_html": render_markdown(str(spiegazione_raw or '')),
         "correzione_html": render_markdown(str(response.get('correzione') or '')),
         "model": n.model,
         "cost": n.cost,
@@ -82,10 +83,16 @@ def add_study_note(
 
 
 def delete_study_note(lesson_id: int, note_id: int) -> None:
+    from sqlalchemy import update
     with session_scope(get_database()) as session:
         row = session.get(StudyNote, note_id)
         if row is None or row.lesson_id != lesson_id:
             raise NotFound("study_note_not_found", "Nota dello studio non trovata.")
+        session.execute(
+            update(StudyChatMessage)
+            .where(StudyChatMessage.lesson_id == lesson_id, StudyChatMessage.saved_note_id == note_id)
+            .values(saved_note_id=None)
+        )
         session.delete(row)
 
 
@@ -108,6 +115,11 @@ def update_study_note_unit(lesson_id: int, note_id: int, new_unit_id: str) -> No
 
 def decorate_study_note(note: dict[str, Any], lesson_dir: str, lesson_id: int) -> dict[str, Any]:
     """Ritrova il passaggio nel testo risolto e ne determina lo stato dell'ancora."""
+    if note.get("kind") == "chat":
+        note["anchor_state"] = "trovata"
+        note["current_quote"] = None
+        note["issue_id"] = None
+        return note
     draft = load_resolved_draft(lesson_dir)
     anchor_obj = Anchor.model_validate(note["anchor"])
     target_unit = next((u for u in draft.units if u.unit_id == note["unit_id"]), None)

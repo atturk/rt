@@ -24,6 +24,7 @@ PHASES = (
     ("enrichment_writer", "Arricchitore"),
     ("enrichment_visualizer", "Visualizzazioni HTML"),
     ("enrichment_image", "Generazione immagini IA"),
+    ("study_chat", "Chat dello Studio"),
 )
 PROVIDERS = (
     ("OpenRouter", "openrouter"),
@@ -161,6 +162,17 @@ def assign_phase(project_root: Path, job: str, connection_name: str, model: str)
     return save_route(project_root, job, "primary", connection["provider"],
                       credentials[0], model, connection["base_url"],
                       len(credentials) > 1, credentials)
+
+
+def clear_phase(project_root: Path, job: str) -> str:
+    """Rimuove l'assegnazione personalizzata per una fase che ha un fallback (es. study_chat)."""
+    if job != "study_chat":
+        raise ValueError("Solo la Chat dello Studio può tornare all'opzione predefinita.")
+    config_dir = general_config_path(project_root).parent
+    paths = find_job_yaml_paths(str(config_dir))
+    if job in paths:
+        Path(paths[job]).unlink(missing_ok=True)
+    return "Chat dello Studio reimpostata come la Revisione."
 
 
 _ROLE_LABELS = {"primary": "primaria", "secondary": "secondaria", "timeout": "ripiego timeout",
