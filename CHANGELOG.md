@@ -2,25 +2,23 @@
 
 ## 4.3.9b4 — 2026-11-24
 
-Beta su app Mac/Windows, permessi, chiusura, pin delle lezioni e velocità della pipeline.
+Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i permessi e la chiusura dell'app.
 
 ### Novità
 
-- **Pin per categoria nelle Lezioni**: accanto a ogni gruppo (giorno, mese, materia o docente) puoi fissare una categoria in cima all'elenco; ogni raggruppamento ricorda la propria scelta. Il pin nell'intestazione sgancia la categoria fissata oppure fissa temporaneamente la ricerca per tutta la sessione.
-- **Apertura dei file .rt dal Finder**: aprire uno o più file .rt con doppio clic non blocca più RT (rotellina) e mostra la schermata di import.
-- **Ricerca senza risultati**: messaggio centrato con icona.
-- **Chiusura con la X**: nell'app desktop puoi scegliere se continuare a lavorare in background (consigliato) o chiudere del tutto RT quando chiudi la finestra.
-- **Pagina dei permessi**: «Controlla permessi» apre la pagina dedicata con stato e accesso rapido alle impostazioni di sistema (Mac e Windows), e su Mac segnala se gli elementi in background sono disattivati.
-- **Slide PowerPoint su Windows**: la conversione dei file `.pptx` usa anche Microsoft PowerPoint quando LibreOffice non è installato.
-- **Immagini e classificazione in parallelo**: lettura e posizionamento immagini, ricerca immagini web, analisi dell'arricchimento e classificatori lavorano in parallelo.
-- **Modalità batch notturna per OpenRouter**: ogni fase asincrona può scegliere una variante `:batch` (−50%, risposte entro 24 h); i job restano in attesa del provider liberando coda e UI finché i risultati non vengono raccolti dal worker.
+- **Chat dello Studio**: al posto di Verifica e Chiedi c'è un'unica chat laterale (tasto C o icona della vignetta con la stellina). Puoi scrivere liberamente, incollare un passaggio da verificare, allegare immagini e dettare a voce. Le risposte si copiano o si salvano in «Verifiche e domande». Una chat per lezione, con il cestino per cancellarla. Il modello è quello della Revisione, oppure un altro scelto in Impostazioni › Modelli IA. Solo nello Studio, nascosta in zen e in lettura veloce.
+- **Pin per categoria nelle Lezioni**: accanto a ogni gruppo (giorno, mese, materia o docente) puoi fissare una categoria in cima all'elenco; ogni raggruppamento ricorda la propria scelta. Il pin nell'intestazione sgancia la categoria fissata oppure fissa la ricerca in tutte le viste finché l'app resta aperta.
+- **Modalità batch**: in Impostazioni › Modelli IA le fasi non interattive possono usare la variante batch di un modello OpenRouter (circa −50%, risposte entro 24 ore). Il job aspetta il provider senza occupare il worker e riprende da solo, anche con la finestra chiusa.
+- **Chiusura con la X**: nell'app puoi scegliere se RT continua a lavorare in background (predefinito) o si chiude del tutto. Uscendo con lavori in corso RT chiede conferma e dice quanti sono.
+- **Permessi**: «Controlla permessi» apre una pagina con tutti i permessi su Mac e Windows (microfono, cartelle, Keynote, elementi in background, rete locale, firewall) e il pulsante per aprire l'impostazione di sistema.
+- **Presentazioni**: su Windows i `.pptx` si convertono anche con PowerPoint. Se non c'è un programma per convertirli (LibreOffice, Keynote o PowerPoint), RT lo dice prima dell'import e suggerisce di caricare il PDF.
+- **Più veloce**: descrizione e posizionamento delle immagini, ricerca immagini web, arricchimento e classificatori lavorano in parallelo.
 
 ### Correzioni
 
-- **Icona nei dialoghi Mac**: gli avvisi e le conferme dell'app mostrano l'icona di RT al posto della cartella generica.
-- **Chat nello Studio**: durante la lettura (tasto C o pulsante accanto all'evidenziatore) puoi fare domande sulla lezione anche allegando immagini o dettando a voce, salvare risposte in «Verifiche e domande» e scegliere il modello in Impostazioni › Modelli IA (o seguire quello della Revisione). Rimosso il vecchio popup di Verifica/Chiedi nello Studio.
-- **Avviso conversione `.pptx`**: quando aggiungi una presentazione `.pptx` senza LibreOffice/Keynote/PowerPoint disponibili, RT avvisa prima di procedere che userà solo il testo delle slide.
-- **Avviso alla chiusura con lavori in corso**: uscendo dall'app desktop con job attivi, RT chiede conferma indicando quanti lavori sono in corso.
+- **File .rt dal Finder**: aprire uno o più file .rt con doppio clic non blocca più RT (rotellina) e mostra la schermata di import.
+- **Icona nei dialoghi Mac**: gli avvisi dell'app mostrano l'icona di RT al posto della cartella.
+- **Ricerca senza risultati**: messaggio centrato con un'icona.
 
 ## 4.3.9b3 — 2026-11-23
 
