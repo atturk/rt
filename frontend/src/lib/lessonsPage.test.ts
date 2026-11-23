@@ -1,6 +1,6 @@
 import type { Lesson } from './format'
 import {
-  filterMissingLessons, formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseLessonsPrefs, parsePinnedView, sameView, selectionDetails, shortDate, sortSelection, subjectName, type LessonsView,
+  categoryPinLabel, filterMissingLessons, formatDuration, groupLabel, markdownExportNote, lessonInfo, lessonStatus, lessonSubtitle, lessonsGroups, parseCategoryPins, parseLessonsPrefs, parseSearchPin, readSearchPin, sameSearchPin, selectionDetails, shortDate, sortSelection, subjectName, writeSearchPin, SEARCH_PIN_KEY,
 } from './lessonsPage'
 
 const lesson = (id: number, extra: Partial<Lesson> = {}) =>
@@ -181,6 +181,28 @@ describe('lessonsGroups', () => {
     const groups = lessonsGroups(rows, { group: 'nessuno', sort: 'ricreate' }, NOW)
     expect(groups[0].lessons.map((l) => l.id)).toEqual([2, 4, 1, 3])
   })
+  it('con una categoria fissata la mette in cima mantenendo ordine interno e altri gruppi', () => {
+    const rows = [
+      lesson(1, { data: '2026-10-02', materia: 'FISIOLOGIA', docente: 'Rossi', titolo: 'Zeta' }),
+      lesson(2, { data: '2026-10-01', materia: 'FARMACOLOGIA', docente: 'Bianchi', titolo: 'Alfa' }),
+      lesson(3, { data: '2026-10-02', materia: 'PATOLOGIA', docente: '', titolo: 'Beta' }),
+      lesson(4, { data: '2026-10-03', materia: 'PATOLOGIA', docente: 'Rossi', titolo: 'Gamma' }),
+    ]
+    const bySubject = lessonsGroups(rows, { group: 'materia', sort: 'titolo' }, NOW, 'PATOLOGIA')
+    expect(bySubject.map((g) => g.key)).toEqual(['PATOLOGIA', 'FARMACOLOGIA', 'FISIOLOGIA'])
+    expect(bySubject[0].lessons.map((l) => l.id)).toEqual([3, 4])
+
+    const byTeacher = lessonsGroups(rows, { group: 'docente', sort: 'recenti' }, NOW, '')
+    expect(byTeacher.map((g) => g.key)).toEqual(['', 'Bianchi', 'Rossi'])
+
+    const byDate = lessonsGroups(rows, { group: 'data', sort: 'recenti' }, NOW, '2026-10-01')
+    expect(byDate.map((g) => g.key)).toEqual(['2026-10-01', '2026-10-03', '2026-10-02'])
+
+    expect(lessonsGroups(rows, { group: 'materia', sort: 'recenti' }, NOW, 'INESISTENTE').map((g) => g.key))
+      .toEqual(['FARMACOLOGIA', 'FISIOLOGIA', 'PATOLOGIA'])
+    expect(lessonsGroups(rows, { group: 'nessuno', sort: 'recenti' }, NOW, 'PATOLOGIA').map((g) => g.key))
+      .toEqual(['tutte'])
+  })
 })
 
 describe('stato e Info', () => {
@@ -240,48 +262,59 @@ it('esclude le ignorate dal denominatore, le mostra nella barra e non nel sottot
   expect(selectionDetails([lesson(1, { unit_count: 2, study_ignored: 2 })]).studyUnits).toBe(0)
 })
 
-describe('vista fissata', () => {
-  it('parsePinnedView scarta valori non validi', () => {
-    expect(parsePinnedView(null)).toBeNull()
-    expect(parsePinnedView(undefined)).toBeNull()
-    expect(parsePinnedView('')).toBeNull()
-    expect(parsePinnedView('non json')).toBeNull()
-    expect(parsePinnedView({})).toBeNull()
-    expect(parsePinnedView({ group: 'invalid', sort: 'recenti' })).toBeNull()
-    expect(parsePinnedView({ group: 'data', sort: 'invalid' })).toBeNull()
-    expect(parsePinnedView({ group: 'nessuno', sort: 'ricreate' })).toEqual({
-      group: 'nessuno',
-      sort: 'ricreate',
-      q: '',
-      materia: '',
-      stato: '',
+describe('pin categorie e pin ricerca', () => {
+  it('parseCategoryPins scarta valori non validi e tiene solo chiavi stringa per i 4 raggruppamenti', () => {
+    expect(parseCategoryPins(null)).toEqual({})
+    expect(parseCategoryPins(undefined)).toEqual({})
+    expect(parseCategoryPins('non json')).toEqual({})
+    expect(parseCategoryPins([])).toEqual({})
+    expect(parseCategoryPins({ nessuno: 'tutte', materia: 'FISIOLOGIA', docente: 123, data: '2026-10-02', mese: '' })).toEqual({
+      materia: 'FISIOLOGIA',
+      data: '2026-10-02',
+      mese: '',
     })
-    expect(parsePinnedView({ group: 'data', sort: 'recenti', q: 'bio', materia: 'PATOLOGIA', stato: '' })).toEqual({
-      group: 'data',
-      sort: 'recenti',
+    expect(parseCategoryPins(JSON.stringify({ docente: 'Rossi' }))).toEqual({ docente: 'Rossi' })
+  })
+
+  it('categoryPinLabel formatta l’etichetta come i titoli dei gruppi', () => {
+    expect(categoryPinLabel('materia', 'FISIOLOGIA', NOW)).toBe('Fisiologia')
+    expect(categoryPinLabel('materia', '', NOW)).toBe('Senza materia')
+    expect(categoryPinLabel('docente', 'Rossi', NOW)).toBe('Rossi')
+    expect(categoryPinLabel('docente', '', NOW)).toBe('Senza docente')
+    expect(categoryPinLabel('data', '2026-10-02', NOW)).toBe('Oggi · venerdì 2 ottobre')
+    expect(categoryPinLabel('mese', '2026-10', NOW)).toBe('Ottobre 2026')
+  })
+
+  it('parseSearchPin e sameSearchPin scartano ricerche vuote e ignorano spazi ai lati', () => {
+    expect(parseSearchPin(null)).toBeNull()
+    expect(parseSearchPin('non json')).toBeNull()
+    expect(parseSearchPin({ q: '   ', materia: '', stato: '' })).toBeNull()
+    expect(parseSearchPin({ q: '  bio ', materia: 'PATOLOGIA', stato: '' })).toEqual({
       q: 'bio',
       materia: 'PATOLOGIA',
       stato: '',
     })
-    expect(parsePinnedView(JSON.stringify({ group: 'materia', sort: 'titolo', q: 'test' }))).toEqual({
-      group: 'materia',
-      sort: 'titolo',
-      q: 'test',
-      materia: '',
-      stato: '',
-    })
+    expect(sameSearchPin({ q: '  bio ', materia: '', stato: '' }, { q: 'bio', materia: '', stato: '' })).toBe(true)
+    expect(sameSearchPin({ q: 'bio', materia: '', stato: '' }, { q: 'bio2', materia: '', stato: '' })).toBe(false)
   })
 
-  it('sameView ignora spazi ai lati della ricerca', () => {
-    const a: LessonsView = { group: 'data', sort: 'recenti', q: '  bio ', materia: 'FISIOLOGIA', stato: '' }
-    const b: LessonsView = { group: 'data', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
-    expect(sameView(a, b)).toBe(true)
+  it('readSearchPin e writeSearchPin leggono/scrivono sessionStorage e non lanciano se sessionStorage fallisce', () => {
+    sessionStorage.clear()
+    writeSearchPin({ q: 'rossi', materia: '', stato: '' })
+    expect(JSON.parse(sessionStorage.getItem(SEARCH_PIN_KEY)!)).toEqual({ q: 'rossi', materia: '', stato: '' })
+    expect(readSearchPin()).toEqual({ q: 'rossi', materia: '', stato: '' })
+    writeSearchPin(null)
+    expect(readSearchPin()).toBeNull()
 
-    const c: LessonsView = { group: 'data', sort: 'recenti', q: 'bio2', materia: 'FISIOLOGIA', stato: '' }
-    expect(sameView(a, c)).toBe(false)
-
-    const d: LessonsView = { group: 'materia', sort: 'recenti', q: 'bio', materia: 'FISIOLOGIA', stato: '' }
-    expect(sameView(b, d)).toBe(false)
+    const getSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    const removeSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked') })
+    expect(() => writeSearchPin({ q: 'rossi', materia: '', stato: '' })).not.toThrow()
+    expect(readSearchPin()).toBeNull()
+    expect(() => writeSearchPin(null)).not.toThrow()
+    getSpy.mockRestore()
+    setSpy.mockRestore()
+    removeSpy.mockRestore()
   })
 })
 
