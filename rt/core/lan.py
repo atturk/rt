@@ -167,10 +167,12 @@ def _lan_ips() -> List[str]:
             found.append(s.getsockname()[0])
     except OSError:
         pass
-    try:
-        found += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
-    except OSError:
-        pass
+    # Solo senza rotta: su macOS getaddrinfo del nome host può aspettare mDNS per più di 10 s.
+    if not found:
+        try:
+            found += [info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+        except OSError:
+            pass
     out: List[str] = []
     for ip in found:
         if _is_lan_ip(ip) and ip not in out:
