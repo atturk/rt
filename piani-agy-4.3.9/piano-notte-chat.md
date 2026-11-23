@@ -128,12 +128,9 @@ fermare i servizi chiedi all'API i job attivi (`running`, `queued`, e `waiting_f
 HTTP locale (sessione come `stop_background`, timeout 2 s; se l'API non risponde salta l'avviso).
 - Nessun job: dialogo attuale invariato ("RT smetterà di lavorare in background. Uscire?") — per la X in
   modalità quit nessun dialogo.
-- Con job in esecuzione/in coda: dialogo (icona RT) "Ci sono N lavori in corso (es. Rielaborazione di
-  <titolo lezione>). Se esci si interrompono: le risposte dei modelli già richieste andranno perse e verranno
-  richieste di nuovo (e pagate) alla prossima apertura, dove RT riprende dal punto salvato." Pulsanti
-  "Esci comunque" / "Annulla" (default Annulla).
-- Con job in attesa di un lotto batch: riga in più "Le risposte in modalità batch non si perdono: il provider le
-  conserva e RT le recupera alla prossima apertura (entro la scadenza del lotto)."
+- Con job attivi: dialogo compatto (icona RT), SOLO il numero, niente elenco: "Ci sono N lavori in corso.
+  Uscendo si interrompono e riprendono alla prossima apertura di RT." Pulsanti "Esci comunque" / "Annulla"
+  (default Annulla). Niente frasi sul batch: le risposte batch restano dal provider e RT le recupera da solo.
 - La X in modalità quit con job attivi mostra lo stesso dialogo; "Annulla" lascia la finestra aperta
   (usa `window.events.closing` restituendo False per impedire la chiusura).
 - Test: helper che costruisce il testo dal riepilogo dei job (0, 1, N, batch), chiusura annullata.
