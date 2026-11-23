@@ -74,10 +74,13 @@ Interfaccia in `BaseLLMProvider`: `supports_batch` (default False), `submit_batc
   lasciare `supports_batch=False` per Google e scriverlo nel commit.
 - DeepSeek, compatibili OpenAI generici: `supports_batch=False`.
 
-## 6. Impostazioni → Modelli
-Per ogni fase non interattiva, se il provider della rotta supporta il batch, un interruttore "Batch (−50%,
-risposte entro 24 h)" spento di default, con la spiegazione che RT deve restare in background (rimando
-all'impostazione di chiusura con la X). Nessun interruttore globale.
+## 6. Impostazioni → Modelli (nessun interruttore)
+Decisione: il batch NON è un'impostazione. È una scelta di modello: nell'elenco dei modelli di ogni fase non
+interattiva compaiono anche le varianti batch, es. "Gemini 4 Neon · batch (−50%, risposte entro 24 h)"
+(OpenRouter: modelli con variante `:batch` dal loro elenco modelli; Google: stesso modello con `batch: true`).
+Scegliere una variante batch imposta `batch: true` sulla rotta. Le altre fasi restano sincrone e non cambiano.
+Sotto la scelta, una riga: "Le risposte arrivano più tardi: RT deve poter lavorare in background (Impostazioni →
+Generali → Chiudendo con la X)". Le fasi interattive (chat, prove) non mostrano varianti batch.
 
 ## Test (tutti con provider finti, nessuna rete)
 Chiave stabile; cache done/error/pending; `run_collecting` raccoglie e solleva una volta; worker: DeferredPhase →

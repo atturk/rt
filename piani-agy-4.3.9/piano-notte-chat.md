@@ -107,3 +107,17 @@ Frontend (vitest): pannello (invio con Invio, Maiusc+Invio, incolla immagine, co
 con conferma, errore + riprova), Study (C apre/chiude, V inerte, scorciatoie disattivate nel campo, zen e
 lettura veloce nascondono e ripristinano, nessun popup di selezione), StudyNotesPanel con note chat.
 Fine: pytest dei file toccati, `cd frontend && npx vitest run <toccati> && npx tsc --noEmit`. Righe nel CHANGELOG.
+
+
+## Extra (file diversi): avviso conversione presentazioni
+Quando l'utente aggiunge un .pptx (Nuova lezione, trascinamento, Aggiungi materiale) e RT non ha un programma
+per rendere le slide come immagini, mostra un avviso chiaro prima di procedere (non bloccante, "Continua comunque"
+/ "Annulla"): "Per vedere le slide come immagini RT ha bisogno di <LibreOffice (gratuito) o Keynote | LibreOffice
+(gratuito) o PowerPoint>. Puoi installarlo, oppure esportare la presentazione in PDF e caricare il PDF. Senza,
+RT usa solo il testo delle slide." Link a https://www.libreoffice.org/download/.
+- Backend: `GET /api/v1/system/converters` → `{pptx: {available: bool, methods: [...], platform}}` usando la stessa
+  logica di `_slide_render_methods` (estrai una funzione `available_slide_methods()` in `rt/core/materials.py`
+  senza effetti collaterali; Quick Look da solo NON conta come disponibile perché non rende tutte le slide in
+  modo affidabile). Su Windows include PowerPoint se il job Mac l'ha aggiunto.
+- Frontend: hook che interroga l'endpoint una volta per sessione; avviso in un dialogo dell'app.
+- Test: endpoint con metodi finti; dialogo mostrato solo per .pptx e solo se non disponibile.
