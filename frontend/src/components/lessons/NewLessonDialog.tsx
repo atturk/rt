@@ -706,7 +706,9 @@ export function NewLessonDialog({
           type="file"
           multiple
           hidden
-          accept={['audio/*', '.zip', '.rt', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
+          // Solo estensioni, niente 'audio/*': nell'app desktop (pywebview su macOS) il Finder
+          // filtra solo sui tipi MIME e ignora le estensioni, quindi con 'audio/*' PDF e zip erano grigi.
+          accept={['.zip', '.rt', ...MATERIAL_EXTENSIONS, ...AUDIO_EXTENSIONS].join(',')}
           aria-label="Audio o pacchetto della lezione"
           onChange={(event) => {
             choose(Array.from(event.target.files ?? []))
