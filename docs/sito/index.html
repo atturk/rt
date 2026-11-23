@@ -906,9 +906,9 @@ a { color: inherit; }
 
 /* ============ Atto 10 · Confronto ============ */
 .cn { margin: 28px 0 0; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
-.cn-r { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; border-top: 1px solid var(--border); }
+.cn-r { display: grid; grid-template-columns: minmax(0, .55fr) minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; border-top: 1px solid var(--border); }
 .cn-r:first-child { border-top: 0; }
-.cn-r > * { padding: 13px 18px; font-size: 14.5px; line-height: 1.45; }
+.cn-r > * { padding: 10px 18px; font-size: 14px; line-height: 1.4; }
 .cn-r b { font-weight: 600; font-size: 14px; }
 .cn-r .ch { color: var(--faint); display: flex; gap: 10px; align-items: baseline; }
 .cn-r .rt { display: flex; gap: 10px; align-items: baseline; background: color-mix(in srgb, var(--acc-bg) 45%, transparent); height: 100%; align-content: center; }
@@ -916,7 +916,10 @@ a { color: inherit; }
 .cn-r .rt::before { content: "✓"; flex: none; width: 16px; color: var(--acc-strong); font-weight: 700; text-align: center; }
 .cn-h > * { padding-block: 14px; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 .cn-h .rt { color: var(--acc); }
-.cn-h .ch::before, .cn-h .rt::before { content: none; }
+.cn-h .ch::before, .cn-h .rt::before, .cn-r .rt.lista::before { content: none; }
+.cn-r .rt ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cn-r .rt li { display: flex; gap: 10px; align-items: baseline; }
+.cn-r .rt li::before { content: "✓"; flex: none; width: 16px; color: var(--acc-strong); font-weight: 700; text-align: center; }
 .cn-r.cn-b .ch, .cn-r.cn-b .rt { opacity: 0; transform: translateX(-8px); transition: opacity .4s, transform .5s var(--ease); }
 .cn-r.cn-b .rt { transition-delay: .25s; }
 .cn-r.cn-b.on .ch, .cn-r.cn-b.on .rt { opacity: 1; transform: none; }
@@ -1521,10 +1524,10 @@ a { color: inherit; }
       <p class="intro">Una chat ti risponde, ma non ti organizza lo studio: ogni volta ricominci da capo e il risultato resta in una conversazione. RT fa il lavoro dall'inizio alla fine e lo tiene dove studi.</p>
       <div class="cn" id="cn">
         <div class="cn-r cn-h"><b></b><span class="ch">Una chat con l'AI</span><span class="rt">RT</span></div>
-        <div class="cn-r cn-b"><b>La registrazione</b><span class="ch">La trascrivi tu, o la carichi a pezzi</span><span class="rt">La trascrive e la divide in unità</span></div>
-        <div class="cn-r cn-b"><b>Slide e foto</b><span class="ch">Le alleghi di nuovo a ogni domanda</span><span class="rt">Le mette da sole nelle unità giuste</span></div>
-        <div class="cn-r cn-b"><b>Gli errori</b><span class="ch">Se il testo sbaglia, te ne accorgi da solo</span><span class="rt">Una verifica separata li segnala, con la prova</span></div>
-        <div class="cn-r cn-b"><b>Il riascolto</b><span class="ch">Non sai in che punto dell'audio cercare</span><span class="rt">Torni al punto esatto in cui il prof ne parla</span></div>
+        <div class="cn-r cn-b"><b>La registrazione</b><span class="ch">La trascrizione la fa la stessa AI che rielabora, costa e non ti dice quanto è precisa</span><span class="rt lista"><ul><li>Trascrizione in locale e gratuita</li><li>Gestisce e unisce più registrazioni</li><li>Punteggio di affidabilità per ogni parola trascritta</li><li>Mantiene il minutaggio, così riascolti velocemente ciò che ti serve</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Slide e foto</b><span class="ch">Non tutte le AI le mostrano nel testo, e se lo fanno spesso non puoi più spostarle</span><span class="rt lista"><ul><li>Le mette da solo nelle unità giuste</li><li>Puoi spostarle o posizionarle a mano</li><li>Puoi aggiungerne di nuove quando vuoi</li><li>Le usa per una rielaborazione più precisa e te le mostra quando studi</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Gli errori</b><span class="ch">Il modello sbaglia, nessuno controlla</span><span class="rt lista"><ul><li>Una verifica separata li segnala</li><li>Puoi scegliere modelli diversi per rielaborazione e verifica</li></ul></span></div>
+        <div class="cn-r cn-b"><b>Il riascolto</b><span class="ch">L'AI non sa a che minuto il prof dice qualcosa: quando glielo chiedi, tira a indovinare</span><span class="rt">Torni al punto esatto in cui il prof ne parla</span></div>
         <div class="cn-r cn-b"><b>Il ripasso</b><span class="ch">Le domande finiscono in fondo alla chat</span><span class="rt">Domande, unità studiate e calendario restano salvati</span></div>
         <div class="cn-r cn-b"><b>Il costo</b><span class="ch">Un abbonamento al mese per usarla davvero</span><span class="rt">Pochi centesimi a lezione, solo quando la usi</span></div>
       </div>
