@@ -137,6 +137,18 @@ def _has_powerpoint():
     return False
 
 
+def available_slide_methods() -> list[str]:
+    """Programmi affidabili installati per convertire presentazioni in immagini/PDF (esclude Quick Look)."""
+    methods: list[str] = []
+    if _soffice():
+        methods.append('LibreOffice')
+    if _has_powerpoint():
+        methods.append('PowerPoint')
+    if _has_keynote():
+        methods.append('Keynote')
+    return methods
+
+
 def _slide_render_methods(real, target):
     """Genera i metodi di resa disponibili in ordine di priorità:
     1. LibreOffice (se installato)

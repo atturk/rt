@@ -3706,6 +3706,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/converters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Programmi disponibili per rendere le presentazioni come immagini */
+        get: operations["get_system_converters_api_v1_system_converters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/folders": {
         parameters: {
             query?: never;
@@ -5336,6 +5353,10 @@ export interface components {
              * @enum {string}
              */
             provider: "openrouter" | "google" | "deepseek" | "openai_compatible";
+        };
+        /** ConvertersInfo */
+        ConvertersInfo: {
+            pptx: components["schemas"]["PptxConverterInfo"];
         };
         /** CostSummary */
         CostSummary: {
@@ -7674,6 +7695,24 @@ export interface components {
              * @description Testo per l'utente (italiano)
              */
             message: string;
+        };
+        /** PptxConverterInfo */
+        PptxConverterInfo: {
+            /**
+             * Available
+             * @description True se è disponibile almeno un convertitore affidabile per .pptx
+             */
+            available: boolean;
+            /**
+             * Methods
+             * @description Nomi dei convertitori disponibili (es. LibreOffice, PowerPoint, Keynote)
+             */
+            methods: string[];
+            /**
+             * Platform
+             * @description Piattaforma del server (sys.platform)
+             */
+            platform: string;
         };
         /** PreferencesSettings */
         PreferencesSettings: {
@@ -26373,6 +26412,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompactAudioPreview"];
+                };
+            };
+        };
+    };
+    get_system_converters_api_v1_system_converters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertersInfo"];
                 };
             };
         };

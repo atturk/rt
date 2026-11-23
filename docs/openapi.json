@@ -3790,6 +3790,18 @@
         "title": "ConnectionIn",
         "type": "object"
       },
+      "ConvertersInfo": {
+        "properties": {
+          "pptx": {
+            "$ref": "#/components/schemas/PptxConverterInfo"
+          }
+        },
+        "required": [
+          "pptx"
+        ],
+        "title": "ConvertersInfo",
+        "type": "object"
+      },
       "CostSummary": {
         "properties": {
           "by_job": {
@@ -8644,6 +8656,35 @@
           "message"
         ],
         "title": "PhaseWarning",
+        "type": "object"
+      },
+      "PptxConverterInfo": {
+        "properties": {
+          "available": {
+            "description": "True se è disponibile almeno un convertitore affidabile per .pptx",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "methods": {
+            "description": "Nomi dei convertitori disponibili (es. LibreOffice, PowerPoint, Keynote)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "platform": {
+            "description": "Piattaforma del server (sys.platform)",
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "methods",
+          "platform"
+        ],
+        "title": "PptxConverterInfo",
         "type": "object"
       },
       "PreferencesSettings": {
@@ -36392,6 +36433,32 @@
           }
         ],
         "summary": "Stima dello spazio liberato convertendo wav/flac e cancellando audio orfani",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/converters": {
+      "get": {
+        "operationId": "get_system_converters_api_v1_system_converters_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertersInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Programmi disponibili per rendere le presentazioni come immagini",
         "tags": [
           "sistema"
         ]
