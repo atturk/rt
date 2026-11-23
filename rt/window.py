@@ -17,6 +17,7 @@ import time
 import unicodedata
 import urllib.parse
 import webbrowser
+from typing import Optional
 
 from rt.core import bundle, paths
 
@@ -145,6 +146,88 @@ def _destroy_window(window) -> None:
     global _programmatic_close
     _programmatic_close = True
     window.destroy()
+
+
+ACTIVE_QUIT_JOB_STATES = frozenset({"running", "queued", "waiting_for_provider"})
+
+
+def active_jobs_quit_message(jobs) -> Optional[str]:
+    """Costruisce il testo dell'avviso di chiusura dal riepilogo dei job attivi (0, 1, N, batch)."""
+    if not jobs:
+        return None
+    count = sum(1 for job in jobs if isinstance(job, dict) and job.get("state") in ACTIVE_QUIT_JOB_STATES)
+    if count == 0:
+        return None
+    if count == 1:
+        return "C'è 1 lavoro in corso. Uscendo si interrompe e riprende alla prossima apertura di RT."
+    return f"Ci sono {count} lavori in corso. Uscendo si interrompono e riprendono alla prossima apertura di RT."
+
+
+def _fetch_active_jobs(base_url: str, timeout: float = 2.0) -> Optional[list]:
+    """Chiede all'API locale i job recenti entro timeout; se non risponde restituisce None."""
+    if not base_url:
+        return None
+    import urllib.request
+    from rt.api import auth
+
+    session = auth.create_session()
+    try:
+        request = urllib.request.Request(
+            base_url.rstrip("/") + "/api/v1/jobs?limit=200",
+            method="GET",
+            headers={"Cookie": f"{auth.SESSION_COOKIE}={session}"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload if isinstance(payload, list) else None
+    except Exception as exc:
+        _log(f"Controllo job attivi alla chiusura non riuscito: {exc}")
+        return None
+    finally:
+        auth.drop_session(session)
+
+
+def _confirm_quit_with_jobs(window, message: str) -> bool:
+    """Mostra il dialogo compatto con Esci comunque / Annulla (default Annulla e icona RT su macOS)."""
+    if sys.platform == "darwin" and getattr(window, "native", None) is not None:
+        try:
+            import AppKit
+
+            AppKit.NSApplication.sharedApplication()
+            AppKit.NSRunningApplication.currentApplication().activateWithOptions_(
+                AppKit.NSApplicationActivateIgnoringOtherApps
+            )
+            alert = AppKit.NSAlert.alloc().init()
+            alert.addButtonWithTitle_("Annulla")
+            alert.addButtonWithTitle_("Esci comunque")
+            alert.setMessageText_("Esci da RT")
+            alert.setInformativeText_(message)
+            alert.setAlertStyle_(AppKit.NSWarningAlertStyle)
+            img = _load_macos_icon()
+            if img:
+                alert.setIcon_(img)
+            return alert.runModal() == AppKit.NSAlertSecondButtonReturn
+        except Exception as exc:
+            _log(f"Dialogo macOS di conferma uscita non riuscito: {exc}")
+    return bool(window.create_confirmation_dialog("Esci da RT", message))
+
+
+def _allow_quit_close(window, base_url: str) -> bool:
+    """Alla chiusura della finestra (X) in modalità quit avvisa se ci sono job attivi."""
+    try:
+        from rt.core.config import load_config
+        close_action = load_config().ui.close_action
+    except Exception:
+        return True
+    if close_action != "quit":
+        return True
+    jobs = _fetch_active_jobs(base_url)
+    if jobs is None:
+        return True
+    warning = active_jobs_quit_message(jobs)
+    if not warning:
+        return True
+    return bool(_confirm_quit_with_jobs(window, warning))
 
 
 class DesktopApi:
@@ -863,7 +946,13 @@ def _menu(window, base_url: str, api=None):
             DesktopApi(window, base_url=base_url).apri_aggiornamento()
 
     def quit_rt():
-        if window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?"):
+        jobs = _fetch_active_jobs(base_url)
+        warning = active_jobs_quit_message(jobs) if jobs is not None else None
+        if warning:
+            confirmed = _confirm_quit_with_jobs(window, warning)
+        else:
+            confirmed = window.create_confirmation_dialog("Esci da RT", "RT smetterà di lavorare in background. Uscire?")
+        if confirmed:
             def stop():
                 try:
                     from rt.desktop import stop_background
@@ -1267,8 +1356,14 @@ def open_window(base_url: str, path: str = "/") -> int:
                 smoke_done = True
                 _smoke(window)
 
+        def closing():
+            if _programmatic_close:
+                return True
+            return _allow_quit_close(window, base_url)
+
         window.events.loaded += loaded
         window.events.initialized += initialized
+        window.events.closing += closing
         if sys.platform == "darwin":
             _install_macos_dialog_icon()
             window.events.shown += _macos_menu
