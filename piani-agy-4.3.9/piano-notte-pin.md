@@ -9,7 +9,8 @@ Il pulsante pin nell'intestazione salva l'intera vista (raggruppamento, ordine, 
 `usePreference('lessons.pinned')` e la riapplica all'avvio.
 
 ## Nuovo comportamento
-Raggruppamenti con categorie: `data` (giorno), `mese`, `materia`, `docente`. `nessuno` non ha categorie.
+Raggruppamenti con categorie: `data` (giorno), `mese` (vista "nascosta" ma vista a tutti gli effetti: funziona
+anche lì), `materia`, `docente`. `nessuno` non ha categorie.
 
 1. **Pin di categoria** (persistente): accanto al nome di ogni gruppo (`GroupHeader`), a sinistra del nome,
    un'icona pin. Visibile al passaggio del mouse (e sempre visibile sul gruppo fissato e sui dispositivi touch,

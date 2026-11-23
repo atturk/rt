@@ -55,17 +55,34 @@ Su Windows resta il processo nascosto `desktop --serve`. Questo resta il default
   in Impostazioni di Sistema → Generali → Elementi login ed estensioni → Consenti in background." con pulsante
   "Apri Impostazioni" (`open "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"`).
   Test del parsing con output finto.
-- Sezione "Permessi" in Impostazioni (solo app desktop, Mac e Windows), nuovo componente
-  `frontend/src/components/settings/permissions.tsx`, voce di menu Impostazioni come le altre. Elenco
-  informativo, una riga per permesso: nome, a cosa serve, quando viene chiesto, pulsante "Apri impostazioni
-  di sistema" (chiama una nuova funzione `apri_impostazioni_sistema(chiave)` di `DesktopApi` che apre solo
-  URL da una whitelist). Righe Mac: Microfono (registrare note vocali e risposte; c'è anche "Controlla
-  permessi" che già esiste: pulsante che chiama la stessa logica), File e cartelle (solo se la cartella delle
-  lezioni è in Scrivania, Documenti o Download), Automazione → Keynote (solo per convertire .pptx senza
-  LibreOffice), Elementi in background (lavorare con la finestra chiusa), Rete locale (solo con l'accesso
-  dalla stessa rete Wi‑Fi). Windows: Microfono (ms-settings:privacy-microphone). Niente stato "concesso/negato"
-  calcolato tranne il microfono se `mic_status()` è disponibile (via DesktopApi).
-- Test frontend del componente (render righe, click pulsante chiama l'API desktop finta).
+- **Niente nuova sezione in Impostazioni** (decisione di Attilio): si estende la voce di menu esistente
+  "Controlla permessi" (`rt/window.py` `_check_permissions`, `rt/window_permissions.py` `check`). Oggi
+  controlla solo il microfono. Ora apre nella finestra una pagina dell'app `/permessi` (route SPA nuova,
+  semplice, fuori dalla barra delle Impostazioni, con "Indietro") che elenca, una riga per permesso: nome, a
+  cosa serve, quando viene chiesto, stato se verificabile, pulsante "Apri impostazioni di sistema" (chiama una
+  nuova funzione `apri_impostazioni_sistema(chiave)` di `DesktopApi` che apre solo URL da una whitelist).
+  Il microfono mantiene la logica attuale (richiesta se "undetermined", stato da `mic_status()` via
+  `DesktopApi.stato_microfono()`), con il pulsante "Chiedi di nuovo".
+  Righe Mac: Microfono; File e cartelle (solo se la cartella lezioni è in Scrivania/Documenti/Download:
+  stato da `check_folder_access` o equivalente non bloccante); Automazione → Keynote (solo per convertire
+  .pptx senza LibreOffice); Elementi in background (stato da `background_disabled()`); Rete locale (solo con
+  l'accesso dalla stessa rete Wi‑Fi).
+  Righe Windows: Microfono (`ms-settings:privacy-microphone`); Firewall di Windows (quando si attiva
+  l'accesso dalla stessa rete Wi‑Fi Windows può chiedere di consentire RT sulle reti private: spiegare di
+  consentire "Reti private"; pulsante che apre `windowsdefender://network/` o `control firewall.cpl`);
+  Avvio/background non richiede permessi.
+  Nel browser (non app) la pagina mostra solo una nota "Disponibile nell'app RT".
+- **Windows, conversione .pptx**: oggi su Windows le slide si rendono solo con LibreOffice
+  (`rt/core/materials.py` `_slide_render_methods`), altrimenti si ripiega sul testo. Aggiungi, dopo
+  LibreOffice e solo su Windows, il metodo "PowerPoint" se è installato (chiave di registro
+  `HKEY_CLASSES_ROOT\PowerPoint.Application` o `shutil.which('powerpnt')`/percorsi Office standard):
+  PowerShell senza finestra (`powershell -NoProfile -NonInteractive -Command ...`) che usa COM
+  `PowerPoint.Application`, `Presentations.Open(path, ReadOnly=-1, Untitled=0, WithWindow=0)`,
+  `SaveAs(pdf, 32)` (ppSaveAsPDF), `Close()`, `Quit()`; percorsi passati come argomenti/variabili
+  d'ambiente (niente interpolazione nelle stringhe), timeout come gli altri. Nessun permesso richiesto su
+  Windows. Test: la lista metodi su win32 con PowerPoint finto include "PowerPoint" dopo LibreOffice; lo
+  script non contiene i percorsi interpolati.
+- Test frontend della pagina `/permessi` (righe per piattaforma, click pulsante chiama l'API desktop finta).
 
 ## 4. Job in parallelo (niente rielaborazione: quella resta così)
 - `rt/pipeline/add_images.py` `describe_new_images`: oggi un'immagine alla volta. Usa un
