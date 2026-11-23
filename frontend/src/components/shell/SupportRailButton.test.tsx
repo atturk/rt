@@ -137,6 +137,7 @@ describe('SupportRailButton', () => {
       vi.advanceTimersByTime(500)
     })
     fireEvent.pointerUp(button, { button: 0, pointerId: 1, pointerType: 'mouse' })
+    fireEvent.click(button) // il browser genera il click dopo il pointerup
     await flushPromises()
 
     expect(postSpy).not.toHaveBeenCalled()

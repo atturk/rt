@@ -13,7 +13,6 @@ Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i 
 - **Permessi**: «Controlla permessi» apre una pagina con tutti i permessi su Mac e Windows (microfono, cartelle, Keynote, elementi in background, rete locale, firewall) e il pulsante per aprire l'impostazione di sistema.
 - **Presentazioni**: su Windows i `.pptx` si convertono anche con PowerPoint. Se non c'è un programma per convertirli (LibreOffice, Keynote o PowerPoint), RT lo dice prima dell'import e suggerisce di caricare il PDF.
 - **Più veloce**: descrizione e posizionamento delle immagini, ricerca immagini web, arricchimento e classificatori lavorano in parallelo.
-- **Supporta RT**: in fondo alle Impostazioni c'è la pagina per sostenere RT con una donazione su Ko-fi (si apre nel browser). Ogni tanto compare anche un quadratino blu col cuore nella barra laterale: un clic porta alla pagina, tenendolo premuto si nasconde.
 
 ### Correzioni
 

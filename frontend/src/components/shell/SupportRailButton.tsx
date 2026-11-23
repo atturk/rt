@@ -343,16 +343,13 @@ export function SupportRailButton() {
                 } catch {
                   // ignore
                 }
-                if (handledRef.current || pressStartRef.current === null) {
-                  cancelPress()
-                  return
-                }
-                const elapsed = Date.now() - pressStartRef.current
+                // Il gesto col puntatore decide da sé: il click sintetico che segue non deve
+                // aprire la pagina dopo un rilascio tra 350 e 900 ms o una pressione annullata.
+                const start = pressStartRef.current
+                const alreadyHandled = handledRef.current
+                handledRef.current = true
                 cancelPress()
-                if (elapsed <= CLICK_MAX_MS) {
-                  handledRef.current = true
-                  triggerOpen()
-                }
+                if (!alreadyHandled && start !== null && Date.now() - start <= CLICK_MAX_MS) triggerOpen()
               }}
               onPointerCancel={(e) => {
                 try {
