@@ -1,5 +1,21 @@
 # Novità di RT
 
+## 4.3.9b3 — 2026-11-23
+
+Beta su PDF, elenco lezioni più rapido all'avvio e import dal Finder.
+
+### Novità
+
+- **QR nel margine alto**: nei PDF esportati il QR di RT è timbrato nel margine in alto a destra della prima pagina, fuori dal testo. L'intestazione mostra anche il docente.
+- **Togliere logo e QR dai PDF**: in Impostazioni › Aspetto › PDF esportati un interruttore toglie del tutto logo, QR e «Rielaborato con RT». È acceso di default.
+- **Elenco lezioni più rapido all'avvio**: i riepiloghi delle lezioni restano salvati tra un avvio e l'altro e si ricalcolano solo per le lezioni cambiate o dopo un aggiornamento di RT. Modificare i dati di una lezione non fa più ricalcolare tutte le altre.
+- **Tempi nel log**: api.log registra durata e dimensione di ogni upload e il tempo di caricamento dell'elenco lezioni.
+
+### Correzioni
+
+- Nuova lezione: dal Finder si possono scegliere di nuovo anche PDF, zip e documenti, non solo l'audio.
+- Guida e README: fornitori AI effettivamente supportati, privacy con la propria chiave, promemoria sul consenso del docente, firma del codice per Windows.
+
 ## 4.3.9b2 — 2026-11-18
 
 Beta che allinea la 4.3.9 alla 4.3.8.2: chi è sulla 4.3.9b1 riceve anche il QR del sito nei PDF.
