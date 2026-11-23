@@ -110,16 +110,59 @@ def _has_keynote():
     return False
 
 
+def _has_powerpoint():
+    """PowerPoint su Windows, se presente nel registro, nel PATH o nei percorsi Office standard."""
+    if sys.platform != 'win32':
+        return False
+    if not (shutil.which('powershell') or shutil.which('pwsh')):
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r'PowerPoint.Application'):
+            return True
+    except OSError:
+        pass
+    except ImportError:
+        pass
+    if shutil.which('powerpnt'):
+        return True
+    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
+        if not base:
+            continue
+        for office_root in ('Microsoft Office\\root', 'Microsoft Office'):
+            for version in ('Office16', 'Office15', 'Office14'):
+                candidate = os.path.join(base, office_root, version, 'POWERPNT.EXE')
+                if os.path.isfile(candidate):
+                    return True
+    return False
+
+
 def _slide_render_methods(real, target):
     """Genera i metodi di resa disponibili in ordine di priorità:
     1. LibreOffice (se installato)
-    2. Keynote (su macOS se installato)
-    3. Quick Look (su macOS se disponibile qlmanage)
+    2. PowerPoint (su Windows se installato)
+    3. Keynote (su macOS se installato)
+    4. Quick Look (su macOS se disponibile qlmanage)
     """
     methods = []
     soffice = _soffice()
     if soffice:
         methods.append(('LibreOffice', [soffice, '--headless', '--convert-to', 'pdf', '--outdir', target, real]))
+    if _has_powerpoint():
+        ps = shutil.which('powershell') or shutil.which('pwsh') or 'powershell'
+        # Percorsi letti da variabili d'ambiente: nessuna interpolazione di stringhe nello script PowerShell.
+        script = (
+            '$app = New-Object -ComObject PowerPoint.Application; '
+            '$pres = $null; '
+            'try { '
+            '$pres = $app.Presentations.Open($env:RT_PPTX_INPUT, -1, 0, 0); '
+            '$pres.SaveAs($env:RT_PDF_OUTPUT, 32) '
+            '} finally { '
+            'if ($pres -ne $null) { try { $pres.Close() } catch {} }; '
+            'if ($app -ne $null) { try { $app.Quit() } catch {} } '
+            '}'
+        )
+        methods.append(('PowerPoint', [ps, '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script]))
     if _has_keynote():
         pdf_out = os.path.join(target, 'keynote_export.pdf')
         # Percorsi passati come argomenti: niente problemi con virgolette nei nomi
@@ -142,7 +185,7 @@ def _slide_render_methods(real, target):
 
 @contextmanager
 def _quicklook_slides(real, count):
-    """La resa delle slide (LibreOffice -> Keynote -> Quick Look) è facoltativa; si usa solo se copre
+    """La resa delle slide (LibreOffice -> PowerPoint -> Keynote -> Quick Look) è facoltativa; si usa solo se copre
     esattamente tutte le slide (count). Altrimenti registra nel log del worker e cede il passo al ripiego."""
     with tempfile.TemporaryDirectory(prefix='rt-slides-') as target:
         methods = _slide_render_methods(real, target)
@@ -156,7 +199,16 @@ def _quicklook_slides(real, count):
         for name, command in methods:
             tried_methods.append(name)
             try:
-                subprocess.run(command, capture_output=True, check=True, timeout=120)
+                run_kwargs = {'capture_output': True, 'check': True, 'timeout': 120}
+                if name == 'PowerPoint':
+                    run_kwargs['env'] = {
+                        **os.environ,
+                        'RT_PPTX_INPUT': os.path.abspath(real),
+                        'RT_PDF_OUTPUT': os.path.join(target, 'powerpoint_export.pdf'),
+                    }
+                if sys.platform == 'win32':
+                    run_kwargs['creationflags'] = 0x08000000
+                subprocess.run(command, **run_kwargs)
                 for path in Path(target).rglob('*.pdf'):
                     candidate = fitz.open(path)
                     if len(candidate) == count:
