@@ -95,6 +95,8 @@ class Connection(BaseModel):
     provider: str
     base_url: str
     models: List[str]
+    supports_batch: bool = False
+    batch_models: List[str] = Field(default_factory=list)
     credentials: List[ConnectionCredential]
 
 
@@ -103,6 +105,7 @@ class PhaseAssignment(BaseModel):
     label: str
     connection: Optional[str] = None
     model: Optional[str] = None
+    batch: bool = False
 
 
 class Transcription(BaseModel):
@@ -248,6 +251,7 @@ class ModelIn(BaseModel):
 class PhaseIn(BaseModel):
     connection: str
     model: str
+    batch: bool = False
 
 
 class RouteIn(BaseModel):
@@ -257,6 +261,7 @@ class RouteIn(BaseModel):
     base_url: str = ""
     round_robin: bool = False
     round_robin_credentials: Optional[List[str]] = None
+    batch: bool = False
 
 
 class RouteOut(BaseModel):
@@ -267,6 +272,7 @@ class RouteOut(BaseModel):
     model: str
     base_url: str
     round_robin: bool
+    batch: bool = False
 
 
 class SecretIn(BaseModel):
@@ -472,25 +478,25 @@ def delete_connection(name: str, _actor: Actor):
 def put_phase(job: str, body: PhaseIn, _actor: Actor):
     from rt.services.connections_service import assign_phase
     from rt.services.settings_service import snapshot
-    _call(assign_phase, _project_root(), job, body.connection, body.model)
+    _call(assign_phase, _project_root(), job, body.connection, body.model, batch=body.batch)
     return snapshot(_project_root())
 
 
 @router.get("/settings/routes/{job}/{role}", response_model=RouteOut, summary="Route di un job LLM (primaria, secondaria, fallback)")
 def get_route(job: str, role: str, _actor: Actor):
-    from rt.services.settings_service import ROUTE_ROLES, route_settings
+    from rt.services.settings_service import ROUTE_ROLES, route_batch, route_settings
     if role not in ROUTE_ROLES:
         raise ApiError(404, "route_not_found", "Ruolo non riconosciuto.")
     provider, credential, model, base_url, round_robin = route_settings(_project_root(), job, role)
     return RouteOut(job=job, role=role, provider=provider, credential=credential, model=model,
-                    base_url=base_url, round_robin=round_robin)
+                    base_url=base_url, round_robin=round_robin, batch=route_batch(_project_root(), job, role))
 
 
 @router.put("/settings/routes/{job}/{role}", response_model=RouteOut, summary="Salva la route di un job LLM")
 def put_route(job: str, role: str, body: RouteIn, actor: Actor):
     from rt.services.settings_service import save_route
     _call(save_route, _project_root(), job, role, body.provider, body.credential, body.model,
-          body.base_url, body.round_robin, body.round_robin_credentials)
+          body.base_url, body.round_robin, body.round_robin_credentials, batch=body.batch)
     return get_route(job, role, actor)
 
 

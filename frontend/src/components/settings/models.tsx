@@ -102,11 +102,13 @@ export function PhasesSection({ settings }: { settings: Settings }) {
 
 /** Le fasi, ognuna con connessione, modello, Salva e Prova. Usate anche dalla configurazione
  * guidata ("Scegli per ogni fase"). */
+const BATCH_INELIGIBLE_PHASES = new Set(['image_description', 'enrichment_image'])
+
 export function PhaseRows({ settings }: { settings: Settings }) {
   return (
     <div className="flex flex-col divide-y">
       {settings.phases.map((phase) => (
-        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}`} phase={phase} connections={settings.connections} settings={settings} />
+        <PhaseRow key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}:${phase.batch ? 'batch' : 'sync'}`} phase={phase} connections={settings.connections} settings={settings} />
       ))}
     </div>
   )
@@ -115,14 +117,21 @@ export function PhaseRows({ settings }: { settings: Settings }) {
 function PhaseRow({ phase, connections, settings }: { phase: Phase; connections: Connection[]; settings?: Settings }) {
   const assign = useAssignPhase()
   const saveRewrite = useSaveRewrite()
+  const savedDisplay = phase.batch && phase.model && !phase.model.endsWith(':batch') ? `${phase.model}:batch` : (phase.model ?? '')
   const [connection, setConnection] = useState(phase.connection ?? '')
-  const [model, setModel] = useState(phase.model ?? '')
-  const models = connections.find((c) => c.name === connection)?.models ?? []
-  const dirty = connection !== (phase.connection ?? '') || model !== (phase.model ?? '')
+  const [model, setModel] = useState(savedDisplay)
+  const selectedConn = connections.find((c) => c.name === connection)
+  const models = selectedConn?.models ?? []
+  const batchEligible = !BATCH_INELIGIBLE_PHASES.has(phase.job) && !!selectedConn?.supports_batch
+  const batchModels = batchEligible ? (selectedConn?.batch_models ?? []) : []
+  const trimmedModel = model.trim()
+  const isBatchSelected = batchEligible && trimmedModel.endsWith(':batch')
+  const dirty = connection !== (phase.connection ?? '') || model !== savedDisplay
   const listId = `modelli-${phase.job}`
   function submit(e: FormEvent) {
     e.preventDefault()
-    assign.mutate({ job: phase.job, connection, model: model.trim() })
+    const cleanModel = isBatchSelected ? trimmedModel.slice(0, -':batch'.length) : trimmedModel
+    assign.mutate({ job: phase.job, connection, model: cleanModel, batch: isBatchSelected })
   }
   return (
     <form
@@ -136,7 +145,7 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
         <span className="text-body font-semibold" title={PHASE_HINTS[phase.job]} tabIndex={0} aria-label={`${phase.label}: ${PHASE_HINTS[phase.job]}`}>{phase.label}</span>
         {phase.model ? (
           <span className="text-meta text-muted-foreground" data-testid="phase-saved">
-            {phase.connection} · {phase.model}
+            {phase.connection} · {phase.model}{phase.batch ? ' · batch' : ''}
           </span>
         ) : (
           <Badge tone="warning" className="w-fit">
@@ -174,12 +183,21 @@ function PhaseRow({ phase, connections, settings }: { phase: Phase; connections:
           {models.map((m) => (
             <option key={m} value={m} />
           ))}
+          {batchModels.map((bm) => {
+            const value = bm.endsWith(':batch') ? bm : `${bm}:batch`
+            return <option key={value} value={value} label={`${bm} · batch (−50%, risposte entro 24 h)`} />
+          })}
         </datalist>
       </Field>
       <Button type="submit" variant={dirty ? 'default' : 'outline'} disabled={!connection || !model.trim() || assign.isPending || !dirty}>
         Salva
       </Button>
-      {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={model} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
+      {!phase.job.startsWith('enrichment_') && <ModelTest connection={connection} model={trimmedModel.replace(/:batch$/, '')} label={phase.label} vision={phase.job === 'image_description'} className="contents" resultClassName="sm:col-span-5" />}
+      {isBatchSelected && (
+        <p className="text-meta text-muted-foreground sm:col-span-5" data-testid="phase-batch-hint">
+          Le risposte arrivano più tardi: RT deve poter lavorare in background (Impostazioni → Generali → Chiudendo con la X)
+        </p>
+      )}
       {phase.job === 'rewrite' && (
         <div className="flex flex-col gap-1 pt-2 sm:col-span-5" data-testid="rewrite-context-mode-container">
           <Field label="Contesto della rielaborazione" htmlFor="rewrite-context-mode">

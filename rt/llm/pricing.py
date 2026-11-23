@@ -70,7 +70,13 @@ DEFAULT_PRICING: Dict[str, Dict[str, ModelPricing]] = {
 # Cache in-memory per processo per i prezzi recuperati dinamicamente da OpenRouter
 _OPENROUTER_DYNAMIC_CACHE: Dict[str, Optional[ModelPricing]] = {}
 _OPENROUTER_CONTEXT_LENGTHS: Dict[str, int] = {}
+_OPENROUTER_BATCH_MODELS: set[str] = set()
 _OPENROUTER_DYNAMIC_FETCHED: bool = False
+
+
+def openrouter_batch_models() -> list[str]:
+    """Modelli OpenRouter noti che espongono una variante ':batch' (solo dalla cache caricata)."""
+    return sorted(_OPENROUTER_BATCH_MODELS)
 
 
 def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
@@ -93,6 +99,9 @@ def _get_dynamic_openrouter_pricing(model_name: str) -> Optional[ModelPricing]:
                 data = resp.json().get("data", [])
                 for item in data:
                     if isinstance(item, dict) and "id" in item:
+                        raw_id = str(item["id"]).lower().strip()
+                        if raw_id.endswith(":batch"):
+                            _OPENROUTER_BATCH_MODELS.add(raw_id[:-len(":batch")])
                         length = item.get("context_length")
                         if type(length) is int and length > 0:
                             _OPENROUTER_CONTEXT_LENGTHS[str(item["id"]).lower().strip()] = length
@@ -271,15 +280,24 @@ def estimate_configured_lesson_cost(
 
     provider = ""
     model = ""
+    is_batch = False
 
     if config is not None:
         custom_pricing = custom_pricing or getattr(config, "pricing", None)
+        jobs = getattr(config, "jobs", None) or {}
+        rw_job = jobs.get("rewrite")
+        if rw_job is not None and getattr(rw_job, "primary", None) is not None and rw_job.primary.is_configured:
+            provider = rw_job.primary.provider or ""
+            model = rw_job.primary.model or ""
+            is_batch = bool(getattr(rw_job.primary, "batch", False))
         # Cerca il modello per la rielaborazione o il modello predefinito
-        phases = getattr(config, "phases", None) or {}
-        rewrite_phase = phases.get("rewrite") or phases.get("rielaborato")
-        if rewrite_phase:
-            provider = getattr(rewrite_phase, "provider", "") or getattr(rewrite_phase, "connection", "")
-            model = getattr(rewrite_phase, "model", "")
+        if not model:
+            phases = getattr(config, "phases", None) or {}
+            rewrite_phase = phases.get("rewrite") or phases.get("rielaborato")
+            if rewrite_phase:
+                provider = getattr(rewrite_phase, "provider", "") or getattr(rewrite_phase, "connection", "")
+                model = getattr(rewrite_phase, "model", "")
+                is_batch = bool(getattr(rewrite_phase, "batch", False))
         if not model:
             connections = getattr(config, "connections", None) or []
             if connections:
@@ -292,6 +310,7 @@ def estimate_configured_lesson_cost(
         # Se non c'è una configurazione esplicita, verifica se il default provider è DeepSeek / Gemini
         return None, "stima non disponibile"
 
-    cost = estimate_lesson_cost(provider, model, custom_pricing=custom_pricing)
+    effective_model = f"{model}:batch" if (is_batch and not model.endswith(":batch")) else model
+    cost = estimate_lesson_cost(provider, effective_model, custom_pricing=custom_pricing)
     return cost, format_cost_estimate(cost)
 

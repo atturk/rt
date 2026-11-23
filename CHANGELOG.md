@@ -13,6 +13,7 @@ Beta su app Mac/Windows, permessi, chiusura, pin delle lezioni e velocità della
 - **Pagina dei permessi**: «Controlla permessi» apre la pagina dedicata con stato e accesso rapido alle impostazioni di sistema (Mac e Windows), e su Mac segnala se gli elementi in background sono disattivati.
 - **Slide PowerPoint su Windows**: la conversione dei file `.pptx` usa anche Microsoft PowerPoint quando LibreOffice non è installato.
 - **Immagini e classificazione in parallelo**: lettura e posizionamento immagini, ricerca immagini web, analisi dell'arricchimento e classificatori lavorano in parallelo.
+- **Modalità batch notturna per OpenRouter**: ogni fase asincrona può scegliere una variante `:batch` (−50%, risposte entro 24 h); i job restano in attesa del provider liberando coda e UI finché i risultati non vengono raccolti dal worker.
 
 ### Correzioni
 

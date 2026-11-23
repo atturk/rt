@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
+import type { Settings } from '@/api/settings'
 import { PhaseRows } from './models'
 import { testSettings } from './testSettings'
 
@@ -42,6 +43,61 @@ it('mostra il selettore del contesto per la fase di rielaborazione e ne permette
   await waitFor(() => {
     expect(put).toHaveBeenCalledWith('/api/v1/settings/rewrite', {
       body: { context_mode: 'all' },
+    })
+  })
+})
+
+it('mostra varianti batch e nota di background solo sulle fasi idonee e salva batch=true', async () => {
+  const openrouterSettings: Settings = {
+    ...testSettings,
+    connections: [
+      {
+        name: 'openrouter_main',
+        provider: 'openrouter',
+        base_url: 'https://openrouter.ai/api/v1',
+        models: ['google/gemini-2.5-flash'],
+        supports_batch: true,
+        batch_models: ['google/gemini-2.5-flash'],
+        credentials: [{ name: 'or_1', set: true }],
+      },
+    ],
+    phases: [
+      { job: 'outline', label: 'Scaletta', connection: 'openrouter_main', model: 'google/gemini-2.5-flash', batch: false },
+      { job: 'rewrite', label: 'Rielaborazione', connection: 'openrouter_main', model: 'google/gemini-2.5-flash', batch: false },
+      { job: 'image_description', label: 'Descrizione immagini', connection: 'openrouter_main', model: 'google/gemini-2.5-flash', batch: false },
+    ],
+  }
+  const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: openrouterSettings, response: new Response('{}', { status: 200 }) } as never)
+
+  render(
+    <QueryClientProvider client={client}>
+      <PhaseRows settings={openrouterSettings} />
+    </QueryClientProvider>,
+  )
+
+  const outlineRow = screen.getByRole('form', { name: 'Fase Scaletta' })
+  const outlineBatchOption = outlineRow.querySelector(
+    'option[value="google/gemini-2.5-flash:batch"]',
+  ) as HTMLOptionElement | null
+  expect(outlineBatchOption).not.toBeNull()
+  expect(outlineBatchOption?.label).toContain('batch (−50%, risposte entro 24 h)')
+
+  const imageRow = screen.getByRole('form', { name: 'Fase Descrizione immagini' })
+  expect(imageRow.querySelector('option[value="google/gemini-2.5-flash:batch"]')).toBeNull()
+
+  const outlineInput = within(outlineRow).getByLabelText('Modello')
+  fireEvent.change(outlineInput, { target: { value: 'google/gemini-2.5-flash:batch' } })
+
+  expect(within(outlineRow).getByTestId('phase-batch-hint')).toHaveTextContent(
+    'Impostazioni → Generali → Chiudendo con la X',
+  )
+
+  await userEvent.click(within(outlineRow).getByRole('button', { name: 'Salva' }))
+
+  await waitFor(() => {
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/phases/{job}', {
+      params: { path: { job: 'outline' } },
+      body: { connection: 'openrouter_main', model: 'google/gemini-2.5-flash', batch: true },
     })
   })
 })

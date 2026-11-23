@@ -5204,6 +5204,8 @@ export interface components {
         Connection: {
             /** Base Url */
             base_url: string;
+            /** Batch Models */
+            batch_models?: string[];
             /** Credentials */
             credentials: components["schemas"]["ConnectionCredential"][];
             /** Models */
@@ -5212,6 +5214,8 @@ export interface components {
             name: string;
             /** Provider */
             provider: string;
+            /** Supports Batch */
+            supports_batch?: boolean;
         };
         /** ConnectionCredential */
         ConnectionCredential: {
@@ -7486,6 +7490,8 @@ export interface components {
         };
         /** PhaseAssignment */
         PhaseAssignment: {
+            /** Batch */
+            batch?: boolean;
             /** Connection */
             connection?: string | null;
             /** Job */
@@ -7497,6 +7503,8 @@ export interface components {
         };
         /** PhaseIn */
         PhaseIn: {
+            /** Batch */
+            batch?: boolean;
             /** Connection */
             connection: string;
             /** Model */
@@ -8479,6 +8487,11 @@ export interface components {
              */
             base_url: string;
             /**
+             * Batch
+             * @default false
+             */
+            batch?: boolean;
+            /**
              * Credential
              * @default
              */
@@ -8499,6 +8512,8 @@ export interface components {
         RouteOut: {
             /** Base Url */
             base_url: string;
+            /** Batch */
+            batch?: boolean;
             /** Credential */
             credential: string;
             /** Job */
