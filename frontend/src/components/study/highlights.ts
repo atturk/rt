@@ -5,7 +5,7 @@ import { sourceOffsets, sourceParts, sourceRange } from '@/lib/sourceText'
 import { highlightsApi } from '@/api/highlights'
 import { mountDomTooltip } from '@/components/ui/dom-tooltip'
 
-export type HighlightMode = 'evidenzia' | 'gomma' | 'verifica' | 'chiedi' | null
+export type HighlightMode = 'evidenzia' | 'gomma' | null
 export const HIGHLIGHT_COLORS = ['giallo', 'verde', 'azzurro', 'rosa', 'arancio'] as const
 
 type Stored = { startMeta: Parameters<Highlighter['fromStore']>[0]; endMeta: Parameters<Highlighter['fromStore']>[1]; text: string; id: string; sourceStart?: number; sourceEnd?: number }

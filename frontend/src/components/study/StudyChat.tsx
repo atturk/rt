@@ -120,7 +120,9 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const attachmentsRef = useRef<PendingAttachment[]>(attachments)
-  attachmentsRef.current = attachments
+  useEffect(() => {
+    attachmentsRef.current = attachments
+  }, [attachments])
 
   // Cambio lezione: carica la bozza della nuova lezione e pulisce eventuali allegati temporanei
   const prevLessonRef = useRef(lessonId)
