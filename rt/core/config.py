@@ -8,6 +8,7 @@ RISPETTO RIGOROSO DEI VINCOLI DI SICUREZZA:
 """
 
 import os
+import threading
 from functools import lru_cache
 from typing import Dict, Any, Optional, List, Literal
 import yaml
@@ -839,11 +840,24 @@ def _cached_config(key):
     return _load_config_uncached(config_path)
 
 
+_MIGRATE_LOCK = threading.Lock()
+
+
 @lru_cache(maxsize=64)
 def _migrate_general(path, stamp, size):
+    # Un lock: due worker in parallelo non riscrivono insieme general.yaml (su Windows
+    # leggere mentre l'altro fa os.replace dà PermissionError).
+    with _MIGRATE_LOCK:
+        _migrate_general_locked(path)
+
+
+def _migrate_general_locked(path):
     from rt.recall.migration import migrate_registry, migrate_exercise_prompt
-    with open(path, encoding="utf-8") as stream:
-        data = yaml.safe_load(stream)
+    try:
+        with open(path, encoding="utf-8") as stream:
+            data = yaml.safe_load(stream)
+    except OSError:
+        return
     if isinstance(data, dict):
         try:
             data = migrate_registry(path, data)
