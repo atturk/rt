@@ -16,6 +16,8 @@ Puoi fornire l'audio della lezione in due modi:
 - **Caricamento file**: seleziona uno o più file audio o video registrati con lo smartphone o registratore vocale (formati supportati: m4a, mp3, wav, aac, mp4, mkv).
 - **Registrazione dal vivo**: usa il pulsante di registrazione per catturare l'audio direttamente dal microfono del tuo computer.
 
+Prima di registrare una lezione chiedi il consenso al docente: molte università lo richiedono, e alcune hanno un regolamento apposito.
+
 ## Opzioni e trascrizione
 
 Prima di avviare il processo puoi indicare:

@@ -8,11 +8,11 @@ RT ti aiuta a trasformare le registrazioni audio delle lezioni e il materiale di
 - Divide la lezione in unità logiche coerenti.
 - Confronta la trascrizione con le fonti fornite dal docente per rilevare incongruenze, omissioni o dubbi.
 - Offre un ambiente di studio dedicato con evidenziazioni, note, lettura veloce e domande di autovalutazione.
-- Mantiene tutti i tuoi dati in locale sul tuo computer, salvaguardando la tua privacy.
+- Conserva lezioni, note e chiavi sul tuo computer: all'esterno va solo il testo da elaborare, e solo al fornitore AI che scegli tu.
 
 ## Primi passi
 
-1. **Configura i modelli**: apri **Impostazioni → Modelli** per inserire la tua chiave API (es. OpenAI, Anthropic o Gemini) o configurare un modello locale.
+1. **Configura i modelli**: apri **Impostazioni → Modelli** per inserire la tua chiave API (es. OpenRouter, Google AI Studio o DeepSeek) o configurare un modello locale.
 2. **Crea la tua prima lezione**: clicca su **Nuova lezione**, assegna un titolo e una materia, e carica la registrazione audio oppure registra direttamente con il microfono.
 3. **Aggiungi le fonti**: allega le slide del professore o le dispense nella scheda **Dettagli** per aumentare la precisione dell'elaborazione.
 4. **Verifica e studia**: controlla le eventuali segnalazioni nella scheda **Verifica**, poi passa alla scheda **Studio** per iniziare la lettura attiva.

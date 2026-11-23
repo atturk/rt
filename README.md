@@ -26,7 +26,7 @@ Oltre a rielaborare le lezioni, RT offre diverse feature tra cui
 ### Perché dovrei usare RT quando posso semplicemente dare il trascritto a un LLM?
 RT offre diversi vantaggi rispetto a una rielaborazione "one shot" da parte di un LLM, tra cui
 1. il motore di trascrizione associa a ogni singola parola un timestamp e un punteggio di confidence (quanto è sicuro il modello che si stata detta quella parola)
-2. 
+2. la Verifica confronta quanto detto a voce con le slide e le dispense del docente e segnala contraddizioni, termini sbagliati e passaggi saltati, citando la fonte: un LLM che riceve solo il trascritto non ha modo di accorgersene
 
 ## Licenza
 Copyright (C) 2026 Attilio Turco
