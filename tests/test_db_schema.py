@@ -22,7 +22,7 @@ from rt.db.session import session_scope
 TABLES = {"lessons", "phase_runs", "issues", "review_decisions", "llm_calls", "settings", "state_documents",
           "jobs", "job_events", "workers", "recall_sessions", "telegram_commands", "study_units",
           "calendar_template_entries", "calendar_overrides", "calendar_day_states", "calendar_entry_states",
-          "lesson_summary_cache"}
+          "lesson_summary_cache", "llm_deferred"}
 
 
 def test_migrations_apply_in_memory():
