@@ -1,5 +1,28 @@
 # Novità di RT
 
+## 4.3.9b9 — da pubblicare
+
+Beta su scaletta automatica, notifiche Telegram a scelta e verifica manuale in parallelo.
+
+### Novità
+
+- **Scaletta automatica**: per impostazione predefinita la scaletta viene approvata subito senza fermare la lavorazione; in Impostazioni › Lavorazione delle lezioni puoi scegliere se procedere subito, attendere N secondi o aspettare sempre te.
+- **Notifiche Telegram a scelta**: in Impostazioni › Telegram puoi attivare o disattivare ogni tipo di notifica (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore).
+- **Storico delle notifiche svuotabile**: puoi svuotare l'elenco delle ultime notifiche inviate in RT (i messaggi su Telegram restano).
+- **Notifica a verifica completata**: arriva un solo riepilogo per job al termine della verifica (sia nella pipeline sia nelle verifiche manuali), senza duplicati con l'avviso delle issue da decidere.
+- **Verifica manuale delle unità in parallelo**: le verifiche avviate a mano su più unità o selezioni di testo girano in parallelo come la verifica della pipeline.
+
+### Correzioni
+
+- **Costo stimato con i modelli che ragionano**: i token di ragionamento inclusi nei token di uscita non vengono più contati due volte nella stima dei costi.
+- **Risultato batch conservato se cambi modello**: se cambi il modello o il provider di una fase mentre un job attende un batch già inviato, alla ripresa RT usa il risultato del lotto precedente senza perderlo.
+- **Notifica «Lezione pronta» ripristinata**: al termine della pipeline viene di nuovo inviata regolarmente la notifica Telegram di lezione pronta.
+- **Chat Telegram aggiornata subito**: i job del worker rileggono l'ID chat e il token aggiornati da `.env` senza richiedere il riavvio del server.
+- **Errori su Telegram completi e leggibili**: le notifiche di errore arrivano anche per caricamento fonti, appunti e verifiche manuali, includono lezione e materia e rimuovono prefissi tecnici come `ValueError:`.
+- **Attesa massima sui limiti Telegram**: le risposte `429` di Telegram non trattengono il worker per più di 30 secondi.
+- **Modelli batch disponibili fin dal primo avvio**: l'elenco dei modelli `:batch` si popola al primo caricamento anche dopo un riavvio del server.
+- **Salvataggio selettivo delle preferenze**: salvare una singola preferenza non sovrascrive le altre preferenze generali.
+
 ## 4.3.9b8 — 2026-11-24
 
 Beta sul ripasso e sulla domanda di approfondimento.
