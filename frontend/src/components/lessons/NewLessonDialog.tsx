@@ -437,10 +437,11 @@ export function NewLessonDialog({
     [busy, audioFiles, materialFiles, guardPptxFiles],
   )
 
-  const initialFilesHandled = useRef(false)
+  // Ogni nuovo gruppo di file (anche aperto dal Finder con la finestra già aperta) si carica una volta.
+  const initialFilesHandled = useRef<File[] | null>(null)
   useEffect(() => {
-    if (!initialFilesHandled.current && initialFiles && initialFiles.length > 0) {
-      initialFilesHandled.current = true
+    if (initialFiles && initialFiles.length > 0 && initialFilesHandled.current !== initialFiles) {
+      initialFilesHandled.current = initialFiles
       choose(initialFiles)
     }
   }, [initialFiles, choose])

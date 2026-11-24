@@ -11,6 +11,7 @@ Beta di rifinitura della chat dello Studio.
 ### Correzioni
 
 - **Chat dello Studio**: il pulsante per salvare o togliere una risposta mostra un segnalibro, pieno quando è salvata (prima sembrava un riquadro vuoto). Mentre arriva la risposta restano solo i puntini.
+- **File .rt dal Finder**: aprendo altri file con la finestra Nuova lezione già aperta, la finestra mostra i nuovi file.
 - **Studio**: i suggerimenti di evidenziatore e gomma dicono solo «Evidenziatore giallo» (o il colore scelto) e «Gomma».
 
 ## 4.3.9b4 — 2026-11-24
