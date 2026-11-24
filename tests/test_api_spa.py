@@ -104,3 +104,27 @@ def test_worker_command_runs_rt_worker():
     cmd = worker_command(["--once"])
     assert os.path.isfile(cmd[1]) and cmd[1].endswith(os.path.join("bin", "rt"))
     assert cmd[2:] == ["worker", "--once"]
+
+
+def test_home_screen_icon_for_iphone(rt_db):
+    """«Aggiungi a Home» su iPhone: PNG 180x180 senza trasparenza, letto anche senza sessione."""
+    import io
+    from pathlib import Path
+    from PIL import Image
+    frontend = Path(__file__).resolve().parent.parent / "frontend"
+    assert 'rel="apple-touch-icon" href="/apple-touch-icon.png"' in (
+        frontend / "index.html").read_text(encoding="utf-8")
+    res = TestClient(create_app(spa_dir=str(frontend / "public"))).get("/apple-touch-icon.png")
+    assert res.status_code == 200 and res.headers["content-type"] == "image/png"
+    icon = Image.open(io.BytesIO(res.content))
+    assert icon.size == (180, 180) and icon.mode == "RGB"
+
+
+def test_home_screen_name_and_manifest(rt_db):
+    """Nome «RT» sotto l'icona e manifest per Android, letti anche senza sessione."""
+    from pathlib import Path
+    frontend = Path(__file__).resolve().parent.parent / "frontend"
+    html = (frontend / "index.html").read_text(encoding="utf-8")
+    assert '<meta name="apple-mobile-web-app-title" content="RT" />' in html
+    res = TestClient(create_app(spa_dir=str(frontend / "public"))).get("/manifest.webmanifest")
+    assert res.status_code == 200 and res.json()["short_name"] == "RT"

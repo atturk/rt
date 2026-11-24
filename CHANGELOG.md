@@ -1,5 +1,11 @@
 # Novità di RT
 
+## 4.3.9b7 — da pubblicare
+
+### Novità
+
+- **iPhone e Android**: aggiungendo RT alla schermata Home compare l'icona di RT (non più la «R» grigia) con il nome «RT». Se l'avevi già aggiunta, toglila e aggiungila di nuovo.
+
 ## 4.3.9b6 — 2026-11-24
 
 Beta di rifinitura dopo le prove della b5.
