@@ -189,6 +189,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
         result.phase_results["review"] = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         raise_if_incomplete("review", result.phase_results["review"])
         remaining = _auto_accept_pending(lesson_dir, ctx, options.source) if options.auto_accept else _pending(lesson_dir)
+        notify_review_completed(lesson_dir, len(remaining), ctx, notifiers)
         if remaining:
             _wait(result, ctx, "science_issue", lesson_dir,
                   {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})
@@ -222,6 +223,26 @@ def notify_build_completed(lesson_dir: str, build_result: Dict[str, Any], ctx: R
             continue
         if sent:
             ctx.emit(Notice(message=f"Notifica di fine lavorazione inviata ({getattr(notifier, 'channel', 'notifica')})."))
+
+
+def notify_review_completed(lesson_dir: str, pending_count: int, ctx: RunContext,
+                            notifiers: Sequence[Notifier]) -> None:
+    """Avvisa i notifier (es. Telegram) che la verifica è completata."""
+    if not notifiers:
+        return
+    title = lesson_title(lesson_dir)
+    for notifier in notifiers:
+        fn = getattr(notifier, "review_completed", None)
+        if fn is None:
+            continue
+        try:
+            sent = fn(lesson_dir, pending_count, title)
+        except Exception as exc:  # noqa: BLE001 - la notifica non deve mai far fallire la run
+            from rt.services.context import _sanitize
+            ctx.emit(Notice(level="warning", message=f"Notifica di fine verifica non inviata: {_sanitize(str(exc))}"))
+            continue
+        if sent:
+            ctx.emit(Notice(message=f"Notifica di fine verifica inviata ({getattr(notifier, 'channel', 'notifica')})."))
 
 
 def _setup(run_setup, raw_inputs, options: PipelineOptions, ctx: RunContext) -> Dict[str, Any]:
@@ -383,6 +404,8 @@ def run_phase(lesson_dir: str, phase: str, options: PipelineOptions, ctx: RunCon
             result.lesson_dir = res.get("lesson_dir") or lesson_dir
     result.phase_results[phase] = res
     raise_if_incomplete(phase, res)
+    if phase == "review":
+        notify_review_completed(lesson_dir, len(_pending(lesson_dir)), ctx, notifiers)
     if phase in ("rewrite", "review"):
         with ctx.activate():
             result.phase_results["enrichment"] = automatic_enrichment(lesson_dir, mock, ctx)

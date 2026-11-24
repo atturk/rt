@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
 import type { Settings } from '@/api/settings'
-import { TelegramSection } from './telegram'
+import { TelegramSection, NotificationsCard } from './telegram'
 import { testSettings } from './testSettings'
 
 const ok = (data: unknown) => ({ data, error: undefined, response: new Response('{}', { status: 200 }) }) as never
@@ -62,5 +62,55 @@ describe('Telegram: notifiche nella chat personale', () => {
     await user.click(screen.getByRole('button', { name: /messaggio di prova/ }))
     expect(post).toHaveBeenCalledWith('/api/v1/settings/telegram/test')
     expect(await screen.findByTestId('telegram-test-result')).toHaveTextContent('controlla Telegram')
+  })
+
+  it('interruttori degli eventi: salva le scelte su PUT /settings/telegram/notify', async () => {
+    const put = vi.spyOn(api, 'PUT').mockResolvedValue(ok({
+      ...testSettings,
+      telegram: { ...testSettings.telegram, enabled: true, notify: { ...testSettings.telegram.notify, errore: false } },
+    }))
+    vi.spyOn(api, 'GET').mockResolvedValue(ok(testSettings))
+    renderSection({ enabled: true, bot_token_set: true, chat_id_set: true, notify: { lezione_pronta: true, verifica_pronta: true, errore: true, scaletta_da_approvare: true, issue_da_decidere: true } })
+    const user = userEvent.setup()
+
+    expect(screen.getByText('Ricevi una notifica quando…')).toBeInTheDocument()
+    const errorSwitch = screen.getByRole('switch', { name: 'Una lavorazione non riesce' })
+    expect(errorSwitch).toHaveAttribute('aria-checked', 'true')
+    await user.click(errorSwitch)
+    expect(put).toHaveBeenCalledWith('/api/v1/settings/telegram/notify', {
+      body: {
+        notify: {
+          lezione_pronta: true,
+          verifica_pronta: true,
+          errore: false,
+          scaletta_da_approvare: true,
+          issue_da_decidere: true,
+        },
+      },
+    })
+  })
+
+  it('storico notifiche: cestino svuota l’elenco in RT e mostra Nessuna notifica', async () => {
+    let list = [
+      { sent_at: '2026-11-24T20:00:00Z', kind: 'verifica_pronta', text: 'Verifica completata · Lipidi', ok: true },
+    ]
+    vi.spyOn(api, 'GET').mockImplementation((() => Promise.resolve(ok(list))) as never)
+    const del = vi.spyOn(api, 'DELETE').mockImplementation((() => {
+      list = []
+      return Promise.resolve(ok({ cleared: 1 }))
+    }) as never)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <NotificationsCard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+    expect(await screen.findByText('Verifica completata · Lipidi')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: "Svuota l'elenco" }))
+    expect(del).toHaveBeenCalledWith('/api/v1/telegram/notifications')
+    expect(await screen.findByText('Nessuna notifica.')).toBeInTheDocument()
   })
 })

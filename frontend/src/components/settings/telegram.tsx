@@ -1,13 +1,14 @@
-import { Eye, EyeOff, Link2, Send } from 'lucide-react'
+import { Eye, EyeOff, Link2, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { errorMessage } from '@/api/client'
-import { useFindTelegramChat, useRevealTelegram, useSetTelegramEnabled, type Settings } from '@/api/settings'
-import { useTelegramNotifications, useTelegramTest } from '@/api/telegram'
+import { useFindTelegramChat, useRevealTelegram, useSetTelegramEnabled, useSetTelegramNotify, type Settings } from '@/api/settings'
+import { useClearTelegramNotifications, useTelegramNotifications, useTelegramTest } from '@/api/telegram'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SecretInput } from '@/components/ui/secret-input'
+import { Tooltip } from '@/components/ui/tooltip'
 import { formatDateTime } from '@/lib/format'
 import { Checkbox, Field, SecretBadge, Section } from './common'
 import { ExtraSecretDelete } from './keys'
@@ -83,12 +84,50 @@ export function TelegramSection({ settings }: { settings: Settings }) {
   )
 }
 
+const NOTIFY_EVENTS: { key: string; label: string; example: string }[] = [
+  {
+    key: 'lezione_pronta',
+    label: 'Una lezione è pronta',
+    example: '✅ Lezione pronta\n📘 Biochimica — Lipidi\n📅 2026-10-12 · BIOCHIMICA',
+  },
+  {
+    key: 'verifica_pronta',
+    label: 'La verifica è completata',
+    example: '🔎 Verifica completata\n📘 Biochimica — Lipidi\n3 issue da decidere in RT',
+  },
+  {
+    key: 'scaletta_da_approvare',
+    label: 'La scaletta aspetta la tua approvazione',
+    example: '📝 Scaletta da approvare\n📘 Biochimica — Lipidi\nAprila in RT per approvarla o chiedere modifiche.',
+  },
+  {
+    key: 'issue_da_decidere',
+    label: 'Ci sono issue da decidere',
+    example: '🔎 Issue da decidere (3)\n📘 Biochimica — Lipidi\nDecidile in RT: dopo la lezione si completa da sola.',
+  },
+  {
+    key: 'errore',
+    label: 'Una lavorazione non riesce',
+    example: '❌ Lavorazione non riuscita\n📘 Biochimica — Lipidi\nDettaglio dell’errore',
+  },
+]
+
+const DEFAULT_NOTIFY: Record<string, boolean> = {
+  lezione_pronta: true,
+  verifica_pronta: true,
+  errore: true,
+  scaletta_da_approvare: true,
+  issue_da_decidere: true,
+}
+
 function TelegramChatSetup({ settings }: { settings: Settings }) {
   const tg = settings.telegram
   const [token, setToken] = useState('')
   const find = useFindTelegramChat()
   const test = useTelegramTest()
+  const saveNotify = useSetTelegramNotify()
   const canFind = !!token.trim() || tg.bot_token_set
+  const notify = { ...DEFAULT_NOTIFY, ...(tg.notify ?? {}) }
   return (
     <div className="flex flex-col gap-3">
       <ol className="list-decimal pl-5 text-body">
@@ -151,32 +190,90 @@ function TelegramChatSetup({ settings }: { settings: Settings }) {
           {test.data.message}
         </p>
       )}
+      <div className="mt-2 flex flex-col gap-1 border-t pt-4" data-testid="telegram-notify-events">
+        <h3 className="text-meta font-semibold uppercase tracking-wide text-muted-foreground">
+          Ricevi una notifica quando…
+        </h3>
+        {NOTIFY_EVENTS.map((ev) => {
+          const baseChecked = notify[ev.key] ?? true
+          const shown = saveNotify.isPending && saveNotify.variables && ev.key in saveNotify.variables
+            ? saveNotify.variables[ev.key]
+            : baseChecked
+          return (
+            <Tooltip key={ev.key} content={<span className="whitespace-pre-line">{ev.example}</span>}>
+              {props => (
+                <div {...props}>
+                  <Checkbox
+                    id={`tg-notify-${ev.key}`}
+                    label={ev.label}
+                    checked={shown}
+                    disabled={saveNotify.isPending}
+                    onChange={v => saveNotify.mutate({ ...notify, [ev.key]: v })}
+                  />
+                </div>
+              )}
+            </Tooltip>
+          )
+        })}
+        {saveNotify.isError && <Alert tone="danger">{errorMessage(saveNotify.error)}</Alert>}
+      </div>
     </div>
   )
 }
 
-const KIND_LABEL: Record<string, string> = { lezione_pronta: 'Lezione pronta', decisione: 'Decisione', errore: 'Errore', prova: 'Prova' }
+const KIND_LABEL: Record<string, string> = {
+  lezione_pronta: 'Lezione pronta',
+  verifica_pronta: 'Verifica completata',
+  scaletta_da_approvare: 'Scaletta da approvare',
+  issue_da_decidere: 'Issue da decidere',
+  decisione: 'Decisione',
+  errore: 'Errore',
+  prova: 'Prova',
+}
 
 export function NotificationsCard() {
   const notifications = useTelegramNotifications()
+  const clear = useClearTelegramNotifications()
   return (
-    <Section id="notifiche-telegram" title="Ultime notifiche inviate">
-      {notifications.isError && <Alert tone="danger">{errorMessage(notifications.error)}</Alert>}
-      {notifications.data?.length === 0 && <p className="text-body text-muted-foreground">Ancora nessuna notifica inviata.</p>}
+    <div className="relative">
+      <Section id="notifiche-telegram" title="Ultime notifiche inviate">
+        {clear.isError && <Alert tone="danger">{errorMessage(clear.error)}</Alert>}
+        {notifications.isError && <Alert tone="danger">{errorMessage(notifications.error)}</Alert>}
+        {notifications.data?.length === 0 && <p className="text-body text-muted-foreground">Nessuna notifica.</p>}
+        {!!notifications.data?.length && (
+          <ul className="flex flex-col divide-y text-body" aria-label="Notifiche">
+            {notifications.data.map((n, i) => (
+              <li key={`${n.sent_at}-${i}`} className="flex flex-col gap-0.5 py-2" data-testid="bot-notification">
+                <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
+                  <Badge tone={n.ok ? 'neutral' : 'danger'}>{KIND_LABEL[n.kind] ?? n.kind}</Badge>
+                  <time dateTime={n.sent_at}>{formatDateTime(n.sent_at)}</time>
+                  {!n.ok && <span className="text-danger">non inviata</span>}
+                </div>
+                <p className="whitespace-pre-line">{n.text}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
       {!!notifications.data?.length && (
-        <ul className="flex flex-col divide-y text-body" aria-label="Notifiche">
-          {notifications.data.map((n, i) => (
-            <li key={`${n.sent_at}-${i}`} className="flex flex-col gap-0.5 py-2" data-testid="bot-notification">
-              <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
-                <Badge tone={n.ok ? 'neutral' : 'danger'}>{KIND_LABEL[n.kind] ?? n.kind}</Badge>
-                <time dateTime={n.sent_at}>{formatDateTime(n.sent_at)}</time>
-                {!n.ok && <span className="text-danger">non inviata</span>}
-              </div>
-              <p className="whitespace-pre-line">{n.text}</p>
-            </li>
-          ))}
-        </ul>
+        <div className="absolute right-0 top-2">
+          <Tooltip content="Svuota l'elenco: i messaggi su Telegram restano">
+            {props => (
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                aria-label="Svuota l'elenco"
+                disabled={clear.isPending}
+                onClick={() => clear.mutate()}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </Button>
+            )}
+          </Tooltip>
+        </div>
       )}
-    </Section>
+    </div>
   )
 }

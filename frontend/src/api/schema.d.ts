@@ -3395,6 +3395,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Sceglie quali eventi inviano notifiche Telegram */
+        put: operations["put_telegram_notify_api_v1_settings_telegram_notify_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/telegram/reveal": {
         parameters: {
             query?: never;
@@ -3907,7 +3924,8 @@ export interface paths {
         get: operations["notifications_api_v1_telegram_notifications_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Svuota lo storico delle notifiche inviate in RT (i messaggi su Telegram restano) */
+        delete: operations["delete_notifications_api_v1_telegram_notifications_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7552,7 +7570,7 @@ export interface components {
         Notification: {
             /**
              * Kind
-             * @description lezione_pronta, decisione, errore o prova
+             * @description lezione_pronta, verifica_pronta, scaletta_da_approvare, issue_da_decidere, errore o prova
              */
             kind: string;
             /**
@@ -7564,6 +7582,11 @@ export interface components {
             sent_at: string;
             /** Text */
             text: string;
+        };
+        /** NotificationsClearedOut */
+        NotificationsClearedOut: {
+            /** Cleared */
+            cleared: number;
         };
         /** Outline */
         Outline: {
@@ -9460,6 +9483,13 @@ export interface components {
              */
             chat_id?: string | null;
         };
+        /** TelegramNotifyIn */
+        TelegramNotifyIn: {
+            /** Notify */
+            notify: {
+                [key: string]: boolean;
+            };
+        };
         /** TelegramSettings */
         TelegramSettings: {
             /**
@@ -9485,6 +9515,13 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+            /**
+             * Notify
+             * @description Eventi per cui inviare una notifica Telegram
+             */
+            notify?: {
+                [key: string]: boolean;
+            };
         };
         /** TelegramTestOut */
         TelegramTestOut: {
@@ -25413,6 +25450,75 @@ export interface operations {
             };
         };
     };
+    put_telegram_notify_api_v1_settings_telegram_notify_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramNotifyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     reveal_telegram_api_v1_settings_telegram_reveal_post: {
         parameters: {
             query?: never;
@@ -26969,6 +27075,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Notification"][];
+                };
+            };
+            /** @description Autenticazione mancante o non valida */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF non valido */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Risorsa non trovata */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflitto (es. job in corso sulla lezione) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Richiesta non valida */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_notifications_api_v1_telegram_notifications_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsClearedOut"];
                 };
             };
             /** @description Autenticazione mancante o non valida */

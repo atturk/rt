@@ -55,6 +55,13 @@ export function useSetTelegramEnabled() {
   return useSettingsMutation((enabled: boolean) => unwrap(api.PUT('/api/v1/settings/telegram/enabled', { body: { enabled } })))
 }
 
+/** Quali eventi inviano notifiche Telegram. */
+export function useSetTelegramNotify() {
+  return useSettingsMutation((notify: Record<string, boolean>) =>
+    unwrap(api.PUT('/api/v1/settings/telegram/notify', { body: { notify } })),
+  )
+}
+
 export function useSaveTelegram() {
   return useSettingsMutation((body: Schemas['TelegramIn']) => unwrap(api.PUT('/api/v1/settings/telegram', { body })))
 }

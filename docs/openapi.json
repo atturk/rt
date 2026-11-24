@@ -8255,7 +8255,7 @@
       "Notification": {
         "properties": {
           "kind": {
-            "description": "lezione_pronta, decisione, errore o prova",
+            "description": "lezione_pronta, verifica_pronta, scaletta_da_approvare, issue_da_decidere, errore o prova",
             "title": "Kind",
             "type": "string"
           },
@@ -8279,6 +8279,19 @@
           "text"
         ],
         "title": "Notification",
+        "type": "object"
+      },
+      "NotificationsClearedOut": {
+        "properties": {
+          "cleared": {
+            "title": "Cleared",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cleared"
+        ],
+        "title": "NotificationsClearedOut",
         "type": "object"
       },
       "Outline": {
@@ -13123,6 +13136,22 @@
         "title": "TelegramIn",
         "type": "object"
       },
+      "TelegramNotifyIn": {
+        "properties": {
+          "notify": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Notify",
+            "type": "object"
+          }
+        },
+        "required": [
+          "notify"
+        ],
+        "title": "TelegramNotifyIn",
+        "type": "object"
+      },
       "TelegramSettings": {
         "properties": {
           "bot_token_preview": {
@@ -13163,6 +13192,14 @@
             "description": "Notifiche Telegram attive nella chat personale (spente di predefinito)",
             "title": "Enabled",
             "type": "boolean"
+          },
+          "notify": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Eventi per cui inviare una notifica Telegram",
+            "title": "Notify",
+            "type": "object"
           }
         },
         "required": [
@@ -35177,6 +35214,92 @@
         ]
       }
     },
+    "/api/v1/settings/telegram/notify": {
+      "put": {
+        "operationId": "put_telegram_notify_api_v1_settings_telegram_notify_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramNotifyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sceglie quali eventi inviano notifiche Telegram",
+        "tags": [
+          "impostazioni"
+        ]
+      }
+    },
     "/api/v1/settings/telegram/reveal": {
       "post": {
         "operationId": "reveal_telegram_api_v1_settings_telegram_reveal_post",
@@ -37147,6 +37270,80 @@
       }
     },
     "/api/v1/telegram/notifications": {
+      "delete": {
+        "operationId": "delete_notifications_api_v1_telegram_notifications_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsClearedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Autenticazione mancante o non valida"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "CSRF non valido"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Risorsa non trovata"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflitto (es. job in corso sulla lezione)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Richiesta non valida"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Svuota lo storico delle notifiche inviate in RT (i messaggi su Telegram restano)",
+        "tags": [
+          "impostazioni"
+        ]
+      },
       "get": {
         "operationId": "notifications_api_v1_telegram_notifications_get",
         "parameters": [

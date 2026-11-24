@@ -167,6 +167,8 @@ def review_unit_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     if deferred_calls:
         from rt.llm.deferred import raise_deferred_phase
         raise_deferred_phase(deferred_calls, phase="review")
+    from rt.services.pipeline_service import _pending, build_notifiers, notify_review_completed
+    notify_review_completed(job.lesson_path, len(_pending(job.lesson_path)), ctx, build_notifiers())
     return _done({"phase": "review", "units": results}, lesson_path=job.lesson_path)
 
 
@@ -199,6 +201,8 @@ def review_part_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     if deferred_calls:
         from rt.llm.deferred import raise_deferred_phase
         raise_deferred_phase(deferred_calls, phase="review")
+    from rt.services.pipeline_service import _pending, build_notifiers, notify_review_completed
+    notify_review_completed(job.lesson_path, len(_pending(job.lesson_path)), ctx, build_notifiers())
     return _done({"issues": sum(row["issues"] for row in results), "units": results}, lesson_path=job.lesson_path)
 
 

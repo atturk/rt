@@ -240,6 +240,29 @@ def set_telegram_enabled(project_root: Path, enabled: bool) -> str:
     return "Notifiche Telegram attivate." if enabled else "Notifiche Telegram disattivate."
 
 
+def save_telegram_notify(project_root: Path, notify: dict[str, bool]) -> dict[str, bool]:
+    """Salva quali eventi inviano notifiche Telegram (telegram.notify)."""
+    from rt.core.config import DEFAULT_TELEGRAM_NOTIFY
+    unknown = [k for k in (notify or {}) if k not in DEFAULT_TELEGRAM_NOTIFY]
+    if unknown:
+        raise ValueError(f"Evento notifica sconosciuto: {', '.join(unknown)}.")
+    path = general_config_path(project_root)
+    data = _read_yaml(path)
+    telegram = data.setdefault("telegram", {})
+    if not isinstance(telegram, dict):
+        raise ValueError("Configurazione Telegram non valida.")
+    merged = dict(DEFAULT_TELEGRAM_NOTIFY)
+    existing = telegram.get("notify") if isinstance(telegram.get("notify"), dict) else {}
+    for key, val in existing.items():
+        if key in DEFAULT_TELEGRAM_NOTIFY:
+            merged[key] = bool(val)
+    for key, val in (notify or {}).items():
+        merged[key] = bool(val)
+    telegram["notify"] = merged
+    _atomic_yaml(path, data)
+    return merged
+
+
 def transcription_engines() -> Dict[str, Any]:
     """Quali motori locali girano qui e quale consigliare (macparakeet sul Mac, Parakeet ONNX
     altrove)."""
@@ -401,6 +424,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "bot_token_preview": mask_value(telegram_value("bot_token")),
             "chat_id_set": bool(telegram_value("chat_id")),
             "chat_id_preview": mask_value(telegram_value("chat_id")),
+            "notify": dict(cfg.telegram.notify),
         },
         "worker": {"running": _running_workers()},
         "notices": {"dismissed": [n for n in cfg.ui.dismissed_notices if n in NOTICES]},

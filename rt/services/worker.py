@@ -516,7 +516,9 @@ class Worker:
                           decision=outcome.decision, lesson_path=outcome.lesson_path,
                           progress=outcome.progress, event_type=outcome.event_type,
                           event_payload=outcome.event_payload)
-        _notify_job_outcome(job, outcome)
+        from rt.llm.deferred import use_job_id
+        with use_job_id(job.id):
+            _notify_job_outcome(job, outcome)
         if job.type == "documents" and outcome.state == JobState.SUCCEEDED and job.lesson_path:
             from rt.services.documents_service import ensure_documents_queued
             ensure_documents_queued(job.lesson_path, self.queue)

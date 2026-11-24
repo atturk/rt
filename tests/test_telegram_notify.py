@@ -162,3 +162,126 @@ def test_api_finds_the_chat_and_sends_a_test(bot, api_client, tmp_path, monkeypa
     assert res.status_code == 200 and res.json()["ok"] is True, res.text
     assert _sent_texts(bot)[-1].startswith("👋")
     assert api_client.get("/api/v1/telegram/notifications").json()[0]["kind"] == "prova"
+
+
+def test_disabled_notification_event_is_not_sent(bot, monkeypatch):
+    from rt.core import config as config_mod
+    from rt.telegram.notify import notify_build_completed, notify_decision_needed, notify_job_failed, notify_review_completed
+    real_load = config_mod.load_config
+
+    def patched(*args, **kwargs):
+        cfg = real_load(*args, **kwargs)
+        cfg.telegram.notify["lezione_pronta"] = False
+        cfg.telegram.notify["verifica_pronta"] = False
+        cfg.telegram.notify["errore"] = False
+        cfg.telegram.notify["scaletta_da_approvare"] = False
+        cfg.telegram.notify["issue_da_decidere"] = True
+        return cfg
+
+    monkeypatch.setattr(config_mod, "load_config", patched)
+    assert notify_build_completed("", {}, "Titolo") is False
+    assert notify_review_completed("", 2, "Titolo") is False
+    assert notify_job_failed(None, "Titolo", "boom") is False
+    assert notify_decision_needed("outline_approval", None, "Titolo") is False
+    assert _sent_texts(bot) == []
+    assert notify_decision_needed("science_issue", None, "Titolo", count=2) is True
+    assert len(_sent_texts(bot)) == 1
+    from rt.telegram.notify_log import recent_notifications
+    assert recent_notifications(1)[0]["kind"] == "issue_da_decidere"
+
+
+def test_verifica_pronta_once_per_manual_job_and_no_duplicate_with_pipeline(bot, api_client, tmp_path, monkeypatch, rt_db):
+    from rt.cli_jobs import prepare_worker_process
+    from rt.core import config as config_mod
+    from rt.services.jobs import DbJobQueue
+    from rt.services.pipeline_service import unregister_build_notifiers
+    from rt.services.worker import Worker, unregister_job_notifiers
+    from rt.telegram.notify_log import recent_notifications
+    from tests.api_support import isolated_workspace, make_lesson, run_mock_pipeline
+
+    root = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(root)
+    run_mock_pipeline(lesson_dir, with_review=False, auto_accept=True)
+    lesson_id = api_client.get("/api/v1/lessons").json()[0]["id"]
+
+    prepare_worker_process(DbJobQueue(rt_db))
+    worker = Worker(DbJobQueue(rt_db), worker_id="tg-worker")
+    try:
+        # 1. Job manuale review_unit su più unità: UNA sola notifica verifica_pronta
+        bot.sent.clear()
+        res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                              json={"type": "run_phase", "phase": "review", "units": ["1.1", "9.9"], "mock": True})
+        assert res.status_code == 202, res.text
+        while worker.run_once() is not None:
+            pass
+        texts = _sent_texts(bot)
+        assert len(texts) == 1
+        assert "Verifica completata" in texts[0]
+        assert "issue da decidere in RT" in texts[0]
+        assert recent_notifications(1)[0]["kind"] == "verifica_pronta"
+
+        # 2. Job review_part su più parti: UNA sola notifica verifica_pronta
+        bot.sent.clear()
+        from rt.pipeline.anchors import make_anchor
+        from rt.pipeline.rewrite import load_draft
+        unit = load_draft(lesson_dir).units[0]
+        anchor = make_anchor(unit.content, 0, min(40, len(unit.content))).model_dump()
+        res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                              json={"type": "review_part",
+                                    "parts": [{"unit_id": unit.unit_id, "anchor": anchor}],
+                                    "mock": True})
+        assert res.status_code == 202, res.text
+        while worker.run_once() is not None:
+            pass
+        texts = _sent_texts(bot)
+        assert len(texts) == 1
+        assert "Verifica completata" in texts[0]
+
+        # 3. Pipeline con review e issue pendenti: parte solo verifica_pronta, NON issue_da_decidere
+        bot.sent.clear()
+        res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                              json={"type": "run_pipeline", "force": True, "with_review": True, "auto_accept": False, "mock": True})
+        assert res.status_code == 202, res.text
+        while worker.run_once() is not None:
+            pass
+        texts = _sent_texts(bot)
+        assert len(texts) == 1
+        assert "Verifica completata" in texts[0]
+        assert not any("Issue da decidere" in t for t in texts)
+
+        # 4. Se verifica_pronta è spenta ma issue_da_decidere è accesa, parte issue_da_decidere
+        bot.sent.clear()
+        real_load = config_mod.load_config
+
+        def patched(*args, **kwargs):
+            cfg = real_load(*args, **kwargs)
+            cfg.telegram.notify["verifica_pronta"] = False
+            return cfg
+
+        monkeypatch.setattr(config_mod, "load_config", patched)
+        res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
+                              json={"type": "run_pipeline", "force": True, "with_review": True, "auto_accept": False, "mock": True})
+        assert res.status_code == 202, res.text
+        while worker.run_once() is not None:
+            pass
+        texts = _sent_texts(bot)
+        assert len(texts) == 1
+        assert "Issue da decidere" in texts[0]
+    finally:
+        unregister_build_notifiers()
+        unregister_job_notifiers()
+
+
+def test_api_clear_notifications_and_save_notify_prefs(bot, api_client, tmp_path, monkeypatch):
+    from tests.api_support import isolated_workspace
+    isolated_workspace(tmp_path, monkeypatch)
+    res = api_client.put("/api/v1/settings/telegram/notify", json={"notify": {"errore": False, "verifica_pronta": True}})
+    assert res.status_code == 200, res.text
+    prefs = res.json()["telegram"]["notify"]
+    assert prefs["errore"] is False and prefs["verifica_pronta"] is True and prefs["lezione_pronta"] is True
+
+    api_client.post("/api/v1/settings/telegram/test")
+    assert len(api_client.get("/api/v1/telegram/notifications").json()) == 1
+    cleared = api_client.delete("/api/v1/telegram/notifications")
+    assert cleared.status_code == 200 and cleared.json()["cleared"] == 1
+    assert api_client.get("/api/v1/telegram/notifications").json() == []

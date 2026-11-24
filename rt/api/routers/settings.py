@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from rt.api.deps import Actor
 from rt.api.errors import ApiError, require_telegram
+from rt.core.config import DEFAULT_TELEGRAM_NOTIFY
 from rt.core.jev_decision import JevDecisionConfig
 
 router = APIRouter(tags=["impostazioni"])
@@ -127,6 +128,8 @@ class TelegramSettings(BaseModel):
                                                                "il valore completo solo con POST /settings/telegram/reveal")
     chat_id_set: bool = False
     chat_id_preview: Optional[str] = Field(None, description="Primi e ultimi caratteri del Chat ID")
+    notify: Dict[str, bool] = Field(default_factory=lambda: dict(DEFAULT_TELEGRAM_NOTIFY),
+                                    description="Eventi per cui inviare una notifica Telegram")
 
 
 class WorkerSettings(BaseModel):
@@ -232,9 +235,13 @@ class RevealOut(BaseModel):
 
 class Notification(BaseModel):
     sent_at: str
-    kind: str = Field(description="lezione_pronta, decisione, errore o prova")
+    kind: str = Field(description="lezione_pronta, verifica_pronta, scaletta_da_approvare, issue_da_decidere, errore o prova")
     text: str
     ok: bool = True
+
+
+class NotificationsClearedOut(BaseModel):
+    cleared: int
 
 
 class ConnectionIn(BaseModel):
@@ -384,10 +391,21 @@ class TelegramEnabledIn(BaseModel):
     enabled: bool
 
 
+class TelegramNotifyIn(BaseModel):
+    notify: Dict[str, bool]
+
+
 @router.put("/settings/telegram/enabled", response_model=Settings, summary="Accende o spegne le notifiche Telegram")
 def put_telegram_enabled(body: TelegramEnabledIn, _actor: Actor):
     from rt.services.settings_service import set_telegram_enabled, snapshot
     _call(set_telegram_enabled, _project_root(), body.enabled)
+    return snapshot(_project_root())
+
+
+@router.put("/settings/telegram/notify", response_model=Settings, summary="Sceglie quali eventi inviano notifiche Telegram")
+def put_telegram_notify(body: TelegramNotifyIn, _actor: Actor):
+    from rt.services.settings_service import save_telegram_notify, snapshot
+    _call(save_telegram_notify, _project_root(), body.notify)
     return snapshot(_project_root())
 
 
@@ -438,6 +456,13 @@ def test_telegram(_actor: Actor):
 def notifications(_actor: Actor, limit: int = Query(20, ge=1, le=50)):
     from rt.telegram.notify_log import recent_notifications
     return recent_notifications(limit)
+
+
+@router.delete("/telegram/notifications", response_model=NotificationsClearedOut,
+               summary="Svuota lo storico delle notifiche inviate in RT (i messaggi su Telegram restano)")
+def delete_notifications(_actor: Actor):
+    from rt.telegram.notify_log import clear_notifications
+    return NotificationsClearedOut(cleared=clear_notifications())
 
 
 @router.post("/settings/connections", response_model=Settings, status_code=201,

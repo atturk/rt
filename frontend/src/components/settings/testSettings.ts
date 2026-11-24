@@ -14,7 +14,12 @@ export const testSettings: Settings = {
     parakeet_available: true,
     parakeet_model_ready: false,
   },
-  telegram: { enabled: false, bot_token_set: false, chat_id_set: false },
+  telegram: {
+    enabled: false,
+    bot_token_set: false,
+    chat_id_set: false,
+    notify: { lezione_pronta: true, verifica_pronta: true, errore: true, scaletta_da_approvare: true, issue_da_decidere: true },
+  },
   connections: [{ name: 'locale', provider: 'openai_compatible', base_url: 'http://localhost:9/v1', models: ['test'], credentials: [{ name: 'locale_1', set: true }], supports_batch: false }],
   credentials: [{ name: 'locale_1', provider: 'openai_compatible', env_var: 'RT_LOCALE_1_API_KEY', set: true }],
   phases: ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image'].map(job => ({ job, label: job, connection: 'locale', model: 'test', batch: false })),

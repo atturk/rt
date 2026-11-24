@@ -234,6 +234,15 @@ def _build_default_jobs() -> Dict[str, "JobRoutingConfig"]:
     }
 
 
+DEFAULT_TELEGRAM_NOTIFY: Dict[str, bool] = {
+    "lezione_pronta": True,
+    "verifica_pronta": True,
+    "errore": True,
+    "scaletta_da_approvare": True,
+    "issue_da_decidere": True,
+}
+
+
 class TelegramRuntimeConfig(BaseModel):
     enabled: bool = Field(default=False, description="Notifiche Telegram attive nella chat personale (spente di "
                                                      "predefinito); RT_TELEGRAM_ENABLED=1/0 lo forza.")
@@ -244,6 +253,10 @@ class TelegramRuntimeConfig(BaseModel):
         description="Cartella che contiene direttamente tutte le sotto-cartelle di lezione (una "
                     "per lezione, struttura piatta senza annidamento) delle installazioni 3.x: "
                     "serve alla migrazione verso il database (rt db migrate-storage)."
+    )
+    notify: Dict[str, bool] = Field(
+        default_factory=lambda: dict(DEFAULT_TELEGRAM_NOTIFY),
+        description="Eventi per cui inviare una notifica Telegram (lezione_pronta, verifica_pronta, errore, scaletta_da_approvare, issue_da_decidere)",
     )
     # ------------------------------------------------------
     # Recall configuration
@@ -266,6 +279,11 @@ class TelegramRuntimeConfig(BaseModel):
             self.enabled = True
         elif forced in ("0", "false", "no", "off"):
             self.enabled = False
+        merged = dict(DEFAULT_TELEGRAM_NOTIFY)
+        for key, value in (self.notify or {}).items():
+            if key in DEFAULT_TELEGRAM_NOTIFY:
+                merged[key] = bool(value)
+        self.notify = merged
         return self
 
 
