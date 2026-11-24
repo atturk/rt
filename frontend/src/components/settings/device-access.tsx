@@ -194,7 +194,7 @@ function TailscalePanel() {
   const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null)
   const loginLink = useLoginLink()
   const detected = tailnet?.origin ?? null
-  const address = typed ?? preferredOrigin(saved, here, detected)
+  const address = typed ?? preferredOrigin(saved, here, detected, tailnet?.serve)
   const origin = normalizeOrigin(address)
 
   const create = () => {

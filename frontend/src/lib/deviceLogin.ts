@@ -25,10 +25,29 @@ export function isHttpsIp(origin: string): boolean {
 }
 
 /** Indirizzo da proporre: quello salvato o la pagina stessa, se l'iPhone può usarli; altrimenti
- * quello della tailnet rilevato dal Mac. */
-export function preferredOrigin(saved: string, here: string, tailnet: string | null | undefined): string {
+ * quello della tailnet rilevato dal Mac. Se Tailscale Serve è attivo su un'altra porta per lo stesso
+ * hostname di quello salvato, prevale l'indirizzo rilevato dalla tailnet. */
+export function preferredOrigin(
+  saved: string,
+  here: string,
+  tailnet: string | null | undefined,
+  serve = false,
+): string {
   const usable = (value: string) => !!value && !isLoopback(value) && !isHttpsIp(value)
-  if (usable(saved)) return saved
+  if (usable(saved)) {
+    if (serve && tailnet) {
+      try {
+        const savedUrl = new URL(saved)
+        const tailnetUrl = new URL(tailnet)
+        if (savedUrl.hostname === tailnetUrl.hostname && savedUrl.origin !== tailnetUrl.origin) {
+          return tailnet
+        }
+      } catch {
+        /* ignore invalid URLs */
+      }
+    }
+    return saved
+  }
   if (usable(here)) return here
   return tailnet || saved
 }
