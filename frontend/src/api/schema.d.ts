@@ -9394,6 +9394,12 @@ export interface components {
              */
             funnel: boolean;
             /**
+             * Local Port
+             * @description Porta locale su cui ascolta RT
+             * @default 8765
+             */
+            local_port: number;
+            /**
              * Origin
              * @description Indirizzo di RT nella tailnet (https://nome-mac.tailnet.ts.net), None senza Tailscale
              */

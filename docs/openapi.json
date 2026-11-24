@@ -12971,6 +12971,12 @@
             "title": "Funnel",
             "type": "boolean"
           },
+          "local_port": {
+            "default": 8765,
+            "description": "Porta locale su cui ascolta RT",
+            "title": "Local Port",
+            "type": "integer"
+          },
           "origin": {
             "anyOf": [
               {

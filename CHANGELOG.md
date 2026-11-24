@@ -2,9 +2,18 @@
 
 ## 4.3.9b7 — da pubblicare
 
+Beta sull'uso da iPhone e sulla convivenza con altre app su Tailscale Serve.
+
 ### Novità
 
 - **iPhone e Android**: aggiungendo RT alla schermata Home compare l'icona di RT (non più la «R» grigia) con il nome «RT». Se l'avevi già aggiunta, toglila e aggiungila di nuovo.
+- **Tailscale Serve**: comando consigliato su porta dedicata (lascia libera la 443 per altre app).
+- **Accesso da un altro dispositivo**: la pagina Accesso mostra la porta di RT e il comando Tailscale da copiare.
+
+### Correzioni
+
+- **QR Tailscale**: il QR segue la porta attuale di Tailscale Serve.
+- **Sessione dietro Tailscale Serve**: cookie di accesso sicuri (`Secure`) quando RT è aperto via Tailscale Serve.
 
 ## 4.3.9b6 — 2026-11-24
 
