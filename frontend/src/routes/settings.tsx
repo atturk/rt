@@ -28,7 +28,7 @@ import { CloseActionSection, TranscriptionSection } from '@/components/settings/
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
-import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection } from '@/components/settings/preferences'
+import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
@@ -257,7 +257,24 @@ export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
 export function SubjectsCalendarSettingsPage() { return <SubjectsCalendarSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
-  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><SourceDefaultsSection /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage
+          title="Lavorazione delle lezioni"
+          description="Trascrizione, scaletta, fonti predefinite, arricchimento, ricerca web e parallelismo."
+        >
+          <TranscriptionSection settings={s} />
+          <OutlineSettingsSection settings={s} />
+          <SourceDefaultsSection />
+          <EnrichmentSettingsSection settings={s} />
+          <WebSearchSection settings={s} />
+          <SpeedSection settings={s} />
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function ModelsSettingsPage() {
   return page(s => <><CloudSection /><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />

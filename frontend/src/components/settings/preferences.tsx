@@ -1,7 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 
-import { type Settings } from '@/api/settings'
-import { Button } from '@/components/ui/button'
+import { type Settings, useSaveRewrite } from '@/api/settings'
 import { Input } from '@/components/ui/input'
 import { SlideToggle } from '@/components/ui/slide-toggle'
 import { useCopyFormat } from '@/lib/copyFormat'
@@ -13,9 +12,8 @@ import { STUDY_FONTS, studyFontAvailable, studyFontStack, useStudyFont, useStudy
 import type { ThemePreference } from '@/lib/theme'
 import { clampRate } from '@/lib/playbackRate'
 import { ZOOM_LEVELS, getZoom, isAppWindow, setZoom } from '@/lib/zoom'
-import { SettingsGroup, SettingsRow, SettingsSelect as Select, SettingsSwitch } from './ui'
+import { SettingsGroup, SettingsMatrix, SettingsRow, SettingsSelect as Select, SettingsSwitch } from './ui'
 import { useAutoSave } from './useAutoSave'
-import { Field, SaveFeedback, Section, SettingsSelect as LegacySelect } from './common'
 import { StudyStatusesSection } from './StudyStatusesSection'
 import { useGeneralPreference } from './useGeneralPreference'
 
@@ -242,35 +240,73 @@ export function OutlineSettingsSection({ settings }: { settings: Settings }) {
   const propMode = preferences.modalita_scaletta ?? 'auto'
   const [draftMode, setDraftMode] = useState<{ prop: string; value: 'auto' | 'timer' | 'manual' } | null>(null)
   const mode = draftMode && draftMode.prop === propMode ? draftMode.value : propMode
+  const [modeStatus, setModeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
   function selectMode(next: 'auto' | 'timer' | 'manual') {
     setDraftMode({ prop: propMode, value: next })
-    save.mutate({ modalita_scaletta: next })
+    setModeStatus('saving')
+    save.mutate(
+      { modalita_scaletta: next },
+      {
+        onSuccess: () => {
+          setModeStatus('saved')
+          setTimeout(() => setModeStatus((s) => (s === 'saved' ? 'idle' : s)), 1500)
+        },
+        onError: () => setModeStatus('error'),
+      },
+    )
   }
-  return <Section id="scaletta" title="Scaletta">
-    <Field label="Approvazione della scaletta" htmlFor="pref-scaletta-mode">
-      <LegacySelect id="pref-scaletta-mode" value={mode} disabled={save.isPending} onChange={e => selectMode(e.target.value as 'auto' | 'timer' | 'manual')}>
-        <option value="auto">Procedi sempre in automatico</option>
-        <option value="timer">Aspetta qualche secondo, poi procedi</option>
-        <option value="manual">Aspetta sempre me</option>
-      </LegacySelect>
-    </Field>
-    {mode === 'timer' && <OutlineTimerForm key={preferences.secondi_approvazione} initialSeconds={preferences.secondi_approvazione || 10} save={save} />}
-    <SaveFeedback mutation={save} />
-  </Section>
+
+  return (
+    <SettingsGroup id="scaletta" title="Scaletta">
+      <SettingsRow
+        label="Approvazione della scaletta"
+        htmlFor="pref-scaletta-mode"
+        info="Scegli se la pipeline procede subito dopo aver preparato la scaletta, aspetta qualche secondo o attende sempre la tua conferma."
+        status={{ status: modeStatus, error: save.error ? 'Salvataggio non riuscito.' : null, retry: () => selectMode(mode) }}
+        control={
+          <Select id="pref-scaletta-mode" className="w-full @sm:w-60" value={mode} disabled={save.isPending} onChange={e => selectMode(e.target.value as 'auto' | 'timer' | 'manual')}>
+            <option value="auto">Procedi sempre in automatico</option>
+            <option value="timer">Aspetta qualche secondo, poi procedi</option>
+            <option value="manual">Aspetta sempre me</option>
+          </Select>
+        }
+      />
+      {mode === 'timer' && <OutlineTimerRow initialSeconds={preferences.secondi_approvazione || 10} save={save} />}
+    </SettingsGroup>
+  )
 }
 
-function OutlineTimerForm({ initialSeconds, save }: { initialSeconds: number; save: ReturnType<typeof useGeneralPreference> }) {
-  const [seconds, setSeconds] = useState(initialSeconds)
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    save.mutate({ modalita_scaletta: 'timer', secondi_approvazione: seconds })
-  }
-  return <form onSubmit={submit} className="flex flex-col gap-3">
-    <Field label="Approva da sola dopo (secondi)" htmlFor="pref-secondi">
-      <Input id="pref-secondi" type="number" required min={1} max={3600} value={seconds} onChange={e => setSeconds(e.target.valueAsNumber)} />
-    </Field>
-    <Button type="submit" className="self-start" disabled={save.isPending}>Salva scaletta</Button>
-  </form>
+function OutlineTimerRow({ initialSeconds, save }: { initialSeconds: number; save: ReturnType<typeof useGeneralPreference> }) {
+  const [draft, setDraft] = useState<{ base: number; value: number } | null>(null)
+  const seconds = draft && draft.base === initialSeconds ? draft.value : initialSeconds
+  const valid = Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600
+  const autoSave = useAutoSave(save, seconds, {
+    delay: 600,
+    enabled: valid,
+    initial: initialSeconds,
+    serialize: (val) => ({ modalita_scaletta: 'timer' as const, secondi_approvazione: val }),
+  })
+  return (
+    <SettingsRow
+      label="Approva da sola dopo (secondi)"
+      htmlFor="pref-secondi"
+      status={autoSave}
+      control={
+        <Input
+          id="pref-secondi"
+          type="number"
+          required
+          min={1}
+          max={3600}
+          className="w-full @sm:w-24"
+          value={Number.isFinite(seconds) ? seconds : ''}
+          onChange={e => setDraft({ base: initialSeconds, value: e.target.valueAsNumber })}
+          onBlur={autoSave.flush}
+        />
+      }
+    />
+  )
 }
 
 const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Testi'], ['immagine', 'Immagini']]
@@ -279,12 +315,92 @@ const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Test
 export function SourceDefaultsSection() {
   const [defaults, setDefaults] = useSourceDefaults()
   const set = (kind: SourceKind, change: Partial<SourceDefault>) => setDefaults({ ...defaults, [kind]: { ...defaults[kind], ...change } })
-  return <Section id="fonti" title="Fonti">
-    {SOURCE_ROWS.map(([kind, label]) => <div key={kind} className="flex flex-wrap items-center gap-3 text-body" data-testid={`source-default-${kind}`}>
-      <span className="w-20">{label}</span>
-      <ExtractOptions value={defaults[kind].estrai} onChange={estrai => set(kind, { estrai })} />
-      <UseOptions value={defaults[kind].uso} off={defaults[kind].estrai === 'solo_immagini' ? 'Solo immagini: nessun testo da usare' : null}
-        unavailable={{ guida: 'La guida si sceglie nell’import' }} onChange={uso => uso !== 'guida' && set(kind, { uso })} />
-    </div>)}
-  </Section>
+  return (
+    <SettingsGroup
+      id="fonti"
+      title="Fonti"
+      description="Opzioni predefinite proposte quando carichi i file di una lezione."
+    >
+      <SettingsMatrix
+        rowHeaderLabel="Tipo di file"
+        columnGroups={[
+          {
+            id: 'extract',
+            label: 'Cosa usare',
+            columns: [
+              { key: 'testo', label: 'Testo' },
+              { key: 'immagini', label: 'Pagina' },
+              { key: 'solo_immagini', label: 'Immagini' },
+            ],
+          },
+          {
+            id: 'use',
+            label: 'Come usarla',
+            columns: [
+              { key: 'guida', label: 'Guida' },
+              { key: 'contesto', label: 'Contesto' },
+              { key: 'integra', label: 'Collegamenti' },
+            ],
+          },
+        ]}
+        rows={SOURCE_ROWS.map(([kind, label]) => ({
+          id: kind,
+          label,
+          testId: `source-default-${kind}`,
+          cells: {
+            extract: <ExtractOptions value={defaults[kind].estrai} onChange={estrai => set(kind, { estrai })} />,
+            use: (
+              <UseOptions
+                showLabel={false}
+                value={defaults[kind].uso}
+                off={defaults[kind].estrai === 'solo_immagini' ? 'Solo immagini: nessun testo da usare' : null}
+                unavailable={{ guida: 'La guida si sceglie nell’import' }}
+                onChange={uso => uso !== 'guida' && set(kind, { uso })}
+              />
+            ),
+          },
+        }))}
+      />
+    </SettingsGroup>
+  )
+}
+
+export function SpeedSection({ settings }: { settings: Settings }) {
+  const saveRewrite = useSaveRewrite()
+  const parallel = (settings.rewrite?.context_mode ?? 'macro') === 'macro'
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  function toggle(next: boolean) {
+    setStatus('saving')
+    setError(null)
+    saveRewrite.mutate(
+      { context_mode: next ? 'macro' : 'all' },
+      {
+        onSuccess: () => {
+          setStatus('saved')
+          setTimeout(() => setStatus((s) => (s === 'saved' ? 'idle' : s)), 1500)
+        },
+        onError: (err) => {
+          setStatus('error')
+          setError(err instanceof Error ? err.message : 'Salvataggio non riuscito.')
+        },
+      },
+    )
+  }
+
+  return (
+    <SettingsGroup id="velocita" title="Velocità">
+      <SettingsSwitch
+        id="rewrite-parallel"
+        testId="toggle-parallel-work"
+        label="Lavora in parallelo"
+        info="Quando è attivo, RT elabora in parallelo le macro-sezioni della rielaborazione, legge più pagine delle fonti insieme, verifica le unità in parallelo ed esegue più job contemporaneamente. Disattivalo per passare alla rielaborazione sequenziale con tutto il contesto precedente."
+        checked={parallel}
+        disabled={saveRewrite.isPending}
+        onChange={toggle}
+        status={{ status, error, retry: () => toggle(parallel) }}
+      />
+    </SettingsGroup>
+  )
 }

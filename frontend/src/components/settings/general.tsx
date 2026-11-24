@@ -6,25 +6,15 @@ import { ConfirmDialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { isAppWindow } from '@/lib/zoom'
-import { SettingsSelect as Select } from './common'
-import { Field, SaveFeedback, SecretBadge, Section } from './common'
-import { useGeneralPreference } from './useGeneralPreference'
-
 import { ExtraSecretDelete } from './keys'
-import { SettingsGroup, SettingsInfoButton } from './ui'
-
-/** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
- * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
+import { AutoSaveStatus, SaveFeedback, SecretBadge, SettingsGroup, SettingsInfoButton, SettingsRow, SettingsSelect as Select } from './ui'
+import { useAutoSave } from './useAutoSave'
+import { useGeneralPreference } from './useGeneralPreference'
 
 export function TranscriptionSection({ settings }: { settings: Settings }) {
   const save = useSaveTranscription()
   const t = settings.transcription
-  return (
-    <Section id="trascrizione" title="Trascrizione" description="Motore usato per trascrivere l'audio delle lezioni e le risposte vocali.">
-      <TranscriptionFields key={JSON.stringify(t)} settings={settings} pending={save.isPending} onSubmit={(body) => save.mutate(body)} />
-      <SaveFeedback mutation={save} />
-    </Section>
-  )
+  return <TranscriptionFields settings={settings} save={save} key={t.engine} />
 }
 
 type Engine = 'macparakeet' | 'parakeet' | 'custom'
@@ -51,56 +41,183 @@ function engineHint(t: Settings['transcription'], engine: Engine): string {
 
 function TranscriptionFields({
   settings,
-  pending,
-  onSubmit,
+  save,
 }: {
   settings: Settings
-  pending: boolean
-  onSubmit: (body: { engine: Engine; base_url: string; model: string; api_key: string | null }) => void
+  save: ReturnType<typeof useSaveTranscription>
 }) {
   const t = settings.transcription
-  const [engine, setEngine] = useState<Engine>(t.engine as Engine)
-  const [baseUrl, setBaseUrl] = useState(t.base_url ?? '')
-  const [model, setModel] = useState(t.model ?? '')
+  const savedEngine = t.engine as Engine
+  const savedUrl = t.base_url ?? ''
+  const savedModel = t.model ?? ''
+
+  const [engine, setEngine] = useState<Engine>(savedEngine)
+  const [urlDraft, setUrlDraft] = useState<{ base: string; value: string } | null>(null)
+  const [modelDraft, setModelDraft] = useState<{ base: string; value: string } | null>(null)
   const [apiKey, setApiKey] = useState('')
+  const [keyStatus, setKeyStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [engineStatus, setEngineStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [engineError, setEngineError] = useState<string | null>(null)
+
+  const baseUrl = urlDraft && urlDraft.base === savedUrl ? urlDraft.value : savedUrl
+  const model = modelDraft && modelDraft.base === savedModel ? modelDraft.value : savedModel
+
   const custom = engine === 'custom'
   const engines: Engine[] = t.macparakeet_available || t.engine === 'macparakeet' ? ['macparakeet', 'parakeet', 'custom'] : ['parakeet', 'custom']
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    onSubmit({ engine, base_url: baseUrl.trim(), model: model.trim(), api_key: apiKey.trim() || null })
+
+  const urlAuto = useAutoSave(
+    save,
+    baseUrl,
+    {
+      delay: 600,
+      enabled: custom,
+      initial: savedUrl,
+      equals: (a, b) => a.trim() === b.trim(),
+      serialize: (val) => ({ engine, base_url: val.trim(), model: model.trim(), api_key: null }),
+    },
+  )
+
+  const modelAuto = useAutoSave(
+    save,
+    model,
+    {
+      delay: 600,
+      enabled: custom,
+      initial: savedModel,
+      equals: (a, b) => a.trim() === b.trim(),
+      serialize: (val) => ({ engine, base_url: baseUrl.trim(), model: val.trim(), api_key: null }),
+    },
+  )
+
+  function handleEngineChange(next: Engine) {
+    setEngine(next)
+    setEngineStatus('saving')
+    setEngineError(null)
+    save.mutate(
+      { engine: next, base_url: baseUrl.trim(), model: model.trim(), api_key: null },
+      {
+        onSuccess: () => {
+          setEngineStatus('saved')
+          setTimeout(() => setEngineStatus((s) => (s === 'saved' ? 'idle' : s)), 1500)
+        },
+        onError: (err) => {
+          setEngineStatus('error')
+          setEngineError(err instanceof Error ? err.message : 'Errore durante il salvataggio.')
+        },
+      },
+    )
   }
+
+  function submitKey(e: FormEvent) {
+    e.preventDefault()
+    if (!apiKey.trim()) return
+    setKeyStatus('saving')
+    setKeyError(null)
+    save.mutate(
+      { engine, base_url: baseUrl.trim(), model: model.trim(), api_key: apiKey.trim() },
+      {
+        onSuccess: () => {
+          setApiKey('')
+          setKeyStatus('saved')
+          setTimeout(() => setKeyStatus((s) => (s === 'saved' ? 'idle' : s)), 1500)
+        },
+        onError: (err) => {
+          setKeyStatus('error')
+          setKeyError(err instanceof Error ? err.message : 'Errore durante il salvataggio.')
+        },
+      },
+    )
+  }
+
   return (
-    <form className="grid grid-cols-1 gap-3 sm:grid-cols-2" onSubmit={submit}>
-      <Field label="Motore" htmlFor="stt-engine" hint={<span data-testid="stt-engine-hint">{engineHint(t, engine)}</span>}>
-        <Select id="stt-engine" value={engine} onChange={(e) => setEngine(e.target.value as Engine)}>
-          {engines.map((name) => (
-            <option key={name} value={name}>
-              {ENGINE_LABEL[name]}
-              {name === t.recommended ? ' · consigliato' : ''}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Base URL del server" htmlFor="stt-base-url">
-        <Input id="stt-base-url" value={baseUrl} disabled={!custom} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://localhost:8000/v1" />
-      </Field>
-      <Field label="Modello" htmlFor="stt-model">
-        <Input id="stt-model" value={model} disabled={!custom} onChange={(e) => setModel(e.target.value)} placeholder="whisper-1" />
-      </Field>
-      <Field label="Chiave API (facoltativa)" htmlFor="stt-key" hint={<>Chiave: <SecretBadge set={t.api_key_set} /><ExtraSecretDelete name="RT_STT_API_KEY" label="chiave STT" set={t.api_key_set} /></>}>
-        <SecretInput
-          id="stt-key"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={t.api_key_set ? 'Lascia vuoto per mantenere quella salvata' : ''}
-        />
-      </Field>
-      <div className="sm:col-span-2">
-        <Button type="submit" disabled={pending}>
-          Salva trascrizione
-        </Button>
-      </div>
-    </form>
+    <SettingsGroup
+      id="trascrizione"
+      title="Trascrizione"
+      description="Motore usato per trascrivere l'audio delle lezioni e le risposte vocali."
+    >
+      <SettingsRow
+        label="Motore"
+        htmlFor="stt-engine"
+        description={<span data-testid="stt-engine-hint">{engineHint(t, engine)}</span>}
+        status={{
+          status: engineStatus,
+          error: engineError,
+          retry: () => handleEngineChange(engine),
+        }}
+        control={
+          <Select id="stt-engine" className="w-full @sm:w-60" value={engine} onChange={(e) => handleEngineChange(e.target.value as Engine)}>
+            {engines.map((name) => (
+              <option key={name} value={name}>
+                {ENGINE_LABEL[name]}
+                {name === t.recommended ? ' · consigliato' : ''}
+              </option>
+            ))}
+          </Select>
+        }
+      />
+      {custom && (
+        <>
+          <SettingsRow
+            label="Base URL del server"
+            htmlFor="stt-base-url"
+            status={urlAuto}
+            control={
+              <Input
+                id="stt-base-url"
+                className="w-full @sm:w-60"
+                value={baseUrl}
+                onChange={(e) => setUrlDraft({ base: savedUrl, value: e.target.value })}
+                onBlur={urlAuto.flush}
+                placeholder="http://localhost:8000/v1"
+              />
+            }
+          />
+          <SettingsRow
+            label="Modello"
+            htmlFor="stt-model"
+            status={modelAuto}
+            control={
+              <Input
+                id="stt-model"
+                className="w-full @sm:w-60"
+                value={model}
+                onChange={(e) => setModelDraft({ base: savedModel, value: e.target.value })}
+                onBlur={modelAuto.flush}
+                placeholder="whisper-1"
+              />
+            }
+          />
+          <SettingsRow
+            label="Chiave API (facoltativa)"
+            htmlFor="stt-key"
+            description={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span>Chiave:</span>
+                <SecretBadge set={t.api_key_set} />
+                <ExtraSecretDelete name="RT_STT_API_KEY" label="chiave STT" set={t.api_key_set} />
+              </span>
+            }
+            control={
+              <form onSubmit={submitKey} className="flex w-full flex-col gap-1.5 @sm:w-auto @sm:items-end">
+                <div className="flex w-full items-center gap-2 @sm:w-80">
+                  <SecretInput
+                    id="stt-key"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={t.api_key_set ? 'Lascia vuoto per mantenere quella salvata' : ''}
+                  />
+                  <Button type="submit" size="sm" variant="outline" disabled={!apiKey.trim() || keyStatus === 'saving'}>
+                    Salva chiave
+                  </Button>
+                </div>
+                <AutoSaveStatus status={keyStatus} error={keyError} />
+              </form>
+            }
+          />
+        </>
+      )}
+    </SettingsGroup>
   )
 }
 
