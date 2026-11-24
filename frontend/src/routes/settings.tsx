@@ -91,8 +91,8 @@ function SupportButton() {
   if (!url) return null
   return <NavLink to="/impostazioni/supporta" data-testid="link-sostieni-rt"
     className={({ isActive }) => cn(
-      'mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-      isActive && 'ring-2 ring-blue-400 ring-offset-2 ring-offset-background',
+      'mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-300',
+      isActive && 'ring-2 ring-inset ring-blue-300',
     )}>
     <Heart className="size-4 shrink-0 fill-current" aria-hidden />
     Supporta RT

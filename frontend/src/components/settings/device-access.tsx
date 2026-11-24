@@ -371,6 +371,9 @@ function ReadonlyKeyManager() {
   const fallbackPort = tailnet?.local_port ?? (Number(window.location.port) || 8765)
   const baseUrl = info?.base_url || `http://127.0.0.1:${fallbackPort}/api/v1/readonly`
   const promptText = activeKey ? buildAgentPrompt(baseUrl, activeKey) : ''
+  // a schermo la chiave resta nascosta: si copia intera con Copia / Copia prompt
+  const maskedKey = activeKey ? `${activeKey.slice(0, 4)}${'•'.repeat(12)}` : ''
+  const promptShown = activeKey ? buildAgentPrompt(baseUrl, maskedKey) : ''
 
   return (
     <div className="mt-8 border-t border-border/60 pt-6" data-testid="readonly-api-section">
@@ -389,7 +392,8 @@ function ReadonlyKeyManager() {
               <input
                 type="text"
                 readOnly
-                value={activeKey}
+                value={maskedKey}
+                aria-label="Chiave API (nascosta, usa Copia)"
                 className="w-full rounded border bg-muted/40 px-3 py-1.5 font-mono text-body text-foreground"
                 data-testid="readonly-key-value"
               />
@@ -419,7 +423,7 @@ function ReadonlyKeyManager() {
               </Button>
             </div>
             <pre className="mt-3 whitespace-pre-wrap font-mono text-meta text-muted-foreground break-all" data-testid="agent-prompt-text">
-              {promptText}
+              {promptShown}
             </pre>
           </div>
         </div>

@@ -13,6 +13,9 @@ Beta sul ripasso e sulla domanda di approfondimento.
 - **Approfondimento nel ripasso**: dopo la seconda risposta si vedono il commento e i punteggi aggiornati.
 - **Domanda di approfondimento**: non suggerisce più la risposta e il commento non la anticipa; se salti, vedi cosa mancava.
 - **Prossima domanda**: subito un'animazione di caricamento invece della domanda precedente, e risposta più rapida.
+- **Messaggi salvati**: l'icona dei messaggi della chat ora si vede.
+- **Supporta RT**: il contorno di selezione non è più tagliato.
+- **API di sola lettura**: la chiave non si vede più in chiaro nella pagina (si copia intera con Copia o Copia prompt).
 
 ## 4.3.9b7 — 2026-11-24
 

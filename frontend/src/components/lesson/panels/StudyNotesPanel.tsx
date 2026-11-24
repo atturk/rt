@@ -340,7 +340,7 @@ export function StudyNotesPanel({
                             {isVerifica ? (
                               <CheckCircle2 className="size-3.5 shrink-0 text-[#155f52]" aria-hidden />
                             ) : isChat ? (
-                              <MessageSquare className="size-3.5 shrink-0 text-primary" aria-hidden />
+                              <MessageSquare className="size-3.5 shrink-0 text-[#155f52] dark:text-[#7fd3bf]" aria-hidden />
                             ) : (
                               <HelpCircle className="size-3.5 shrink-0 text-[#c7761a]" aria-hidden />
                             )}

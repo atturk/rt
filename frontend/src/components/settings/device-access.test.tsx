@@ -192,21 +192,21 @@ describe("Accesso da un altro dispositivo", () => {
     await user.click(screen.getByRole('button', { name: 'Crea chiave' }))
     expect(post).toHaveBeenCalledWith('/api/v1/settings/readonly-key')
 
-    // Con chiave attiva: la chiave si vede e il prompt contiene base e chiave
+    // Con chiave attiva: a schermo la chiave è nascosta, il prompt copiato la contiene intera
     const keyInput = await screen.findByTestId('readonly-key-value')
-    expect(keyInput).toHaveValue('rt_ro_secret123')
+    expect(keyInput).toHaveValue('rt_r' + '•'.repeat(12))
 
     const promptBox = await screen.findByTestId('readonly-agent-prompt-box')
     expect(promptBox).toBeInTheDocument()
     const promptText = screen.getByTestId('agent-prompt-text').textContent ?? ''
     expect(promptText).toContain('http://127.0.0.1:8765/api/v1/readonly')
-    expect(promptText).toContain('Authorization: Bearer rt_ro_secret123')
+    expect(promptText).not.toContain('rt_ro_secret123')
     expect(promptText).toContain('Puoi leggere le mie lezioni universitarie da RT')
 
-    // Copia prompt copia il testo completo
+    // Copia prompt copia il testo completo, con la chiave vera
     const copyPromptBtn = screen.getByTestId('copy-agent-prompt')
     await user.click(copyPromptBtn)
-    expect(writeText).toHaveBeenCalledWith(promptText)
+    expect(writeText).toHaveBeenCalledWith(promptText.split('rt_r' + '•'.repeat(12)).join('rt_ro_secret123'))
 
     // Clicca Revoca
     const revokeBtn = await screen.findByTestId('btn-revoke-readonly-key')
