@@ -1,5 +1,19 @@
 # Novità di RT
 
+## 4.3.9b7 — 2026-11-24
+
+Beta sulle porte e sulla convivenza con altre app su Tailscale Serve.
+
+### Novità
+
+- **Tailscale Serve**: comando consigliato su porta dedicata (lascia libera la 443 per altre app).
+- **Accesso da un altro dispositivo**: la pagina Accesso mostra la porta di RT e il comando Tailscale da copiare.
+
+### Correzioni
+
+- **QR Tailscale**: il QR segue la porta attuale di Tailscale Serve.
+- **Sessione dietro Tailscale Serve**: cookie di accesso sicuri (`Secure`) quando RT è aperto via Tailscale Serve.
+
 ## 4.3.9b6 — 2026-11-24
 
 Beta di rifinitura dopo le prove della b5.
