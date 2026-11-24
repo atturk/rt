@@ -76,6 +76,15 @@ DEFAULT_LEASE_SECONDS = 60
 DEFAULT_MAX_ATTEMPTS = 3
 WORKER_ALIVE_SECONDS = 90
 
+# Job del ripasso che scrivono solo il banco delle domande sotto recall_bank_lock:
+# non impostano active_lesson e non vengono saltati per busy in claim().
+SHARED_LESSON_JOB_TYPES = frozenset({
+    "recall_refill",
+    "recall_evaluate",
+    "recall_comment",
+    "recall_regenerate",
+})
+
 
 class JobError(RuntimeError):
     """Operazione non valida sulla coda (job inesistente, stato incompatibile)."""
@@ -433,7 +442,7 @@ class DbJobQueue:
             if row is None or row.lesson_path:
                 return
             row.lesson_path = path
-            if row.state == JobState.RUNNING.value:
+            if row.state == JobState.RUNNING.value and row.type not in SHARED_LESSON_JOB_TYPES:
                 row.active_lesson = path
 
     def add_event(self, job_id: str, event_type: str, payload: Optional[Dict[str, Any]] = None,
@@ -499,8 +508,13 @@ class DbJobQueue:
                 if s.get_bind().dialect.name == "postgresql":
                     stmt = stmt.with_for_update(skip_locked=True)
                 busy = set(s.scalars(select(Job.active_lesson).where(Job.active_lesson.is_not(None))))
+                busy |= set(s.scalars(select(Job.lesson_path).where(
+                    Job.state == JobState.RUNNING.value,
+                    Job.lesson_path.is_not(None),
+                )))
                 for row in s.scalars(stmt).all():
-                    if row.lesson_path and row.lesson_path in busy:
+                    shared = row.type in SHARED_LESSON_JOB_TYPES
+                    if not shared and row.lesson_path and row.lesson_path in busy:
                         continue
                     if not can_transcribe and job_needs_stt(row.type, row.payload, row.lesson_path):
                         continue
@@ -509,7 +523,7 @@ class DbJobQueue:
                     row.lease_until = now + timedelta(seconds=lease_seconds)
                     row.attempts += 1
                     row.started_at = row.started_at or now
-                    row.active_lesson = row.lesson_path
+                    row.active_lesson = None if shared else row.lesson_path
                     row.result = None
                     s.add(JobEvent(job_id=row.id, type="job_started",
                                    payload={"worker_id": worker_id, "attempt": row.attempts}))
