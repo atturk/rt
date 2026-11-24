@@ -585,7 +585,6 @@ def run_setup(
                     cli_hint=f"Usa --force per sovrascrivere o avvia 'rt run {target_folder_path}'.",
                 )
 
-    already_existed = fs.isdir(target_folder_path)
     if fs.is_db_lesson(target_folder_path) or (not os.path.isdir(target_folder_path) and fs.new_lessons_use_db()):
         # Lezione nel database: nessuna cartella, i media vanno nella cartella media di RT.
         target_folder_path = fs.create_db_lesson(target_folder_path)
@@ -598,59 +597,6 @@ def run_setup(
             raise SetupError(f"Impossibile creare la cartella della lezione '{target_folder_path}': {e}")
         if on_progress:
             on_progress(f"✔ Cartella lezione: {target_folder_path}")
-    try:
-        return _populate_setup_lesson(
-            target_folder_path=target_folder_path,
-            folder_name=folder_name,
-            date_val=date_val,
-            ora_val=ora_val,
-            materia_val=materia_val,
-            argomenti_val=argomenti_val,
-            docente_val=docente_val,
-            cleaned_audios=cleaned_audios,
-            primary_audio=primary_audio,
-            primary_audio_name=primary_audio_name,
-            model=model,
-            skip_transcribe=skip_transcribe,
-            mock_asr=mock_asr,
-            on_progress=on_progress,
-            on_lesson_created=on_lesson_created,
-            on_transcription_progress=on_transcription_progress,
-            cancel_token=cancel_token,
-        )
-    except BaseException:
-        if not already_existed:
-            from rt.core.lesson_paths import lesson_path
-            has_written = any(
-                fs.isfile(lesson_path(target_folder_path, name))
-                for name in ("trascritto grezzo.json", "segments.json", "draft.json")
-            )
-            if not has_written:
-                from rt.services.materials_lesson_service import discard_new_lesson
-                discard_new_lesson(target_folder_path)
-        raise
-
-
-def _populate_setup_lesson(
-    *,
-    target_folder_path: str,
-    folder_name: str,
-    date_val: str,
-    ora_val: str,
-    materia_val: str,
-    argomenti_val: str,
-    docente_val: str,
-    cleaned_audios: List[str],
-    primary_audio: str,
-    primary_audio_name: str,
-    model: str,
-    skip_transcribe: bool,
-    mock_asr: bool,
-    on_progress: Optional[Callable[[str], None]],
-    on_lesson_created: Optional[Callable[[str], None]],
-    on_transcription_progress: Optional[Callable[[int], None]],
-    cancel_token: Optional[Any],
-) -> Dict[str, Any]:
     now_iso = datetime.datetime.now().isoformat()
     provisional_info = {
         "data": date_val, "ora": ora_val, "materia": materia_val,

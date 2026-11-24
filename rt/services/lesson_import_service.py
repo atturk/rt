@@ -263,9 +263,7 @@ def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
                     os.unlink(backup)
                     raise
             created_id = None
-            created_target = False
             try:
-                created_target = True
                 target = fs.create_db_lesson(target)
                 with session_scope(db) as session:
                     created_id = LessonRepository(session).get_by_path(target).id
@@ -278,14 +276,7 @@ def import_archive(archive: Union[str, BinaryIO], on_existing: str = "ask",
                     _relink_calendar(session, links, created_id)
             except BaseException:
                 if created_id is not None:
-                    try:
-                        _remove_lesson(created_id)
-                    except Exception:
-                        from rt.services.materials_lesson_service import discard_new_lesson
-                        discard_new_lesson(target)
-                elif created_target:
-                    from rt.services.materials_lesson_service import discard_new_lesson
-                    discard_new_lesson(target)
+                    _remove_lesson(created_id)
                 if backup:
                     _restore_replaced(backup, links)
                 raise

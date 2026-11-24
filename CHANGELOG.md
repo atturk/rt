@@ -2,7 +2,7 @@
 
 ## 4.3.9b9 — da pubblicare
 
-Beta di rifinitura del ripasso e della pulizia delle importazioni non riuscite.
+Beta di rifinitura del ripasso.
 
 ### Correzioni
 
@@ -11,7 +11,6 @@ Beta di rifinitura del ripasso e della pulizia delle importazioni non riuscite.
 - **Domande di approfondimento**: non suggeriscono la risposta anche nelle materie tecniche.
 - **Esercizi e tipi personalizzati**: punteggi nei badge e domanda di approfondimento.
 - **Commenti e domande del ripasso**: riparati formule e caratteri strani nei testi del modello.
-- **Importazioni**: niente lezioni vuote dopo un'importazione non riuscita.
 
 ## 4.3.9b8 — 2026-11-24
 
