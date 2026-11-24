@@ -1,6 +1,22 @@
 import { useReturnAddress } from '@/lib/returnAddress'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Heart, LogOut, Wand2 } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  CircleHelp,
+  Heart,
+  Info,
+  Keyboard,
+  LogOut,
+  Palette,
+  Send,
+  SlidersHorizontal,
+  Smartphone,
+  Sparkles,
+  Wand2,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
@@ -17,8 +33,7 @@ import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { QuestionsSettingsSection } from '@/components/settings/questions'
-import { CalendarSettingsSection } from '@/components/settings/calendar'
-import { SubjectsSettingsSection } from '@/components/settings/subjects'
+import { SubjectsCalendarSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
 import { CloudSection } from '@/components/settings/cloud'
@@ -34,9 +49,21 @@ export { SETUP_PATH, SetupGate } from './setupGate'
 export { SETTINGS_SECTIONS, SETTINGS_REDIRECTS } from '@/lib/settings'
 import { SETTINGS_SECTIONS } from '@/lib/settings'
 
+const SECTION_ICONS: Record<(typeof SETTINGS_SECTIONS)[number]['path'], LucideIcon> = {
+  aspetto: Palette,
+  domande: CircleHelp,
+  'materie-calendario': CalendarDays,
+  editor: Keyboard,
+  lavorazione: SlidersHorizontal,
+  'modelli-connessioni': Sparkles,
+  telegram: Send,
+  accesso: Smartphone,
+  'info-aggiornamenti': Info,
+}
+
 export function SettingsRedirect({ section }: { section: string }) {
-  const { search, hash } = useLocation()
-  return <Navigate to={`/impostazioni/${section}${search}${hash}`} replace />
+  const { search, hash, state } = useLocation()
+  return <Navigate to={`/impostazioni/${section}${search}${hash}`} state={state} replace />
 }
 
 function WithSettings({ children }: { children: (settings: Settings) => ReactNode }) {
@@ -60,23 +87,54 @@ export function SettingsLayout() {
     <PageHeader title={phone && !index ? sectionLabel : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
     <PageBody className="md:px-5">
       <div className="flex min-w-0 gap-8">
-        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-60 overflow-y-auto')}>
-          {SETTINGS_SECTIONS.map(s => <NavLink key={s.path} to={`/impostazioni/${s.path}`}
-            className={({ isActive }) => cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body',
-              phone ? 'border-b' : '', (isActive || (!phone && index && s.path === 'aspetto')) ? 'bg-muted font-semibold' : 'hover:bg-muted')}>
-            <span>{s.label}{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}</span>
-            {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
-          </NavLink>)}
-          <Link to="/guida"
-            className={cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body hover:bg-muted',
-              phone ? 'border-b' : '')}>
-            <span>Guida{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}</span>
-            {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
+        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-64 overflow-y-auto flex flex-col gap-0.5')}>
+          {SETTINGS_SECTIONS.map((s) => {
+            const Icon = SECTION_ICONS[s.path]
+            return (
+              <NavLink
+                key={s.path}
+                to={`/impostazioni/${s.path}`}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-body transition-colors',
+                    phone ? 'border-b py-3' : '',
+                    (isActive || (!phone && index && s.path === 'aspetto'))
+                      ? 'bg-muted font-medium text-foreground'
+                      : 'text-foreground/80 hover:bg-muted/60 hover:text-foreground',
+                  )
+                }
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0">
+                    {s.label}
+                    {phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}
+                  </span>
+                </span>
+                {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+              </NavLink>
+            )
+          })}
+          <Link
+            to="/guida"
+            className={cn(
+              'flex items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-body text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground',
+              phone ? 'border-b py-3' : '',
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0">
+                Guida
+                {phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}
+              </span>
+            </span>
+            {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
           </Link>
           <SupportButton />
         </nav>}
         {(!phone || !index) && <div className="min-w-0 flex-1">
-          {!phone && <h2 className="mb-4 text-heading font-semibold">{sectionLabel}</h2>}<Outlet />
+          {!phone && isSupport && <h2 className="mb-4 text-heading font-semibold">{sectionLabel}</h2>}<Outlet />
         </div>}
       </div>
     </PageBody>
@@ -162,7 +220,9 @@ function ScrollToHash() {
   const { hash } = useLocation()
   useEffect(() => {
     if (!hash) return
-    const target = document.getElementById(decodeURIComponent(hash.slice(1)))
+    const id = decodeURIComponent(hash.slice(1))
+    window.dispatchEvent(new CustomEvent('rt-settings-reveal', { detail: { id } }))
+    const target = document.getElementById(id)
     for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
       if (parent instanceof HTMLDetailsElement) parent.open = true
     }
@@ -181,8 +241,7 @@ export function SettingsIndexPage() {
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
 export function AppearanceSettingsPage() { return page(s => <><AppearanceSection settings={s} /><CloseActionSection settings={s} /></>) }
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
-export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
-export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
+export function SubjectsCalendarSettingsPage() { return <SubjectsCalendarSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
   return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><SourceDefaultsSection /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)

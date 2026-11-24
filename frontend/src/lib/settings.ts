@@ -75,10 +75,9 @@ export function rowsToPricing(rows: PricingRow[]): Record<string, Record<string,
 }
 
 export const SETTINGS_SECTIONS = [
-  { path: 'aspetto', label: 'Aspetto e lettura', description: 'Tema, lettura veloce, evidenziatore' },
+  { path: 'aspetto', label: 'Aspetto e lettura', description: 'Tema, studio, lettura veloce' },
   { path: 'domande', label: 'Domande', description: 'Tipi personalizzati per materia, modelli e prove' },
-  { path: 'calendario', label: 'Calendario', description: 'Orario e lezioni mancanti' },
-  { path: 'materie', label: 'Materie', description: 'Elenco usato da import, calendario e domande' },
+  { path: 'materie-calendario', label: 'Materie e calendario', description: 'Materie, docenti, orario e avvisi' },
   { path: 'editor', label: 'Editor e scorciatoie', description: 'Comandi e tasti dell’editor' },
   { path: 'lavorazione', label: 'Lavorazione delle lezioni', description: 'Trascrizione, scaletta, arricchimento, job' },
   { path: 'modelli-connessioni', label: 'Modelli e connessioni', description: 'Modelli per fase, chiavi e costi' },
@@ -88,6 +87,7 @@ export const SETTINGS_SECTIONS = [
 ] as const
 
 export const SETTINGS_REDIRECTS: Record<string, string> = {
+  calendario: 'materie-calendario', materie: 'materie-calendario',
   modelli: 'modelli-connessioni', chiavi: 'modelli-connessioni', costi: 'modelli-connessioni',
   'ricerca-web': 'lavorazione', decisioni: 'modelli-connessioni', bot: 'telegram', info: 'info-aggiornamenti',
 }

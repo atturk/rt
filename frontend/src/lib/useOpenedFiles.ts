@@ -26,7 +26,7 @@ export function useOpenedFiles(
             // Lato Python: _import_collection
             window.pywebview?.api?.importa_collezione?.(item.token)
           } else if (lower.endsWith('.rtcal')) {
-            // Calendario: naviga a Impostazioni -> Calendario con state
+            // Calendario: naviga a Impostazioni -> Materie e calendario con state
             const res = await fetch(`/api/v1/system/opened-files/${item.token}`)
             if (!res.ok) {
               const body = await res.json().catch(() => null)
@@ -34,7 +34,7 @@ export function useOpenedFiles(
             }
             const text = await res.text()
             const data = JSON.parse(text) as Record<string, unknown>
-            navigate?.('/impostazioni/calendario', {
+            navigate?.('/impostazioni/materie-calendario', {
               state: { importCalendarFile: { name: item.name, data } },
             })
           } else {

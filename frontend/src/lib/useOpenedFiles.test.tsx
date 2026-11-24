@@ -98,8 +98,8 @@ describe('useOpenedFiles', () => {
     expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/calendar/import'), expect.anything())
     // Non apre Nuova lezione
     expect(openNewLesson).not.toHaveBeenCalled()
-    // Naviga a Impostazioni -> Calendario con lo state
-    expect(navigate).toHaveBeenCalledWith('/impostazioni/calendario', {
+    // Naviga a Impostazioni -> Materie e calendario con lo state
+    expect(navigate).toHaveBeenCalledWith('/impostazioni/materie-calendario', {
       state: { importCalendarFile: { name: 'orario.rtcal', data: calendarData } },
     })
   })
