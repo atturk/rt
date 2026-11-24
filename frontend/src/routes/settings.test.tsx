@@ -115,6 +115,17 @@ describe('Le otto sezioni', () => {
     await userEvent.click(donate)
     expect(postSpy).toHaveBeenCalledWith('/api/v1/system/support-prompt', { body: { event: 'donated' } })
   })
+  it('Supporta RT pagina: «Ho già donato» registra already_donated e ringrazia', async () => {
+    const postSpy = vi.spyOn(api, 'POST').mockResolvedValue({
+      data: { visible: false, url: 'https://ko-fi.com/example/donate' },
+      error: undefined,
+      response: new Response('{}', { status: 200 }),
+    } as never)
+    realSettings('/impostazioni/supporta', false, { donazioni_url: 'https://ko-fi.com/example/donate' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Ho già donato' }))
+    expect(postSpy).toHaveBeenCalledWith('/api/v1/system/support-prompt', { body: { event: 'already_donated' } })
+    expect(screen.getByTestId('support-thanks')).toHaveTextContent('Grazie!')
+  })
   it('telefono: elenco, pagina della sezione e freccia indietro', async () => {
     realSettings('/impostazioni', true)
     const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })

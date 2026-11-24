@@ -1,7 +1,7 @@
 import { useReturnAddress } from '@/lib/returnAddress'
 import { useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Heart, LogOut, Wand2 } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { api, errorMessage } from '@/api/client'
@@ -102,12 +102,18 @@ function SupportButton() {
 export function SupportSettingsPage() {
   const queryClient = useQueryClient()
   const url = useSystemInfo().data?.donazioni_url ?? ''
-  const handleDonateClick = () => {
+  const [thanked, setThanked] = useState(false)
+  const sendEvent = (event: 'donated' | 'already_donated') => {
     queryClient.setQueryData(['support-prompt'], (old: { visible?: boolean; url?: string } | undefined) => ({
       url: old?.url ?? url,
       visible: false,
     }))
-    void api.POST('/api/v1/system/support-prompt', { body: { event: 'donated' } }).catch(() => {})
+    void api.POST('/api/v1/system/support-prompt', { body: { event } }).catch(() => {})
+  }
+  const handleDonateClick = () => sendEvent('donated')
+  const handleAlreadyDonated = () => {
+    sendEvent('already_donated')
+    setThanked(true)
   }
   return (
     <section className="max-w-[52ch] space-y-4">
@@ -134,6 +140,18 @@ export function SupportSettingsPage() {
             Dona con Ko-fi
           </a>
           <p className="text-meta text-muted-foreground">Si apre nel browser: carta o PayPal.</p>
+          {thanked ? (
+            <p className="pt-2 text-meta text-muted-foreground" role="status" data-testid="support-thanks">Grazie!</p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAlreadyDonated}
+              data-testid="support-already-donated"
+              className="pt-2 text-meta text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Ho già donato
+            </button>
+          )}
         </div>
       )}
     </section>

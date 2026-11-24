@@ -5,18 +5,16 @@ from rt.core import donazioni
 from rt.services import support_prompt
 
 
-def test_first_seven_days_visibility():
+def test_first_twenty_days_visibility():
     state = support_prompt.initial_state()
     start = date(2026, 11, 1)
-    for i in range(6):
+    for i in range(19):
         state = support_prompt.register_day(state, start + timedelta(days=i))
-        assert state["used_days"] == i + 1
         assert support_prompt.is_visible(state, start + timedelta(days=i)) is False
-
-    day7 = start + timedelta(days=6)
-    state = support_prompt.register_day(state, day7)
-    assert state["used_days"] == 7
-    assert support_prompt.is_visible(state, day7) is True
+    day20 = start + timedelta(days=19)
+    state = support_prompt.register_day(state, day20)
+    assert state["used_days"] == 20
+    assert support_prompt.is_visible(state, day20) is True
 
 
 def test_same_day_counted_once():
@@ -29,59 +27,35 @@ def test_same_day_counted_once():
     assert state["last_day"] == today.isoformat()
 
 
-def test_opened_reappears_after_five_used_days():
-    state = support_prompt.initial_state()
-    day = date(2026, 11, 1)
-    for i in range(7):
-        day_i = day + timedelta(days=i)
-        state = support_prompt.register_day(state, day_i)
-
-    assert support_prompt.is_visible(state, day + timedelta(days=6)) is True
-    state = support_prompt.on_opened(state)
-    assert state["next_at"] == 12
-    assert state["hide_streak"] == 0
-    assert support_prompt.is_visible(state, day + timedelta(days=6)) is False
-
-    for i in range(7, 11):
-        day_i = day + timedelta(days=i)
-        state = support_prompt.register_day(state, day_i)
-        assert support_prompt.is_visible(state, day_i) is False
-
-    day12 = day + timedelta(days=11)
-    state = support_prompt.register_day(state, day12)
-    assert state["used_days"] == 12
-    assert support_prompt.is_visible(state, day12) is True
+def test_opened_and_donate_click_reappear_after_twenty_used_days():
+    for event in (support_prompt.on_opened, support_prompt.on_donated):
+        state = {"used_days": 20, "last_day": "2026-11-20", "next_at": 20, "hide_streak": 1, "paused_until": None}
+        state = event(state)
+        assert state["next_at"] == 40
+        assert state["hide_streak"] == 0
+        assert state["paused_until"] is None  # il clic su Dona non mette in pausa
 
 
-def test_hidden_exponential_backoff_capped_at_30():
-    state = {"used_days": 10, "last_day": "2026-11-10", "next_at": 10, "hide_streak": 0, "paused_until": None}
-    expected_delays = [10, 20, 30, 30]
-    for idx, delay in enumerate(expected_delays, start=1):
+def test_hidden_reappears_after_thirty_used_days():
+    state = {"used_days": 20, "last_day": "2026-11-20", "next_at": 20, "hide_streak": 0, "paused_until": None}
+    for idx in range(1, 4):
         before = state["used_days"]
         state = support_prompt.on_hidden(state)
         assert state["hide_streak"] == idx
-        assert state["next_at"] == before + delay
-        assert support_prompt.is_visible(state, date(2026, 11, 10)) is False
-
-    # opened resets hide_streak
-    state = support_prompt.on_opened(state)
-    assert state["hide_streak"] == 0
+        assert state["next_at"] == before + 30
+        assert support_prompt.is_visible(state, date(2026, 11, 20)) is False
 
 
-def test_donated_pauses_for_182_calendar_days():
+def test_already_donated_pauses_for_182_calendar_days():
     day = date(2026, 1, 1)
-    state = {"used_days": 10, "last_day": day.isoformat(), "next_at": 7, "hide_streak": 2, "paused_until": None}
-    state = support_prompt.on_donated(state, day)
+    state = {"used_days": 30, "last_day": day.isoformat(), "next_at": 20, "hide_streak": 2, "paused_until": None}
+    state = support_prompt.on_already_donated(state, day)
     assert state["hide_streak"] == 0
     assert state["paused_until"] == (day + timedelta(days=182)).isoformat()
-
-    # Many usage days within the 182-day calendar window still stay invisible
     for offset in range(1, 182):
         current = day + timedelta(days=offset)
         state = support_prompt.register_day(state, current)
         assert support_prompt.is_visible(state, current) is False
-
-    # After 182 calendar days (and >= next_at used days), it becomes visible again
     after_182 = day + timedelta(days=182)
     state = support_prompt.register_day(state, after_182)
     assert support_prompt.is_visible(state, after_182) is True

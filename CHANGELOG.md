@@ -4,6 +4,10 @@
 
 Beta di rifinitura dopo le prove della b5.
 
+### Novità
+
+- **Supporta RT**: il quadratino nella barra compare ogni 20 giorni d'uso (30 se lo nascondi tenendolo premuto). «Dona con Ko-fi» apre solo la pagina delle donazioni; nella pagina Supporta RT c'è anche «Ho già donato».
+
 ### Correzioni
 
 - **Chat dello Studio**: il segnalibro di una risposta salvata ora si vede (prima era verde chiaro su verde chiaro).

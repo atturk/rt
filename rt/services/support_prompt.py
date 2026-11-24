@@ -10,11 +10,13 @@ from typing import Any, Literal
 
 from rt.core.paths import config_dir
 
-SupportEvent = Literal["opened", "hidden", "donated"]
+SupportEvent = Literal["opened", "hidden", "donated", "already_donated"]
 
-INITIAL_DAYS = 7
-REAPPEAR_DAYS = 5
-MAX_HIDE_DAYS = 30
+# Giorni d'uso: il bottone compare ogni 20, nascosto con la pressione lunga ogni 30.
+# Solo «Ho già donato» lo mette in pausa per 6 mesi (RT non può verificare la donazione).
+INITIAL_DAYS = 20
+REAPPEAR_DAYS = 20
+HIDDEN_DAYS = 30
 DONATED_PAUSE_DAYS = 182
 
 _LOCK = threading.Lock()
@@ -86,7 +88,7 @@ def is_visible(state: dict[str, Any], today: date) -> bool:
 
 
 def on_opened(state: dict[str, Any]) -> dict[str, Any]:
-    """Clic sul bottone della barra: ripropone dopo 5 giorni d'uso."""
+    """Clic sul bottone della barra: ripropone dopo 20 giorni d'uso."""
     return {
         **state,
         "next_at": state["used_days"] + REAPPEAR_DAYS,
@@ -95,18 +97,21 @@ def on_opened(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def on_hidden(state: dict[str, Any]) -> dict[str, Any]:
-    """Pressione lunga per nascondere: intervallo raddoppiato fino a 30 giorni d'uso."""
-    streak = state["hide_streak"] + 1
-    delay = min(REAPPEAR_DAYS * (2 ** streak), MAX_HIDE_DAYS)
+    """Pressione lunga per nascondere: ripropone dopo 30 giorni d'uso."""
     return {
         **state,
-        "hide_streak": streak,
-        "next_at": state["used_days"] + delay,
+        "hide_streak": state["hide_streak"] + 1,
+        "next_at": state["used_days"] + HIDDEN_DAYS,
     }
 
 
-def on_donated(state: dict[str, Any], today: date) -> dict[str, Any]:
-    """Clic su «Dona con Ko-fi»: pausa di 182 giorni di calendario."""
+def on_donated(state: dict[str, Any]) -> dict[str, Any]:
+    """Clic su «Dona con Ko-fi»: apre solo Ko-fi, il bottone torna dopo 20 giorni d'uso."""
+    return on_opened(state)
+
+
+def on_already_donated(state: dict[str, Any], today: date) -> dict[str, Any]:
+    """«Ho già donato»: pausa di 182 giorni di calendario, sulla parola."""
     return {
         **state,
         "paused_until": (today + timedelta(days=DONATED_PAUSE_DAYS)).isoformat(),
@@ -170,7 +175,9 @@ def record_support_event(event: SupportEvent, today: date | None = None) -> bool
         elif event == "hidden":
             updated = on_hidden(state)
         elif event == "donated":
-            updated = on_donated(state, current_day)
+            updated = on_donated(state)
+        elif event == "already_donated":
+            updated = on_already_donated(state, current_day)
         else:
             raise ValueError(f"Evento non valido: {event}")
         try:

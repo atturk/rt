@@ -9319,7 +9319,7 @@ export interface components {
              * Event
              * @enum {string}
              */
-            event: "opened" | "hidden" | "donated";
+            event: "opened" | "hidden" | "donated" | "already_donated";
         };
         /** SupportPromptState */
         SupportPromptState: {

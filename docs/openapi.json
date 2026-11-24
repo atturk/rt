@@ -12848,7 +12848,8 @@
             "enum": [
               "opened",
               "hidden",
-              "donated"
+              "donated",
+              "already_donated"
             ],
             "title": "Event",
             "type": "string"

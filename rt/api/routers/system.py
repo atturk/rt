@@ -448,7 +448,7 @@ class SupportPromptState(BaseModel):
 
 
 class SupportPromptEvent(BaseModel):
-    event: Literal["opened", "hidden", "donated"]
+    event: Literal["opened", "hidden", "donated", "already_donated"]
 
 
 @router.get("/system/support-prompt", response_model=SupportPromptState,
