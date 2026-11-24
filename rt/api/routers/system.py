@@ -265,12 +265,22 @@ def create_session(body: SessionRequest, request: Request, response: Response) -
     return SessionInfo(csrf_token=open_browser_session(request, response))
 
 
+def _https_request(request: Request) -> bool:
+    """True se HTTPS diretto oppure se Tailscale Serve (loopback) inoltra una richiesta HTTPS."""
+    if request.url.scheme == "https":
+        return True
+    from rt.api.readonly_auth import _is_loopback
+    peer = request.client.host if request.client else ""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return _is_loopback(peer) and proto == "https"
+
+
 def open_browser_session(request: Request, response: Response) -> str:
     """Crea la sessione e imposta i cookie di sessione e CSRF; restituisce il valore CSRF."""
     session_id = auth.create_session()
     csrf = auth.secrets.token_urlsafe(24)
     max_age = auth.SESSION_DAYS * 86400
-    secure = request.url.scheme == "https"
+    secure = _https_request(request)
     response.set_cookie(auth.SESSION_COOKIE, session_id, max_age=max_age, httponly=True,
                         samesite="strict", secure=secure, path="/")
     response.set_cookie(auth.CSRF_COOKIE, csrf, max_age=max_age, httponly=False,
@@ -364,8 +374,9 @@ def put_system_lan(body: LanUpdate, request: Request, background: BackgroundTask
 def delete_session(request: Request, _actor: Actor) -> Response:
     auth.drop_session(request.cookies.get(auth.SESSION_COOKIE, ""))
     response = Response(status_code=204)
-    response.delete_cookie(auth.SESSION_COOKIE, path="/")
-    response.delete_cookie(auth.CSRF_COOKIE, path="/")
+    secure = _https_request(request)
+    response.delete_cookie(auth.SESSION_COOKIE, path="/", samesite="strict", secure=secure, httponly=True)
+    response.delete_cookie(auth.CSRF_COOKIE, path="/", samesite="strict", secure=secure, httponly=False)
     return response
 
 
