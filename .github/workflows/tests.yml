@@ -23,6 +23,7 @@ jobs:
   test:
     if: github.event.action != 'labeled' || github.event.label.name == 'full-matrix'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -56,6 +57,7 @@ jobs:
   frontend:
     if: github.event.action != 'labeled'
     runs-on: macos-latest
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: frontend
@@ -86,6 +88,7 @@ jobs:
   e2e:
     if: github.event.action != 'labeled'
     runs-on: macos-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -19,6 +19,7 @@ jobs:
   # testa della PR) ha già la Test Suite e la suite Windows verdi, la release non le rifà.
   prior:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       actions: read
@@ -51,6 +52,7 @@ jobs:
       !cancelled() && needs.app.result == 'success' &&
       (needs.tests.result == 'success' || (needs.tests.result == 'skipped' && needs.prior.outputs.tested == 'true'))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:

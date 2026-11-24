@@ -217,6 +217,8 @@ def send_message(
     prompt_parts.append(clean_text if clean_text else "(L'utente ha allegato delle immagini.)")
     user_prompt = "\n\n".join(prompt_parts)
 
+    # RT_API_MOCK=1 (server dei test end-to-end): nessuna chiamata a un LLM vero.
+    force_mock = force_mock or os.environ.get("RT_API_MOCK", "").strip().lower() in {"1", "true", "yes"}
     client = LLMClient(force_mock=force_mock)
     resolved_route_provider: Optional[str] = None
     resolved_route_model: Optional[str] = None
