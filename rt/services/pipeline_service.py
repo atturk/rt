@@ -189,7 +189,7 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
         result.phase_results["review"] = run_review(lesson_dir, force=force, force_mock=mock, ctx=ctx)
         raise_if_incomplete("review", result.phase_results["review"])
         remaining = _auto_accept_pending(lesson_dir, ctx, options.source) if options.auto_accept else _pending(lesson_dir)
-        notify_review_completed(lesson_dir, len(remaining), ctx, notifiers)
+        # Nella lavorazione completa basta «Lezione pronta» (o «Issue da decidere»): niente doppioni.
         if remaining:
             _wait(result, ctx, "science_issue", lesson_dir,
                   {"lesson_dir": lesson_dir, "pending": [i.id for i in remaining]})

@@ -220,7 +220,7 @@ def test_verifica_pronta_once_per_manual_job_and_no_duplicate_with_pipeline(bot,
         assert "issue da decidere in RT" in texts[0]
         assert recent_notifications(1)[0]["kind"] == "verifica_pronta"
 
-        # 2. Job review_part su più parti: UNA sola notifica verifica_pronta
+        # 2. Job review_part su una sola parte: nessuna notifica (troppo breve per avvisare)
         bot.sent.clear()
         from rt.pipeline.anchors import make_anchor
         from rt.pipeline.rewrite import load_draft
@@ -233,11 +233,9 @@ def test_verifica_pronta_once_per_manual_job_and_no_duplicate_with_pipeline(bot,
         assert res.status_code == 202, res.text
         while worker.run_once() is not None:
             pass
-        texts = _sent_texts(bot)
-        assert len(texts) == 1
-        assert "Verifica completata" in texts[0]
+        assert _sent_texts(bot) == []
 
-        # 3. Pipeline con review e issue pendenti: parte solo verifica_pronta, NON issue_da_decidere
+        # 3. Pipeline con review e issue pendenti: parte solo issue_da_decidere, NON verifica_pronta
         bot.sent.clear()
         res = api_client.post(f"/api/v1/lessons/{lesson_id}/jobs",
                               json={"type": "run_pipeline", "force": True, "with_review": True, "auto_accept": False, "mock": True})
@@ -246,8 +244,8 @@ def test_verifica_pronta_once_per_manual_job_and_no_duplicate_with_pipeline(bot,
             pass
         texts = _sent_texts(bot)
         assert len(texts) == 1
-        assert "Verifica completata" in texts[0]
-        assert not any("Issue da decidere" in t for t in texts)
+        assert "Issue da decidere" in texts[0]
+        assert not any("Verifica completata" in t for t in texts)
 
         # 4. Se verifica_pronta è spenta ma issue_da_decidere è accesa, parte issue_da_decidere
         bot.sent.clear()
