@@ -19,32 +19,32 @@ import {
   readDeviceOrigin,
   saveDeviceOrigin,
 } from '@/lib/deviceLogin'
-import { Field, Section } from './common'
+import { SettingsGroup, SettingsPage, SettingsRow } from './ui'
 
 /** Accesso da un altro dispositivo (telefono, tablet, computer): un QR con il link monouso (5 minuti, una volta).
  * Due strade affiancate: la stessa rete locale (http, non cifrata: casa o hotspot) e Tailscale (https, ovunque). */
 export function DeviceAccessSection() {
   return (
-    <Section
-      id="altro-dispositivo"
-      title="Accesso da un altro dispositivo"
+    <SettingsPage
+      title="Accesso da altri dispositivi"
       description="Apri RT da un telefono, un tablet o un altro computer inquadrando un QR: il link entra una sola volta e vale 5 minuti."
     >
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div id="altro-dispositivo" className="grid gap-6 lg:grid-cols-2">
         <LanPanel />
         <TailscalePanel />
       </div>
       <ReadonlyKeyManager />
-    </Section>
+    </SettingsPage>
   )
 }
 
 function Panel({ title, testId, children }: { title: string; testId: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-4" data-testid={testId}>
-      <h3 className="text-body font-semibold text-foreground">{title}</h3>
-      {children}
-    </div>
+    <SettingsGroup title={title}>
+      <div className="flex min-w-0 flex-col gap-3 p-4" data-testid={testId}>
+        {children}
+      </div>
+    </SettingsGroup>
   )
 }
 
@@ -240,28 +240,32 @@ function TailscalePanel() {
       <p className="text-body text-muted-foreground">
         Funziona ovunque, anche fuori casa e sulle reti pubbliche: la connessione è cifrata e la vedono solo i tuoi dispositivi.
       </p>
-      <Field
-        label="Indirizzo di RT per l'altro dispositivo"
-        htmlFor="device-origin"
-        hint={
-          <>
-            Con Tailscale Serve è <code>{`https://nome-computer.tailnet.ts.net:${localPort}`}</code> (o senza porta se RT usa la
-            443). 127.0.0.1 funziona solo su questo computer.
-          </>
-        }
-      >
-        <Input
-          id="device-origin"
-          inputMode="url"
-          autoComplete="off"
-          value={address}
-          placeholder={`https://nome-computer.tailnet.ts.net:${localPort}`}
-          onChange={(e) => {
-            setTyped(e.target.value)
-            setLink(null)
-          }}
+      <div className="-mx-4 border-y border-border/60">
+        <SettingsRow
+          label="Indirizzo di RT per l'altro dispositivo"
+          htmlFor="device-origin"
+          stacked
+          info={
+            <>
+              Con Tailscale Serve è <code>{`https://nome-computer.tailnet.ts.net:${localPort}`}</code> (o senza porta se RT usa la
+              443). 127.0.0.1 funziona solo su questo computer.
+            </>
+          }
+          control={
+            <Input
+              id="device-origin"
+              inputMode="url"
+              autoComplete="off"
+              value={address}
+              placeholder={`https://nome-computer.tailnet.ts.net:${localPort}`}
+              onChange={(e) => {
+                setTyped(e.target.value)
+                setLink(null)
+              }}
+            />
+          }
         />
-      </Field>
+      </div>
       {origin && isLoopback(origin) && (
         <Alert tone="warning">Questo indirizzo raggiunge solo questo computer: dagli altri dispositivi non si apre.</Alert>
       )}
@@ -376,13 +380,12 @@ function ReadonlyKeyManager() {
   const promptShown = activeKey ? buildAgentPrompt(baseUrl, maskedKey) : ''
 
   return (
-    <div className="mt-8 border-t border-border/60 pt-6" data-testid="readonly-api-section">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-body font-semibold text-foreground">API di sola lettura (agenti e Open WebUI)</h3>
-        <p className="text-meta text-muted-foreground">
-          Chiave separata di sola lettura per consultare le lezioni su 127.0.0.1 con agenti o assistenti locali.
-        </p>
-      </div>
+    <SettingsGroup
+      id="readonly-api"
+      title="API di sola lettura (agenti e Open WebUI)"
+      description="Chiave separata di sola lettura per consultare le lezioni su 127.0.0.1 con agenti o assistenti locali."
+    >
+      <div className="p-4" data-testid="readonly-api-section">
 
       {info?.configured && activeKey && (
         <div className="mt-4 flex flex-col gap-3">
@@ -490,7 +493,8 @@ function ReadonlyKeyManager() {
           Agenti, Open WebUI e gli altri client locali non potranno più accedere alle lezioni finché non generi una nuova chiave.
         </p>
       </ConfirmDialog>
-    </div>
+      </div>
+    </SettingsGroup>
   )
 }
 

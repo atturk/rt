@@ -9,9 +9,8 @@ import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { SettingsSelect as Select } from './common'
 import { cn } from '@/lib/utils'
-import { Field } from './common'
+import { SettingsDisclosure, SettingsRow, SettingsSelect as Select } from './ui'
 import { ModelTest, NewConnectionForm, PhaseRows } from './models'
 import { CloudPanel } from './cloud'
 import { useCloudStatus } from '@/api/cloud'
@@ -89,12 +88,11 @@ export function SetupWizard({ settings }: { settings: Settings }) {
                 <div>
                   <Button onClick={next}>Continua</Button>
                 </div>
-                <details>
-                  <summary className="cursor-pointer text-body">Aggiungi un'altra connessione</summary>
-                  <div className="mt-3">
+                <div className="rounded-lg border">
+                  <SettingsDisclosure label="Aggiungi un'altra connessione">
                     <NewConnectionForm onCreated={() => go(2)} submitLabel="Crea e continua" />
-                  </div>
-                </details>
+                  </SettingsDisclosure>
+                </div>
               </>
             ) : (
               <ConnectionChoice onByok={() => go(2)} onCloud={() => go(3)} />
@@ -192,8 +190,8 @@ function ModelsStep({ settings, onDone }: { settings: Settings; onDone: () => vo
       </fieldset>
       {perPhase ? (
         <div className="flex flex-col gap-3">
-          <p className="text-body text-muted-foreground">Ogni fase si salva con il suo pulsante; Prova fa una chiamata minima prima di salvare.</p>
-          <PhaseRows settings={settings} />
+          <p className="text-body text-muted-foreground">Le fasi si salvano automaticamente quando scegli connessione e modello; Prova fa una chiamata minima prima di salvare.</p>
+          <div className="rounded-lg border"><PhaseRows settings={settings} /></div>
           {stepDone(settings, 1) ? (
             <div>
               <Button onClick={onDone}>Continua</Button>
@@ -226,24 +224,34 @@ function SameModelForm({ settings, onDone }: { settings: Settings; onDone: () =>
   return (
     <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Stesso modello per tutte le fasi">
       <p className="text-body text-muted-foreground">Descrizione immagini e generazione immagini richiedono modelli dedicati: sceglili a parte.</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Connessione" htmlFor="wizard-connection">
-          <Select id="wizard-connection" value={connection} onChange={(e) => setConnection(e.target.value)}>
-            {settings.connections.map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Modello" htmlFor="wizard-model">
-          <Input id="wizard-model" list="wizard-models" value={model} placeholder="es. deepseek/deepseek-v4-flash" onChange={(e) => setModel(e.target.value)} />
-          <datalist id="wizard-models">
-            {models.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
-        </Field>
+      <div className="divide-y divide-border/60 rounded-lg border">
+        <SettingsRow
+          label="Connessione"
+          htmlFor="wizard-connection"
+          control={
+            <Select id="wizard-connection" className="w-full @sm:w-60" value={connection} onChange={(e) => setConnection(e.target.value)}>
+              {settings.connections.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+        <SettingsRow
+          label="Modello"
+          htmlFor="wizard-model"
+          control={
+            <div className="w-full @sm:w-60">
+              <Input id="wizard-model" list="wizard-models" value={model} placeholder="es. deepseek/deepseek-v4-flash" onChange={(e) => setModel(e.target.value)} />
+              <datalist id="wizard-models">
+                {models.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </div>
+          }
+        />
       </div>
       {error && <Alert tone="danger">{error}</Alert>}
       <div className="flex flex-wrap items-start gap-2">

@@ -8,12 +8,12 @@ import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SettingsSelect as Select } from './common'
+import { Textarea } from '@/components/ui/textarea'
 import {
   FALLBACK, OPERATORS, OUTCOMES, PHASES, TEXT_OPERATORS, TYPES, answerFields, defaultCondition, percent as pct,
   type Condition, type Decision, type DecisionTest, type Phase, type QuestionType, type Rule,
 } from '@/lib/jev'
-import { Checkbox, Field, Section } from './common'
+import { SettingsDisclosure, SettingsGroup, SettingsRow, SettingsSelect as Select, SettingsSwitch } from './ui'
 
 /** Editor della domanda (tipo, testo, opzioni o livelli) e della mappatura verso le etichette RT. */
 export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
@@ -27,19 +27,31 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
   const setRule = (index: number, rule: Rule) => setRules(rules.map((r, i) => (i === index ? rule : r)))
   const setCondition = (ri: number, ci: number, condition: Condition) =>
     setRule(ri, { ...rules[ri], conditions: rules[ri].conditions.map((c, i) => (i === ci ? condition : c)) })
-  return <div className="flex flex-col gap-3">
-    <Field label="Tipo di domanda" htmlFor="jev-type"><Select id="jev-type" value={decision.type} onChange={(e) => onTypeChange(e.target.value as QuestionType)}>
-      {Object.entries(TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-    </Select></Field>
-    <Field label="Domanda" htmlFor="jev-question" hint="Lo stato inviato al classificatore è l’unità di lezione: il testo qui descrive cosa decidere.">
-      <textarea id="jev-question" className="w-full rounded border bg-background p-2 text-body" rows={5} value={decision.question}
-        onChange={(e) => onChange({ ...decision, question: e.target.value })} /></Field>
+  return <div className="divide-y divide-border/60 rounded-lg border bg-background">
+    <SettingsRow
+      label="Tipo di domanda"
+      htmlFor="jev-type"
+      control={
+        <Select id="jev-type" className="w-full @sm:w-60" value={decision.type} onChange={(e) => onTypeChange(e.target.value as QuestionType)}>
+          {Object.entries(TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </Select>
+      }
+    />
+    <SettingsRow
+      label="Domanda"
+      htmlFor="jev-question"
+      info="Lo stato inviato al classificatore è l’unità di lezione: il testo qui descrive cosa decidere."
+      stacked
+      control={
+        <Textarea id="jev-question" rows={5} value={decision.question} onChange={(e) => onChange({ ...decision, question: e.target.value })} />
+      }
+    />
 
-    {decision.type === 'choice' && <fieldset className="flex flex-col gap-2"><legend className="text-body font-medium">Opzioni</legend>
-      {options.map((option, i) => <div key={i} className="grid gap-2 rounded border p-2 sm:grid-cols-[12rem_1fr_auto]" data-testid="jev-option">
+    {decision.type === 'choice' && <fieldset className="flex flex-col gap-2 px-4 py-3"><legend className="text-body font-medium">Opzioni</legend>
+      {options.map((option, i) => <div key={i} className="grid gap-2 rounded-lg border p-2 sm:grid-cols-[12rem_1fr_auto]" data-testid="jev-option">
         <Input aria-label={`Restituita come (opzione ${i + 1})`} value={option.label} placeholder="etichetta"
           onChange={(e) => onChange({ ...decision, options: options.map((o, j) => (j === i ? { ...o, label: e.target.value } : o)) })} />
-        <textarea aria-label={`Scegli quando (opzione ${i + 1})`} className="w-full rounded border bg-background p-2 text-body" rows={2} value={option.description}
+        <Textarea aria-label={`Scegli quando (opzione ${i + 1})`} rows={2} value={option.description}
           placeholder="Scegli quando…" onChange={(e) => onChange({ ...decision, options: options.map((o, j) => (j === i ? { ...o, description: e.target.value } : o)) })} />
         <Button variant="ghost" size="icon" aria-label={`Rimuovi opzione ${i + 1}`} disabled={options.length <= 2}
           onClick={() => onChange({ ...decision, options: options.filter((_, j) => j !== i) })}><Trash2 /></Button>
@@ -47,9 +59,9 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, options: [...options, { label: '', description: '' }] })}><Plus />Aggiungi opzione</Button>
     </fieldset>}
 
-    {decision.type === 'score' && <fieldset className="flex flex-col gap-2"><legend className="text-body font-medium">Livelli (dal più basso al più alto)</legend>
+    {decision.type === 'score' && <fieldset className="flex flex-col gap-2 px-4 py-3"><legend className="text-body font-medium">Livelli (dal più basso al più alto)</legend>
       {levels.map((level, i) => <div key={i} className="flex gap-2" data-testid="jev-level">
-        <textarea aria-label={`Livello ${i + 1}`} className="w-full rounded border bg-background p-2 text-body" rows={2} value={level}
+        <Textarea aria-label={`Livello ${i + 1}`} rows={2} value={level}
           onChange={(e) => onChange({ ...decision, levels: levels.map((l, j) => (j === i ? e.target.value : l)) })} />
         <Button variant="ghost" size="icon" aria-label={`Rimuovi livello ${i + 1}`} disabled={levels.length <= 1}
           onClick={() => onChange({ ...decision, levels: levels.filter((_, j) => j !== i), recall_richness: false })}><Trash2 /></Button>
@@ -57,9 +69,16 @@ export function DecisionEditor({ phase, decision, onChange, onTypeChange }: {
       <Button variant="outline" size="sm" className="self-start" onClick={() => onChange({ ...decision, levels: [...levels, ''], recall_richness: false })}><Plus />Aggiungi livello</Button>
     </fieldset>}
 
-    {phase === 'relevance' && decision.type === 'score' && levels.length === 3 && <Checkbox id="jev-richness" label="Usa questi tre livelli per orientare il recall" checked={decision.recall_richness ?? false} onChange={recall_richness => onChange({ ...decision, recall_richness })} />}
+    {phase === 'relevance' && decision.type === 'score' && levels.length === 3 && (
+      <SettingsSwitch
+        id="jev-richness"
+        label="Usa questi tre livelli per orientare il recall"
+        checked={decision.recall_richness ?? false}
+        onChange={recall_richness => onChange({ ...decision, recall_richness })}
+      />
+    )}
 
-    <fieldset className="flex flex-col gap-2 border-t pt-3"><legend className="text-body font-medium">Mappatura verso le etichette RT</legend>
+    <fieldset className="flex flex-col gap-2 px-4 py-3"><legend className="text-body font-medium">Mappatura verso le etichette RT</legend>
       <p className="text-meta text-muted-foreground">Le regole sono valutate in ordine: vale la prima vera. Se nessuna è vera l’unità {phase === 'relevance' ? 'resta inclusa' : 'va comunque in review'}.</p>
       {rules.map((rule, ri) => <div key={ri} className="flex flex-col gap-2 rounded border p-2" data-testid="jev-rule">
         <div className="flex flex-wrap items-center gap-2 text-body">
@@ -148,9 +167,11 @@ export function DecisionTestResult({ phase, result }: { phase: Phase; result: De
       </tr>)}</tbody></table>}
     {Object.keys(legend).length > 0 && Object.keys(probabilities).length === 0 && <ul className="text-meta">
       {Object.entries(legend).map(([key, text]) => <li key={key}><strong>{key}</strong>: {text}</li>)}</ul>}
-    <details><summary className="cursor-pointer text-meta">JSON del classificatore</summary>
-      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-meta">{JSON.stringify(result.response, null, 2)}</pre>
-    </details>
+    <div className="rounded-lg border">
+      <SettingsDisclosure label="JSON del classificatore">
+        <pre className="max-h-64 overflow-auto rounded bg-muted p-2 text-meta">{JSON.stringify(result.response, null, 2)}</pre>
+      </SettingsDisclosure>
+    </div>
   </div>
 }
 
@@ -162,15 +183,27 @@ function UnitPicker({ lessonId, unitId, onChange }: { lessonId: number | null; u
     enabled: lessonId != null,
     queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/relevance', { params: { path: { lesson_id: lessonId as number } } })),
   })
-  return <div className="grid gap-2 sm:grid-cols-2">
-    <Field label="Lezione di prova" htmlFor="jev-lesson"><Select id="jev-lesson" value={lessonId ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null, null)}>
-      <option value="">Unità di esempio</option>
-      {(lessons.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.titolo || l.folder_name}</option>)}
-    </Select></Field>
-    <Field label="Unità" htmlFor="jev-unit"><Select id="jev-unit" value={unitId ?? ''} disabled={lessonId == null} onChange={(e) => onChange(lessonId, e.target.value || null)}>
-      <option value="">{lessonId == null ? 'Esempio predefinito' : 'Prima unità'}</option>
-      {(units.data?.units ?? []).map((u) => <option key={u.unit_id} value={u.unit_id}>{u.unit_id} · {u.title}</option>)}
-    </Select></Field>
+  return <div className="divide-y divide-border/60 rounded-lg border bg-background">
+    <SettingsRow
+      label="Lezione di prova"
+      htmlFor="jev-lesson"
+      control={
+        <Select id="jev-lesson" className="w-full @sm:w-60" value={lessonId ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null, null)}>
+          <option value="">Unità di esempio</option>
+          {(lessons.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.titolo || l.folder_name}</option>)}
+        </Select>
+      }
+    />
+    <SettingsRow
+      label="Unità"
+      htmlFor="jev-unit"
+      control={
+        <Select id="jev-unit" className="w-full @sm:w-60" value={unitId ?? ''} disabled={lessonId == null} onChange={(e) => onChange(lessonId, e.target.value || null)}>
+          <option value="">{lessonId == null ? 'Esempio predefinito' : 'Prima unità'}</option>
+          {(units.data?.units ?? []).map((u) => <option key={u.unit_id} value={u.unit_id}>{u.unit_id} · {u.title}</option>)}
+        </Select>
+      }
+    />
   </div>
 }
 
@@ -212,30 +245,38 @@ export function DecisionModelSection() {
   })
   const customized = phase === 'relevance' ? data?.relevance_customized : data?.prefilter_customized
 
-  return <Section id="playground-classificatore" title="Domande e mappature">
-    {configured.isError && <Alert tone="danger">{errorMessage(configured.error)}</Alert>}
-    <div className="grid gap-2 sm:grid-cols-2">
-      <Field label="Fase" htmlFor="jev-phase"><Select id="jev-phase" value={phase} onChange={(e) => { setPhase(e.target.value as Phase); test.reset() }}>
-        {Object.entries(PHASES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </Select></Field>
-    </div>
-    {decision && data && <>
-      <div className="flex flex-wrap items-center gap-2 text-meta">
-        <Badge tone={customized || drafts[phase] ? 'warning' : 'neutral'}>{drafts[phase] ? 'Modifiche non salvate' : customized ? 'Domanda personalizzata' : 'Domanda predefinita'}</Badge>
+  return <SettingsGroup id="playground-classificatore" title="Domande e mappature">
+    <div className="flex flex-col gap-3 p-4">
+      {configured.isError && <Alert tone="danger">{errorMessage(configured.error)}</Alert>}
+      <div className="rounded-lg border bg-background">
+        <SettingsRow
+          label="Fase"
+          htmlFor="jev-phase"
+          control={
+            <Select id="jev-phase" className="w-full @sm:w-60" value={phase} onChange={(e) => { setPhase(e.target.value as Phase); test.reset() }}>
+              {Object.entries(PHASES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </Select>
+          }
+        />
       </div>
-      <DecisionEditor phase={phase} decision={decision} onChange={setDecision}
-        onTypeChange={(type) => setDecision(data.templates[phase]?.[type] ?? { ...decision, type })} />
-      <div className="border-t pt-3"><UnitPicker lessonId={target.lesson} unitId={target.unit} onChange={(lesson, unit) => setTarget({ lesson, unit })} /></div>
-    </>}
-    <div className="flex flex-wrap gap-2">
-      <Button variant="outline" disabled={!decision || !phaseModel.trim() || test.isPending} onClick={() => test.mutate()}>{test.isPending ? 'Prova in corso…' : 'Prova configurazione'}</Button>
-      <Button variant="ghost" disabled={!data} onClick={() => data && setDecision(data.templates[phase][phase === 'relevance' ? 'score' : data.prefilter_type])}>Ripristina predefinita</Button>
-      <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button>
+      {decision && data && <>
+        <div className="flex flex-wrap items-center gap-2 text-meta">
+          <Badge tone={customized || drafts[phase] ? 'warning' : 'neutral'}>{drafts[phase] ? 'Modifiche non salvate' : customized ? 'Domanda personalizzata' : 'Domanda predefinita'}</Badge>
+        </div>
+        <DecisionEditor phase={phase} decision={decision} onChange={setDecision}
+          onTypeChange={(type) => setDecision(data.templates[phase]?.[type] ?? { ...decision, type })} />
+        <UnitPicker lessonId={target.lesson} unitId={target.unit} onChange={(lesson, unit) => setTarget({ lesson, unit })} />
+      </>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" disabled={!decision || !phaseModel.trim() || test.isPending} onClick={() => test.mutate()}>{test.isPending ? 'Prova in corso…' : 'Prova configurazione'}</Button>
+        <Button variant="ghost" disabled={!data} onClick={() => data && setDecision(data.templates[phase][phase === 'relevance' ? 'score' : data.prefilter_type])}>Ripristina predefinita</Button>
+        <Button disabled={save.isPending || (enabled && !model.trim())} onClick={() => save.mutate()}>Salva</Button>
+      </div>
+      {!phaseModel.trim() && <p className="text-meta text-muted-foreground">Indica il modello della fase per provare la configurazione.</p>}
+      {test.isError && <Alert tone="danger">{errorMessage(test.error)}</Alert>}
+      {test.isSuccess && <DecisionTestResult phase={phase} result={test.data} />}
+      {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
+      {save.isSuccess && <p role="status" className="text-meta text-success">Salvato.</p>}
     </div>
-    {!phaseModel.trim() && <p className="text-meta text-muted-foreground">Indica il modello della fase per provare la configurazione.</p>}
-    {test.isError && <Alert tone="danger">{errorMessage(test.error)}</Alert>}
-    {test.isSuccess && <DecisionTestResult phase={phase} result={test.data} />}
-    {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
-    {save.isSuccess && <p role="status" className="text-meta text-success">Salvato.</p>}
-  </Section>
+  </SettingsGroup>
 }

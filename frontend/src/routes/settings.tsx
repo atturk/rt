@@ -42,7 +42,7 @@ import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
-import { SettingsPage } from '@/components/settings/ui'
+import { SettingsDisclosure, SettingsGroup, SettingsPage, SettingsRow } from '@/components/settings/ui'
 import { SETUP_PATH } from './setupGate'
 
 export { SETUP_PATH, SetupGate } from './setupGate'
@@ -231,7 +231,6 @@ function ScrollToHash() {
   }, [hash])
   return null
 }
-const page = (render: (settings: Settings) => ReactNode) => <WithSettings>{s => <div className="flex flex-col divide-y">{render(s)}<ScrollToHash /></div>}</WithSettings>
 
 export function SettingsIndexPage() {
   const { hash } = useLocation()
@@ -277,24 +276,74 @@ export function ProcessingSettingsPage() {
   )
 }
 export function ModelsSettingsPage() {
-  return page(s => <><CloudSection /><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
-    <details id="avanzate" className="py-4" open={undefined}><summary className="cursor-pointer text-body font-semibold">Avanzate</summary>
-      <RoutesSection settings={s} />
-      <details id="modelli-decisionali" className="py-3"><summary className="cursor-pointer text-body">Modelli decisionali</summary><ClassifierSettingsSection /><DecisionModelSection /></details>
-      <PromptEditorSection />
-    </details></>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Modelli e connessioni" description="Modelli per fase, provider, chiavi API e stima dei costi.">
+          <CloudSection />
+          <PhasesSection settings={s} />
+          <ConnectionsSection settings={s} />
+          <NewConnectionSection />
+          <SettingsGroup id="avanzate" title="Avanzate" description="Routing secondario, classificatore e aggiunte ai prompt.">
+            <SettingsDisclosure id="route" label="Route avanzate" summary="Primaria e secondaria">
+              <RoutesSection settings={s} />
+            </SettingsDisclosure>
+            <SettingsDisclosure id="modelli-decisionali" label="Modelli decisionali" summary="Classificatore e mappature">
+              <div className="flex flex-col gap-6">
+                <ClassifierSettingsSection />
+                <DecisionModelSection />
+              </div>
+            </SettingsDisclosure>
+            <SettingsDisclosure id="prompt" label="Istruzioni dei prompt" summary="Aggiunte ai prompt">
+              <PromptEditorSection />
+            </SettingsDisclosure>
+          </SettingsGroup>
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function TelegramSettingsPage() {
-  return page(s => <><TelegramSection settings={s} />{s.telegram.enabled && <NotificationsCard />}</>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Telegram" description="Notifiche nella tua chat personale quando una lezione è pronta o serve una tua decisione.">
+          <TelegramSection settings={s} />
+          {s.telegram.enabled && <NotificationsCard />}
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function DeviceSettingsPage() { return <DeviceAccessSection /> }
 function InfoActions() {
   const logout = useLogout()
   const navigate = useNavigate()
-  return <div className="flex items-center gap-3 py-4 text-body"><IconLink to={SETUP_PATH} label="Configurazione guidata" icon={Wand2} /><span className="mr-auto">Configurazione guidata</span>
-    <IconButton label="Esci" icon={LogOut} disabled={logout.isPending} onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })} />
-  </div>
+  return (
+    <SettingsGroup title="Sessione e configurazione">
+      <SettingsRow
+        label="Configurazione guidata"
+        description="Rivedi connessioni, modelli e Telegram passo passo."
+        compactControl
+        control={<IconLink to={SETUP_PATH} label="Configurazione guidata" icon={Wand2} />}
+      />
+      <SettingsRow
+        label="Esci dall'account"
+        compactControl
+        control={<IconButton label="Esci" icon={LogOut} disabled={logout.isPending} onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })} />}
+      />
+    </SettingsGroup>
+  )
 }
-export function InfoSettingsPage() { return <><InfoSection /><InfoActions /></> }
+export function InfoSettingsPage() {
+  return (
+    <SettingsPage title="Info e aggiornamenti" description="Versione di RT, aggiornamenti, novità, spazio su disco e sessione.">
+      <InfoSection />
+      <InfoActions />
+    </SettingsPage>
+  )
+}
 export { UpdatePopup } from '@/components/settings/UpdatePopup'
 

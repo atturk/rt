@@ -9,7 +9,7 @@ import {
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, Section } from './common'
+import { SettingsGroup, SettingsRow } from './ui'
 
 /** Modalità facilitata: niente chiavi né modelli da configurare. Si accede con un codice via
  * email, si paga un abbonamento mensile e RT crea da solo la connessione "RT Cloud". */
@@ -31,25 +31,32 @@ function LoginForm() {
 
   const error = start.isError ? errorMessage(start.error) : verify.isError ? errorMessage(verify.error) : null
   return (
-    <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Accesso a RT Cloud">
-      <Field label="Email" htmlFor="cloud-email">
-        <Input id="cloud-email" type="email" autoComplete="email" value={email} disabled={sent} onChange={(e) => setEmail(e.target.value)} />
-      </Field>
+    <form className="divide-y divide-border/60" onSubmit={submit} aria-label="Accesso a RT Cloud">
+      <SettingsRow
+        label="Email"
+        htmlFor="cloud-email"
+        control={<Input id="cloud-email" className="w-full @sm:w-60" type="email" autoComplete="email" value={email} disabled={sent} onChange={(e) => setEmail(e.target.value)} />}
+      />
       {sent && (
-        <Field label="Codice ricevuto per email" htmlFor="cloud-code" hint="Scade tra 10 minuti.">
-          <Input id="cloud-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />
-        </Field>
+        <SettingsRow
+          label="Codice ricevuto per email"
+          htmlFor="cloud-code"
+          description="Scade tra 10 minuti."
+          control={<Input id="cloud-code" className="w-full @sm:w-40" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />}
+        />
       )}
-      {error && <Alert tone="danger">{error}</Alert>}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={sent ? code.trim().length !== 6 || verify.isPending : !email.includes('@') || start.isPending}>
-          {sent ? 'Accedi' : 'Mandami il codice'}
-        </Button>
-        {sent && (
-          <Button type="button" variant="outline" onClick={() => { start.reset(); verify.reset(); setCode('') }}>
-            Cambia email
+      <div className="flex flex-col gap-3 px-4 py-3">
+        {error && <Alert tone="danger">{error}</Alert>}
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={sent ? code.trim().length !== 6 || verify.isPending : !email.includes('@') || start.isPending}>
+            {sent ? 'Accedi' : 'Mandami il codice'}
           </Button>
-        )}
+          {sent && (
+            <Button type="button" variant="outline" onClick={() => { start.reset(); verify.reset(); setCode('') }}>
+              Cambia email
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   )
@@ -172,8 +179,10 @@ export function CloudSection() {
   const status = useCloudStatus()
   if (!status.data?.available) return null
   return (
-    <Section title="RT Cloud (modalità facilitata)" id="rt-cloud">
-      <CloudPanel />
-    </Section>
+    <SettingsGroup title="RT Cloud (modalità facilitata)" id="rt-cloud">
+      <div className="p-4">
+        <CloudPanel />
+      </div>
+    </SettingsGroup>
   )
 }
