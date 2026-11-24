@@ -126,7 +126,7 @@ class TelegramJobNotifier:
 def _outline_auto_approved() -> bool:
     try:
         from rt.core.config import load_config
-        return getattr(load_config().ui, "outline_auto_approval_seconds", 10) > 0
+        return getattr(load_config().ui, "outline_mode", "auto") in ("auto", "timer")
     except Exception:  # noqa: BLE001
         return False
 

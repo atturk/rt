@@ -322,10 +322,27 @@ class UiConfig(BaseModel):
     dismissed_notices: List[str] = Field(default_factory=list,
                                          description="Avvisi della web con 'Non mostrare più' (es. preview_edit_beta)")
     group_background: Literal["colors", "gray", "none"] = Field(default="colors", description="Sfondo dei gruppi in Lezioni: colors | gray | none")
-    outline_auto_approval_seconds: int = Field(default=10, ge=0, le=3600, description="Secondi per l'approvazione automatica della scaletta (0 = disattivata)")
+    outline_mode: Literal["auto", "timer", "manual"] = Field(default="auto", description="Approvazione della scaletta: 'auto' (procedi sempre), 'timer' (dopo N secondi), 'manual' (aspetta sempre)")
+    outline_auto_approval_seconds: int = Field(default=10, ge=1, le=3600, description="Secondi di attesa per l'approvazione automatica della scaletta in modalità timer")
     study_statuses: List[CustomStudyStatus] = Field(default_factory=list, description="Stati di studio personalizzati")
     study_status_order: List[str] = Field(default_factory=list, description="Ordine di tutti gli stati di studio")
     close_action: Literal["background", "quit"] = Field(default="background", description="Azione alla chiusura della finestra con la X nell'app desktop: 'background' | 'quit'")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_outline_mode(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        secs = data.get("outline_auto_approval_seconds")
+        if "outline_mode" not in data or data["outline_mode"] is None:
+            if secs == 0:
+                data["outline_mode"] = "manual"
+            elif isinstance(secs, (int, float)) and secs > 0:
+                data["outline_mode"] = "auto"
+        if secs == 0:
+            data.pop("outline_auto_approval_seconds", None)
+        return data
 
 
 class JevConfig(BaseModel):

@@ -80,6 +80,8 @@ def test_notes_creation_rejects_empty_and_duplicate(tmp_path):
 
 def test_notes_import_resumes_same_lesson_after_outline_approval(api_client, rt_db, tmp_path, monkeypatch):
     isolated_workspace(tmp_path, monkeypatch)
+    with open(os.path.join("config", "general.yaml"), "a", encoding="utf-8") as f:
+        f.write("ui:\n  outline_mode: manual\n")
     response = api_client.post("/api/v1/lessons", data={"date": "2026-10-12", "materia": "Test",
                                "appunti": "Original notes", "run": "true", "mock": "true"})
     assert response.status_code == 202

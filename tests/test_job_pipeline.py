@@ -27,7 +27,13 @@ from tests.golden_support import AUDIO_FIXTURE, AUDIO_LESSON_NAME
 from tests.test_jobs import MOCK_OPTIONS, _payload, _worker, make_lesson, queue  # noqa: F401
 
 
+def _write_outline_mode(mode: str = "manual"):
+    with open(os.path.join("config", "general.yaml"), "w", encoding="utf-8") as f:
+        f.write(f"ui:\n  outline_mode: {mode}\n")
+
+
 def test_queued_run_pauses_for_outline_and_issues_then_builds(queue, tmp_path):
+    _write_outline_mode("manual")
     lesson_dir = make_lesson(tmp_path / "lezioni")
     job_id = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir, auto_accept=False))
     worker = _worker(queue)
@@ -183,6 +189,7 @@ def test_cli_run_queue_without_worker_warns(queue, tmp_path, capsys, monkeypatch
 def test_forced_run_resumes_after_outline_approval_without_regenerating_it(queue, tmp_path, monkeypatch):
     """4.3.1: 'Rifare tutte le fasi' (run_pipeline con force) ripreso dopo l'approvazione
     rifaceva la scaletta, che tornava da approvare: loop infinito con l'approvazione automatica."""
+    _write_outline_mode("manual")
     from rt.llm.client import LLMClient
     from tests.test_jobs import three_unit_outline
     original = LLMClient._generate_mock_response

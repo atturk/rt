@@ -7766,8 +7766,15 @@ export interface components {
              */
             modalita_arricchimento: "manuale" | "automatica" | "disattivata";
             /**
+             * Modalita Scaletta
+             * @description Approvazione della scaletta: auto, timer o manual
+             * @default auto
+             * @enum {string}
+             */
+            modalita_scaletta: "auto" | "timer" | "manual";
+            /**
              * Secondi Approvazione
-             * @description Secondi per l'approvazione automatica della scaletta (0 = disattivata)
+             * @description Secondi di attesa per l'approvazione automatica della scaletta in modalità timer
              * @default 10
              */
             secondi_approvazione: number;

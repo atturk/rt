@@ -198,6 +198,7 @@ def test_preferences_persist(api_client, api_token, ws):
     # Default snapshot
     data = api_client.get("/api/v1/settings").json()
     assert data["preferences"] == {
+        "modalita_scaletta": "auto",
         "secondi_approvazione": 10,
         "sfondo_gruppi": "colori",
         "modalita_arricchimento": "manuale",
@@ -208,6 +209,7 @@ def test_preferences_persist(api_client, api_token, ws):
     res = api_client.put(
         "/api/v1/settings/preferences",
         json={
+            "modalita_scaletta": "timer",
             "secondi_approvazione": 20,
             "sfondo_gruppi": "grigi",
             "modalita_arricchimento": "automatica",
@@ -216,6 +218,7 @@ def test_preferences_persist(api_client, api_token, ws):
     )
     assert res.status_code == 200, res.text
     assert res.json()["preferences"] == {
+        "modalita_scaletta": "timer",
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",
@@ -225,6 +228,7 @@ def test_preferences_persist(api_client, api_token, ws):
     # Persists to fresh app
     fresh_data = fresh(api_token).get("/api/v1/settings").json()
     assert fresh_data["preferences"] == {
+        "modalita_scaletta": "timer",
         "secondi_approvazione": 20,
         "sfondo_gruppi": "grigi",
         "modalita_arricchimento": "automatica",

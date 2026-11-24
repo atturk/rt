@@ -109,6 +109,23 @@ def test_job_notifier_messages(bot, monkeypatch):
     assert "Lavorazione non riuscita" in texts[2] and "audio illeggibile" in texts[2]
 
 
+def test_outline_notification_suppressed_in_auto_and_timer_modes(bot, monkeypatch):
+    from rt.core import config as config_mod
+    from rt.telegram.notify import TelegramJobNotifier, _outline_auto_approved
+    real_load = config_mod.load_config
+    notifier = TelegramJobNotifier()
+    for mode, expected_auto in (("auto", True), ("timer", True), ("manual", False)):
+        def patched(*args, _m=mode, **kwargs):
+            cfg = real_load(*args, **kwargs)
+            cfg.ui.outline_mode = _m
+            return cfg
+        monkeypatch.setattr(config_mod, "load_config", patched)
+        assert _outline_auto_approved() is expected_auto
+        notifier.job_waiting(None, {"kind": "outline_approval", "payload": {}})
+    assert len(_sent_texts(bot)) == 1
+    assert "Scaletta da approvare" in _sent_texts(bot)[0]
+
+
 def test_worker_notifies_waiting_and_failed_jobs():
     from types import SimpleNamespace
     from rt.services.jobs import JobState

@@ -413,6 +413,7 @@ def snapshot(project_root: Path) -> dict[str, Any]:
             "contextual_verification": bool(getattr(cfg, "contextual_web_search", False)),
         },
         "preferences": {
+            "modalita_scaletta": cfg.ui.outline_mode,
             "secondi_approvazione": cfg.ui.outline_auto_approval_seconds,
             "sfondo_gruppi": {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, cfg.ui.group_background),
             "modalita_arricchimento": {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[classifier_job(cfg,"enrichment").mode],
@@ -512,24 +513,31 @@ def delete_secret_by_name(project_root: Path, name: str) -> list[str]:
 def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[str, Any]:
     path = general_config_path(project_root)
     data = _read_yaml(path)
+    from rt.core.config import RTConfig, ClassifierJobConfig
+    from rt.services.classifier_settings import write_classifier
+    cfg = RTConfig.model_validate(data)
     ui_data = data.setdefault("ui", {})
-    bg_val = preferences.get("sfondo_gruppi", {"none":"niente", "gray":"grigi", "colors":"colori"}.get(ui_data.get("group_background", "colors"), "colori"))
+    bg_val = preferences.get("sfondo_gruppi", {"none":"niente", "gray":"grigi", "colors":"colori"}.get(cfg.ui.group_background, "colori"))
     bg_canonical = {"niente": "none", "grigi": "gray", "colori": "colors"}.get(bg_val, bg_val)
     ui_data["group_background"] = bg_canonical
 
-    secs = int(preferences.get("secondi_approvazione", ui_data.get("outline_auto_approval_seconds", 10)))
+    mode = preferences.get("modalita_scaletta", cfg.ui.outline_mode)
+    if mode not in ("auto", "timer", "manual"):
+        raise ValueError(f"Modalità scaletta non valida: {mode}")
+    ui_data["outline_mode"] = mode
+
+    secs = int(preferences.get("secondi_approvazione", cfg.ui.outline_auto_approval_seconds))
+    if secs < 1 or secs > 3600:
+        raise ValueError("I secondi di approvazione devono essere compresi tra 1 e 3600.")
     ui_data["outline_auto_approval_seconds"] = secs
 
     close_val = preferences.get(
         "chiusura_x",
-        {"background": "background", "quit": "esci"}.get(ui_data.get("close_action", "background"), "background"),
+        {"background": "background", "quit": "esci"}.get(cfg.ui.close_action, "background"),
     )
     close_canonical = {"esci": "quit", "quit": "quit", "background": "background"}.get(close_val, "background")
     ui_data["close_action"] = close_canonical
 
-    from rt.core.config import RTConfig, ClassifierJobConfig
-    from rt.services.classifier_settings import write_classifier
-    cfg = RTConfig.model_validate(data)
     classifier = cfg.classifier
     current_mode = classifier_job(cfg, "enrichment").mode
     enr_val = preferences.get("modalita_arricchimento", {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[current_mode])
@@ -539,6 +547,7 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
 
     _atomic_yaml(path, data)
     return {
+        "modalita_scaletta": mode,
         "secondi_approvazione": secs,
         "sfondo_gruppi": bg_val,
         "modalita_arricchimento": enr_val,

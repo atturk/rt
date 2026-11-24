@@ -30,7 +30,7 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
   // Seravek e Avenir ci sono solo sul Mac: si mostrano i font installati, più quello salvato.
   const [availableFonts] = useState(() => new Set(STUDY_FONTS.filter(([v]) => studyFontAvailable(v)).map(([v]) => v)))
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
+  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
 
   useEffect(() => {
     const onZoomChange = (e: Event) => {
@@ -106,15 +106,39 @@ export function AppearanceSection({ settings }: { settings: Settings }) {
 
 export function OutlineSettingsSection({ settings }: { settings: Settings }) {
   const save = useGeneralPreference()
-  const preferences = settings.preferences ?? { secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
-  const [seconds, setSeconds] = useState(preferences.secondi_approvazione)
-  function submit(e: FormEvent) { e.preventDefault(); save.mutate({ secondi_approvazione: seconds }) }
-  return <Section id="scaletta" title="Scaletta"><form onSubmit={submit}>
-    <Field label="Approva da sola dopo (secondi)" htmlFor="pref-secondi" hint="0 = aspetta sempre te">
-      <Input id="pref-secondi" type="number" required min={0} max={3600} value={seconds} onChange={e => setSeconds(e.target.valueAsNumber)} />
+  const preferences = settings.preferences ?? { modalita_scaletta: 'auto' as const, secondi_approvazione: 10, sfondo_gruppi: 'colori' as const, modalita_arricchimento: 'manuale' as const, chiusura_x: 'background' as const }
+  const propMode = preferences.modalita_scaletta ?? 'auto'
+  const [draftMode, setDraftMode] = useState<{ prop: string; value: 'auto' | 'timer' | 'manual' } | null>(null)
+  const mode = draftMode && draftMode.prop === propMode ? draftMode.value : propMode
+  function selectMode(next: 'auto' | 'timer' | 'manual') {
+    setDraftMode({ prop: propMode, value: next })
+    save.mutate({ modalita_scaletta: next })
+  }
+  return <Section id="scaletta" title="Scaletta">
+    <Field label="Approvazione della scaletta" htmlFor="pref-scaletta-mode">
+      <Select id="pref-scaletta-mode" value={mode} disabled={save.isPending} onChange={e => selectMode(e.target.value as 'auto' | 'timer' | 'manual')}>
+        <option value="auto">Procedi sempre in automatico</option>
+        <option value="timer">Aspetta qualche secondo, poi procedi</option>
+        <option value="manual">Aspetta sempre me</option>
+      </Select>
     </Field>
-    <Button type="submit" disabled={save.isPending}>Salva scaletta</Button>
-  </form><SaveFeedback mutation={save} /></Section>
+    {mode === 'timer' && <OutlineTimerForm key={preferences.secondi_approvazione} initialSeconds={preferences.secondi_approvazione || 10} save={save} />}
+    <SaveFeedback mutation={save} />
+  </Section>
+}
+
+function OutlineTimerForm({ initialSeconds, save }: { initialSeconds: number; save: ReturnType<typeof useGeneralPreference> }) {
+  const [seconds, setSeconds] = useState(initialSeconds)
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    save.mutate({ modalita_scaletta: 'timer', secondi_approvazione: seconds })
+  }
+  return <form onSubmit={submit} className="flex flex-col gap-3">
+    <Field label="Approva da sola dopo (secondi)" htmlFor="pref-secondi">
+      <Input id="pref-secondi" type="number" required min={1} max={3600} value={seconds} onChange={e => setSeconds(e.target.valueAsNumber)} />
+    </Field>
+    <Button type="submit" className="self-start" disabled={save.isPending}>Salva scaletta</Button>
+  </form>
 }
 
 const SOURCE_ROWS: [SourceKind, string][] = [['slide', 'Slide'], ['testo', 'Testi'], ['immagine', 'Immagini']]

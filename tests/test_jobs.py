@@ -104,6 +104,8 @@ def test_enqueue_worker_succeeded_in_mock(queue, tmp_path):
 
 
 def test_pipeline_waits_for_outline_decision(queue, tmp_path):
+    with open(os.path.join("config", "general.yaml"), "w", encoding="utf-8") as f:
+        f.write("ui:\n  outline_mode: manual\n")
     lesson_dir = make_lesson(tmp_path / "lezioni")
     job_id = queue.enqueue(RUN_PIPELINE, lesson_dir, _payload(lesson_dir, auto_accept=False))
     job = _worker(queue).run_once()

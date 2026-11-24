@@ -164,14 +164,20 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
     result.phase_results["outline"] = run_outline(lesson_dir, force=force, force_mock=mock, ctx=ctx)
 
     if outline_needs_approval(lesson_dir, force):
+        from rt.core.config import load_config
         from rt.services import outline_service
         if options.auto_accept:
             outline_service.approve_outline(lesson_dir, actor="auto_accept", channel=options.source)
         elif not outline_service.is_outline_approved(lesson_dir):
-            outline_service.start_outline_timer(lesson_dir)
-            _wait(result, ctx, "outline_approval", lesson_dir,
-                  {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
-            return
+            mode = getattr(load_config().ui, "outline_mode", "auto")
+            if mode == "auto":
+                outline_service.approve_outline(lesson_dir, actor="server", channel="server")
+            else:
+                if mode == "timer":
+                    outline_service.start_outline_timer(lesson_dir)
+                _wait(result, ctx, "outline_approval", lesson_dir,
+                      {"lesson_dir": lesson_dir, "outline": outline_service.get_outline_review(lesson_dir)})
+                return
 
     ctx.check_cancelled()
     result.phase_results["rewrite"] = run_rewrite(lesson_dir, force=force, force_mock=mock, ctx=ctx)

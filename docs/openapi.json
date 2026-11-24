@@ -8732,11 +8732,22 @@
             "title": "Modalita Arricchimento",
             "type": "string"
           },
+          "modalita_scaletta": {
+            "default": "auto",
+            "description": "Approvazione della scaletta: auto, timer o manual",
+            "enum": [
+              "auto",
+              "timer",
+              "manual"
+            ],
+            "title": "Modalita Scaletta",
+            "type": "string"
+          },
           "secondi_approvazione": {
             "default": 10,
-            "description": "Secondi per l'approvazione automatica della scaletta (0 = disattivata)",
+            "description": "Secondi di attesa per l'approvazione automatica della scaletta in modalità timer",
             "maximum": 3600.0,
-            "minimum": 0.0,
+            "minimum": 1.0,
             "title": "Secondi Approvazione",
             "type": "integer"
           },
