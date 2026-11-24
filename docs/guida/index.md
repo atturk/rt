@@ -12,7 +12,7 @@ RT ti aiuta a trasformare le registrazioni audio delle lezioni e il materiale di
 
 ## Primi passi
 
-1. **Configura i modelli**: apri **Impostazioni → Modelli** per inserire la tua chiave API (es. OpenRouter, Google AI Studio o DeepSeek) o configurare un modello locale.
+1. **Configura i modelli**: apri **Impostazioni → Modelli e connessioni** per inserire la tua chiave API (es. OpenRouter, Google AI Studio o DeepSeek) o configurare un modello locale.
 2. **Crea la tua prima lezione**: clicca su **Nuova lezione**, assegna un titolo e una materia, e carica la registrazione audio oppure registra direttamente con il microfono.
 3. **Aggiungi le fonti**: allega le slide del professore o le dispense nella scheda **Dettagli** per aumentare la precisione dell'elaborazione.
 4. **Verifica e studia**: controlla le eventuali segnalazioni nella scheda **Verifica**, poi passa alla scheda **Studio** per iniziare la lettura attiva.

@@ -79,7 +79,11 @@ describe('Le otto sezioni', () => {
     const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     expect(within(nav).getAllByRole('link')).toHaveLength(SETTINGS_SECTIONS.length + 1)
     expect(within(nav).getByRole('link', { name: /^Guida/ })).toHaveAttribute('href', '/guida')
-    expect(within(nav).getByRole('link', { name: 'Aspetto e lettura' })).toHaveAttribute('aria-current', 'page')
+    const aspectLink = within(nav).getByRole('link', { name: 'Aspetto e lettura' })
+    expect(aspectLink).toHaveAttribute('aria-current', 'page')
+    expect(aspectLink.className).toContain('bg-muted')
+    expect(aspectLink.className).toContain('font-medium')
+    expect(aspectLink.className).not.toContain('font-semibold')
     expect(await screen.findByRole('radiogroup', { name: 'Tema' })).toBeVisible()
     await userEvent.click(within(nav).getByRole('link', { name: 'Lavorazione delle lezioni' }))
     expect(await screen.findByRole('region', { name: 'Trascrizione' })).toBeVisible()
@@ -144,6 +148,15 @@ describe('Le otto sezioni', () => {
     realSettings('/bot')
     await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/telegram')
+  })
+  it('i vecchi path /impostazioni/calendario e /impostazioni/materie reindirizzano a materie-calendario', async () => {
+    realSettings('/impostazioni/calendario')
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/materie-calendario'))
+    expect(await screen.findByRole('region', { name: 'Calendario' })).toBeVisible()
+    cleanup(); vi.restoreAllMocks()
+    realSettings('/impostazioni/materie')
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/materie-calendario'))
+    expect(await screen.findByRole('region', { name: 'Materie' })).toBeVisible()
   })
   it('tutte le destinazioni hanno una route', () => {
     const routes = areas.flatMap(a => a.routes).find(r => r.path === 'impostazioni')!.children!

@@ -5,7 +5,7 @@ Puoi consultare le tue lezioni anche lontano dal computer e collegare RT ai tuoi
 ## Accesso da iPhone
 
 RT include un server web locale integrato per consultare le unità e studiare comodamente da smartphone o tablet sulla stessa rete Wi-Fi:
-1. Apri **Impostazioni → Accesso da iPhone**.
+1. Apri **Impostazioni → Accesso da altri dispositivi**.
 2. Attiva la funzione e inquadra il codice QR mostrato sullo schermo con la fotocamera del tuo iPhone.
 3. Il browser aprirà la versione web leggera di RT. Puoi salvarla sulla schermata Home come web app per un accesso immediato a tutto schermo.
 

@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { errorMessage } from '@/api/client'
 import { useDeleteSecret, useSavePricing, useSaveSecret, type Settings } from '@/api/settings'
@@ -10,24 +11,23 @@ import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { useOptionKey } from '@/lib/optionKey'
 import { pricingToRows, providerLabel, rowsToPricing, type Pricing, type PricingRow } from '@/lib/settings'
-import { SaveFeedback, SecretBadge, Section } from './common'
 import { CredentialTest } from './models'
-import { useQueryClient } from '@tanstack/react-query'
+import { AutoSaveStatus, SaveFeedback, SecretBadge, SettingsGroup } from './ui'
+import { useAutoSave } from './useAutoSave'
 
 // ------------------------------------------------------------------ chiavi
 
 type SecretEntry = { name: string; label: string; set: boolean; credential?: string }
 
 function secretEntries(settings: Settings): SecretEntry[] {
-  const entries: SecretEntry[] = settings.credentials
+  return settings.credentials
     .filter((c) => c.env_var)
     .map((c) => ({ name: c.env_var, label: `${c.name} (${providerLabel(c.provider)})`, set: c.set, credential: c.name }))
-  return entries
 }
 
 export function SecretsSection({ settings, connection }: { settings: Settings; connection: Settings['connections'][number] }) {
   return (
-    <Section
+    <SettingsGroup
       id={`chiavi-${connection.name}`}
       title="Chiavi"
       description={
@@ -37,12 +37,10 @@ export function SecretsSection({ settings, connection }: { settings: Settings; c
         </>
       }
     >
-      <div className="flex flex-col divide-y">
-        {secretEntries(settings).filter(e => connection.credentials.some(c => c.name === e.credential)).map((entry) => (
-          <SecretRow key={entry.name} entry={entry} settings={settings} />
-        ))}
-      </div>
-    </Section>
+      {secretEntries(settings).filter(e => connection.credentials.some(c => c.name === e.credential)).map((entry) => (
+        <SecretRow key={entry.name} entry={entry} settings={settings} />
+      ))}
+    </SettingsGroup>
   )
 }
 
@@ -58,7 +56,7 @@ function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings
     deletion.reset()
     save.mutate({ name: entry.name, value: value.trim() }, { onSuccess: () => setValue('') })
   }
-  // Con Option premuto "Prova" diventa "Elimina" (nelle righe senza Prova compare accanto a Salva).
+  // Con Option premuto "Prova" diventa "Elimina" (nelle righe senza Prova compare accanto a Salva chiave).
   const remove = optionDown && entry.set ? (
     <Button type="button" variant="destructive" aria-label={`Elimina ${entry.label}`}
       onClick={() => { save.reset(); deletion.reset(); setConfirm(true) }}>
@@ -66,15 +64,15 @@ function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings
     </Button>
   ) : undefined
   return (
-    <div className="flex flex-col gap-2 py-3 first:pt-0" data-testid="secret-row" data-name={entry.name}>
+    <div className="flex flex-col gap-2 px-4 py-3" data-testid="secret-row" data-name={entry.name}>
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={inputId} className="text-body font-semibold">
+        <label htmlFor={inputId} className="text-body font-medium">
           {entry.label}
         </label>
         <SecretBadge set={entry.set} />
         <code className="text-meta text-muted-foreground">{entry.name}</code>
       </div>
-      <form className="flex gap-2" onSubmit={submit}>
+      <form className="flex flex-wrap gap-2" onSubmit={submit}>
         <SecretInput
           id={inputId}
           value={value}
@@ -82,7 +80,7 @@ function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings
           onChange={(e) => setValue(e.target.value)}
         />
         <Button type="submit" disabled={!value.trim() || save.isPending}>
-          Salva
+          Salva chiave
         </Button>
         {!entry.credential && remove}
       </form>
@@ -103,7 +101,6 @@ function SecretRow({ entry, settings }: { entry: SecretEntry; settings: Settings
   )
 }
 
-
 /** Il listino è per provider/modello: ogni prezzo ha una sola connessione proprietaria nella pagina. */
 function ownedModels(settings: Settings, connection: Settings['connections'][number]): string[] {
   const connections = settings.connections.filter(c => c.provider === connection.provider)
@@ -112,42 +109,123 @@ function ownedModels(settings: Settings, connection: Settings['connections'][num
   return [...models].filter(model => (connections.find(c => c.models.includes(model)) ?? connections[0])?.name === connection.name)
 }
 
+function tryBuildPricing(rows: PricingRow[]): { ok: true; data: ReturnType<typeof rowsToPricing> } | { ok: false; error: string } {
+  const active = rows.filter(r => r.model.trim() || r.input.trim() || r.output.trim() || r.reasoning.trim())
+  try {
+    return { ok: true, data: rowsToPricing(active) }
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) }
+  }
+}
+
 export function PricingSection({ settings, connection }: { settings: Settings; connection: Settings['connections'][number] }) {
   const save = useSavePricing()
   const client = useQueryClient()
-  const [error, setError] = useState<string | null>(null)
   const models = ownedModels(settings, connection)
   const pricing = Object.fromEntries(Object.entries(settings.pricing?.[connection.provider] ?? {}).filter(([model]) => models.includes(model)))
-  const [rows, setRows] = useState<PricingRow[]>(() => {
-    const saved = pricingToRows({ [connection.provider]: pricing } as Pricing)
-    return saved.length ? saved : [{ provider: connection.provider, model: '', input: '', output: '', reasoning: '' }]
-  })
-  const update = (i: number, patch: Partial<PricingRow>) => setRows(old => old.map((row, j) => i === j ? { ...row, ...patch } : row))
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    try {
-      const changes = rowsToPricing(rows.filter(r => r.model.trim() || r.input || r.output || r.reasoning))
+  const savedRows = pricingToRows({ [connection.provider]: pricing } as Pricing)
+  const initialRows = savedRows.length ? savedRows : [{ provider: connection.provider, model: '', input: '', output: '', reasoning: '' }]
+
+  const [rows, setRows] = useState<PricingRow[]>(initialRows)
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  const parsed = tryBuildPricing(rows)
+  const initialParsed = tryBuildPricing(initialRows)
+
+  const autoSave = useAutoSave(save, rows, {
+    delay: 600,
+    enabled: parsed.ok,
+    initial: initialRows,
+    equals: (a, b) => {
+      const pa = tryBuildPricing(a)
+      const pb = tryBuildPricing(b)
+      if (!pa.ok || !pb.ok) return false
+      return JSON.stringify(pa.data) === JSON.stringify(pb.data)
+    },
+    serialize: () => {
+      const changes = parsed.ok ? parsed.data : (initialParsed.ok ? initialParsed.data : {})
       const latest = client.getQueryData<Settings>(['settings']) ?? settings
       const rest = { ...latest.pricing[connection.provider] }
       for (const model of models) delete rest[model]
-      setError(null)
-      save.mutate({ ...latest.pricing, [connection.provider]: { ...rest, ...changes[connection.provider] } })
-    } catch (err) { setError(errorMessage(err)) }
+      return { ...latest.pricing, [connection.provider]: { ...rest, ...changes[connection.provider] } }
+    },
+  })
+
+  const update = (i: number, patch: Partial<PricingRow>) => {
+    setValidationError(null)
+    setRows(old => old.map((row, j) => (i === j ? { ...row, ...patch } : row)))
   }
-  return <Section id={`costi-${connection.name}`} title="Costi per modello">
-    <form onSubmit={submit} className="flex flex-col gap-3" aria-label={`Costi di ${connection.name}`}>
-      <p className="text-meta text-muted-foreground">USD per milione di token · input, output, ragionamento</p>
-      {rows.map((row, i) => <div key={i} className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_5rem_5rem_auto]" data-testid="pricing-row">
-        <Input aria-label={`Modello costo ${i + 1}`} value={row.model} placeholder="Modello" list={`modelli-costo-${connection.name}`} onChange={e => update(i, { model: e.target.value })} />
-        {(['input', 'output', 'reasoning'] as const).map((column, j) => <Input key={column} aria-label={`${['IN', 'OUT', 'R'][j]} ${i + 1}`} inputMode="decimal" placeholder={['IN', 'OUT', 'R'][j]} value={row[column]} onChange={e => update(i, { [column]: e.target.value })} />)}
-        <Button variant="ghost" size="icon" aria-label={`Rimuovi costo ${i + 1}`} onClick={() => setRows(old => old.filter((_, j) => i !== j))}><Trash2 /></Button>
-      </div>)}
-      <datalist id={`modelli-costo-${connection.name}`}>{connection.models.map(model => <option key={model} value={model} />)}</datalist>
-      <div className="flex gap-2"><Button variant="outline" onClick={() => setRows(old => [...old, { provider: connection.provider, model: '', input: '', output: '', reasoning: '' }])}><Plus />Aggiungi costo</Button>
-        <Button type="submit" disabled={save.isPending}>Salva costi</Button></div>
-    </form>
-    {error && <Alert tone="danger">{error}</Alert>}<SaveFeedback mutation={save} />
-  </Section>
+
+  function handleBlur() {
+    if (!parsed.ok) {
+      setValidationError(parsed.error)
+      return
+    }
+    setValidationError(null)
+    autoSave.flush()
+  }
+
+  return (
+    <SettingsGroup
+      id={`costi-${connection.name}`}
+      title="Costi per modello"
+      description="USD per milione di token · input, output, ragionamento"
+    >
+      <div className="flex flex-col gap-3 px-4 py-3" aria-label={`Costi di ${connection.name}`}>
+        {rows.map((row, i) => (
+          <div key={i} className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_5rem_5rem_auto]" data-testid="pricing-row">
+            <Input
+              aria-label={`Modello costo ${i + 1}`}
+              value={row.model}
+              placeholder="Modello"
+              list={`modelli-costo-${connection.name}`}
+              onChange={e => update(i, { model: e.target.value })}
+              onBlur={handleBlur}
+            />
+            {(['input', 'output', 'reasoning'] as const).map((column, j) => (
+              <Input
+                key={column}
+                aria-label={`${['IN', 'OUT', 'R'][j]} ${i + 1}`}
+                inputMode="decimal"
+                placeholder={['IN', 'OUT', 'R'][j]}
+                value={row[column]}
+                onChange={e => update(i, { [column]: e.target.value })}
+                onBlur={handleBlur}
+              />
+            ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Rimuovi costo ${i + 1}`}
+              onClick={() => {
+                setValidationError(null)
+                const next = rows.filter((_, j) => i !== j)
+                setRows(next)
+                const nextParsed = tryBuildPricing(next)
+                if (nextParsed.ok) autoSave.saveNow(next)
+              }}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <datalist id={`modelli-costo-${connection.name}`}>{connection.models.map(model => <option key={model} value={model} />)}</datalist>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setRows(old => [...old, { provider: connection.provider, model: '', input: '', output: '', reasoning: '' }])}
+          >
+            <Plus />Aggiungi costo
+          </Button>
+          <AutoSaveStatus status={autoSave.status} error={autoSave.error} onRetry={autoSave.retry} />
+        </div>
+        {validationError && <Alert tone="danger">{validationError}</Alert>}
+      </div>
+    </SettingsGroup>
+  )
 }
 
 /** Le chiavi STT e Telegram si eliminano nel loro unico form, con Option come prima. */

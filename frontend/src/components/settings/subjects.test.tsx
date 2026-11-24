@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api/client'
-import { SubjectsSettingsSection } from './subjects'
+import { SubjectsCalendarSection, SubjectsSettingsSection } from './subjects'
 
 function renderComponent() {
   const client = new QueryClient({
@@ -109,4 +109,18 @@ it('aggiunge e toglie i docenti sulla materia e rilegge la riga', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Togli Rossi da Biologia' }))
   expect(remove).toHaveBeenCalledWith('/api/v1/subjects/{nome}/teachers/{docente}', { params: { path: { nome: 'Biologia', docente: 'Rossi' } } })
   await waitFor(() => expect(screen.queryByText('Rossi')).not.toBeInTheDocument())
+})
+
+it('Materie e calendario unificati: mostra Orario del calendario una sola volta e l’interruttore avvisi', async () => {
+  vi.spyOn(api, 'GET').mockImplementation(((path: string) =>
+    Promise.resolve({ data: path === '/api/v1/subjects' ? [] : {}, response: new Response('{}') })) as never)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <SubjectsCalendarSection />
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('Nessuna materia registrata.')).toBeInTheDocument()
+  expect(screen.getAllByText('Orario del calendario')).toHaveLength(1)
+  expect(screen.getByRole('switch', { name: 'Avviso lezioni mancanti' })).toBeInTheDocument()
 })

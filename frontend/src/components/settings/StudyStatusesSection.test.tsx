@@ -232,7 +232,7 @@ it('«Salta in Studio» si salva con lo stato personalizzato', async () => {
     </QueryClientProvider>,
   )
   expect(screen.getAllByText('Saltata in Studio')).toHaveLength(2)
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Salta in Studio le unità «Anki»' }))
+  fireEvent.click(screen.getByRole('switch', { name: 'Salta in Studio le unità «Anki»' }))
   await waitFor(() => expect(putSpy).toHaveBeenCalled())
   const body = (putSpy.mock.calls[0][1] as { body: { stati_studio: { salta: boolean }[] } }).body
   expect(body.stati_studio[0].salta).toBe(true)

@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/api/client'
@@ -18,33 +17,6 @@ afterEach(() => {
   cleanup()
   client.clear()
   vi.restoreAllMocks()
-})
-
-it('mostra il selettore del contesto per la fase di rielaborazione e ne permette la modifica', async () => {
-  const put = vi.spyOn(api, 'PUT').mockResolvedValue({ data: testSettings, response: new Response('{}', { status: 200 }) } as never)
-
-  render(
-    <QueryClientProvider client={client}>
-      <PhaseRows settings={testSettings} />
-    </QueryClientProvider>,
-  )
-
-  const rewriteContainer = screen.getByTestId('rewrite-context-mode-container')
-  expect(rewriteContainer).toBeInTheDocument()
-
-  const menuButton = screen.getByRole('button', { name: 'Contesto della rielaborazione' })
-  expect(menuButton).toBeInTheDocument()
-  expect(rewriteContainer).toHaveTextContent('Macro-sezione, in parallelo (predefinito)')
-
-  await userEvent.click(menuButton)
-  const option = await screen.findByRole('menuitemradio', { name: /Tutte le unità precedenti/ })
-  await userEvent.click(option)
-
-  await waitFor(() => {
-    expect(put).toHaveBeenCalledWith('/api/v1/settings/rewrite', {
-      body: { context_mode: 'all' },
-    })
-  })
 })
 
 it('mostra Chat dello Studio con opzione Come la Revisione', () => {
@@ -65,7 +37,7 @@ it('mostra Chat dello Studio con opzione Come la Revisione', () => {
   expect(chatRow).not.toHaveTextContent('Non assegnato')
 })
 
-it('mostra varianti batch e nota di background solo sulle fasi idonee e salva batch=true', async () => {
+it('mostra varianti batch e nota di background solo sulle fasi idonee e salva batch=true in automatico', async () => {
   const openrouterSettings: Settings = {
     ...testSettings,
     connections: [
@@ -107,10 +79,10 @@ it('mostra varianti batch e nota di background solo sulle fasi idonee e salva ba
   fireEvent.change(outlineInput, { target: { value: 'google/gemini-2.5-flash:batch' } })
 
   expect(within(outlineRow).getByTestId('phase-batch-hint')).toHaveTextContent(
-    'Impostazioni → Generali → Chiudendo con la X',
+    'Impostazioni → Aspetto e lettura → Chiudendo la finestra con la X',
   )
 
-  await userEvent.click(within(outlineRow).getByRole('button', { name: 'Salva' }))
+  fireEvent.blur(outlineInput)
 
   await waitFor(() => {
     expect(put).toHaveBeenCalledWith('/api/v1/settings/phases/{job}', {

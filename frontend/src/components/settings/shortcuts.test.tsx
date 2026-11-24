@@ -73,11 +73,11 @@ it('su Mac registra il tasto fisico con Option e mostra i simboli', async () => 
 })
 
 it('la barra di formattazione è attiva per default e la scelta si salva sul server', async () => {
-  expect(screen.getByTestId('editor-toolbar')).toHaveAttribute('data-value', 'si')
-  await userEvent.click(screen.getByRole('button', { name: 'Barra di formattazione' }))
-  await userEvent.click(screen.getByRole('menuitemradio', { name: 'No' }))
+  const sw = screen.getByRole('switch', { name: 'Barra di formattazione' })
+  expect(sw).toHaveAttribute('aria-checked', 'true')
+  await userEvent.click(sw)
   await waitFor(() => expect(api.PUT).toHaveBeenCalledWith('/api/v1/preferences/{name}', { params: { path: { name: 'editor.toolbar' } }, body: false }))
-  expect(screen.getByTestId('editor-toolbar')).toHaveAttribute('data-value', 'no')
+  expect(sw).toHaveAttribute('aria-checked', 'false')
 })
 
 it('non mostra più la preferenza per le immagini trascinate', () => {

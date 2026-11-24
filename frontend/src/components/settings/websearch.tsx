@@ -1,69 +1,92 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 
 import { errorMessage } from '@/api/client'
 import { useSaveWebSearch, useTestWebSearch, type Settings } from '@/api/settings'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, SaveFeedback, Section } from './common'
+import { SettingsGroup, SettingsRow, SettingsSwitch } from './ui'
+import { useAutoSave } from './useAutoSave'
 
-/** Ricerca web (RT4-FA5): URL base di SearXNG per la ricerca immagini. Il salvataggio va nelle
- * impostazioni e l'aggiunta immagini lo rilegge a ogni job. */
+/** Ricerca web (RT4-FA5): URL base di SearXNG per la ricerca immagini. */
 export function WebSearchSection({ settings }: { settings: Settings }) {
   const save = useSaveWebSearch()
-  const contextualVerification = Boolean((settings.web_search as any).contextual_verification)
+  const contextualVerification = Boolean((settings.web_search as { contextual_verification?: boolean }).contextual_verification)
+  const savedUrl = settings.web_search.searxng_base_url ?? ''
+
+  const [urlDraft, setUrlDraft] = useState<{ base: string; value: string } | null>(null)
+  const url = urlDraft && urlDraft.base === savedUrl ? urlDraft.value : savedUrl
+
+  const urlAuto = useAutoSave(save, url, {
+    delay: 600,
+    initial: savedUrl,
+    equals: (a, b) => a.trim() === b.trim(),
+    serialize: (val) => val.trim(),
+  })
+
+  const [switchStatus, setSwitchStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [switchError, setSwitchError] = useState<string | null>(null)
+
+  function toggleContextual(next: boolean) {
+    setSwitchStatus('saving')
+    setSwitchError(null)
+    save.mutate(
+      { contextual_verification: next },
+      {
+        onSuccess: () => {
+          setSwitchStatus('saved')
+          setTimeout(() => setSwitchStatus((s) => (s === 'saved' ? 'idle' : s)), 1500)
+        },
+        onError: (err) => {
+          setSwitchStatus('error')
+          setSwitchError(errorMessage(err))
+        },
+      },
+    )
+  }
 
   return (
-    <Section
+    <SettingsGroup
       id="ricerca-web"
       title="Ricerca web"
-      description={
-        <>
-          RT cerca immagini sul web con un'istanza SearXNG che gestisci tu. Nelle impostazioni di SearXNG deve essere abilitato il formato
-          json (search.formats), altrimenti la ricerca non restituisce risultati.
-        </>
-      }
+      description="RT cerca immagini sul web con un'istanza SearXNG che gestisci tu."
     >
-      <WebSearchForm key={settings.web_search.searxng_base_url ?? ''} saved={settings.web_search.searxng_base_url ?? ''} save={save} />
-      <div className="mt-6 border-t border-border/60 pt-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-body font-medium text-foreground">
-              Cerca sul web durante la verifica contestuale
-            </span>
-            <span className="text-meta text-muted-foreground">
-              Le fonti con i link compaiono nella voce di verifica. Spenta, la verifica funziona come oggi.
-            </span>
-          </div>
-          <Button
-            id="wsw"
-            role="switch"
-            aria-label="Ricerca web nella verifica"
-            aria-checked={contextualVerification}
-            variant={contextualVerification ? 'default' : 'outline'}
-            size="sm"
-            disabled={save.isPending}
-            onClick={() => save.mutate({ contextual_verification: !contextualVerification })}
-            data-testid="toggle-contextual-web-search"
-          >
-            {contextualVerification ? 'Sì' : 'No'}
-          </Button>
-        </div>
-      </div>
-      <SaveFeedback mutation={save} />
-    </Section>
+      <WebSearchUrlRow
+        url={url}
+        saved={savedUrl}
+        status={urlAuto}
+        onChange={(next) => setUrlDraft({ base: savedUrl, value: next })}
+        onBlur={urlAuto.flush}
+      />
+      <SettingsSwitch
+        id="wsw"
+        testId="toggle-contextual-web-search"
+        label="Cerca sul web durante la verifica contestuale"
+        info="Le fonti con i link compaiono nella voce di verifica. Spenta, la verifica funziona come oggi."
+        checked={contextualVerification}
+        disabled={save.isPending}
+        onChange={toggleContextual}
+        status={{ status: switchStatus, error: switchError, retry: () => toggleContextual(contextualVerification) }}
+      />
+    </SettingsGroup>
   )
 }
 
-function WebSearchForm({ saved, save }: { saved: string; save: ReturnType<typeof useSaveWebSearch> }) {
-  const [url, setUrl] = useState(saved)
+function WebSearchUrlRow({
+  url,
+  saved,
+  status,
+  onChange,
+  onBlur,
+}: {
+  url: string
+  saved: string
+  status: ReturnType<typeof useAutoSave<string, string>>
+  onChange: (next: string) => void
+  onBlur: () => void
+}) {
   const test = useTestWebSearch()
   const current = test.variables === url.trim()
-
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    save.mutate(url.trim())
-  }
 
   let outcome = null
   if (current && test.isPending) {
@@ -88,23 +111,35 @@ function WebSearchForm({ saved, save }: { saved: string; save: ReturnType<typeof
   }
 
   return (
-    <form className="flex flex-col gap-3" onSubmit={submit} aria-label="SearXNG">
-      <Field
-        label="URL base di SearXNG"
-        htmlFor="searxng-url"
-        hint={saved ? `Salvato: ${saved}` : 'Non impostato: la ricerca immagini web non è disponibile.'}
-      >
-        <Input id="searxng-url" inputMode="url" value={url} placeholder="http://localhost:8088" onChange={(e) => setUrl(e.target.value)} />
-      </Field>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={save.isPending || url.trim() === saved}>
-          Salva
-        </Button>
-        <Button variant="outline" disabled={!url.trim() || (current && test.isPending)} onClick={() => test.mutate(url.trim())}>
-          Prova
-        </Button>
-      </div>
-      {outcome}
-    </form>
+    <SettingsRow
+      label="URL base di SearXNG"
+      htmlFor="searxng-url"
+      info="Nelle impostazioni di SearXNG deve essere abilitato il formato json (search.formats), altrimenti la ricerca non restituisce risultati."
+      description={saved ? undefined : 'Non impostato: la ricerca immagini web non è disponibile.'}
+      status={status}
+      control={
+        <div className="flex w-full flex-col gap-2 @sm:w-auto @sm:items-end">
+          <div className="flex w-full items-center gap-2 @sm:w-80">
+            <Input
+              id="searxng-url"
+              inputMode="url"
+              value={url}
+              placeholder="http://localhost:8088"
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={onBlur}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!url.trim() || (current && test.isPending)}
+              onClick={() => test.mutate(url.trim())}
+            >
+              Prova
+            </Button>
+          </div>
+          {outcome}
+        </div>
+      }
+    />
   )
 }

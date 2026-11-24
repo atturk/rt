@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { SettingsRow } from './ui'
 
 export function CalendarScheduleSettings({ onError }: { onError: (error: string | null) => void }) {
   const input = useRef<HTMLInputElement>(null)
@@ -54,24 +55,30 @@ export function CalendarScheduleSettings({ onError }: { onError: (error: string 
   }
   const conflicts = preview.data?.conflicts ?? 0
   return <>
-    <div className="flex items-center gap-1">
-      <span className="mr-auto text-body font-medium">Orario del calendario</span>
-      <IconButton icon={Download} label="Esporta l’orario" disabled={exporting} onClick={() => void exportFile()} />
-      <IconButton icon={Upload} label="Importa un orario" onClick={() => input.current?.click()} />
-      <input ref={input} type="file" accept=".rtcal,.json" aria-label="File dell’orario" className="hidden" onChange={event => {
-        const chosen = event.target.files?.[0]
-        event.target.value = ''
-        if (!chosen) return
-        onError(null); mutation.reset()
-        if (chosen.size > 1024 * 1024) { onError('Il file supera 1 MB.'); return }
-        void chosen.text().then(text => {
-          const data: unknown = JSON.parse(text)
-          if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('File non valido')
-          setPeriod(false); setFrom(''); setTo('')
-          setFile({ name: chosen.name, data: data as Record<string, unknown> })
-        }).catch(() => onError('Il file non contiene un orario valido.'))
-      }} />
-    </div>
+    <SettingsRow
+      label="Orario del calendario"
+      description="Esporta o importa la programmazione settimanale (.rtcal)."
+      compactControl
+      control={
+        <div className="flex items-center gap-1">
+          <IconButton icon={Download} label="Esporta l’orario" disabled={exporting} onClick={() => void exportFile()} />
+          <IconButton icon={Upload} label="Importa un orario" onClick={() => input.current?.click()} />
+          <input ref={input} type="file" accept=".rtcal,.json" aria-label="File dell’orario" className="hidden" onChange={event => {
+            const chosen = event.target.files?.[0]
+            event.target.value = ''
+            if (!chosen) return
+            onError(null); mutation.reset()
+            if (chosen.size > 1024 * 1024) { onError('Il file supera 1 MB.'); return }
+            void chosen.text().then(text => {
+              const data: unknown = JSON.parse(text)
+              if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('File non valido')
+              setPeriod(false); setFrom(''); setTo('')
+              setFile({ name: chosen.name, data: data as Record<string, unknown> })
+            }).catch(() => onError('Il file non contiene un orario valido.'))
+          }} />
+        </div>
+      }
+    />
     <Modal title="Importa orario" open={!!file} onClose={() => { if (!mutation.isPending) setFile(null) }}>
       <div className="mt-4 flex flex-col gap-3">
         <p className="text-sm">{file?.name}{preview.data ? ` · ${preview.data.subjects} materie` : ''}</p>

@@ -30,8 +30,8 @@ const guide = () => import('./guide')
 const bare = { bare: true }
 
 function SettingsLegacyRedirect({ section }: { section: string }) {
-  const { search, hash } = useLocation()
-  return <Navigate to={`/impostazioni/${section}${search}${hash}`} replace />
+  const { search, hash, state } = useLocation()
+  return <Navigate to={`/impostazioni/${section}${search}${hash}`} state={state} replace />
 }
 
 function PersonalPreferences() {
@@ -132,8 +132,7 @@ const settingsArea: Area = {
         { index: true, Component: page(settings, (m) => m.SettingsIndexPage) },
         { path: 'aspetto', Component: page(settings, (m) => m.AppearanceSettingsPage) },
         { path: 'domande', Component: page(settings, (m) => m.QuestionsSettingsPage) },
-        { path: 'calendario', Component: page(settings, (m) => m.CalendarSettingsPage) },
-        { path: 'materie', Component: page(settings, (m) => m.SubjectsSettingsPage) },
+        { path: 'materie-calendario', Component: page(settings, (m) => m.SubjectsCalendarSettingsPage) },
         { path: 'editor', Component: page(settings, (m) => m.EditorSettingsPage) },
         { path: 'lavorazione', Component: page(settings, (m) => m.ProcessingSettingsPage) },
         { path: 'modelli-connessioni', Component: page(settings, (m) => m.ModelsSettingsPage) },

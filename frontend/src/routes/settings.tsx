@@ -1,6 +1,22 @@
 import { useReturnAddress } from '@/lib/returnAddress'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Heart, LogOut, Wand2 } from 'lucide-react'
+import {
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  CircleHelp,
+  Heart,
+  Info,
+  Keyboard,
+  LogOut,
+  Palette,
+  Send,
+  SlidersHorizontal,
+  Smartphone,
+  Sparkles,
+  Wand2,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
@@ -12,13 +28,12 @@ import { CloseActionSection, TranscriptionSection } from '@/components/settings/
 import { NotificationsCard, TelegramSection } from '@/components/settings/telegram'
 import { InfoSection } from '@/components/settings/info'
 import { ConnectionsSection, DecisionModelSection, NewConnectionSection, PhasesSection, PromptEditorSection, RoutesSection } from '@/components/settings/models'
-import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection } from '@/components/settings/preferences'
+import { AppearanceSection, OutlineSettingsSection, SourceDefaultsSection, SpeedSection } from '@/components/settings/preferences'
 import { WebSearchSection } from '@/components/settings/websearch'
 import { ClassifierSettingsSection } from '@/components/settings/classifier'
 import { EnrichmentSettingsSection } from '@/components/settings/enrichment'
 import { QuestionsSettingsSection } from '@/components/settings/questions'
-import { CalendarSettingsSection } from '@/components/settings/calendar'
-import { SubjectsSettingsSection } from '@/components/settings/subjects'
+import { SubjectsCalendarSection } from '@/components/settings/subjects'
 import { EditorShortcutsSection } from '@/components/settings/shortcuts'
 import { SetupWizard } from '@/components/settings/wizard'
 import { CloudSection } from '@/components/settings/cloud'
@@ -27,6 +42,7 @@ import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
+import { SettingsDisclosure, SettingsGroup, SettingsPage, SettingsRow } from '@/components/settings/ui'
 import { SETUP_PATH } from './setupGate'
 
 export { SETUP_PATH, SetupGate } from './setupGate'
@@ -34,9 +50,21 @@ export { SETUP_PATH, SetupGate } from './setupGate'
 export { SETTINGS_SECTIONS, SETTINGS_REDIRECTS } from '@/lib/settings'
 import { SETTINGS_SECTIONS } from '@/lib/settings'
 
+const SECTION_ICONS: Record<(typeof SETTINGS_SECTIONS)[number]['path'], LucideIcon> = {
+  aspetto: Palette,
+  domande: CircleHelp,
+  'materie-calendario': CalendarDays,
+  editor: Keyboard,
+  lavorazione: SlidersHorizontal,
+  'modelli-connessioni': Sparkles,
+  telegram: Send,
+  accesso: Smartphone,
+  'info-aggiornamenti': Info,
+}
+
 export function SettingsRedirect({ section }: { section: string }) {
-  const { search, hash } = useLocation()
-  return <Navigate to={`/impostazioni/${section}${search}${hash}`} replace />
+  const { search, hash, state } = useLocation()
+  return <Navigate to={`/impostazioni/${section}${search}${hash}`} state={state} replace />
 }
 
 function WithSettings({ children }: { children: (settings: Settings) => ReactNode }) {
@@ -60,23 +88,54 @@ export function SettingsLayout() {
     <PageHeader title={phone && !index ? sectionLabel : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
     <PageBody className="md:px-5">
       <div className="flex min-w-0 gap-8">
-        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-60 overflow-y-auto')}>
-          {SETTINGS_SECTIONS.map(s => <NavLink key={s.path} to={`/impostazioni/${s.path}`}
-            className={({ isActive }) => cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body',
-              phone ? 'border-b' : '', (isActive || (!phone && index && s.path === 'aspetto')) ? 'bg-muted font-semibold' : 'hover:bg-muted')}>
-            <span>{s.label}{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}</span>
-            {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
-          </NavLink>)}
-          <Link to="/guida"
-            className={cn('flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-body hover:bg-muted',
-              phone ? 'border-b' : '')}>
-            <span>Guida{phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}</span>
-            {phone && <ChevronRight className="size-4 shrink-0" aria-hidden />}
+        {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-64 overflow-y-auto flex flex-col gap-0.5')}>
+          {SETTINGS_SECTIONS.map((s) => {
+            const Icon = SECTION_ICONS[s.path]
+            return (
+              <NavLink
+                key={s.path}
+                to={`/impostazioni/${s.path}`}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-body transition-colors',
+                    phone ? 'border-b py-3' : '',
+                    (isActive || (!phone && index && s.path === 'aspetto'))
+                      ? 'bg-muted font-medium text-foreground'
+                      : 'text-foreground/80 hover:bg-muted/60 hover:text-foreground',
+                  )
+                }
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0">
+                    {s.label}
+                    {phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">{s.description}</span>}
+                  </span>
+                </span>
+                {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+              </NavLink>
+            )
+          })}
+          <Link
+            to="/guida"
+            className={cn(
+              'flex items-center justify-between gap-2.5 rounded-lg px-3 py-2.5 text-body text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground',
+              phone ? 'border-b py-3' : '',
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <BookOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0">
+                Guida
+                {phone && <span className="mt-1 block text-meta font-normal text-muted-foreground">Manuale e argomenti</span>}
+              </span>
+            </span>
+            {phone && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
           </Link>
           <SupportButton />
         </nav>}
         {(!phone || !index) && <div className="min-w-0 flex-1">
-          {!phone && <h2 className="mb-4 text-heading font-semibold">{sectionLabel}</h2>}<Outlet />
+          {!phone && isSupport && <h2 className="mb-4 text-heading font-semibold">{sectionLabel}</h2>}<Outlet />
         </div>}
       </div>
     </PageBody>
@@ -162,7 +221,9 @@ function ScrollToHash() {
   const { hash } = useLocation()
   useEffect(() => {
     if (!hash) return
-    const target = document.getElementById(decodeURIComponent(hash.slice(1)))
+    const id = decodeURIComponent(hash.slice(1))
+    window.dispatchEvent(new CustomEvent('rt-settings-reveal', { detail: { id } }))
+    const target = document.getElementById(id)
     for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
       if (parent instanceof HTMLDetailsElement) parent.open = true
     }
@@ -170,7 +231,6 @@ function ScrollToHash() {
   }, [hash])
   return null
 }
-const page = (render: (settings: Settings) => ReactNode) => <WithSettings>{s => <div className="flex flex-col divide-y">{render(s)}<ScrollToHash /></div>}</WithSettings>
 
 export function SettingsIndexPage() {
   const { hash } = useLocation()
@@ -179,33 +239,111 @@ export function SettingsIndexPage() {
   return <AppearanceSettingsPage />
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
-export function AppearanceSettingsPage() { return page(s => <><AppearanceSection settings={s} /><CloseActionSection settings={s} /></>) }
+export function AppearanceSettingsPage() {
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Aspetto e lettura" description="Tema, testo dello Studio, copia, lettura veloce e comportamento della finestra.">
+          <AppearanceSection settings={s} />
+          <CloseActionSection settings={s} />
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
+}
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
-export function CalendarSettingsPage() { return <CalendarSettingsSection /> }
-export function SubjectsSettingsPage() { return <SubjectsSettingsSection /> }
+export function SubjectsCalendarSettingsPage() { return <SubjectsCalendarSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
 export function ProcessingSettingsPage() {
-  return page(s => <><TranscriptionSection settings={s} /><OutlineSettingsSection settings={s} /><SourceDefaultsSection /><EnrichmentSettingsSection settings={s} /><WebSearchSection settings={s} /></>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage
+          title="Lavorazione delle lezioni"
+          description="Trascrizione, scaletta, fonti predefinite, arricchimento, ricerca web e parallelismo."
+        >
+          <TranscriptionSection settings={s} />
+          <OutlineSettingsSection settings={s} />
+          <SourceDefaultsSection />
+          <EnrichmentSettingsSection settings={s} />
+          <WebSearchSection settings={s} />
+          <SpeedSection settings={s} />
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function ModelsSettingsPage() {
-  return page(s => <><CloudSection /><PhasesSection settings={s} /><ConnectionsSection settings={s} /><NewConnectionSection />
-    <details id="avanzate" className="py-4" open={undefined}><summary className="cursor-pointer text-body font-semibold">Avanzate</summary>
-      <RoutesSection settings={s} />
-      <details id="modelli-decisionali" className="py-3"><summary className="cursor-pointer text-body">Modelli decisionali</summary><ClassifierSettingsSection /><DecisionModelSection /></details>
-      <PromptEditorSection />
-    </details></>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Modelli e connessioni" description="Modelli per fase, provider, chiavi API e stima dei costi.">
+          <CloudSection />
+          <PhasesSection settings={s} />
+          <ConnectionsSection settings={s} />
+          <NewConnectionSection />
+          <SettingsGroup id="avanzate" title="Avanzate" description="Routing secondario, classificatore e aggiunte ai prompt.">
+            <SettingsDisclosure id="route" label="Route avanzate" summary="Primaria e secondaria">
+              <RoutesSection settings={s} />
+            </SettingsDisclosure>
+            <SettingsDisclosure id="modelli-decisionali" label="Modelli decisionali" summary="Classificatore e mappature">
+              <div className="flex flex-col gap-6">
+                <ClassifierSettingsSection />
+                <DecisionModelSection />
+              </div>
+            </SettingsDisclosure>
+            <SettingsDisclosure id="prompt" label="Istruzioni dei prompt" summary="Aggiunte ai prompt">
+              <PromptEditorSection />
+            </SettingsDisclosure>
+          </SettingsGroup>
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function TelegramSettingsPage() {
-  return page(s => <><TelegramSection settings={s} />{s.telegram.enabled && <NotificationsCard />}</>)
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Telegram" description="Notifiche nella tua chat personale quando una lezione è pronta o serve una tua decisione.">
+          <TelegramSection settings={s} />
+          {s.telegram.enabled && <NotificationsCard />}
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
 }
 export function DeviceSettingsPage() { return <DeviceAccessSection /> }
 function InfoActions() {
   const logout = useLogout()
   const navigate = useNavigate()
-  return <div className="flex items-center gap-3 py-4 text-body"><IconLink to={SETUP_PATH} label="Configurazione guidata" icon={Wand2} /><span className="mr-auto">Configurazione guidata</span>
-    <IconButton label="Esci" icon={LogOut} disabled={logout.isPending} onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })} />
-  </div>
+  return (
+    <SettingsGroup title="Sessione e configurazione">
+      <SettingsRow
+        label="Configurazione guidata"
+        description="Rivedi connessioni, modelli e Telegram passo passo."
+        compactControl
+        control={<IconLink to={SETUP_PATH} label="Configurazione guidata" icon={Wand2} />}
+      />
+      <SettingsRow
+        label="Esci dall'account"
+        compactControl
+        control={<IconButton label="Esci" icon={LogOut} disabled={logout.isPending} onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login', { replace: true }) })} />}
+      />
+    </SettingsGroup>
+  )
 }
-export function InfoSettingsPage() { return <><InfoSection /><InfoActions /></> }
+export function InfoSettingsPage() {
+  return (
+    <SettingsPage title="Info e aggiornamenti" description="Versione di RT, aggiornamenti, novità, spazio su disco e sessione.">
+      <InfoSection />
+      <InfoActions />
+    </SettingsPage>
+  )
+}
 export { UpdatePopup } from '@/components/settings/UpdatePopup'
 

@@ -153,17 +153,17 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const beforeLabel = (await engine.locator('span').first().textContent())!
   await chooseEngine('Server OpenAI-compatible')
   await card.getByLabel('Base URL del server').fill('http://127.0.0.1:9100/v1')
+  await card.getByLabel('Base URL del server').blur()
   await card.getByLabel('Modello', { exact: true }).fill('whisper-percorso')
-  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
-  await expect(card.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  await card.getByLabel('Modello', { exact: true }).blur()
+  await expect.poll(async () => (await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
+    engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
+  })
   await page.reload()
   await expect(engine).toHaveAttribute('data-value', 'custom')
   await expect(card.getByLabel('Modello', { exact: true })).toHaveValue('whisper-percorso')
-  expect((await apiGet<Settings>(page.request, '/settings')).transcription).toMatchObject({
-    engine: 'custom', base_url: 'http://127.0.0.1:9100/v1', model: 'whisper-percorso',
-  })
   if (before.engine !== 'custom') await chooseEngine(beforeLabel)
-  await card.getByRole('button', { name: 'Salva trascrizione' }).click()
+  await expect.poll(async () => (await apiGet<Settings>(page.request, '/settings')).transcription.engine).toBe(before.engine)
   await page.reload()
   await expect(engine).toHaveAttribute('data-value', before.engine)
 })

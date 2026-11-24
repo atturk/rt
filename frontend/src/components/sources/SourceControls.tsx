@@ -32,7 +32,7 @@ export function ExtractOptions({ value, onChange, unavailable = {} }: { value: E
   )
 }
 
-export function UseOptions({ value, onChange, unavailable = {}, off }: { value: Uso; onChange: (value: Uso) => void; unavailable?: Reasons<Uso>; off?: string | null }) {
+export function UseOptions({ value, onChange, unavailable = {}, off, showLabel = true }: { value: Uso; onChange: (value: Uso) => void; unavailable?: Reasons<Uso>; off?: string | null; showLabel?: boolean }) {
   return (
     <div className="flex items-center gap-2">
       <Segmented label="Uso">
@@ -41,7 +41,7 @@ export function UseOptions({ value, onChange, unavailable = {}, off }: { value: 
             unavailable={off || unavailable[key]} onClick={() => onChange(key)} />
         ))}
       </Segmented>
-      <span className="min-w-16 text-meta text-muted-foreground">{off ? '—' : USES.find(([key]) => key === value)?.[2]}</span>
+      {showLabel && <span className="min-w-16 text-meta text-muted-foreground">{off ? '—' : USES.find(([key]) => key === value)?.[2]}</span>}
     </div>
   )
 }
