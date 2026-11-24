@@ -202,6 +202,12 @@ export function PermissionsPage() {
                   }
                 />
 
+                <PermissionRow
+                  name="Portachiavi"
+                  purpose="Custodisce le chiavi dei provider IA e i dati di accesso di RT."
+                  whenAsked="dopo ogni aggiornamento di RT macOS chiede di nuovo l'accesso: scegli «Consenti sempre» (senza, RT resta in attesa all'avvio)."
+                />
+
                 {status.rete_locale?.attivo && (
                   <PermissionRow
                     name="Rete locale"
