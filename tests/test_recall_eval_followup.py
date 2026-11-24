@@ -195,6 +195,8 @@ def test_prompts_contengono_regole_professore_e_parte_mancante():
         assert "SENZA nominarlo né descriverlo" in prompt
         assert "professore all'orale" in prompt
         assert "non deve contenere la risposta né le sue parole chiave" in prompt
+        assert "Nelle materie tecniche e scientifiche non nominare la grandezza, la variabile, la formula o la legge che manca" in prompt
+        assert "Il valore che hai scritto vale in ogni punto? Da cosa dipende?" in prompt
         assert "parte_mancante" in prompt
         assert "SBAGLIATO:" in prompt and "GIUSTO:" in prompt
 
