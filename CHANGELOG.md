@@ -1,6 +1,6 @@
 # Novità di RT
 
-## 4.3.9b8 — da pubblicare
+## 4.3.9b8 — 2026-11-24
 
 Beta sul ripasso e sulla domanda di approfondimento.
 
