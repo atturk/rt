@@ -163,7 +163,13 @@ const BATCH_INELIGIBLE_PHASES = new Set(['image_description', 'enrichment_image'
 
 export function PhaseRows({ settings }: { settings: Settings }) {
   return (
-    <div className="divide-y divide-border/60">
+    <div className="@container divide-y divide-border/60">
+      <div className="hidden bg-muted/30 px-4 py-2 text-meta font-medium text-muted-foreground @2xl:grid @2xl:grid-cols-[minmax(0,1fr)_14rem_14rem_5.5rem] @2xl:gap-x-3">
+        <span>Fase</span>
+        <span>Connessione</span>
+        <span>Modello</span>
+        <span className="sr-only">Prova</span>
+      </div>
       {settings.phases.map((phase) => (
         <PhaseRow
           key={`${phase.job}:${phase.connection ?? ''}:${phase.model ?? ''}:${phase.batch ? 'batch' : 'sync'}`}
@@ -239,14 +245,19 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       data-job={phase.job}
       aria-label={`Fase ${phase.label}`}
     >
-      <div className="grid grid-cols-1 items-end gap-2.5 sm:grid-cols-[10rem_1fr_1fr_auto]">
-        <div className="flex flex-col gap-1 self-center">
-          <div className="flex items-center gap-1.5">
+      <div className="grid grid-cols-1 items-center gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_14rem_14rem_5.5rem]">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="min-w-0">
             <span className="text-body font-medium text-foreground">{phase.label}</span>
-            {PHASE_HINTS[phase.job] && <SettingsInfoButton label={phase.label} info={PHASE_HINTS[phase.job]} />}
+            {PHASE_HINTS[phase.job] && (
+              <>
+                {' '}
+                <SettingsInfoButton label={phase.label} info={PHASE_HINTS[phase.job]} className="align-middle" />
+              </>
+            )}
           </div>
           {phase.model ? (
-            <span className="text-meta text-muted-foreground" data-testid="phase-saved">
+            <span className="min-w-0 break-words text-meta text-muted-foreground" data-testid="phase-saved">
               {phase.connection} · {phase.model}{phase.batch ? ' · batch' : ''}
             </span>
           ) : isStudyChat ? (
@@ -260,10 +271,11 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
           )}
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <label htmlFor={`fase-${phase.job}-connessione`} className="text-meta text-muted-foreground">Connessione</label>
+          <label htmlFor={`fase-${phase.job}-connessione`} className="text-meta text-muted-foreground @2xl:sr-only">Connessione</label>
           <Select
             id={`fase-${phase.job}-connessione`}
             aria-label="Connessione"
+            className="w-full"
             value={connection}
             onChange={(e) => handleConnectionChange(e.target.value)}
           >
@@ -276,9 +288,10 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
           </Select>
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <label htmlFor={`fase-${phase.job}-modello`} className="text-meta text-muted-foreground">Modello</label>
+          <label htmlFor={`fase-${phase.job}-modello`} className="text-meta text-muted-foreground @2xl:sr-only">Modello</label>
           <Input
             id={`fase-${phase.job}-modello`}
+            className="h-9 w-full"
             list={listId}
             value={model}
             disabled={!connection}
@@ -296,15 +309,18 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
             })}
           </datalist>
         </div>
-        {!phase.job.startsWith('enrichment_') && (
+        {!phase.job.startsWith('enrichment_') ? (
           <ModelTest
             connection={connection}
             model={trimmedModel.replace(/:batch$/, '')}
             label={phase.label}
             vision={phase.job === 'image_description'}
             className="contents"
-            resultClassName="sm:col-span-4"
+            buttonClassName="w-full @2xl:w-full"
+            resultClassName="@2xl:col-span-4"
           />
+        ) : (
+          <div className="hidden @2xl:block" aria-hidden="true" />
         )}
       </div>
       {autoSave.status !== 'idle' && (
@@ -337,6 +353,7 @@ export function ModelTest({
   label,
   vision = false,
   className,
+  buttonClassName,
   resultClassName,
 }: {
   connection: string
@@ -344,6 +361,7 @@ export function ModelTest({
   label?: string
   vision?: boolean
   className?: string
+  buttonClassName?: string
   resultClassName?: string
 }) {
   const test = useTestModel()
@@ -376,6 +394,7 @@ export function ModelTest({
       <Button
         type="button"
         variant="outline"
+        className={buttonClassName}
         aria-label={label ? `Prova il modello di ${label}` : 'Prova il modello'}
         disabled={!connection || !model.trim() || (current && test.isPending)}
         onClick={() => test.mutate({ connection, model: model.trim(), vision })}

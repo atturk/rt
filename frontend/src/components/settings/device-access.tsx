@@ -274,7 +274,7 @@ function TailscalePanel() {
           Con l'indirizzo IP la connessione sicura non riesce: il certificato di Tailscale vale solo per il nome del computer
           {detected ? (
             <>
-              , cioè <code>{detected}</code>
+              , cioè <code className="break-all">{detected}</code>
             </>
           ) : (
             ' (https://nome-computer.tailnet.ts.net)'
@@ -286,17 +286,17 @@ function TailscalePanel() {
         <Alert tone="warning">
           <p>
             Tailscale Serve non è attivo su questo computer: nel Terminale (su Windows nel Prompt dei comandi) esegui{' '}
-            <code>{tailscaleServeCommand(localPort)}</code>, poi crea il QR.
+            <code className="break-all">{tailscaleServeCommand(localPort)}</code>, poi crea il QR.
           </p>
           <p className="mt-1">
-            Con <code>{`tailscale serve --bg ${localPort}`}</code> RT prende invece l'indirizzo senza porta (443).
+            Con <code className="break-all">{`tailscale serve --bg ${localPort}`}</code> RT prende invece l'indirizzo senza porta (443).
           </p>
         </Alert>
       )}
       {tailnet && detected && origin === detected && tailnet.funnel && (
         <Alert tone="warning">
           Questo indirizzo è pubblico su Internet (Tailscale Funnel): per tenerlo nella sola tailnet esegui{' '}
-          <code>{funnelFixCommand(detected, localPort)}</code>, che spegne il Funnel.
+          <code className="break-all">{funnelFixCommand(detected, localPort)}</code>, che spegne il Funnel.
         </Alert>
       )}
       <div>
@@ -310,7 +310,7 @@ function TailscalePanel() {
         className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-meta text-muted-foreground"
         data-testid="tailscale-local-port"
       >
-        <span>
+        <span className="min-w-0">
           RT ascolta su questo computer sulla porta <code className="text-foreground">{localPort}</code>.{' '}
           <code className="break-all text-foreground">{serveCommand}</code>
         </span>
@@ -477,7 +477,7 @@ function ReadonlyKeyManager() {
 
       <div className="mt-3 text-meta text-muted-foreground">
         URL specifica OpenAPI:{' '}
-        <code className="text-foreground">{baseUrl}/openapi.json</code>
+        <code className="break-all text-foreground">{baseUrl}/openapi.json</code>
       </div>
 
       <ConfirmDialog

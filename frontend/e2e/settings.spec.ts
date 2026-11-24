@@ -34,6 +34,8 @@ test('dieci sezioni (con Guida): desktop a due colonne, telefono con pagina e ri
     await expect(page).toHaveURL(new RegExp(`/impostazioni/${path}$`))
     await expect(page.getByRole('heading', { name: label, level: 1 })).toBeVisible()
     await expect(nav).toHaveCount(0)
+    const fitsViewport = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
+    expect(fitsViewport, `overflow orizzontale a 390px su /impostazioni/${path}`).toBe(true)
     await page.locator('main header').getByRole('link', { name: 'Impostazioni', exact: true }).click()
     await expect(nav).toBeVisible()
   }
@@ -88,7 +90,7 @@ test('lavorazione: trascrizione, scaletta, modalità unica e job', async ({ page
   await stt.getByRole('button', { name: 'Salva chiave' }).click()
   await expect(stt.getByRole('status').last()).toHaveText('Salvato')
   const outline = region(page, 'Scaletta')
-  await choose(outline, 'Approvazione della scaletta', 'Aspetta qualche secondo, poi procedi')
+  await choose(outline, 'Approvazione della scaletta', 'Attendi qualche secondo')
   await outline.getByLabel('Approva da sola dopo (secondi)').fill('25')
   await outline.getByLabel('Approva da sola dopo (secondi)').blur()
   await expect.poll(async () => (await apiGet<{ preferences: { modalita_scaletta: string; secondi_approvazione: number } }>(page.request, '/settings')).preferences)
@@ -159,7 +161,7 @@ test('Telegram: interruttore, token e chat trovata dopo /start', async ({ page }
   const enabled = page.getByRole('switch', { name: 'Ricevi le notifiche su Telegram' })
   await expect(enabled).toHaveCount(1)
   if (await enabled.getAttribute('aria-checked') === 'false') await enabled.click()
-  const tg = region(page, 'Telegram')
+  const tg = region(page, 'Collegamento')
   await tg.getByLabel('Token del bot', { exact: true }).fill('123456789:AAE2E-token-422-xyz')
   // la Bot API finta ha ricevuto /start dalla chat personale di Ada Rossi
   await tg.getByRole('button', { name: 'Collega la chat' }).click()

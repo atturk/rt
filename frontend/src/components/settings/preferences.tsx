@@ -265,9 +265,9 @@ export function OutlineSettingsSection({ settings }: { settings: Settings }) {
         info="Scegli se la pipeline procede subito dopo aver preparato la scaletta, aspetta qualche secondo o attende sempre la tua conferma."
         status={{ status: modeStatus, error: save.error ? 'Salvataggio non riuscito.' : null, retry: () => selectMode(mode) }}
         control={
-          <Select id="pref-scaletta-mode" className="w-full @sm:w-60" value={mode} disabled={save.isPending} onChange={e => selectMode(e.target.value as 'auto' | 'timer' | 'manual')}>
-            <option value="auto">Procedi sempre in automatico</option>
-            <option value="timer">Aspetta qualche secondo, poi procedi</option>
+          <Select id="pref-scaletta-mode" className="w-full @sm:w-64" value={mode} disabled={save.isPending} onChange={e => selectMode(e.target.value as 'auto' | 'timer' | 'manual')}>
+            <option value="auto">Procedi da sola</option>
+            <option value="timer">Attendi qualche secondo</option>
             <option value="manual">Aspetta sempre me</option>
           </Select>
         }
@@ -339,7 +339,7 @@ export function SourceDefaultsSection() {
             columns: [
               { key: 'guida', label: 'Guida' },
               { key: 'contesto', label: 'Contesto' },
-              { key: 'integra', label: 'Collegamenti' },
+              { key: 'integra', label: 'Integra' },
             ],
           },
         ]}
@@ -348,9 +348,16 @@ export function SourceDefaultsSection() {
           label,
           testId: `source-default-${kind}`,
           cells: {
-            extract: <ExtractOptions value={defaults[kind].estrai} onChange={estrai => set(kind, { estrai })} />,
+            extract: (
+              <ExtractOptions
+                className="grid w-[9.75rem] grid-cols-3 justify-items-center sm:w-[11.25rem]"
+                value={defaults[kind].estrai}
+                onChange={estrai => set(kind, { estrai })}
+              />
+            ),
             use: (
               <UseOptions
+                className="grid w-[9.75rem] grid-cols-3 justify-items-center sm:w-[11.25rem]"
                 showLabel={false}
                 value={defaults[kind].uso}
                 off={defaults[kind].estrai === 'solo_immagini' ? 'Solo immagini: nessun testo da usare' : null}

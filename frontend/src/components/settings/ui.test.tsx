@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { IconButton } from '@/components/ui/icon-button'
-import { SettingsDisclosure, SettingsGroup, SettingsMatrix, SettingsPage, SettingsRow, SettingsSwitch } from './ui'
+import { SettingsDisclosure, SettingsGroup, SettingsMatrix, SettingsPage, SettingsRow, SettingsSelect, SettingsSwitch } from './ui'
 import { useAutoSave } from './useAutoSave'
 import { Type, Layers } from 'lucide-react'
 
@@ -136,11 +136,75 @@ describe('SettingsMatrix', () => {
 
     expect(screen.getAllByText('Cosa usare')).toHaveLength(1)
     expect(screen.getAllByText('Come usarla')).toHaveLength(1)
+    for (const colLabel of ['Testo', 'Contesto']) {
+      const colEl = screen.getByText(colLabel, { selector: 'span' })
+      expect(colEl.className).not.toMatch(/\btruncate\b|\bwhitespace-nowrap\b/)
+    }
     const icon = screen.getAllByRole('button', { name: 'Contesto: arricchisce la fonte principale' })[0]
     fireEvent.mouseEnter(icon)
     act(() => { vi.advanceTimersByTime(600) })
     const tooltip = screen.getByRole('tooltip')
     expect(tooltip.parentElement).toBe(document.body)
+  })
+})
+
+describe('Tipografia, altezze e contrasto dei controlli (B2)', () => {
+  it('SettingsRow usa text-body font-medium senza text-xs e SettingsSelect usa h-9', () => {
+    render(
+      <SettingsGroup title="Tipografia">
+        <SettingsRow
+          label="Modello predefinito"
+          htmlFor="sel-b2"
+          control={
+            <SettingsSelect
+              id="sel-b2"
+              aria-label="Modello predefinito"
+              value="a"
+              onChange={() => {}}
+            >
+              <option value="a">Procedi da sola</option>
+            </SettingsSelect>
+          }
+        />
+        <SettingsRow label="Senza for" control={<span data-testid="ctrl-no-for">ok</span>} />
+      </SettingsGroup>,
+    )
+
+    const labelFor = screen.getByText('Modello predefinito', { selector: 'label' })
+    expect(labelFor.tagName).toBe('LABEL')
+    expect(labelFor.className).toContain('text-body')
+    expect(labelFor.className).toContain('font-medium')
+    expect(labelFor.className).not.toMatch(/\btext-xs\b/)
+
+    const labelSpan = screen.getByText('Senza for')
+    expect(labelSpan.className).toContain('text-body')
+    expect(labelSpan.className).toContain('font-medium')
+    expect(labelSpan.className).not.toMatch(/\btext-xs\b/)
+
+    const selectBox = screen.getByTestId('sel-b2')
+    expect(selectBox.className).toContain('h-9')
+    expect(selectBox).toHaveTextContent('Procedi da sola')
+    const selectBtn = screen.getByRole('button', { name: 'Modello predefinito' })
+    expect(selectBtn.className).toContain('size-7')
+  })
+
+  it('SettingsSwitch espone classi ad alto contrasto in chiaro e scuro', () => {
+    const { rerender } = render(
+      <SettingsGroup title="Switch">
+        <SettingsSwitch id="sw-contrast" label="Interruttore" checked={true} onChange={() => {}} />
+      </SettingsGroup>,
+    )
+    const checkedSwitch = screen.getByRole('switch', { name: 'Interruttore' })
+    expect(checkedSwitch.className).toContain('bg-(--acc)')
+    expect(checkedSwitch.className).toContain('dark:bg-(--success)')
+
+    rerender(
+      <SettingsGroup title="Switch">
+        <SettingsSwitch id="sw-contrast" label="Interruttore" checked={false} onChange={() => {}} />
+      </SettingsGroup>,
+    )
+    const uncheckedSwitch = screen.getByRole('switch', { name: 'Interruttore' })
+    expect(uncheckedSwitch.className).toContain('bg-muted')
   })
 })
 

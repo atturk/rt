@@ -84,11 +84,7 @@ export function TelegramSection({ settings }: { settings: Settings }) {
   const tg = settings.telegram
   return (
     <>
-      <SettingsGroup
-        id="telegram"
-        title="Telegram"
-        description="RT ti scrive quando una lezione è pronta, quando la scaletta o le issue aspettano una tua decisione e quando una lavorazione non riesce."
-      >
+      <SettingsGroup id="telegram" title="Collegamento">
         <TelegramEnabledToggle enabled={tg.enabled ?? false} />
         {tg.enabled && <TelegramChatSetup settings={settings} />}
       </SettingsGroup>
