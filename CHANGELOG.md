@@ -1,6 +1,6 @@
 # Novità di RT
 
-## 4.3.9b7 — da pubblicare
+## 4.3.9b7 — 2026-11-24
 
 Beta sull'uso da iPhone e sulla convivenza con altre app su Tailscale Serve.
 
