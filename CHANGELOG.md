@@ -1,6 +1,6 @@
 # Novità di RT
 
-## 4.3.9b9 — da pubblicare
+## 4.3.9b9 — 2026-11-24
 
 Beta su Impostazioni ridisegnate, scaletta automatica, notifiche Telegram e ripasso.
 
