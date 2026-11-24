@@ -174,8 +174,8 @@ test('"/" porta nel campo di ricerca', async ({ page }) => {
   await loginViaLink(page)
   await expect(page.getByTestId('lesson-row').first()).toBeVisible()
   await page.locator('body').press('/')
-  await expect(page.getByLabel('Cerca')).toBeFocused()
-  await expect(page.getByLabel('Cerca')).toHaveValue('')
+  await expect(page.getByLabel('Cerca', { exact: true })).toBeFocused()
+  await expect(page.getByLabel('Cerca', { exact: true })).toHaveValue('')
 })
 
 const AUDIO = fileURLToPath(new URL('../../tests/fixtures/demo_lecture.wav', import.meta.url))

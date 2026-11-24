@@ -36,7 +36,7 @@ test('chat dello Studio: tasto C, risposta in mock, salvataggio in Verifiche e d
   // La cronologia resta dopo il ricaricamento.
   await page.reload()
   await expect(text).toHaveText(/\S.{20,}/)
-  await page.getByTestId('study-chat-btn').click()
+  await page.keyboard.press('c')
   await expect(page.getByTestId(`chat-msg-assistant-${id}`)).toBeVisible()
 
   // Il cestino svuota la chat, la nota resta.

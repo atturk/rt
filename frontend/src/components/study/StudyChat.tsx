@@ -386,7 +386,7 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
       className={cn(
         'flex flex-col bg-background',
         isPhone
-          ? 'fixed inset-0 z-50 h-dvh w-full'
+          ? 'fixed inset-0 z-60 h-dvh w-full'
           : 'w-[380px] shrink-0 border-l border-border/80 md:sticky md:top-[53px] md:h-[calc(100dvh-53px)]',
       )}
     >
