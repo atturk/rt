@@ -191,6 +191,10 @@ def scenario_folder_no_review(root: str) -> Dict[str, str]:
         f.write(INFO_YAML)
     with open(os.path.join(lesson_dir, "trascritto grezzo.md"), "w", encoding="utf-8") as f:
         f.write(TRANSCRIPT_MD)
+    # Scaletta in attesa: dalla 4.3.9b9 il predefinito è procedere da sola, qui si prova l'attesa.
+    os.makedirs(os.path.join(root, "config"), exist_ok=True)
+    with open(os.path.join(root, "config", "general.yaml"), "w", encoding="utf-8") as f:
+        f.write("ui:\n  outline_mode: manual\n")
     waiting = _run_cli(["run", lesson_dir, "--mock", "--no-rename"], cwd=root, stdin="")
     run = _run_cli(["run", lesson_dir, "--mock", "--auto-accept", "--no-rename"], cwd=root, stdin="")
     result = {"cli_waiting.txt": _cli_record(*waiting, root), "cli_run.txt": _cli_record(*run, root)}
