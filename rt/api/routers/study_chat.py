@@ -92,7 +92,7 @@ def delete_chat_history(lesson_id: int, lesson_dir: LessonDir, _actor: Actor):
 @router.post(
     "/lessons/{lesson_id}/chat/{message_id}/save",
     response_model=schemas.StudyChatSaveResponse,
-    summary="Salva una risposta della chat in Verifiche e domande (idempotente)",
+    summary="Salva una risposta della chat nei messaggi salvati (idempotente)",
 )
 def save_chat_message(lesson_id: int, message_id: int, lesson_dir: LessonDir, _actor: Actor):
     from rt.services.study_chat_service import save_as_note
@@ -103,7 +103,7 @@ def save_chat_message(lesson_id: int, message_id: int, lesson_dir: LessonDir, _a
 @router.delete(
     "/lessons/{lesson_id}/chat/{message_id}/save",
     response_model=schemas.StudyChatMessageView,
-    summary="Rimuove da Verifiche e domande una risposta della chat salvata",
+    summary="Toglie dai messaggi salvati una risposta della chat",
 )
 def unsave_chat_message(lesson_id: int, message_id: int, _lesson_dir: LessonDir, _actor: Actor):
     from rt.services.study_chat_service import unsave_as_note

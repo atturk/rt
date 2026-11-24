@@ -1,5 +1,18 @@
 # Novità di RT
 
+## 4.3.9b5 — 2026-11-24
+
+Beta di rifinitura della chat dello Studio.
+
+### Novità
+
+- **Messaggi salvati**: il pannello «Verifiche e domande» diventa «Messaggi salvati», una lista unica per unità senza schede. Le voci salvate prima restano.
+
+### Correzioni
+
+- **Chat dello Studio**: il pulsante per salvare o togliere una risposta mostra un segnalibro, pieno quando è salvata (prima sembrava un riquadro vuoto). Mentre arriva la risposta restano solo i puntini.
+- **Studio**: i suggerimenti di evidenziatore e gomma dicono solo «Evidenziatore giallo» (o il colore scelto) e «Gomma».
+
 ## 4.3.9b4 — 2026-11-24
 
 Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i permessi, la chiusura dell'app e la pagina Supporta RT.

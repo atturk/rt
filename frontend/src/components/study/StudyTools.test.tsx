@@ -340,10 +340,10 @@ describe('lettura veloce', () => {
 it('evidenziatore e gomma mostrano il suggerimento di RT', async () => {
   renderStudy()
   fireEvent.mouseEnter(screen.getByTestId('highlight-pen'))
-  expect(await screen.findByRole('tooltip', { name: /Evidenziatore giallo · E · seleziona il testo, prima o dopo/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: 'Evidenziatore giallo' })).toBeVisible()
   fireEvent.mouseLeave(screen.getByTestId('highlight-pen'))
   fireEvent.mouseEnter(screen.getByTestId('highlight-eraser'))
-  expect(await screen.findByRole('tooltip', { name: /Gomma · clic su/ })).toBeVisible()
+  expect(await screen.findByRole('tooltip', { name: 'Gomma' })).toBeVisible()
 })
 
 it('selezione con V o clic sul testo non apre alcun popup e V è inerte', async () => {

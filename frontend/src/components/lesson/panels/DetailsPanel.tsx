@@ -474,7 +474,7 @@ export function DetailsPanel({
           <MessageSquare size={18} className="shrink-0" aria-hidden />
           <span className="flex min-w-0 flex-1 flex-col items-start">
             <span className="flex max-w-full items-center gap-1.5 text-body font-medium">
-              <span className="truncate">Verifiche e domande</span>
+              <span className="truncate">Messaggi salvati</span>
               {changedCount > 0 && (
                 <span
                   className="size-2 rounded-full bg-warning inline-block"

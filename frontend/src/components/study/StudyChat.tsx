@@ -3,7 +3,8 @@ import {
   Copy,
   LoaderCircle,
   Mic,
-  NotebookPen,
+  Bookmark,
+  BookmarkCheck,
   Paperclip,
   RotateCcw,
   SendHorizontal,
@@ -323,7 +324,7 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
       await unsaveNoteMutation.mutateAsync(msg.id)
     } else {
       await saveNoteMutation.mutateAsync(msg.id)
-      onToast?.('Salvata in Verifiche e domande')
+      onToast?.('Salvata nei messaggi salvati')
     }
   }
 
@@ -506,12 +507,12 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
                       </span>
                     )}
                     <IconButton
-                      label={isSaved ? 'Rimuovi da Verifiche e domande' : 'Salva in Verifiche e domande'}
-                      icon={NotebookPen}
+                      label={isSaved ? 'Togli dai messaggi salvati' : 'Salva nei messaggi salvati'}
+                      icon={isSaved ? BookmarkCheck : Bookmark}
                       active={isSaved}
                       className={cn(
                         'size-7 min-w-7 [&_svg]:size-3.5',
-                        isSaved && 'text-primary [&_svg]:fill-current',
+                        isSaved && 'text-primary',
                       )}
                       aria-pressed={isSaved}
                       onClick={() => void handleToggleNote(msg)}
@@ -547,10 +548,10 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
             </div>
             <div
               role="status"
+              aria-label="Risposta in arrivo"
               data-testid="study-chat-typing"
               className="flex items-center gap-1.5 self-start text-meta text-muted-foreground"
             >
-              <span>sta scrivendo…</span>
               <span className="inline-flex gap-0.5" aria-hidden>
                 <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
                 <span className="size-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />

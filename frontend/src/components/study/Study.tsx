@@ -1720,7 +1720,7 @@ function HighlightTools({ mode, color, chatOpen, onToggleChat, onMode, onColor, 
         className={open ? 'inline-flex rounded-lg bg-muted p-0.5 max-md:p-0' : 'hidden'}
         data-testid="highlight-tools"
       >
-        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]} · E · seleziona il testo, prima o dopo`}>{(trigger) => <button
+        <Tooltip content={`Evidenziatore ${HIGHLIGHT_COLORS[color]}`}>{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'evidenzia'}
@@ -1741,7 +1741,7 @@ function HighlightTools({ mode, color, chatOpen, onToggleChat, onMode, onColor, 
           <HighlighterIcon className="size-4" aria-hidden />
           <span className={`absolute bottom-1 left-2 right-2 h-[3px] rounded-full rt-hl-${color}`} aria-hidden />
         </button>}</Tooltip>
-        <Tooltip content="Gomma · clic su un’evidenziazione per toglierla · G">{(trigger) => <button
+        <Tooltip content="Gomma">{(trigger) => <button
           {...trigger}
           type="button"
           aria-pressed={mode === 'gomma'}

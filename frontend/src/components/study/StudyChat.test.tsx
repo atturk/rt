@@ -112,7 +112,7 @@ describe('StudyChat', () => {
     expect(screen.getByAltText('slide.png')).toBeInTheDocument()
   })
 
-  it('copia Markdown e salva/toglie nota in Verifiche e domande', async () => {
+  it('copia Markdown e salva/toglie nei messaggi salvati', async () => {
     vi.spyOn(studyChatApi, 'list').mockResolvedValue([MSG_USER, MSG_ASSISTANT])
     const saveSpy = vi.spyOn(studyChatApi, 'saveNote').mockResolvedValue({
       message: { ...MSG_ASSISTANT, saved_note_id: 99 },
@@ -153,7 +153,7 @@ describe('StudyChat', () => {
     const noteBtn = screen.getByTestId('chat-save-note-2')
     await userEvent.click(noteBtn)
     await waitFor(() => expect(saveSpy).toHaveBeenCalledWith(10, 2))
-    expect(toastSpy).toHaveBeenCalledWith('Salvata in Verifiche e domande')
+    expect(toastSpy).toHaveBeenCalledWith('Salvata nei messaggi salvati')
     expect(noteBtn).toHaveAttribute('aria-pressed', 'true')
 
     await userEvent.click(noteBtn)

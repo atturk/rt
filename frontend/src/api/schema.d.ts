@@ -1171,9 +1171,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Salva una risposta della chat in Verifiche e domande (idempotente) */
+        /** Salva una risposta della chat nei messaggi salvati (idempotente) */
         post: operations["save_chat_message_api_v1_lessons__lesson_id__chat__message_id__save_post"];
-        /** Rimuove da Verifiche e domande una risposta della chat salvata */
+        /** Toglie dai messaggi salvati una risposta della chat */
         delete: operations["unsave_chat_message_api_v1_lessons__lesson_id__chat__message_id__save_delete"];
         options?: never;
         head?: never;

@@ -20774,7 +20774,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Rimuove da Verifiche e domande una risposta della chat salvata",
+        "summary": "Toglie dai messaggi salvati una risposta della chat",
         "tags": [
           "studio"
         ]
@@ -20870,7 +20870,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Salva una risposta della chat in Verifiche e domande (idempotente)",
+        "summary": "Salva una risposta della chat nei messaggi salvati (idempotente)",
         "tags": [
           "studio"
         ]

@@ -136,22 +136,9 @@ describe('StudyNotesPanel', () => {
     expect(screen.getByText('acidosi metabolica')).toBeInTheDocument()
   })
 
-  it('filters by Tutte / Verifiche / Chiedi', () => {
+  it('mostra tutte le voci in una lista sola, senza filtri', () => {
     renderPanel()
-
-    // Verifiche filter
-    fireEvent.click(screen.getByTestId('filter-verifica'))
-    expect(screen.getByText('93 mmHg')).toBeInTheDocument()
-    expect(screen.getByText('acidosi metabolica')).toBeInTheDocument()
-    expect(screen.queryByText('compensazione metabolica')).not.toBeInTheDocument()
-
-    // Chiedi filter
-    fireEvent.click(screen.getByTestId('filter-chiedi'))
-    expect(screen.queryByText('93 mmHg')).not.toBeInTheDocument()
-    expect(screen.getByText('compensazione metabolica')).toBeInTheDocument()
-
-    // Tutte filter
-    fireEvent.click(screen.getByTestId('filter-tutte'))
+    expect(screen.queryByTestId('filter-tutte')).not.toBeInTheDocument()
     expect(screen.getByText('93 mmHg')).toBeInTheDocument()
     expect(screen.getByText('compensazione metabolica')).toBeInTheDocument()
   })
@@ -253,7 +240,7 @@ describe('StudyNotesPanel', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
-  it('mostra le note chat con domanda dell’utente, risposta in Markdown, filtro Domande e nessuna citazione vuota', async () => {
+  it('mostra le note chat con domanda dell’utente, risposta in Markdown, e nessuna citazione vuota', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
 
@@ -262,11 +249,6 @@ describe('StudyNotesPanel', () => {
     expect(screen.getByTestId('notes-unit-1.2')).toHaveTextContent('2')
     expect(screen.getByText('Perché il bicarbonato scende subito?')).toBeInTheDocument()
 
-    // Filtro Domande include sia chiedi che chat
-    fireEvent.click(screen.getByTestId('filter-chiedi'))
-    expect(screen.getByText('compensazione metabolica')).toBeInTheDocument()
-    expect(screen.getByText('Perché il bicarbonato scende subito?')).toBeInTheDocument()
-    expect(screen.queryByText('93 mmHg')).not.toBeInTheDocument()
 
     // Dettaglio nota chat
     fireEvent.click(screen.getByTestId('note-item-4'))

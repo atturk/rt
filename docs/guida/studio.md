@@ -7,7 +7,7 @@ La schermata **Studio** è l'ambiente centrale per apprendere e memorizzare i co
 Sopra il testo dell'unità trovi la barra degli strumenti rapidi, attivabili anche via tastiera:
 - **E (Evidenziatore)**: seleziona una porzione di testo e premi **E** (o clicca sullo strumento) per evidenziarla. **Maiuscolo+E** passa al colore successivo. Senza selezione, **E** accende l'evidenziatore e lo usi trascinando sul testo.
 - **G (Gomma)**: seleziona il testo evidenziato e premi **G** per togliere l'evidenziazione. Senza selezione, **G** accende la gomma.
-- **C (Chat)**: apre la chat laterale dello Studio per fare domande sulla lezione, incollare passaggi da verificare, allegare immagini o usare la dettatura vocale. Le risposte utili si possono salvare in **Verifiche e domande**.
+- **C (Chat)**: apre la chat laterale dello Studio per fare domande sulla lezione, incollare passaggi da verificare, allegare immagini o usare la dettatura vocale. Le risposte utili si salvano con l’icona del segnalibro e si ritrovano in Dettagli › **Messaggi salvati**.
 
 ## Modalità Zen
 

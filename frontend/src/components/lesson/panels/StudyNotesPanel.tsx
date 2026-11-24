@@ -49,7 +49,6 @@ export function StudyNotesPanel({
 
   const [internalNoteId, setInternalNoteId] = useState<number | null>(null)
   const activeNoteId = selectedNoteId !== undefined ? selectedNoteId : internalNoteId
-  const [filter, setFilter] = useState<'tutte' | 'verifica' | 'chiedi'>('tutte')
   const [copied, setCopied] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
@@ -286,11 +285,8 @@ export function StudyNotesPanel({
   }
 
   // Vista 2: Elenco delle voci raggruppate per unità
-  const filteredNotes = notes.filter((n) => {
-    if (filter === 'tutte') return true
-    if (filter === 'chiedi') return n.kind === 'chiedi' || n.kind === 'chat'
-    return n.kind === filter
-  })
+  // Una sola lista: verifiche e domande di prima e risposte salvate dalla chat.
+  const filteredNotes = notes
 
   // Raggruppamento per unit_id
   const notesByUnit: Record<string, StudyNote[]> = {}
@@ -302,33 +298,11 @@ export function StudyNotesPanel({
 
   return (
     <div className="flex flex-col gap-3 text-body" data-testid="study-notes-panel">
-      {/* Filtro Tutte / Verifiche / Domande */}
-      <div className="flex rounded-lg bg-muted p-0.5" role="group" aria-label="Filtro voci">
-        {(['tutte', 'verifica', 'chiedi'] as const).map((key) => {
-          const label = key === 'tutte' ? 'Tutte' : key === 'verifica' ? 'Verifiche' : 'Domande'
-          const active = filter === key
-          return (
-            <button
-              key={key}
-              type="button"
-              className={`flex-1 rounded-md py-1 text-center text-meta font-medium transition-colors ${
-                active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              aria-pressed={active}
-              onClick={() => setFilter(key)}
-              data-testid={`filter-${key}`}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
-
       {isLoading && <p className="text-meta text-muted-foreground">Caricamento voci…</p>}
 
       {!isLoading && filteredNotes.length === 0 && (
         <p className="py-6 text-center text-meta text-muted-foreground" data-testid="empty-notes-message">
-          Nessuna voce salvata. Salva una risposta dalla chat nello Studio (C) oppure verifica un passaggio nell'editor.
+          Nessun messaggio salvato. Nella chat dello Studio (C) salva una risposta con l'icona del segnalibro.
         </p>
       )}
 

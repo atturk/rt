@@ -19,7 +19,7 @@ const TITLES: Record<PanelView, string> = {
   domande: 'Domande',
   classificatore: 'Classificatore',
   arricchimento: 'Arricchimento',
-  note: 'Verifiche e domande',
+  note: 'Messaggi salvati',
 }
 
 const getRemInPx = () => {
