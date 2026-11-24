@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Callable, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
+from rt.core.encoding import repair_llm_text
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
                             GeneratedVariant, GeneratedTextVariant, RecallTextGenerationResult,
                             RecallEvaluation, VariantCheck)
@@ -155,13 +156,16 @@ def _mock_items(qtype: RecallQuestionType, group: list, existing: int, *, defini
 def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional[dict]) -> List[RecallQuestion]:
     """Salva domande e tipi (pairs: [(RecallQuestion, RecallTemplate | None)]) in un'unica
     scrittura del bank; i tipi nuovi ricevono l'ID qui e le domande vi puntano."""
-    from rt.pipeline.recall import _next_id, load_recall_bank, recall_bank_lock, repair_duplicate_ids, save_recall_bank
+    from rt.pipeline.recall import (
+        _next_id, _repair_question_texts, load_recall_bank, recall_bank_lock, repair_duplicate_ids, save_recall_bank,
+    )
     persisted = []
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         repair_duplicate_ids(bank)
         known = {(question_key(q), q.question_text.strip().casefold()) for q in bank.questions}
         for question, template in pairs:
+            _repair_question_texts(question)
             text_key = (question_key(question), question.question_text.strip().casefold())
             if text_key in known:
                 continue
@@ -541,7 +545,7 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
         )
         outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else "parziale")
         return RecallEvaluation(
-            result.commento,
+            repair_llm_text(result.commento),
             outcome,
             correttezza=result.correttezza,
             completezza=result.completezza,
@@ -601,11 +605,11 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
         elif not result.domanda_followup:
             result.parte_mancante = None
     return RecallEvaluation(
-        result.commento,
+        repair_llm_text(result.commento),
         outcome,
         correttezza=result.correttezza,
         completezza=result.completezza,
         attinenza=result.attinenza,
-        domanda_followup=result.domanda_followup,
-        parte_mancante=result.parte_mancante,
+        domanda_followup=repair_llm_text(result.domanda_followup) if result.domanda_followup else None,
+        parte_mancante=repair_llm_text(result.parte_mancante) if result.parte_mancante else None,
     )

@@ -96,12 +96,14 @@ MATH_REGEX = re.compile(
     r"|(?<![\$\\\d])\$(?!\$)(?! )(?:\\.|[^\$\n])+?(?<![ \\])\$(?!\d))"
 )
 
-_CONTROL_IN_MATH = re.compile(r"([\t\x08\x0c])(?=[a-zA-Z])")
+_CONTROL_IN_MATH = re.compile(r"([\t\x08\x0c\r])(?=[a-zA-Z])")
 _ESC_MAP = {
     "\t": "\\t",
     "\x08": "\\b",
     "\x0c": "\\f",
+    "\r": "\\r",
 }
+_OUTSIDE_MATH_C0 = re.compile(r"[\x00-\x08\x0b-\x1f]")
 
 _REPAIR_N_IN_MATH = re.compile(
     r"\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
@@ -160,21 +162,30 @@ def _repair_outside_math(text: str) -> str:
     return text
 
 
-def repair_latex_escapes(text: str) -> str:
-    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
-    if not text:
+def _map_math_and_outside(text: str, outside_fn) -> str:
+    if not text or not isinstance(text, str):
         return text
     parts = []
     last_end = 0
     for match in MATH_REGEX.finditer(text):
         start, end = match.span()
         if start > last_end:
-            parts.append(_repair_outside_math(text[last_end:start]))
+            parts.append(outside_fn(text[last_end:start]))
         parts.append(_repair_formula(match.group(0)))
         last_end = end
     if last_end < len(text):
-        parts.append(_repair_outside_math(text[last_end:]))
+        parts.append(outside_fn(text[last_end:]))
     return "".join(parts)
+
+
+def repair_latex_escapes(text: str) -> str:
+    """Rimette la barra ai comandi LaTeX mangiati dagli escape JSON (\\frac, \\beta, \\theta...)."""
+    return _map_math_and_outside(text, _repair_outside_math)
+
+
+def repair_llm_text(text: str) -> str:
+    """Ripara comandi LaTeX con caratteri di controllo dentro le formule e toglie i C0 (tranne \\n e \\t) fuori."""
+    return _map_math_and_outside(text, lambda outside: _OUTSIDE_MATH_C0.sub("", outside))
 
 
 def sanitize_object_encoding(obj: Any, *, repair_latex: bool = False) -> Any:

@@ -19,6 +19,7 @@ from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
 from rt.core.config import load_config
+from rt.core.encoding import repair_llm_text
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
@@ -260,6 +261,15 @@ def on_unit(question: RecallQuestion, unit_id: str) -> bool:
 # Answer / vote recording
 # -----------------------------------------------------------------------
 
+def _repair_question_texts(question: RecallQuestion) -> RecallQuestion:
+    question.question_text = repair_llm_text(question.question_text)
+    if question.pregenerated_material is not None:
+        question.pregenerated_material = repair_llm_text(question.pregenerated_material)
+    if question.options:
+        question.options = [repair_llm_text(opt) for opt in question.options]
+    return question
+
+
 def record_recall_answer(
     lesson_dir: str,
     question_id: str,
@@ -297,6 +307,12 @@ def record_recall_answer(
         if attinenza is None: attinenza = getattr(evaluation, 'attinenza', None)
         if domanda_followup is None: domanda_followup = getattr(evaluation, 'domanda_followup', None)
         if parte_mancante is None: parte_mancante = getattr(evaluation, 'parte_mancante', None)
+        if evaluation is not None:
+            evaluation = repair_llm_text(str(evaluation))
+        if domanda_followup is not None:
+            domanda_followup = repair_llm_text(domanda_followup)
+        if parte_mancante is not None:
+            parte_mancante = repair_llm_text(parte_mancante)
         if not domanda_followup:
             parte_mancante = None
 
@@ -598,6 +614,7 @@ def _persist_generation(lesson_dir, questions, key, attempt):
         repair_duplicate_ids(latest)
         known = {(q.type, q.question_text.strip().casefold()) for q in latest.questions}
         for question in questions:
+            _repair_question_texts(question)
             text_key = (question.type, question.question_text.strip().casefold())
             if text_key in known:
                 continue
@@ -1033,7 +1050,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         else:
             outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else "parziale")
         return RecallEvaluation(
-            result.commento,
+            repair_llm_text(result.commento),
             outcome,
             correttezza=result.correttezza,
             completezza=result.completezza,
@@ -1118,15 +1135,15 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                 res_m.parte_mancante = None
             elif not res_m.domanda_followup:
                 res_m.parte_mancante = None
-        text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{res_m.commento}"
+        text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{repair_llm_text(res_m.commento)}"
         return RecallEvaluation(
             text,
             outcome,
             correttezza=res_m.correttezza,
             completezza=res_m.completezza,
             attinenza=res_m.attinenza,
-            domanda_followup=res_m.domanda_followup,
-            parte_mancante=res_m.parte_mancante,
+            domanda_followup=repair_llm_text(res_m.domanda_followup) if res_m.domanda_followup else None,
+            parte_mancante=repair_llm_text(res_m.parte_mancante) if res_m.parte_mancante else None,
         )
 
     elif question.type == RecallQuestionType.VASTA:
@@ -1159,13 +1176,13 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             elif not res_v.domanda_followup:
                 res_v.parte_mancante = None
         return RecallEvaluation(
-            res_v.commento,
+            repair_llm_text(res_v.commento),
             outcome,
             correttezza=res_v.correttezza,
             completezza=res_v.completezza,
             attinenza=res_v.attinenza,
-            domanda_followup=res_v.domanda_followup,
-            parte_mancante=res_v.parte_mancante,
+            domanda_followup=repair_llm_text(res_v.domanda_followup) if res_v.domanda_followup else None,
+            parte_mancante=repair_llm_text(res_v.parte_mancante) if res_v.parte_mancante else None,
         )
 
 

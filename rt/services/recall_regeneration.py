@@ -4,7 +4,7 @@ import json
 from rt.core.models import GeneratedRecallQuestion, RecallQuestion, RecallQuestionType, RecallQuestionStatus
 from rt.llm.client import LLMClient
 from rt.pipeline.ledger import load_resolved_draft
-from rt.pipeline.recall import (_compute_units_fingerprint, _next_id, load_fewshot_examples,
+from rt.pipeline.recall import (_compute_units_fingerprint, _next_id, _repair_question_texts, load_fewshot_examples,
                                 load_recall_bank, recall_bank_lock, save_recall_bank)
 from rt.services.errors import Conflict, NotFound
 from rt.services.custom_question_types import find_type, question_key, supports_comment, active_types
@@ -64,9 +64,10 @@ def regenerate(lesson_dir, question_id, comment, *, job_id, force_mock=False):
             raise NotFound('question_not_found', 'La domanda è stata eliminata durante la rigenerazione.')
         if any(question_key(q) == question_key(question) and q.question_text.strip().casefold() == generated.question_text.strip().casefold() for q in bank.questions):
             raise Conflict('question_duplicate', 'La domanda rigenerata è già nel pool.')
-        replacement = RecallQuestion(id=_next_id(bank), unit_ids=question.unit_ids, custom_type=question.custom_type, **generated.model_dump(),
+        replacement = _repair_question_texts(RecallQuestion(
+            id=_next_id(bank), unit_ids=question.unit_ids, custom_type=question.custom_type, **generated.model_dump(),
             content_fingerprint=_compute_units_fingerprint(lesson_dir, question.unit_ids), generation_version=POLICY_VERSION,
-            regenerated_from=question.id, regeneration_job_id=job_id, classifier_level=question.classifier_level)
+            regenerated_from=question.id, regeneration_job_id=job_id, classifier_level=question.classifier_level))
         original = next(q for q in bank.questions if q.id == question_id)
         original.status, original.comment = RecallQuestionStatus.DISCARDED, comment
         bank.questions.append(replacement)
