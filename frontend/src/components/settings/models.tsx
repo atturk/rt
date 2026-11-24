@@ -33,7 +33,7 @@ import {
   AutoSaveStatus,
   SaveFeedback,
   SettingsGroup,
-  SettingsInfoButton,
+  LabelWithInfo,
   SettingsRow,
   SettingsSelect as Select,
   SettingsSwitch,
@@ -248,13 +248,9 @@ function PhaseRow({ phase, connections }: { phase: Phase; connections: Connectio
       <div className="grid grid-cols-1 items-center gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_14rem_14rem_5.5rem]">
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="min-w-0">
-            <span className="text-body font-medium text-foreground">{phase.label}</span>
-            {PHASE_HINTS[phase.job] && (
-              <>
-                {' '}
-                <SettingsInfoButton label={phase.label} info={PHASE_HINTS[phase.job]} className="align-middle" />
-              </>
-            )}
+            <span className="text-body font-medium text-foreground">
+              <LabelWithInfo label={phase.label} info={PHASE_HINTS[phase.job]} infoLabel={phase.label} />
+            </span>
           </div>
           {phase.model ? (
             <span className="min-w-0 break-words text-meta text-muted-foreground" data-testid="phase-saved">
