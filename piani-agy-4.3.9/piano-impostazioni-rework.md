@@ -11,6 +11,9 @@ Va rifatto il **sistema**, non le singole pagine: un solo set di componenti, una
 automatico, spiegazioni nei tooltip. Stile: quello di RT (font, colori e token di `frontend/src/index.css`,
 raggio 8px, verde RT come accento), più moderno, minimale e preciso, sul modello delle impostazioni di
 macOS / Linear / Raycast: gruppi a "lista inserita", molta aria, nessun bordo superfluo.
+Font: esattamente quello del resto di RT (`font-sans` di `index.css` e le dimensioni `text-meta`/`text-body`/
+`text-heading`): nessun font, peso o dimensione nuova, così il cambio non è brusco. Riferimento visivo approvato da
+Attilio: il prototipo https://claude.ai/artifact/KzUcDv4KRW8u4SZyhkVTwZ (struttura e stile; i contenuti seguono questo piano).
 
 ## 1. Componenti (nuovo `frontend/src/components/settings/ui.tsx`, sostituiscono quelli di `common.tsx`)
 - `SettingsPage({ title, description, children })`: titolo della sezione + una riga di descrizione muted.
