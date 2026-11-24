@@ -19,8 +19,8 @@ export function TranscriptionSection({ settings }: { settings: Settings }) {
 type Engine = 'macparakeet' | 'parakeet' | 'custom'
 
 const ENGINE_LABEL: Record<Engine, string> = {
-  macparakeet: 'macparakeet (sul Mac)',
-  parakeet: 'Parakeet ONNX (locale)',
+  macparakeet: 'macparakeet',
+  parakeet: 'Parakeet ONNX',
   custom: 'Server OpenAI-compatible',
 }
 
@@ -146,7 +146,7 @@ function TranscriptionFields({
           retry: () => handleEngineChange(engine),
         }}
         control={
-          <Select id="stt-engine" className="w-full @sm:w-60" value={engine} onChange={(e) => handleEngineChange(e.target.value as Engine)}>
+          <Select id="stt-engine" className="w-full @sm:w-64" value={engine} onChange={(e) => handleEngineChange(e.target.value as Engine)}>
             {engines.map((name) => (
               <option key={name} value={name}>
                 {ENGINE_LABEL[name]}

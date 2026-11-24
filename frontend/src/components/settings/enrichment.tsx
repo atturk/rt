@@ -47,8 +47,8 @@ function EnrichmentForm({ settings, decisions, save }: { settings: EnrichmentSet
         htmlFor="global-enrichment-cap"
         info="Limita il numero massimo di elementi di arricchimento generati per ogni lezione."
         control={
-          <Select id="global-enrichment-cap" className="w-full @sm:w-60" value={draft.cap_mode} onChange={e => changeCapMode(e.target.value as EnrichmentSettings['cap_mode'])}>
-            <option value="proportional">Proporzionale: numero di subunità</option>
+          <Select id="global-enrichment-cap" className="w-full @sm:w-64" value={draft.cap_mode} onChange={e => changeCapMode(e.target.value as EnrichmentSettings['cap_mode'])}>
+            <option value="proportional">Proporzionale (subunità)</option>
             <option value="fixed">Numero fisso</option>
             <option value="off">Disattivato</option>
           </Select>

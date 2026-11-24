@@ -14,7 +14,7 @@ export type MenuSection = { label: string; items: { label: string; checked: bool
  * Pulsante a icona con un menu di scelte (Ordina; Raggruppa sul telefono). Frecce su e giù
  * fra le voci, Esc e clic fuori chiudono e il focus torna al pulsante.
  */
-export function MenuButton({ label, icon, sections, className }: { label: string; icon: LucideIcon; sections: MenuSection[]; className?: string }) {
+export function MenuButton({ label, icon, sections, className, buttonClassName }: { label: string; icon: LucideIcon; sections: MenuSection[]; className?: string; buttonClassName?: string }) {
   const [open, setOpen] = useState(false)
   const menuId = useId()
   const root = useRef<HTMLDivElement>(null)
@@ -57,7 +57,7 @@ export function MenuButton({ label, icon, sections, className }: { label: string
 
   return (
     <div ref={root} className={cn('relative', className)}>
-      <IconButton label={label} icon={icon} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
+      <IconButton label={label} icon={icon} className={buttonClassName} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} active={open} onClick={() => setOpen(!open)} />
       {open && createPortal(
         <div
           ref={menu}
@@ -66,7 +66,7 @@ export function MenuButton({ label, icon, sections, className }: { label: string
           aria-label={label}
           onKeyDown={onKeyDown}
           style={position.style}
-          className="fixed z-50 max-h-[calc(100dvh-1rem)] w-56 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-card p-1.5 text-body shadow-panel"
+          className="fixed z-50 max-h-[calc(100dvh-1rem)] min-w-56 w-max max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-card p-1.5 text-body shadow-panel"
         >
           {sections.map((section) => (
             <div key={section.label} role="group" aria-label={section.label} className="py-0.5">

@@ -151,11 +151,11 @@ it('Scaletta: in auto e manual nasconde i secondi, in timer li mostra e li salva
     Promise.resolve({ data: { ...testSettings, preferences: { ...testSettings.preferences, ...body } }, response: new Response('{}') })) as never)
   render(<QueryClientProvider client={client}><OutlineSettingsSection settings={testSettings} /></QueryClientProvider>)
 
-  expect(screen.getByTestId('pref-scaletta-mode')).toHaveTextContent('Procedi sempre in automatico')
+  expect(screen.getByTestId('pref-scaletta-mode')).toHaveTextContent('Procedi da sola')
   expect(screen.queryByLabelText('Approva da sola dopo (secondi)')).toBeNull()
 
   await userEvent.click(screen.getByRole('button', { name: 'Approvazione della scaletta' }))
-  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Aspetta qualche secondo, poi procedi' }))
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Attendi qualche secondo' }))
   expect(put).toHaveBeenCalledWith('/api/v1/settings/preferences', { body: expect.objectContaining({ modalita_scaletta: 'timer' }) })
   const secondsInput = screen.getByLabelText('Approva da sola dopo (secondi)')
   expect(secondsInput).toHaveValue(10)
