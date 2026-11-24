@@ -397,10 +397,12 @@ def recall_comment_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
 
 def recall_refill_job(job: JobInfo, ctx: RunContext) -> JobOutcome:
     """Rifornisce il pool di un tipo arrivato alla soglia (dopo una domanda mostrata)."""
-    from rt.services.recall_service import recall_overview, refill_active_type_if_low
+    from rt.services.recall_service import needs_refill, recall_overview, refill_active_type_if_low
+    mock = bool(job.payload.get("mock"))
     with ctx.activate():
-        refill_active_type_if_low(job.lesson_path, job.payload["qtype"],
-                                  force_mock=bool(job.payload.get("mock")), progress=recall_progress(ctx))
+        if needs_refill(job.lesson_path, job.payload["qtype"], force_mock=mock):
+            refill_active_type_if_low(job.lesson_path, job.payload["qtype"],
+                                      force_mock=mock, progress=recall_progress(ctx))
     return _done(recall_overview(job.lesson_path), lesson_path=job.lesson_path)
 
 

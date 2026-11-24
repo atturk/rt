@@ -646,3 +646,20 @@ it('mostra subito il box di caricamento al clic su Prossima e nasconde la domand
   expect(await screen.findByText('Nuova domanda caricata')).toBeInTheDocument()
   expect(screen.queryByLabelText('Caricamento della prossima domanda')).not.toBeInTheDocument()
 })
+
+it('in caso di errore di next toglie il caricamento e mostra errore con Riprova', async () => {
+  vi.clearAllMocks()
+  mockNextMutateAsync
+    .mockRejectedValueOnce(new Error('Errore di rete temporaneo'))
+    .mockResolvedValueOnce({ ...sampleQuestion, id: 'q102', question_text: 'Domanda recuperata' })
+
+  renderSession()
+
+  const errBox = await screen.findByTestId('recall-next-error')
+  expect(errBox).toHaveTextContent('Errore di rete temporaneo')
+  expect(screen.queryByLabelText('Caricamento della prossima domanda')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Riprova' }))
+  expect(await screen.findByText('Domanda recuperata')).toBeInTheDocument()
+  expect(screen.queryByTestId('recall-next-error')).not.toBeInTheDocument()
+})

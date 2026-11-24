@@ -187,3 +187,77 @@ def test_question_list_exposes_the_latest_actual_attempt_and_summary_keeps_legac
     save_recall_bank(RecallBank(questions=[q], answers=[RecallAnswer(
         question_id=q.id, answer_text='[Non lo so]', dont_know=True, outcome='sbagliata')]), path)
     assert summarize(path, question_ids=[q.id])['correct'] == 0
+
+
+def test_next_question_with_200_questions_loads_bank_only_once(tmp_path, monkeypatch, rt_db):
+    """next_question con un banco di 200 domande chiama load_recall_bank una sola volta e non fa lavoro pesante in _refill_later."""
+    from tests.api_support import isolated_workspace, make_lesson, run_mock_pipeline
+    from rt.pipeline import recall as recall_pipeline
+    from rt.api.routers import recall as recall_router
+    from rt.services.lesson_service import list_lessons, resolve_lesson_dir
+    from rt.core.models import RecallQuestionStatus
+
+    ws = isolated_workspace(tmp_path, monkeypatch)
+    lesson_dir = make_lesson(ws)
+    run_mock_pipeline(lesson_dir)
+    lesson_id = list_lessons()[0]["id"]
+    resolved_dir = resolve_lesson_dir(lesson_id)
+
+    # 198 mirate + 2 quiz (sotto soglia refill per quiz=5) così esercita anche _refill_later
+    questions = [
+        RecallQuestion(
+            id=f"recall_{i:06d}",
+            type=RecallQuestionType.QUIZ if i <= 2 else RecallQuestionType.MIRATA,
+            unit_ids=["1.1"],
+            question_text=f"Domanda {i} di test sul metabolismo?",
+            options=["A", "B", "C", "D"] if i <= 2 else None,
+            correct_index=0 if i <= 2 else None,
+            status=RecallQuestionStatus.PENDING,
+        )
+        for i in range(1, 201)
+    ]
+    save_recall_bank(RecallBank(questions=questions), resolved_dir)
+
+    calls = 0
+    real_load = recall_pipeline.load_recall_bank
+
+    def counted_load(path):
+        nonlocal calls
+        calls += 1
+        return real_load(path)
+
+    monkeypatch.setattr(recall_pipeline, "load_recall_bank", counted_load)
+    monkeypatch.setattr(
+        recall_pipeline,
+        "generation_available",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("generation_available non deve girare nel thread della richiesta")),
+    )
+
+    res = recall_router.next_question(
+        lesson_id=lesson_id,
+        lesson_dir=resolved_dir,
+        actor="test",
+        qtype="quiz",
+        order="alternato",
+        exclude_id=None,
+        mock=False,
+        unit_id=None,
+    )
+    assert res["id"].startswith("recall_")
+    assert res["remaining"] == 1
+    assert calls == 1
+
+    # Anche con mista (tutti i tipi a turno): una sola lettura del bank
+    calls = 0
+    res_mista = recall_router.next_question(
+        lesson_id=lesson_id,
+        lesson_dir=resolved_dir,
+        actor="test",
+        qtype="mista",
+        order="alternato",
+        exclude_id=None,
+        mock=False,
+        unit_id=None,
+    )
+    assert res_mista["id"].startswith("recall_")
+    assert calls == 1

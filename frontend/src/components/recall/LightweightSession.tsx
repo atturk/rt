@@ -27,6 +27,7 @@ import {
   useAnswerVoice,
   useEndSession,
   useNextQuestion,
+  usePrefetchRecallStatic,
   useRecallHistory,
   useRecallOverview,
   useRecallQuestions,
@@ -133,6 +134,7 @@ export function LightweightSession({
   // Hooks mutazioni
   const nextLesson = useNextQuestion(lessonId ?? 0)
   const nextSubject = useSubjectNext(subjectKey)
+  const prefetchStatic = usePrefetchRecallStatic()
   const answerSeen = useAnswerSeen(activeLessonId)
   const markSeen = answerSeen.mutateAsync
   const answerMutation = useAnswer(activeLessonId)
@@ -189,6 +191,7 @@ export function LightweightSession({
   const [showVoiceRecorder, setShowVoiceRecorder] = useState<boolean>(false)
   const [emptyPoolError, setEmptyPoolError] = useState<boolean>(false)
   const [generalError, setGeneralError] = useState<string | null>(null)
+  const [nextError, setNextError] = useState<string | null>(null)
 
   // Esito dopo risposta
   const [evaluatedResult, setEvaluatedResult] = useState<{
@@ -258,6 +261,7 @@ export function LightweightSession({
       setLoadingNext(true)
       setEmptyPoolError(false)
       setGeneralError(null)
+      setNextError(null)
       setSelectedChoice(null)
       setWrittenAnswer('')
       setShowVoiceRecorder(false)
@@ -296,7 +300,8 @@ export function LightweightSession({
           setEmptyPoolError(true)
           setCurrentQuestion(null)
         } else {
-          setGeneralError(errorMessage(err))
+          setCurrentQuestion(null)
+          setNextError(errorMessage(err))
         }
       } finally {
         if (seq === requestSeq.current) {
@@ -357,6 +362,7 @@ export function LightweightSession({
         explanation: quiz?.question.explanation ?? undefined,
         correctIndex: quiz?.question.correct_index ?? undefined,
       })
+      prefetchStatic(activeLessonId)
     } catch (err) {
       setSelectedChoice(null)
       setGeneralError(errorMessage(err))
@@ -422,6 +428,7 @@ export function LightweightSession({
     })
     setFollowupAnswer('')
     setShowFollowupVoice(false)
+    if (activeLessonId) prefetchStatic(activeLessonId)
   }
 
   // Risposta di approfondimento scritta
@@ -509,6 +516,7 @@ export function LightweightSession({
         explanation: quiz?.question.explanation ?? currentQuestion.explanation ?? undefined,
         correctIndex: quiz?.question.correct_index ?? undefined,
       })
+      prefetchStatic(activeLessonId)
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
@@ -717,6 +725,20 @@ export function LightweightSession({
           </div>
 
           {generalError && <Alert tone="danger">{generalError}</Alert>}
+
+          {nextError && (
+            <div className="rounded-lg border border-danger/30 bg-danger-soft p-4" data-testid="recall-next-error">
+              <p className="text-body text-danger">{nextError}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => void askNext()}>
+                  Riprova
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleEnd}>
+                  Termina
+                </Button>
+              </div>
+            </div>
+          )}
 
           {emptyPoolError && (
             <div className="rounded-lg border bg-card p-6 text-center" data-testid="recall-empty">

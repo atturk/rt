@@ -13,12 +13,15 @@ router = APIRouter(tags=["recall"])
 VOICE_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".oga", ".opus", ".webm", ".aac", ".flac"}
 
 
-def _refill_later(lesson_dir: str, question, mock: bool, actor: str) -> None:
+def _refill_later(lesson_dir: str, question, mock: bool, actor: str, bank=None, allowed=None) -> None:
     """Come il recall da terminale dopo ogni domanda mostrata: se il pool del tipo è alla
-    soglia, un job ne genera altre (la risposta non aspetta l'LLM)."""
-    from rt.services.recall_service import needs_refill
+    soglia, un job ne genera altre (la risposta non aspetta l'LLM o calcoli sul disco)."""
+    from rt.services.recall_service import _UNSET, is_low
     from rt.services.custom_question_types import question_key
-    if question is not None and needs_refill(lesson_dir, question_key(question), force_mock=mock):
+    if question is not None and is_low(
+        lesson_dir, question_key(question), bank=bank,
+        allowed=_UNSET if allowed is None and bank is None else allowed,
+    ):
         enqueue_job("recall_refill", lesson_dir, {"qtype": question_key(question), "mock": mock}, actor)
 
 
@@ -219,18 +222,21 @@ def next_question(lesson_id: int, lesson_dir: LessonDir, actor: Actor,
                   exclude_id: Optional[str] = Query(None, description="Domanda appena saltata"),
                   mock: bool = Query(False, description="Rifornimento del pool in mock"),
                   unit_id: Optional[str] = Query(None, description="Solo le domande di questa unità (Leggi e ripeti)")):
-    from rt.services.recall_service import next_question_for, question_resume_view
+    from rt.pipeline.recall import _allowed_units, load_recall_bank
+    from rt.services.recall_service import next_question_for, pending_count, question_resume_view
     _require_draft(lesson_dir)
     from rt.services.custom_question_types import lesson_types
     if qtype != "mista" and qtype not in lesson_types(lesson_dir):
         raise ApiError(422, "validation_error", "Tipo di domanda non disponibile nella materia.")
-    question = next_question_for(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
+    bank = load_recall_bank(lesson_dir)
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir, bank=bank)
+    question = next_question_for(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id,
+                                 bank=bank, allowed=allowed)
     if question is None:
         raise ApiError(404, "no_questions", "Nessuna domanda pendente di questo tipo: generane altre.")
-    from rt.services.recall_service import pending_count
-    remaining = max(0, pending_count(lesson_dir, qtype, unit_id=unit_id) - 1)
-    _refill_later(lesson_dir, question, mock, actor)
-    return {**question_resume_view(lesson_dir, question, actor), "remaining": remaining}
+    remaining = max(0, pending_count(lesson_dir, qtype, unit_id=unit_id, bank=bank, allowed=allowed) - 1)
+    _refill_later(lesson_dir, question, mock, actor, bank, allowed)
+    return {**question_resume_view(lesson_dir, question, actor, bank=bank), "remaining": remaining}
 
 
 @router.post("/lessons/{lesson_id}/recall/answer", summary="Risponde: quiz subito, risposta scritta con un job di valutazione",
@@ -391,8 +397,9 @@ def subject_next(actor: Actor, materia: str = Query(...),
     picked = _subject_call(next_subject_question, materia, qtype, order=order, exclude=exclude)
     if picked is None:
         raise ApiError(404, "no_questions", "Nessuna domanda di questo tipo da porre nelle lezioni della materia: generane altre.")
-    _refill_later(picked["lesson_dir"], picked["question"], mock, actor)
-    return {"lesson_id": picked["lesson_id"], "question": question_resume_view(picked["lesson_dir"], picked["question"], actor)}
+    _refill_later(picked["lesson_dir"], picked["question"], mock, actor, picked.get("bank"), picked.get("allowed"))
+    return {"lesson_id": picked["lesson_id"],
+            "question": question_resume_view(picked["lesson_dir"], picked["question"], actor, bank=picked.get("bank"))}
 
 
 @router.post("/recall/subject/end", response_model=schemas.RecallSessionInfo,

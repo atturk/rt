@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -56,13 +57,31 @@ export function useRecallHistory(id: number, enabled = true) {
   })
 }
 
-/** Dopo ogni scrittura si rilegge pool e storico dall'API. */
+/** Dopo ogni scrittura si rilegge pool e storico dall'API senza bloccare la mutazione. */
 function useRecallMutation<TVars, TData>(id: number, fn: (vars: TVars) => Promise<TData>) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSettled: () => client.invalidateQueries({ queryKey: recallKeys.all(id) }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: recallKeys.all(id) })
+    },
   })
+}
+
+/** Prefetch in background dei dati statici utili dopo una valutazione o risposta al quiz. */
+export function usePrefetchRecallStatic() {
+  const client = useQueryClient()
+  return useCallback(
+    (lessonId: number) => {
+      if (!lessonId) return
+      void client.prefetchQuery({
+        queryKey: recallKeys.study(lessonId),
+        queryFn: () => unwrap(api.GET('/api/v1/lessons/{lesson_id}/study', { params: path(lessonId) })),
+        staleTime: 60_000,
+      })
+    },
+    [client],
+  )
 }
 
 export type GenerateRecallOptions = {
@@ -341,7 +360,10 @@ function useSubjectMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: subjectKeys.all }), client.invalidateQueries({ queryKey: ['recall'] })]),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: subjectKeys.all })
+      void client.invalidateQueries({ queryKey: ['recall'] })
+    },
   })
 }
 
