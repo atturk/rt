@@ -118,6 +118,56 @@ def request_key(
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _normalize_messages_for_match(messages: Any) -> Any:
+    """Normalizza i messaggi ignorando i blocchi cache_control aggiunti per specifici provider."""
+    if not isinstance(messages, list):
+        return messages
+    normalized = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            normalized.append(msg)
+            continue
+        content = msg.get("content")
+        if isinstance(content, list) and all(isinstance(b, dict) and b.get("type") == "text" for b in content):
+            norm_content: Any = "".join(str(b.get("text") or "") for b in content)
+        else:
+            norm_content = content
+        normalized.append({"role": msg.get("role"), "content": norm_content})
+    return normalized
+
+
+def find_for_job(
+    job_id: Optional[str],
+    messages: Any,
+    *,
+    states: Sequence[str] = ("done", "submitted", "error"),
+    db: Optional[Database] = None,
+) -> Optional[DeferredEntry]:
+    """Trova una chiamata differita già inviata/completata per questo job e stessi messaggi,
+    indipendentemente dal modello o provider attualmente configurati per la fase."""
+    if not job_id:
+        return None
+    target = _resolve_db(db)
+    wanted = _normalize_messages_for_match(messages)
+    priority = {"done": 0, "submitted": 1, "error": 2}
+    with read_scope(target) as s:
+        rows = list(
+            s.scalars(
+                select(LlmDeferred)
+                .where(LlmDeferred.job_id == job_id, LlmDeferred.state.in_(list(states)))
+                .order_by(LlmDeferred.updated_at.desc(), LlmDeferred.created_at.desc())
+            )
+        )
+        matches = [
+            row for row in rows
+            if _normalize_messages_for_match((row.request or {}).get("messages")) == wanted
+        ]
+        if not matches:
+            return None
+        matches.sort(key=lambda r: priority.get(r.state, 99))
+        return DeferredEntry.from_row(matches[0])
+
+
 def get(key: str, *, db: Optional[Database] = None) -> Optional[DeferredEntry]:
     target = _resolve_db(db)
     with read_scope(target) as s:

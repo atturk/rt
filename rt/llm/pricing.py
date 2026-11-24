@@ -176,6 +176,16 @@ def _lookup_pricing(prov_clean: str, mod_clean: str, custom_pricing: Optional[Di
     return pricing, 1.0
 
 
+# Provider in cui output_tokens (completion_tokens) include già reasoning_tokens.
+PROVIDERS_WITH_REASONING_IN_OUTPUT = frozenset({
+    "openrouter",
+    "openai",
+    "openai_compatible",
+    "deepseek",
+    "anthropic",
+})
+
+
 def calculate_cost(
     provider: str,
     model: str,
@@ -184,6 +194,7 @@ def calculate_cost(
     reasoning_tokens: Optional[int] = 0,
     custom_pricing: Optional[Dict[str, Any]] = None,
     cached_input_tokens: Optional[int] = None,
+    reasoning_included_in_output: Optional[bool] = None,
 ) -> Optional[float]:
     """
     Calcola la stima di costo per una singola richiesta LLM.
@@ -194,7 +205,7 @@ def calculate_cost(
 
     in_tok = input_tokens or 0
     out_tok = output_tokens or 0
-    reas_tok = reasoning_tokens or 0
+    reas_tok = max(0, reasoning_tokens or 0)
 
     prov_clean = provider.lower().strip()
     mod_clean = model.lower().strip().lstrip("~")
@@ -210,11 +221,23 @@ def calculate_cost(
     cost_in = ((in_tok - cached_tok) * pricing.input_per_million + cached_tok * cache_rate) / 1_000_000.0
     cost_out = (out_tok / 1_000_000.0) * pricing.output_per_million
 
-    # Se c'è un pricing specifico per reasoning_tokens, usalo
-    reason_rate = pricing.reasoning_per_million if pricing.reasoning_per_million is not None else pricing.output_per_million
-    cost_reason = (reas_tok / 1_000_000.0) * reason_rate
+    included = (
+        prov_clean in PROVIDERS_WITH_REASONING_IN_OUTPUT
+        if reasoning_included_in_output is None
+        else bool(reasoning_included_in_output)
+    )
+    if included:
+        # reasoning_tokens è già dentro output_tokens: aggiungi solo l'eventuale differenza di tariffa
+        if pricing.reasoning_per_million is not None and pricing.reasoning_per_million != pricing.output_per_million:
+            eff_reas = min(reas_tok, max(0, out_tok))
+            cost_reason = (eff_reas / 1_000_000.0) * (pricing.reasoning_per_million - pricing.output_per_million)
+        else:
+            cost_reason = 0.0
+    else:
+        reason_rate = pricing.reasoning_per_million if pricing.reasoning_per_million is not None else pricing.output_per_million
+        cost_reason = (reas_tok / 1_000_000.0) * reason_rate
 
-    total_cost = (cost_in + cost_out + cost_reason) * multiplier
+    total_cost = max(0.0, (cost_in + cost_out + cost_reason) * multiplier)
     return round(total_cost, 6)
 
 

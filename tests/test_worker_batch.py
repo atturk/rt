@@ -248,6 +248,65 @@ def test_worker_batch_expired_falls_back_to_sync(rt_db, tmp_path, monkeypatch):
     assert batch_id in fake_provider.cleaned
 
 
+def test_worker_batch_model_change_between_submit_and_resume_uses_submitted_batch(rt_db, tmp_path, monkeypatch):
+    """Se l'utente cambia modello (o spegne batch / cambia provider) mentre il job attende il lotto,
+    alla ripresa RT usa comunque il risultato del batch già inviato senza perderlo."""
+    fake_provider = _FakeBatchProvider()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    route_before = RouteConfig(provider="openrouter", credential="openrouter", model="openai/gpt-4o", batch=True)
+    route_after = RouteConfig(provider="deepseek", credential="deepseek", model="deepseek-chat", batch=False)
+    active_cfg = {"cfg": RTConfig(mock_llm=False, jobs={"review": JobRoutingConfig(primary=route_before)})}
+    monkeypatch.setattr("rt.llm.client.load_config", lambda *a, **kw: active_cfg["cfg"])
+    monkeypatch.setattr("rt.pipeline.review.load_config", lambda *a, **kw: active_cfg["cfg"])
+    import rt.llm.providers
+    monkeypatch.setattr("rt.llm.client.get_provider", lambda name: fake_provider if name == "openrouter" else rt.llm.providers._PROVIDERS[name])
+    monkeypatch.setattr(rt.llm.providers, "get_provider", lambda name: fake_provider)
+
+    lesson_dir = _seed_review_lesson(tmp_path)
+    queue = DbJobQueue(rt_db)
+
+    def review_handler(job: JobInfo, ctx: RunContext) -> JobOutcome:
+        with ctx.activate():
+            res = run_review(job.lesson_path, force_mock=False, ctx=ctx)
+        return JobOutcome(state=JobState.SUCCEEDED, result=res, lesson_path=job.lesson_path)
+
+    worker = Worker(queue, handlers={"review_test": review_handler}, stt="none")
+    job_id = queue.enqueue("review_test", lesson_dir, {})
+
+    job = worker.run_once()
+    assert job.state == JobState.WAITING_FOR_PROVIDER.value
+    assert len(fake_provider.submitted) == 1
+
+    # Utente cambia modello e provider della fase review (senza nemmeno chiave DeepSeek né batch)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    active_cfg["cfg"] = RTConfig(mock_llm=False, jobs={"review": JobRoutingConfig(primary=route_after)})
+
+    req_keys = [r["custom_id"] for r in fake_provider.submitted[0]["requests"]]
+    fake_provider.next_poll = (
+        "completed",
+        {
+            k: BatchResultItem(
+                custom_id=k,
+                response=NormalizedResponse(content='{"issues": []}', provider="openrouter", model="openai/gpt-4o:batch", finish_reason="stop"),
+            )
+            for k in req_keys
+        },
+    )
+    assert worker.poll_provider_batches(now=100.0) == 1
+
+    monkeypatch.setattr("rt.llm.client.requests.post", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("No sync HTTP")))
+    finished = worker.run_once()
+    assert finished.state == JobState.SUCCEEDED.value, finished.error
+    assert finished.result["total_science_issues"] == 0
+
+    import json as _json
+    from rt.core.lesson_paths import lesson_path
+    with open(lesson_path(lesson_dir, "llm_debug.log"), encoding="utf-8") as f:
+        entries = [_json.loads(line) for line in f if line.strip()]
+    assert len(entries) == 2
+    assert all(e["provider"] == "openrouter" and e["model"] == "openai/gpt-4o:batch" for e in entries)
+
+
 def test_cancel_waiting_for_provider_cleans_deferred_and_calls_provider_cancel(rt_db, monkeypatch):
     fake_provider = _FakeBatchProvider()
     fake_provider.supports_cancel = True

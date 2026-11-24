@@ -177,7 +177,9 @@ class LiveTerminalMonitor:
                 input_tokens=in_est,
                 output_tokens=out_est,
                 reasoning_tokens=reas_est,
-                custom_pricing=self.pricing
+                custom_pricing=self.pricing,
+                # Prima che arrivi usage, out_est e reas_est vengono dai caratteri separati di content e reasoning.
+                reasoning_included_in_output=False if self.output_tokens is None else None,
             )
             if live_cost is not None and (in_est > 0 or out_est > 0 or reas_est > 0):
                 cost_str = f"~${live_cost:.6f} (streaming)"
