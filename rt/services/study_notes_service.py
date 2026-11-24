@@ -1,4 +1,5 @@
 """Note dello Studio (Verifica e Chiedi, 4.2.4): gestione DB e logica di business."""
+from datetime import timezone
 from typing import Any, Optional
 from sqlalchemy import delete, select
 
@@ -33,7 +34,8 @@ def _row(n: StudyNote) -> dict[str, Any]:
         "correzione_html": render_markdown(str(response.get('correzione') or '')),
         "model": n.model,
         "cost": n.cost,
-        "created_at": n.created_at.isoformat() if n.created_at else None,
+        # Nel database l'ora è UTC senza fuso: la si segna, così il browser la mostra nell'ora locale.
+        "created_at": n.created_at.replace(tzinfo=timezone.utc).isoformat() if n.created_at else None,
         "applied_decision_id": n.applied_decision_id,
     }
 

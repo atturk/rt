@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import timezone
 import os
 import tempfile
 import uuid
@@ -66,7 +67,7 @@ def _row(msg: StudyChatMessage, lesson_id: Optional[int] = None) -> dict[str, An
         "cost": msg.cost,
         "error": msg.error,
         "saved_note_id": msg.saved_note_id,
-        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+        "created_at": msg.created_at.replace(tzinfo=timezone.utc).isoformat() if msg.created_at else None,
     }
 
 

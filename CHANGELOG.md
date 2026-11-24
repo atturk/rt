@@ -1,5 +1,15 @@
 # Novità di RT
 
+## 4.3.9b6 — 2026-11-24
+
+Beta di rifinitura dopo le prove della b5.
+
+### Correzioni
+
+- **Chat dello Studio**: il segnalibro di una risposta salvata ora si vede (prima era verde chiaro su verde chiaro).
+- **Messaggi salvati**: l'ora di salvataggio è quella italiana, non quella UTC.
+- **File .rt dal Finder**: aprendo altri pacchetti con la finestra Nuova lezione già aperta, si aggiungono a quelli già scelti.
+
 ## 4.3.9b5 — 2026-11-24
 
 Beta di rifinitura della chat dello Studio.

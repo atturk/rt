@@ -510,10 +510,7 @@ export function StudyChat({ lessonId, unitId, onClose, onToast }: StudyChatProps
                       label={isSaved ? 'Togli dai messaggi salvati' : 'Salva nei messaggi salvati'}
                       icon={isSaved ? BookmarkCheck : Bookmark}
                       active={isSaved}
-                      className={cn(
-                        'size-7 min-w-7 [&_svg]:size-3.5',
-                        isSaved && 'text-primary',
-                      )}
+                      className="size-7 min-w-7 [&_svg]:size-3.5"
                       aria-pressed={isSaved}
                       onClick={() => void handleToggleNote(msg)}
                       data-testid={`chat-save-note-${msg.id}`}

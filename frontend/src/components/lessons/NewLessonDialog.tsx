@@ -396,7 +396,8 @@ export function NewLessonDialog({
           setProblem('Scegli o solo file audio/materiali o solo pacchetti .rt/.zip.')
           return
         }
-        setZipFiles(zipsFound)
+        // I pacchetti si aggiungono a quelli già scelti (anche aperti dal Finder con la finestra aperta).
+        setZipFiles((prev) => [...prev, ...zipsFound.filter((z) => !prev.some((p) => p.name === z.name && p.size === z.size))])
         setNotice(null)
         setAudioFiles([])
         setMaterialFiles([])
