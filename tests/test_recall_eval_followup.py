@@ -249,3 +249,53 @@ def test_prompt_followup_include_parte_mancante():
     )
     assert "PARTE MANCANTE" in prompt
     assert "Il compenso respiratorio aumenta la ventilazione per ridurre la PaCO2." in prompt
+
+
+def test_followup_non_lo_so_mantiene_prima_valutazione_senza_chiamare_modello(sample_lesson_dir, monkeypatch):
+    """[Non lo so] sull'approfondimento non chiama il modello, mantiene i punteggi/esito iniziali e mostra parte_mancante."""
+    from rt.pipeline import recall as recall_mod
+
+    def fail_llm(*args, **kwargs):
+        raise AssertionError("LLMClient non deve essere chiamato su [Non lo so] in approfondimento")
+
+    monkeypatch.setattr(recall_mod, "LLMClient", fail_llm)
+
+    record_recall_answer(
+        sample_lesson_dir,
+        "q1",
+        "È una riduzione del pH ematico.",
+        evaluation="Risposta incompleta.",
+        outcome="parziale",
+        mark_answered=False,
+        correttezza=70,
+        completezza=60,
+        attinenza=85,
+        domanda_followup="Cosa fa l'organismo per compensare?",
+        parte_mancante="Manca il meccanismo di compenso respiratorio.",
+    )
+
+    eval2 = handle_recall_answer(
+        sample_lesson_dir,
+        "q1",
+        "[Non lo so]",
+        force_mock=False,
+        is_followup=True,
+    )
+    assert eval2 is not None
+    assert eval2.outcome == "parziale"
+    assert eval2.correttezza == 70
+    assert eval2.completezza == 60
+    assert eval2.attinenza == 85
+    assert "Manca il meccanismo di compenso respiratorio." in str(eval2)
+
+    bank = load_recall_bank(sample_lesson_dir)
+    ans = next(a for a in bank.answers if a.question_id == "q1")
+    assert ans.outcome == "parziale"
+    assert ans.followup_correttezza == 70
+    assert ans.followup_completezza == 60
+    assert ans.followup_attinenza == 85
+    assert "Manca il meccanismo di compenso respiratorio." in (ans.followup_evaluation or "")
+    assert ans.domanda_followup is None
+
+    q1 = next(q for q in bank.questions if q.id == "q1")
+    assert q1.status == RecallQuestionStatus.ANSWERED

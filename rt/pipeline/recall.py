@@ -283,7 +283,7 @@ def record_recall_answer(
         if question and mark_answered and question.status != RecallQuestionStatus.DISCARDED:
             question.status = RecallQuestionStatus.ANSWERED
 
-        if answer_text.strip() == '[Non lo so]':
+        if answer_text.strip() == '[Non lo so]' and not is_followup:
             outcome = 'sbagliata'
         elif outcome is None:
             outcome = getattr(evaluation, 'outcome', None)
@@ -310,7 +310,8 @@ def record_recall_answer(
                 target.followup_correttezza = correttezza
                 target.followup_completezza = completezza
                 target.followup_attinenza = attinenza
-                target.outcome = outcome or getattr(evaluation, 'outcome', target.outcome)
+                if answer_text.strip() != '[Non lo so]':
+                    target.outcome = outcome or getattr(evaluation, 'outcome', target.outcome)
                 target.domanda_followup = None
                 if question and mark_answered:
                     question.status = RecallQuestionStatus.ANSWERED
@@ -941,28 +942,30 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         target_answer = next((a for a in reversed(bank.answers) if a.question_id == question_id), None)
         ans_1 = target_answer.answer_text if target_answer else ""
         eval_1_comment = target_answer.evaluation if target_answer else ""
-        c1 = getattr(target_answer, "correttezza", 70) if target_answer else 70
-        comp1 = getattr(target_answer, "completezza", 70) if target_answer else 70
-        att1 = getattr(target_answer, "attinenza", 80) if target_answer else 80
+        c1 = target_answer.correttezza if target_answer else 70
+        comp1 = target_answer.completezza if target_answer else 70
+        att1 = target_answer.attinenza if target_answer else 80
         eval_1_scores = f"Correttezza: {c1}%, Completezza: {comp1}%, Attinenza: {att1}%"
         followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
         parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
 
+        if is_dont_know:
+            comment = (
+                f"Nessun problema, ecco cosa mancava: {parte_mancante}"
+                if parte_mancante
+                else "Confermata la valutazione precedente."
+            )
+            outcome_1 = (target_answer.outcome if target_answer and target_answer.outcome else None) or "parziale"
+            return RecallEvaluation(
+                comment,
+                outcome=outcome_1,
+                correttezza=c1,
+                completezza=comp1,
+                attinenza=att1,
+                domanda_followup=None,
+            )
+
         if force_mock:
-            if is_dont_know:
-                comment = (
-                    f"[MOCK] L'approfondimento non è stato fornito. {parte_mancante}"
-                    if parte_mancante
-                    else "[MOCK] L'approfondimento non è stato fornito; confermata la valutazione precedente."
-                )
-                return RecallEvaluation(
-                    comment,
-                    outcome="parziale",
-                    correttezza=c1,
-                    completezza=comp1,
-                    attinenza=att1,
-                    domanda_followup=None,
-                )
             return RecallEvaluation(
                 "[MOCK] Ottimo approfondimento, la risposta ora è completa e precisa.",
                 outcome="corretta",
