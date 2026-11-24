@@ -11,6 +11,7 @@ import { Field, SaveFeedback, SecretBadge, Section } from './common'
 import { useGeneralPreference } from './useGeneralPreference'
 
 import { ExtraSecretDelete } from './keys'
+import { SettingsGroup, SettingsInfoButton } from './ui'
 
 /** I form sono inizializzati dai valori salvati e rimontati (key) quando il backend cambia:
  * dopo ogni salvataggio si vede quello che l'API ha scritto, non quello che si era digitato. */
@@ -134,27 +135,31 @@ export function CloseActionSection({ settings }: { settings: Settings }) {
   }
 
   return (
-    <Section id="chiusura-finestra" title="Chiudendo la finestra con la X">
-      <div role="radiogroup" aria-label="Chiudendo la finestra con la X" className="flex flex-col divide-y">
+    <SettingsGroup id="chiusura-finestra" title="Chiudendo la finestra con la X">
+      <div role="radiogroup" aria-label="Chiudendo la finestra con la X" className="divide-y divide-border/60">
         {CLOSE_OPTIONS.map((opt) => (
-          <label key={opt.value} className="flex cursor-pointer items-start gap-3 py-3 first:pt-1 last:pb-1">
-            <input
-              type="radio"
-              name="chiusura_x"
-              value={opt.value}
-              checked={current === opt.value}
-              disabled={save.isPending}
-              onChange={() => select(opt.value)}
-              className="mt-1 size-4 accent-primary"
-            />
-            <span className="flex flex-col gap-1">
-              <span className="text-body font-medium">{opt.label}</span>
-              <span className="text-meta text-muted-foreground">{opt.hint}</span>
-            </span>
-          </label>
+          <div key={opt.value} className="flex min-h-12 items-center justify-between gap-3 px-4 py-3">
+            <label className="flex flex-1 cursor-pointer items-center gap-3">
+              <input
+                type="radio"
+                name="chiusura_x"
+                value={opt.value}
+                checked={current === opt.value}
+                disabled={save.isPending}
+                onChange={() => select(opt.value)}
+                className="size-4 shrink-0 accent-primary"
+              />
+              <span className="text-body text-foreground">{opt.label}</span>
+            </label>
+            <SettingsInfoButton label={opt.label} info={opt.hint} />
+          </div>
         ))}
       </div>
-      <SaveFeedback mutation={save} />
+      {save.isError && (
+        <div className="px-4 py-3">
+          <SaveFeedback mutation={save} />
+        </div>
+      )}
       <ConfirmDialog
         open={confirmQuit}
         title="Chiudi del tutto RT alla chiusura?"
@@ -167,6 +172,6 @@ export function CloseActionSection({ settings }: { settings: Settings }) {
       >
         <p>Ogni volta che chiudi la finestra con la X, RT smetterà di lavorare in background e i job in corso si fermeranno.</p>
       </ConfirmDialog>
-    </Section>
+    </SettingsGroup>
   )
 }

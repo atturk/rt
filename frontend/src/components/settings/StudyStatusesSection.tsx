@@ -8,10 +8,10 @@ import {
 import { api, unwrap } from '@/api/client'
 import { useSaveStudyStatuses, type Settings } from '@/api/settings'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip } from '@/components/ui/tooltip'
 import {
   DEFAULT_STATUS_IDS,
@@ -24,7 +24,7 @@ import {
 } from '@/components/study/studyProgress'
 import { moveItem } from '@/lib/order'
 import { cn } from '@/lib/utils'
-import { Section } from './common'
+import { SettingsGroup } from './ui'
 
 const DRAG_TYPE = 'application/x-rt-study-status-index'
 
@@ -132,12 +132,12 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
   }
 
   return (
-    <Section
+    <SettingsGroup
       id="stati-unita"
       title="Stati delle unità"
       description="Personalizza e ordina il ciclo degli stati di studio (tasto S e clic sull'icona)."
     >
-      <div className="flex flex-col gap-2" data-testid="study-statuses-list">
+      <div className="divide-y divide-border/60" data-testid="study-statuses-list">
         {order.map((id, index) => {
           const isDefault = DEFAULT_STATUS_IDS.includes(id)
           const def = resolveStudyStatus(id, statuses)
@@ -169,7 +169,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
               onDrop={(event) => drop(event, index)}
               onDragEnd={() => { setDragged(null); setOver(null) }}
               className={cn(
-                'flex items-center gap-3 rounded-lg border bg-card p-2.5 text-body transition-colors',
+                'flex min-h-12 items-center gap-3 px-4 py-2.5 text-body transition-colors',
                 dragged === index && 'opacity-50',
                 over === index && dragged !== null && dragged !== index && (
                   index < dragged ? 'border-t-2 border-t-primary' : 'border-b-2 border-b-primary'
@@ -183,7 +183,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
                   data-status-handle={id}
                   aria-label={`Riordina stato ${def.label}: posizione ${index + 1} di ${order.length}, usa Alt e le frecce su e giù`}
                   onKeyDown={(event) => keyMove(event, index)}
-                  className="cursor-grab active:cursor-grabbing shrink-0 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                  className="cursor-grab active:cursor-grabbing shrink-0 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <GripVertical className="size-4" aria-hidden />
                 </button>
@@ -194,7 +194,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
               </div>
 
               {isDefault ? (
-                <div className="flex-1 font-medium">{def.label}</div>
+                <div className="flex-1 text-body">{def.label}</div>
               ) : (
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   <StatusNameInput
@@ -232,14 +232,14 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
                   </select>
 
                   <Tooltip content="Aprendo lo Studio le unità con questo stato si saltano, come Appresa e Ignorata">{(trigger) => (
-                    <label {...trigger} className="flex items-center gap-2 text-meta text-muted-foreground">
-                      <Checkbox
+                    <span {...trigger} className="inline-flex items-center gap-2 text-meta text-muted-foreground">
+                      <Switch
                         label={`Salta in Studio le unità «${custom?.nome ?? ''}»`}
                         checked={Boolean(custom?.salta)}
                         onChange={(salta) => updateStatus(id, { salta })}
                       />
-                      Salta in Studio
-                    </label>
+                      <span>Salta in Studio</span>
+                    </span>
                   )}</Tooltip>
                 </div>
               )}
@@ -261,7 +261,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
+      <div className="px-4 py-3">
         <Button variant="outline" size="sm" onClick={addStatus}>
           <Plus className="mr-1.5 size-4" />
           Aggiungi stato
@@ -301,7 +301,7 @@ export function StudyStatusesSection({ settings }: { settings: Settings }) {
           </div>
         </Modal>
       )}
-    </Section>
+    </SettingsGroup>
   )
 }
 

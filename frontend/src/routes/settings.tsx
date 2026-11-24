@@ -42,6 +42,7 @@ import { Alert } from '@/components/ui/alert'
 import { IconButton, IconLink } from '@/components/ui/icon-button'
 import { useIsPhone } from '@/lib/phone'
 import { cn } from '@/lib/utils'
+import { SettingsPage } from '@/components/settings/ui'
 import { SETUP_PATH } from './setupGate'
 
 export { SETUP_PATH, SetupGate } from './setupGate'
@@ -239,7 +240,19 @@ export function SettingsIndexPage() {
   return <AppearanceSettingsPage />
 }
 export function SetupWizardPage() { return <WithSettings>{s => <SetupWizard settings={s} />}</WithSettings> }
-export function AppearanceSettingsPage() { return page(s => <><AppearanceSection settings={s} /><CloseActionSection settings={s} /></>) }
+export function AppearanceSettingsPage() {
+  return (
+    <WithSettings>
+      {(s) => (
+        <SettingsPage title="Aspetto e lettura" description="Tema, testo dello Studio, copia, lettura veloce e comportamento della finestra.">
+          <AppearanceSection settings={s} />
+          <CloseActionSection settings={s} />
+          <ScrollToHash />
+        </SettingsPage>
+      )}
+    </WithSettings>
+  )
+}
 export function QuestionsSettingsPage() { return <QuestionsSettingsSection /> }
 export function SubjectsCalendarSettingsPage() { return <SubjectsCalendarSection /> }
 export function EditorSettingsPage() { return <EditorShortcutsSection /> }
