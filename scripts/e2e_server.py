@@ -48,6 +48,8 @@ def _workspace(base: str, telegram: bool = False) -> str:
     # nessuna connessione nel config di esempio: senza questo ogni pagina porterebbe alla
     # configurazione guidata (la si prova in settings.spec.ts e nel job CI 'installer')
     general.setdefault("ui", {})["dismissed_notices"] = ["setup_wizard"]
+    # gli e2e provano anche l'approvazione della scaletta: qui la lavorazione la aspetta sempre
+    general["ui"]["outline_mode"] = "manual"
     with open(general_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(general, f, sort_keys=False, allow_unicode=True)
     os.environ["HOME"] = home

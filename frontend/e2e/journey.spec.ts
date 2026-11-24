@@ -148,7 +148,8 @@ test('percorso completo: dall\'audio al documento con le immagini, con ricarica 
   const before = (await apiGet<Settings>(page.request, '/settings')).transcription
   const chooseEngine = async (option: string) => {
     await card.getByRole('button', { name: 'Motore', exact: true }).click()
-    await page.getByRole('menuitemradio', { name: option, exact: true }).click()
+    // L'etichetta del pulsante è il nome breve; la voce del menu può aggiungere «· consigliato».
+    await page.getByRole('menuitemradio').filter({ hasText: option }).first().click()
   }
   const beforeLabel = (await engine.locator('span').first().textContent())!
   await chooseEngine('Server OpenAI-compatible')

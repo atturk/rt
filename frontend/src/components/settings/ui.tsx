@@ -157,12 +157,8 @@ export function AutoSaveStatus({
 /** Etichetta con (i): l'icona resta attaccata all'ultima parola, mai da sola a capo. */
 export function LabelWithInfo({ label, info, infoLabel }: { label: ReactNode; info?: ReactNode; infoLabel: string }) {
   if (!info) return <>{label}</>
-  const button = <SettingsInfoButton label={infoLabel} info={info} className="align-middle" />
-  if (typeof label !== 'string') return <>{label}{' '}{button}</>
-  const cut = label.trimEnd().lastIndexOf(' ')
-  const head = cut >= 0 ? label.slice(0, cut + 1) : ''
-  const last = cut >= 0 ? label.slice(cut + 1) : label
-  return <>{head}<span className="whitespace-nowrap">{last}{'\u00a0'}{button}</span></>
+  // Spazio unificatore: la (i) va a capo insieme all'ultima parola, mai da sola.
+  return <>{label}{'\u00a0'}<SettingsInfoButton label={infoLabel} info={info} className="align-middle" /></>
 }
 
 /**
@@ -234,22 +230,14 @@ export function SettingsRow({
         >
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="min-w-0">
-              {htmlFor && typeof label === 'string' && info ? (
-                <span className="text-body font-medium text-foreground">
-                  <label htmlFor={htmlFor}>{label.slice(0, label.trimEnd().lastIndexOf(' ') + 1)}</label>
-                  <span className="whitespace-nowrap">
-                    <label htmlFor={htmlFor}>{label.slice(label.trimEnd().lastIndexOf(' ') + 1)}</label>{'\u00a0'}
-                    <SettingsInfoButton label={labelText} info={info} className="align-middle" />
-                  </span>
-                </span>
-              ) : htmlFor ? (
+              {htmlFor ? (
                 <>
                   <label htmlFor={htmlFor} className="text-body font-medium text-foreground">
                     {label}
                   </label>
                   {info && (
                     <>
-                      {' '}
+                      {'\u00a0'}
                       <SettingsInfoButton label={labelText} info={info} className="align-middle" />
                     </>
                   )}
