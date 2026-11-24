@@ -205,6 +205,7 @@ export function LightweightSession({
     followupCorrettezza?: number | null
     followupCompletezza?: number | null
     followupAttinenza?: number | null
+    parteMancante?: string | null
   } | null>(null)
 
   // Risposta di approfondimento
@@ -242,6 +243,7 @@ export function LightweightSession({
         followupCorrettezza: saved.followup_correttezza,
         followupCompletezza: saved.followup_completezza,
         followupAttinenza: saved.followup_attinenza,
+        parteMancante: saved.parte_mancante,
       })
     }).catch(error => { if (active) setGeneralError(errorMessage(error)) })
     return () => { active = false }
@@ -410,6 +412,7 @@ export function LightweightSession({
       followupCorrettezza: saved?.followup_correttezza,
       followupCompletezza: saved?.followup_completezza,
       followupAttinenza: saved?.followup_attinenza,
+      parteMancante: saved?.parte_mancante,
     })
     setFollowupAnswer('')
     setShowFollowupVoice(false)
@@ -466,11 +469,19 @@ export function LightweightSession({
   const handleSkipFollowup = async () => {
     if (!currentQuestion || !activeLessonId) return
     try {
-      await answerMutation.mutateAsync({
+      const res = await answerMutation.mutateAsync({
         questionId: currentQuestion.id,
         skipFollowup: true,
       })
-      setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null } : null))
+      const quizRes = (res as { quiz?: { parte_mancante?: string | null } } | undefined)?.quiz
+      let parteMancante: string | null | undefined =
+        quizRes && 'parte_mancante' in quizRes ? quizRes.parte_mancante : undefined
+      if (parteMancante === undefined) {
+        const refetched = await history.refetch()
+        const saved = refetched?.data?.answers?.filter((a) => a.question_id === currentQuestion.id).pop()
+        parteMancante = saved?.parte_mancante ?? null
+      }
+      setEvaluatedResult((prev) => (prev ? { ...prev, domandaFollowup: null, parteMancante } : null))
     } catch (err) {
       setGeneralError(errorMessage(err))
     }
@@ -998,6 +1009,12 @@ export function LightweightSession({
                     <p className="mt-1 text-meta leading-relaxed">
                       <MathText text={cleanComment(mainComment, hasDisplayScores)} />
                     </p>
+                  )}
+                  {!evaluatedResult.domandaFollowup && !evaluatedResult.followupEvaluation && evaluatedResult.parteMancante && (
+                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-meta" data-testid="recall-missing-part">
+                      <p className="text-xs font-semibold text-muted-foreground">Cosa mancava</p>
+                      <p className="mt-0.5 leading-relaxed"><MathText text={evaluatedResult.parteMancante} /></p>
+                    </div>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
                     <p className="mt-2 text-meta">

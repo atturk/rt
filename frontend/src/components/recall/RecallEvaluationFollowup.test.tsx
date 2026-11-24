@@ -169,6 +169,78 @@ describe('Recall Evaluation and Follow-up Flow in LightweightSession', () => {
     })
   })
 
+  it('shows "Cosa mancava" with parte_mancante after clicking Salta on followup', async () => {
+    const question = {
+      id: 'q1',
+      type: 'mirata',
+      question_text: 'Qual è il ruolo del surfactante polmonare?',
+      unit_ids: ['1.1'],
+      remaining: 3,
+    }
+    mockNextMutateAsync.mockResolvedValue(question)
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'job-123' } })
+
+    mockHistoryAnswers = [
+      {
+        question_id: 'q1',
+        answer_text: 'Riduce la tensione superficiale.',
+        evaluation: 'Correttezza: 80%\nCompletezza: 60%\nAttinenza: 90%\n\nBuon inizio, manca un aspetto chiave.',
+        outcome: 'parziale',
+        correttezza: 80,
+        completezza: 60,
+        attinenza: 90,
+        domanda_followup: 'Quali cellule intervengono nella sua produzione?',
+        parte_mancante: null,
+      },
+    ]
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: mockHistoryAnswers } })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <LightweightSession lessonId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Qual è il ruolo del surfactante polmonare?')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/Scrivi qui la tua risposta/i), {
+      target: { value: 'Riduce la tensione superficiale.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Valutazione della risposta')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Valutazione della risposta'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recall-followup-box')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('recall-missing-part')).not.toBeInTheDocument()
+
+    // Salta restituisce parte_mancante
+    mockAnswerMutateAsync.mockResolvedValue({
+      quiz: {
+        message: 'Approfondimento saltato.',
+        parte_mancante: 'I pneumociti di tipo II sintetizzano e secernono il surfactante.',
+      },
+    })
+    fireEvent.click(screen.getByTestId('recall-followup-skip'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recall-missing-part')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Cosa mancava')).toBeInTheDocument()
+    expect(
+      screen.getByText('I pneumociti di tipo II sintetizzano e secernono il surfactante.'),
+    ).toBeInTheDocument()
+  })
+
   it('shows updated followup scores and comment as main evaluation and keeps initial evaluation in recap', async () => {
     const question = {
       id: 'q1',

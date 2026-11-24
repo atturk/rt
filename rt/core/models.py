@@ -422,6 +422,7 @@ class RecallEvaluation(str):
     completezza: Optional[int]
     attinenza: Optional[int]
     domanda_followup: Optional[str]
+    parte_mancante: Optional[str]
 
     def __new__(
         cls,
@@ -431,6 +432,7 @@ class RecallEvaluation(str):
         completezza: Optional[int] = None,
         attinenza: Optional[int] = None,
         domanda_followup: Optional[str] = None,
+        parte_mancante: Optional[str] = None,
     ):
         result = super().__new__(cls, text)
         result.outcome = outcome
@@ -438,6 +440,7 @@ class RecallEvaluation(str):
         result.completezza = completezza
         result.attinenza = attinenza
         result.domanda_followup = domanda_followup
+        result.parte_mancante = parte_mancante
         return result
 
 
@@ -457,6 +460,7 @@ class RecallAnswer(BaseModel):
     completezza: Optional[int] = None
     attinenza: Optional[int] = None
     domanda_followup: Optional[str] = None
+    parte_mancante: Optional[str] = None
     followup_question: Optional[str] = None
     followup_answer: Optional[str] = None
     followup_evaluation: Optional[str] = None

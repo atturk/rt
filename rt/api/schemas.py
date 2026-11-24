@@ -496,6 +496,7 @@ class RecallSavedEvaluation(BaseModel):
     completezza: Optional[int] = None
     attinenza: Optional[int] = None
     domanda_followup: Optional[str] = None
+    parte_mancante: Optional[str] = None
     followup_question: Optional[str] = None
     followup_answer: Optional[str] = None
     followup_evaluation: Optional[str] = None
@@ -639,6 +640,7 @@ class RecallAnswerRecord(BaseModel):
     completezza: Optional[int] = None
     attinenza: Optional[int] = None
     domanda_followup: Optional[str] = None
+    parte_mancante: Optional[str] = None
     followup_question: Optional[str] = None
     followup_answer: Optional[str] = None
     followup_evaluation: Optional[str] = None

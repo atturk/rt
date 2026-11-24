@@ -9324,6 +9324,17 @@
             ],
             "title": "Outcome"
           },
+          "parte_mancante": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parte Mancante"
+          },
           "question_id": {
             "title": "Question Id",
             "type": "string"
@@ -10353,6 +10364,17 @@
               }
             ],
             "title": "Outcome"
+          },
+          "parte_mancante": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parte Mancante"
           }
         },
         "required": [

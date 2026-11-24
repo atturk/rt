@@ -10,13 +10,18 @@ from rt.core.models import (
 )
 from rt.llm.prompts import (
     RecallEvalMirataResult, RecallEvalVastaResult,
+    RECALL_EVAL_MIRATA_SYSTEM_PROMPT, RECALL_EVAL_VASTA_SYSTEM_PROMPT,
+    RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT,
     build_recall_eval_followup_user_prompt
 )
 from rt.pipeline.recall import (
     evaluate_recall_answer, record_recall_answer, skip_recall_followup,
     save_recall_bank, load_recall_bank
 )
-from rt.services.recall_service import handle_recall_answer, skip_recall_followup as service_skip
+from rt.services.recall_service import (
+    handle_recall_answer, skip_recall_followup as service_skip,
+    question_resume_view, recall_history,
+)
 
 
 @pytest.fixture
@@ -182,3 +187,65 @@ def test_salta_approfondimento(sample_lesson_dir):
 
     q1 = next(q for q in bank.questions if q.id == "q1")
     assert q1.status == RecallQuestionStatus.ANSWERED
+
+
+def test_prompts_contengono_regole_professore_e_parte_mancante():
+    """Verifica che i system prompt MIRATA, VASTA e FOLLOWUP contengano le regole anti-rivelazione e parte_mancante."""
+    for prompt in (RECALL_EVAL_MIRATA_SYSTEM_PROMPT, RECALL_EVAL_VASTA_SYSTEM_PROMPT):
+        assert "SENZA nominarlo né descriverlo" in prompt
+        assert "professore all'orale" in prompt
+        assert "non deve contenere la risposta né le sue parole chiave" in prompt
+        assert "parte_mancante" in prompt
+        assert "SBAGLIATO:" in prompt and "GIUSTO:" in prompt
+
+    assert "PARTE MANCANTE" in RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT
+    assert "parte_mancante" in RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT
+
+
+def test_record_recall_answer_salva_parte_mancante_e_api_la_nasconde_finche_aperta(sample_lesson_dir):
+    """record_recall_answer salva parte_mancante, ma history/resume la restituiscono solo dopo chiusura followup."""
+    eval1 = handle_recall_answer(
+        sample_lesson_dir,
+        "q1",
+        "È un disturbo dell'equilibrio acido-base.",
+        force_mock=True,
+    )
+    assert eval1.domanda_followup is not None
+    assert eval1.parte_mancante is not None
+
+    bank = load_recall_bank(sample_lesson_dir)
+    ans = next(a for a in bank.answers if a.question_id == "q1")
+    assert ans.parte_mancante == eval1.parte_mancante
+
+    # Finché domanda_followup è aperta, history e resume nascondono parte_mancante
+    q1 = next(q for q in bank.questions if q.id == "q1")
+    resume_open = question_resume_view(sample_lesson_dir, q1)
+    assert resume_open["saved_evaluation"]["parte_mancante"] is None
+    hist_open = recall_history(sample_lesson_dir)
+    assert hist_open["answers"][0]["parte_mancante"] is None
+
+    # Dopo skip, parte_mancante viene restituita sia da skip che da history/resume
+    returned = service_skip(sample_lesson_dir, "q1")
+    assert returned == eval1.parte_mancante
+
+    bank_after = load_recall_bank(sample_lesson_dir)
+    q1_after = next(q for q in bank_after.questions if q.id == "q1")
+    hist_closed = recall_history(sample_lesson_dir)
+    assert hist_closed["answers"][0]["parte_mancante"] == eval1.parte_mancante
+
+
+def test_prompt_followup_include_parte_mancante():
+    """Verifica che build_recall_eval_followup_user_prompt includa parte_mancante quando fornita."""
+    prompt = build_recall_eval_followup_user_prompt(
+        question_text="Che cos'è l'acidosi?",
+        reference_text="Unità di fisiologia",
+        answer_1="È una riduzione del pH ematico.",
+        eval_1_comment="Manca un aspetto importante.",
+        eval_1_scores="Correttezza: 80%, Completezza: 60%, Attinenza: 90%",
+        followup_question="Cosa succede alla respirazione?",
+        answer_2="Non lo so",
+        dont_know=True,
+        parte_mancante="Il compenso respiratorio aumenta la ventilazione per ridurre la PaCO2.",
+    )
+    assert "PARTE MANCANTE" in prompt
+    assert "Il compenso respiratorio aumenta la ventilazione per ridurre la PaCO2." in prompt

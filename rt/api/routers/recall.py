@@ -254,8 +254,8 @@ def answer(lesson_id: int, body: schemas.RecallAnswer, lesson_dir: LessonDir, ac
             raise ApiError(422, "validation_error", str(exc))
     if body.skip_followup:
         from rt.services.recall_service import skip_recall_followup
-        skip_recall_followup(lesson_dir, body.question_id)
-        return JSONResponse(status_code=200, content={"message": "Approfondimento saltato."})
+        parte_mancante = skip_recall_followup(lesson_dir, body.question_id)
+        return JSONResponse(status_code=200, content={"message": "Approfondimento saltato.", "parte_mancante": parte_mancante})
     answer_text = "[Non lo so]" if body.dont_know else (body.answer or "").strip()
     if not answer_text:
         raise ApiError(422, "validation_error", "Scrivi una risposta.")

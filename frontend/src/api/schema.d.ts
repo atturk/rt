@@ -7999,6 +7999,8 @@ export interface components {
             is_voice: boolean;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
+            /** Parte Mancante */
+            parte_mancante?: string | null;
             /** Question Id */
             question_id: string;
             /**
@@ -8349,6 +8351,8 @@ export interface components {
             followup_question?: string | null;
             /** Outcome */
             outcome?: ("corretta" | "parziale" | "sbagliata") | null;
+            /** Parte Mancante */
+            parte_mancante?: string | null;
         };
         /** RecallSessionInfo */
         RecallSessionInfo: {

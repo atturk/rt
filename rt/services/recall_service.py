@@ -179,14 +179,15 @@ def handle_recall_answer(
         completezza=getattr(evaluation, "completezza", None),
         attinenza=getattr(evaluation, "attinenza", None),
         domanda_followup=getattr(evaluation, "domanda_followup", None),
+        parte_mancante=None if is_followup else getattr(evaluation, "parte_mancante", None),
         is_followup=is_followup,
     )
     return evaluation
 
 
-def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
+def skip_recall_followup(lesson_dir: str, question_id: str) -> Optional[str]:
     from rt.pipeline.recall import skip_recall_followup as skip_followup
-    skip_followup(lesson_dir, question_id)
+    return skip_followup(lesson_dir, question_id)
 
 
 def next_question(
@@ -315,6 +316,7 @@ def question_resume_view(lesson_dir, question, actor=None):
             'domanda_followup', 'followup_question', 'followup_answer', 'followup_evaluation',
             'followup_correttezza', 'followup_completezza', 'followup_attinenza'
         )}
+        result['saved_evaluation']['parte_mancante'] = None if saved.domanda_followup else saved.parte_mancante
     else:
         from rt.services.jobs import get_job_queue, ACTIVE_STATES
         pending = next((job for job in get_job_queue().list(state=list(ACTIVE_STATES), lesson_id=lesson_dir)
@@ -361,7 +363,13 @@ def recall_history(lesson_dir: str) -> dict:
     outcomes = _latest_outcomes(bank)
     questions = [question_view(q, reveal=q.status != RecallQuestionStatus.PENDING, outcome=outcomes.get(q.id), lesson_dir=lesson_dir) for q in bank.questions]
     answers = sorted(bank.answers, key=lambda a: a.answered_at, reverse=True)
-    return {"questions": questions, "answers": [a.model_dump(mode="json") for a in answers]}
+    serialized_answers = []
+    for a in answers:
+        d = a.model_dump(mode="json")
+        if d.get("domanda_followup"):
+            d["parte_mancante"] = None
+        serialized_answers.append(d)
+    return {"questions": questions, "answers": serialized_answers}
 
 
 def question_list(lesson_dir: str, reveal: bool = False) -> dict:

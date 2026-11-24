@@ -273,6 +273,7 @@ def record_recall_answer(
     completezza: Optional[int] = None,
     attinenza: Optional[int] = None,
     domanda_followup: Optional[str] = None,
+    parte_mancante: Optional[str] = None,
     is_followup: bool = False,
 ) -> RecallAnswer:
     """Crea o aggiorna la RecallAnswer per question_id; marca la domanda come ANSWERED."""
@@ -295,6 +296,9 @@ def record_recall_answer(
         if completezza is None: completezza = getattr(evaluation, 'completezza', None)
         if attinenza is None: attinenza = getattr(evaluation, 'attinenza', None)
         if domanda_followup is None: domanda_followup = getattr(evaluation, 'domanda_followup', None)
+        if parte_mancante is None: parte_mancante = getattr(evaluation, 'parte_mancante', None)
+        if not domanda_followup:
+            parte_mancante = None
 
         if is_followup:
             target = next((a for a in reversed(bank.answers) if a.question_id == question_id), None)
@@ -330,6 +334,7 @@ def record_recall_answer(
             existing_vote_only.completezza = completezza
             existing_vote_only.attinenza = attinenza
             existing_vote_only.domanda_followup = domanda_followup
+            existing_vote_only.parte_mancante = parte_mancante
             if vote is not None:
                 existing_vote_only.vote = vote
             existing_vote_only.dont_know = answer_text.strip() == '[Non lo so]'
@@ -348,14 +353,16 @@ def record_recall_answer(
                 completezza=completezza,
                 attinenza=attinenza,
                 domanda_followup=domanda_followup,
+                parte_mancante=parte_mancante,
             )
             bank.answers.append(ans)
         save_recall_bank(bank, lesson_dir)
         return ans
 
 
-def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
+def skip_recall_followup(lesson_dir: str, question_id: str) -> Optional[str]:
     """Termina l'approfondimento della domanda confermando la prima valutazione."""
+    parte_mancante: Optional[str] = None
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         question = next((q for q in bank.questions if q.id == question_id), None)
@@ -364,8 +371,10 @@ def skip_recall_followup(lesson_dir: str, question_id: str) -> None:
         for a in reversed(bank.answers):
             if a.question_id == question_id:
                 a.domanda_followup = None
+                parte_mancante = a.parte_mancante
                 break
         save_recall_bank(bank, lesson_dir)
+    return parte_mancante
 
 
 def skip_recall_question(lesson_dir: str, question_id: str) -> None:
@@ -937,11 +946,17 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         att1 = getattr(target_answer, "attinenza", 80) if target_answer else 80
         eval_1_scores = f"Correttezza: {c1}%, Completezza: {comp1}%, Attinenza: {att1}%"
         followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
+        parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
 
         if force_mock:
             if is_dont_know:
+                comment = (
+                    f"[MOCK] L'approfondimento non è stato fornito. {parte_mancante}"
+                    if parte_mancante
+                    else "[MOCK] L'approfondimento non è stato fornito; confermata la valutazione precedente."
+                )
                 return RecallEvaluation(
-                    "[MOCK] L'approfondimento non è stato fornito; confermata la valutazione precedente.",
+                    comment,
                     outcome="parziale",
                     correttezza=c1,
                     completezza=comp1,
@@ -978,6 +993,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             followup_question=followup_q,
             answer_2=answer_text,
             dont_know=is_dont_know,
+            parte_mancante=parte_mancante,
         )
         result: "RecallEvalMirataResult" = checked_evaluation(
             client,
@@ -1015,12 +1031,13 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                     domanda_followup=None,
                 )
             return RecallEvaluation(
-                "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma incompleta rispetto al riferimento.",
+                "Correttezza: 75%\nCompletezza: 70%\n\n[MOCK] Risposta plausibile ma manca un aspetto importante.",
                 outcome="parziale",
                 correttezza=75,
                 completezza=70,
                 attinenza=80,
-                domanda_followup="Puoi chiarire in che modo questo concetto influisce sulla fase successiva?",
+                domanda_followup="Partendo da ciò che hai detto, cosa succede nella fase successiva?",
+                parte_mancante="[MOCK] Manca il passaggio chiave che collega la fase iniziale al meccanismo di compenso.",
             )
         if is_dont_know:
             return RecallEvaluation(
@@ -1032,12 +1049,13 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                 domanda_followup=None,
             )
         return RecallEvaluation(
-            "[MOCK] Risposta concettualmente corretta, ma non copre tutti i punti della scaletta ideale.",
+            "[MOCK] Risposta concettualmente corretta, ma manca un nodo importante della scaletta.",
             outcome="parziale",
             correttezza=75,
             completezza=70,
             attinenza=80,
-            domanda_followup="Quali sono gli ulteriori aspetti della scaletta che andrebbero integrati?",
+            domanda_followup="Quali altri aspetti della sequenza dovresti collegare a questo punto?",
+            parte_mancante="[MOCK] Mancano i passaggi finali di integrazione previsti dalla scaletta.",
         )
 
     client = LLMClient(force_mock=force_mock, interactive=True)
@@ -1068,11 +1086,15 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             res_m.completezza = 0
             res_m.attinenza = 0
             res_m.domanda_followup = None
+            res_m.parte_mancante = None
             outcome = "sbagliata"
         else:
             outcome = res_m.outcome or ("corretta" if res_m.correttezza >= 80 and res_m.completezza >= 75 else ("sbagliata" if res_m.correttezza < 40 else "parziale"))
             if outcome == "sbagliata" or (res_m.correttezza >= 95 and res_m.completezza >= 95):
                 res_m.domanda_followup = None
+                res_m.parte_mancante = None
+            elif not res_m.domanda_followup:
+                res_m.parte_mancante = None
         text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{res_m.commento}"
         return RecallEvaluation(
             text,
@@ -1081,6 +1103,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             completezza=res_m.completezza,
             attinenza=res_m.attinenza,
             domanda_followup=res_m.domanda_followup,
+            parte_mancante=res_m.parte_mancante,
         )
 
     elif question.type == RecallQuestionType.VASTA:
@@ -1103,11 +1126,15 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             res_v.completezza = 0
             res_v.attinenza = 0
             res_v.domanda_followup = None
+            res_v.parte_mancante = None
             outcome = "sbagliata"
         else:
             outcome = res_v.outcome or ("corretta" if res_v.correttezza >= 80 and res_v.completezza >= 75 else ("sbagliata" if res_v.correttezza < 40 else "parziale"))
             if outcome == "sbagliata" or (res_v.correttezza >= 95 and res_v.completezza >= 95):
                 res_v.domanda_followup = None
+                res_v.parte_mancante = None
+            elif not res_v.domanda_followup:
+                res_v.parte_mancante = None
         return RecallEvaluation(
             res_v.commento,
             outcome,
@@ -1115,6 +1142,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             completezza=res_v.completezza,
             attinenza=res_v.attinenza,
             domanda_followup=res_v.domanda_followup,
+            parte_mancante=res_v.parte_mancante,
         )
 
 
