@@ -294,29 +294,23 @@ def next_subject_question(materia: str, qtype, order: str = "alternato",
     quel tipo. exclude è la domanda appena saltata ("<id lezione>:<id domanda>"): si passa alla
     lezione seguente e, se è l'unica con domande, non si ripropone subito la stessa.
     qtype è un RecallQuestionType o "mista" (tutti i tipi a turno)."""
-    from rt.pipeline.recall import _allowed_units, load_recall_bank
     from rt.services.recall_service import pending_count, pick_pending_question, type_value
     subject = normalize_subject(materia)
     lessons = [s for s in subject_lessons(subject) if _ready(s)]
-    banks = {s["id"]: load_recall_bank(s["path"]) for s in lessons}
-    alloweds = {s["id"]: _allowed_units(s["path"], bank=banks[s["id"]]) for s in lessons}
-    candidates = [s for s in lessons if pending_count(s["path"], qtype, include_asked=channel == WEB,
-                                                      bank=banks[s["id"]], allowed=alloweds[s["id"]]) > 0]
+    candidates = [s for s in lessons if pending_count(s["path"], qtype, include_asked=channel == WEB) > 0]
     skipped_lesson, skipped_id = split_question_key(exclude) if exclude else (None, None)
     last = _last_lesson(subject, channel)
     if skipped_lesson is not None:
         last = skipped_lesson
     ordered = _turn_order(candidates, [s["id"] for s in lessons], last, order)
     if channel == WEB:
-        ordered.sort(key=lambda s: pending_count(s["path"], qtype, bank=banks[s["id"]], allowed=alloweds[s["id"]]) ==
-                     pending_count(s["path"], qtype, include_asked=False, bank=banks[s["id"]], allowed=alloweds[s["id"]]))
+        ordered.sort(key=lambda s: pending_count(s["path"], qtype) ==
+                     pending_count(s["path"], qtype, include_asked=False))
     for summary in ordered:
         question = pick_pending_question(summary["path"], qtype, order=order, current=False, include_asked=channel == WEB,
-                                         exclude_id=skipped_id if summary["id"] == skipped_lesson else None,
-                                         bank=banks[summary["id"]], allowed=alloweds[summary["id"]])
+                                         exclude_id=skipped_id if summary["id"] == skipped_lesson else None)
         if question is None:
             continue
         record_subject_question(subject, summary["id"], question.id, type_value(qtype), channel=channel)
-        return {"lesson_id": summary["id"], "lesson_dir": summary["path"], "question": question,
-                "bank": banks[summary["id"]], "allowed": alloweds[summary["id"]]}
+        return {"lesson_id": summary["id"], "lesson_dir": summary["path"], "question": question}
     return None

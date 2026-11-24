@@ -25,15 +25,13 @@ def suggested(signal: dict) -> bool:
     return signal.get("level") != 0
 
 
-def unit_rows(lesson_dir: str, units: Optional[list] = None, bank=None) -> List[Dict]:
+def unit_rows(lesson_dir: str, units: Optional[list] = None) -> List[Dict]:
     """Per ogni unità: titolo, giudizio del classificatore, se è suggerita e se è selezionata."""
     from rt.pipeline.recall import load_recall_bank
     from rt.services.unit_relevance import _load, recall_signal
     units = _units(lesson_dir) if units is None else units
     records = _load(lesson_dir, "resolved")
-    if bank is None:
-        bank = load_recall_bank(lesson_dir)
-    stored = bank.unit_selection or {}
+    stored = load_recall_bank(lesson_dir).unit_selection or {}
     chosen, known = set(stored.get("selected") or []), set(stored.get("known") or [])
     from rt.services.study_progress_service import ignored_unit_ids
     ignored = ignored_unit_ids(lesson_dir)
@@ -47,19 +45,19 @@ def unit_rows(lesson_dir: str, units: Optional[list] = None, bank=None) -> List[
     return rows
 
 
-def selected_units(lesson_dir: str, units: Optional[list] = None, bank=None) -> list:
+def selected_units(lesson_dir: str, units: Optional[list] = None) -> list:
     """Le unità selezionate, nell'ordine della lezione."""
     units = _units(lesson_dir) if units is None else units
-    picked = {row["unit_id"] for row in unit_rows(lesson_dir, units, bank=bank) if row["selected"]}
+    picked = {row["unit_id"] for row in unit_rows(lesson_dir, units) if row["selected"]}
     return [u for u in units if u.unit_id in picked]
 
 
-def selected_unit_ids(lesson_dir: str, bank=None) -> Optional[set]:
+def selected_unit_ids(lesson_dir: str) -> Optional[set]:
     """ID delle unità selezionate; None se la bozza non si legge (nessun filtro)."""
     units = _units(lesson_dir)
     if not units:
         return None
-    return {u.unit_id for u in selected_units(lesson_dir, units, bank=bank)}
+    return {u.unit_id for u in selected_units(lesson_dir, units)}
 
 
 def set_selection(lesson_dir: str, unit_ids: Optional[Iterable[str]]) -> List[Dict]:

@@ -87,21 +87,10 @@ def save_recall_bank(bank: RecallBank, lesson_dir: str) -> None:
 # Pool: domande da porre delle unità selezionate
 # -----------------------------------------------------------------------
 
-_UNSET = object()
-
-
-def get_pool_count(
-    lesson_dir: str,
-    qtype: RecallQuestionType,
-    *,
-    bank: Optional[RecallBank] = None,
-    allowed=_UNSET,
-) -> int:
+def get_pool_count(lesson_dir: str, qtype: RecallQuestionType) -> int:
     """Domande PENDING di un tipo nel pool (solo delle unità selezionate)."""
-    if bank is None:
-        bank = load_recall_bank(lesson_dir)
-    if allowed is _UNSET:
-        allowed = _allowed_units(lesson_dir, bank=bank)
+    bank = load_recall_bank(lesson_dir)
+    allowed = _allowed_units(lesson_dir)
     return sum(1 for q in bank.questions if question_key(q) == type_key(qtype) and q.status == RecallQuestionStatus.PENDING
                and _question_allowed(q, allowed))
 
@@ -109,11 +98,11 @@ def get_pool_count(
 get_reserve_count = get_pool_count  # nome storico
 
 
-def _allowed_units(lesson_dir: str, *, bank: Optional[RecallBank] = None) -> Optional[set]:
+def _allowed_units(lesson_dir: str) -> Optional[set]:
     """Unità selezionate per il recall (None = tutte, bozza illeggibile), calcolate una volta
     per chiamata: prima bozza e classificazioni si rileggevano per ogni domanda del bank."""
     from rt.services.recall_units import selected_unit_ids
-    return selected_unit_ids(lesson_dir, bank=bank)
+    return selected_unit_ids(lesson_dir)
 
 
 def _question_allowed(question: RecallQuestion, allowed: Optional[set]) -> bool:
@@ -159,74 +148,6 @@ def _compute_units_fingerprint(lesson_dir: str, unit_ids: list) -> Optional[str]
     return compute_string_sha256("|".join(contents))
 
 
-def _select_pending_question(
-    bank: RecallBank,
-    qtype: RecallQuestionType,
-    order: str,
-    unit_cursor: Optional[str],
-    exclude_id: Optional[str],
-    unit_id: Optional[str],
-    include_asked: bool,
-    allowed: Optional[set],
-    ignored: set,
-    pending_issue_units: set,
-) -> tuple[Optional[RecallQuestion], bool]:
-    repaired = bool(repair_duplicate_ids(bank))
-    active = (RecallQuestionStatus.PENDING, RecallQuestionStatus.ASKED) if include_asked else (RecallQuestionStatus.PENDING,)
-    pending = [q for q in bank.questions if question_key(q) == type_key(qtype) and q.status in active
-               and _question_allowed(q, allowed) and not ignored.intersection(q.unit_ids)
-               and not pending_issue_units.intersection(q.unit_ids)]
-    if unit_id is not None:
-        pending = [q for q in pending if on_unit(q, unit_id)]
-    if not pending:
-        return None, repaired
-
-    # Applica exclude_id solo se ci sono altre opzioni disponibili
-    if exclude_id:
-        filtered = [q for q in pending if q.id != exclude_id]
-        if filtered:
-            pending = filtered
-        # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
-
-    # Nel web si riprende prima una domanda lasciata senza risposta.
-    asked = [q for q in pending if q.status == RecallQuestionStatus.ASKED]
-    if asked:
-        pending = asked
-
-    selected: Optional[RecallQuestion] = None
-
-    if order == "sequenziale":
-        pending.sort(key=lambda q: (q.unit_ids[0], q.created_at))
-        selected = pending[0]
-
-    elif order == "alternato":
-        unit_ids_sorted = sorted({q.unit_ids[0] for q in pending})
-        if unit_cursor and unit_cursor in unit_ids_sorted:
-            idx = (unit_ids_sorted.index(unit_cursor) + 1) % len(unit_ids_sorted)
-        else:
-            idx = 0
-        target_unit = unit_ids_sorted[idx]
-        for q in pending:
-            if q.unit_ids[0] == target_unit:
-                selected = q
-                break
-        if not selected:
-            selected = pending[0]
-
-    elif order == "casuale":
-        selected = _random.choice(pending)
-
-    else:
-        selected = pending[0]
-
-    changed = repaired
-    if selected and selected.status != RecallQuestionStatus.ASKED:
-        selected.status = RecallQuestionStatus.ASKED
-        selected.asked_at = datetime.now().isoformat()
-        changed = True
-    return selected, changed
-
-
 def get_next_pending_question(
     lesson_dir: str,
     qtype: RecallQuestionType,
@@ -235,11 +156,6 @@ def get_next_pending_question(
     exclude_id: Optional[str] = None,
     unit_id: Optional[str] = None,
     include_asked: bool = False,
-    *,
-    bank: Optional[RecallBank] = None,
-    allowed=_UNSET,
-    ignored=_UNSET,
-    pending_issue_units=_UNSET,
 ) -> Optional[RecallQuestion]:
     """Seleziona la prossima domanda pendente del tipo richiesto secondo l'ordine specificato.
 
@@ -257,38 +173,72 @@ def get_next_pending_question(
 
     Marca la domanda restituita come ASKED e salva il bank.
     """
-    if ignored is _UNSET:
-        from rt.services.study_progress_service import ignored_unit_ids
-        ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
-    if pending_issue_units is _UNSET:
-        from rt.pipeline.ledger import get_pending_issues
-        _, pending_issues = get_pending_issues(lesson_dir)
-        pending_issue_units = {
-            iss.unit_id for iss in pending_issues
-            if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
-        }
-    if bank is not None:
-        if allowed is _UNSET:
-            allowed = None if unit_id is not None else _allowed_units(lesson_dir, bank=bank)
-        selected, changed = _select_pending_question(
-            bank, qtype, order, unit_cursor, exclude_id, unit_id, include_asked,
-            allowed, ignored, pending_issue_units,
-        )
-        if changed:
-            with recall_bank_lock(lesson_dir):
-                save_recall_bank(bank, lesson_dir)
-        return selected
-
-    if allowed is _UNSET:
-        allowed = None if unit_id is not None else _allowed_units(lesson_dir)
+    from rt.services.study_progress_service import ignored_unit_ids
+    from rt.pipeline.ledger import get_pending_issues
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir)
+    ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
+    _, pending_issues = get_pending_issues(lesson_dir)
+    pending_issue_units = {
+        iss.unit_id for iss in pending_issues
+        if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+    }
     with recall_bank_lock(lesson_dir):
-        loaded_bank = load_recall_bank(lesson_dir)
-        selected, changed = _select_pending_question(
-            loaded_bank, qtype, order, unit_cursor, exclude_id, unit_id, include_asked,
-            allowed, ignored, pending_issue_units,
-        )
-        if changed:
-            save_recall_bank(loaded_bank, lesson_dir)
+        bank = load_recall_bank(lesson_dir)
+        if repair_duplicate_ids(bank):
+            save_recall_bank(bank, lesson_dir)
+        active = (RecallQuestionStatus.PENDING, RecallQuestionStatus.ASKED) if include_asked else (RecallQuestionStatus.PENDING,)
+        pending = [q for q in bank.questions if question_key(q) == type_key(qtype) and q.status in active
+                   and _question_allowed(q, allowed) and not ignored.intersection(q.unit_ids)
+                   and not pending_issue_units.intersection(q.unit_ids)]
+        if unit_id is not None:
+            pending = [q for q in pending if on_unit(q, unit_id)]
+        if not pending:
+            return None
+
+        # Applica exclude_id solo se ci sono altre opzioni disponibili
+        if exclude_id:
+            filtered = [q for q in pending if q.id != exclude_id]
+            if filtered:
+                pending = filtered
+            # else: exclude_id è l'unica pending → viene comunque riproposta (fallback)
+
+        # Nel web si riprende prima una domanda lasciata senza risposta.
+        asked = [q for q in pending if q.status == RecallQuestionStatus.ASKED]
+        if asked:
+            pending = asked
+
+        selected: Optional[RecallQuestion] = None
+
+        if order == "sequenziale":
+            pending.sort(key=lambda q: (q.unit_ids[0], q.created_at))
+            selected = pending[0]
+
+        elif order == "alternato":
+            unit_ids_sorted = sorted({q.unit_ids[0] for q in pending})
+            if unit_cursor and unit_cursor in unit_ids_sorted:
+                idx = (unit_ids_sorted.index(unit_cursor) + 1) % len(unit_ids_sorted)
+            else:
+                idx = 0
+            target_unit = unit_ids_sorted[idx]
+            for q in pending:
+                if q.unit_ids[0] == target_unit:
+                    selected = q
+                    break
+            if not selected:
+                selected = pending[0]
+
+        elif order == "casuale":
+            selected = _random.choice(pending)
+
+        else:
+            selected = pending[0]
+
+        if selected:
+            if selected.status != RecallQuestionStatus.ASKED:
+                selected.status = RecallQuestionStatus.ASKED
+                selected.asked_at = datetime.now().isoformat()
+            save_recall_bank(bank, lesson_dir)
+
         return selected
 
 

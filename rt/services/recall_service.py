@@ -216,9 +216,6 @@ def next_question(
 DEFAULT_REFILL_THRESHOLDS = {"vasta": 2, "mirata": 3, "quiz": 5}
 
 
-_UNSET = object()
-
-
 def refill_threshold(qtype: RecallQuestionType) -> int:
     """Soglia del tipo: con questo numero di domande da porre, o meno, si rifornisce."""
     from rt.core.config import load_config
@@ -229,14 +226,9 @@ def refill_threshold(qtype: RecallQuestionType) -> int:
     return int(thresholds.get(key, DEFAULT_REFILL_THRESHOLDS.get(key, 0)))
 
 
-def is_low(lesson_dir: str, qtype: RecallQuestionType, *, bank=None, allowed=_UNSET) -> bool:
-    from rt.pipeline.recall import get_pool_count, _UNSET as _P_UNSET
-    kw = {"bank": bank}
-    if allowed is not _UNSET:
-        kw["allowed"] = allowed
-    else:
-        kw["allowed"] = _P_UNSET
-    return get_pool_count(lesson_dir, qtype, **kw) <= refill_threshold(qtype)
+def is_low(lesson_dir: str, qtype: RecallQuestionType) -> bool:
+    from rt.pipeline.recall import get_pool_count
+    return get_pool_count(lesson_dir, qtype) <= refill_threshold(qtype)
 
 
 def refill_if_low(
@@ -267,9 +259,9 @@ def refill_active_type_if_low(lesson_dir: str, qtype: RecallQuestionType, force_
                   force_mock=force_mock, progress=progress)
 
 
-def needs_refill(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = False, bank=None, allowed=_UNSET) -> bool:
+def needs_refill(lesson_dir: str, qtype: RecallQuestionType, *, force_mock: bool = False) -> bool:
     from rt.pipeline.recall import generation_available
-    return is_low(lesson_dir, qtype, bank=bank, allowed=allowed) and generation_available(lesson_dir, qtype, force_mock=force_mock)
+    return is_low(lesson_dir, qtype) and generation_available(lesson_dir, qtype, force_mock=force_mock)
 
 
 def is_question_stale(lesson_dir: str, question) -> bool:
@@ -309,14 +301,13 @@ def question_view(question, reveal: bool = False, outcome=None, *, lesson_dir=No
 
 
 
-def question_resume_view(lesson_dir, question, actor=None, *, bank=None):
+def question_resume_view(lesson_dir, question, actor=None):
     """Riprende una valutazione salvata o un job ancora in corso, senza consumare la domanda."""
     result = question_view(question, lesson_dir=lesson_dir)
     if question.type == RecallQuestionType.QUIZ or question.status != RecallQuestionStatus.ASKED:
         return result
     from rt.pipeline.recall import load_recall_bank, current_answers
-    if bank is None:
-        bank = load_recall_bank(lesson_dir)
+    bank = load_recall_bank(lesson_dir)
     cur = current_answers(bank, question)
     saved = next((a for a in reversed(cur) if a.evaluation), None)
     if saved is not None:
@@ -422,30 +413,25 @@ def type_value(qtype) -> str:
     return qtype.value if isinstance(qtype, RecallQuestionType) else str(qtype)
 
 
-def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None, *, include_asked: bool = True, bank=None, allowed=_UNSET) -> int:
+def pending_count(lesson_dir: str, qtype, unit_id: Optional[str] = None, *, include_asked: bool = True) -> int:
     """Domande da porre del tipo (o di tutti, "mista"), eventualmente solo di un'unità."""
     from rt.pipeline.recall import _allowed_units, _question_allowed, load_recall_bank, on_unit
     types = set(resolve_types(qtype, lesson_dir))
     from rt.services.study_progress_service import ignored_unit_ids
-    if bank is None:
-        bank = load_recall_bank(lesson_dir)
-    if allowed is _UNSET:
-        allowed = None if unit_id is not None else _allowed_units(lesson_dir, bank=bank)
+    allowed = None if unit_id is not None else _allowed_units(lesson_dir)
     ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
-    return sum(1 for q in bank.questions
+    return sum(1 for q in load_recall_bank(lesson_dir).questions
                if question_key(q) in types and (q.status == RecallQuestionStatus.PENDING or include_asked and q.status == RecallQuestionStatus.ASKED) and _question_allowed(q, allowed)
                and not ignored.intersection(q.unit_ids) and (unit_id is None or on_unit(q, unit_id)))
 
 
 def next_question_for(lesson_dir: str, qtype, order: str = "alternato",
-                      exclude_id: Optional[str] = None, unit_id: Optional[str] = None,
-                      *, bank=None, allowed=_UNSET):
+                      exclude_id: Optional[str] = None, unit_id: Optional[str] = None):
     """Prossima domanda pendente (la marca come posta) senza generarne di nuove; None se il
     pool del tipo è vuoto. Il cursore dell'ordine alternato è quello della sessione salvata. La
     domanda entra nella sessione web della lezione (aperta qui se non c'è, vedi
     rt.services.recall_sessions)."""
-    question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id,
-                                     bank=bank, allowed=allowed)
+    question = pick_pending_question(lesson_dir, qtype, order=order, exclude_id=exclude_id, unit_id=unit_id)
     if question is not None:
         from rt.services.recall_sessions import record_web_question
         record_web_question(lesson_dir, question.id, type_value(qtype))
@@ -453,26 +439,13 @@ def next_question_for(lesson_dir: str, qtype, order: str = "alternato",
 
 
 def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
-                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None, include_asked: bool = True,
-                          *, bank=None, allowed=_UNSET):
+                          exclude_id: Optional[str] = None, current: bool = True, unit_id: Optional[str] = None, include_asked: bool = True):
     """Prossima domanda pendente della lezione (marcata come posta) con il cursore dell'ordine
     alternato della sessione salvata, senza registrarla in una sessione. current=False non la
     segna come domanda corrente della lezione (la sessione per materia non la occupa).
     Con "mista" i tipi si danno il turno a partire da quello dopo l'ultimo posto; unit_id
     limita alle domande di un'unità (Leggi e ripeti)."""
-    from rt.pipeline.recall import _allowed_units, get_next_pending_question, load_recall_bank, on_unit
-    from rt.services.study_progress_service import ignored_unit_ids
-    from rt.pipeline.ledger import get_pending_issues
-    if bank is None:
-        bank = load_recall_bank(lesson_dir)
-    if allowed is _UNSET:
-        allowed = None if unit_id is not None else _allowed_units(lesson_dir, bank=bank)
-    ignored = set() if unit_id is not None else ignored_unit_ids(lesson_dir)
-    _, pending_issues = get_pending_issues(lesson_dir)
-    pending_issue_units = {
-        iss.unit_id for iss in pending_issues
-        if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
-    }
+    from rt.pipeline.recall import get_next_pending_question
     state = load_recall_session_state(lesson_dir)
     types = resolve_types(qtype, lesson_dir)
     if len(types) > 1:
@@ -481,7 +454,14 @@ def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
         start = names.index(last) + 1 if last in names else 0
         types = types[start:] + types[:start]
     if include_asked:
-        asked_types = {question_key(q) for q in bank.questions
+        from rt.pipeline.recall import load_recall_bank, on_unit
+        from rt.pipeline.ledger import get_pending_issues
+        _, pending_issues = get_pending_issues(lesson_dir)
+        pending_issue_units = {
+            iss.unit_id for iss in pending_issues
+            if iss.unit_id and not str(getattr(iss.type, "value", iss.type)).startswith("ERR_ASR")
+        }
+        asked_types = {question_key(q) for q in load_recall_bank(lesson_dir).questions
                        if q.status == RecallQuestionStatus.ASKED and q.id != exclude_id
                        and (unit_id is None or on_unit(q, unit_id))
                        and not pending_issue_units.intersection(q.unit_ids)}
@@ -489,9 +469,7 @@ def pick_pending_question(lesson_dir: str, qtype, order: str = "alternato",
     question = None
     for candidate in types:
         question = get_next_pending_question(lesson_dir, candidate, order=order, unit_cursor=state.get("unit_cursor"),
-                                             exclude_id=exclude_id, unit_id=unit_id, include_asked=include_asked,
-                                             bank=bank, allowed=allowed, ignored=ignored,
-                                             pending_issue_units=pending_issue_units)
+                                             exclude_id=exclude_id, unit_id=unit_id, include_asked=include_asked)
         if question is not None:
             break
     if question is not None:
