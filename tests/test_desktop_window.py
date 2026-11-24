@@ -1158,7 +1158,7 @@ def test_applescript_dialog_with_and_without_icon(tmp_path):
     with_icon = desktop._applescript_dialog('Messaggio "test"', title="RT", buttons=("Esci", "Apri Impostazioni"),
                                             default_button="Apri Impostazioni", icon_path=str(icon))
     assert with_icon.startswith('display dialog "Messaggio \\"test\\""')
-    assert f'with icon (POSIX file "{icon}")' in with_icon
+    assert f'with icon (POSIX file {desktop._applescript_string(str(icon))})' in with_icon
     assert 'buttons {"Esci", "Apri Impostazioni"}' in with_icon
     assert 'default button "Apri Impostazioni"' in with_icon
 
