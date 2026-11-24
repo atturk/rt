@@ -109,19 +109,33 @@ def create_source_lesson(*, audio, materiali, appunti='', principale=None, alleg
 
 
 def discard_new_lesson(lesson_dir):
-    """Toglie una lezione appena creata dall'import che non è riuscito a completarla.
-    Nessun job la indica ancora (il job la collega solo dopo la creazione)."""
+    """Toglie riga nel DB e cartella vuota di una lezione appena creata dall'import fallito.
+    Non cancella mai una cartella che contiene file."""
     import logging
     try:
         from rt.db.engine import get_database
-        if get_database() is not None:
-            from rt.services.lesson_delete_service import delete_lesson
-            from rt.services.lesson_service import lesson_id_for_dir
-            lesson_id = lesson_id_for_dir(lesson_dir)
-            if lesson_id is not None:
-                delete_lesson(lesson_id, lesson_dir)
-                return
-        fs.rmtree(lesson_dir, ignore_errors=True)
+        db = get_database()
+        if db is not None:
+            from sqlalchemy import select, update
+            from rt.db.models import Job
+            from rt.db.repositories import LessonRepository
+            from rt.db.session import session_scope
+            from rt.services.jobs import ACTIVE_STATES
+            from rt.services.lesson_delete_service import purge_lesson_records
+            with session_scope(db) as session:
+                row = LessonRepository(session).get_by_path(lesson_dir)
+                if row is not None:
+                    # Scollega eventuali job attivi invece di eliminarli, così il fallimento resta visibile.
+                    session.execute(
+                        update(Job)
+                        .where(Job.lesson_path == row.path, Job.state.in_(list(ACTIVE_STATES)))
+                        .values(lesson_path=None, active_lesson=None)
+                    )
+                    purge_lesson_records(session, row)
+                    session.delete(row)
+            fs.forget(lesson_dir)
+        if os.path.isdir(lesson_dir) and not os.path.islink(lesson_dir) and not os.listdir(lesson_dir):
+            os.rmdir(lesson_dir)
     except Exception:
         logging.getLogger(__name__).exception("Lezione incompleta non rimossa: %s", lesson_dir)
 
