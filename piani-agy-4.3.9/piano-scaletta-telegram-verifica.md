@@ -44,18 +44,15 @@ File: `rt/telegram/notify.py`, `rt/telegram/notify_log.py`, `rt/telegram/client.
   Mai una per unità.
 - Niente doppioni: se nello stesso job sono già partite `issue_da_decidere` e `verifica_pronta`, manda solo
   `verifica_pronta` (che riporta già il numero).
-- Cancellabili: `client.send_message` restituisce il `message_id` di Telegram; salvalo nel log
-  (`notify_log`, campo `message_id`, e `chat_id`). Nuovo endpoint `DELETE /api/v1/telegram/notifications`
-  (tutte quelle registrate con message_id, chiamando `deleteMessage`; Telegram permette di cancellare i
-  messaggi del bot fino a 48 ore: quelle più vecchie si tolgono solo dal log) e
-  `DELETE /api/v1/telegram/notifications/{index}` per una sola. Errori di rete → messaggio chiaro,
-  mai il token (riusa `_redact`).
+- Pulizia dello storico (CORRETTO da Attilio): NON si cancella nulla su Telegram e non serve salvare i
+  message_id. Serve solo svuotare la sezione «Ultime notifiche inviate» di RT: nuovo endpoint
+  `DELETE /api/v1/telegram/notifications` che svuota il file di `notify_log` (sotto il suo lock).
 - UI telegram.tsx: sotto la configurazione, gruppo «Ricevi una notifica quando…» con un interruttore per
-  evento (testo breve + tooltip con un esempio del messaggio). Nello storico delle ultime notifiche, per
-  ogni riga un'icona cestino minimale (ghost, `aria-label="Cancella da Telegram"`), e in alto a destra
-  «Cancella tutte» come link discreto con conferma.
-- Test pytest: evento spento → nessun invio; `verifica_pronta` una sola volta per job; deleteMessage chiamato
-  con chat_id e message_id giusti (client finto); il token non compare negli errori. Vitest per i toggle e
+  evento (testo breve + tooltip con un esempio del messaggio). Accanto al titolo «Ultime notifiche inviate»
+  un pulsante icona minimale (ghost, cestino, `aria-label="Svuota l'elenco"`, tooltip «Svuota l'elenco: i
+  messaggi su Telegram restano»), senza finestra di conferma; dopo, l'elenco mostra «Nessuna notifica».
+- Test pytest: evento spento → nessun invio; `verifica_pronta` una sola volta per job; DELETE svuota il log; il token
+  non compare negli errori. Vitest per i toggle e
   il cestino.
 
 ## 3. Verifica delle unità in parallelo
@@ -87,7 +84,7 @@ una alla volta in un `for`.
 
 ## Chiusura
 - `CHANGELOG.md`: crea `## 4.3.9b9 — da pubblicare` sopra la b8 (stesso stile). Novità: scaletta che procede
-  da sola (scelta in Impostazioni), notifiche Telegram a scelta e cancellabili, notifica a verifica
+  da sola (scelta in Impostazioni), notifiche Telegram a scelta, storico delle notifiche svuotabile, notifica a verifica
   completata, verifica manuale delle unità in parallelo. Correzioni: costo stimato con i modelli che
   ragionano, risultato batch conservato se cambi modello. Non cambiare `VERSION`.
 - Esegui: pytest sui test toccati, `npx vitest run`, `npx oxlint --deny-warnings`, `npm run build`,
