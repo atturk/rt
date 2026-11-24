@@ -190,5 +190,5 @@ def test_api_and_real_mock_worker_multiple_units(tmp_path, monkeypatch, rt_db, a
     assert done.result['issues'] == len(review.load_science_issues(lesson))
     assert all(i.origin == 'parte' for i in review.load_science_issues(lesson))
     events = list(queue.events(job_id))
-    assert [e.payload['unit_id'] for e in events if e.type == 'review_unit_done'] == ['1.1', '1.2']
+    assert sorted(e.payload['unit_id'] for e in events if e.type == 'review_unit_done') == ['1.1', '1.2']
     assert load_review_units(lesson) == {}

@@ -714,6 +714,7 @@ def merge_unit_findings(lesson_dir: str, prior: List[ScienceIssue], generated: L
     return combined, [], sequence
 
 
+@lesson_locked
 def _initialize_anchor_ledger(lesson_dir: str) -> None:
     """Le verifiche nuove producono già dati ancorati, non suggerimenti da migrare."""
     from rt.pipeline.ledger import load_ledger, save_ledger
@@ -802,7 +803,6 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     cfg = load_config()
     stats = detect_statistical_asr_risks(lesson_dir=lesson_dir,
         k=cfg.review.asr_statistical_k, floor=cfg.review.asr_statistical_floor)
-    prior = load_science_issues(lesson_dir)
     _initialize_anchor_ledger(lesson_dir)
     generated = []
     client = LLMClient(force_mock=force_mock)
@@ -819,7 +819,8 @@ def run_review_unit(lesson_dir: str, unit_id: str, force_mock: bool = False, par
     anchor_findings(generated, unit)
     from rt.core.lesson_lock import lesson_lock
     with lesson_lock(lesson_dir):
-        combined, orphaned, sequence = merge_unit_findings(lesson_dir, load_science_issues(lesson_dir), generated, draft.units, {unit_id})
+        prior = load_science_issues(lesson_dir)
+        combined, orphaned, sequence = merge_unit_findings(lesson_dir, prior, generated, draft.units, {unit_id})
         save_science_issues(combined, lesson_dir)
         record_review_unit(lesson_dir, unit, cfg, client, len(generated), "issues" if generated else result,
                            text_hash=raw_hashes.get(unit_id))
