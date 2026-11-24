@@ -25,7 +25,7 @@ def webview(monkeypatch):
     fake.settings = {}
     fake.FileDialog = SimpleNamespace(OPEN=10, FOLDER=20, SAVE=30)
     fake_window = Mock()
-    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event(), closed=Event())
+    fake_window.events = SimpleNamespace(loaded=Event(), shown=Event(), initialized=Event(), closed=Event(), closing=Event())
     fake.create_window = Mock(return_value=fake_window)
     fake.start = Mock()
     menu = ModuleType("webview.menu")

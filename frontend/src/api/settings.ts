@@ -76,7 +76,7 @@ export function useAddModel() {
 
 export function useAssignPhase() {
   return useSettingsMutation(({ job, connection, model, batch }: { job: string; connection: string; model: string; batch?: boolean }) =>
-    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, ...(batch !== undefined ? { batch } : {}) } })),
+    unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, batch: batch ?? false } })),
   )
 }
 
@@ -90,7 +90,7 @@ export function useClearPhase() {
 export function useAssignAllPhases() {
   return useSettingsMutation(async ({ jobs, connection, model }: { jobs: string[]; connection: string; model: string }) => {
     for (const job of jobs) {
-      await unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model } }))
+      await unwrap(api.PUT('/api/v1/settings/phases/{job}', { params: { path: { job } }, body: { connection, model, batch: false } }))
     }
   })
 }

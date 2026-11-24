@@ -15,9 +15,9 @@ export const testSettings: Settings = {
     parakeet_model_ready: false,
   },
   telegram: { enabled: false, bot_token_set: false, chat_id_set: false },
-  connections: [{ name: 'locale', provider: 'openai_compatible', base_url: 'http://localhost:9/v1', models: ['test'], credentials: [{ name: 'locale_1', set: true }] }],
+  connections: [{ name: 'locale', provider: 'openai_compatible', base_url: 'http://localhost:9/v1', models: ['test'], credentials: [{ name: 'locale_1', set: true }], supports_batch: false }],
   credentials: [{ name: 'locale_1', provider: 'openai_compatible', env_var: 'RT_LOCALE_1_API_KEY', set: true }],
-  phases: ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image'].map(job => ({ job, label: job, connection: 'locale', model: 'test' })),
+  phases: ['outline', 'rewrite', 'review', 'recall', 'image_description', 'enrichment_writer', 'enrichment_visualizer', 'enrichment_image'].map(job => ({ job, label: job, connection: 'locale', model: 'test', batch: false })),
   pricing: {}, web_search: { searxng_base_url: '', contextual_verification: false },
 }
 export const enrichmentSettings = { mode: 'manual' as const, automatic: false, cap_mode: 'fixed' as const, cap_number: 5, utility_threshold: 0.5,

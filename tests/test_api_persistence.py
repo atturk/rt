@@ -88,7 +88,7 @@ def test_settings_writes_persist(api_client, api_token, ws, tmp_path):
     settings = ok(c.post("/api/v1/settings/connections", json={"name": "Casa", "provider": "openrouter",
                                                                  "api_keys": [KEY]}))
     jobs = [p["job"] for p in settings["phases"]]
-    assert len(jobs) == 8
+    assert len(jobs) == 9
     ok(c.post("/api/v1/settings/connections/Casa/models", json={"model": "vendor/extra"}))
     for n, job in enumerate(jobs):  # tutte le fasi
         ok(c.put(f"/api/v1/settings/phases/{job}", json={"connection": "Casa", "model": f"vendor/fase-{n}"}))

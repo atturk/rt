@@ -52,7 +52,7 @@ it('mostra Chat dello Studio con opzione Come la Revisione', () => {
     ...testSettings,
     phases: [
       ...testSettings.phases,
-      { job: 'study_chat', label: 'Chat dello Studio', connection: null, model: null },
+      { job: 'study_chat', label: 'Chat dello Studio', connection: null, model: null, batch: false },
     ],
   }
   render(

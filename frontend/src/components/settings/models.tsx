@@ -318,7 +318,7 @@ export function ConnectionsSection({ settings }: { settings: Settings }) {
       ))}
       {Object.keys(settings.pricing ?? {}).filter(provider => !settings.connections.some(c => c.provider === provider)).map(provider =>
         <div key={provider} className="border-t py-3"><h3 className="text-body font-semibold">{providerLabel(provider)} · senza connessione</h3>
-          <PricingSection settings={settings} connection={{ name: `costi-${provider}`, provider, base_url: '', credentials: [], models: Object.keys(settings.pricing[provider]) }} />
+          <PricingSection settings={settings} connection={{ name: `costi-${provider}`, provider, base_url: '', credentials: [], models: Object.keys(settings.pricing[provider]), supports_batch: false }} />
         </div>)}
     </Section>
   )
@@ -526,7 +526,7 @@ function RouteForm({ route, settings, save }: { route: RouteOut; settings: Setti
     save.mutate({
       job: route.job,
       role: route.role,
-      body: { provider, credential, model: model.trim(), base_url: baseUrl.trim(), round_robin: route.role === 'primary' && roundRobin },
+      body: { provider, credential, model: model.trim(), base_url: baseUrl.trim(), round_robin: route.role === 'primary' && roundRobin, batch: false },
     })
   }
 
