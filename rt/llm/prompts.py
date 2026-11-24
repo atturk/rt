@@ -584,7 +584,7 @@ class RecallEvalMirataResult(BaseModel):
     outcome: Optional[RecallOutcome] = None
     correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza concettuale generale della risposta (0-100)")
     completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza della risposta (0-100)")
-    attinenza: int = Field(default=100, ge=0, le=100, description="Percentuale di attinenza rispetto al contenuto dell'unità (0-100)")
+    attinenza: Optional[int] = Field(default=None, ge=0, le=100, description="Percentuale di attinenza rispetto al contenuto dell'unità (0-100)")
     commento: str = Field(..., description="Breve commento del docente che evidenzia cosa è corretto, cosa manca o è errato")
     domanda_followup: Optional[str] = Field(None, description="Domanda di approfondimento facoltativa per chiarire o completare")
     parte_mancante: Optional[str] = Field(None, description="Spiegazione di ciò che manca (2-3 frasi), da compilare SOLO quando c'è domanda_followup")
@@ -942,7 +942,7 @@ def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solut
             f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
 
 
-RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
+RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = f"""Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
 
 REGOLE CATEGORICHE:
 1. Valuta rispetto alla SOLUZIONE ATTESA fornita (e al procedimento del tipo, se presente); non aggiungere nozioni esterne.
@@ -950,7 +950,14 @@ REGOLE CATEGORICHE:
 3. "completezza" (0-100): quanto la risposta copre i passaggi essenziali del ragionamento o del procedimento.
 4. "commento": breve (3-5 frasi), indica quali passaggi sono giusti, quali mancano o sono sbagliati e dove si è interrotto il ragionamento.
 5. Tono diretto ma non punitivo.
-6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
+6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.
+
+COMMENTO:
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
+
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_ragionamento_user_prompt(question_text: str, solution: str, procedure: str,
@@ -966,15 +973,22 @@ SOLUZIONE ATTESA:
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome, eventuale domanda_followup)."""
 
 
-RECALL_EVAL_TEXT_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento dello studente.
+RECALL_EVAL_TEXT_SYSTEM_PROMPT = f"""Sei un docente universitario che valuta il ragionamento dello studente.
 Valuta la risposta usando la traccia e il contenuto reale delle unità della lezione fornite come riferimento.
 Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
 Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
 Restituisci outcome: corretta se il ragionamento è corretto e completo, parziale se contiene elementi validi ma lacune o errori,
-sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo.""" + "\n" + LATEX_WRITING_RULE
+sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo.
+
+COMMENTO:
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
+
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_text: str,
@@ -983,4 +997,4 @@ def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_t
     note = DONT_KNOW_NOTE if dont_know else ""
     return (f"TRACCIA POSTA:\n{question_text}\n\nRIFERIMENTO DELLA LEZIONE:\n{reference}\n\n"
             f"RISPOSTA DELLO STUDENTE:\n{answer_text}{note}\n\n"
-            "Valuta e restituisci RecallEvalMirataResult (correttezza, completezza, commento, outcome).")
+            "Valuta e restituisci RecallEvalMirataResult (correttezza, completezza, commento, outcome, eventuale domanda_followup).")

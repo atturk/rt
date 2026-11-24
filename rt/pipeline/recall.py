@@ -911,6 +911,39 @@ def generate_recall_batch(
 # Valutazione LLM delle risposte a domande mirate/vaste (Fase D3)
 # -----------------------------------------------------------------------
 
+def followup_dont_know_evaluation(target_answer: Optional[RecallAnswer]) -> RecallEvaluation:
+    """Esito deterministico per [Non lo so] sull'approfondimento: mantiene la prima valutazione."""
+    c1 = target_answer.correttezza if target_answer else 70
+    comp1 = target_answer.completezza if target_answer else 70
+    att1 = target_answer.attinenza if target_answer else 80
+    parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
+    comment = (
+        f"Nessun problema, ecco cosa mancava: {parte_mancante}"
+        if parte_mancante
+        else "Confermata la valutazione precedente."
+    )
+    outcome_1 = (target_answer.outcome if target_answer and target_answer.outcome else None) or "parziale"
+    return RecallEvaluation(
+        comment,
+        outcome=outcome_1,
+        correttezza=c1,
+        completezza=comp1,
+        attinenza=att1,
+        domanda_followup=None,
+    )
+
+
+def format_followup_scores(c1: Optional[int], comp1: Optional[int], att1: Optional[int]) -> str:
+    parts = []
+    if c1 is not None:
+        parts.append(f"Correttezza: {c1}%")
+    if comp1 is not None:
+        parts.append(f"Completezza: {comp1}%")
+    if att1 is not None:
+        parts.append(f"Attinenza: {att1}%")
+    return ", ".join(parts)
+
+
 def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False, is_followup: bool = False) -> RecallEvaluation:
     """Valuta con l'LLM la risposta a una domanda mirata o vasta e ritorna il testo di valutazione pronto da mostrare.
 
@@ -930,7 +963,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
 
     if question.type == RecallQuestionType.PERSONALIZZATA:
         from rt.pipeline.recall_special import evaluate
-        return evaluate(lesson_dir, question, answer_text, force_mock=force_mock)
+        return evaluate(lesson_dir, question, answer_text, force_mock=force_mock, is_followup=is_followup)
 
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
@@ -945,25 +978,12 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         c1 = target_answer.correttezza if target_answer else 70
         comp1 = target_answer.completezza if target_answer else 70
         att1 = target_answer.attinenza if target_answer else 80
-        eval_1_scores = f"Correttezza: {c1}%, Completezza: {comp1}%, Attinenza: {att1}%"
+        eval_1_scores = format_followup_scores(c1, comp1, att1)
         followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
         parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
 
         if is_dont_know:
-            comment = (
-                f"Nessun problema, ecco cosa mancava: {parte_mancante}"
-                if parte_mancante
-                else "Confermata la valutazione precedente."
-            )
-            outcome_1 = (target_answer.outcome if target_answer and target_answer.outcome else None) or "parziale"
-            return RecallEvaluation(
-                comment,
-                outcome=outcome_1,
-                correttezza=c1,
-                completezza=comp1,
-                attinenza=att1,
-                domanda_followup=None,
-            )
+            return followup_dont_know_evaluation(target_answer)
 
         if force_mock:
             return RecallEvaluation(

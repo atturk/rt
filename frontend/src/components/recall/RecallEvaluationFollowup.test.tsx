@@ -362,4 +362,67 @@ describe('Recall Evaluation and Follow-up Flow in LightweightSession', () => {
       expect(screen.getByText('I pneumociti di tipo II.')).toBeInTheDocument()
     })
   })
+
+  it('shows Correttezza 70% badge and strips Correttezza: line for custom question types', async () => {
+    const question = {
+      id: 'q-custom',
+      type: 'personalizzata',
+      custom_type: 'problema-calcolo',
+      question_text: 'Calcola il gap anionico del paziente.',
+      unit_ids: ['2.1'],
+      remaining: 2,
+    }
+    mockNextMutateAsync.mockResolvedValue(question)
+    mockAnswerMutateAsync.mockResolvedValue({ job: { job_id: 'job-custom' } })
+
+    mockHistoryAnswers = [
+      {
+        question_id: 'q-custom',
+        answer_text: 'Gap = 16 mEq/L.',
+        evaluation: 'Conclusione corretta, manca un passaggio del ragionamento.',
+        outcome: 'parziale',
+        correttezza: 70,
+        completezza: 60,
+        attinenza: null,
+        domanda_followup: 'Come confronti il risultato con i valori normali?',
+      },
+    ]
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: mockHistoryAnswers } })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <LightweightSession lessonId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Calcola il gap anionico del paziente.')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/Scrivi qui la tua risposta/i), {
+      target: { value: 'Gap = 16 mEq/L.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Valutazione della risposta')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Valutazione della risposta'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recall-eval-scores')).toBeInTheDocument()
+    })
+    const scores = screen.getByTestId('recall-eval-scores')
+    expect(scores).toHaveTextContent('Correttezza 70%')
+    expect(scores).toHaveTextContent('Completezza 60%')
+    expect(scores).not.toHaveTextContent('Attinenza')
+
+    const resultCard = screen.getByTestId('recall-result-card')
+    expect(resultCard).toHaveTextContent('Conclusione corretta, manca un passaggio del ragionamento.')
+    expect(resultCard).not.toHaveTextContent('Correttezza:')
+    expect(screen.getByTestId('recall-followup-box')).toBeInTheDocument()
+  })
 })
