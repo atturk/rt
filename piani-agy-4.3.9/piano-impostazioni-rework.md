@@ -74,6 +74,11 @@ Attilio: il prototipo https://claude.ai/artifact/KzUcDv4KRW8u4SZyhkVTwZ (struttu
 - Nessuna sezione quasi vuota: se una pagina ha meno di due righe, va accorpata.
 - Nessun duplicato (es. «Orario del calendario» oggi compare in Calendario e in Materie).
 - Testi brevi, in italiano semplice, sentence case; spiegazioni nei tooltip `info`.
+- Tooltip SEMPRE interi e in primo piano: solo il `Tooltip` di `components/ui/tooltip.tsx` (portale in
+  `document.body`, posizione fissa con `placeTooltip`), mai tooltip CSS dentro i riquadri. Niente `overflow-hidden`
+  che li tagli, niente z-index più bassi di riquadri, intestazioni fisse o pannello laterale; vicino ai bordi della
+  finestra si girano (sopra/sotto, sinistra/destra) invece di uscire. Vitest: il testo del tooltip di una riga
+  sta in `document.body` fuori dal gruppo e non dentro un elemento con overflow nascosto.
 - Mantieni i `data-testid` esistenti dove possibile (sui controlli, non sui contenitori) per non rompere e2e.
   Aggiorna i test vitest delle impostazioni (`components/settings/*.test.tsx`): le asserzioni su «Salva …»
   diventano asserzioni sul salvataggio automatico (mutation chiamata dopo change/blur).
