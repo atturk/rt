@@ -169,6 +169,83 @@ describe('Recall Evaluation and Follow-up Flow in LightweightSession', () => {
     })
   })
 
+  it('shows updated followup scores and comment as main evaluation and keeps initial evaluation in recap', async () => {
+    const question = {
+      id: 'q1',
+      type: 'mirata',
+      question_text: 'Qual è il ruolo del surfactante polmonare?',
+      unit_ids: ['1.1'],
+      remaining: 3,
+    }
+    mockNextMutateAsync.mockResolvedValue(question)
+    mockAnswerMutateAsync.mockResolvedValue({
+      job: { job_id: 'job-followup' },
+    })
+
+    mockHistoryAnswers = [
+      {
+        question_id: 'q1',
+        answer_text: 'Riduce la tensione superficiale.',
+        evaluation: 'Correttezza: 85%\nCompletezza: 60%\nAttinenza: 90%\n\nCommento iniziale.',
+        outcome: 'corretta',
+        correttezza: 85,
+        completezza: 60,
+        attinenza: 90,
+        domanda_followup: null,
+        followup_question: 'Quali cellule producono il surfactante?',
+        followup_answer: 'I pneumociti di tipo II.',
+        followup_evaluation: 'Correttezza: 95%\nCompletezza: 90%\nAttinenza: 95%\n\nOttimo approfondimento completo.',
+        followup_correttezza: 95,
+        followup_completezza: 90,
+        followup_attinenza: 95,
+      },
+    ]
+    mockHistoryRefetch.mockResolvedValue({ data: { answers: mockHistoryAnswers } })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <LightweightSession lessonId={1} />
+        </BrowserRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Qual è il ruolo del surfactante polmonare?')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByPlaceholderText(/Scrivi qui la tua risposta/i), {
+      target: { value: 'Riduce la tensione superficiale.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Rispondi' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Valutazione della risposta')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Valutazione della risposta'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recall-eval-scores')).toHaveTextContent('Completezza 90%')
+      expect(screen.getByTestId('recall-eval-scores')).toHaveTextContent('Correttezza 95%')
+      expect(screen.getByTestId('recall-eval-scores')).toHaveTextContent('Attinenza 95%')
+    })
+
+    expect(screen.getByText('Giusto.')).toBeInTheDocument()
+    expect(screen.getByText('Ottimo approfondimento completo.')).toBeInTheDocument()
+
+    const recap = screen.getByTestId('recall-followup-recap')
+    expect(recap).toHaveTextContent('Quali cellule producono il surfactante?')
+    expect(recap).toHaveTextContent('I pneumociti di tipo II.')
+    expect(recap).toHaveTextContent('Prima valutazione: Correttezza 85% · Completezza 60% · Attinenza 90%')
+    expect(recap).toHaveTextContent('Commento iniziale.')
+
+    // Il commento iniziale non è nel commento principale fuori dal riepilogo
+    const resultCard = screen.getByTestId('recall-result-card')
+    expect(resultCard.querySelectorAll('p').length).toBeGreaterThan(0)
+    expect(recap.contains(screen.getByText('Commento iniziale.'))).toBe(true)
+  })
+
   it('renders scores and followup recap in RecallAnswersPage', async () => {
     mockHistoryAnswers = [
       {

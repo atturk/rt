@@ -202,6 +202,9 @@ export function LightweightSession({
     followupQuestion?: string | null
     followupAnswer?: string | null
     followupEvaluation?: string | null
+    followupCorrettezza?: number | null
+    followupCompletezza?: number | null
+    followupAttinenza?: number | null
   } | null>(null)
 
   // Risposta di approfondimento
@@ -236,6 +239,9 @@ export function LightweightSession({
         followupQuestion: saved.followup_question,
         followupAnswer: saved.followup_answer,
         followupEvaluation: saved.followup_evaluation,
+        followupCorrettezza: saved.followup_correttezza,
+        followupCompletezza: saved.followup_completezza,
+        followupAttinenza: saved.followup_attinenza,
       })
     }).catch(error => { if (active) setGeneralError(errorMessage(error)) })
     return () => { active = false }
@@ -401,6 +407,9 @@ export function LightweightSession({
       followupQuestion: saved?.followup_question,
       followupAnswer: saved?.followup_answer,
       followupEvaluation: saved?.followup_evaluation,
+      followupCorrettezza: saved?.followup_correttezza,
+      followupCompletezza: saved?.followup_completezza,
+      followupAttinenza: saved?.followup_attinenza,
     })
     setFollowupAnswer('')
     setShowFollowupVoice(false)
@@ -609,6 +618,22 @@ export function LightweightSession({
   // Le domande vaste non si attaccano a una singola unità: nel ripasso dell'unità non ci sono.
   const isQuiz = currentQuestion?.type === 'quiz'
   const isAnswered = evaluatedResult !== null || evaluationJob !== null
+  const hasFollowupEval = Boolean(evaluatedResult?.followupEvaluation)
+  const displayCorrettezza = hasFollowupEval
+    ? (evaluatedResult?.followupCorrettezza ?? evaluatedResult?.correttezza)
+    : evaluatedResult?.correttezza
+  const displayCompletezza = hasFollowupEval
+    ? (evaluatedResult?.followupCompletezza ?? evaluatedResult?.completezza)
+    : evaluatedResult?.completezza
+  const displayAttinenza = hasFollowupEval
+    ? (evaluatedResult?.followupAttinenza ?? evaluatedResult?.attinenza)
+    : evaluatedResult?.attinenza
+  const hasDisplayScores = displayCorrettezza != null || displayCompletezza != null || displayAttinenza != null
+  const mainComment = evaluatedResult?.followupEvaluation ?? evaluatedResult?.explanation
+  const hasInitialScores =
+    evaluatedResult?.correttezza != null ||
+    evaluatedResult?.completezza != null ||
+    evaluatedResult?.attinenza != null
   const busy =
     answerMutation.isPending ||
     voiceMutation.isPending ||
@@ -949,38 +974,29 @@ export function LightweightSession({
                           : 'Valutazione'}
                   </p>
 
-                  {(evaluatedResult.correttezza != null ||
-                    evaluatedResult.completezza != null ||
-                    evaluatedResult.attinenza != null) && (
+                  {hasDisplayScores && (
                     <div className="mt-2 flex flex-wrap gap-2" data-testid="recall-eval-scores">
-                      {evaluatedResult.correttezza != null && (
+                      {displayCorrettezza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Correttezza {evaluatedResult.correttezza}%
+                          Correttezza {displayCorrettezza}%
                         </span>
                       )}
-                      {evaluatedResult.completezza != null && (
+                      {displayCompletezza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Completezza {evaluatedResult.completezza}%
+                          Completezza {displayCompletezza}%
                         </span>
                       )}
-                      {evaluatedResult.attinenza != null && (
+                      {displayAttinenza != null && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                          Attinenza {evaluatedResult.attinenza}%
+                          Attinenza {displayAttinenza}%
                         </span>
                       )}
                     </div>
                   )}
 
-                  {evaluatedResult.explanation && (
+                  {mainComment && (
                     <p className="mt-1 text-meta leading-relaxed">
-                      <MathText
-                        text={cleanComment(
-                          evaluatedResult.explanation,
-                          evaluatedResult.correttezza != null ||
-                            evaluatedResult.completezza != null ||
-                            evaluatedResult.attinenza != null,
-                        )}
-                      />
+                      <MathText text={cleanComment(mainComment, hasDisplayScores)} />
                     </p>
                   )}
                   {currentQuestion.unit_ids.length > 0 && activeLessonId > 0 && (
@@ -995,15 +1011,40 @@ export function LightweightSession({
                   )}
 
                   {/* Recap Approfondimento se completato */}
-                  {evaluatedResult.followupQuestion && (
-                    <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs" data-testid="recall-followup-recap">
-                      <p className="font-semibold text-muted-foreground">Domanda di approfondimento:</p>
-                      <p className="mt-0.5"><MathText text={evaluatedResult.followupQuestion} /></p>
+                  {(evaluatedResult.followupQuestion || evaluatedResult.followupEvaluation) && (
+                    <div className="mt-3 rounded-lg border border-border/50 bg-muted/20 p-2.5 text-xs text-muted-foreground" data-testid="recall-followup-recap">
+                      {evaluatedResult.followupQuestion && (
+                        <>
+                          <p className="font-semibold">Domanda di approfondimento:</p>
+                          <p className="mt-0.5"><MathText text={evaluatedResult.followupQuestion} /></p>
+                        </>
+                      )}
                       {evaluatedResult.followupAnswer && (
                         <>
-                          <p className="mt-2 font-semibold text-muted-foreground">La tua risposta:</p>
+                          <p className="mt-2 font-semibold">La tua risposta:</p>
                           <p className="mt-0.5 italic"><MathText text={evaluatedResult.followupAnswer} /></p>
                         </>
+                      )}
+                      {evaluatedResult.followupEvaluation && (hasInitialScores || evaluatedResult.explanation) && (
+                        <div className="mt-2 border-t border-border/40 pt-2 text-[11px] opacity-85">
+                          {hasInitialScores && (
+                            <p>
+                              Prima valutazione:{' '}
+                              {[
+                                evaluatedResult.correttezza != null ? `Correttezza ${evaluatedResult.correttezza}%` : null,
+                                evaluatedResult.completezza != null ? `Completezza ${evaluatedResult.completezza}%` : null,
+                                evaluatedResult.attinenza != null ? `Attinenza ${evaluatedResult.attinenza}%` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                          )}
+                          {evaluatedResult.explanation && (
+                            <p className="mt-1">
+                              <MathText text={cleanComment(evaluatedResult.explanation, hasInitialScores)} />
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
