@@ -2,7 +2,7 @@
 
 ## 4.3.9b4 — 2026-11-24
 
-Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i permessi e la chiusura dell'app.
+Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i permessi, la chiusura dell'app e la pagina Supporta RT.
 
 ### Novità
 
@@ -12,6 +12,7 @@ Beta con la nuova chat dello Studio, i pin delle lezioni, la modalità batch, i 
 - **Chiusura con la X**: nell'app puoi scegliere se RT continua a lavorare in background (predefinito) o si chiude del tutto. Uscendo con lavori in corso RT chiede conferma e dice quanti sono.
 - **Permessi**: «Controlla permessi» apre una pagina con tutti i permessi su Mac e Windows (microfono, cartelle, Keynote, elementi in background, rete locale, firewall) e il pulsante per aprire l'impostazione di sistema.
 - **Presentazioni**: su Windows i `.pptx` si convertono anche con PowerPoint. Se non c'è un programma per convertirli (LibreOffice, Keynote o PowerPoint), RT lo dice prima dell'import e suggerisce di caricare il PDF.
+- **Supporta RT**: in fondo alle Impostazioni c'è la pagina per sostenere RT con una donazione su Ko-fi (si apre nel browser). Ogni tanto compare anche un quadratino blu col cuore nella barra laterale: un clic porta alla pagina, tenendolo premuto si nasconde.
 - **Più veloce**: descrizione e posizionamento delle immagini, ricerca immagini web, arricchimento e classificatori lavorano in parallelo.
 
 ### Correzioni
