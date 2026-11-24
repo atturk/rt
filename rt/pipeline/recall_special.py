@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Callable, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
+from rt.core.encoding import repair_llm_text
 from rt.core.models import (RecallQuestion, RecallQuestionType, RecallSpecialGenerationResult, RecallTemplate,
                             GeneratedVariant, GeneratedTextVariant, RecallTextGenerationResult,
                             RecallEvaluation, VariantCheck)
@@ -155,13 +156,16 @@ def _mock_items(qtype: RecallQuestionType, group: list, existing: int, *, defini
 def _persist(lesson_dir: str, pairs: list, key: Optional[str], attempt: Optional[dict]) -> List[RecallQuestion]:
     """Salva domande e tipi (pairs: [(RecallQuestion, RecallTemplate | None)]) in un'unica
     scrittura del bank; i tipi nuovi ricevono l'ID qui e le domande vi puntano."""
-    from rt.pipeline.recall import _next_id, load_recall_bank, recall_bank_lock, repair_duplicate_ids, save_recall_bank
+    from rt.pipeline.recall import (
+        _next_id, _repair_question_texts, load_recall_bank, recall_bank_lock, repair_duplicate_ids, save_recall_bank,
+    )
     persisted = []
     with recall_bank_lock(lesson_dir):
         bank = load_recall_bank(lesson_dir)
         repair_duplicate_ids(bank)
         known = {(question_key(q), q.question_text.strip().casefold()) for q in bank.questions}
         for question, template in pairs:
+            _repair_question_texts(question)
             text_key = (question_key(question), question.question_text.strip().casefold())
             if text_key in known:
                 continue
@@ -473,29 +477,115 @@ def generate_special_batch(
     return results
 
 
-def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = False) -> str:
-    """Valutazione del ragionamento, nello stesso formato delle mirate (Correttezza/Completezza)."""
+def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = False, is_followup: bool = False) -> RecallEvaluation:
+    """Valutazione del ragionamento per tipi personalizzati, con punteggi strutturati e approfondimento."""
     from rt.llm import prompts
-    from rt.pipeline.recall import load_recall_bank
+    from rt.pipeline.recall import (
+        followup_dont_know_evaluation, format_followup_scores, load_recall_bank,
+    )
+    from rt.pipeline.recall_checks import checked_evaluation
+
     dont_know = answer_text.strip() == "[Non lo so]"
+    bank = load_recall_bank(lesson_dir)
+    definition = find_type(question.custom_type)
+    is_text = (definition and definition.correzione == "testo") or (definition is None and not question.pregenerated_material)
+
+    if is_followup:
+        target_answer = next((a for a in reversed(bank.answers) if a.question_id == question.id), None)
+        if dont_know:
+            return followup_dont_know_evaluation(target_answer)
+        if _mock(force_mock):
+            return RecallEvaluation(
+                "[MOCK] Ottimo approfondimento, il ragionamento ora è completo.",
+                outcome="corretta",
+                correttezza=95,
+                completezza=90,
+                attinenza=None,
+                domanda_followup=None,
+            )
+        ans_1 = target_answer.answer_text if target_answer else ""
+        eval_1_comment = target_answer.evaluation if target_answer else ""
+        c1 = target_answer.correttezza if target_answer else 70
+        comp1 = target_answer.completezza if target_answer else 70
+        att1 = target_answer.attinenza if target_answer else None
+        eval_1_scores = format_followup_scores(c1, comp1, att1)
+        followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
+        parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
+
+        if is_text:
+            from rt.pipeline.ledger import load_resolved_draft
+            units = [u for u in load_resolved_draft(lesson_dir).units if u.unit_id in question.unit_ids]
+            ref_text = "\n\n".join(f"[{u.unit_id}] {u.title}\n{u.content}" for u in units)
+        else:
+            template = next((t for t in bank.templates if t.id == question.template_id), None)
+            ref_text = question.pregenerated_material or ""
+            if template and template.tipo.procedimento:
+                ref_text = f"{ref_text}\n\nPROCEDIMENTO DEL TIPO:\n{template.tipo.procedimento}".strip()
+
+        user_prompt = prompts.build_recall_eval_followup_user_prompt(
+            question_text=question.question_text,
+            reference_text=ref_text,
+            answer_1=ans_1,
+            eval_1_comment=eval_1_comment,
+            eval_1_scores=eval_1_scores,
+            followup_question=followup_q,
+            answer_2=answer_text,
+            dont_know=False,
+            parte_mancante=parte_mancante,
+        )
+        result = checked_evaluation(
+            LLMClient(force_mock=False, interactive=True),
+            dont_know=False,
+            prompt=user_prompt,
+            system_prompt=effective_system("recall", prompts.RECALL_EVAL_FOLLOWUP_SYSTEM_PROMPT),
+            response_model=prompts.RecallEvalMirataResult,
+            job_name="recall",
+            unit_id=", ".join(question.unit_ids),
+            lesson_dir=lesson_dir,
+        )
+        outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else "parziale")
+        return RecallEvaluation(
+            repair_llm_text(result.commento),
+            outcome,
+            correttezza=result.correttezza,
+            completezza=result.completezza,
+            attinenza=result.attinenza,
+            domanda_followup=None,
+        )
+
     if _mock(force_mock):
         if dont_know:
-            return RecallEvaluation("Correttezza: 0%\nCompletezza: 0%\n\n[MOCK] Ragionamento atteso spiegato passo per passo.", "sbagliata")
-        return RecallEvaluation("Correttezza: 70%\nCompletezza: 60%\n\n[MOCK] Conclusione corretta, manca un passaggio del ragionamento.", "parziale")
-    definition = find_type(question.custom_type)
-    if (definition and definition.correzione == "testo") or (definition is None and not question.pregenerated_material):
+            return RecallEvaluation(
+                "[MOCK] Ragionamento atteso spiegato passo per passo.",
+                outcome="sbagliata",
+                correttezza=0,
+                completezza=0,
+                attinenza=None,
+                domanda_followup=None,
+            )
+        return RecallEvaluation(
+            "[MOCK] Conclusione corretta, manca un passaggio del ragionamento.",
+            outcome="parziale",
+            correttezza=70,
+            completezza=60,
+            attinenza=None,
+            domanda_followup="Partendo da ciò che hai impostato, come prosegui al passaggio successivo?",
+            parte_mancante="[MOCK] Manca il passaggio intermedio del ragionamento.",
+        )
+
+    if is_text:
         from rt.pipeline.ledger import load_resolved_draft
         units = [u for u in load_resolved_draft(lesson_dir).units if u.unit_id in question.unit_ids]
         prompt = prompts.build_recall_eval_text_user_prompt(question.question_text, units, answer_text, dont_know=dont_know)
         system = prompts.RECALL_EVAL_TEXT_SYSTEM_PROMPT
     else:
-        template = next((t for t in load_recall_bank(lesson_dir).templates if t.id == question.template_id), None)
+        template = next((t for t in bank.templates if t.id == question.template_id), None)
         prompt = prompts.build_recall_eval_ragionamento_user_prompt(
             question.question_text, question.pregenerated_material or "",
             template.tipo.procedimento if template else "", answer_text, dont_know=dont_know)
         system = prompts.RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT
-    from rt.pipeline.recall_checks import checked_evaluation
-    result = checked_evaluation(LLMClient(force_mock=False, interactive=True), dont_know=dont_know,
+    result = checked_evaluation(
+        LLMClient(force_mock=False, interactive=True), dont_know=dont_know,
         prompt=prompt,
         system_prompt=effective_system("recall", system),
         response_model=prompts.RecallEvalMirataResult, job_name="recall", unit_id=", ".join(question.unit_ids),
@@ -503,5 +593,23 @@ def evaluate(lesson_dir: str, question, answer_text: str, *, force_mock: bool = 
     if dont_know:
         result.correttezza = 0
         result.completezza = 0
-    return RecallEvaluation(f"Correttezza: {result.correttezza}%\nCompletezza: {result.completezza}%\n\n{result.commento}",
-                            "sbagliata" if dont_know else result.outcome)
+        result.attinenza = None
+        result.domanda_followup = None
+        result.parte_mancante = None
+        outcome = "sbagliata"
+    else:
+        outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else ("sbagliata" if result.correttezza < 40 else "parziale"))
+        if outcome == "sbagliata" or (result.correttezza >= 95 and result.completezza >= 95):
+            result.domanda_followup = None
+            result.parte_mancante = None
+        elif not result.domanda_followup:
+            result.parte_mancante = None
+    return RecallEvaluation(
+        repair_llm_text(result.commento),
+        outcome,
+        correttezza=result.correttezza,
+        completezza=result.completezza,
+        attinenza=result.attinenza,
+        domanda_followup=repair_llm_text(result.domanda_followup) if result.domanda_followup else None,
+        parte_mancante=repair_llm_text(result.parte_mancante) if result.parte_mancante else None,
+    )

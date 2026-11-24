@@ -2,27 +2,28 @@
 
 ## 4.3.9b9 — da pubblicare
 
-Beta su scaletta automatica, notifiche Telegram a scelta e verifica manuale in parallelo.
+Beta su Impostazioni ridisegnate, scaletta automatica, notifiche Telegram e ripasso.
 
 ### Novità
 
 - **Impostazioni ridisegnate**: gruppi più chiari, salvataggio automatico, spiegazioni nei suggerimenti; Materie e calendario in un'unica pagina.
-- **Scaletta automatica**: per impostazione predefinita la scaletta viene approvata subito senza fermare la lavorazione; in Impostazioni › Lavorazione delle lezioni puoi scegliere se procedere subito, attendere N secondi o aspettare sempre te.
-- **Notifiche Telegram a scelta**: in Impostazioni › Telegram puoi attivare o disattivare ogni tipo di notifica (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore).
-- **Storico delle notifiche svuotabile**: puoi svuotare l'elenco delle ultime notifiche inviate in RT (i messaggi su Telegram restano).
-- **Notifica a verifica completata**: arriva un solo riepilogo per job al termine della verifica (sia nella pipeline sia nelle verifiche manuali), senza duplicati con l'avviso delle issue da decidere.
-- **Verifica manuale delle unità in parallelo**: le verifiche avviate a mano su più unità o selezioni di testo girano in parallelo come la verifica della pipeline.
+- **Scaletta automatica**: di base la lavorazione prosegue senza fermarsi sulla scaletta; in Impostazioni › Lavorazione delle lezioni puoi scegliere di attendere qualche secondo o di aspettare sempre te.
+- **Notifiche Telegram a scelta**: in Impostazioni › Telegram attivi o disattivi ogni tipo di notifica (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore).
+- **Verifica completata**: quando avvii a mano la verifica di più unità, ti arriva un solo avviso alla fine.
+- **Storico delle notifiche svuotabile**: un pulsante svuota l'elenco delle ultime notifiche in RT (i messaggi su Telegram restano).
+- **Verifica manuale più veloce**: le unità verificate a mano vengono controllate in parallelo.
 
 ### Correzioni
 
-- **Costo stimato con i modelli che ragionano**: i token di ragionamento inclusi nei token di uscita non vengono più contati due volte nella stima dei costi.
-- **Risultato batch conservato se cambi modello**: se cambi il modello o il provider di una fase mentre un job attende un batch già inviato, alla ripresa RT usa il risultato del lotto precedente senza perderlo.
-- **Notifica «Lezione pronta» ripristinata**: al termine della pipeline viene di nuovo inviata regolarmente la notifica Telegram di lezione pronta.
-- **Chat Telegram aggiornata subito**: i job del worker rileggono l'ID chat e il token aggiornati da `.env` senza richiedere il riavvio del server.
-- **Errori su Telegram completi e leggibili**: le notifiche di errore arrivano anche per caricamento fonti, appunti e verifiche manuali, includono lezione e materia e rimuovono prefissi tecnici come `ValueError:`.
-- **Attesa massima sui limiti Telegram**: le risposte `429` di Telegram non trattengono il worker per più di 30 secondi.
-- **Modelli batch disponibili fin dal primo avvio**: l'elenco dei modelli `:batch` si popola al primo caricamento anche dopo un riavvio del server.
-- **Salvataggio selettivo delle preferenze**: salvare una singola preferenza non sovrascrive le altre preferenze generali.
+- **Telegram**: torna la notifica «Lezione pronta»; la chat cambiata vale subito; gli errori indicano lezione e materia, senza testo tecnico; niente attese lunghe sui limiti di Telegram.
+- **Costo stimato**: con i modelli che ragionano i token di ragionamento non vengono più contati due volte.
+- **Modalità batch**: se cambi modello mentre un batch è in attesa, il risultato non va perso; i modelli `:batch` compaiono nel menu anche dopo il riavvio.
+- **Preferenze**: salvarne una non cambia le altre.
+- **Ripasso**: "Non lo so" sull'approfondimento mantiene la prima valutazione e mostra cosa mancava.
+- **Valutazione delle risposte**: più rapida anche mentre RT prepara nuove domande.
+- **Domande di approfondimento**: non suggeriscono la risposta anche nelle materie tecniche.
+- **Esercizi e tipi personalizzati**: punteggi nei badge e domanda di approfondimento.
+- **Commenti del ripasso**: niente più formule rotte o caratteri strani.
 
 ## 4.3.9b8 — 2026-11-24
 

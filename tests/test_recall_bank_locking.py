@@ -98,3 +98,88 @@ def test_banks_with_duplicate_ids_are_repaired_when_a_question_is_asked(tmp_path
     assert answered.id == "recall_000001" and repaired.answers[0].question_id == answered.id
     assert next(q for q in repaired.questions if q.id == asked.id).status == RecallQuestionStatus.ASKED
     assert sum(q.status == RecallQuestionStatus.ASKED for q in repaired.questions) == 1
+
+
+def test_refill_merges_questions_without_overwriting_concurrent_answer(tmp_path, monkeypatch):
+    """Durante generate_recall_batch (refill), una risposta salvata mentre l'LLM lavora
+    non viene sovrascritta quando il refill salva le nuove domande sotto lock."""
+    from rt.core.models import (
+        DraftUnit, Draft, RecallMirataGenerationResult,
+    )
+    from rt.pipeline import recall as recall_mod
+
+    lesson_dir = str(tmp_path / "lesson")
+    os.makedirs(os.path.join(lesson_dir, ".rt"), exist_ok=True)
+
+    q_existing = RecallQuestion(
+        id="recall_000001",
+        type=RecallQuestionType.MIRATA,
+        unit_ids=["1.1"],
+        question_text="Domanda già posta?",
+        status=RecallQuestionStatus.ASKED,
+    )
+    save_recall_bank(RecallBank(questions=[q_existing]), lesson_dir)
+
+    draft = Draft(
+        schema_version="1.0",
+        units=[
+            DraftUnit(
+                unit_id="1.1",
+                title="Unità 1",
+                start_segment_id="s1",
+                end_segment_id="s1",
+                source_segment_ids=["s1"],
+                content="Contenuto esteso della prima unità didattica.",
+            )
+        ],
+    )
+    monkeypatch.setattr(recall_mod, "load_resolved_draft", lambda _: draft)
+    monkeypatch.setattr("rt.services.unit_relevance.refresh", lambda *a, **kw: None)
+    monkeypatch.setattr("rt.services.unit_relevance.recall_assessment", lambda *a, **kw: {"state": "didactic", "level": 1})
+    monkeypatch.setattr("rt.services.recall_units.selected_units", lambda _: list(draft.units))
+    monkeypatch.setattr("rt.services.recall_units.selected_unit_ids", lambda _: {"1.1"})
+    monkeypatch.setattr("rt.pipeline.ledger.get_pending_issues", lambda _: (None, []))
+    monkeypatch.setattr("rt.services.recall_rules.prepare", lambda *a, **kw: [])
+    monkeypatch.setattr("rt.services.recall_rules.filter_group", lambda qs, *a, **kw: qs)
+    monkeypatch.setattr("rt.services.recall_context.lesson_context", lambda _: {"materia": "Biologia"})
+
+    def fake_call_structured(self, **kwargs):
+        # Simula una risposta salvata da recall_evaluate mentre il modello del refill sta girando (fuori lock)
+        record_recall_answer(
+            lesson_dir,
+            "recall_000001",
+            "Risposta salvata in parallelo.",
+            evaluation="Ottima risposta.",
+            outcome="corretta",
+            correttezza=95,
+            completezza=90,
+            attinenza=95,
+        )
+        return RecallMirataGenerationResult.model_validate({
+            "questions": [
+                {
+                    "type": "mirata",
+                    "question_text": "Nuova domanda generata durante il refill su Unità 1?",
+                }
+            ]
+        })
+
+    monkeypatch.setattr(recall_mod.LLMClient, "call_structured", fake_call_structured)
+
+    saved = recall_mod.generate_recall_batch(
+        lesson_dir,
+        RecallQuestionType.MIRATA,
+        count=1,
+        few_shot_examples=[],
+        force_mock=False,
+        regenerate=True,
+    )
+    assert len(saved) == 1
+
+    final_bank = load_recall_bank(lesson_dir)
+    assert len(final_bank.questions) == 2
+    assert len(final_bank.answers) == 1
+    assert final_bank.answers[0].answer_text == "Risposta salvata in parallelo."
+    assert final_bank.answers[0].outcome == "corretta"
+    q1 = next(q for q in final_bank.questions if q.id == "recall_000001")
+    assert q1.status == RecallQuestionStatus.ANSWERED

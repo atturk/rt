@@ -584,13 +584,34 @@ class RecallEvalMirataResult(BaseModel):
     outcome: Optional[RecallOutcome] = None
     correttezza: int = Field(..., ge=0, le=100, description="Percentuale di correttezza concettuale generale della risposta (0-100)")
     completezza: int = Field(..., ge=0, le=100, description="Percentuale di completezza della risposta (0-100)")
-    attinenza: int = Field(default=100, ge=0, le=100, description="Percentuale di attinenza rispetto al contenuto dell'unità (0-100)")
+    attinenza: Optional[int] = Field(default=None, ge=0, le=100, description="Percentuale di attinenza rispetto al contenuto dell'unità (0-100)")
     commento: str = Field(..., description="Breve commento del docente che evidenzia cosa è corretto, cosa manca o è errato")
     domanda_followup: Optional[str] = Field(None, description="Domanda di approfondimento facoltativa per chiarire o completare")
     parte_mancante: Optional[str] = Field(None, description="Spiegazione di ciò che manca (2-3 frasi), da compilare SOLO quando c'è domanda_followup")
 
 
-RECALL_EVAL_MIRATA_SYSTEM_PROMPT = """Sei un professore universitario che valuta la risposta di uno studente a una domanda mirata di active recall.
+_RECALL_EVAL_COMMENT_NO_SPOILER_RULE = (
+    "- Se proponi una domanda di approfondimento, il commento dice solo cosa è giusto e che manca un aspetto "
+    "importante, SENZA nominarlo né descriverlo: niente termini chiave, meccanismi o esempi della parte mancante."
+)
+
+_RECALL_EVAL_FOLLOWUP_BASE_RULES = """DOMANDA DI APPROFONDIMENTO (domanda_followup):
+- Campo facoltativo (stringa o null).
+- Proponila SOLO SE la risposta va nella direzione giusta ma serve chiarire o completare (risposta parzialmente corretta, corretta ma poco attinente, oppure corretta ma incompleta).
+- Non proporla MAI se la risposta è "sbagliata" o se lo studente ha detto "Non lo so".
+- Non proporla MAI se la risposta è già del tutto completa e corretta.
+- Comportati come un professore all'orale che vede lo studente nella direzione giusta e vuole fargli trovare da solo ciò che ha dimenticato. La domanda non deve contenere la risposta né le sue parole chiave (es. se manca il ruolo del calcio, non nominare il calcio): parti da ciò che lo studente ha detto o da una conseguenza osservabile e chiedigli di proseguire il ragionamento. Una sola domanda, breve."""
+
+_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE = """- Nelle materie tecniche e scientifiche non nominare la grandezza, la variabile, la formula o la legge che manca: chiedi cosa succede al risultato se cambia una condizione, o da cosa dipende ciò che lo studente ha scritto.
+  Esempio (materie tecniche): se manca la dipendenza dalla distanza dal centro, SBAGLIATO: «E la distanza dal centro come influisce sul campo?» / GIUSTO: «Il valore che hai scritto vale in ogni punto? Da cosa dipende?»"""
+
+_RECALL_EVAL_PARTE_MANCANTE_RULE = (
+    "- Se proponi domanda_followup, compila anche parte_mancante (2-3 frasi) con la spiegazione chiara di ciò che "
+    "manca (non verrà mostrata subito allo studente); altrimenti parte_mancante deve essere null."
+)
+
+
+RECALL_EVAL_MIRATA_SYSTEM_PROMPT = f"""Sei un professore universitario che valuta la risposta di uno studente a una domanda mirata di active recall.
 
 CRITERI DI VALUTAZIONE (tre percentuali 0-100):
 1. "correttezza" (0-100): correttezza scientifica e concettuale generale della risposta dello studente, anche in base a conoscenze proprie (non solo strettamente limitata all'unità).
@@ -605,16 +626,12 @@ ESITO (outcome):
 
 COMMENTO:
 - Breve (2-4 frasi), costruttivo e diretto. Spiega cosa è corretto, cosa manca o cosa è errato.
-- Se proponi una domanda di approfondimento, il commento dice solo cosa è giusto e che manca un aspetto importante, SENZA nominarlo né descriverlo: niente termini chiave, meccanismi o esempi della parte mancante.
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
 
-DOMANDA DI APPROFONDIMENTO (domanda_followup):
-- Campo facoltativo (stringa o null).
-- Proponila SOLO SE la risposta va nella direzione giusta ma serve chiarire o completare (risposta parzialmente corretta, corretta ma poco attinente, oppure corretta ma incompleta).
-- Non proporla MAI se la risposta è "sbagliata" o se lo studente ha detto "Non lo so".
-- Non proporla MAI se la risposta è già del tutto completa e corretta.
-- Comportati come un professore all'orale che vede lo studente nella direzione giusta e vuole fargli trovare da solo ciò che ha dimenticato. La domanda non deve contenere la risposta né le sue parole chiave (es. se manca il ruolo del calcio, non nominare il calcio): parti da ciò che lo studente ha detto o da una conseguenza osservabile e chiedigli di proseguire il ragionamento. Una sola domanda, breve.
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
   Esempio (termodinamica): se manca che la pressione aumenta quando il volume diminuisce a temperatura costante, SBAGLIATO: «Come cambia la pressione quando riduci il volume a temperatura costante?» / GIUSTO: «Hai detto che lo spazio a disposizione del gas si riduce mantenendo la temperatura costante: cosa succede agli urti contro le pareti e quindi alla grandezza fisica che ne dipende?»
-- Se proponi domanda_followup, compila anche parte_mancante (2-3 frasi) con la spiegazione chiara di ciò che manca (non verrà mostrata subito allo studente); altrimenti parte_mancante deve essere null.""" + "\n" + LATEX_WRITING_RULE
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 DONT_KNOW_NOTE = (
@@ -650,7 +667,7 @@ class RecallEvalVastaResult(RecallEvalMirataResult):
     commento: str = Field(..., description="Valutazione concettuale e confronto con la scaletta ideale")
 
 
-RECALL_EVAL_VASTA_SYSTEM_PROMPT = """Sei un professore universitario che valuta la risposta di uno studente a una domanda vasta di active recall, stile esame orale.
+RECALL_EVAL_VASTA_SYSTEM_PROMPT = f"""Sei un professore universitario che valuta la risposta di uno studente a una domanda vasta di active recall, stile esame orale.
 
 CRITERI DI VALUTAZIONE (tre percentuali 0-100):
 1. "correttezza" (0-100): correttezza scientifica e concettuale generale di ciò che lo studente ha esposto.
@@ -662,15 +679,12 @@ ESITO (outcome):
 
 COMMENTO:
 - Commento sintetico (4-6 frasi) che confronta ciò che lo studente ha esposto con la SCALETTA IDEALE fornita, evidenziando quali punti sono stati toccati e quali tralasciati.
-- Se proponi una domanda di approfondimento, il commento dice solo cosa è giusto e che manca un aspetto importante, SENZA nominarlo né descriverlo: niente termini chiave, meccanismi o esempi della parte mancante.
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
 
-DOMANDA DI APPROFONDIMENTO (domanda_followup):
-- Campo facoltativo (stringa o null).
-- Proponila SOLO SE la risposta va nella direzione giusta ma serve chiarire o completare (parzialmente corretta, corretta ma poco attinente, o incompleta).
-- Non proporla MAI se la risposta è "sbagliata", "Non lo so", o già completa.
-- Comportati come un professore all'orale che vede lo studente nella direzione giusta e vuole fargli trovare da solo ciò che ha dimenticato. La domanda non deve contenere la risposta né le sue parole chiave (es. se manca il ruolo del calcio, non nominare il calcio): parti da ciò che lo studente ha detto o da una conseguenza osservabile e chiedigli di proseguire il ragionamento. Una sola domanda, breve.
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
   Esempio (economia): se manca il concetto di costo opportunità, SBAGLIATO: «Come incide il costo opportunità sulla scelta?» / GIUSTO: «Hai descritto i ricavi dell'opzione scelta: cosa stai implicitamente sacrificando rispetto all'alternativa migliore che hai scartato?»
-- Se proponi domanda_followup, compila anche parte_mancante (2-3 frasi) con la spiegazione chiara di ciò che manca (non verrà mostrata subito allo studente); altrimenti parte_mancante deve essere null.""" + "\n" + LATEX_WRITING_RULE
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_vasta_user_prompt(
@@ -928,7 +942,7 @@ def build_recall_variant_check_user_prompt(tipo: dict, question_text: str, solut
             f"SOLUZIONE PROPOSTA:\n{solution}\n\nRisolvi, confronta e restituisci VariantCheck.")
 
 
-RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = """Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
+RECALL_EVAL_RAGIONAMENTO_SYSTEM_PROMPT = f"""Sei un docente universitario che valuta la risposta di uno studente a una domanda personalizzata di active recall. Conta il ragionamento, non la memorizzazione.
 
 REGOLE CATEGORICHE:
 1. Valuta rispetto alla SOLUZIONE ATTESA fornita (e al procedimento del tipo, se presente); non aggiungere nozioni esterne.
@@ -936,7 +950,14 @@ REGOLE CATEGORICHE:
 3. "completezza" (0-100): quanto la risposta copre i passaggi essenziali del ragionamento o del procedimento.
 4. "commento": breve (3-5 frasi), indica quali passaggi sono giusti, quali mancano o sono sbagliati e dove si è interrotto il ragionamento.
 5. Tono diretto ma non punitivo.
-6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.""" + "\n" + LATEX_WRITING_RULE
+6. "outcome": "corretta" se conclusione e passaggi essenziali sono corretti e completi, "parziale" se ci sono elementi validi ma lacune o errori, "sbagliata" se il ragionamento centrale è errato o lo studente non sa rispondere.
+
+COMMENTO:
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
+
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_ragionamento_user_prompt(question_text: str, solution: str, procedure: str,
@@ -952,15 +973,22 @@ SOLUZIONE ATTESA:
 RISPOSTA DELLO STUDENTE:
 {answer_text}{note}
 
-Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome)."""
+Valuta la risposta e restituisci l'oggetto JSON conforme a RecallEvalMirataResult (correttezza, completezza, commento, outcome, eventuale domanda_followup)."""
 
 
-RECALL_EVAL_TEXT_SYSTEM_PROMPT = """Sei un docente universitario che valuta il ragionamento dello studente.
+RECALL_EVAL_TEXT_SYSTEM_PROMPT = f"""Sei un docente universitario che valuta il ragionamento dello studente.
 Valuta la risposta usando la traccia e il contenuto reale delle unità della lezione fornite come riferimento.
 Ricava da questi dati il ragionamento corretto senza aggiungere nozioni esterne.
 Restituisci correttezza e completezza (0-100) e un commento breve sui passaggi validi, mancanti o errati.
 Restituisci outcome: corretta se il ragionamento è corretto e completo, parziale se contiene elementi validi ma lacune o errori,
-sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo.""" + "\n" + LATEX_WRITING_RULE
+sbagliata se il nucleo è errato o lo studente dichiara di non sapere. Tono diretto ma non punitivo.
+
+COMMENTO:
+{_RECALL_EVAL_COMMENT_NO_SPOILER_RULE}
+
+{_RECALL_EVAL_FOLLOWUP_BASE_RULES}
+{_RECALL_EVAL_TECHNICAL_FOLLOWUP_RULE}
+{_RECALL_EVAL_PARTE_MANCANTE_RULE}""" + "\n" + LATEX_WRITING_RULE
 
 
 def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_text: str,
@@ -969,4 +997,4 @@ def build_recall_eval_text_user_prompt(question_text: str, units: list, answer_t
     note = DONT_KNOW_NOTE if dont_know else ""
     return (f"TRACCIA POSTA:\n{question_text}\n\nRIFERIMENTO DELLA LEZIONE:\n{reference}\n\n"
             f"RISPOSTA DELLO STUDENTE:\n{answer_text}{note}\n\n"
-            "Valuta e restituisci RecallEvalMirataResult (correttezza, completezza, commento, outcome).")
+            "Valuta e restituisci RecallEvalMirataResult (correttezza, completezza, commento, outcome, eventuale domanda_followup).")

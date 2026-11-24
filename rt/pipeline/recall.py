@@ -19,6 +19,7 @@ from rt.pipeline.ledger import load_resolved_draft
 from rt.llm.client import LLMClient
 from rt.services.prompt_settings import effective_system
 from rt.core.config import load_config
+from rt.core.encoding import repair_llm_text
 from rt.core.lesson_paths import lesson_path
 from rt.pipeline.unit_failures import UnitFailureTracker, is_unit_failure
 from rt.storage import fs
@@ -260,6 +261,15 @@ def on_unit(question: RecallQuestion, unit_id: str) -> bool:
 # Answer / vote recording
 # -----------------------------------------------------------------------
 
+def _repair_question_texts(question: RecallQuestion) -> RecallQuestion:
+    question.question_text = repair_llm_text(question.question_text)
+    if question.pregenerated_material is not None:
+        question.pregenerated_material = repair_llm_text(question.pregenerated_material)
+    if question.options:
+        question.options = [repair_llm_text(opt) for opt in question.options]
+    return question
+
+
 def record_recall_answer(
     lesson_dir: str,
     question_id: str,
@@ -283,7 +293,7 @@ def record_recall_answer(
         if question and mark_answered and question.status != RecallQuestionStatus.DISCARDED:
             question.status = RecallQuestionStatus.ANSWERED
 
-        if answer_text.strip() == '[Non lo so]':
+        if answer_text.strip() == '[Non lo so]' and not is_followup:
             outcome = 'sbagliata'
         elif outcome is None:
             outcome = getattr(evaluation, 'outcome', None)
@@ -297,6 +307,12 @@ def record_recall_answer(
         if attinenza is None: attinenza = getattr(evaluation, 'attinenza', None)
         if domanda_followup is None: domanda_followup = getattr(evaluation, 'domanda_followup', None)
         if parte_mancante is None: parte_mancante = getattr(evaluation, 'parte_mancante', None)
+        if evaluation is not None:
+            evaluation = repair_llm_text(str(evaluation))
+        if domanda_followup is not None:
+            domanda_followup = repair_llm_text(domanda_followup)
+        if parte_mancante is not None:
+            parte_mancante = repair_llm_text(parte_mancante)
         if not domanda_followup:
             parte_mancante = None
 
@@ -310,7 +326,8 @@ def record_recall_answer(
                 target.followup_correttezza = correttezza
                 target.followup_completezza = completezza
                 target.followup_attinenza = attinenza
-                target.outcome = outcome or getattr(evaluation, 'outcome', target.outcome)
+                if answer_text.strip() != '[Non lo so]':
+                    target.outcome = outcome or getattr(evaluation, 'outcome', target.outcome)
                 target.domanda_followup = None
                 if question and mark_answered:
                     question.status = RecallQuestionStatus.ANSWERED
@@ -597,6 +614,7 @@ def _persist_generation(lesson_dir, questions, key, attempt):
         repair_duplicate_ids(latest)
         known = {(q.type, q.question_text.strip().casefold()) for q in latest.questions}
         for question in questions:
+            _repair_question_texts(question)
             text_key = (question.type, question.question_text.strip().casefold())
             if text_key in known:
                 continue
@@ -910,6 +928,39 @@ def generate_recall_batch(
 # Valutazione LLM delle risposte a domande mirate/vaste (Fase D3)
 # -----------------------------------------------------------------------
 
+def followup_dont_know_evaluation(target_answer: Optional[RecallAnswer]) -> RecallEvaluation:
+    """Esito deterministico per [Non lo so] sull'approfondimento: mantiene la prima valutazione."""
+    c1 = target_answer.correttezza if target_answer else 70
+    comp1 = target_answer.completezza if target_answer else 70
+    att1 = target_answer.attinenza if target_answer else 80
+    parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
+    comment = (
+        f"Nessun problema, ecco cosa mancava: {parte_mancante}"
+        if parte_mancante
+        else "Confermata la valutazione precedente."
+    )
+    outcome_1 = (target_answer.outcome if target_answer and target_answer.outcome else None) or "parziale"
+    return RecallEvaluation(
+        comment,
+        outcome=outcome_1,
+        correttezza=c1,
+        completezza=comp1,
+        attinenza=att1,
+        domanda_followup=None,
+    )
+
+
+def format_followup_scores(c1: Optional[int], comp1: Optional[int], att1: Optional[int]) -> str:
+    parts = []
+    if c1 is not None:
+        parts.append(f"Correttezza: {c1}%")
+    if comp1 is not None:
+        parts.append(f"Completezza: {comp1}%")
+    if att1 is not None:
+        parts.append(f"Attinenza: {att1}%")
+    return ", ".join(parts)
+
+
 def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, force_mock: bool = False, is_followup: bool = False) -> RecallEvaluation:
     """Valuta con l'LLM la risposta a una domanda mirata o vasta e ritorna il testo di valutazione pronto da mostrare.
 
@@ -929,7 +980,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
 
     if question.type == RecallQuestionType.PERSONALIZZATA:
         from rt.pipeline.recall_special import evaluate
-        return evaluate(lesson_dir, question, answer_text, force_mock=force_mock)
+        return evaluate(lesson_dir, question, answer_text, force_mock=force_mock, is_followup=is_followup)
 
     if question.type not in (RecallQuestionType.MIRATA, RecallQuestionType.VASTA):
         raise ValueError(f"evaluate_recall_answer() non gestisce il tipo '{question.type}' (i quiz usano pregenerated_material, nessuna chiamata LLM).")
@@ -941,28 +992,17 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         target_answer = next((a for a in reversed(bank.answers) if a.question_id == question_id), None)
         ans_1 = target_answer.answer_text if target_answer else ""
         eval_1_comment = target_answer.evaluation if target_answer else ""
-        c1 = getattr(target_answer, "correttezza", 70) if target_answer else 70
-        comp1 = getattr(target_answer, "completezza", 70) if target_answer else 70
-        att1 = getattr(target_answer, "attinenza", 80) if target_answer else 80
-        eval_1_scores = f"Correttezza: {c1}%, Completezza: {comp1}%, Attinenza: {att1}%"
+        c1 = target_answer.correttezza if target_answer else 70
+        comp1 = target_answer.completezza if target_answer else 70
+        att1 = target_answer.attinenza if target_answer else 80
+        eval_1_scores = format_followup_scores(c1, comp1, att1)
         followup_q = (target_answer.domanda_followup or target_answer.followup_question) if target_answer else ""
         parte_mancante = getattr(target_answer, "parte_mancante", None) if target_answer else None
 
+        if is_dont_know:
+            return followup_dont_know_evaluation(target_answer)
+
         if force_mock:
-            if is_dont_know:
-                comment = (
-                    f"[MOCK] L'approfondimento non è stato fornito. {parte_mancante}"
-                    if parte_mancante
-                    else "[MOCK] L'approfondimento non è stato fornito; confermata la valutazione precedente."
-                )
-                return RecallEvaluation(
-                    comment,
-                    outcome="parziale",
-                    correttezza=c1,
-                    completezza=comp1,
-                    attinenza=att1,
-                    domanda_followup=None,
-                )
             return RecallEvaluation(
                 "[MOCK] Ottimo approfondimento, la risposta ora è completa e precisa.",
                 outcome="corretta",
@@ -1010,7 +1050,7 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
         else:
             outcome = result.outcome or ("corretta" if result.correttezza >= 80 and result.completezza >= 75 else "parziale")
         return RecallEvaluation(
-            result.commento,
+            repair_llm_text(result.commento),
             outcome,
             correttezza=result.correttezza,
             completezza=result.completezza,
@@ -1095,15 +1135,15 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
                 res_m.parte_mancante = None
             elif not res_m.domanda_followup:
                 res_m.parte_mancante = None
-        text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{res_m.commento}"
+        text = f"Correttezza: {res_m.correttezza}%\nCompletezza: {res_m.completezza}%\n\n{repair_llm_text(res_m.commento)}"
         return RecallEvaluation(
             text,
             outcome,
             correttezza=res_m.correttezza,
             completezza=res_m.completezza,
             attinenza=res_m.attinenza,
-            domanda_followup=res_m.domanda_followup,
-            parte_mancante=res_m.parte_mancante,
+            domanda_followup=repair_llm_text(res_m.domanda_followup) if res_m.domanda_followup else None,
+            parte_mancante=repair_llm_text(res_m.parte_mancante) if res_m.parte_mancante else None,
         )
 
     elif question.type == RecallQuestionType.VASTA:
@@ -1136,13 +1176,13 @@ def evaluate_recall_answer(lesson_dir: str, question_id: str, answer_text: str, 
             elif not res_v.domanda_followup:
                 res_v.parte_mancante = None
         return RecallEvaluation(
-            res_v.commento,
+            repair_llm_text(res_v.commento),
             outcome,
             correttezza=res_v.correttezza,
             completezza=res_v.completezza,
             attinenza=res_v.attinenza,
-            domanda_followup=res_v.domanda_followup,
-            parte_mancante=res_v.parte_mancante,
+            domanda_followup=repair_llm_text(res_v.domanda_followup) if res_v.domanda_followup else None,
+            parte_mancante=repair_llm_text(res_v.parte_mancante) if res_v.parte_mancante else None,
         )
 
 

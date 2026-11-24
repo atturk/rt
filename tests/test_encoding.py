@@ -167,3 +167,18 @@ def test_double_escaped_formulas_are_repaired():
     # Un a-capo vero accanto a comandi con barra singola resta com'è.
     assert repair_latex_escapes(r"$\begin{cases} a \\ b \end{cases}$") == r"$\begin{cases} a \\ b \end{cases}$"
     assert repair_latex_escapes(r"$x \\\text{y}$") == r"$x \\\text{y}$"
+
+
+def test_repair_llm_text_restores_broken_formulas_and_strips_c0():
+    from rt.core.encoding import repair_llm_text
+    # \frac -> \x0c + rac, \text -> \t + ext, \beta -> \x08 + eta, \rho -> \r + ho
+    broken = "Formula $\x0crac{1}{2} + \text{ciao} + \x08eta + \rho$ e blocco $$\x0crac{a}{b}$$"
+    assert repair_llm_text(broken) == r"Formula $\frac{1}{2} + \text{ciao} + \beta + \rho$ e blocco $$\frac{a}{b}$$"
+
+    # Fuori dalle formule toglie C0 tranne \n e \t
+    outside = "Prima\x00\x07\x08\x0c riga\n\tseconda riga"
+    assert repair_llm_text(outside) == "Prima riga\n\tseconda riga"
+
+    # Testo normale resta identico
+    normal = "Risposta corretta: il pH resta costante tra 7,35 e 7,45.\n\tOttimo lavoro!"
+    assert repair_llm_text(normal) == normal
