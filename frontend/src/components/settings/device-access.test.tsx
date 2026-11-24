@@ -58,8 +58,9 @@ describe("Accesso da un altro dispositivo", () => {
     const user = userEvent.setup()
     const input = screen.getByLabelText("Indirizzo di RT per l'altro dispositivo")
     await waitFor(() => expect(input).toHaveValue('https://air.tail1234.ts.net'))
-    expect(screen.getByText(/Tailscale Serve non è attivo/)).toBeInTheDocument()
-    expect(screen.getByText(/tailscale serve --bg --https=9000 http:\/\/127\.0\.0\.1:9000/)).toBeInTheDocument()
+    const serveAlert = screen.getByText(/Tailscale Serve non è attivo/)
+    expect(serveAlert).toBeInTheDocument()
+    expect(serveAlert).toHaveTextContent('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
     await user.clear(input)
     await user.type(input, '100.72.84.124')
     expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del computer/)).toBeInTheDocument()
@@ -75,6 +76,24 @@ describe("Accesso da un altro dispositivo", () => {
     renderSection()
     expect(await screen.findByText(/Tailscale Funnel/)).toBeInTheDocument()
     expect(screen.getByText(/tailscale serve --bg --https=8443 http:\/\/127\.0\.0\.1:9000/)).toBeInTheDocument()
+  })
+
+  it("mostra la porta locale di RT e il comando Tailscale da copiare", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({
+      origin: 'https://air.tail1234.ts.net:9000',
+      serve: true,
+      funnel: false,
+      local_port: 9000,
+    }))
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    renderSection()
+    const row = await screen.findByTestId('tailscale-local-port')
+    await waitFor(() => expect(row).toHaveTextContent('9000'))
+    expect(row).toHaveTextContent('RT ascolta su questo computer sulla porta 9000.')
+    expect(row).toHaveTextContent('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
+    await user.click(screen.getByTestId('copy-tailscale-command'))
+    expect(writeText).toHaveBeenCalledWith('tailscale serve --bg --https=9000 http://127.0.0.1:9000')
   })
 
   it("rete locale: si accende da questo computer e il QR punta all'indirizzo del Mac nella rete", async () => {

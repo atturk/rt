@@ -207,14 +207,22 @@ function TailscalePanel() {
   const here = window.location.origin
   const tailnet = useTailnet().data
   const localPort = tailnet?.local_port ?? 8765
+  const serveCommand = tailscaleServeCommand(localPort)
   const [saved] = useState(readDeviceOrigin)
   // null finché non si scrive nel campo: intanto vale l'indirizzo proposto (salvato, pagina o tailnet)
   const [typed, setTyped] = useState<string | null>(null)
   const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null)
+  const [copiedServe, setCopiedServe] = useState(false)
   const loginLink = useLoginLink()
   const detected = tailnet?.origin ?? null
   const address = typed ?? preferredOrigin(saved, here, detected, tailnet?.serve)
   const origin = normalizeOrigin(address)
+
+  const copyServeCommand = () => {
+    void navigator.clipboard?.writeText(serveCommand)
+    setCopiedServe(true)
+    setTimeout(() => setCopiedServe(false), 2000)
+  }
 
   const create = () => {
     if (!origin) return
@@ -294,6 +302,24 @@ function TailscalePanel() {
       </div>
       {loginLink.isError && <Alert tone="danger">{errorMessage(loginLink.error)}</Alert>}
       {link && <LinkQr key={link.url} url={link.url} expiresAt={link.expiresAt} />}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3 text-meta text-muted-foreground"
+        data-testid="tailscale-local-port"
+      >
+        <span>
+          RT ascolta su questo computer sulla porta <code className="text-foreground">{localPort}</code>.{' '}
+          <code className="break-all text-foreground">{serveCommand}</code>
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={copyServeCommand}
+          className="gap-1 shrink-0"
+          data-testid="copy-tailscale-command"
+        >
+          <Copy className="size-3.5" aria-hidden /> {copiedServe ? 'Copiato!' : 'Copia'}
+        </Button>
+      </div>
     </Panel>
   )
 }
