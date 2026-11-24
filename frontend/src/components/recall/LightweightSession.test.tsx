@@ -612,3 +612,37 @@ describe('scorciatoia di invio tastiera (⌘/Ctrl + Invio)', () => {
     }
   })
 })
+
+it('mostra subito il box di caricamento al clic su Prossima e nasconde la domanda precedente', async () => {
+  vi.clearAllMocks()
+  let resolveSecond!: (value: typeof sampleQuestion) => void
+  const secondPromise = new Promise<typeof sampleQuestion>((resolve) => {
+    resolveSecond = resolve
+  })
+  mockNextMutateAsync
+    .mockResolvedValueOnce({ ...sampleQuestion, id: 'q100', question_text: 'Domanda iniziale di test' })
+    .mockReturnValueOnce(secondPromise)
+  mockAnswerMutateAsync.mockResolvedValue({
+    quiz: { correct: true, question: { ...sampleQuestion, correct_index: 0, explanation: 'OK.' } },
+  })
+
+  renderSession()
+
+  expect(await screen.findByText('Domanda iniziale di test')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Sotto 22 mEq/L').closest('button')!)
+
+  const nextBtn = await screen.findByRole('button', { name: 'Prossima' })
+  fireEvent.click(nextBtn)
+
+  await waitFor(() => {
+    expect(screen.getByLabelText('Caricamento della prossima domanda')).toHaveAttribute('aria-busy', 'true')
+  })
+  expect(screen.queryByText('Domanda iniziale di test')).not.toBeInTheDocument()
+  expect(screen.getByTestId('recall-loading').querySelectorAll('.rt-unit-pending > div')).toHaveLength(3)
+  expect(screen.getByRole('button', { name: 'Termina' })).toBeDisabled()
+
+  resolveSecond({ ...sampleQuestion, id: 'q101', question_text: 'Nuova domanda caricata' })
+
+  expect(await screen.findByText('Nuova domanda caricata')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Caricamento della prossima domanda')).not.toBeInTheDocument()
+})

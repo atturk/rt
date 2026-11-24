@@ -182,6 +182,7 @@ export function LightweightSession({
 
   // Stato domanda corrente e risposta
   const [currentQuestion, setCurrentQuestion] = useState<RecallQuestion | null>(null)
+  const [loadingNext, setLoadingNext] = useState<boolean>(false)
   const [questionCount, setQuestionCount] = useState<number>(0)
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null)
   const [writtenAnswer, setWrittenAnswer] = useState<string>('')
@@ -254,6 +255,7 @@ export function LightweightSession({
   const askNext = useCallback(
     async (typeToAsk: SessionType = qtype, excludeId?: string) => {
       const seq = ++requestSeq.current
+      setLoadingNext(true)
       setEmptyPoolError(false)
       setGeneralError(null)
       setSelectedChoice(null)
@@ -295,6 +297,10 @@ export function LightweightSession({
           setCurrentQuestion(null)
         } else {
           setGeneralError(errorMessage(err))
+        }
+      } finally {
+        if (seq === requestSeq.current) {
+          setLoadingNext(false)
         }
       }
     },
@@ -646,6 +652,7 @@ export function LightweightSession({
     evaluatedResult?.completezza != null ||
     evaluatedResult?.attinenza != null
   const busy =
+    loadingNext ||
     answerMutation.isPending ||
     voiceMutation.isPending ||
     voteMutation.isPending ||
@@ -793,8 +800,42 @@ export function LightweightSession({
             </div>
           )}
 
+          {/* Caricamento prossima domanda */}
+          {loadingNext && (
+            <div className="flex flex-col gap-4" data-testid="recall-loading">
+              <div
+                role="status"
+                aria-busy="true"
+                aria-label="Caricamento della prossima domanda"
+                className="flex flex-col gap-4"
+              >
+                <div className="flex flex-col gap-1">
+                  <div className="rt-skeleton h-4 w-44 rounded-md" />
+                  <div className="rt-unit-pending">
+                    <div />
+                    <div />
+                    <div />
+                  </div>
+                </div>
+                {(qtype === 'quiz' || (qtype === 'mista' && isQuiz)) && (
+                  <div className="flex flex-col gap-2">
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                    <div className="rt-skeleton h-12 w-full rounded-md" />
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-3 border-t pt-3">
+                <Button variant="outline" onClick={handleEnd} disabled={busy}>
+                  Termina
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Domanda corrente */}
-          {currentQuestion && (
+          {!loadingNext && currentQuestion && (
             <div className="flex flex-col gap-4" data-testid="recall-question" data-question-id={currentQuestion.id} data-type={questionTypeId(currentQuestion)}>
               <div className="flex flex-col gap-1">
                 <p className="text-meta text-muted-foreground">
