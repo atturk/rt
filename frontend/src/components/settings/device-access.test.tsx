@@ -40,7 +40,7 @@ describe("Accesso da un altro dispositivo", () => {
   })
 
   it("propone da solo il nome del Mac nella tailnet e lo usa per il QR", async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: true, funnel: false }))
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: true, funnel: false, local_port: 8765 }))
     const post = vi.spyOn(api, 'POST').mockResolvedValue(ok({ url: 'http://127.0.0.1:8765/login?code=xyz', expires_in: 300 }))
     localStorage.setItem(DEVICE_ORIGIN_KEY, 'https://100.72.84.124')
     renderSection()
@@ -53,15 +53,28 @@ describe("Accesso da un altro dispositivo", () => {
   })
 
   it("avvisa se l'indirizzo è un IP in https o se Tailscale Serve non è attivo", async () => {
-    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: false, funnel: false }))
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({ origin: 'https://air.tail1234.ts.net', serve: false, funnel: false, local_port: 9000 }))
     renderSection()
     const user = userEvent.setup()
     const input = screen.getByLabelText("Indirizzo di RT per l'altro dispositivo")
     await waitFor(() => expect(input).toHaveValue('https://air.tail1234.ts.net'))
     expect(screen.getByText(/Tailscale Serve non è attivo/)).toBeInTheDocument()
+    expect(screen.getByText(/tailscale serve --bg --https=9000 http:\/\/127\.0\.0\.1:9000/)).toBeInTheDocument()
     await user.clear(input)
     await user.type(input, '100.72.84.124')
     expect(screen.getByText(/il certificato di Tailscale vale solo per il nome del computer/)).toBeInTheDocument()
+  })
+
+  it("nell'avviso Funnel usa la porta HTTPS su cui il Funnel è attivo", async () => {
+    vi.spyOn(api, 'GET').mockResolvedValue(ok({
+      origin: 'https://air.tail1234.ts.net:8443',
+      serve: true,
+      funnel: true,
+      local_port: 9000,
+    }))
+    renderSection()
+    expect(await screen.findByText(/Tailscale Funnel/)).toBeInTheDocument()
+    expect(screen.getByText(/tailscale serve --bg --https=8443 http:\/\/127\.0\.0\.1:9000/)).toBeInTheDocument()
   })
 
   it("rete locale: si accende da questo computer e il QR punta all'indirizzo del Mac nella rete", async () => {

@@ -296,6 +296,7 @@ class TailnetInfo(BaseModel):
                                                     "None senza Tailscale")
     serve: bool = Field(False, description="Tailscale Serve inoltra già l'indirizzo a RT")
     funnel: bool = Field(False, description="L'indirizzo è pubblico su Internet (Tailscale Funnel)")
+    local_port: int = Field(8765, description="Porta locale su cui ascolta RT")
 
 
 @router.get("/system/tailnet", response_model=TailnetInfo,
@@ -303,11 +304,11 @@ class TailnetInfo(BaseModel):
 def system_tailnet(request: Request, _actor: Actor) -> TailnetInfo:
     from rt.core.tailscale import tailnet_address
     server = request.scope.get("server") or (None, None)
-    port = server[1] or request.url.port or 8765
-    found = tailnet_address(int(port))
+    port = int(server[1] or request.url.port or 8765)
+    found = tailnet_address(port)
     if found is None:
-        return TailnetInfo()
-    return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel)
+        return TailnetInfo(local_port=port)
+    return TailnetInfo(origin=found.origin, serve=found.serve, funnel=found.funnel, local_port=port)
 
 
 class LanInfo(BaseModel):

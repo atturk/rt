@@ -42,5 +42,24 @@ def test_no_tailscale_or_logged_out():
 
 def test_endpoint(api_client, monkeypatch):
     import rt.core.tailscale as ts
+    from rt.api.routers.system import system_tailnet
+    from starlette.requests import Request
+
     monkeypatch.setattr(ts, "find_cli", lambda: None)
-    assert api_client.get("/api/v1/system/tailnet").json() == {"origin": None, "serve": False, "funnel": False}
+    data = api_client.get("/api/v1/system/tailnet").json()
+    assert data["origin"] is None
+    assert data["serve"] is False
+    assert data["funnel"] is False
+    assert isinstance(data["local_port"], int)
+
+    scope = {"type": "http", "method": "GET", "path": "/api/v1/system/tailnet",
+             "headers": [], "scheme": "http", "server": ("127.0.0.1", 9000), "query_string": b""}
+    without_tailscale = system_tailnet(Request(scope), "api")
+    assert without_tailscale.model_dump() == {"origin": None, "serve": False, "funnel": False, "local_port": 9000}
+
+    monkeypatch.setattr("rt.core.tailscale.tailnet_address",
+                        lambda port: TailnetAddress(f"https://{HOST}:{port}", True, False))
+    with_tailscale = system_tailnet(Request(scope), "api")
+    assert with_tailscale.model_dump() == {
+        "origin": f"https://{HOST}:9000", "serve": True, "funnel": False, "local_port": 9000,
+    }

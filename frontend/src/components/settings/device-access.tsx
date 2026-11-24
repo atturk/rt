@@ -182,12 +182,31 @@ function LanPanel() {
   )
 }
 
+/** Comando Tailscale Serve consigliato: usa una porta HTTPS dedicata così la 443 resta libera per altre app. */
+function tailscaleServeCommand(localPort: number): string {
+  return `tailscale serve --bg --https=${localPort} http://127.0.0.1:${localPort}`
+}
+
+/** Per spegnere il Funnel bisogna agire sulla stessa porta HTTPS su cui il Funnel è attivo (443 se assente). */
+function funnelFixCommand(origin: string, localPort: number): string {
+  try {
+    const httpsPort = new URL(origin).port
+    if (httpsPort && httpsPort !== '443') {
+      return `tailscale serve --bg --https=${httpsPort} http://127.0.0.1:${localPort}`
+    }
+  } catch {
+    /* fallback alla porta 443 */
+  }
+  return `tailscale serve --bg ${localPort}`
+}
+
 /** Tailscale: se il Mac ha aperto RT su 127.0.0.1 l'indirizzo per l'altro dispositivo è quello della
- * tailnet che il Mac stesso rileva (https://nome-computer.tailnet.ts.net, l'unico per cui vale il
+ * tailnet che il Mac stesso rileva (https://nome-computer.tailnet.ts.net[:porta], l'unico per cui vale il
  * certificato di Tailscale). */
 function TailscalePanel() {
   const here = window.location.origin
   const tailnet = useTailnet().data
+  const localPort = tailnet?.local_port ?? 8765
   const [saved] = useState(readDeviceOrigin)
   // null finché non si scrive nel campo: intanto vale l'indirizzo proposto (salvato, pagina o tailnet)
   const [typed, setTyped] = useState<string | null>(null)
@@ -218,8 +237,8 @@ function TailscalePanel() {
         htmlFor="device-origin"
         hint={
           <>
-            Con Tailscale Serve è <code>https://nome-computer.tailnet.ts.net</code>. 127.0.0.1 funziona solo su questo
-            computer.
+            Con Tailscale Serve è <code>{`https://nome-computer.tailnet.ts.net:${localPort}`}</code> (o senza porta se RT usa la
+            443). 127.0.0.1 funziona solo su questo computer.
           </>
         }
       >
@@ -228,7 +247,7 @@ function TailscalePanel() {
           inputMode="url"
           autoComplete="off"
           value={address}
-          placeholder="https://nome-computer.tailnet.ts.net"
+          placeholder={`https://nome-computer.tailnet.ts.net:${localPort}`}
           onChange={(e) => {
             setTyped(e.target.value)
             setLink(null)
@@ -253,14 +272,19 @@ function TailscalePanel() {
       )}
       {tailnet && detected && origin === detected && !tailnet.serve && (
         <Alert tone="warning">
-          Tailscale Serve non è attivo su questo computer: nel Terminale (su Windows nel Prompt dei comandi) esegui <code>tailscale serve --bg 8765</code>, poi
-          crea il QR.
+          <p>
+            Tailscale Serve non è attivo su questo computer: nel Terminale (su Windows nel Prompt dei comandi) esegui{' '}
+            <code>{tailscaleServeCommand(localPort)}</code>, poi crea il QR.
+          </p>
+          <p className="mt-1">
+            Con <code>{`tailscale serve --bg ${localPort}`}</code> RT prende invece l'indirizzo senza porta (443).
+          </p>
         </Alert>
       )}
       {tailnet && detected && origin === detected && tailnet.funnel && (
         <Alert tone="warning">
           Questo indirizzo è pubblico su Internet (Tailscale Funnel): per tenerlo nella sola tailnet esegui{' '}
-          <code>tailscale serve --bg 8765</code>, che spegne il Funnel.
+          <code>{funnelFixCommand(detected, localPort)}</code>, che spegne il Funnel.
         </Alert>
       )}
       <div>
@@ -286,6 +310,7 @@ Regole: l'accesso è di sola lettura, non provare a modificare niente. Le lezion
 
 function ReadonlyKeyManager() {
   const query = useReadonlyKey()
+  const tailnet = useTailnet().data
   const createKey = useCreateReadonlyKey()
   const revokeKey = useRevokeReadonlyKey()
   const [copiedKey, setCopiedKey] = useState(false)
@@ -317,7 +342,8 @@ function ReadonlyKeyManager() {
 
   const info = query.data
   const activeKey = info?.key ?? null
-  const baseUrl = info?.base_url || 'http://127.0.0.1:8765/api/v1/readonly'
+  const fallbackPort = tailnet?.local_port ?? (Number(window.location.port) || 8765)
+  const baseUrl = info?.base_url || `http://127.0.0.1:${fallbackPort}/api/v1/readonly`
   const promptText = activeKey ? buildAgentPrompt(baseUrl, activeKey) : ''
 
   return (
