@@ -5,7 +5,7 @@ RT non richiede alcun abbonamento ricorrente né costi di licenza. Per le funzio
 ## Come funzionano le chiavi API
 
 Per abilitare l'elaborazione delle lezioni:
-1. Vai in **Impostazioni → Modelli**.
+1. Vai in **Impostazioni → Modelli e connessioni**.
 2. Inserisci la chiave API del fornitore scelto: OpenRouter, Google AI Studio (Gemini), DeepSeek oppure un fornitore compatibile con le API di OpenAI.
 3. Puoi anche usare modelli locali (per esempio con Ollama o LM Studio) come fornitore compatibile con OpenAI, a costo zero e senza inviare dati all'esterno.
 
@@ -16,4 +16,4 @@ Le chiavi vengono salvate esclusivamente sul tuo computer locale nel file di con
 I costi dipendono dalle tariffe del fornitore e dalla lunghezza della lezione:
 - Paghi solo i token effettivamente consumati direttamente al fornitore dell'API.
 - Una lezione universitaria tipica di circa 90 minuti richiede indicativamente tra 0,05 € e 0,30 € complessivi a seconda del modello selezionato per trascrizione ed elaborazione.
-- Nella schermata **Impostazioni → Modelli** e nel riquadro di benvenuto viene mostrata una stima orientativa dei costi per lezione in base al modello configurato.
+- Nella schermata **Impostazioni → Modelli e connessioni** e nel riquadro di benvenuto viene mostrata una stima orientativa dei costi per lezione in base al modello configurato.

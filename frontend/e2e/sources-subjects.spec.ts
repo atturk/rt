@@ -16,8 +16,8 @@ async function firstLesson(page: Page) {
 
 test('materie: si aggiunge una materia senza lezioni, compare nell\'elenco e si toglie', async ({ page }) => {
   await loginViaLink(page)
-  await page.goto('/impostazioni/materie')
-  await expect(page).toHaveURL(/\/impostazioni\/materie$/)
+  await page.goto('/impostazioni/materie-calendario')
+  await expect(page).toHaveURL(/\/impostazioni\/materie-calendario$/)
   const name = 'Farmacologia E2E'
   await page.getByRole('textbox', { name: 'Nuova materia' }).fill(name)
   await page.getByRole('button', { name: 'Aggiungi', exact: true }).click()
@@ -106,7 +106,7 @@ test('domande: il chip Consigliato sta prima dei tipi e i tipi di prima restano'
 test('ricerca web: l\'interruttore della verifica è spento di default e non cancella l\'indirizzo', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni/lavorazione')
-  const toggle = page.getByRole('switch', { name: 'Ricerca web nella verifica' })
+  const toggle = page.getByRole('switch', { name: 'Cerca sul web durante la verifica contestuale' })
   await expect(toggle).toHaveAttribute('aria-checked', 'false')
   const before = await apiGet<{ web_search?: { searxng_base_url?: string | null } }>(page.request, '/settings')
   await toggle.click()

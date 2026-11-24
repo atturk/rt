@@ -13,8 +13,7 @@ import { useGeneralPreference } from './useGeneralPreference'
 
 export function TranscriptionSection({ settings }: { settings: Settings }) {
   const save = useSaveTranscription()
-  const t = settings.transcription
-  return <TranscriptionFields settings={settings} save={save} key={t.engine} />
+  return <TranscriptionFields settings={settings} save={save} />
 }
 
 type Engine = 'macparakeet' | 'parakeet' | 'custom'
@@ -51,7 +50,7 @@ function TranscriptionFields({
   const savedUrl = t.base_url ?? ''
   const savedModel = t.model ?? ''
 
-  const [engine, setEngine] = useState<Engine>(savedEngine)
+  const [engineDraft, setEngineDraft] = useState<{ base: Engine; value: Engine } | null>(null)
   const [urlDraft, setUrlDraft] = useState<{ base: string; value: string } | null>(null)
   const [modelDraft, setModelDraft] = useState<{ base: string; value: string } | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -60,6 +59,7 @@ function TranscriptionFields({
   const [engineStatus, setEngineStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [engineError, setEngineError] = useState<string | null>(null)
 
+  const engine = engineDraft && engineDraft.base === savedEngine ? engineDraft.value : savedEngine
   const baseUrl = urlDraft && urlDraft.base === savedUrl ? urlDraft.value : savedUrl
   const model = modelDraft && modelDraft.base === savedModel ? modelDraft.value : savedModel
 
@@ -91,7 +91,7 @@ function TranscriptionFields({
   )
 
   function handleEngineChange(next: Engine) {
-    setEngine(next)
+    setEngineDraft({ base: savedEngine, value: next })
     setEngineStatus('saving')
     setEngineError(null)
     save.mutate(

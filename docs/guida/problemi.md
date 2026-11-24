@@ -5,7 +5,7 @@ In questa pagina trovi le risposte ai problemi più comuni e le istruzioni per c
 ## Domande frequenti
 
 ### La trascrizione o l'elaborazione segnala un errore di rete o di chiave API
-- Verifica in **Impostazioni → Modelli** che la chiave inserita sia corretta e non scaduta.
+- Verifica in **Impostazioni → Modelli e connessioni** che la chiave inserita sia corretta e non scaduta.
 - Controlla sul pannello del fornitore (es. OpenRouter, Google AI Studio o DeepSeek) di avere credito residuo attivo sul tuo account sviluppatore.
 
 ### L'audio registrato risulta muto o con volume molto basso

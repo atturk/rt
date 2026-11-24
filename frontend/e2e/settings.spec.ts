@@ -5,7 +5,7 @@ const CONNECTION = 'Server locale 422'
 const KEY = 'sk-e2e-chiave-422-0123456789abcdef'
 const BASE_URL = 'http://127.0.0.1:9/v1'
 const sections = [
-  ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['calendario', 'Calendario'], ['materie', 'Materie'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
+  ['aspetto', 'Aspetto e lettura'], ['domande', 'Domande'], ['materie-calendario', 'Materie e calendario'], ['editor', 'Editor e scorciatoie'], ['lavorazione', 'Lavorazione delle lezioni'],
   ['modelli-connessioni', 'Modelli e connessioni'], ['telegram', 'Telegram'], ['accesso', 'Accesso da altri dispositivi'], ['info-aggiornamenti', 'Info e aggiornamenti'],
 ]
 async function choose(root: Page | Locator, label: string, option: string) {
@@ -16,12 +16,12 @@ async function choose(root: Page | Locator, label: string, option: string) {
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 test.describe.configure({ mode: 'serial' })
 
-test('undici sezioni (con Guida): desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
+test('dieci sezioni (con Guida): desktop a due colonne, telefono con pagina e ritorno', async ({ page }) => {
   await loginViaLink(page)
   await page.goto('/impostazioni')
   const nav = page.getByRole('navigation', { name: 'Sezioni delle impostazioni' })
-  // undici sezioni; «Supporta RT» è un link esterno sotto Guida, non una sezione
-  await expect(nav.locator('a:not([data-testid="link-sostieni-rt"])')).toHaveCount(11)
+  // dieci sezioni (9 + Guida); «Supporta RT» è un link esterno sotto Guida, non una sezione
+  await expect(nav.locator('a:not([data-testid="link-sostieni-rt"])')).toHaveCount(10)
   await expect(nav.getByTestId('link-sostieni-rt')).toHaveCount(1)
   await expect(page.getByRole('radiogroup', { name: 'Tema' })).toBeVisible()
   const navBox = (await nav.boundingBox())!
@@ -41,7 +41,7 @@ test('undici sezioni (con Guida): desktop a due colonne, telefono con pagina e r
 
 test('i vecchi URL aprono la sezione corrispondente', async ({ page }) => {
   await loginViaLink(page)
-  for (const [old, current] of [['modelli', 'modelli-connessioni'], ['chiavi', 'modelli-connessioni'], ['costi', 'modelli-connessioni'],
+  for (const [old, current] of [['calendario', 'materie-calendario'], ['materie', 'materie-calendario'], ['modelli', 'modelli-connessioni'], ['chiavi', 'modelli-connessioni'], ['costi', 'modelli-connessioni'],
     ['ricerca-web', 'lavorazione'], ['decisioni', 'modelli-connessioni'], ['bot', 'telegram'], ['info', 'info-aggiornamenti']]) {
     await page.goto(`/impostazioni/${old}?fase=rewrite`)
     await expect(page).toHaveURL(new RegExp(`/impostazioni/${current}\\?fase=rewrite`))
@@ -79,26 +79,31 @@ test('lavorazione: trascrizione, scaletta, modalità unica e job', async ({ page
   const stt = region(page, 'Trascrizione')
   await choose(stt, 'Motore', 'Server OpenAI-compatible')
   await stt.getByLabel('Base URL del server').fill('http://127.0.0.1:9000/v1')
+  await stt.getByLabel('Base URL del server').blur()
   await stt.getByLabel('Modello', { exact: true }).fill('whisper-e2e')
+  await stt.getByLabel('Modello', { exact: true }).blur()
+  await expect.poll(async () => (await apiGet<{ transcription: { engine: string; base_url: string; model: string } }>(page.request, '/settings')).transcription)
+    .toMatchObject({ engine: 'custom', base_url: 'http://127.0.0.1:9000/v1', model: 'whisper-e2e' })
   await stt.getByLabel('Chiave API (facoltativa)').fill('stt-e2e-chiave-422-012345')
-  await stt.getByRole('button', { name: 'Salva trascrizione' }).click()
-  await expect(stt.getByRole('status')).toHaveText('Salvato.')
+  await stt.getByRole('button', { name: 'Salva chiave' }).click()
+  await expect(stt.getByRole('status').last()).toHaveText('Salvato')
   const outline = region(page, 'Scaletta')
-  await outline.getByLabel('Approva da sola dopo (secondi)').fill('0')
-  await outline.getByRole('button', { name: 'Salva scaletta' }).click()
-  await expect(outline.getByRole('status')).toHaveText('Salvato.')
+  await choose(outline, 'Approvazione della scaletta', 'Aspetta qualche secondo, poi procedi')
+  await outline.getByLabel('Approva da sola dopo (secondi)').fill('25')
+  await outline.getByLabel('Approva da sola dopo (secondi)').blur()
+  await expect.poll(async () => (await apiGet<{ preferences: { modalita_scaletta: string; secondi_approvazione: number } }>(page.request, '/settings')).preferences)
+    .toMatchObject({ modalita_scaletta: 'timer', secondi_approvazione: 25 })
   const enrichment = region(page, 'Arricchimento')
-  await enrichment.getByLabel('Utilità minima (0–1)').fill('0.65')
-  await enrichment.getByRole('button', { name: 'Salva arricchimento' }).click()
-  await expect(enrichment.getByRole('status')).toHaveText('Salvato.')
-  expect(await apiGet(page.request, '/settings/enrichment')).toMatchObject({ utility_threshold: 0.65 })
+  await enrichment.getByLabel('Utilità minima (0–1)', { exact: true }).fill('0.65')
+  await enrichment.getByLabel('Utilità minima (0–1)', { exact: true }).blur()
+  await expect.poll(async () => await apiGet(page.request, '/settings/enrichment')).toMatchObject({ utility_threshold: 0.65 })
   await expect(page.getByText(/Analizza anche nella pipeline/)).toHaveCount(0)
   await expect(page.getByLabel('Job in parallelo')).toHaveCount(0)
   await page.reload()
   await expect(page.getByTestId('stt-engine')).toHaveAttribute('data-value', 'custom')
   await expect(stt.getByLabel('Chiave API (facoltativa)')).toHaveValue('')
   await expect(page.getByLabel('Job in parallelo')).toHaveCount(0)
-  await expect(enrichment.getByLabel('Utilità minima (0–1)')).toHaveValue('0.65')
+  await expect(enrichment.getByLabel('Utilità minima (0–1)', { exact: true })).toHaveValue('0.65')
   await page.goto('/impostazioni/aspetto')
   await choose(page, 'Sfondo dei gruppi in Lezioni', 'Colori')
   await expect.poll(async () => (await apiGet<{ preferences: { sfondo_gruppi: string } }>(page.request, '/settings')).preferences.sfondo_gruppi).toBe('colori')
@@ -122,8 +127,10 @@ test('connessione: chiavi, modello e costi nello stesso gruppo', async ({ page }
   await connection.getByLabel('Modello costo 1').fill('test/422')
   await connection.getByLabel('IN 1', { exact: true }).fill('0,15')
   await connection.getByLabel('OUT 1', { exact: true }).fill('0.6')
-  await connection.getByRole('button', { name: 'Salva costi' }).click()
-  await expect(connection.getByRole('status').filter({ hasText: 'Salvato.' })).toBeVisible()
+  await connection.getByLabel('OUT 1', { exact: true }).blur()
+  await expect.poll(async () => await apiGet(page.request, '/settings')).toMatchObject({
+    pricing: { openai_compatible: { 'test/422': { input_per_million: 0.15, output_per_million: 0.6 } } },
+  })
   await page.reload()
   await expect(connection.getByLabel('IN 1', { exact: true })).toHaveValue('0.15')
   await expect(connection.getByTestId('secret-row')).toHaveCount(1)
@@ -138,11 +145,12 @@ test('SearXNG resta nella lavorazione, Prova e salvataggio funzionano', async ({
   await loginViaLink(page)
   await page.goto('/impostazioni/ricerca-web')
   const search = region(page, 'Ricerca web')
-  await search.getByLabel('URL base di SearXNG').fill(serverState().searxng_url)
+  await search.getByLabel('URL base di SearXNG', { exact: true }).fill(serverState().searxng_url)
+  await search.getByLabel('URL base di SearXNG', { exact: true }).blur()
   await search.getByRole('button', { name: 'Prova', exact: true }).click()
   await expect(search.getByTestId('searxng-test-result')).toContainText('3 immagini')
-  await search.getByRole('button', { name: 'Salva', exact: true }).click()
-  await expect(search.getByRole('status')).toHaveText('Salvato.')
+  await expect.poll(async () => (await apiGet<{ web_search?: { searxng_base_url?: string } }>(page.request, '/settings')).web_search?.searxng_base_url)
+    .toBe(serverState().searxng_url)
 })
 
 test('Telegram: interruttore, token e chat trovata dopo /start', async ({ page }) => {
@@ -172,7 +180,7 @@ test('Info contiene la cartella dati, il wizard e l’uscita; Accesso contiene i
   await expect(page.getByRole('link', { name: 'Configurazione guidata' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Esci', exact: true })).toBeVisible()
   await page.goto('/impostazioni/accesso')
-  await page.getByLabel("Indirizzo di RT per l'altro dispositivo").fill('https://mac.tail1234.ts.net')
+  await page.getByLabel("Indirizzo di RT per l'altro dispositivo", { exact: true }).fill('https://mac.tail1234.ts.net')
   await page.getByRole('button', { name: 'Crea QR di accesso' }).click()
   await expect(page.getByRole('img', { name: 'QR del link di accesso' })).toBeVisible()
 })

@@ -6,6 +6,7 @@ Beta su scaletta automatica, notifiche Telegram a scelta e verifica manuale in p
 
 ### Novità
 
+- **Impostazioni ridisegnate**: gruppi più chiari, salvataggio automatico, spiegazioni nei suggerimenti; Materie e calendario in un'unica pagina.
 - **Scaletta automatica**: per impostazione predefinita la scaletta viene approvata subito senza fermare la lavorazione; in Impostazioni › Lavorazione delle lezioni puoi scegliere se procedere subito, attendere N secondi o aspettare sempre te.
 - **Notifiche Telegram a scelta**: in Impostazioni › Telegram puoi attivare o disattivare ogni tipo di notifica (lezione pronta, verifica completata, scaletta da approvare, issue da decidere, errore).
 - **Storico delle notifiche svuotabile**: puoi svuotare l'elenco delle ultime notifiche inviate in RT (i messaggi su Telegram restano).
