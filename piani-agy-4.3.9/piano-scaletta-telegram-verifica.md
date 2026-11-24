@@ -82,11 +82,31 @@ una alla volta in un `for`.
   codice di ripresa dove si sceglie il client; correggi e aggiungi un test (modello cambiato tra invio e
   ripresa → il risultato del batch viene usato).
 
+## 5. Bug di Telegram e del worker trovati nei test sulla b8
+- CRITICO: «Lezione pronta» non parte mai. `rt/services/pipeline_service.py` `_run` riceve i notifier ma non
+  chiama più `notify_build_completed` (tolto per errore in 0eef3eb1). Rimettilo a fine lavorazione riuscita,
+  rispettando il toggle `lezione_pronta`. Test: build riuscita → una notifica «Lezione pronta».
+- Il worker tiene la chat vecchia dopo un cambio: `load_env_file` con `override=False` non aggiorna
+  `TELEGRAM_CHAT_ID`/token già in ambiente. Rileggi le impostazioni Telegram a ogni invio (o ricarica con
+  override per quelle chiavi). Test: cambio chat id → l'invio successivo usa quello nuovo.
+- `rt/worker.py` `NOTIFY_FAILED_TYPES`: aggiungi `ingest_sources`, `ingest_notes`, `review_unit`, `review_part`.
+- Messaggio di errore: includi sempre lezione e materia anche se il job fallisce nella preparazione (prendili
+  dal job/lesson id), e niente prefisso tecnico tipo «ValueError:»: frase breve leggibile, dettaglio tecnico
+  solo nei log.
+- `rt/telegram/client.py`: il retry su 429 dorme `retry_after` senza limite → massimo 30 s e un solo
+  tentativo in più, poi rinuncia e segna «non inviata».
+- `openrouter_batch_models()` è vuota dopo il riavvio dell'API, quindi il menu dei modelli non mostra le voci
+  `:batch`. Popola l'elenco all'avvio (o alla prima richiesta, con cache) e aggiungi un test.
+- Salvare una preferenza riscrive `general.yaml` cambiando altre chiavi (es. il modello `jev` diventa
+  `classifier`). Salva solo la chiave modificata, senza normalizzare il resto. Test: salvo un'opzione → le
+  altre righe del file restano uguali.
+
 ## Chiusura
 - `CHANGELOG.md`: crea `## 4.3.9b9 — da pubblicare` sopra la b8 (stesso stile). Novità: scaletta che procede
   da sola (scelta in Impostazioni), notifiche Telegram a scelta, storico delle notifiche svuotabile, notifica a verifica
   completata, verifica manuale delle unità in parallelo. Correzioni: costo stimato con i modelli che
-  ragionano, risultato batch conservato se cambi modello. Non cambiare `VERSION`.
+  ragionano, risultato batch conservato se cambi modello, notifica «Lezione pronta» di nuovo inviata, chat
+  Telegram aggiornata subito, modelli batch nel menu anche dopo il riavvio. Non cambiare `VERSION`.
 - Esegui: pytest sui test toccati, `npx vitest run`, `npx oxlint --deny-warnings`, `npm run build`,
   `npm run -s check:bundle` in `frontend/` (budget vicino al limite: niente nuove dipendenze).
 - Push su `agy/4.3.9-notifiche`.
