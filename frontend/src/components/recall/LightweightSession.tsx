@@ -690,7 +690,7 @@ export function LightweightSession({
           <div
             role="group"
             aria-label="Tipo di domanda"
-            className="flex flex-wrap gap-1.5"
+            className="flex flex-wrap justify-center gap-1.5"
           >
             {sessionTypes.map(({ id: typeId, label }) => {
               const active = qtype === typeId
