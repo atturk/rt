@@ -87,7 +87,7 @@ una alla volta in un `for`.
   chiama più `notify_build_completed` (tolto per errore in 0eef3eb1). Rimettilo a fine lavorazione riuscita,
   rispettando il toggle `lezione_pronta`. Test: build riuscita → una notifica «Lezione pronta».
 - Il worker tiene la chat vecchia dopo un cambio: `load_env_file` con `override=False` non aggiorna
-  `TELEGRAM_CHAT_ID`/token già in ambiente. Rileggi le impostazioni Telegram a ogni invio (o ricarica con
+  `RT_TELEGRAM_CHAT_ID`/token già in ambiente. Rileggi le impostazioni Telegram a ogni invio (o ricarica con
   override per quelle chiavi). Test: cambio chat id → l'invio successivo usa quello nuovo.
 - `rt/worker.py` `NOTIFY_FAILED_TYPES`: aggiungi `ingest_sources`, `ingest_notes`, `review_unit`, `review_part`.
 - Messaggio di errore: includi sempre lezione e materia anche se il job fallisce nella preparazione (prendili
@@ -97,9 +97,9 @@ una alla volta in un `for`.
   tentativo in più, poi rinuncia e segna «non inviata».
 - `openrouter_batch_models()` è vuota dopo il riavvio dell'API, quindi il menu dei modelli non mostra le voci
   `:batch`. Popola l'elenco all'avvio (o alla prima richiesta, con cache) e aggiungi un test.
-- Salvare una preferenza riscrive `general.yaml` cambiando altre chiavi (es. il modello `jev` diventa
-  `classifier`). Salva solo la chiave modificata, senza normalizzare il resto. Test: salvo un'opzione → le
-  altre righe del file restano uguali.
+- Salvare una preferenza riscrive `general.yaml`: la migrazione `jev` → `classifier` (`write_classifier`) è voluta e
+  resta; controlla solo che `save_preferences` non cambi valori o chiavi diverse da quella salvata. Test: salvo
+  un'opzione → le altre impostazioni restano con gli stessi valori.
 
 ## Chiusura
 - `CHANGELOG.md`: crea `## 4.3.9b9 — da pubblicare` sopra la b8 (stesso stile). Novità: scaletta che procede
