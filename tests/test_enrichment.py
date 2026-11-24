@@ -55,7 +55,9 @@ def test_incremental_analysis_preserves_user_decisions_and_does_not_generate(les
     assert len(state.elements) == 2
     assert es.get_element(state, a.id).status == "dismissed"
     assert es.get_element(state, b.id).prompt == "Prompt mio"
-    assert es.view(path)["elements"][0].stale
+    # Le unità si analizzano in parallelo: l'ordine degli elementi non è fisso.
+    changed = [e for e in es.view(path)["elements"] if e.unit_id == rows[0]["id"]]
+    assert changed and all(e.stale for e in changed)
     media.assert_not_called()
 
 
