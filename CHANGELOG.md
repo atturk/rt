@@ -1,5 +1,19 @@
 # Novità di RT
 
+## 4.3.9b8 — da pubblicare
+
+Beta sul ripasso e sulla domanda di approfondimento.
+
+### Novità
+
+- **Tipi di domanda centrati**: nella sessione di ripasso i tipi di domanda in alto sono centrati orizzontalmente.
+
+### Correzioni
+
+- **Approfondimento nel ripasso**: dopo la seconda risposta si vedono il commento e i punteggi aggiornati.
+- **Domanda di approfondimento**: non suggerisce più la risposta e il commento non la anticipa; se salti, vedi cosa mancava.
+- **Prossima domanda**: subito un'animazione di caricamento invece della domanda precedente, e risposta più rapida.
+
 ## 4.3.9b7 — 2026-11-24
 
 Beta sull'uso da iPhone e sulla convivenza con altre app su Tailscale Serve.
