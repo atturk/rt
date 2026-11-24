@@ -12810,6 +12810,42 @@
         "title": "SubjectView",
         "type": "object"
       },
+      "SupportPromptEvent": {
+        "properties": {
+          "event": {
+            "enum": [
+              "opened",
+              "hidden",
+              "donated"
+            ],
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "title": "SupportPromptEvent",
+        "type": "object"
+      },
+      "SupportPromptState": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "visible",
+          "url"
+        ],
+        "title": "SupportPromptState",
+        "type": "object"
+      },
       "SyncIn": {
         "properties": {
           "assign_all": {
@@ -36773,6 +36809,76 @@
           }
         ],
         "summary": "Ferma RT e il worker (solo da questo computer)",
+        "tags": [
+          "sistema"
+        ]
+      }
+    },
+    "/api/v1/system/support-prompt": {
+      "get": {
+        "operationId": "get_support_prompt_api_v1_system_support_prompt_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportPromptState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stato del promemoria per sostenere RT",
+        "tags": [
+          "sistema"
+        ]
+      },
+      "post": {
+        "operationId": "post_support_prompt_api_v1_system_support_prompt_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportPromptEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportPromptState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Registra un'azione sul promemoria per sostenere RT",
         "tags": [
           "sistema"
         ]

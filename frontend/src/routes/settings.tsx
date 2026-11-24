@@ -1,9 +1,10 @@
 import { useReturnAddress } from '@/lib/returnAddress'
+import { useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Heart, LogOut, Wand2 } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 
-import { errorMessage } from '@/api/client'
+import { api, errorMessage } from '@/api/client'
 import { useLogout } from '@/api/hooks'
 import { useSettings, useSystemInfo, type Settings } from '@/api/settings'
 import { DeviceAccessSection } from '@/components/settings/device-access'
@@ -52,9 +53,11 @@ export function SettingsLayout() {
   const index = pathname === '/impostazioni'
   const targets: Record<string, string> = { telegram: 'telegram', cartella: 'info-aggiornamenti', 'job-paralleli': 'lavorazione', trascrizione: 'lavorazione', preferenze: 'aspetto' }
   if (index && targets[hash.slice(1)]) return <SettingsRedirect section={targets[hash.slice(1)]} />
+  const isSupport = pathname === '/impostazioni/supporta'
   const current = SETTINGS_SECTIONS.find(s => pathname === `/impostazioni/${s.path}`) ?? SETTINGS_SECTIONS[0]
+  const sectionLabel = isSupport ? 'Supporta RT' : current.label
   return <>
-    <PageHeader title={phone && !index ? current.label : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
+    <PageHeader title={phone && !index ? sectionLabel : 'Impostazioni'} back={phone && !index ? { to: '/impostazioni', label: 'Impostazioni' } : { to: returnAddress, label: 'Indietro' }} />
     <PageBody className="md:px-5">
       <div className="flex min-w-0 gap-8">
         {(!phone || index) && <nav aria-label="Sezioni delle impostazioni" className={cn('shrink-0', phone ? 'w-full' : 'sticky top-20 h-fit max-h-[calc(100vh-6rem)] w-60 overflow-y-auto')}>
@@ -73,24 +76,68 @@ export function SettingsLayout() {
           <SupportButton />
         </nav>}
         {(!phone || !index) && <div className="min-w-0 flex-1">
-          {!phone && <h2 className="mb-4 text-heading font-semibold">{current.label}</h2>}<Outlet />
+          {!phone && <h2 className="mb-4 text-heading font-semibold">{sectionLabel}</h2>}<Outlet />
         </div>}
       </div>
     </PageBody>
   </>
 }
 
-/** «Supporta RT» sotto Guida, solo se c'è un URL per le donazioni. Il link apre il browser di
- * sistema (target=_blank + OPEN_EXTERNAL_LINKS_IN_BROWSER in window.py): niente pagamenti nella
- * webview. Blu fisso con testo bianco: contrasto uguale in tema chiaro e scuro. */
+/** «Supporta RT» sotto Guida, solo se c'è un URL per le donazioni: apre la pagina interna
+ * (/impostazioni/supporta) dove si trova il collegamento a Ko-fi. Blu fisso con testo bianco:
+ * contrasto uguale in tema chiaro e scuro. */
 function SupportButton() {
   const url = useSystemInfo().data?.donazioni_url
   if (!url) return null
-  return <a href={url} target="_blank" rel="noopener noreferrer" data-testid="link-sostieni-rt"
-    className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+  return <NavLink to="/impostazioni/supporta" data-testid="link-sostieni-rt"
+    className={({ isActive }) => cn(
+      'mt-4 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+      isActive && 'ring-2 ring-blue-400 ring-offset-2 ring-offset-background',
+    )}>
     <Heart className="size-4 shrink-0 fill-current" aria-hidden />
     Supporta RT
-  </a>
+  </NavLink>
+}
+
+export function SupportSettingsPage() {
+  const queryClient = useQueryClient()
+  const url = useSystemInfo().data?.donazioni_url ?? ''
+  const handleDonateClick = () => {
+    queryClient.setQueryData(['support-prompt'], (old: { visible?: boolean; url?: string } | undefined) => ({
+      url: old?.url ?? url,
+      visible: false,
+    }))
+    void api.POST('/api/v1/system/support-prompt', { body: { event: 'donated' } }).catch(() => {})
+  }
+  return (
+    <section className="max-w-[52ch] space-y-4">
+      <div className="flex size-11 items-center justify-center rounded-[11px] bg-blue-600 text-white shadow-sm" aria-hidden>
+        <Heart className="size-[22px] fill-current" />
+      </div>
+      <h3 className="text-heading font-semibold">RT è fatto da uno studente, per gli studenti</h3>
+      <p className="text-body text-foreground">
+        RT è gratuito e senza abbonamenti: usi le tue chiavi e paghi solo quello che consumi dal provider. Lo sviluppo va avanti grazie alle donazioni.
+      </p>
+      <p className="text-body text-foreground">
+        Se RT ti fa risparmiare tempo, una donazione aiuta a tenerlo vivo.
+      </p>
+      {url && (
+        <div className="space-y-2 pt-2">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleDonateClick}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-body font-semibold text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <Heart className="size-4 shrink-0 fill-current" aria-hidden />
+            Dona con Ko-fi
+          </a>
+          <p className="text-meta text-muted-foreground">Si apre nel browser: carta o PayPal.</p>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function ScrollToHash() {

@@ -85,7 +85,7 @@ describe('Le otto sezioni', () => {
     expect(await screen.findByRole('region', { name: 'Trascrizione' })).toBeVisible()
     expect(screen.queryByRole('radiogroup', { name: 'Tema' })).toBeNull()
   })
-  it('Supporta RT: bottone sotto Guida solo con un URL per le donazioni, aperto nel browser', async () => {
+  it('Supporta RT: bottone sotto Guida solo con un URL per le donazioni, porta alla pagina /impostazioni/supporta', async () => {
     realSettings('/impostazioni/aspetto')
     await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     expect(screen.queryByTestId('link-sostieni-rt')).toBeNull()
@@ -93,9 +93,27 @@ describe('Le otto sezioni', () => {
     realSettings('/impostazioni/aspetto', false, { donazioni_url: 'https://ko-fi.com/example' })
     const nav = await screen.findByRole('navigation', { name: 'Sezioni delle impostazioni' })
     const link = await within(nav).findByRole('link', { name: 'Supporta RT' })
-    expect(link).toHaveAttribute('href', 'https://ko-fi.com/example')
-    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('href', '/impostazioni/supporta')
+    expect(link).not.toHaveAttribute('target')
     expect(link.compareDocumentPosition(within(nav).getByRole('link', { name: /^Guida/ })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+
+    await userEvent.click(link)
+    expect(await screen.findByRole('heading', { name: 'RT è fatto da uno studente, per gli studenti' })).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/impostazioni/supporta')
+    expect(link).toHaveAttribute('aria-current', 'page')
+  })
+  it('Supporta RT pagina: bottone Dona con Ko-fi ha href, target=_blank e registra donated al clic', async () => {
+    const postSpy = vi.spyOn(api, 'POST').mockResolvedValue({
+      data: { visible: false, url: 'https://ko-fi.com/example/donate' },
+      error: undefined,
+      response: new Response('{}', { status: 200 }),
+    } as never)
+    realSettings('/impostazioni/supporta', false, { donazioni_url: 'https://ko-fi.com/example/donate' })
+    const donate = await screen.findByRole('link', { name: 'Dona con Ko-fi' })
+    expect(donate).toHaveAttribute('href', 'https://ko-fi.com/example/donate')
+    expect(donate).toHaveAttribute('target', '_blank')
+    await userEvent.click(donate)
+    expect(postSpy).toHaveBeenCalledWith('/api/v1/system/support-prompt', { body: { event: 'donated' } })
   })
   it('telefono: elenco, pagina della sezione e freccia indietro', async () => {
     realSettings('/impostazioni', true)
