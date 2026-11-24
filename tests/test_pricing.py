@@ -240,3 +240,32 @@ def test_llm_client_extracts_usage_and_avoids_double_counting(monkeypatch):
     assert telemetry._records[0].estimated_cost == pytest.approx(2.74)
 
 
+def test_openrouter_batch_models_populates_on_first_call():
+    import rt.llm.pricing as pr
+    from unittest.mock import MagicMock, patch
+
+    pr._OPENROUTER_BATCH_MODELS.clear()
+    pr._OPENROUTER_DYNAMIC_CACHE.clear()
+    pr._OPENROUTER_DYNAMIC_FETCHED = False
+
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.json.return_value = {
+        "data": [
+            {"id": "openai/gpt-4o", "pricing": {"prompt": "0.0000025", "completion": "0.00001"}},
+            {"id": "openai/gpt-4o:batch", "pricing": {"prompt": "0.00000125", "completion": "0.000005"}},
+            {"id": "anthropic/claude-3.5-sonnet:batch", "pricing": {"prompt": "0.0000015", "completion": "0.0000075"}},
+        ]
+    }
+    try:
+        with patch("requests.get", return_value=fake_resp) as get_mock:
+            models = pr.openrouter_batch_models()
+            assert models == ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
+            assert pr.openrouter_batch_models() == models
+            assert get_mock.call_count == 1
+    finally:
+        pr._OPENROUTER_BATCH_MODELS.clear()
+        pr._OPENROUTER_DYNAMIC_CACHE.clear()
+        pr._OPENROUTER_DYNAMIC_FETCHED = True
+
+

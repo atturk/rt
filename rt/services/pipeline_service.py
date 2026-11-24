@@ -204,6 +204,8 @@ def _run(raw_inputs, options: PipelineOptions, ctx: RunContext, notifiers, resul
     final_dir = bld_res.get("lesson_dir") or lesson_dir
     result.lesson_dir = final_dir
     result.status = PipelineStatus.COMPLETED
+    if not mock:
+        notify_build_completed(final_dir, bld_res, ctx, notifiers)
 
 
 

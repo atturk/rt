@@ -285,3 +285,72 @@ def test_api_clear_notifications_and_save_notify_prefs(bot, api_client, tmp_path
     cleared = api_client.delete("/api/v1/telegram/notifications")
     assert cleared.status_code == 200 and cleared.json()["cleared"] == 1
     assert api_client.get("/api/v1/telegram/notifications").json() == []
+
+
+def test_worker_reads_updated_chat_id_from_env_file(tmp_path, monkeypatch):
+    from rt.core import config as config_mod
+    from rt.telegram.notify import send_notification
+    from tests.api_support import isolated_workspace
+
+    isolated_workspace(tmp_path, monkeypatch)
+    server, base = fake_telegram_server()
+    monkeypatch.setenv("RT_TELEGRAM_API_URL", base)
+    monkeypatch.setenv("RT_TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.delenv("RT_TELEGRAM_CHAT_ID", raising=False)
+    config_mod._DOTENV_INJECTED.clear()
+    env_path = tmp_path / "work" / ".env"
+    try:
+        env_path.write_text('RT_TELEGRAM_CHAT_ID="111"\n', encoding="utf-8")
+        assert send_notification("prova", "uno") is True
+        assert server.sent[-1][1]["chat_id"] == "111"
+
+        env_path.write_text('RT_TELEGRAM_CHAT_ID="222"\n', encoding="utf-8")
+        assert send_notification("prova", "due") is True
+        assert server.sent[-1][1]["chat_id"] == "222"
+    finally:
+        config_mod._DOTENV_INJECTED.clear()
+        server.shutdown()
+
+
+def test_client_429_caps_retry_after_at_30_seconds():
+    cfg = TelegramConfig(bot_token="tok", chat_id="1")
+    flood = MagicMock(status_code=429)
+    flood.json.return_value = {"ok": False, "error_code": 429, "description": "Too Many Requests",
+                               "parameters": {"retry_after": 120}}
+    with patch("requests.post", side_effect=[flood, flood]) as post, patch("time.sleep") as sleep:
+        with pytest.raises(TelegramAPIError, match="Too Many Requests"):
+            send_message(cfg, "ciao")
+    assert post.call_count == 2
+    sleep.assert_called_once_with(30.0)
+
+
+def test_failed_prep_job_notifies_with_lesson_materia_and_no_exception_prefix(bot, tmp_path, monkeypatch, rt_db):
+    from rt.services.jobs import DbJobQueue
+    from rt.services.worker import NOTIFY_FAILED_TYPES, Worker, register_job_notifier, unregister_job_notifiers
+    from rt.telegram.notify import TelegramJobNotifier
+    from tests.api_support import isolated_workspace
+
+    assert {"ingest_sources", "ingest_notes", "review_unit", "review_part"} <= NOTIFY_FAILED_TYPES
+    isolated_workspace(tmp_path, monkeypatch)
+
+    def fail_prep(job, ctx):
+        raise ValueError("Formato audio non supportato")
+
+    queue = DbJobQueue(rt_db)
+    worker = Worker(queue, handlers={"ingest_audio": fail_prep}, stt="macparakeet")
+    register_job_notifier(TelegramJobNotifier())
+    try:
+        queue.enqueue("ingest_audio", None, {
+            "inputs": ["/tmp/lezione_cuore.m4a"],
+            "options": {"date": "2026-11-24", "materia": "ANATOMIA"},
+        })
+        job = worker.run_once()
+        assert job.state == "failed"
+        texts = _sent_texts(bot)
+        assert len(texts) == 1
+        assert "lezione_cuore.m4a" in texts[0]
+        assert "2026-11-24 · ANATOMIA" in texts[0]
+        assert "Formato audio non supportato" in texts[0]
+        assert "ValueError" not in texts[0]
+    finally:
+        unregister_job_notifiers()

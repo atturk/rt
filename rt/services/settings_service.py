@@ -541,32 +541,37 @@ def save_preferences(project_root: Path, preferences: dict[str, Any]) -> dict[st
     from rt.services.classifier_settings import write_classifier
     cfg = RTConfig.model_validate(data)
     ui_data = data.setdefault("ui", {})
-    bg_val = preferences.get("sfondo_gruppi", {"none":"niente", "gray":"grigi", "colors":"colori"}.get(cfg.ui.group_background, "colori"))
+
+    bg_val = preferences.get("sfondo_gruppi", {"none": "niente", "gray": "grigi", "colors": "colori"}.get(cfg.ui.group_background, "colori"))
     bg_canonical = {"niente": "none", "grigi": "gray", "colori": "colors"}.get(bg_val, bg_val)
-    ui_data["group_background"] = bg_canonical
+    if "sfondo_gruppi" in preferences:
+        ui_data["group_background"] = bg_canonical
 
     mode = preferences.get("modalita_scaletta", cfg.ui.outline_mode)
     if mode not in ("auto", "timer", "manual"):
         raise ValueError(f"Modalità scaletta non valida: {mode}")
-    ui_data["outline_mode"] = mode
+    if "modalita_scaletta" in preferences:
+        ui_data["outline_mode"] = mode
 
     secs = int(preferences.get("secondi_approvazione", cfg.ui.outline_auto_approval_seconds))
     if secs < 1 or secs > 3600:
         raise ValueError("I secondi di approvazione devono essere compresi tra 1 e 3600.")
-    ui_data["outline_auto_approval_seconds"] = secs
+    if "secondi_approvazione" in preferences:
+        ui_data["outline_auto_approval_seconds"] = secs
 
     close_val = preferences.get(
         "chiusura_x",
         {"background": "background", "quit": "esci"}.get(cfg.ui.close_action, "background"),
     )
     close_canonical = {"esci": "quit", "quit": "quit", "background": "background"}.get(close_val, "background")
-    ui_data["close_action"] = close_canonical
+    if "chiusura_x" in preferences:
+        ui_data["close_action"] = close_canonical
 
     classifier = cfg.classifier
     current_mode = classifier_job(cfg, "enrichment").mode
     enr_val = preferences.get("modalita_arricchimento", {"off": "disattivata", "manual": "manuale", "pipeline": "automatica"}[current_mode])
     if "modalita_arricchimento" in preferences:
-        classifier.jobs.setdefault("enrichment", ClassifierJobConfig()).mode = {"disattivata": "off", "manuale": "manual", "automatica": "pipeline", "disabled":"off", "automatic":"pipeline"}.get(enr_val, enr_val)
+        classifier.jobs.setdefault("enrichment", ClassifierJobConfig()).mode = {"disattivata": "off", "manuale": "manual", "automatica": "pipeline", "disabled": "off", "automatic": "pipeline"}.get(enr_val, enr_val)
     write_classifier(data, classifier)
 
     _atomic_yaml(path, data)

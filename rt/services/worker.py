@@ -56,7 +56,10 @@ def mock_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 # Job lunghi di cui avvisare quando non riescono (le notifiche le registra chi avvia il worker:
 # rt/services non conosce Telegram).
-NOTIFY_FAILED_TYPES = frozenset({"run_pipeline", "run_phase", "ingest_audio", "update_lesson", "add_images"})
+NOTIFY_FAILED_TYPES = frozenset({
+    "run_pipeline", "run_phase", "ingest_audio", "ingest_sources", "ingest_notes",
+    "update_lesson", "add_images", "review_unit", "review_part",
+})
 _JOB_NOTIFIERS: List[Any] = []
 
 

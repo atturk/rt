@@ -750,6 +750,10 @@ def telegram_enabled() -> bool:
     return load_config().telegram.enabled
 
 
+_DOTENV_INJECTED: Dict[str, str] = {}
+_TELEGRAM_ENV_KEYS = ("RT_TELEGRAM_BOT_TOKEN", "RT_TELEGRAM_CHAT_ID")
+
+
 def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> None:
     """
     Carica variabili d'ambiente da un file .env locale (se presente).
@@ -759,16 +763,27 @@ def load_env_file(dotenv_path: Optional[str] = None, override: bool = False) -> 
     qualunque altra cartella. Non solleva errori se il file non esiste in nessuna
     delle due posizioni. Poi sovrappone i segreti di config/secrets.enc (rt.security.secrets).
     """
-    from dotenv import load_dotenv
+    from dotenv import dotenv_values, load_dotenv
     if dotenv_path is None:
         from rt.core.paths import env_file
         dotenv_path = env_file(_default_project_root())
+    raw_dotenv = dotenv_values(dotenv_path) if os.path.isfile(dotenv_path) else {}
+    # Se RT_TELEGRAM_* era arrivato da .env (non da ambiente esplicito / test), aggiorna se .env cambia.
+    for key in _TELEGRAM_ENV_KEYS:
+        val = raw_dotenv.get(key)
+        cur = os.environ.get(key)
+        if val is not None and val != "":
+            if override or cur is None or cur == _DOTENV_INJECTED.get(key):
+                os.environ[key] = val
+                _DOTENV_INJECTED[key] = val
+        elif key in _DOTENV_INJECTED and cur == _DOTENV_INJECTED.get(key):
+            os.environ.pop(key, None)
+            _DOTENV_INJECTED.pop(key, None)
     load_dotenv(dotenv_path=dotenv_path, override=override)
     # RT4-C1: i segreti dell'archivio cifrato (se esiste) vincono su .env ma non sulle
     # variabili esportate a mano. Senza config/secrets.enc non cambia nulla.
-    from dotenv import dotenv_values
     from rt.security.secrets import apply_to_environ
-    apply_to_environ(dotenv_values(dotenv_path) if os.path.isfile(dotenv_path) else {})
+    apply_to_environ(raw_dotenv)
 
 
 def get_api_key(provider_or_credential: str) -> Optional[str]:

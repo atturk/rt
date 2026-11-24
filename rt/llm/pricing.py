@@ -75,7 +75,9 @@ _OPENROUTER_DYNAMIC_FETCHED: bool = False
 
 
 def openrouter_batch_models() -> list[str]:
-    """Modelli OpenRouter noti che espongono una variante ':batch' (solo dalla cache caricata)."""
+    """Modelli OpenRouter noti che espongono una variante ':batch' (popola la cache alla prima richiesta)."""
+    if not _OPENROUTER_DYNAMIC_FETCHED:
+        _get_dynamic_openrouter_pricing("")
     return sorted(_OPENROUTER_BATCH_MODELS)
 
 

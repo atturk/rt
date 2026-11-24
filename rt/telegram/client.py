@@ -45,6 +45,7 @@ def _execute_request(method: str, url: str, request_kwargs: Dict[str, Any], max_
                     retry_sec = float(retry_after)
                 except (ValueError, TypeError):
                     retry_sec = 1.0
+                retry_sec = max(0.0, min(retry_sec, 30.0))
                 time.sleep(retry_sec)
                 continue
             raise TelegramAPIError(f"Telegram API error ({method}): {data.get('description', data)}")

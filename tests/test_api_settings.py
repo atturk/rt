@@ -235,3 +235,34 @@ def test_preferences_persist(api_client, api_token, ws):
         "chiusura_x": "esci",
     }
 
+
+def test_save_single_preference_preserves_other_settings(api_client, ws):
+    from pathlib import Path
+    import yaml
+    from rt.services.settings_service import general_config_path, save_preferences
+
+    path = general_config_path(Path.cwd())
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    data.setdefault("ui", {}).update({
+        "theme": "light",
+        "outline_mode": "timer",
+        "outline_auto_approval_seconds": 25,
+        "close_action": "quit",
+    })
+    data.setdefault("review", {})["parallel_units"] = 7
+    data.setdefault("telegram", {})["enabled"] = True
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+
+    save_preferences(Path.cwd(), {"sfondo_gruppi": "grigi"})
+    with open(path, encoding="utf-8") as f:
+        after = yaml.safe_load(f)
+    assert after["ui"]["group_background"] == "gray"
+    assert after["ui"]["theme"] == "light"
+    assert after["ui"]["outline_mode"] == "timer"
+    assert after["ui"]["outline_auto_approval_seconds"] == 25
+    assert after["ui"]["close_action"] == "quit"
+    assert after["review"]["parallel_units"] == 7
+    assert after["telegram"]["enabled"] is True
+
