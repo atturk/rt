@@ -13,8 +13,7 @@ import { useOpenedFiles } from '@/lib/useOpenedFiles'
 import { PageBody } from '@/components/shell/PageHeader'
 import { NewLessonContext, type NewLessonOptions } from '@/components/shell/newLesson'
 import { GlobalFileDrop } from '@/components/shell/GlobalFileDrop'
-import { SupportRailButton } from '@/components/shell/SupportRailButton'
-import { usePptxConverterGuard } from '@/components/shell/PptxConverterWarning'
+import { useConverters } from '@/api/converters'
 import { ImageViewer } from '@/components/images/ImageViewer'
 import { BackupDialog } from '@/components/shell/BackupDialog'
 import { Alert } from '@/components/ui/alert'
@@ -26,6 +25,8 @@ import { useUpdatePopup } from '@/components/settings/useAppUpdate'
 import { cn } from '@/lib/utils'
 
 // Il riquadro di Salva/Condividi serve solo dopo un'esportazione: fuori dal JavaScript iniziale.
+// Il promemoria Supporta RT compare di rado: caricato a parte, fuori dal JavaScript iniziale.
+const SupportRailButton = lazy(() => import('@/components/shell/SupportRailButton').then((m) => ({ default: m.SupportRailButton })))
 const FileStatusBar = lazy(() => import('@/components/ui/file-status').then((m) => ({ default: m.FileStatusBar })))
 
 // Il popup si scarica quando lo si apre: non serve per mostrare la prima pagina.
@@ -75,7 +76,9 @@ function NavItem({ section, path, side, variant }: { section: Section; path: str
 
 export function Layout() {
   useUploadGuard()
-  const { guardPptxFiles, warningDialog } = usePptxConverterGuard()
+  // Chiede subito se c'è un convertitore di slide: il controllo dei .pptx trascinati (nella
+  // finestra Nuova lezione, caricata a parte) trova già la risposta.
+  useConverters()
   const studyZen = useState(false)
   const [rsvp, setRsvp] = useState<RsvpLayoutState>({ active: false, tint: null })
   const [zen, setZen] = useState<RsvpLayoutState>({ active: false, tint: null })
@@ -180,7 +183,7 @@ export function Layout() {
           <NavItem section={LESSONS} path={path} side="right" variant="rail" />
           <NavItem section={CALENDAR} path={path} side="right" variant="rail" />
           <div className="flex-1" aria-hidden />
-          <SupportRailButton />
+          <Suspense fallback={null}><SupportRailButton /></Suspense>
           <NavItem section={JOBS} path={path} side="right" variant="rail" />
           <NavItem section={SETTINGS} path={path} side="right" variant="rail" />
         </nav>}
@@ -207,9 +210,8 @@ export function Layout() {
       </div>
       <GlobalFileDrop
         disabled={!!newLessonOptions}
-        onDropFiles={(files) => guardPptxFiles(files, () => openNewLesson({ initialFiles: files }))}
+        onDropFiles={(files) => openNewLesson({ initialFiles: files })}
       />
-      {warningDialog}
       <ImageViewer />
       <BackupDialog />
       <Suspense fallback={null}><FileStatusBar /></Suspense>
