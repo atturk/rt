@@ -9,7 +9,7 @@ viene sostituito. Ai tipi che ricevono file caricati via API (run_pipeline, inge
 add_images, import_lesson_zips) si aggiunge la pulizia della cartella di upload.
 """
 import os
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import BaseModel
 
