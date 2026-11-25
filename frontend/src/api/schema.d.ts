@@ -7598,6 +7598,11 @@ export interface components {
             approved: boolean;
             /** Expires At */
             expires_at?: string | null;
+            /**
+             * Generated Topics
+             * @description Argomenti generati dall'IA, uno per voce
+             */
+            generated_topics?: string[];
             /** Lesson Title */
             lesson_title: string;
             /** Macro Sections */

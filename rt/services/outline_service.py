@@ -160,6 +160,7 @@ def get_outline_review(lesson_dir: str) -> Dict[str, Any]:
             }
             for m in outline.macro_sections
         ],
+        "generated_topics": list(outline.generated_topics or []),
         "approval": get_outline_approval(lesson_dir),
         "approved": approved,
         "expires_at": timer.get("expires_at") if timer and not approved else None,

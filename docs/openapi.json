@@ -8323,6 +8323,14 @@
             ],
             "title": "Expires At"
           },
+          "generated_topics": {
+            "description": "Argomenti generati dall'IA, uno per voce",
+            "items": {
+              "type": "string"
+            },
+            "title": "Generated Topics",
+            "type": "array"
+          },
           "lesson_title": {
             "title": "Lesson Title",
             "type": "string"
