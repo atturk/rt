@@ -89,10 +89,13 @@ _LATEX_AFTER_ESCAPE = re.compile(
     r"|\n(?=(?:abla|eq|otin|ot|eg|ewline|leq|geq|mid|exists|parallel|subseteq|cong|sim)(?![a-zA-Z]))"
 )
 
+# Una formula non attraversa una riga vuota (come nella SPA, frontend/src/lib/math.ts): un $$
+# spaiato non si accoppia con quello di un paragrafo successivo.
+_NO_BLANK = r"(?:(?!\n[ \t]*\n)[\s\S])"
 MATH_REGEX = re.compile(
-    r"(\$\$[\s\S]*?\$\$"
-    r"|\\\[[\s\S]*?\\\]"
-    r"|\\\([\s\S]*?\\\)"
+    r"(\$\$" + _NO_BLANK + r"*?\$\$"
+    r"|\\\[" + _NO_BLANK + r"*?\\\]"
+    r"|\\\(" + _NO_BLANK + r"*?\\\)"
     r"|(?<![\$\\\d])\$(?!\$)(?! )(?:\\.|[^\$\n])+?(?<![ \\])\$(?!\d))"
 )
 
@@ -142,6 +145,11 @@ def _repair_inside_math(content: str, is_display: bool) -> str:
 
 
 def _repair_formula(match_str: str) -> str:
+    # "$\u0000$" dal modello: senza il carattere di controllo resterebbe "$$", che apre una
+    # formula a blocco mai chiusa. Una formula in riga vuota sparisce.
+    if (match_str.startswith("$") and not match_str.startswith("$$")
+            and not _repair_inside_math(match_str[1:-1], is_display=False).strip()):
+        return ""
     if match_str.startswith("$$") and match_str.endswith("$$"):
         return "$$" + _repair_inside_math(match_str[2:-2], is_display=True) + "$$"
     elif match_str.startswith("\\[") and match_str.endswith("\\]"):

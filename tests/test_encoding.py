@@ -182,3 +182,18 @@ def test_repair_llm_text_restores_broken_formulas_and_strips_c0():
     # Testo normale resta identico
     normal = "Risposta corretta: il pH resta costante tra 7,35 e 7,45.\n\tOttimo lavoro!"
     assert repair_llm_text(normal) == normal
+
+
+def test_empty_inline_formula_does_not_become_unbalanced_display_delimiter():
+    # Lezione di elettromagnetismo 2026-11-25: il modello ha scritto "$\u0000$"; tolto il NUL
+    # restava "$$", che apriva una formula a blocco e rovinava tutto il resto della lezione.
+    from rt.core.encoding import repair_llm_text
+    text = "pulsazione angolare $\x00$ dalla relazione $T_0 = 2\\pi/\\omega_0$.\n\n$$\\Delta E = h f_0$$"
+    assert repair_llm_text(text) == "pulsazione angolare  dalla relazione $T_0 = 2\\pi/\\omega_0$.\n\n$$\\Delta E = h f_0$$"
+    assert sanitize_object_encoding({"c": text}, repair_latex=True)["c"].count("$$") == 2
+
+
+def test_display_formula_does_not_cross_blank_line():
+    from rt.core.encoding import MATH_REGEX
+    text = "angolare $$ dalla relazione.\n\n$$\\Delta E$$\n\nTesto con\nnext riga"
+    assert [m.group(0) for m in MATH_REGEX.finditer(text)] == ["$$\\Delta E$$"]
