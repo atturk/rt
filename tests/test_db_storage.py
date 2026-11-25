@@ -140,6 +140,22 @@ def test_build_rename_in_worker_does_not_duplicate_the_lesson(tmp_path, monkeypa
         assert s.query(Lesson).count() == 1
 
 
+def test_lesson_deleted_by_another_process_is_gone_for_the_conflict_check(db_lesson, rt_db):
+    """L'API cancella la lezione, il worker (altro processo) la ricordava nella cache: ricreare
+    la stessa lezione non deve dare «Esiste già una lezione»."""
+    from rt.services.lesson_conflicts import find_lesson_conflict, free_lesson_path
+    root = os.path.dirname(db_lesson)
+    with fs.open(lesson_path(db_lesson, "info.yaml"), "w", encoding="utf-8") as f:
+        f.write("materia: BIOCHIMICA\n")
+    assert fs.isdir(db_lesson)  # la voce ora è nella cache di questo "worker"
+    with session_scope(rt_db) as s:  # cancellazione fatta da un altro processo: niente forget()
+        s.delete(s.query(Lesson).filter_by(path=db_lesson).one())
+    assert not fs.isdir(db_lesson) and not fs.exists(db_lesson) and not fs.is_db_lesson(db_lesson)
+    assert free_lesson_path(root, os.path.basename(db_lesson)) == db_lesson
+    assert find_lesson_conflict("2026-11-25", "ELETTROMAGNETISMO", "11:30", root) is None
+    assert fs.create_db_lesson(db_lesson) == db_lesson and fs.isdir(db_lesson)
+
+
 def test_lock_files_live_in_the_data_folder(db_lesson, rt_db):
     from rt.core.process_lock import lesson_lock_path, lesson_work_lock
     lock = lesson_lock_path(db_lesson)
