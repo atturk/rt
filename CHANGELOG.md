@@ -20,6 +20,7 @@ Raccoglie le beta da 4.3.9b1 a 4.3.9b10 e le ultime correzioni: Impostazioni rid
 - **Immagini dei materiali**: didascalie con il titolo della slide e collocazione più pulita.
 - **iPhone e Android**: icona di RT nella schermata Home e accesso via Tailscale Serve su porta dedicata.
 - **Supporta RT**: una pagina per sostenere RT con una donazione su Ko-fi.
+- **Guida nello stile delle Impostazioni**; Indietro torna alla pagina da cui la si apre.
 
 ### Correzioni
 
