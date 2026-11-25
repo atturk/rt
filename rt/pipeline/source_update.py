@@ -43,7 +43,7 @@ def _duration(path):
         return audio_duration(real)
 
 
-def _transcribe(path, mock=False, ctx=None):
+def _transcribe(path, mock=False, ctx=None, duration=None):
     """Riusa motore e comando dell'import, soltanto per il nuovo file."""
     from rt.core.config import load_config, load_env_file
     from rt.pipeline.setup import (find_macparakeet_binary, DEFAULT_MODEL,
@@ -53,7 +53,11 @@ def _transcribe(path, mock=False, ctx=None):
     sha, engine = compute_file_sha256(path), transcript_engine(mock)
     cached = cached_transcript(sha, engine)
     if cached:
+        if ctx:
+            ctx.progress('prepare', message=f'Trascrizione di {os.path.basename(path)}: già pronta, riusata')
         return [Segment.model_validate(item) for item in cached['segments']]
+    if ctx and duration is not None:
+        ctx.progress('prepare', message=f'Trascrizione di {os.path.basename(path)} (durata audio {_elapsed(duration)}): avvio del motore')
     stt = load_config().transcription
     with fs.materialize(path) as real, tempfile.TemporaryDirectory(prefix="rt-source-") as temp:
         if mock:
@@ -241,9 +245,8 @@ def prepare_source_update(lesson_dir, *, mock=False, ctx=None, reingest=False):
                         duration = _duration(path)
                         if ctx:
                             ctx.progress('prepare', message=f'Trascrizione di {name} ({number} di {len(audio_pending)})')
-                            ctx.progress('prepare', message=f'Trascrizione di {name} (durata audio {_elapsed(duration)}): avvio del motore')
                         before = time.monotonic()
-                        incoming = _transcribe(path, mock, **({'ctx': ctx} if ctx else {}))
+                        incoming = _transcribe(path, mock, **({'ctx': ctx, 'duration': duration} if ctx else {}))
                         seconds = time.monotonic() - before
                         timing['transcription_seconds'] += seconds
                         timing['audio'].append({'file': name, 'audio_seconds': duration, 'seconds': seconds})
