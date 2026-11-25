@@ -121,10 +121,11 @@ def _job_fallback_meta(lesson_dir: Optional[str]) -> Dict[str, str]:
                 if path_candidate:
                     lesson = s.scalar(select(Lesson).where(Lesson.path == normalize_lesson_path(path_candidate)))
             if lesson is not None:
-                if lesson.title:
-                    meta["title"] = lesson.title
-                if lesson.date:
-                    meta["data"] = lesson.date
+                title = lesson.titolo or lesson.argomenti
+                if title:
+                    meta["title"] = title
+                if lesson.data:
+                    meta["data"] = lesson.data
                 if lesson.materia:
                     meta["materia"] = lesson.materia
             if not meta.get("data"):

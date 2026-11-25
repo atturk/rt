@@ -6,7 +6,7 @@ Beta di correzioni dopo le prove della b9.
 
 ### Correzioni
 
-- **Telegram**: «Lezione pronta» arriva anche per le lezioni create da appunti o da più fonti, senza righe tecniche in fondo.
+- **Telegram**: «Lezione pronta» arriva anche per le lezioni create da appunti o da più fonti, senza righe tecniche in fondo; «Lavorazione non riuscita» indica lezione, data e materia.
 - **Ripasso**: con più risposte alla stessa domanda si vede sempre l'ultima valutazione.
 - **Modalità batch**: le voci `:batch` compaiono nel menu dei modelli anche se il primo tentativo di scaricare l'elenco non riesce.
 

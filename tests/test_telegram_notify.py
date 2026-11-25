@@ -352,3 +352,18 @@ def test_failed_prep_job_notifies_with_lesson_materia_and_no_exception_prefix(bo
         assert "ValueError" not in texts[0]
     finally:
         unregister_job_notifiers()
+
+
+def test_failed_job_message_names_lesson_and_subject_from_the_db(rt_db, tmp_path):
+    """Lezione senza info.yaml leggibile (errore in preparazione): titolo, data e materia dal DB."""
+    import os
+    from rt.db.models import Lesson
+    from rt.db.session import session_scope
+    from rt.telegram.notify import _lesson_lines
+    path = os.path.realpath(str(tmp_path / "lezione"))
+    with session_scope(rt_db) as session:
+        session.add(Lesson(path=path, folder_name="lezione", storage="folder", data="2026-11-25",
+                           materia="FISICA", titolo="Legge di Ohm"))
+    lines = _lesson_lines(path, None)
+    assert any("Legge di Ohm" in line for line in lines)
+    assert any("2026-11-25" in line and "FISICA" in line for line in lines)
