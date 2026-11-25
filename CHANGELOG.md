@@ -1,6 +1,6 @@
 # Novità di RT
 
-## 4.3.9b10 — da pubblicare
+## 4.3.9b10 — 2026-11-25
 
 Beta di correzioni dopo le prove della b9.
 
