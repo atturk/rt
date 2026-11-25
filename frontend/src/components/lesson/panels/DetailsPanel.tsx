@@ -483,7 +483,7 @@ export function DetailsPanel({
           <Tags size={16} className="shrink-0" aria-hidden />
           <span className="truncate text-body font-medium">Classificatore</span>
           <span className="ml-auto shrink-0 text-meta text-muted-foreground">
-            {classifier.data ? `${classifier.data.pending} da rivedere` : ''}
+            {classifier.data ? `${classifier.data.pending} unità da rivedere` : ''}
           </span>
         </Button>
         <Button
