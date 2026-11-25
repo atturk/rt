@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, RotateCw, ListRestart, ShieldCheck, ShieldAlert, Trash2, Tags } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Download, MessageSquare, MoreHorizontal, Play, RotateCcw, RotateCw, ListRestart, ShieldCheck, ShieldAlert, Trash2, Tags } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useClassifier } from '@/api/classifier'
 import { useStudyNotes } from '@/api/studyNotes'
@@ -35,6 +35,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { PHASE_LABELS, PHASE_ORDER, STATE_LABELS, formatCost, formatDateTime, phaseTone } from '@/lib/format'
 import { formatDuration } from '@/lib/lessonsPage'
+import { lessonTopics, topicsAndKeywordsText } from '@/lib/lessonTopics'
 import { CostPanel } from '../CostPanel'
 import { JobsPanel } from '../JobsPanel'
 import { SourcesSection } from './SourcesSection'
@@ -227,6 +228,17 @@ export function DetailsPanel({
   const draftUnits = sections.map((unit) => ({ id: unit.unit_id, title: unit.title }))
   const outlineUnits = outline.data?.macro_sections.flatMap((section) => section.units) ?? draftUnits
   const unitsFor = (phase: string) => (phase === 'review' ? draftUnits : outlineUnits)
+  // Argomenti e poi le keywords di tutte le unità, una per riga: la scaletta se c'è, se no la bozza.
+  const copyText = topicsAndKeywordsText(
+    lessonTopics(l.argomenti, outline.data?.generated_topics ?? []),
+    outline.data?.macro_sections.flatMap((section) => section.units) ?? sections,
+  )
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [copied])
 
   const classifier = useClassifier(l.id)
   const studyNotes = useStudyNotes(l.id)
@@ -450,43 +462,48 @@ export function DetailsPanel({
         </dd>
       </dl>
 
-      <div className="grid grid-cols-1 gap-2">
+      <div className="grid grid-cols-1 gap-1.5">
+        {copyText && (
+          <Button
+            variant="outline"
+            className="h-auto w-full min-w-0 justify-start gap-2.5 py-2"
+            onClick={() => void navigator.clipboard.writeText(copyText).then(() => setCopied(true)).catch(() => undefined)}
+            data-testid="copy-topics-keywords"
+          >
+            {copied ? <Check size={16} className="shrink-0" aria-hidden /> : <Copy size={16} className="shrink-0" aria-hidden />}
+            <span className="truncate text-body font-medium">{copied ? 'Copiati' : 'Copia argomenti e keywords'}</span>
+          </Button>
+        )}
         <Button
           variant="outline"
-          className="h-auto w-full min-w-0 justify-start gap-3 overflow-hidden py-3"
+          className="h-auto w-full min-w-0 justify-start gap-2.5 overflow-hidden py-2"
           onClick={() => navigate(`/lezioni/${l.id}?panel=classificatore`)}
           data-testid="open-classifier-panel"
         >
-          <Tags size={18} className="shrink-0" aria-hidden />
-          <span className="flex min-w-0 flex-1 flex-col items-start">
-            <span className="max-w-full truncate text-body font-medium">Classificatore</span>
-            <span className="max-w-full text-meta text-muted-foreground truncate">
-              {classifier.data ? `${classifier.data.pending} unità da rivedere` : '\u00a0'}
-            </span>
+          <Tags size={16} className="shrink-0" aria-hidden />
+          <span className="truncate text-body font-medium">Classificatore</span>
+          <span className="ml-auto shrink-0 text-meta text-muted-foreground">
+            {classifier.data ? `${classifier.data.pending} unità da rivedere` : ''}
           </span>
         </Button>
         <Button
           variant="outline"
-          className="relative h-auto w-full min-w-0 justify-start gap-3 overflow-hidden py-3"
+          className="h-auto w-full min-w-0 justify-start gap-2.5 overflow-hidden py-2"
           onClick={() => navigate(`/lezioni/${l.id}?panel=note`)}
           data-testid="open-study-notes-panel"
         >
-          <MessageSquare size={18} className="shrink-0" aria-hidden />
-          <span className="flex min-w-0 flex-1 flex-col items-start">
-            <span className="flex max-w-full items-center gap-1.5 text-body font-medium">
-              <span className="truncate">Messaggi salvati</span>
-              {changedCount > 0 && (
-                <span
-                  className="size-2 rounded-full bg-warning inline-block"
-                  title="Testo cambiato"
-                  data-testid="notes-changed-dot"
-                />
-              )}
-            </span>
-            <span className="max-w-full text-meta text-muted-foreground truncate">
-              {notesCount} {notesCount === 1 ? 'voce' : 'voci'}
-              {changedCount > 0 ? ` · ${changedCount} da guardare` : ''}
-            </span>
+          <MessageSquare size={16} className="shrink-0" aria-hidden />
+          <span className="truncate text-body font-medium">Messaggi salvati</span>
+          {changedCount > 0 && (
+            <span
+              className="size-2 shrink-0 rounded-full bg-warning inline-block"
+              title="Testo cambiato"
+              data-testid="notes-changed-dot"
+            />
+          )}
+          <span className="ml-auto shrink-0 text-meta text-muted-foreground">
+            {notesCount} {notesCount === 1 ? 'voce' : 'voci'}
+            {changedCount > 0 ? ` · ${changedCount} da guardare` : ''}
           </span>
         </Button>
       </div>

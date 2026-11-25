@@ -305,6 +305,7 @@ class OutlineMacro(BaseModel):
 class Outline(BaseModel):
     lesson_title: str
     macro_sections: List[OutlineMacro]
+    generated_topics: List[str] = Field(default_factory=list, description="Argomenti generati dall'IA, uno per voce")
     approval: Optional[Dict[str, Any]] = None
     approved: bool
     expires_at: Optional[str] = None
